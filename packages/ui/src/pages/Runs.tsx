@@ -322,8 +322,8 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
   const waiting = waitingReason(run);
   return (
     <div className="flex shrink-0 flex-col gap-2.5 border-b border-line-subtle px-5 pt-3.5 pb-3">
-      <div className="flex items-start gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex items-start gap-3 max-md:flex-col">
+        <div className="flex min-w-0 flex-1 flex-col gap-1 max-md:w-full" data-run-heading>
           <div className="flex flex-wrap items-center gap-2">
             <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>
               <span aria-hidden="true">{stateLabel(run, t)}</span>
@@ -337,11 +337,12 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
             </span>
           </div>
           <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong">{run.taskTitle}</h2>
-          <span className="font-mono text-[11px]/4 text-fg-muted">
+          <span className="break-words font-mono text-[11px]/4 text-fg-muted">
             {id} · {run.project} · {run.taskId} · {machine}
           </span>
+          {run.headSha ? <span className="break-all font-mono text-xs text-fg-secondary" data-run-head-sha>{t("runs.codeRevision", { sha: run.headSha })}</span> : null}
         </div>
-        <div className="flex flex-wrap justify-end gap-1.5 max-md:gap-2">
+        <div className="flex flex-wrap justify-end gap-1.5 max-md:w-full max-md:justify-start max-md:gap-2">
           {actions}
           <RunRoles run={run} />
         </div>

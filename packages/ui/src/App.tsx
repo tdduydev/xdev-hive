@@ -1,5 +1,6 @@
 import { WorkspaceAcceptance } from "#ui/pages/WorkspaceAcceptance.tsx";
 import { WebTodayPage } from "#ui/pages/WorkspaceHome.tsx";
+import { HistoryPage } from "#ui/pages/History.tsx";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TerminalProvider } from "#ui/components/RemoteTerminal.tsx";
 import {
@@ -34,7 +35,7 @@ import type { HiveClient } from "./client.ts";
 import { ChangePasswordScreen } from "./components/Account.tsx";
 import { ErrorNote } from "./components/common.tsx";
 import { CrashCard, ErrorBoundary, PageBoundary } from "./components/ErrorBoundary.tsx";
-import { HiveContext, useProjectList, useQuery, usePoll, useRetiredProjects } from "./hooks.ts";
+import { HiveContext, hashParam, useProjectList, useQuery, usePoll, useRetiredProjects } from "./hooks.ts";
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
 import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
@@ -73,6 +74,7 @@ type PageId =
   | "overview"
   | "chat"
   | "runs"
+  | "history"
   | "artifacts"
   | "docs"
   | "read"
@@ -102,6 +104,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
   // On the web with Đợt chạy as a tab (roadmap 49b); the desktop app's own runs as they were.
   runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsWorkPage /> },
+  history: { label: "history.title", sub: "history.sub", icon: Activity, render: () => <HistoryPage /> },
   artifacts: { label: "artifacts.page", sub: "artifacts.sub", icon: FileText, render: () => <ArtifactsPage /> },
   docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <KnowledgePage page="docs" /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
@@ -312,7 +315,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     };
     if (!client.desktop) {
       // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
-      const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read"]);
+      const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read", "start"]);
       if (!webAdmin) ids.add("overview");
       return account(ids);
     }
@@ -375,7 +378,9 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // Tools a project requires count as missing items too (roadmap 28b-2); a hub before the catalog has no tools.list.
   const adminTools = useQuery(async () => (webAdmin ? client.call("tools.list", {}).catch((): ToolView[] => []) : []), [client, webAdmin]);
 
-  const current: PageId = visible.has(route.id) ? route.id : "today";
+  // History readers may open a thread without permission to start a chat; chat.get still checks its project.
+  const readingThread = route.id === "chat" && visible.has("history") && /^\d+$/.test(hashParam("thread") ?? "");
+  const current: PageId = visible.has(route.id) || readingThread ? route.id : "today";
   const lacking = adminPolicy.data ? (adminMachines.data ?? []).filter((m) => m.setup && missingRequired(adminPolicy.data!, m.setup, adminTools.data ?? []).length > 0).length : 0;
   const openAlerts = adminAlerts.data?.open ?? [];
   const counts: Partial<Record<PageId, number>> = {

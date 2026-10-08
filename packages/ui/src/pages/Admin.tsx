@@ -55,6 +55,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "tasks.setDeps": "auditAction.tasksSetDeps",
   "machines.remove": "auditAction.machinesRemove",
   "machines.approveTool": "auditAction.machineToolApprove",
+  "machines.setRunner": "auditAction.machinesSetRunner",
   "machines.setProfile": "auditAction.machinesSetProfile",
   "runs.merge": "auditAction.runsMerge",
   "runs.setTimeoutSettings": "audit.runTimeoutSettings",

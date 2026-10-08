@@ -23,6 +23,7 @@ function subject(item: InboxItem): string {
     case "machine": return item.item.label;
     case "request": return item.command.label;
     case "alert": return item.alert.rule;
+    case "hubIssue": return item.detail;
   }
 }
 

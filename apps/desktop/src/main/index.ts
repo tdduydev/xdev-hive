@@ -28,6 +28,7 @@ import {
   usageStop,
   type Actor,
   type AgentProfile,
+  type AgentProfileStatus,
   type AgentRun,
   type DesktopProject,
   type DesktopSettings,
@@ -97,6 +98,7 @@ import { migrateProfiles, migrateRuntimeNode, runtimeRoots } from "#desktop/main
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
 import { RemoteTerminal } from "#desktop/main/pty/remote-terminal.ts";
 import { ResourceLocks } from "#desktop/main/resource-locks.ts";
+import { GATE_SECRET_ENV, GateExecutor } from "#desktop/main/runner/gate.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath, refreshAgentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
@@ -108,7 +110,7 @@ import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
-import { applyProfileChanges } from "./profile-changes.ts";
+import { applyProfileChanges, applyRunnerChange } from "./profile-changes.ts";
 import { mergeMr } from "./gitlab/merge.ts";
 import { chatFileId, chatNotice, hubChatUpload, servedName } from "./chat.ts";
 import { linuxSandboxFallback } from "#desktop/main/linux-sandbox.ts";
@@ -674,6 +676,16 @@ const refreshUsage = usageRefresher(
   () => runner.profileStatuses(),
 );
 
+/** Dùng tiếp: the threshold is weighed against fresh numbers, and the name kept is the person signed in here. */
+async function resumeProfile(id: string): Promise<AgentProfileStatus[]> {
+  if (typeof id !== "string") throw new HiveError("bad_request", "Profile id must be a string");
+  await refreshUsage([id]);
+  const who = (await me()).name;
+  await runner.resumeProfile(id, who);
+  mainLog.write(`resume ${id} by ${who}`);
+  return runner.profileStatuses();
+}
+
 /** `--version`, then the sign-in check (which the runner and the hub see too). */
 async function checkProfile(id: string): Promise<ProfileCheck> {
   const profile = config.agents.find((a) => a.id === id);
@@ -832,6 +844,8 @@ const reportedProfiles = (): ReportedProfile[] =>
     rateLimited: p.stats.rateLimited,
     statsSince: p.stats.since,
     priority: p.priority,
+    stopAtSession: p.stopAtSession,
+    stopAtWeek: p.stopAtWeek,
     // The hub counts free places with it when it picks a machine for a run group (roadmap 31a).
     maxConcurrent: p.maxConcurrent,
     // Only then does the hub put a classify run before a task with no kind on this machine (roadmap 54b).
@@ -848,6 +862,8 @@ let idleUpdate: IdleUpdate | undefined;
 /** Who works in which checkout here (spec 69 §11): a remote terminal against runs, merges and releases. */
 const resourceLocks = new ResourceLocks();
 let remoteTerminal: RemoteTerminal | undefined;
+/** Gate jobs (spec 69h1, 69h2): off unless the person at the machine wrote gate-jobs.json. */
+let gateExecutor: GateExecutor | undefined;
 /** The app waits to update: no new remote terminal either. */
 let updateDraining = false;
 let installingUpdate = false;
@@ -894,10 +910,20 @@ function onHub(update: HubUpdate): void {
   if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) void refreshSetup().catch(() => undefined);
   if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
+  if (update.runnerChange) {
+    const next = applyRunnerChange(config, update.runnerChange);
+    if (JSON.stringify(next.runner) !== JSON.stringify(config.runner) || JSON.stringify(next.gitlab.mr) !== JSON.stringify(config.gitlab.mr)) {
+      persist(next);
+    }
+  }
   if (update.profileChanges?.length) takeProfileChanges(update.profileChanges);
+  // Apply both limits and profile thresholds before waking queued runs.
+  if (update.runnerChange) void runner.tick();
   updater.offer(update.update);
   void idleUpdate?.tick();
   if (update.mergeRuns?.length && !runner.updateDraining) void takeMerges(update.mergeRuns);
+  gateExecutor?.onHub(update.gate);
+  if (!smokeShot) void gateExecutor?.poll();
   for (const cmd of update.commands) {
     if (notifiedCommands.has(cmd.id) || !Notification.isSupported()) continue;
     notifiedCommands.add(cmd.id);
@@ -924,7 +950,7 @@ function takeProfileChanges(changes: ProfileChange[]): void {
   void runner.tick();
   if (!Notification.isSupported()) return;
   for (const { change, profile } of applied) {
-    const what = change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
+    const what = change.stopAtSession != null || change.stopAtWeek != null ? "desktop.profileChangedThresholds" : change.enabled === null ? "desktop.profileChangedPriority" : profile.enabled ? "desktop.profileChangedOn" : "desktop.profileChangedOff";
     const n = new Notification({ title: tr("desktop.profileChangedTitle"), body: tr(what, { who: change.requestedBy, profile: profile.id, priority: profile.priority }) });
     n.on("click", () => {
       showPage("/agents");
@@ -1292,6 +1318,7 @@ function registerIpc(): void {
   handle("desktop:saveProfile", saveProfile);
   handle("desktop:removeProfile", removeProfile);
   handle("desktop:resetCooldown", async (id: string) => (await runner.resetCooldown(id), runner.profileStatuses()));
+  handle("desktop:resumeProfile", resumeProfile);
   handle("desktop:refreshUsage", (ids?: string[]) => refreshUsage(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : undefined));
   handle("desktop:resetStats", (id: string) => (runner.resetStats(id), runner.profileStatuses()));
   handle("desktop:checkProfile", checkProfile);
@@ -1450,6 +1477,7 @@ function createWindow(): void {
                  const el = document.querySelector(${JSON.stringify(sel)});
                  if (!el) return;
                  if (el.closest('[data-slot="dropdown-menu-trigger"]')) el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+                 else if (el.matches('[data-slot="tabs-trigger"]')) el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
                  else el.click();
                })()`,
             )
@@ -1699,7 +1727,8 @@ if (!app.requestSingleInstanceLock()) {
     const active = runner.store.active().length;
     const takesWork = config.runner.acceptHubRuns || active > 0;
     mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
-    void Promise.all([runner.stop(), remoteTerminal?.stop()])
+    gateExecutor?.stop();
+    void Promise.all([runner.stop(), remoteTerminal?.stop(), gateExecutor?.settle()])
       .then(() => {
         mainLog.write("runner stopped");
         // The rollout says "install when the app quits": the helper swaps the build once this process is gone, and
@@ -1820,10 +1849,11 @@ if (!app.requestSingleInstanceLock()) {
         projects: () => config.projects,
         mode: () => config.mode,
         machine: () => config.machine,
-        terminalHolds: (project, checkout) => resourceLocks.holder(project, checkout) === "terminal",
+        // A gate job holds the whole project for merges and releases (spec 69h1 §7), though it works in a clone of its own.
+        terminalHolds: (project, checkout) => resourceLocks.holder(project, checkout) === "terminal" || (checkout === "repo" && !!gateExecutor?.holds(project)),
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability() }),
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability(), gate: gateExecutor?.capability() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
@@ -1854,6 +1884,18 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
     resourceLocks.probe((project, checkout) => runner.checkoutBusy(project, checkout));
+    gateExecutor = new GateExecutor({
+      backend: () => backend,
+      actor: () => runner.hubActor(),
+      projects: () => config.projects,
+      env: agentEnv,
+      allowed: (project) => config.mode === "hub" && !!config.hub.url && !updateDraining && !runner.updateDraining && runner.checkoutBusy(project, "repo") === null,
+      locks: resourceLocks,
+      secretEnv: () => [...GATE_SECRET_ENV, ...config.agents.flatMap((a) => Object.keys(a.env))],
+      known: () => [config.hub.token, ...Object.values(config.agentTokens), ...config.agents.flatMap((a) => Object.values(a.env))].filter((t): t is string => typeof t === "string" && t.length > 0),
+      version: app.getVersion(),
+      log: (line) => mainLog.write(line),
+    }, path.dirname(configPath()));
     remoteTerminal = new RemoteTerminal({
       dataDir: path.dirname(configPath()),
       hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
@@ -1875,9 +1917,11 @@ if (!app.requestSingleInstanceLock()) {
         const work = runner.updateWork();
         // An open remote terminal holds its checkout and a person at it: wait for it, at most its absolute TTL.
         const terminal = remoteTerminal?.busy ?? false;
+        // A gate job is never cut short by an update: wait for it, at most the longest timeout a template may have.
+        const gate = gateExecutor?.busy ?? false;
         return {
-          busy: work.busy || merging.size > 0 || terminal,
-          deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0, terminal ? Date.now() + TERMINAL_LIMITS.absoluteTtlMs : 0),
+          busy: work.busy || merging.size > 0 || terminal || gate,
+          deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0, terminal ? Date.now() + TERMINAL_LIMITS.absoluteTtlMs : 0, gate ? Date.now() + 130 * 60_000 : 0),
         };
       },
       install: () => installAndRestart(true),

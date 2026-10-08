@@ -129,14 +129,33 @@ describe("quota block (roadmap 52)", () => {
     assert.deepEqual([meterTone(40, 95), meterTone(85, 95), meterTone(95, 95), meterTone(100, 100)], ["ok", "near", "over", "over"]);
   });
 
-  it("shows Bỏ nghỉ whenever the profile rests, even next to another button of the row", () => {
+  it("shows Dùng tiếp whenever Hive holds the profile back, even next to another button of the row", () => {
     const signedOut = { loggedIn: false, method: null, loginCommand: "claude auth login", checkedAt: "" };
     const p = profile({ login: signedOut, cooldownUntil: "2026-10-06T09:40:00Z" });
     assert.equal(rowFix(p), "login");
-    assert.ok(quotaView(p, now).rest, "the rest has its own button");
+    assert.ok(quotaView(p, now).rest && quotaView(p, now).canResume, "the rest has its own button");
     assert.equal(rowFix(profile({ cliPath: null, cooldownUntil: "2026-10-06T09:40:00Z" })), "installCli");
-    assert.ok(quotaView(profile({ cliPath: null, cooldownUntil: "2026-10-06T09:40:00Z" }), now).rest);
+    assert.ok(quotaView(profile({ cliPath: null, cooldownUntil: "2026-10-06T09:40:00Z" }), now).canResume);
     assert.equal(quotaView(profile(), now).rest, null);
+    assert.equal(quotaView(profile(), now).canResume, false);
+    // At the stop threshold without a rest: Hive's threshold, not the provider, holds it back.
+    const over = profile({ usage: plan(limit(96, "2026-10-06T09:15:00Z"), limit(40, null)) });
+    assert.equal(profileState(over), "overLimit");
+    assert.equal(quotaView(over, now).canResume, true);
+  });
+
+  it("lifts the threshold while a Dùng tiếp holds, and says who asked", () => {
+    const usage = plan(limit(96, "2026-10-06T09:15:00Z"), limit(40, null));
+    const resumed = { until: "2026-10-06T09:15:00Z", at: "2026-10-06T06:58:00Z", by: "an" };
+    const p = profile({ usage, resumed });
+    // profileState reads the wall clock.
+    assert.equal(profileState(profile({ usage, resumed: { ...resumed, until: "2099-01-01T00:00:00Z" } })), "near");
+    assert.equal(profileState(p), "overLimit", "a Dùng tiếp that ended");
+    assert.equal(quotaView(p, now).canResume, false);
+    assert.deepEqual(quotaView(p, now).resumed, resumed);
+    const after = Date.parse("2026-10-06T09:16:00Z");
+    assert.equal(quotaView(p, after).canResume, true, "past its end the threshold counts again");
+    assert.equal(quotaView(p, after).resumed, null);
   });
 
   it("writes the counts from the reset date once the counter was reset", () => {

@@ -10,6 +10,8 @@ import { inScope, scopeFilter, scopeKey, scopeProjects, type Scope } from "#ui/l
 export interface InboxState {
   /** Open items in the scope, newest first. */
   items: InboxItem[];
+  /** Still unresolved on the hub, even when marked handled on this device. */
+  activeItems: InboxItem[];
   /** Handled on this device, newest first. */
   done: InboxDone[];
   read: Set<string>;
@@ -63,6 +65,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   // Hub admins on the web: the hub's alerts that no admin has seen yet.
   const hubAdmin = me.mode === "hub" && me.role === "admin" && !me.access;
   const alerts = useQuery(async () => (team && hubAdmin && client.alerts ? (await client.alerts.list().catch(() => null))?.open ?? null : null), deps);
+  const hubInfo = useQuery(async () => (team && hubAdmin && client.hub ? client.hub.info().catch(() => null) : null), deps);
 
   // Every project counts when the scope is all of them; the shared data has a grant of its own.
   const role = useMemo(() => {
@@ -73,7 +76,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const [done, setDone] = useState<InboxDone[]>(readDone);
   const [read, setRead] = useState<Set<string>>(() => new Set(readRead()));
 
-  const items = useMemo(() => {
+  const activeItems = useMemo(() => {
     const all = buildInbox({
       proposals: proposals.data,
       cleanup: cleanup.data,
@@ -87,14 +90,18 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
       commands: requests.data?.commands,
       machine: settings.data?.machine,
       alerts: alerts.data ?? undefined,
+      hubInfo: hubInfo.data,
       plans: plans.data,
       gates: gates.data,
       leader: leader.data,
       can: (owner, permission) => may(me, owner, permission),
     });
-    const handled = new Set(done.map((d) => d.key));
-    return all.filter((i) => !handled.has(i.key) && inScope(scope, inboxProject(i)));
-  }, [plans.data, cleanup.data, source.data, proposals.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, gates.data, leader.data, me, done, scope, hub]);
+    return all.filter((i) => inScope(scope, inboxProject(i)));
+  }, [plans.data, cleanup.data, source.data, proposals.data, memory.data, runs.data, setup.data, requests.data, settings.data, alerts.data, hubInfo.data, gates.data, leader.data, me, scope, hub]);
+  const items = useMemo(() => {
+    const handled = new Set(done.map(d => d.key));
+    return activeItems.filter(item => !handled.has(item.key));
+  }, [activeItems, done]);
 
   const markRead = useCallback((key: string) => {
     setRead((cur) => {
@@ -123,6 +130,7 @@ export function useInboxState(client: HiveClient, me: Me, scope: Scope, tick: nu
   const first = [source, plans, proposals, memory].find((q) => q.error);
   return {
     items,
+    activeItems,
     done,
     read,
     role,

@@ -263,7 +263,10 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "merge-queue": ["login-token"],
   "auto-release": ["login-token"],
   "login-token": [],
+  "project-onboarding": ["login-token"],
   "artifacts-page": ["login-token"],
+  "acceptance-evidence": ["login-token"],
+  "history-page": ["login-token"],
   "chat-everywhere": ["login-token"],
   "chat-design": ["login-token"],
   "a11y-pages": ["login-token"],
@@ -278,7 +281,9 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-run-status": ["login-token"],
   "run-redispatch": [],
   "inbox-source-complete": [],
+  "close-unmerged-task": ["inbox-source-complete"],
   "scope-search-tasks": ["login-token"],
+  "blocker-center": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
   "docs-system-default": ["login-token"],
@@ -317,6 +322,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
   "tools": ["login-token", "lead-sees-members"],
+  "machine-runner-settings": ["login-token", "login-password", "lead-sees-members"],
   "worktree-admin": ["login-token", "login-password", "lead-sees-members"],
   "tool-approve-web": ["login-token", "login-password", "lead-sees-members"],
   "stop-all": ["login-token"],
@@ -326,6 +332,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "leader-autonomy": ["lead-sees-members"],
   "leader-tool-proposal": ["lead-sees-members"],
   "hub-page": ["login-token"],
+  "backup-late-today": [],
   "hub-leader-chat": ["login-token", "lead-sees-members"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
@@ -515,6 +522,44 @@ async function main() {
       }
     }
     await tab.go("today?section=inbox");
+  });
+
+  await step("project-onboarding", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.click("[data-new-work-open]");
+    await tab.click("[data-onboarding-open]");
+    await tab.waitFor("project guide", () => !!document.querySelector("[data-project-onboarding]"));
+    await tab.click("#onboarding-project");
+    await tab.shortcut("a");
+    await tab.type("onboarding-e2e");
+    await tab.click("#onboarding-task-id");
+    await tab.type("ONBOARDING-E2E-1");
+    await tab.click("#onboarding-task-title");
+    await tab.type("Kiểm tra dự án mới");
+    await tab.waitFor("effective policy", () => !!document.querySelector("[data-onboarding-policy]"));
+    await tab.reload();
+    await tab.waitFor("resume unsaved task draft", () => document.querySelector("#onboarding-task-id")?.value === "ONBOARDING-E2E-1" && document.querySelector("#onboarding-task-title")?.value === "Kiểm tra dự án mới");
+    await tab.shot(`${String(n).padStart(2, "0")}-project-onboarding-draft`);
+    await tab.click("[data-onboarding-create]");
+    await tab.waitFor("first task saved", () => document.querySelector("[data-onboarding-open-task]")?.textContent.includes("ONBOARDING-E2E-1"));
+    expect((await rpc("tasks.list", { project: "onboarding-e2e" })).length === 1, "exactly one task in a new project");
+    expect(!(await rpc("runs.requests", { project: "onboarding-e2e" })).length, "saving a task does not dispatch it");
+    await tab.reload();
+    await tab.waitFor("resume project and task", () => document.querySelector("#onboarding-project")?.value === "onboarding-e2e" && !!document.querySelector("[data-onboarding-open-task]"));
+    expect(await tab.eval(() => !document.querySelector("[data-onboarding-create]")), "resume offers the saved task instead of creating it again");
+    await tab.click("[data-onboarding-open-task]");
+    await tab.waitFor("task panel", () => document.querySelector('[data-slot="sheet-content"]')?.textContent.includes("Kiểm tra dự án mới"));
+    await tab.go("start");
+    await tab.click("#onboarding-project");
+    await tab.shortcut("a");
+    await tab.type("onboarding-empty");
+    await tab.click("#onboarding-task-id");
+    await tab.waitFor("new project has no previous project's task", () => !!document.querySelector("[data-onboarding-create]") && !document.querySelector("[data-onboarding-open-task]"));
+    // Other steps begin with the seeded shared scope.
+    await tab.eval(() => { localStorage.removeItem("xdev-hive.scope"); for (const key of Object.keys(sessionStorage)) if (key.startsWith("xdev-hive.onboarding:")) sessionStorage.removeItem(key); });
+    await tab.reload();
+    await tab.go("today");
   });
 
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });
@@ -723,6 +768,26 @@ async function main() {
     await tab.waitFor("landed merge", () => document.querySelector("[data-merge-queue]")?.textContent.includes("Đã vào nhánh đích"));
     expect((await rpc("tasks.list", { project })).find(t => t.id === "MERGE-E2E")?.status === "done", "landing completes the task");
     await tab.shot("merge-queue-landed");
+  });
+
+  await step("blocker-center", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("tasks.create", { project: "payment", id: "BLOCKER-DEP", title: "Dependency blocker", dependsOn: ["PAY-1"] });
+    await rpc("tasks.create", { project: "payment", id: "BLOCKER-UNKNOWN", title: "Needs diagnosis" });
+    await rpc("tasks.update", { id: "BLOCKER-UNKNOWN", status: "blocked", note: "Inspect the latest run" });
+    await tab.go("tasks");
+    await tab.click('[data-task-view="blockers"]');
+    await tab.waitFor("dependency blocker", () => document.querySelector('[data-blocker-kind="dependency"]')?.textContent.includes("BLOCKER-DEP"));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= window.innerWidth), "blocker centre fits viewport");
+    if (mobile) expect(await tab.eval(() => [...document.querySelectorAll('[data-blocker-filter]')].every(button => button.getBoundingClientRect().height >= 44)), "blocker filters have touch targets");
+    await tab.click('[data-blocker-filter="unknown"]');
+    await tab.waitFor("diagnosis filter", () => document.querySelector('[data-blocker-kind="unknown"]')?.textContent.includes("BLOCKER-UNKNOWN") && !document.querySelector('[data-blocker-kind="dependency"]'));
+    await tab.click('[data-blocker-filter="dependency"]');
+    await tab.click('[data-blocker-kind="dependency"] button');
+    await tab.waitFor("task resolution sheet", () => document.body.innerText.includes("Dependency blocker") && !!document.querySelector('[role="dialog"]'));
+    await tab.key("Escape");
+    await tab.shot(`${String(n).padStart(2, "0")}-blocker-center`);
+    await tab.click('[data-task-view="kanban"]');
   });
 
   await step("scope-search-tasks", async () => {
@@ -946,8 +1011,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -1210,6 +1275,7 @@ async function main() {
     tab = current = tabs.lan;
     await tab.go("machines");
     // On the agent map (31b) the switches are under each machine's column.
+    await tab.click('[data-map-manage="lan-mbp"]');
     await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.click('[aria-label="Bật gói claude-1"]');
     await tab.waitFor("the change waiting on the page", () => document.body.innerText.includes("chờ máy áp dụng"));
@@ -1219,6 +1285,7 @@ async function main() {
     expect(after.profileChanges.length === 0, `still sent: ${JSON.stringify(after.profileChanges)}`);
     await tab.reload();
     await tab.go("machines");
+    await tab.click('[data-map-manage="lan-mbp"]');
     await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
   });
@@ -1254,6 +1321,15 @@ async function main() {
       expect(await tab.eval(() => [...document.querySelectorAll("[data-quota-kind], [data-quota-machine], [data-quota-available]")].every(el => (el.tagName === "INPUT" ? el.closest("label") : el).getBoundingClientRect().height >= 44)), "quota controls smaller than 44px");
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "quota page overflows phone");
     }
+    expect(await tab.eval(() => document.querySelector('[data-quota-table] thead tr').children.length === 5), "quota needs five columns");
+    const heights = await tab.eval(() => [...document.querySelectorAll('[data-quota-missing]')].map(row => row.getBoundingClientRect().height));
+    if (!mobile) expect(heights.every(h => h <= 72), `missing quota rows taller than 72px: ${heights}`);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "quota overflows viewport");
+    for (const theme of ["light", "dark"]) {
+      await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
+      await tab.shot(`${String(n).padStart(2, "0")}-quota-outlook-${theme}`);
+    }
+    await tab.eval(() => document.documentElement.dataset.theme = "light");
     await tab.eval(() => {
       const select = document.querySelector("[data-quota-machine]");
       const option = [...select.options].find(o => o.textContent === "quota-one");
@@ -1892,6 +1968,9 @@ async function main() {
     await step("models-in-pipeline", async () => {
       const original = await rpc("modelRouter.get", {});
       try {
+        const qualityAt = new Date().toISOString();
+        await rpc("tasks.create", { id: "QUALITY-E2E", project: "payment", title: "Quality cohort", kind: "feature", size: "m", risk: "normal" });
+        await rpc("runs.push", { machine: "quality-fixture", runs: [{ runId: "R-quality", project: "payment", taskId: "QUALITY-E2E", taskTitle: "Quality cohort", role: "implement", profileId: "quality-profile", kind: "codex", model: "quality-model", tier: "standard", status: "failed", createdAt: qualityAt, startedAt: qualityAt, finishedAt: qualityAt }] });
         await tab.go("pipeline?project=payment");
         await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Opus"));
         await tab.click('[data-pipeline-gate="review"]');
@@ -1904,6 +1983,13 @@ async function main() {
         await tab.waitFor("step editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-model-tab="models"]');
         await tab.waitFor("task cell table", () => document.querySelectorAll('[data-model-row]').length === 11);
+        await tab.waitFor("quality cohort visible", () => [...document.querySelectorAll('[data-quality-cohort]')].some((el) => el.textContent.includes("quality-model")));
+        await tab.click('[data-model-quality] input');
+        await tab.type("quality-model");
+        await tab.waitFor("quality filter applied", () => document.querySelectorAll('[data-quality-cohort]').length === 1);
+        expect(await tab.eval(() => document.querySelector('[data-quality-cohort]').textContent.includes("0/1")), "failed unfinished task stays in denominator");
+        await tab.eval(() => document.querySelector('[data-model-quality]').scrollIntoView());
+        await tab.shot(`${String(n).padStart(2, "0")}-model-quality`);
         await tab.waitFor("supported profile models alongside routing", () => !!document.querySelector("[data-supported-models] h2") && document.querySelector('[data-supported-profile="codex-1"]')?.textContent.includes("gpt-6-luna"));
         expect(await tab.eval(() => !document.querySelector('[data-hub-model-save]')), "project manager cannot edit hub tiers");
         await tab.click('[data-model-profile="economy"]');
@@ -3010,6 +3096,16 @@ async function main() {
     await tab.waitFor("the hub's cards", () => ["Tệp tài liệu", "Backup"].every((t) => document.body.innerText.includes(t)));
   });
 
+  await step("backup-late-today", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("today");
+    const alert = await until("the overdue backup alert", async () => (await rpc("alerts.list", {})).open.find((a) => a.rule === "backup_overdue"));
+    await tab.waitFor("the overdue backup in Hôm nay", () => {
+      const row = document.querySelector(`[data-inbox-key="alert:${alert.id}"]`);
+      return row?.innerText.includes("Backup quá hạn") && row;
+    });
+  });
+
   // Roadmap 19c: a system's docs and memory, shared by its services. Hoa reviews in payment only: she reads the shop
   // system's contract and writes memory there, but may not change the contract (demo is not hers).
   await step("system-docs", async () => {
@@ -3171,7 +3267,7 @@ async function main() {
     const tab = (current = tabs.admin);
     await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
     await tab.reload();
-    for (const route of ["overview", "today"]) {
+    for (const route of ["overview"]) {
       await tab.go(route);
       await tab.waitFor(`${route}: counts of two systems and lone repo`, () => {
         const totals = (name) => [...document.querySelectorAll(`[data-system-card="${name}"] [data-system-total] [data-system-count]`)].map((el) => el.textContent).join();
@@ -3354,6 +3450,8 @@ async function main() {
     expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
     const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
       document.querySelector('[data-inbox-group="agent"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(await tab.eval(() => !document.querySelector("[data-system-card]")), "Today must focus on inbox without system overview");
+    expect(await tab.eval(() => (document.querySelector("[data-today-shortcuts]")?.getBoundingClientRect().height > 0) === (innerWidth >= 768)), "keyboard hints follow viewport");
     await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
     await tab.click(`[data-inbox-key="${askedKey}"]`);
     await tab.waitFor("the run's question", () => document.body.innerText.includes("dùng API cũ hay mới"));
@@ -3361,6 +3459,13 @@ async function main() {
     await tab.waitFor("the run on Agent đang chạy", () => location.hash.startsWith("#/runs") && document.body.innerText.includes("Hỏi cách làm"));
     await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
+    expect(await tab.eval(() => {
+      const actions = document.querySelector("[data-today-actions]");
+      const content = actions?.previousElementSibling;
+      if (!content) return false;
+      const gap = actions.getBoundingClientRect().top - content.getBoundingClientRect().bottom;
+      return gap >= 0 && gap <= 16 && actions.parentElement.parentElement.classList.contains("overflow-y-auto");
+    }), "Today actions must immediately follow content in its scroll area");
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
     await tab.click("button", "Duyệt, sang bước sau");
     await until("the spec gate passed from Hôm nay", async () => {
@@ -3465,10 +3570,12 @@ async function main() {
 
     // Kiểm thử: SC-001 is Xong khi, the two scenarios the checklist; a mark stays after a reload (this browser's).
     await tab.click('[data-feature-tab="checks"]');
+    await tab.click('details summary', "Checklist cá nhân trên trình duyệt");
     await tab.waitFor("three items to check", () => document.querySelectorAll("[data-check]").length === 3 && document.querySelector("[data-checks-progress]")?.textContent.includes("0/3"));
     await tab.click('[data-check="SC-001"] [role="checkbox"]');
     await tab.waitFor("one checked", () => document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
     await tab.reload();
+    await tab.click('details summary', "Checklist cá nhân trên trình duyệt");
     await tab.waitFor("the mark kept, on the same tab", () => document.querySelector('[data-check="SC-001"]')?.hasAttribute("data-checked") && document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
     await tab.shot(`${String(n).padStart(2, "0")}-features-checks`);
 
@@ -3488,6 +3595,71 @@ async function main() {
     await tab.waitFor("#/specs on Tính năng", () => location.hash.startsWith("#/features?") && document.querySelector("[data-feature-title]")?.getAttribute("data-feature-title") === "Xuất hoá đơn");
     // Leave the hub as it was: the plan step's request is not for this test.
     for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-FEAT")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
+  await step("acceptance-evidence", async () => {
+    const project = "payment", taskId = "EVID-E2E", specDir = "070-nghiem-thu", specBranch = `ai/${taskId}`;
+    const spec = "# Nghiệm thu dùng chung\n## Acceptance criteria\n- **AC-001**: Người kiểm lưu kết quả kèm báo cáo\n- **AC-002**: Người khác xem lại được sau khi tải lại\n";
+    const publish = (commit, text = spec) => rpc("specs.push", { project, features: [{ dir: specDir, branch: specBranch, commit, files: { spec: text, plan: null, tasks: null } }] });
+    await rpc("tasks.create", { id: taskId, project, title: "Kiểm nghiệm thu dùng chung" });
+    await publish("a".repeat(40));
+    const artifact = await rpc("artifacts.put", { project, taskId, runId: "R-evidence", name: "verification.log", data: Buffer.from("expected: shared result\nactual: shared result\n").toString("base64") });
+    const context = await rpc("evidence.context", { project, taskId, specDir, specBranch });
+    expect(context?.commitSha === "a".repeat(40), "the hub supplies the full tested SHA");
+    const route = `features?project=${project}&dir=${specDir}&branch=${encodeURIComponent(specBranch)}&view=checks`;
+    const tab = current = tabs.admin;
+    await tab.go(route);
+    await tab.waitFor("shared verification form", () => !!document.querySelector("[data-evidence-form]") && document.querySelector('[data-evidence-progress]')?.textContent.includes("0/2"));
+    await tab.shot("acceptance-before-verification");
+    await tab.select("[data-evidence-outcome]", "passed");
+    await tab.waitFor("passed selected", () => document.querySelector("[data-evidence-outcome]")?.value === "passed");
+    await tab.click("[data-evidence-note]");
+    await tab.type("Web 390/1440px: lưu kết quả, tải lại; mong đợi dữ liệu giữ nguyên; thực tế đúng.");
+    await tab.click("[data-evidence-form] label", "verification.log");
+    await tab.click("[data-evidence-save]");
+    await tab.waitFor("shared passed result", () => !!document.querySelector('[data-evidence-result="passed"]') && document.querySelector('[data-evidence-progress]')?.textContent.includes("1/2"));
+    const rows = await rpc("evidence.list", context);
+    expect(rows.length === 1 && rows[0].outcome === "passed" && rows[0].artifactIds[0] === artifact.id, "UI saved the real result and attached file to the right revision");
+    await tab.reload();
+    await tab.waitFor("verification survives reload", () => document.querySelector('[data-evidence-progress]')?.textContent.includes("1/2"));
+    await tab.shot("acceptance-after-verification");
+    await tab.click('[data-evidence-result] a', "verification.log");
+    await tab.waitFor("the exact verified log opens", () => document.querySelector('[data-artifact-content]')?.textContent.includes("actual: shared result"));
+    await tab.shot("acceptance-attached-log");
+    await tab.go(route);
+    await tab.waitFor("verification form after opening the log", () => !!document.querySelector('[data-evidence-form]'));
+    const viewer = current = await signInWithToken("evidence-reader", people.hoa.token, route);
+    await viewer.waitFor("another person reads shared verification", () => !!document.querySelector('[data-evidence-result="passed"]'));
+    expect(await viewer.eval(() => !document.querySelector("[data-evidence-form]")), "reader has no verification form");
+    current = tab;
+    await tab.click("[data-evidence-note]"); await tab.type("Attempt on a now superseded revision.");
+    await publish("b".repeat(40), spec + "- **AC-003**: Revision mới phải kiểm lại\n");
+    await tab.click("[data-evidence-save]");
+    await tab.waitFor("stale verification refused", () => document.body.innerText.includes("Đặc tả hoặc commit đã đồng bộ vừa thay đổi"));
+    expect((await rpc("evidence.list", context)).length === 1, "stale save did not create a result");
+    await tab.reload();
+    await tab.waitFor("new revision starts unverified", () => document.querySelector('[data-evidence-progress]')?.textContent.includes("0/3") && document.body.innerText.includes("Bản trước"));
+    await tab.shot("acceptance-revision-changed");
+    if (mobile) expect(await tab.eval(() => {
+      const box = document.querySelector("[data-acceptance-evidence]");
+      return box.scrollWidth <= box.clientWidth + 1 && [...box.querySelectorAll("button, select, textarea, a")].every(el => el.getBoundingClientRect().height >= 44);
+    }), "acceptance evidence fits the phone and has 44px controls");
+    await accessibilityAudit({ tab, out, expect, routes: [route], filename: "acceptance-accessibility.json" });
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "en"));
+    await tab.reload();
+    await tab.waitFor("English verification labels", () => document.querySelector('[data-acceptance-evidence]')?.textContent.includes("Shared acceptance evidence"));
+    await tab.shot("acceptance-english");
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "vi"));
+    await tab.reload();
+    viewer.win.close();
+    await rpc("runs.push", { machine: "acceptance-fixture", runs: [{ runId: "R-evidence-sha", project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", status: "succeeded", profileId: null, branch: specBranch, headSha: "c".repeat(40), createdAt: new Date().toISOString() }] });
+    await tab.go("runs?run=R-evidence-sha");
+    await tab.waitFor("the run exposes its exact code revision", () => document.querySelector('[data-run-head-sha]')?.textContent.includes("c".repeat(40)));
+    if (mobile) expect(await tab.eval(() => {
+      const heading = document.querySelector('[data-run-heading]');
+      return document.documentElement.scrollWidth <= innerWidth && heading.getBoundingClientRect().width >= innerWidth - 48 && heading.querySelector('h2').getBoundingClientRect().height <= 60;
+    }), "run heading keeps the mobile width while full code revision wraps");
+    await tab.shot("acceptance-run-revision");
   });
 
   // Roadmap 31b: the agent map shows each machine's subscriptions; two picked open one prompt for both, or the Task page.
@@ -3519,6 +3691,13 @@ async function main() {
     expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
     const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"] [data-usage-resets]')?.textContent ?? "");
     expect(codexLine.includes("phiên làm mới Oct 5 at 4:00pm") && codexLine.includes("tuần làm mới Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('[data-map-machine]')].every(el => el.getBoundingClientRect().right <= innerWidth)), "machine grid overflows viewport");
+    expect(await tab.eval(() => !!document.querySelector('[data-attention]') && document.querySelectorAll('[data-summary]').length === 4), "missing attention or summary");
+    for (const theme of ["light", "dark"]) {
+      await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
+      await tab.shot(`${String(n).padStart(2, "0")}-agent-map-${theme}`);
+    }
+    await tab.eval(() => document.documentElement.dataset.theme = "light");
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-codex`);
     await tab.click('[data-map-profile="lan-mbp/claude-1"]');
     await tab.click('[data-map-profile="lan-mini/claude-2"]');
@@ -3558,6 +3737,7 @@ async function main() {
       current = tab;
       await tab.reload();
       await tab.go("machines");
+      if (await tab.eval(name => !!document.querySelector(`[data-map-manage="${name}"]`), machineName)) await tab.click(`[data-map-manage="${machineName}"]`);
       await tab.waitFor("tool section", (selector) => document.querySelector(selector), panel);
       await tab.click(`${panel} summary`);
       await tab.waitFor("tool commands", (selector) => document.querySelector(`${selector} pre`)?.textContent.includes("web-approval-fixture@1.2.3"), row);
@@ -3591,6 +3771,58 @@ async function main() {
     });
     expect(changed.approvedBy === "lan", "the owner is recorded as approver");
     await rpc("tools.remove", { id: toolId });
+  });
+
+  await step("machine-runner-settings", async () => {
+    const machineName = "runner-settings";
+    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" };
+    let profile = { id: "claude-remote", label: "Claude remote", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
+    const beat = async () => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "feed1234", projects: ["payment"], acceptsRuns: false, runnerSettings, profiles: [profile] } }) });
+      const body = await response.json(); if (body.error) throw new Error(body.error.message); return body.result;
+    };
+    await beat();
+    const machine = (await rpc("machines.list")).find(m => m.machine === machineName);
+    const root = `[data-map-machine="${machineName}"]`;
+    current = tabs.hoa; await tabs.hoa.reload(); await tabs.hoa.go("machines");
+    await tabs.hoa.waitFor("other member sees machine", name => document.querySelector(`[data-map-machine="${name}"]`), machineName);
+    expect(await tabs.hoa.eval(name => !document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName), "non-owner cannot edit runner");
+    const open = async tab => {
+      current = tab; await tab.reload(); await tab.go("machines");
+      await tab.waitFor("runner controls", name => document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName);
+      await tab.click(`${root} [data-runner-controls] summary`);
+    };
+    await open(tabs.admin);
+    const fill = async (selector, value) => { await current.click(selector); await current.shortcut("a"); await current.type(value); };
+    await fill(`${root} [data-runner-parallel]`, "9");
+    expect(await current.eval(name => document.querySelector(`[data-map-machine="${name}"] [data-runner-save]`).disabled, machineName), "out-of-range runner limit blocked");
+    await fill(`${root} [data-runner-parallel]`, "4");
+    await current.click(`${root} [data-runner-mr]`);
+    await current.select(`${root} [data-runner-when]`, "after_review");
+    await current.click(`${root} [data-runner-save]`);
+    await until("runner settings queued", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.runnerChange?.settings.maxParallel === 4);
+    expect((await beat()).runnerChange?.settings.mrEnabled === true, "heartbeat carries MR toggle while intake is off");
+    await current.click(`${root} details:not([data-runner-controls]) summary`, "Bật/tắt");
+    await fill(`${root} [data-stop-session]`, "70");
+    await fill(`${root} [data-stop-week]`, "60");
+    await current.click(`${root} [data-threshold-save]`);
+    await until("thresholds queued", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.profileChanges[0]?.stopAtWeek === 60);
+    if (mobile) {
+      const sizes = await current.eval(name => [...document.querySelectorAll(`[data-map-machine="${name}"] [data-runner-form] input:not([type=checkbox]), [data-map-machine="${name}"] [data-runner-form] select, [data-map-machine="${name}"] [data-runner-form] button, [data-map-machine="${name}"] [data-profile-thresholds] input, [data-map-machine="${name}"] [data-profile-thresholds] button`)].map(el => ({ h: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), tag: el.tagName })), machineName);
+      expect(sizes.every(v => v.h >= 44 && (v.tag === "BUTTON" || v.font >= 16)), "runner controls meet mobile size and input font rules");
+      expect(await current.eval(() => document.documentElement.scrollWidth <= innerWidth), "runner settings do not overflow on mobile");
+    }
+    await current.shot("machine-runner-settings");
+    runnerSettings = { ...runnerSettings, maxParallel: 4, mrEnabled: true }; profile = { ...profile, stopAtSession: 70, stopAtWeek: 60 };
+    const ack = await beat(); expect(!ack.runnerChange && ack.profileChanges.length === 0, "machine report acknowledges settings");
+    await open(tabs.lan);
+    await fill(`${root} [data-runner-parallel]`, "1");
+    await current.select(`${root} [data-runner-when]`, "after_success");
+    await current.click(`${root} [data-runner-save]`);
+    await until("owner runner change", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.runnerChange?.requestedBy === "lan");
+    const audit = await rpc("admin.audit", { limit: 30 });
+    expect(audit.filter(e => e.action === "machines.setRunner" && e.target === machine.id).length === 2, "runner changes audited");
+    await rpc("machines.remove", { id: machine.id });
   });
 
   await step("worktree-admin", async () => {
@@ -3712,8 +3944,23 @@ async function main() {
     await machineRpc("runs.push", { machine: machineName, runs: [{ runId: "R-assign1", project: "payment", taskId: first.id, taskTitle: first.title, role: "implement", status: "succeeded", profileId: profile.id, createdAt: at, finishedAt: at }] });
     const next = await until("second assignment released", async () => (await beat()).runRequests?.find((r) => r.taskId === second.id));
     expect(next, "second task starts after first finishes");
-    for (const task of [first, second]) await rpc("tasks.unassign", { id: task.id });
-    await rpc("runs.cancelRequest", { id: next.id });
+    await machineRpc("runs.requestResult", { id: next.id, status: "accepted", runId: "R-assign2" });
+    await machineRpc("runs.push", { machine: machineName, runs: [{ runId: "R-assign2", project: "payment", taskId: second.id, taskTitle: second.title, role: "implement", status: "failed", profileId: profile.id, createdAt: at, finishedAt: at }] });
+    expect((await taskNow(second.id)).agent?.hold, "failed assignment has a hold");
+    await tab.go(`tasks?task=${second.id}`);
+    await tab.waitFor("held assignment recovery", () => document.querySelector("[data-assign-remove]"));
+    const recovery = await tab.eval(() => {
+      const remove = document.querySelector("[data-assign-remove]");
+      const select = document.querySelector("[data-assign-machine]");
+      return { beforeFields: !!(remove.compareDocumentPosition(select) & Node.DOCUMENT_POSITION_FOLLOWING), height: remove.getBoundingClientRect().height };
+    });
+    expect(recovery.beforeFields && (!mobile || recovery.height >= 44), "unassign is before fields and has a mobile touch target");
+    await tab.shot(`${String(n).padStart(2, "0")}-agent-assign-hold`);
+    await tab.eval(() => document.querySelector("[data-assign-remove]").focus());
+    await tab.key("Enter");
+    await until("held assignment removed", async () => !(await taskNow(second.id)).agent);
+    await tab.key("Escape");
+    await rpc("tasks.unassign", { id: first.id });
     await tab.select("[data-agent-filter]", "");
     await tab.click('[data-task-view="kanban"]');
   });
@@ -3876,6 +4123,52 @@ async function main() {
       });
     }
   }
+
+  // History reuses the retained source records and follows their permission-checked detail routes.
+  await step("history-page", async () => {
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method, input }) });
+      const data = await r.json();
+      if (data.error) throw new Error(`${method}: ${data.error.message}`);
+      return data.result;
+    };
+    for (const batch of [Array.from({ length: 20 }, (_, n) => ({ runId: `R-history-${n}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n}`, status: "succeeded", role: "implement", profileId: "history-claude", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() })), Array.from({ length: 13 }, (_, n) => ({ runId: `R-history-${n + 20}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n + 20}`, status: "succeeded", role: "implement", profileId: "history-claude", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() }))]) {
+      await machineRpc("runs.push", { machine: "history-e2e", runs: batch });
+    }
+    await machineRpc("machines.heartbeat", { machine: "history-e2e", instance: "ab000070", projects: ["payment"], acceptsRuns: true, profiles: [{ id: "history-claude", label: "History Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 1 }] });
+    const historyMachine = (await rpc("machines.list")).find(m => m.machine === "history-e2e");
+    const { thread } = await rpc("chat.send", { project: "payment", machineId: historyMachine.id, profileId: "history-claude", text: "history-chat-fixture" });
+    const tab = (current = tabs.admin);
+    await tab.reload();
+    await tab.go("history");
+    await tab.waitFor("history loaded", () => !!document.querySelector('[data-history-row]'));
+    await tab.click('[data-history-search]');
+    await tab.type("history-fixture");
+    await tab.waitFor("history search page", () => document.querySelectorAll('[data-history-row]').length === 30 && [...document.querySelectorAll('[data-history-row]')].every(el => el.textContent.includes("history-fixture")));
+    await tab.click('[data-history-page] button', "Trang sau");
+    await tab.waitFor("history second page", () => document.querySelectorAll('[data-history-row]').length === 3);
+    const links = await tab.eval(() => [...document.querySelectorAll('[data-history-row] a')].map(el => el.getAttribute('href')));
+    expect("history has run links", links.some(href => href.startsWith('#/runs?run=')), links);
+    await tab.click('[data-history-page] button', "Trang trước");
+    await tab.waitFor("history previous page", () => document.querySelectorAll('[data-history-row]').length === 30);
+    await tab.select('[data-history-page] select', "gate");
+    await tab.waitFor("source filter resets pagination", () => !document.querySelector('[data-history-row]') && document.querySelector('[data-history-page]').textContent.includes("Trang 1"));
+    await tab.click('[data-history-page] button', "Xóa bộ lọc");
+    await tab.waitFor("reset restores history", () => !!document.querySelector('[data-history-row]'));
+    await accessibilityAudit({ tab, out, expect, routes: ["history"], filename: "history-accessibility.json" });
+    await tab.shot("history-page");
+    const reader = current = tabs.historyReader = await signInWithToken("history-reader", people.hoa.token, "history");
+    await reader.waitFor("reader history", () => !!document.querySelector('[data-history-row]'));
+    const readerRows = await rpc("history.list", {}, people.hoa.token);
+    expect(readerRows.entries.every(e => e.project === "payment" && e.kind !== "audit"), "history respects reader grants");
+    await reader.click(`[data-history-row] a[href="#/chat?thread=${thread.id}"]`);
+    await reader.waitFor("reader can follow chat link", () => document.body.innerText.includes("history-chat-fixture") && document.body.innerText.includes("Bạn chỉ có quyền xem"));
+    await reader.go("history");
+    await reader.waitFor("reader run link", () => !!document.querySelector('[data-history-row] a[href^="#/runs?run="]'));
+    await reader.click('[data-history-row] a[href^="#/runs?run="]');
+    await reader.waitFor("history run opens summary", () => !!document.querySelector('[data-run-tab="summary"][aria-selected="true"]'));
+
+  });
 
   // Roadmap 41c: what a run made is on the run and on its task, and the project manager can take it away.
   await step("artifacts-page", async () => {
@@ -4347,6 +4640,65 @@ async function main() {
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");
+  });
+
+  await step("close-unmerged-task", async () => {
+    const tab = tabs.inboxSource;
+    const project = "inbox-source-e2e";
+    const instance = "c105ec10";
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.close-e2e" }, body: JSON.stringify({ method, input }) });
+      const result = await response.json();
+      if (result.error) throw new Error(`${method}: ${result.error.message}`);
+      return result.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "close-e2e", instance, projects: [project], gateRunner: true });
+    const machine = (await rpc("machines.list")).find(item => item.machine === "close-e2e");
+    const pushReview = async (taskId, verdict) => machineRpc("runs.push", { machine: "close-e2e", runs: [{ runId: `R-${taskId}`, project, taskId, taskTitle: taskId, role: "review", status: "succeeded", verdict, branch: `ai/${taskId}`, profileId: null, createdAt: new Date().toISOString() }] });
+    for (const [taskId, verdict] of [["CLOSE-NO-REVIEW", null], ["CLOSE-CHANGES", "changes"], ["CLOSE-APPROVE", "approve"]]) {
+      await rpc("tasks.create", { project, id: taskId, title: taskId, kind: "small-fix" });
+      if (verdict) await pushReview(taskId, verdict);
+      await rpc("tasks.update", { id: taskId, status: "review" });
+    }
+    await rpc("mergeQueue.configure", { project, config: { enabled: true, machineId: machine.id, commands: ["true"], waitMinutes: 0, mode: "push" } });
+    await tab.go("tasks");
+    await tab.go("today");
+    await tab.eval(() => {
+      window.__closeWarning = "";
+      window.confirm = (message) => { window.__closeWarning = message; return false; };
+    });
+    const tryClose = async (taskId) => {
+      await tab.click(`[data-inbox-key^="review:${project}:${taskId}:"]`);
+      await tab.eval(() => { window.__closeWarning = ""; });
+      await tab.click("button", "Chuyển sang Xong");
+      const warning = await tab.waitFor(`close warning for ${taskId}`, () => window.__closeWarning);
+      // Cancelling keeps the detail open; phones must return to the list before selecting another task.
+      if (mobile) await tab.click("button", "Quay lại danh sách");
+      return warning;
+    };
+    const warning = await tryClose("CLOSE-NO-REVIEW");
+    expect(warning.includes("chưa có lượt review"), `close warning: ${warning}`);
+    expect((await rpc("tasks.list", { project, status: "review" })).some((task) => task.id === "CLOSE-NO-REVIEW"), "cancelled close changed the task status");
+    expect(await tab.eval(() => !!document.querySelector('[data-inbox-key^="review:inbox-source-e2e:CLOSE-NO-REVIEW:"]')), "cancelled close removed the review item");
+    const changes = await tryClose("CLOSE-CHANGES");
+    expect(changes.includes("cần sửa") && changes.includes("ai/CLOSE-CHANGES"), `rejected review warning: ${changes}`);
+    const queueHint = await tryClose("CLOSE-APPROVE");
+    expect(queueHint.includes("hàng chờ"), `approved queue hint: ${queueHint}`);
+    const batch = await machineRpc("mergeQueue.take", { project, instance });
+    expect(batch?.items.some(item => item.taskId === "CLOSE-APPROVE"), "approved branch was not queued");
+    await machineRpc("runs.push", { machine: "close-e2e", runs: [{ runId: "R-CLOSE-APPROVE-NO-BRANCH", project, taskId: "CLOSE-APPROVE", taskTitle: "CLOSE-APPROVE", role: "implement", status: "succeeded", branch: null, profileId: null, createdAt: new Date(Date.now() + 1000).toISOString() }] });
+    const approved = await tryClose("CLOSE-APPROVE");
+    expect(approved.includes("ai/CLOSE-APPROVE") && !approved.includes("hàng chờ"), `approved unmerged warning: ${approved}`);
+    await machineRpc("mergeQueue.finish", { id: batch.id, instance, result: { status: "landed", sha: "b".repeat(40), step: "landed", outcomes: [{ taskId: "CLOSE-APPROVE", status: "included", sha: "a".repeat(40) }] } });
+    // Reopen the fixture to exercise the close action after its branch has landed.
+    await rpc("tasks.update", { id: "CLOSE-APPROVE", status: "review" });
+    await tab.go("tasks");
+    await tab.go("today");
+    await tab.click(`[data-inbox-key^="review:${project}:CLOSE-APPROVE:"]`);
+    await tab.eval(() => { window.__closeWarning = ""; });
+    await tab.click("button", "Chuyển sang Xong");
+    expect(await tab.eval(() => window.__closeWarning) === "", "landed branch still warned before close");
+    expect((await rpc("tasks.list", { project, status: "done" })).some(task => task.id === "CLOSE-APPROVE"), "landed branch did not close");
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));

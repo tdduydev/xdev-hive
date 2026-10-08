@@ -56,6 +56,7 @@ export interface MergeQueueView {
   config: MergeQueueConfig;
   waiting: MergeQueueItem[];
   batches: MergeBatch[];
+  landed?: boolean;
 }
 
 /** A fresh gate checkout needs its own dependencies before the project's checks can run. */
