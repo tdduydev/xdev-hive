@@ -203,11 +203,13 @@ export function RunsPage() {
             <ServiceFilter scope={scope} value={service} onChange={setService} />
             {hubMode ? <div className="max-h-[40dvh] overflow-y-auto"><MergeQueue project={service} /></div> : null}
             <div className="max-md:[&_button]:min-h-11 max-md:[&_button]:text-xs"><FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} /></div>
-            {teamRuns ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-1">
+            {teamRuns ? <details data-run-filters>
+              <summary className="min-h-11 cursor-pointer content-center rounded-sm text-xs font-medium text-fg-secondary outline-none focus-visible:focus-ring md:min-h-8">{t("runs.moreFilters")}{[groupFilter, taskFilter, machineFilter].filter(Boolean).length ? ` (${[groupFilter, taskFilter, machineFilter].filter(Boolean).length})` : ""}</summary>
+              <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-3 md:grid-cols-1">
               <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
               <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.taskFilter")} value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allTasks")}</NativeSelectOption>{[...new Map(all.map((r) => [r.run.taskId, r.run.taskTitle])).entries()].map(([id, title]) => <NativeSelectOption key={id} value={id}>{id} · {title}</NativeSelectOption>)}</NativeSelect>
               <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.machineFilter")} value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allMachines")}</NativeSelectOption>{[...new Map((hub.data ?? []).map((r) => [r.machineId, r.machine])).entries()].map(([id, name]) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}</NativeSelect>
-            </div> : null}
+            </div></details> : null}
             {groupFilter ? <a className="text-xs text-fg-link underline underline-offset-2" href={`#/runs?tab=batches&group=${encodeURIComponent(groupFilter)}`}>{t("runs.manageGroup")}</a> : null}
             {profile ? (
               <button
@@ -354,7 +356,7 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
 /** Tóm tắt / Log / Thay đổi. Plain buttons: the screenshot harness clicks them, and a tab is the whole of the pane. */
 function TabBar({ tabs, tab, onTab, right, panelId }: { tabs: Array<[string, string]>; tab: string; onTab: (k: string) => void; right?: ReactNode; panelId?: string }) {
   return (
-    <div role="tablist" className="flex h-[34px] max-md:h-11 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-subtle pr-2 pl-3">
+    <div role="tablist" className="flex min-h-[34px] flex-wrap max-md:min-h-11 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-subtle pr-2 pl-3">
       {tabs.map(([k, label]) => (
         <button
           key={k}
@@ -597,7 +599,6 @@ function RunPanes({
   diffReview,
   diffFix,
   onDiffTab,
-  vertical = false,
   footer,
 }: {
   summary: string | null;
@@ -613,7 +614,6 @@ function RunPanes({
   diffReview?: DiffReview | null;
   diffFix?: DiffFixTarget;
   onDiffTab?: () => void;
-  vertical?: boolean;
   footer?: ReactNode;
 }) {
   const t = useT();
@@ -622,34 +622,15 @@ function RunPanes({
   const panelId = useId();
   const [wrap, setWrap] = useState(true);
   const head = useMemo(() => logHeader(parseLog(log)), [log]);
-  if (vertical) return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-surface max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:flex max-md:[&_summary]:items-center" data-run-review>
-      {artifacts ? <div className="border-b border-line-subtle px-5 py-3">{artifacts}</div> : null}
-      {onDiffTab ? <TabBar panelId={panelId} tabs={[["summary", t("runs.tabSummary")], ["diff", t("runs.tabDiff", { count: diff?.length ?? "…" })]]} tab={tab} onTab={key => { setTab(key); if (key === "diff") onDiffTab(); }} /> : null}
-      <div className="max-w-[900px]" role="tabpanel" id={panelId} aria-labelledby={onDiffTab ? `${panelId}-${tab}` : undefined}>
-        <div hidden={tab === "diff"}>
-          <SummaryPane summary={summary} live={live} head={head}>{steps}<div className="flex flex-col gap-2">{notes}</div></SummaryPane>
-          <section aria-label={t("runs.tabLog")} className="border-t border-line-subtle">
-            <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.tabLog")}</h3>
-            <div className="flex max-h-[440px] min-h-32 flex-col overflow-auto bg-code"><LogView text={log} live={live} wrap empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} /></div>
-          </section>
-        </div>
-        <section aria-label={t("runs.changes")} className="border-t border-line-subtle">
-          <h3 className="m-0 px-5 py-3 text-sm font-semibold text-fg-strong">{t("runs.changes")}</h3>
-          <DiffView files={diff ?? null} error={diffError ?? null} review={diffReview} fix={diffFix} />
-        </section>
-        {footer ? <div className="flex flex-col gap-3 border-t border-line-subtle px-5 py-4">{footer}</div> : null}
-      </div>
-    </div>
-  );
   const tabs: Array<[string, string]> = [
     ["summary", t("runs.tabSummary")],
     ["log", t("runs.tabLog")],
   ];
   if (onDiffTab) tabs.push(["diff", t("runs.tabDiff", { count: diff?.length ?? "…" })]);
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col", tab === "summary" ? "bg-surface" : "bg-code")}>
+    <div data-run-review className={cn("flex min-h-0 flex-1 flex-col", tab === "summary" ? "bg-surface" : "bg-code")}>
       <TabBar
+        panelId={panelId}
         tabs={tabs}
         tab={tab}
         onTab={(k) => {
@@ -663,14 +644,14 @@ function RunPanes({
                 type="button"
                 aria-pressed={wrap}
                 onClick={() => setWrap((w) => !w)}
-                className={cn("h-6 cursor-pointer rounded-[5px] px-2 text-[11px]/none font-medium text-fg-secondary outline-none focus-visible:focus-ring", wrap ? "bg-selected" : "hover:bg-hover")}
+                className={cn("h-6 max-md:h-11 cursor-pointer rounded-[5px] px-2 text-[11px]/none font-medium text-fg-secondary outline-none focus-visible:focus-ring", wrap ? "bg-selected" : "hover:bg-hover")}
               >
                 {t("runs.wrap")}
               </button>
               <button
                 type="button"
                 onClick={() => void navigator.clipboard?.writeText(log).then(() => toast(t("runs.copied")), () => undefined)}
-                className="h-6 cursor-pointer rounded-[5px] px-2 text-[11px]/none font-medium text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
+                className="h-6 max-md:h-11 cursor-pointer rounded-[5px] px-2 text-[11px]/none font-medium text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
               >
                 {t("runs.copyLog")}
               </button>
@@ -678,16 +659,20 @@ function RunPanes({
           ) : null
         }
       />
+      <div role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${tab}`} className="flex min-h-0 flex-1 flex-col overflow-auto max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:content-center">
       {tab === "summary" ? (
         <SummaryPane summary={summary} live={live} head={head}>
+          {artifacts}
           {steps}
           <div className="flex flex-col gap-2">{notes}</div>
+          {footer}
         </SummaryPane>
       ) : tab === "log" ? (
         <LogView text={log} live={live} wrap={wrap} empty={live ? t("board.waitingOutput") : (logEmpty ?? t("board.noLog"))} />
       ) : (
         <DiffView files={diff ?? null} error={diffError ?? null} review={diffReview} fix={diffFix} />
       )}
+      </div>
     </div>
   );
 }
@@ -978,8 +963,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
       <Head run={run} machine={run.machine} actions={actions} />
       {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
       <RunPanes
-        vertical
-        artifacts={<ArtifactRows files={files.data ?? []} error={files.error} loading={files.loading} onChanged={files.reload} context={run.runId} />}
+        artifacts={files.data?.length || files.error || files.loading ? <ArtifactRows files={files.data ?? []} error={files.error} loading={files.loading} onChanged={files.reload} context={run.runId} /> : null}
         diffReview={full.data?.diffReview}
         diffFix={!live && run.status === "succeeded" && run.role === "implement" && manage ? { machineId: run.machineId, project: run.project, taskId: run.taskId } : undefined}
         footer={<>{run.mrUrl ? <MrMerge run={run} onChanged={onChanged} /> : null}{verdict === "changes" && latestReview && manage ? <FixRun run={run} /> : null}</>}
