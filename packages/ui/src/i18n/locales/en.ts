@@ -828,6 +828,7 @@ export const en: Catalog = {
       approve: "Approve",
       reject: "Reject",
       openDoc: "Open doc",
+      reviewOperation: "Review operation before approval",
       approved: "Approved, {doc} is now v{version}",
       rejected: "Rejected the proposal for {doc}",
       noRight: "Only this doc's managers can review it.",
@@ -985,6 +986,7 @@ export const en: Catalog = {
   },
   proposalStatus: {
     pending: "Pending",
+    executing: "Executing",
     approved: "Approved",
     rejected: "Rejected",
     conflict: "Conflict",
@@ -1461,8 +1463,9 @@ export const en: Catalog = {
   },
   proposals: {
     needsContext: "This changes what agents read (agent context): someone with Agent context approves it.",
-    title: "Doc proposals",
-    subtitle: "Agents send them with doc_propose. Approving creates a new version. If the doc changed after the agent read it, the proposal is marked as a conflict.",
+    title: "Proposals",
+    subtitle: "Approve a document proposal to create a new version, or an operation to run it with your rights.",
+    docSubtitle: "Agents send these with doc_propose. Approval creates a new version; a changed document causes a conflict.",
     filter: "Filter by status",
     all: "All",
     noPending: "Nothing is waiting for your approval.",
@@ -1471,6 +1474,10 @@ export const en: Catalog = {
     noPendingIn: "No pending proposals in “{scope}”.",
     noneIn: "No proposals in “{scope}” yet.",
     basedOn: "#{id} · based on v{version}",
+    operation: "Operation #{id}",
+    operationApproval: "Approval runs this operation with your rights. Check the method and input below.",
+    showOperation: "Show operation",
+    hideOperation: "Hide operation",
     decided: {
       approved: "approved by {who} {time}",
       rejected: "rejected by {who} {time}",

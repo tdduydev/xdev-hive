@@ -226,7 +226,7 @@ export interface DocVersion {
   createdAt: string;
 }
 
-export const PROPOSAL_STATUSES = ["pending", "approved", "rejected", "conflict"] as const;
+export const PROPOSAL_STATUSES = ["pending", "executing", "approved", "rejected", "conflict"] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 export interface Proposal {

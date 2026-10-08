@@ -1,6 +1,11 @@
 // Bulk approve on the Proposals and Memory pages (roadmap 18e): which picked items can go, which are skipped, and
 // running them one by one with the existing single-item methods so one conflict does not stop the rest.
-import type { Memory, Proposal } from "@xdev-hive/core";
+import { isCliActionProposalKey, type Memory, type Proposal } from "@xdev-hive/core";
+
+/** Operations need a person to open their method and input before approving them. */
+export function bulkSelectableProposals(proposals: Proposal[], canApprove: (proposal: Proposal) => boolean): Proposal[] {
+  return proposals.filter((p) => p.status === "pending" && !isCliActionProposalKey(p.docKey) && canApprove(p));
+}
 
 export interface Split<T> {
   ready: T[];
