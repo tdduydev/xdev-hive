@@ -4,6 +4,7 @@ import { execFile, execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { shimBinDir } from "#desktop/main/installer.ts";
+import { toolBinDirs } from "#desktop/main/linux-tools.ts";
 
 let cached: string | null = null;
 
@@ -27,7 +28,9 @@ export function refreshAgentPath(): Promise<string> {
 function remember(login: string | null): string {
   // The shim's folder too, because the runner's own MCP config calls hive-mcp by name; on Windows that folder
   // is ~/.xdev-hive/bin, which nothing else puts on PATH.
-  const parts = [shimBinDir(), path.join(os.homedir(), ".local", "bin"), login, process.env.PATH]
+  // Node and its CLIs moved out of the Linux app's folder (linux-tools.ts) come before the shell's copy of them.
+  const tools = process.platform === "linux" ? toolBinDirs(os.homedir()) : [];
+  const parts = [shimBinDir(), path.join(os.homedir(), ".local", "bin"), ...tools, login, process.env.PATH]
     .filter((p): p is string => !!p)
     .flatMap((p) => p.split(path.delimiter));
   cached = [...new Set(parts.filter(Boolean))].join(path.delimiter);
