@@ -4431,9 +4431,11 @@ export class SqliteHive implements HiveBackend {
     }
     const task = this.#getTask(parent.id)!;
     const instructions = reduceInstructions(parent.id, parts.map((t) => ({ taskId: t.id, title: t.title, note: t.note })));
+    // The job's own pin, as for any run of a pinned task.
+    const reducePin = this.#pinnedProfile(task, g.machineId);
     try {
-      const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "implement", profileId: null, candidates: 1, instructions }, actor);
-      const req = this.#insertRequest(m, g.project, task, { role: "implement", profileId: null, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
+      const m = this.#assertDispatchable({ machineId: g.machineId!, project: g.project, task, role: "implement", profileId: reducePin, candidates: 1, instructions }, actor);
+      const req = this.#insertRequest(m, g.project, task, { role: "implement", profileId: reducePin, reviewAfter: g.reviewAfter, candidates: 1, instructions }, actor);
       db.prepare("UPDATE run_groups SET phase = 'reduce', phase_request = ?, phase_error = NULL WHERE id = ?").run(req.id, g.id);
     } catch (err) {
       if (!(err instanceof HiveError)) throw err;
@@ -5509,6 +5511,13 @@ export class SqliteHive implements HiveBackend {
 
   #linkRedispatch(machineId: string, runId: string, retry: RunRequest["redispatch"]): void {
     if (retry) this.db.prepare("UPDATE run_records SET parent_run = ?, parent_machine_id = ? WHERE machine_id = ? AND run_id = ?").run(retry.runId, retry.machineId, machineId, runId);
+  }
+
+  // The plan a task is pinned to, unless the run is aimed at another machine, where that plan does not exist.
+  #pinnedProfile(task: Task, machineId: string | null | undefined): string | null {
+    const agent = task.agent;
+    if (!agent?.profileId) return null;
+    return !machineId || this.#machineByRef(machineId).id === agent.machineId ? agent.profileId : null;
   }
 
   /** A manually dispatched small task joins the existing review/fix/merge lifecycle without Spec Kit. */
@@ -8275,12 +8284,15 @@ export class SqliteHive implements HiveBackend {
         db.prepare("INSERT INTO settings(key, value) VALUES ('runTimeout', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(settings));
         return this.#runTimeoutSettings();
       },
-      "runs.dispatch": ({ machineId, project, taskId, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }, actor) =>
+      "runs.dispatch": ({ machineId, project, taskId, role, profileId: requestedProfile, preferKind, reviewAfter, candidates, instructions, timeoutMinutes, redispatch: source }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(taskId);
           if (!task || task.project !== project) {
             throw new HiveError("not_found", `No task ${taskId} in ${project}.`, { key: "errors.taskNotInProject", vars: { id: taskId, project } });
           }
+          // A pinned task stays on its plan when the caller names none: a run quietly landing on another plan is the bug
+          // this guards. Only a plain implement run: a review wants another vendor, a redispatch another runner, candidates rotate.
+          const profileId = requestedProfile ?? (role === "implement" && candidates === 1 && !source ? this.#pinnedProfile(task, machineId) : null);
           const redispatch = this.#redispatch(source, task);
           if (redispatch && candidates !== 1) throw new HiveError("bad_request", "Redispatch requires one run.", { key: "errors.redispatchOne" });
           // Its flow queues its steps itself, and would take this run for one of them.
