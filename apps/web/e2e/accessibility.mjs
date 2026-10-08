@@ -115,7 +115,7 @@ export async function keyboardMenu({ tab, mobile, expect, out }) {
     expect(await tab.eval(() => !document.querySelector("#hive-navigation")), "closed phone menu should leave the focus and accessibility trees");
     expect(await tab.eval(() => !document.querySelector("main").closest("[inert]")), "closing drawer must release the background");
     await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
-    await tab.click('nav a[href="#/tasks"]');
+    await tab.click('#hive-navigation a[href="#/tasks"]');
     await tab.waitFor("menu navigation closes drawer", () => location.hash === "#/tasks" && !document.querySelector('[data-slot="sheet-content"]'));
     await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     await tab.click('button[aria-label="Đóng menu"]');
@@ -125,7 +125,7 @@ export async function keyboardMenu({ tab, mobile, expect, out }) {
     await clickPoint(tab, outside);
     await tab.waitFor("scrim returns focus", () => !document.querySelector('[data-slot="sheet-content"]') && document.activeElement?.getAttribute("aria-controls") === "hive-navigation");
   } else {
-    await tab.eval(() => document.querySelector('nav a[href="#/tasks"]').focus());
+    await tab.eval(() => document.querySelector('#hive-navigation a[href="#/tasks"]').focus());
     await tab.key("Enter");
     await tab.waitFor("keyboard menu navigation", () => location.hash === "#/tasks");
   }

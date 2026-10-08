@@ -394,7 +394,7 @@ function ClientFrame({
               >
                 <PanelLeft className="size-4" />
               </button>
-              <div className="ml-2 flex min-w-0 max-w-[320px] flex-col">
+              <div className="ml-2 flex min-w-0 max-w-[320px] flex-1 flex-col md:flex-none">
                 <span className="truncate text-sm/[18px] font-semibold text-fg-strong" data-shell-title>
                   {scopeName ? <span className="font-normal text-fg-secondary">{scopeName} › </span> : null}
                   {title}
