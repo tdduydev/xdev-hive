@@ -87,7 +87,7 @@ export function ProjectOnboarding() {
         </li>
         <li className="flex flex-col gap-2" data-onboarding-task>
           <div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold">{t("onboarding.firstTask")}</h3>{state(valid && existing.length > 0)}</div>
-          {valid && existing.length ? <Button data-onboarding-open-task onClick={() => open(`#/tasks?project=${encodeURIComponent(project)}&task=${encodeURIComponent(existing[0]!.id)}&pipelineDispatch=1`)}>{t("onboarding.openTask", { id: existing[0]!.id })}</Button> : <form className="flex flex-col gap-3" onSubmit={(e) => {
+          {valid && existing.length ? <Button data-onboarding-open-task onClick={() => open(`#/tasks?project=${encodeURIComponent(project)}&task=${encodeURIComponent(existing[0]!.id)}`)}>{t("onboarding.openTask", { id: existing[0]!.id })}</Button> : <form className="flex flex-col gap-3" onSubmit={(e) => {
             e.preventDefault();
             if (!valid || !can(project, "taskManage") || action.busy || tasks.loading || tasks.error) return;
             void action.run(async () => {
