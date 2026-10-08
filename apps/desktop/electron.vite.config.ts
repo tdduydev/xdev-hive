@@ -7,9 +7,13 @@ const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'";
 
 export default defineConfig({
-  // Workspace packages ship TypeScript source, so everything is bundled; the packaged app needs no node_modules.
+  // Bundle workspace TypeScript; node-pty stays native and is rebuilt by electron-builder.
   main: {
-    build: { externalizeDeps: false },
+    build: { externalizeDeps: false, rollupOptions: {
+      external: ["node-pty"],
+      input: { index: resolve(import.meta.dirname, "src/main/index.ts"), "pty-supervisor": resolve(import.meta.dirname, "src/main/pty/supervisor.ts") },
+      preserveEntrySignatures: "strict",
+    } },
   },
   preload: {
     build: {

@@ -23,7 +23,9 @@
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
     "release": "node scripts/release.mjs",
-    "typecheck": "tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json",
+    "smoke:pty": "node scripts/pty-check.mjs",
+    "rebuild:pty": "electron-builder install-app-deps"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
@@ -38,5 +40,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "vite": "^7.3.7"
+  },
+  "dependencies": {
+    "node-pty": "1.1.0"
   }
 }
