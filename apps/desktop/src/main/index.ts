@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { trustedRendererUrl } from "#desktop/main/ipc-trust.ts";
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
+  agentActorName,
   AGENT_TEMPLATES,
   agentProfileSchema,
   CHAT_FILE_SCHEME,
@@ -1841,6 +1842,7 @@ if (!app.requestSingleInstanceLock()) {
     remoteTerminal = new RemoteTerminal({
       dataDir: path.dirname(configPath()),
       hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
+      label: () => agentActorName("runner", "hub", config.machine, ""),
       projects: () => config.projects.map((p) => p.name),
       locks: resourceLocks,
       draining: () => updateDraining,

@@ -13,6 +13,8 @@ import type { ResourceLocks } from "#desktop/main/resource-locks.ts";
 export interface RemoteTerminalOptions {
   dataDir: string;
   hub: () => { url: string; token: string } | null;
+  /** The runner's hub label, as its heartbeat sends it. */
+  label: () => string;
   /** Projects this app knows; the policy may name only some of them. */
   projects: () => string[];
   locks: ResourceLocks;
@@ -81,7 +83,7 @@ export class RemoteTerminal {
       log: this.#o.log,
     });
     const socket = new MachineSocket({
-      hubUrl: this.#o.hub()!.url, token: () => this.#o.hub()?.token ?? "", agent, log: this.#o.log,
+      hubUrl: this.#o.hub()!.url, token: () => this.#o.hub()?.token ?? "", label: this.#o.label, agent, log: this.#o.log,
     });
     this.#agent = agent;
     this.#socket = socket;

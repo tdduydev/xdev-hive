@@ -25,6 +25,7 @@ let port = 0;
 const relayed: TerminalRelayContext[] = [];
 let machineId = "";
 let machineToken = "";
+let boxToken = "";
 const ids: Record<string, string> = {};
 
 function account(username: string, grants: Record<string, string>, admin = false): string {
@@ -36,11 +37,13 @@ function account(username: string, grants: Record<string, string>, admin = false
 }
 const signIn = (username: string) => users.startSession(ids[username]!).token;
 
-type Opts = { cookie?: string; bearer?: string; origin?: string | null; csrf?: boolean };
+type Opts = { cookie?: string; bearer?: string; origin?: string | null; csrf?: boolean; agent?: string };
 async function post(path: string, body: unknown, o: Opts = {}) {
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (o.cookie) headers.cookie = `hive_session=${o.cookie}`;
   if (o.bearer) headers.authorization = `Bearer ${o.bearer}`;
+  // A runner names itself: with its token's name that is the machine row's id (runner.<machine>@<token>).
+  if (o.agent) headers["x-hive-agent"] = o.agent;
   if (o.csrf !== false) headers["x-hive-csrf"] = "1";
   if (o.origin !== null) headers.origin = o.origin ?? base;
   const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
@@ -66,7 +69,7 @@ async function end(cookie: string, sessionId: string) {
   assert.equal((await rpc(cookie, "terminal.terminate", { sessionId, reason: "emergencyStop" })).status, 200);
 }
 const heartbeat = (terminal: unknown) =>
-  post("/api/rpc", { method: "machines.heartbeat", input: { machine: "mini", instance: "aaaaaaaa", projects: ["app"], terminal } }, { bearer: machineToken, origin: null, csrf: false });
+  post("/api/rpc", { method: "machines.heartbeat", input: { machine: "mini", instance: "aaaaaaaa", projects: ["app"], terminal } }, { bearer: machineToken, agent: "runner.mini", origin: null, csrf: false });
 
 // ── a WebSocket client small enough to send what a browser never would ──
 
@@ -153,7 +156,7 @@ before(async () => {
   // The hub, not the test, records who owns the machine: its heartbeat does.
   machineToken = tokens.create("mini", "member", ids.alice!).token;
   assert.equal((await heartbeat(cap)).status, 200);
-  machineId = "mini";
+  machineId = "runner.mini@mini";
 });
 after(() => {
   server.closeAllConnections();
@@ -204,10 +207,10 @@ describe("69c terminal proofs (bypass and replay)", () => {
     account("alice2", { app: "member" });
     alice = signIn("alice2");
     // alice2 owns no machine: give her one of her own.
-    const token = tokens.create("box", "member", ids.alice2!).token;
-    const beat = await post("/api/rpc", { method: "machines.heartbeat", input: { machine: "box", instance: "bbbbbbbb", projects: ["app"], terminal: cap } }, { bearer: token, origin: null, csrf: false });
+    const token = (boxToken = tokens.create("box", "member", ids.alice2!).token);
+    const beat = await post("/api/rpc", { method: "machines.heartbeat", input: { machine: "box", instance: "bbbbbbbb", projects: ["app"], terminal: cap } }, { bearer: token, agent: "runner.box", origin: null, csrf: false });
     assert.equal(beat.status, 200);
-    machineId = "box";
+    machineId = "runner.box@box";
   });
 
   it("opens nothing without a fresh proof of this person, browser, machine and project", async () => {
@@ -253,7 +256,7 @@ describe("69c terminal proofs (bypass and replay)", () => {
     const [a, b] = await Promise.all([attach(forAttach), attach(forAttach)]);
     assert.deepEqual([a.status, b.status].sort(), [200, 403], "two racing attaches: one wins");
     // The step-up for a session must name its own machine and project.
-    assert.equal((await stepUp(alice, { method: "password", password: PASSWORD, operation: "attach", project: "app", machineId: "mini", sessionId: session.id })).key, "errors.terminal.notFound");
+    assert.equal((await stepUp(alice, { method: "password", password: PASSWORD, operation: "attach", project: "app", machineId: "runner.mini@mini", sessionId: session.id })).key, "errors.terminal.notFound");
     const rec = await rpc(alice, "terminal.recording", { sessionId: session.id, stepUpId: await proofFor(alice, { operation: "recording", sessionId: session.id }) });
     assert.deepEqual(rec.result, { chunks: [], next: null });
     // Another admin may stop it, never attach to it.
@@ -324,9 +327,10 @@ describe("69c terminal socket (ticket replay and revoke)", () => {
     await end(alice, taken.session.id);
 
     const optOut = await open(alice);
-    const token = tokens.create("box", "member", ids.alice2!).token;
+    // The token "box" was paired with in the step-up tests: a new namesake would not be that machine.
+    const token = boxToken;
     const beat = (terminal: unknown) =>
-      post("/api/rpc", { method: "machines.heartbeat", input: { machine: "box", instance: "bbbbbbbb", projects: ["app"], terminal } }, { bearer: token, origin: null, csrf: false });
+      post("/api/rpc", { method: "machines.heartbeat", input: { machine: "box", instance: "bbbbbbbb", projects: ["app"], terminal } }, { bearer: token, agent: "runner.box", origin: null, csrf: false });
     assert.equal((await beat({ ...cap, enabled: false })).status, 200);
     assert.equal(await present(alice, optOut.ticket), TERMINAL_CLOSE.denied, "the machine turned the terminal off");
     await beat(cap);

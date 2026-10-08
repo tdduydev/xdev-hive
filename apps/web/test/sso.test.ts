@@ -233,7 +233,7 @@ describe("terminal step-up through the provider (69c)", () => {
   let session = "";
   const json = (cookie: string) => ({ cookie: `hive_session=${cookie}`, "x-hive-csrf": "1", origin: base, "content-type": "application/json" });
   const create = async (cookie: string, stepUpId: string) => {
-    const input = { project: "app", machineId: "tbox", checkoutRef: "repo", mode: "shell", stepUpId, reason: "", idempotencyKey: crypto.randomUUID() };
+    const input = { project: "app", machineId: "runner.tbox@tbox", checkoutRef: "repo", mode: "shell", stepUpId, reason: "", idempotencyKey: crypto.randomUUID() };
     const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: json(cookie), body: JSON.stringify({ method: "terminal.create", input }) });
     const body = (await res.json()) as { result?: unknown; error?: { key: string } };
     return body.error?.key ?? "ok";
@@ -243,7 +243,7 @@ describe("terminal step-up through the provider (69c)", () => {
     cookie: string, claims: (p: { nonce: string }) => Record<string, unknown>, beforeReturn?: (stepUpId: string) => Promise<void>,
   ): Promise<{ error?: string; stepUpId?: string; location?: string | null; signedIn?: string | null }> {
     const res = await fetch(`${base}/api/terminal/step-up`, {
-      method: "POST", headers: json(cookie), body: JSON.stringify({ method: "oidc", operation: "create", project: "app", machineId: "tbox", returnTo: "/#/terminal" }),
+      method: "POST", headers: json(cookie), body: JSON.stringify({ method: "oidc", operation: "create", project: "app", machineId: "runner.tbox@tbox", returnTo: "/#/terminal" }),
     });
     const body = (await res.json()) as { result?: { url: string; stepUpId: string }; error?: { key: string } };
     if (!body.result) return { error: body.error!.key };
@@ -265,7 +265,7 @@ describe("terminal step-up through the provider (69c)", () => {
     users.setGrants(id, { app: "member" });
     const machine = tokens.create("tbox", "member", id).token;
     const beat = await fetch(`${base}/api/rpc`, {
-      method: "POST", headers: { authorization: `Bearer ${machine}`, "content-type": "application/json" },
+      method: "POST", headers: { authorization: `Bearer ${machine}`, "x-hive-agent": "runner.tbox", "content-type": "application/json" },
       body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "tbox", instance: "cccccccc", projects: ["app"], terminal: cap } }),
     });
     assert.equal(beat.status, 200);

@@ -270,7 +270,7 @@ describe("69e machine socket", () => {
       disconnected: () => events.push("down"),
       receive: (f: TerminalHubFrame) => events.push(f.type),
     };
-    const sock = new MachineSocket({ hubUrl: `http://127.0.0.1:${port}`, token: () => "hive_machine_token", agent, minBackoffMs: 30, maxBackoffMs: 60 });
+    const sock = new MachineSocket({ hubUrl: `http://127.0.0.1:${port}`, token: () => "hive_machine_token", label: () => "runner.mini", agent, minBackoffMs: 30, maxBackoffMs: 60 });
     const until = async (check: () => boolean) => { const end = Date.now() + 3000; while (!check()) { if (Date.now() > end) throw new Error(`waited: ${events}`); await new Promise((r) => setTimeout(r, 20)); } };
     try {
       sock.start();
@@ -282,7 +282,7 @@ describe("69e machine socket", () => {
       await until(() => hellos.length === 2);
       assert.deepEqual(events.filter((e) => e !== "ping"), ["up", "down", "up"]);
       const logs: string[] = [];
-      const remote = new MachineSocket({ hubUrl: "http://hub.example.test", token: () => "t", agent, log: (l) => logs.push(l) });
+      const remote = new MachineSocket({ hubUrl: "http://hub.example.test", token: () => "t", label: () => "runner.mini", agent, log: (l) => logs.push(l) });
       remote.start();
       assert.match(logs[0]!, /not https/);
       remote.stop();

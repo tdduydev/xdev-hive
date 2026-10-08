@@ -36,10 +36,12 @@ let otherToken = "";
 const ids: Record<string, string> = {};
 const cookies: Record<string, string> = {};
 
-/** Stands in for SEC-machine-identity: the machine row is pinned to alice's "mini" token. */
+/** The hub's own wiring (server.ts): the machine row runner.mini@mini is pinned to alice's "mini" token at its heartbeat. */
+const MACHINE = "runner.mini@mini";
+const RUNNER = { "x-hive-agent": "runner.mini", "x-hive-source": JSON.stringify({ via: "desktop" }) };
 const identity: TerminalMachineIdentity = {
-  isMachineActor: (machineId, actor) => machineId === "mini" && actor.name === "mini" && actor.account === "alice",
-  pinnedOwner: (machineId) => (machineId === "mini" ? "alice" : null),
+  isMachineActor: (machineId, actor) => hive.isMachineActor(machineId, actor),
+  pinnedOwner: (machineId) => hive.machinePinnedOwner(machineId),
 };
 
 function account(username: string, grants: Record<string, string>, admin = false): void {
@@ -49,11 +51,12 @@ function account(username: string, grants: Record<string, string>, admin = false
   ids[username] = user.id;
 }
 
-async function post(path: string, body: unknown, o: { cookie?: string; bearer?: string } = {}) {
+async function post(path: string, body: unknown, o: { cookie?: string; bearer?: string; agent?: string } = {}) {
   const headers: Record<string, string> = { "content-type": "application/json", "x-hive-csrf": "1", origin: base };
   if (o.cookie) headers.cookie = `hive_session=${o.cookie}`;
   if (o.bearer) {
     headers.authorization = `Bearer ${o.bearer}`;
+    if (o.agent) headers["x-hive-agent"] = o.agent;
     delete headers.origin;
   }
   const res = await fetch(`${base}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
@@ -62,9 +65,9 @@ async function post(path: string, body: unknown, o: { cookie?: string; bearer?: 
 }
 const rpc = (cookie: string, method: string, input: unknown) => post("/api/rpc", { method, input }, { cookie });
 const heartbeat = (terminal: unknown) =>
-  post("/api/rpc", { method: "machines.heartbeat", input: { machine: "mini", instance: "aaaaaaaa", projects: ["app"], terminal } }, { bearer: machineToken });
+  post("/api/rpc", { method: "machines.heartbeat", input: { machine: "mini", instance: "aaaaaaaa", projects: ["app"], terminal } }, { bearer: machineToken, agent: RUNNER["x-hive-agent"] });
 async function proof(cookie: string, operation: "create" | "attach", sessionId?: string) {
-  const r = await post("/api/terminal/step-up", { method: "password", password: PASSWORD, operation, project: "app", machineId: "mini", ...(sessionId ? { sessionId } : {}) }, { cookie });
+  const r = await post("/api/terminal/step-up", { method: "password", password: PASSWORD, operation, project: "app", machineId: MACHINE, ...(sessionId ? { sessionId } : {}) }, { cookie });
   assert.equal(r.status, 200, `step-up: ${r.key}`);
   return r.result.stepUpId as string;
 }
@@ -124,7 +127,7 @@ type Machine = Peer<TerminalHubFrame>;
 type Browser = Peer<TerminalServerFrame>;
 
 async function machine(running: string[] = [], token = machineToken): Promise<Machine> {
-  const u = await upgrade("/api/terminal/machine-socket", { authorization: `Bearer ${token}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL });
+  const u = await upgrade("/api/terminal/machine-socket", { ...RUNNER, authorization: `Bearer ${token}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL });
   assert.equal(u.status, 101);
   const m = new Peer<TerminalHubFrame>(u.socket!, u.head!);
   m.send({ type: "hello", protocol: 1, sessions: running } satisfies TerminalMachineFrame);
@@ -145,7 +148,7 @@ const report = (m: Machine, sessionId: string, state: string, reason: string, ex
 /** alice's live session: created, attached, spawned on the machine, output flowing. */
 async function running(m: Machine) {
   const cookie = cookies.alice!;
-  const r = await rpc(cookie, "terminal.create", { project: "app", machineId: "mini", checkoutRef: "repo", mode: "shell", stepUpId: await proof(cookie, "create"), reason: "relay test", idempotencyKey: crypto.randomUUID() });
+  const r = await rpc(cookie, "terminal.create", { project: "app", machineId: MACHINE, checkoutRef: "repo", mode: "shell", stepUpId: await proof(cookie, "create"), reason: "relay test", idempotencyKey: crypto.randomUUID() });
   assert.equal(r.status, 200, `create: ${r.key}`);
   const id = r.result.session.id as string;
   const b = await browser(cookie, r.result.ticket);
@@ -203,15 +206,15 @@ after(() => {
 describe("69e machine socket", () => {
   it("takes only the bearer the machine row is pinned to, speaking the machine protocol", async () => {
     // Same name, another account: what a heartbeat collision would look like.
-    assert.equal((await upgrade("/api/terminal/machine-socket", { authorization: `Bearer ${otherToken}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL })).status, 403);
-    assert.equal((await upgrade("/api/terminal/machine-socket", { authorization: `Bearer ${machineToken}` })).status, 400);
+    assert.equal((await upgrade("/api/terminal/machine-socket", { ...RUNNER, authorization: `Bearer ${otherToken}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL })).status, 403);
+    assert.equal((await upgrade("/api/terminal/machine-socket", { ...RUNNER, authorization: `Bearer ${machineToken}` })).status, 400);
     assert.equal((await upgrade("/api/terminal/machine-socket", { cookie: `hive_session=${cookies.alice}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL })).status, 401);
     const m = await machine();
     m.peer.socket.destroy();
   });
 
   it("closes a machine whose first frame is not hello", async () => {
-    const u = await upgrade("/api/terminal/machine-socket", { authorization: `Bearer ${machineToken}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL });
+    const u = await upgrade("/api/terminal/machine-socket", { ...RUNNER, authorization: `Bearer ${machineToken}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL });
     const m = new Peer<TerminalHubFrame>(u.socket!, u.head!);
     m.send({ type: "pong", nonce: "x" });
     assert.equal(await m.waitClose(), TERMINAL_RELAY_CLOSE.protocol);
