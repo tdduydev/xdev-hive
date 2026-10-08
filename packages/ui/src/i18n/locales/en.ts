@@ -2356,6 +2356,7 @@ export const en: Catalog = {
     binary: "binary file",
     diffError: "Could not read this run's changes.",
     worktree: "worktree {branch}",
+    codeRevision: "Code revision: {sha}",
   },
   agents: {
     geminiLabelHint: "empty: Gemini (Google) 2…",
