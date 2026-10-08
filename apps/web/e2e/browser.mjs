@@ -15,7 +15,7 @@ const width = Number(process.env.HIVE_E2E_W ?? 1440);
 const height = Number(process.env.HIVE_E2E_H ?? 900);
 if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 480) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
 const mobile = width < 768;
-const { admin, people, proposals, memory } = JSON.parse(process.env.HIVE_E2E_SEED);
+const { admin, people, proposals, memory, terminal } = JSON.parse(process.env.HIVE_E2E_SEED);
 
 app.commandLine.appendSwitch("force-device-scale-factor", "1");
 // Chromium's own warnings (task policy, sandbox) are not the test's.
@@ -256,6 +256,8 @@ class Tab {
 // A step's tabs live in `tabs`, so list the step that opens a tab for every step that uses it.
 // HIVE_E2E_NEEDS (JSON) replaces the table: check-needs.mjs probes a smaller set with it before the table is changed.
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
+  "terminal-entry": [],
+  "terminal-io": ["terminal-entry"],
   "leader-plan": ["lead-sees-members"],
   "auto-dispatch": ["login-token"],
   "merge-queue": ["login-token"],
@@ -4133,6 +4135,119 @@ async function main() {
     await tab.go("today");
     await tab.waitFor("complete Today review list", () => document.querySelectorAll('[data-inbox-key^="review:inbox-source-e2e:"]').length === 501);
     await tab.shot("source-today-complete");
+  });
+
+  await step("terminal-entry", async () => {
+    const tab = current = tabs.terminal = await Tab.open("terminal");
+    await tab.win.loadURL(`${terminal.base}/`);
+    await tab.click("#username"); await tab.type(terminal.username);
+    await tab.click("#password"); await tab.type(terminal.password); await tab.key("Enter");
+    await tab.waitFor("terminal cookie signed in", () => !document.querySelector("#username"));
+    for (const locale of ["en", "vi"]) {
+      await tab.eval(value => localStorage.setItem("xdev-hive.locale", value), locale); await tab.reload();
+      await tab.go("machines");
+      await tab.click('[data-testid="terminal-open-machine"]');
+      await tab.waitFor(`terminal form ${locale}`, () => !!document.querySelector('[data-testid="terminal-create-dialog"]'));
+      expect(await tab.eval((label) => document.querySelector('[data-testid="terminal-create-dialog"]').textContent.includes(label), locale === "vi" ? "Quyền tài khoản máy" : "Machine account privileges"), "terminal scope missing in locale");
+      expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo"), "machine form context lost");
+      expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "shell opens without explicit consent/step-up");
+      await tab.key("Escape");
+      await tab.waitFor("terminal form closes without spawn", () => !document.querySelector('[data-testid="terminal-create-dialog"]'));
+      expect(await tab.eval(() => document.activeElement?.dataset.testid === "terminal-open-machine"), "terminal focus not restored");
+    }
+    await tab.go(`runs?run=${encodeURIComponent("terminal-machine/R-terminal")}`);
+    await tab.click('[data-testid="terminal-open-run"]');
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo" && document.querySelector('[data-testid="terminal-checkout"]').value === "repo"), "run terminal context lost");
+    await tab.key("Escape");
+    await tab.go("chat"); await tab.click('[data-testid="terminal-open-chat"]'); await tab.key("Escape");
+    await tab.go("chat?terminal=1&terminalMachine=terminal-machine&terminalProject=demo&command=ignored");
+    await tab.waitFor("chat link prefills form", () => document.querySelector('[data-testid="terminal-create-dialog"]'));
+    expect((await (await fetch(`${terminal.base}/__terminal/state`)).json()).opens === 0, "entry/link spawned a shell");
+    if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('[data-testid="terminal-create-dialog"]').getBoundingClientRect().width === innerWidth), "terminal mobile form overflows");
+  });
+
+  await step("terminal-io", async () => {
+    const tab = current = tabs.terminal;
+    const diagnostics = async () => (await fetch(`${terminal.base}/__terminal/state`)).json();
+    await tab.click('[data-testid="terminal-create-dialog"] input[type="checkbox"]');
+    await tab.click('[data-testid="terminal-step-up"]'); await tab.type(terminal.password);
+    await tab.click('[data-testid="terminal-confirm-open"]');
+    await tab.waitFor("terminal active", () => document.querySelector('[data-testid="terminal-status"]')?.textContent.includes("Đã kết nối"));
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-dialog"]').textContent.includes("OS user: synthetic-os-user")), "OS user inferred/lost");
+    await tab.click('[data-testid="terminal-keyboard"]'); await tab.type("Tiếng Việt a\u0306\u0301");
+    await until("UTF-8 terminal input", async () => (await diagnostics()).inputs.some(f => f.text.includes("Tiếng Việt a\u0306\u0301")));
+    await tab.key("Tab");
+    expect(await tab.eval(() => !document.activeElement?.classList.contains("xterm-helper-textarea")), "Tab trapped in terminal");
+    for (const key of ["esc", "tab", "shiftTab", "up", "down", "left", "right", "interrupt"]) await tab.click(`[data-testid="terminal-key-${key}"]`);
+    await tab.click('[data-testid="terminal-key-ctrl"]'); await tab.type("c");
+    const before = (await diagnostics()).inputs.length;
+    await tab.click('[data-testid="terminal-ime"]');
+    await tab.click('[data-testid="terminal-ime-input"]');
+    await tab.eval(() => document.querySelector('[data-testid="terminal-ime-input"]').dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" })));
+    const composed = "Đường dẫn a\u0306\u0301 / ắ\nsecond-line\x03";
+    await tab.type(composed);
+    await tab.eval(() => document.querySelector('[data-testid="terminal-ime-input"]').dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "ắ" })));
+    expect((await diagnostics()).inputs.length === before, "IME draft leaked partial input");
+    await tab.click('[data-testid="terminal-ime-send"]');
+    await tab.waitFor("paste preview", () => document.querySelector('[data-testid="terminal-paste-preview"]'));
+    expect((await diagnostics()).inputs.length === before, "paste sent before confirmation");
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-paste-visible"]').textContent.includes("↵") && document.querySelector('[data-testid="terminal-paste-visible"]').textContent.includes("\\x03")), "paste hides control characters");
+    await tab.click('[data-testid="terminal-paste-confirm"]');
+    const frames = await until("confirmed paste sent", async () => { const s = await diagnostics(); return s.inputs.length > before ? s.inputs.slice(before) : null; });
+    expect(frames.map(f => f.text).join("").includes("\x1b[200~Đường dẫn a\u0306\u0301"), "bracketed paste/normalization changed");
+    expect(!frames.at(-1).text.endsWith("\r"), "paste added Enter");
+    await tab.click('[data-testid="terminal-ime"]');
+    await tab.eval(() => {
+      window.terminalClipboardWrites = 0;
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: { readText: async () => { throw new Error("synthetic permission denied"); }, writeText: async () => { window.terminalClipboardWrites++; } } });
+    });
+    await fetch(`${terminal.base}/__terminal/escapes`, { method: "POST" });
+    await sleep(100);
+    expect(await tab.eval(() => window.terminalClipboardWrites === 0 && !document.querySelector('[data-testid="terminal-screen"] a')), "terminal escape created link/clipboard write");
+    await tab.click('[data-testid="terminal-paste"]');
+    await tab.waitFor("clipboard fallback", () => document.querySelector('[data-testid="terminal-paste-input"]'));
+    const large = "ắa\u0306\u0301".repeat(3500);
+    const largeBefore = (await diagnostics()).inputs.length;
+    await tab.click('[data-testid="terminal-paste-input"]'); await tab.type(large);
+    expect((await diagnostics()).inputs.length === largeBefore, "large paste leaked before confirm");
+    await tab.click('[data-testid="terminal-paste-confirm"]');
+    await until("large paste chunks", async () => (await diagnostics()).inputs.slice(largeBefore).map(f => f.text.replace(/\x1b\[(?:200|201)~/g, "")).join("") === large);
+    expect((await diagnostics()).inputs.slice(largeBefore).every(f => Buffer.byteLength(f.text) <= 16 * 1024), "large paste exceeds input frame cap");
+    if (mobile) {
+      for (const size of [360, 390]) {
+        tab.win.setContentSize(size, 844); await sleep(250);
+        const metrics = await tab.eval(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, stop: document.querySelector('[data-testid="terminal-stop"]').getBoundingClientRect().height, keys: [...document.querySelectorAll('[data-testid^="terminal-key-"]')].map(el => el.getBoundingClientRect().height), input: parseFloat(getComputedStyle(document.querySelector(".xterm-helper-textarea")).fontSize), screen: document.querySelector('[data-testid="terminal-screen"]').getBoundingClientRect().height }));
+        expect(metrics.width === size && metrics.scroll <= size + 1 && metrics.stop >= 44 && metrics.keys.every(h => h >= 44) && metrics.input >= 16 && metrics.screen > 80, `terminal mobile geometry ${JSON.stringify(metrics)}`);
+      }
+      tab.win.setContentSize(width, height);
+    }
+    await tab.shot("terminal-active");
+    await fetch(`${terminal.base}/__terminal/drop`, { method: "POST" });
+    await tab.waitFor("disconnected terminal", () => document.querySelector('[data-testid="terminal-reconnect"]'));
+    const disconnected = (await diagnostics()).inputs.length;
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-key-tab"]').disabled), "disconnected keyboard writable");
+    await tab.click('[data-testid="terminal-reconnect"]');
+    await tab.click('[data-testid="terminal-step-up"]'); await tab.type(terminal.password); await tab.click('[data-testid="terminal-verify-confirm"]');
+    await tab.waitFor("reconnected", () => !document.querySelector('[data-testid="terminal-verify"]') && document.querySelector('[data-testid="terminal-status"]').textContent.includes("Đã kết nối"));
+    expect((await diagnostics()).opens === 1 && (await diagnostics()).inputs.length === disconnected, "reconnect spawned/resent input");
+    await tab.click('[data-testid="terminal-key-interrupt"]');
+    await until("new epoch input", async () => (await diagnostics()).inputs.some(f => f.epoch === 1 && f.seq === 1 && f.text === "\x03"));
+    await fetch(`${terminal.base}/__terminal/gap`, { method: "POST" });
+    await tab.waitFor("visible replay gap", () => document.querySelector('[data-testid="terminal-audit-gap"]'));
+    await tab.click('[data-testid="terminal-audit"]'); await tab.click('[data-testid="terminal-step-up"]'); await tab.type(terminal.password); await tab.click('[data-testid="terminal-verify-confirm"]');
+    await tab.waitFor("audit index", () => document.querySelector('[data-testid="terminal-recording"]'));
+    await tab.key("Escape");
+    await tab.click('[data-testid="terminal-stop"]');
+    await until("machine receives stop", async () => (await diagnostics()).kills >= 1);
+    await tab.waitFor("session ended", () => document.querySelector('[data-testid="terminal-stop"]').disabled);
+    await tab.click('[data-testid="terminal-detach"]');
+    await tab.waitFor("detached UI", () => !document.querySelector('[data-testid="terminal-dialog"]'));
+    expect((await diagnostics()).resizes.some(r => r.cols >= 20 && r.rows >= 5), "terminal never resized PTY");
+    await fetch(`${terminal.base}/__terminal/opt-out`, { method: "POST" });
+    await tab.go("machines"); await tab.click('[data-testid="terminal-open-machine"]');
+    await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
+    await tab.key("Escape");
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));

@@ -3,6 +3,10 @@
    pages pick up the new look. Light is :root, dark is [data-theme="dark"] on <html> (lib/theme.ts sets it);
    a subtree can re-theme itself with data-theme, which is why the aliases are declared on [data-theme] too. */
 @import "tailwindcss";
+
+.terminal-screen .xterm { height: 100%; }
+.terminal-screen .xterm-helper-textarea { font-size: 16px !important; }
+.terminal-screen .xterm:focus-within { box-shadow: inset 0 0 0 2px var(--focus-color); }
 @import "tw-animate-css";
 
 @import "@fontsource/be-vietnam-pro/400.css";

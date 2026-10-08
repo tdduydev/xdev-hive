@@ -349,6 +349,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **65. browser** (65a, R-65a). Spec: [docs/specs/65-browser.md](specs/65-browser.md).
   - [x] **65a. browser-tool**: Playwright MCP trong danh mục tool, agent lướt/test web có tài khoản test qua `secretEnv`.
 
+- [x] **69f. terminal-ui** (0.146.3): UI xterm dùng chung, vi/en, form từ Máy/Run/Chat và link chỉ điền scope; step-up người dùng cookie, thanh phím mobile, dán có xem trước, nhập IME fallback, reconnect không gửi lại input, detach/stop và chỉ mục audit. E2e dùng hub/WS thật với máy tổng hợp; production vẫn fail closed khi chưa có identity máy. Worktree, tải transcript và IME bàn phím thật thuộc phần nghiệm thu tiếp theo của 69.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to hc-duytd20-linux"); giờ runner gửi kèm máy.
