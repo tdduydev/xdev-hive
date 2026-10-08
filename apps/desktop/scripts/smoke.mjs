@@ -404,7 +404,7 @@ if (process.env.HIVE_SMOKE_ONLY === "vibe") {
   config.agents = [agent("vibe-1", "vibe", 40, "vibe", "Mistral Vibe", { enabled: false })];
   writeFileSync(file, JSON.stringify(config));
   await shoot("providers-account-mobile", "agents", 1500, {
-    HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="vibe"]',
+    HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="vibe"]',
     HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '[data-vibe-notice]',
     HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && ["claude", "codex", "gemini", "antigravity", "copilot", "vibe", "opencode", "kilo"].every(k => document.querySelectorAll(`[data-add-account="${k}"]`).length === 1) && [...document.querySelectorAll("[data-vibe-notice] a")].every(a => a.getBoundingClientRect().height >= 44) && document.querySelector("#acc-way").options.length === 1',
   });
@@ -419,10 +419,10 @@ if (process.env.HIVE_SMOKE_ONLY === "vibe") {
 }
 
 if (process.env.HIVE_SMOKE_ONLY === "gemini") {
-  await shoot("gemini-profile", "agents", 1800, { HIVE_SMOKE_SCROLL: '[data-profile="gemini-pro"]', HIVE_SMOKE_EXPECT: '[data-gemini-info] a[href*="quota-and-pricing"] && [data-add-account="gemini"]' });
-  await shoot("gemini-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="gemini"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && document.querySelectorAll("#acc-way option").length === 1' });
+  await shoot("gemini-profile", "agents", 1800, { HIVE_SMOKE_SCROLL: '[data-profile="gemini-pro"]', HIVE_SMOKE_EXPECT: '[data-gemini-info] a[href*="quota-and-pricing"]' });
+  await shoot("gemini-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="gemini"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && document.querySelectorAll("#acc-way option").length === 1' });
   await shoot("gemini-settings-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-row-menu="gemini-pro"] && [data-edit-profile="gemini-pro"]', HIVE_SMOKE_SCROLL: 'form [data-gemini-info]', HIVE_SMOKE_EXPECT: '[data-gemini-info] a[href*="tos-privacy"]', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth' });
-  await shoot("gemini-add-login", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="gemini"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="gemini-1"][data-state="signedOut"]' });
+  await shoot("gemini-add-login", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="gemini"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="gemini-1"][data-state="signedOut"]' });
   const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((p) => p.id === "gemini-1");
   if (!added?.env.GEMINI_CLI_HOME) throw new Error("Additional Gemini account lacks an isolated root");
   const dir = path.join(work, "login", "gemini-1");
@@ -434,12 +434,12 @@ if (process.env.HIVE_SMOKE_ONLY === "gemini") {
 }
 
 async function antigravityShots() {
-  await shoot("agents-antigravity", "agents", 2500, { HIVE_SMOKE_SCROLL: '[data-profile="antigravity-google"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-google"] [role="meter"] && [data-add-account="antigravity"]' });
-  await shoot("agents-antigravity-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way' });
+  await shoot("agents-antigravity", "agents", 2500, { HIVE_SMOKE_SCROLL: '[data-profile="antigravity-google"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-google"] [role="meter"]' });
+  await shoot("agents-antigravity-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way' });
   await shoot("agents-antigravity-form", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-row-menu="antigravity-google"] && [data-edit-profile="antigravity-google"]', HIVE_SMOKE_SCROLL: '#pf-agy-project', HIVE_SMOKE_EXPECT: '#pf-agy-project' });
-  await shoot("agents-antigravity-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'window.innerWidth === 390 && document.documentElement.scrollWidth <= window.innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44' });
+  await shoot("agents-antigravity-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="antigravity"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'window.innerWidth === 390 && document.documentElement.scrollWidth <= window.innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44' });
   await shoot("agents-antigravity-form-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-row-menu="antigravity-google"] && [data-edit-profile="antigravity-google"]', HIVE_SMOKE_SCROLL: '#pf-agy-project', HIVE_SMOKE_EXPECT: '#pf-agy-project', HIVE_SMOKE_ASSERT: 'window.innerWidth === 390 && document.documentElement.scrollWidth <= window.innerWidth && document.querySelector("#pf-agy-project").getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(document.querySelector("#pf-agy-project")).fontSize) >= 16' });
-  await shoot("agents-antigravity-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-account="antigravity"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-1"][data-state="signedOut"]' });
+  await shoot("agents-antigravity-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="antigravity"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="antigravity-1"][data-state="signedOut"]' });
   const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((p) => p.id === "antigravity-1");
   if (!added || added.kind !== "antigravity") throw new Error("Antigravity account was not saved");
   const scripts = path.join(work, "login", "antigravity-1");
@@ -454,9 +454,9 @@ if (process.env.HIVE_SMOKE_ONLY === "kilo") {
   before.agents = [{ ...agent("kilo-1", "kilo", 40, "kilo-ok", "Kilo Code CLI"), args: ["run", "{prompt}"], enabled: false }];
   writeFileSync(file, JSON.stringify(before));
   await shoot("kilo-info", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-off-group] && [data-kilo-info] summary', HIVE_SMOKE_EXPECT: '[data-kilo-info] a', HIVE_SMOKE_SCROLL: '[data-kilo-info]' });
-  await shoot("kilo-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-account="kilo"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(document.querySelector("#acc-label")).fontSize) >= 16' });
+  await shoot("kilo-account-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="kilo"]', HIVE_SMOKE_SCROLL: '#acc-label', HIVE_SMOKE_EXPECT: '#acc-way', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && document.querySelector("#acc-label").getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(document.querySelector("#acc-label")).fontSize) >= 16' });
   await shoot("kilo-form-mobile", "agents", 1500, { HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: '[data-off-group] && [data-row-menu="kilo-1"] && [data-edit-profile="kilo-1"]', HIVE_SMOKE_SCROLL: 'form [data-kilo-info]', HIVE_SMOKE_EXPECT: '#pf-kind', HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= innerWidth && document.querySelector("[data-kilo-info]").innerText.includes("200")' });
-  await shoot("kilo-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-account="kilo"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="kilo-2"]' });
+  await shoot("kilo-add-login", "agents", 2000, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="kilo"] && form:has(#acc-label) button[type="submit"]', HIVE_SMOKE_EXPECT: '[data-profile="kilo-2"]' });
   const added = JSON.parse(readFileSync(file, "utf8")).agents.find((p) => p.id === "kilo-2");
   for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (!added?.env[key]?.includes("accounts/kilo-2")) throw new Error("Kilo account missing isolated " + key);
   const script = readdirSync(path.join(work, "login", "kilo-2")).map((name) => readFileSync(path.join(work, "login", "kilo-2", name), "utf8")).join("\n");
@@ -580,13 +580,13 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
   store.db.close();
 }
 await shoot("agents-tokens", "agents", 2500, {
-  HIVE_SMOKE_CLICK: '[data-token-window="d30"]',
+  HIVE_SMOKE_CLICK: '[data-token-details] summary && [data-token-window="d30"]',
   HIVE_SMOKE_SCROLL: "[data-token-stats]",
   HIVE_SMOKE_EXPECT: '[data-token-row="claude-max-1"] && [data-token-row="codex-plus"] && [data-token-total] && [data-token-window="d30"][data-state="on"]',
 });
 // A subscription's numbers open Lượt chạy on its runs only.
 await shoot("agents-tokens-runs", "agents", 2500, {
-  HIVE_SMOKE_CLICK: '[data-token-row="codex-plus"]',
+  HIVE_SMOKE_CLICK: '[data-token-details] summary && [data-token-row="codex-plus"]',
   HIVE_SMOKE_EXPECT: '[data-profile-filter="codex-plus"]',
   HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-run-index]").length >= 1',
 });
@@ -594,6 +594,14 @@ await shoot("agents-tokens-runs", "agents", 2500, {
 // on the subscription whose CLI reports usage. The expect waits for the sign-in check, which lands after first paint.
 const agentsTable = '[data-profile="claude-max-2"][data-state="signedOut"] && [data-off-group] && [data-profile="claude-max-1"] [role="meter"]';
 await shoot("agents", "agents", 2500, { HIVE_SMOKE_EXPECT: agentsTable });
+// The page at the two widths a desktop window gets narrow: cards wrap instead of a 900px table scrolling sideways.
+for (const size of ["1100x800", "800x800"]) {
+  await shoot(`agents-${size.split("x")[0]}`, "agents", 2500, {
+    HIVE_SMOKE_SIZE: size,
+    HIVE_SMOKE_EXPECT: agentsTable,
+    HIVE_SMOKE_ASSERT: "document.documentElement.scrollWidth <= innerWidth && !document.querySelector('[data-machine-settings][open]')",
+  });
+}
 // Every row's quota (roadmap 52): claude-max-1 resting with Bỏ nghỉ next to its countdowns, codex-plus with the
 // numbers of its session file, a reset counter ("từ <ngày>") and a limit hit, and Đọc lại quota above Quản lý gói.
 await shoot("agents-quota", "agents", 3000, {
@@ -608,7 +616,7 @@ await shoot("agents-quota", "agents", 3000, {
     '[data-profile="codex-plus"] [data-read-usage]',
     "[data-read-usage-all]",
     '[data-profile="codex-plus"] [data-quota-outlook][data-resets-left][data-full-sessions-left]',
-    "[data-machine-quota]",
+    '[data-summary="slots"]',
   ].join(" && "),
 });
 // The off subscriptions unfolded, then the Chi tiết of one: its container token box, command and autonomy.
@@ -652,7 +660,7 @@ writeFileSync(
 // data-project-tools: the catalog Tool had a page of its own for, at the foot of this one since 39f.
 await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"] && [data-project-tools]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
-await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
+await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
 // The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
 await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
@@ -784,7 +792,7 @@ mkdirSync(accountBin);
 for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
 const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
 for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
-  await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
+  await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-profile] && [data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
   const added = JSON.parse(readFileSync(path.join(work, "config.json"), "utf8")).agents.find((a) => a.id === `${kind}-1`);
   const dir = added?.env?.[dirEnv]?.replace(/^~/, smokeHome);
   const scripts = path.join(work, "login", `${kind}-1`);
