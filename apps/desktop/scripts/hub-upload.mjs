@@ -1,7 +1,9 @@
 // Uploads the desktop builds to the hub, which hands them to machines as updates (roadmap 22i). Used by release.mjs;
 // kept apart so test/hub-upload.test.ts can run it against a fake hub.
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { createReadStream, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /** platform, arch and kind from electron-builder's file names (see artifactName in electron-builder.yml). */
@@ -74,4 +76,64 @@ export async function uploadToHub({ hub, token, version, assets, notes, log = co
   const res = await fetch(`${hub}/api/rpc`, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ method: "releases.notes", input: { version, notes } }) });
   if (!res.ok) throw new Error(`hub notes: HTTP ${res.status}`);
   log(`hub has ${version}: pick it on Phiên bản app to roll it out.`);
+}
+
+/**
+ * Release settings kept out of the shell (and out of transcripts): KEY=VALUE lines in ~/.config/xdev-hive/release.env.
+ * Variables already in the environment win. A file others can read is refused when it holds a token.
+ */
+export function readReleaseEnv(file = path.join(os.homedir(), ".config", "xdev-hive", "release.env"), env = process.env) {
+  if (!existsSync(file)) return {};
+  const text = readFileSync(file, "utf8");
+  const values = Object.fromEntries(text.split("\n").map((l) => /^\s*(?:export\s+)?([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/.exec(l)).filter(Boolean).map((m) => [m[1], m[2].replace(/^(["'])(.*)\1$/, "$2")]));
+  if (values.HIVE_RELEASE_TOKEN && (statSync(file).mode & 0o077)) throw new Error(`${file} holds a token and others can read it: chmod 600 ${file}`);
+  const applied = {};
+  for (const [k, v] of Object.entries(values)) if (env[k] === undefined) applied[k] = env[k] = v;
+  return applied;
+}
+
+/**
+ * Puts the builds on the hub through its host's SSH instead of the HTTP upload: SSH access to that host is the
+ * authorization (as for deploy/update.sh), so no admin token lives here. One tar stream goes into the container's
+ * /data (no copy on the host's disk), then apps/web/src/import-release.ts checks every build against SHA256SUMS.txt
+ * and adds it. ssh: "hub-server" or "user@host"; container: the hub's container name.
+ */
+export async function importOverSsh({ ssh, container = "xdev-hive-hub-1", version, files, by, log = console.log, run = runPiped }) {
+  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(version)) throw new Error(`Not a version: ${version}`);
+  if (!/^[\w.@-]+$/.test(ssh) || !/^[\w.-]+$/.test(container)) throw new Error("HIVE_RELEASE_SSH / HIVE_RELEASE_SSH_CONTAINER: host and container names only.");
+  const dir = `/data/incoming/${version}`;
+  const base = path.dirname(files[0]);
+  if (files.some((f) => path.dirname(f) !== base)) throw new Error("Release files must sit in one folder.");
+  const names = files.map((f) => path.basename(f));
+  log(`hub (ssh ${ssh}) ← ${names.length} files`);
+  // COPYFILE_DISABLE: macOS tar would add ._* resource files that the import then reads as unknown builds.
+  await run(
+    ["tar", "-cf", "-", "-C", base, ...names],
+    ["ssh", ssh, "docker", "exec", "-i", container, "sh", "-c", `'rm -rf ${dir} && mkdir -p ${dir} && tar -xf - -C ${dir}'`],
+    { ...process.env, COPYFILE_DISABLE: "1" },
+  );
+  const notes = names.includes("NOTES.md") ? ["--notes", `${dir}/NOTES.md`] : [];
+  await run(null, ["ssh", ssh, "docker", "exec", container, "node", "apps/web/src/import-release.ts", "--dir", dir, "--version", version, ...notes, "--by", `'${by.replace(/[^\w.@:-]/g, "")}'`], process.env, log);
+}
+
+/** Runs `to` (fed by `from`'s stdout when given); rejects with the command's stderr when either fails. */
+function runPiped(from, to, env, log) {
+  return new Promise((resolve, reject) => {
+    const target = spawn(to[0], to.slice(1), { env, stdio: [from ? "pipe" : "ignore", "pipe", "pipe"] });
+    const source = from ? spawn(from[0], from.slice(1), { env, stdio: ["ignore", "pipe", "pipe"] }) : null;
+    let err = "";
+    target.stderr.on("data", (d) => { err += d; });
+    source?.stderr.on("data", (d) => { err += d; });
+    target.stdout.on("data", (d) => (log ? String(d).trimEnd().split("\n").forEach((l) => log(`hub: ${l}`)) : undefined));
+    if (source) source.stdout.pipe(target.stdin);
+    const done = new Map();
+    const finish = (name, code) => {
+      done.set(name, code);
+      if (done.size < (source ? 2 : 1)) return;
+      if ([...done.values()].every((c) => c === 0)) resolve();
+      else reject(new Error(`${to.slice(0, 3).join(" ")}… failed: ${err.trim().slice(-500) || [...done.entries()].map(([n, c]) => `${n} exit ${c}`).join(", ")}`));
+    };
+    source?.on("error", reject).on("close", (c) => finish("source", c));
+    target.on("error", reject).on("close", (c) => finish("target", c));
+  });
 }

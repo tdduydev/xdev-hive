@@ -16,3 +16,15 @@ export function uploadToHub(opts: {
   log?: (line: string) => void;
   wait?: (attempt: number) => Promise<void>;
 }): Promise<void>;
+
+export function readReleaseEnv(file?: string, env?: Record<string, string | undefined>): Record<string, string>;
+
+export function importOverSsh(opts: {
+  ssh: string;
+  container?: string;
+  version: string;
+  files: string[];
+  by: string;
+  log?: (line: string) => void;
+  run?: (from: string[] | null, to: string[], env: Record<string, string | undefined>, log?: (line: string) => void) => Promise<void>;
+}): Promise<void>;
