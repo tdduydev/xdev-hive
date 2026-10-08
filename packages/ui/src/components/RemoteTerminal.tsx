@@ -12,7 +12,7 @@ import { terminalSecure, type TerminalApi, type TerminalAttachment } from "#ui/l
 const TerminalScreen = lazy(() => import("#ui/components/TerminalScreen.tsx"));
 type Target = { machineId?: string; project?: string; checkoutRef?: string; runActive?: boolean };
 const OpenTerminal = createContext<((target: Target) => void) | null>(null);
-export const terminalControl = "w-full min-w-0 rounded-md border border-line-control bg-surface px-3 py-2 text-base outline-none focus-visible:focus-ring md:text-sm";
+export const terminalControl = "w-full min-w-0 max-md:!min-h-11 rounded-md border border-line-control bg-surface px-3 py-2 text-base outline-none focus-visible:focus-ring md:text-sm";
 
 export function TerminalDialogContent({ className = "", ...props }: ComponentProps<typeof DialogContent>) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);

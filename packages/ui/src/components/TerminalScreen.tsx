@@ -8,7 +8,7 @@ import { Dialog, DialogDescription, DialogTitle } from "#ui/components/ui/dialog
 import { ErrorNote } from "#ui/components/common.tsx";
 import { useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { TerminalConnection, terminalChunks, pasteDisplay, type TerminalApi, type TerminalAttachment } from "#ui/lib/terminal-client.ts";
+import { TerminalConnection, terminalPasteChunks, pasteDisplay, type TerminalApi, type TerminalAttachment } from "#ui/lib/terminal-client.ts";
 import { TerminalDialogContent as DialogContent, terminalControl, verifyTerminal } from "#ui/components/RemoteTerminal.tsx";
 
 type Status = TerminalSession["state"] | "connecting" | "disconnected";
@@ -34,6 +34,9 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
   const [text, setText] = useState("");
   const composing = useRef(false);
   const [paste, setPaste] = useState<string | null>(null);
+  const pasting = useRef(false);
+  const inputRejected = useRef(false);
+  const [pasteBusy, setPasteBusy] = useState(false);
   const [verify, setVerify] = useState<"attach" | "recording" | null>(null);
   const [password, setPassword] = useState("");
   const [recording, setRecording] = useState<Awaited<ReturnType<TerminalApi["recording"]>> | null>(null);
@@ -84,7 +87,8 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     const data = terminal.onData(value => {
       if (ctrlRef.current && /^[a-zA-Z@\[\]\\^_]$/.test(value)) value = String.fromCharCode(value.toUpperCase().charCodeAt(0) & 31);
       ctrlRef.current = false; setCtrl(false);
-      if (!conn.input(value)) setDropped(true);
+      inputRejected.current = !conn.input(value);
+      setDropped(inputRejected.current);
     });
     const onPaste = (e: ClipboardEvent) => { e.preventDefault(); e.stopImmediatePropagation(); setPaste(e.clipboardData?.getData("text/plain") ?? ""); };
     host.current.addEventListener("paste", onPaste, true);
@@ -125,16 +129,25 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     });
   };
   const confirmPaste = async () => {
-    if (paste === null || !writable) return;
+    const conn = connection.current, terminal = term.current;
+    if (paste === null || !writable || !conn || !terminal || pasting.current) return;
+    const generation = conn.generation;
     const value = paste;
     setPaste(null);
-    // xterm supplies bracketed paste only when the application enabled it. Pace large input below the hub cap.
-    for (const chunk of terminalChunks(value, 12 * 1024)) {
-      if (!connection.current?.writable) { setDropped(true); break; }
-      term.current?.paste(chunk);
-      await new Promise(resolve => setTimeout(resolve, 250));
+    ctrlRef.current = false; setCtrl(false);
+    pasting.current = true; setPasteBusy(true);
+    try {
+      // A takeover/reconnect must cancel the unsent tail, even if the replacement socket is already writable.
+      for (const chunk of terminalPasteChunks(value)) {
+        if (connection.current !== conn || conn.generation !== generation || !conn.writable) { setDropped(true); break; }
+        terminal.paste(chunk);
+        if (inputRejected.current) break;
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+    } finally {
+      pasting.current = false; setPasteBusy(false);
     }
-    term.current?.focus();
+    if (connection.current === conn && conn.generation === generation) terminal.focus();
   };
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 text-sm max-md:pb-[env(safe-area-inset-bottom)] max-md:[&_button]:!min-h-11 max-md:[&_button]:!min-w-11">
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs break-all"><span>{session.machineId} · {session.project} · {session.checkoutRef}</span><span>{attachment.osUser ? t("terminal.osUserName", { user: attachment.osUser }) : t("terminal.osUser")}</span><strong>{t("terminal.scope")}</strong><span data-testid="terminal-ttl">{t("terminal.ttl", { minutes: remaining })}</span></div>
@@ -150,21 +163,21 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     <ErrorNote error={action.error} />
     <div data-testid="terminal-screen" ref={host} className="terminal-screen min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-line-default bg-code-bg p-1" />
     <div role="group" aria-label={t("terminal.keys")} className="flex shrink-0 gap-2 overflow-x-auto pb-1">
-      <Button data-testid="terminal-key-ctrl" variant={ctrl ? "default" : "outline"} aria-pressed={ctrl} disabled={!writable} onClick={() => { ctrlRef.current = !ctrl; setCtrl(!ctrl); term.current?.focus(); }}>{t(ctrl ? "terminal.ctrlOn" : "terminal.ctrl")}</Button>
+      <Button data-testid="terminal-key-ctrl" variant={ctrl ? "default" : "outline"} aria-pressed={ctrl} disabled={!writable || pasteBusy} onClick={() => { ctrlRef.current = !ctrl; setCtrl(!ctrl); term.current?.focus(); }}>{t(ctrl ? "terminal.ctrlOn" : "terminal.ctrl")}</Button>
       {keys.map(key => <Button key={key} data-testid={`terminal-key-${key}`} aria-label={t(`terminal.keyNames.${key}`)} variant="outline" disabled={!writable} onClick={() => { ctrlRef.current = false; setCtrl(false); send(keyBytes[key]); term.current?.focus(); }}>{t(`terminal.keysLabel.${key}`)}</Button>)}
     </div>
     <div className="flex max-h-[35%] shrink-0 flex-col gap-2 overflow-y-auto">
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" data-testid="terminal-keyboard" disabled={!writable} onClick={() => term.current?.focus()}>{t("terminal.keyboard")}</Button>
         <Button data-testid="terminal-copy" variant="outline" onClick={() => void action.run(async () => { const selection = term.current?.getSelection() ?? ""; if (selection) { try { await navigator.clipboard.writeText(selection); } catch { setCopied(selection); } } })}>{t("terminal.copy")}</Button>
-        <Button data-testid="terminal-paste" variant="outline" disabled={!writable} onClick={() => void action.run(async () => { try { setPaste(await navigator.clipboard.readText()); } catch { setPaste(""); } })}>{t("terminal.paste")}</Button>
+        <Button data-testid="terminal-paste" variant="outline" disabled={!writable || pasteBusy} onClick={() => void action.run(async () => { try { setPaste(await navigator.clipboard.readText()); } catch { setPaste(""); } })}>{t("terminal.paste")}</Button>
         <Button variant="outline" aria-pressed={fallback} data-testid="terminal-ime" onClick={() => setFallback(!fallback)}>{t("terminal.ime")}</Button>
         <Button variant="outline" aria-pressed={tabOut} data-testid="terminal-tab-out" onClick={() => { tabOutRef.current = !tabOut; setTabOut(!tabOut); }}>{t(tabOut ? "terminal.tabOut" : "terminal.tabSend")}</Button>
         <Button data-testid="terminal-reader" variant="outline" aria-pressed={reader} onClick={() => { setReader(!reader); if (term.current) term.current.options.screenReaderMode = !reader; }}>{t("terminal.reader")}</Button>
         <Button data-testid="terminal-transfer" variant="outline" disabled={final} onClick={() => setVerify("attach")}>{t("terminal.transfer")}</Button>
         <Button data-testid="terminal-audit" variant="outline" onClick={() => setVerify("recording")}>{t("terminal.audit")}</Button>
       </div>
-      {fallback ? <div className="flex flex-col gap-2"><label>{t("terminal.imeHint")}<textarea data-testid="terminal-ime-input" className={terminalControl} rows={2} value={text} onChange={e => setText(e.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} /></label><Button disabled={!writable || !text} data-testid="terminal-ime-send" onClick={() => { if (composing.current) return; setPaste(text); setText(""); }}>{t("terminal.preview")}</Button></div> : null}
+      {fallback ? <div className="flex flex-col gap-2"><label>{t("terminal.imeHint")}<textarea data-testid="terminal-ime-input" className={terminalControl} rows={2} value={text} onChange={e => setText(e.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} /></label><Button disabled={!writable || !text || pasteBusy} data-testid="terminal-ime-send" onClick={() => { if (composing.current) return; setPaste(text); setText(""); }}>{t("terminal.preview")}</Button></div> : null}
     </div>
     <Dialog open={paste !== null} onOpenChange={open => { if (!open) setPaste(null); }}><DialogContent data-testid="terminal-paste-preview" className="max-h-[90dvh] overflow-y-auto"><DialogTitle>{t("terminal.preview")}</DialogTitle><DialogDescription>{t("terminal.pasteHint")}</DialogDescription><label>{t("terminal.pasteText")}<textarea className={terminalControl} data-testid="terminal-paste-input" rows={4} value={paste ?? ""} onChange={e => setPaste(e.target.value)} /></label><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-sunken p-2 text-xs" data-testid="terminal-paste-visible">{pasteDisplay(paste ?? "")}</pre><p className="text-xs">{t("terminal.pasteSize", { bytes: new TextEncoder().encode(paste ?? "").length })}</p><Button data-testid="terminal-paste-confirm" disabled={!writable || !paste || new TextEncoder().encode(paste).length > 64 * 1024} onClick={() => void confirmPaste()}>{t("terminal.pasteConfirm")}</Button></DialogContent></Dialog>
     <Dialog open={verify !== null} onOpenChange={open => { if (!open && !action.busy) { setVerify(null); setPassword(""); } }}><DialogContent data-testid="terminal-verify" onEscapeKeyDown={e => { if (action.busy) e.preventDefault(); }} onInteractOutside={e => { if (action.busy) e.preventDefault(); }}><DialogTitle>{t(verify === "attach" ? "terminal.transfer" : "terminal.audit")}</DialogTitle><DialogDescription>{t(verify === "attach" ? "terminal.reconnectHint" : "terminal.auditHint")}</DialogDescription><form className="flex flex-col gap-3" onSubmit={e => { e.preventDefault(); authenticate("password"); }}><label>{t("terminal.password")}<input className={terminalControl} data-testid="terminal-step-up" type="password" autoComplete="current-password" value={password} disabled={action.busy} onChange={e => setPassword(e.target.value)} /></label><ErrorNote error={action.error} /><Button data-testid="terminal-verify-confirm" disabled={action.busy || !password}>{t("terminal.verify")}</Button>{me.sso?.linked ? <Button type="button" variant="outline" disabled={action.busy} onClick={() => authenticate("oidc")}>{t("terminal.sso")}</Button> : null}</form></DialogContent></Dialog>
