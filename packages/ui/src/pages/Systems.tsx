@@ -1,3 +1,4 @@
+import { ProjectOnboarding } from "#ui/components/ProjectOnboarding.tsx";
 // Systems (roadmap 19b): the projects that make one product, a repository (service) each. Picked in the sidebar,
 // the pages show the tasks, runs, merge requests and chat of every project in the system.
 import { useMemo, useState } from "react";
@@ -43,6 +44,7 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
           )
         }
       />
+      <ProjectOnboarding />
       {systems.length + outside.length > 0 ? (
         <div className="relative max-w-sm">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />

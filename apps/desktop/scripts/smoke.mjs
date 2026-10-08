@@ -277,7 +277,7 @@ async function startGuideShots(prefix = "") {
       projects: config.projects.map((p) => ({ project: p.name, repo: p.repo, items: [] })),
     }));
     const extra = { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: original.mode === "hub" ? '[data-start-guide] && [data-start-step="connection"][data-state="done"]' : '[data-start-guide] && [data-start-step="connection"][data-state="optional"] && [data-start-step="intake"][data-state="optional"]',
-      HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-start-step]").length === 5', };
+      HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-start-step]").length === 5 && !!document.querySelector("[data-project-onboarding]") && !!document.querySelector("[data-onboarding-task]")', };
     if (state === "ready") extra.HIVE_SMOKE_EXPECT += ' && [data-start-step="agents"][data-state="done"]';
     if (state === "new") extra.HIVE_SMOKE_HASH = "";
     await shoot(`${prefix}start-${state}`, "start", 4000, extra);

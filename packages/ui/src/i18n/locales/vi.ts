@@ -54,6 +54,22 @@ export const vi = {
     "empty": "Không có bản ghi phù hợp. Thử bỏ bộ lọc hoặc chọn phạm vi khác.",
     "reset": "Xóa bộ lọc"
 },
+  onboarding: {
+    title: "Dự án đến task đầu tiên",
+    intro: "Tiếp tục từng bước từ dữ liệu đã lưu. Bạn có thể tạo task trước và thiết lập agent sau.",
+    keyHint: "Chọn dự án hoặc nhập mã mới: chữ thường, số, dấu chấm, gạch dưới và gạch ngang.",
+    repo: "1. Repository của dự án",
+    repoHint: "Chưa thấy repository trên máy chạy agent.",
+    desktopHint: "Mở xDev Hive trên máy có repository, vào Bắt đầu → Dự án để thêm thư mục và cài phần còn thiếu.",
+    agent: "2. Kết nối và agent",
+    agentHint: "Máy cần kết nối, bật nhận việc và có agent đã đăng nhập để chạy task.",
+    policy: "3. Chính sách hiệu lực",
+    policyHint: "Dự án kế thừa chính sách hub; kiểm tra model, quyền sửa và mạng trước khi giao việc.",
+    openPolicy: "Xem chính sách dự án",
+    firstTask: "4. Task đầu tiên",
+    openTask: "Mở task {id}",
+    createHint: "Tạo task lưu công việc vào dự án. Bạn sẽ chọn agent và giao chạy từ trang Task.",
+  },
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Mũi tên lên", down: "Mũi tên xuống", left: "Mũi tên trái", right: "Mũi tên phải", interrupt: "Ctrl-C: ngắt lệnh" },
     osUserName: "OS user: {user}",
