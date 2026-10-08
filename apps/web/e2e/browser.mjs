@@ -2654,8 +2654,10 @@ async function main() {
     await tab.waitFor('retry finished', () => document.querySelector('[data-chat-thread]').textContent.includes('Đã thử lại cùng tệp.'));
     const metrics = await tab.eval(() => {
       const input = document.querySelector('[data-chat-commands] textarea').getBoundingClientRect();
-      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) };
+      const composer = document.querySelector('[data-chat-thread] > footer');
+      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize), composerVisible: !!composer && getComputedStyle(composer).display !== 'none' && composer.getBoundingClientRect().height > 0 };
     });
+    expect(metrics.composerVisible, 'Chat thread footer keeps its composer visible inside the web shell');
     expect(!metrics.overflow && metrics.inputBottom <= metrics.height, `composer stays in viewport: ${JSON.stringify(metrics)}`);
     if (mobile) {
       expect(metrics.font >= 16, 'phone composer text >=16px');
