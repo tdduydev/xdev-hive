@@ -3,7 +3,7 @@ import { SystemOverview } from "#ui/components/SystemOverview.tsx";
 import { Fragment, type ComponentType, type ReactNode } from "react";
 import { Bot, Boxes, ChevronRight, FileText, FolderGit2, GitPullRequestArrow, Layers, ListTodo, Server, Sparkles, Users } from "lucide-react";
 import { cn } from "cn";
-import type { DesktopSettings, DocSummary, Memory, Proposal, Task, TaskStatus } from "@xdev-hive/core";
+import { isCliActionProposalKey, type DesktopSettings, type DocSummary, type Memory, type Proposal, type Task, type TaskStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Skeleton } from "@xdev-hive/ui/components/ui/skeleton";
@@ -697,7 +697,7 @@ function ProposalList({ items, max, empty }: { items: Proposal[]; max: number; e
     <Rows items={items} max={max} empty={empty} more={(n) => t("overview.moreProposals", { count: n })} href="#/proposals">
       {(p) => (
         <li key={p.id} className={ROW}>
-          <p className="font-mono text-xs break-all text-muted-foreground">{p.docKey}</p>
+          <p className="font-mono text-xs break-all text-muted-foreground">{isCliActionProposalKey(p.docKey) ? t("proposals.operation", { id: p.id }) : p.docKey}</p>
           <p className="text-sm break-words">{p.reason}</p>
           <p className="text-xs break-all text-muted-foreground">
             {p.author} · {formatTime(p.createdAt)}

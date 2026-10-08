@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Proposal } from "@xdev-hive/core";
+import { isCliActionProposalKey, type Proposal } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -38,7 +38,7 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
   const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
-  const label = (p: Proposal) => `#${p.id} ${p.docKey}`;
+  const label = (p: Proposal) => isCliActionProposalKey(p.docKey) ? t("proposals.operation", { id: p.id }) : `#${p.id} ${p.docKey}`;
   const finish = (text: string, trouble: boolean) => {
     toast(text, { tone: trouble ? "error" : "info" });
     setPicked(new Set());
@@ -70,7 +70,7 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
     <Page className="mobile-master-detail">
       <PageHeader
         title={t(kind ? "knowledge.pending" : "proposals.title")}
-        subtitle={t("proposals.subtitle")}
+        subtitle={t(kind ? "proposals.docSubtitle" : "proposals.subtitle")}
         actions={
           <ToggleGroup
             type="single"
@@ -150,12 +150,14 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
   const allow = useCan();
   const [open, setOpen] = useState(p.status === "pending");
   const [note, setNote] = useState("");
+  const operation = isCliActionProposalKey(p.docKey);
+  const method = operation ? (JSON.parse(p.content) as { method: string }).method : null;
   const current = useQuery(
-    () => (open ? client.call("docs.get", { key: p.docKey }) : Promise.resolve(undefined)),
+    () => (open && !operation ? client.call("docs.get", { key: p.docKey }) : Promise.resolve(undefined)),
     [client, p.docKey, open],
   );
   const action = useAction();
-  const stale = current.data !== undefined && (current.data?.version ?? 0) !== p.baseVersion;
+  const stale = !operation && current.data !== undefined && (current.data?.version ?? 0) !== p.baseVersion;
   const manage = p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey));
   // A reviewer of docs sees why this one is not theirs to approve: it changes what agents read.
   const contextOnly = p.status === "pending" && !manage && approvalOf(p.docKey) === "contextEdit" && allow(docOwner(p.docKey), "docApprove");
@@ -178,10 +180,8 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
                 {manage ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
                 <Badge tone={STATUS_TONE[p.status]}>{t(`proposalStatus.${p.status}`)}</Badge>
                 <OwnerBadge owner={docOwner(p.docKey)} />
-                <span className="min-w-0 font-mono text-xs break-all">{p.docKey}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t("proposals.basedOn", { id: p.id, version: p.baseVersion })}
-                </span>
+                <span className="min-w-0 font-mono text-xs break-all">{operation ? method : p.docKey}</span>
+                <span className="text-xs text-muted-foreground">{operation ? t("proposals.operation", { id: p.id }) : t("proposals.basedOn", { id: p.id, version: p.baseVersion })}</span>
               </div>
               <p className="font-semibold break-words">{p.reason}</p>
               <div className="text-xs text-muted-foreground">
@@ -192,7 +192,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>
             <Button className="max-md:min-h-11" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? t("proposals.hideChanges") : t("proposals.showChanges")}
+              {operation ? (open ? t("proposals.hideOperation") : t("proposals.showOperation")) : (open ? t("proposals.hideChanges") : t("proposals.showChanges"))}
             </Button>
           </div>
           {open ? (
@@ -203,7 +203,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
                 </Notice>
               ) : null}
               <ErrorNote error={current.error} />
-              {current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
+              {operation ? <><Notice tone="warn">{t("proposals.operationApproval")}</Notice><pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs text-foreground">{p.content}</pre></> : current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
           {contextOnly ? <p className="m-0 text-xs text-fg-muted">{t("proposals.needsContext")}</p> : null}

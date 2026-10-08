@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
-import { HUB_SCOPE, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
+import { HUB_SCOPE, isCliActionProposalKey, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Diff } from "#ui/components/Diff.tsx";
 import { requestErrorText } from "#ui/lib/runs.ts";
@@ -164,7 +164,9 @@ function metaOf(item: InboxItem, t: TFunction): string {
     case "waitingRun": return [t(`inbox.waitingRun.reason.${item.reason}`), item.run.machine, item.run.profileId].filter(Boolean).join(" · ");
     case "cleanup": return t("cleanup.source", { id: item.proposal.runId });
     case "proposal":
-      return t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
+      return isCliActionProposalKey(item.proposal.docKey)
+        ? `${item.proposal.author} · ${t("proposals.operation", { id: item.proposal.id })}`
+        : t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
     case "review": {
       const r = item.run;
       if (!r) return item.task.owner ?? firstLine(item.task.note ?? "", 60);
@@ -455,7 +457,7 @@ function Detail({
   const [error, setError] = useState<string | null>(null);
   // What to change, for a gate sent back (the agent works from it).
   const [note, setNote] = useState("");
-  const docKey = item.kind === "proposal" ? item.proposal.docKey : null;
+  const docKey = item.kind === "proposal" && !isCliActionProposalKey(item.proposal.docKey) ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
   const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
@@ -546,6 +548,11 @@ function Detail({
     }
     case "proposal": {
       const p = item.proposal;
+      if (isCliActionProposalKey(p.docKey)) {
+        body = <><P>{p.reason}</P><Note tone="warning">{t("proposals.operationApproval")}</Note></>;
+        actions = [{ label: t("inbox.proposal.reviewOperation"), kind: "primary", run: go("#/proposals") }, seenAction()];
+        break;
+      }
       const manage = allow(docOwner(p.docKey), approvalOf(p.docKey));
       const stale = doc.data && doc.data.version !== p.baseVersion;
       body = (
