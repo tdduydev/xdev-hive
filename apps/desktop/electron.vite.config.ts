@@ -34,6 +34,8 @@ export default defineConfig({
       },
     ],
     build: {
+      // electron-vite leaves the renderer unminified: a 4.2 MB first chunk to parse at every start.
+      minify: true,
       rollupOptions: { input: resolve(import.meta.dirname, "src/renderer/index.html") },
       // Fonts stay files: the CSP above (font-src from default-src 'self') refuses data: fonts.
       assetsInlineLimit: (file) => (/\.woff2?$/.test(file) ? false : undefined),

@@ -50,7 +50,7 @@ export type Run = (bin: string, args: string[], opts: { cwd?: string; env: NodeJ
 
 export interface SetupHost {
   /** Login-shell PATH; refresh=true after an install may have changed it. */
-  pathEnv(refresh?: boolean): string;
+  pathEnv(refresh?: boolean): string | Promise<string>;
   /** Base env for child processes (already carries pathEnv). */
   env(): NodeJS.ProcessEnv;
   projects(): DesktopProject[];
@@ -247,7 +247,7 @@ export class Setup {
   }
 
   async status(): Promise<SetupReport> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     const clis = await Promise.all(AGENT_CLIS.map((c) => this.#cli(c, pathEnv)));
     const specify = await this.#findSpecify(pathEnv);
     const tools = await Promise.all(this.#catalogTools().map((e) => this.#tool(e, pathEnv)));
@@ -258,7 +258,7 @@ export class Setup {
   }
 
   async item(id: string): Promise<SetupItem> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     if (id === "shim") return this.#shim(pathEnv);
     if (id === "cli:specify") return this.#specify(await this.#findSpecify(pathEnv), pathEnv);
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
@@ -272,7 +272,7 @@ export class Setup {
   }
 
   async install(id: string): Promise<SetupInstallResult> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     const env = { ...this.#host.env(), PATH: pathEnv };
     let output: string;
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
