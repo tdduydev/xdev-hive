@@ -34,6 +34,25 @@ export const vi = {
     "offline": "Kết nối lại máy hoặc chọn máy online trước khi giao chạy.",
     "unknown": "Xem ghi chú và kết quả lượt chạy để xác minh nguyên nhân trước khi thử lại."
   }
+  },
+  history: {
+    "title": "Lịch sử",
+    "sub": "Timeline và tìm kiếm",
+    "hint": "Tìm trong chat, run và chốt SDLC bạn được xem. Audit quản trị chỉ dành cho quản trị viên hub. Timeline phản ánh các bản ghi còn được lưu; run hiển thị trạng thái mới nhất.",
+    "search": "Tìm nội dung",
+    "task": "Mã task",
+    "kind": "Nguồn",
+    "all": "Tất cả",
+    "run": "Run",
+    "chat": "Chat",
+    "gate": "Chốt SDLC",
+    "audit": "Audit quản trị",
+    "since": "Từ ngày",
+    "until": "Đến ngày",
+    "invalidDates": "Ngày kết thúc phải từ ngày bắt đầu trở đi.",
+    "loading": "Đang tải lịch sử…",
+    "empty": "Không có bản ghi phù hợp. Thử bỏ bộ lọc hoặc chọn phạm vi khác.",
+    "reset": "Xóa bộ lọc"
 },
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Mũi tên lên", down: "Mũi tên xuống", left: "Mũi tên trái", right: "Mũi tên phải", interrupt: "Ctrl-C: ngắt lệnh" },

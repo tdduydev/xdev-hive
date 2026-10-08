@@ -1,5 +1,7 @@
 import type { AcceptanceEvidence, EvidenceArtifact } from "#core/evidence.ts";
 import { featureChecks } from "#core/acceptance-criteria.ts";
+import { historyRows } from "#core/history-store.ts";
+import type { HistoryEntry } from "#core/history.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
@@ -10178,6 +10180,21 @@ export class SqliteHive implements HiveBackend {
         }),
 
       // agent: `claude-1` also finds `claude-1.<machine>`. user: a person's own rows, and those of agents on their token.
+      "history.list": (input, actor) => {
+        const hidden = new Set(this.#projectStates().keys());
+        // Permission and research visibility must be applied before counting pages.
+        const visible = (entry: HistoryEntry) => {
+          if (entry.kind === "audit") return this.#isHubAdmin(actor) && !input.project && !input.projects && !input.taskId;
+          if (entry.project === HUB_SCOPE) return this.#isHubAdmin(actor);
+          if (!sees(actor, entry.project) || (hidden.has(entry.project!) && input.project !== entry.project)) return false;
+          if (entry.kind === "run") {
+            const research = this.#researchForTask(entry.project!, entry.taskId!);
+            if (research && !this.#researchVisible(research, actor)) return false;
+          }
+          return true;
+        };
+        return historyRows(db, input, visible);
+      },
       "admin.audit": ({ limit, action, agent, user, run }) =>
         (
           db
