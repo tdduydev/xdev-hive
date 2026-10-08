@@ -4165,7 +4165,10 @@ async function main() {
       await tab.click(`[data-inbox-key^="review:${project}:${taskId}:"]`);
       await tab.eval(() => { window.__closeWarning = ""; });
       await tab.click("button", "Chuyển sang Xong");
-      return tab.waitFor(`close warning for ${taskId}`, () => window.__closeWarning);
+      const warning = await tab.waitFor(`close warning for ${taskId}`, () => window.__closeWarning);
+      // Cancelling keeps the detail open; phones must return to the list before selecting another task.
+      if (mobile) await tab.click("button", "Quay lại danh sách");
+      return warning;
     };
     const warning = await tryClose("CLOSE-NO-REVIEW");
     expect(warning.includes("chưa có lượt review"), `close warning: ${warning}`);
