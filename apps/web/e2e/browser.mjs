@@ -3,6 +3,7 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
+import axe from "axe-core";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
@@ -272,6 +273,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-pages": ["login-token"],
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
+  "cosmic-primitives": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -651,11 +653,41 @@ async function main() {
       }));
       expect(shared.links.every((link) => link.href?.startsWith("#/") && link.href.includes("?status=")), `summary items must link to filters: ${JSON.stringify(shared.links)}`);
       const actions = Object.fromEntries(shared.actions.map((action) => [action.id, action]));
-      expect(actions.quota?.action === "Xem máy" && !actions.quota?.disabled, "attention action should be available on its row");
-      expect(actions.backup?.action === "Đang kiểm tra" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
+      expect(actions.quota?.action === "Xem chi tiết" && !actions.quota?.disabled, "attention action should be available on its row");
+      expect(actions.backup?.action === "Vô hiệu hóa" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
       await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet", "ops?e2e=dashboard-components"], filename: "components-accessibility.json" });
     });
   }
+  await step("cosmic-primitives", async () => {
+    const tab = (current = tabs.admin);
+    await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
+    await tab.go("ops?e2e=dashboard-components");
+    await tab.waitFor("cosmic themes", () => document.querySelectorAll("[data-cosmic-fixture]").length === 2);
+    const styles = await tab.eval(() => [...document.querySelectorAll("[data-cosmic-fixture]")].map(el => ({ theme: el.dataset.theme, font: getComputedStyle(el).fontFamily, surface: getComputedStyle(el.querySelector('[data-slot="card"]')).backgroundColor })));
+    expect(styles.every(style => style.font.includes("Inter")), "Inter must be self-hosted and applied");
+    expect(styles[0].surface === "rgb(29, 28, 32)" && styles[1].surface === "rgb(255, 255, 255)", `nested themes: ${JSON.stringify(styles)}`);
+    await tab.click('[data-cosmic-fixture="dark"] .cosmic-segments button', "Đang chạy");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] .cosmic-segments button[aria-pressed="true"]').textContent === "Đang chạy"), "filter selection must update");
+    await tab.click('[data-cosmic-fixture="dark"] input[role="switch"]');
+    expect(await tab.eval(() => !document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "switch must toggle");
+    await tab.key(" ");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "Space must toggle the focused switch");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    expect(await tab.eval(() => getComputedStyle(document.querySelector('.cosmic-button-glass')).backdropFilter === "none"), "reduced motion disables glass filter");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
+    await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+    await tab.shot(`cosmic-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="light"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("light fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="light"]').getBoundingClientRect().top < 150);
+    await tab.win.webContents.executeJavaScript(axe.source);
+    const contrast = await tab.eval(async () => {
+      const { violations } = await window.axe.run(document.querySelector('[data-cosmic-fixture="light"]'), { runOnly: { type: "rule", values: ["color-contrast"] } });
+      return violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
+    });
+    expect(!contrast.length, `light cosmic contrast: ${JSON.stringify(contrast)}`);
+    await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+  });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {

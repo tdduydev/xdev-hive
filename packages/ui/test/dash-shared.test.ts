@@ -54,3 +54,26 @@ describe("dashboard shared rules", () => {
     assert.match(html, /data-attention="offline"[^>]*>[\s\S]*Máy đang offline[\s\S]*<button type="button" disabled="">Đang kiểm tra<\/button>/);
   });
 });
+
+describe("cosmic primitives", () => {
+  it("renders theme variants without project metrics and labels native controls", async () => {
+    const { DashboardComponentsFixture } = await import("#ui/pages/DashboardComponentsFixture.tsx");
+    const html = renderToStaticMarkup(createElement(DashboardComponentsFixture));
+    assert.match(html, /data-cosmic-fixture="dark"/);
+    assert.match(html, /data-cosmic-fixture="light"/);
+    assert.equal((html.match(/data-variant="blue"/g) ?? []).length, 6);
+    assert.equal((html.match(/role="switch"/g) ?? []).length, 2);
+    assert.match(html, /aria-pressed="true"/);
+    assert.match(html, /không phải số liệu dự án/);
+  });
+  it("preserves disabled selectors and selected filter semantics", async () => {
+    const { SegmentedTabs, Switch } = await import("#ui/components/ui/primitives.tsx");
+    const html = renderToStaticMarkup(createElement(SegmentedTabs, {
+      label: "Status", items: [{ value: "all", label: "All" }, { value: "done", label: "Done", disabled: true }], value: "all", onChange: () => {},
+    }));
+    assert.match(html, /aria-label="Status"/);
+    assert.match(html, /aria-pressed="true"/);
+    assert.match(html, /disabled="" aria-pressed="false"/);
+    assert.match(renderToStaticMarkup(createElement(Switch, { disabled: true, defaultChecked: true }, "Notify")), /role="switch" checked=""/);
+  });
+});

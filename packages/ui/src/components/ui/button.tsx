@@ -3,12 +3,15 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 import { Slot } from "radix-ui"
 
-// xDev Hive DS: md 32 (default) · sm 28 · lg 40; solid fills darken one step on hover, pressed never shrinks.
+// Legacy variant names remain valid for callers while cosmic variants share semantic tokens.
 const buttonVariants = cva(
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md text-[13px]/5 font-semibold whitespace-nowrap transition-[background-color,border-color,color,box-shadow] duration-(--duration-instant) ease-standard outline-none focus-visible:focus-ring disabled:pointer-events-none disabled:cursor-not-allowed disabled:border-disabled-line disabled:bg-disabled disabled:text-disabled-fg aria-invalid:border-danger-solid [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
+        glass: "cosmic-button-glass",
+        solid: "cosmic-button-solid",
+        blue: "cosmic-button-blue",
         default: "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active",
         destructive: "bg-action-danger text-action-danger-fg hover:bg-action-danger-hover active:bg-action-danger-hover",
         outline:
@@ -23,6 +26,7 @@ const buttonVariants = cva(
         link: "h-auto px-1 font-medium text-fg-link underline underline-offset-3 hover:text-fg-link-hover",
       },
       size: {
+        md: "h-[var(--button-h-md)] px-5",
         default: "h-8 px-3",
         xs: "h-6 gap-1 rounded-sm px-2 text-xs [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1.5 rounded-sm px-2.5 text-xs/none",
@@ -34,7 +38,7 @@ const buttonVariants = cva(
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: "glass",
       size: "default",
     },
   }
@@ -42,7 +46,7 @@ const buttonVariants = cva(
 
 function Button({
   className,
-  variant = "default",
+  variant = "glass",
   size = "default",
   asChild = false,
   ...props

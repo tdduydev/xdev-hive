@@ -11,7 +11,7 @@ const badgeVariants = cva(
         default: "bg-primary text-primary-foreground [a&]:hover:bg-primary-hover",
         secondary: "bg-neutral-soft text-neutral [a&]:hover:bg-hover",
         destructive: "bg-danger-soft text-danger [a&]:hover:bg-danger-soft",
-        // Outline chips (project keys, model tags) are square-ish per the DS.
+        // Preserve the outline API; use Tag when a square chip is needed.
         outline: "rounded-xs border-line-default text-fg-secondary [a&]:hover:bg-hover [a&]:hover:text-fg-strong",
         ghost: "[a&]:hover:bg-hover [a&]:hover:text-fg-strong",
         link: "text-fg-link underline-offset-4 [a&]:hover:underline",
