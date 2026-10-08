@@ -249,6 +249,11 @@ const hubApp = createHubApp({
   autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
   releases,
   remoteTerminal: terminalHubEnabled(process.env),
+  // Machine sockets need the pinned identity (SEC-machine-identity); without it the relay refuses every machine.
+  terminalIdentity: {
+    isMachineActor: (machineId, actor) => hive.isMachineActor(machineId, actor),
+    pinnedOwner: (machineId) => hive.machinePinnedOwner(machineId),
+  },
 });
 httpServer.on("request", hubApp);
 const upgradeTerminal = terminalUpgrade(hubApp);

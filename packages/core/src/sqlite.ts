@@ -1974,6 +1974,13 @@ export class SqliteHive implements HiveBackend {
     return output;
   }
 
+  /** The owner pinned with the machine's token, or null while no token is pinned (spec 69: a heartbeat never changes it). */
+  machinePinnedOwner(machineId: string): string | null {
+    if (!this.#machineIdentityReady) return null;
+    const row = this.db.prepare("SELECT owner FROM machines WHERE id = ? AND token_id IS NOT NULL").get(machineId) as Row | undefined;
+    return row ? strOrNull(row.owner) : null;
+  }
+
   /** Use this for machine reporting (including terminal); scoped agent credentials are never machine credentials. */
   isMachineActor(machineId: string, actor: Actor): boolean {
     if (!this.#machineIdentityReady) return false;

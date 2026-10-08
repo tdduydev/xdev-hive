@@ -5,7 +5,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import type { Duplex } from "node:stream";
-import { TERMINAL_FRAME_MAX, TERMINAL_MACHINE_SOCKET_PATH, TERMINAL_MACHINE_WS_PROTOCOL, terminalHubFrameSchema } from "@xdev-hive/core";
+import { sourceHeader, TERMINAL_FRAME_MAX, TERMINAL_MACHINE_SOCKET_PATH, TERMINAL_MACHINE_WS_PROTOCOL, terminalHubFrameSchema } from "@xdev-hive/core";
 import { WsPeer } from "@xdev-hive/core/node";
 import type { MachineTerminalAgent } from "#desktop/main/pty/relay-agent.ts";
 
@@ -14,6 +14,8 @@ const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 export interface MachineSocketOptions {
   hubUrl: string;
   token: () => string;
+  /** The runner's x-hive-agent: with the token it names the machine row (runner.<machine>@<token>) the hub pins. */
+  label: () => string;
   agent: Pick<MachineTerminalAgent, "connected" | "disconnected" | "receive">;
   log?: (line: string) => void;
   /** Plain http is only for a hub on this machine (spec §9: no terminal over plaintext LAN). */
@@ -67,6 +69,8 @@ export class MachineSocket {
       headers: {
         connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": key,
         "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL, authorization: `Bearer ${this.#o.token()}`,
+        // The app itself, not one of its agents: the hub refuses a labelled socket unless it comes from the desktop.
+        "x-hive-agent": this.#o.label(), "x-hive-source": sourceHeader({ via: "desktop" }),
       },
     });
     req.on("upgrade", (res, socket: Duplex, head: Buffer) => {
