@@ -18,8 +18,9 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
+import { AcceptanceEvidence } from "#ui/components/AcceptanceEvidence.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { FlowList } from "#ui/components/FlowCard.tsx";
@@ -31,6 +32,7 @@ import { emptyState } from "#ui/lib/empty.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { fold } from "#ui/lib/text.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
+import { featureItems } from "#ui/lib/features.ts";
 
 export const STAGE_CHIP: Record<SpecStage, ChipKind> = { specify: "neutral", plan: "info", tasks: "info", implement: "running", done: "success" };
 
@@ -215,12 +217,12 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
   const t = useT();
   const detail = useQuery(() => client.call("specs.get", { project: feature.project, dir: feature.dir, branch: feature.branch }), [client, idOf(feature), feature.pushedAt]);
   const files = detail.data?.files;
-  const [tab, setTab] = useState<SpecFile>("spec");
+  const [tab, setTab] = useState<SpecFile | "checks">("spec");
   // The furthest file there is, once it has loaded: what the feature is at now.
   useEffect(() => {
-    if (files) setTab([...SPEC_FILES].reverse().find((f) => files[f] !== null) ?? "spec");
+    if (files) setTab(previous => previous === "checks" ? previous : [...SPEC_FILES].reverse().find((f) => files[f] !== null) ?? "spec");
   }, [files]);
-  const text = files?.[tab] ?? null;
+  const text = tab === "checks" ? null : files?.[tab] ?? null;
   const allow = useCan();
   // Roadmap 20c: tasks.md into board tasks, from the Tasks tab.
   const [importing, setImporting] = useState(false);
@@ -228,11 +230,11 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
   // Roadmap 20d: the next Spec Kit step as an agent's run.
   const next = specNextStep(feature.stage);
   const [running, setRunning] = useState(false);
-  const canRun = next !== null && allow(feature.project, "runDispatch") && allow(feature.project, "taskManage");
+  const canRun = tab !== "checks" && next !== null && allow(feature.project, "runDispatch") && allow(feature.project, "taskManage");
   // A feature on a run's branch is a flow's (roadmap 34b): its gates show here.
   const flowTask = /^ai\/(.+)$/.exec(feature.branch)?.[1] ?? null;
   return (
-    <>
+    <Tabs value={tab} onValueChange={(v) => setTab(v as SpecFile | "checks")} className="min-h-0 flex-1 gap-0">
       <DetailHeader
         chips={
           <>
@@ -241,19 +243,20 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
           </>
         }
         scope={`${manyProjects ? `${feature.project} · ` : ""}specs/${feature.dir}`}
-        when={`${feature.machine} · ${formatTime(feature.pushedAt)} · ${feature.commit}`}
+        when={`${feature.machine} · ${formatTime(feature.pushedAt)} · ${feature.commit.slice(0, 12)}`}
         title={feature.title}
       />
       <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-line-subtle px-6 py-2 md:flex-nowrap">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as SpecFile)}>
+        <div className="min-w-0">
           <TabsList>
             {SPEC_FILES.map((f) => (
               <TabsTrigger key={f} value={f} className="px-3" disabled={!files || files[f] === null}>
                 {t(`specs.file.${f}`)}
               </TabsTrigger>
             ))}
+            <TabsTrigger value="checks" className="min-h-11 px-3" data-spec-checks-tab>{t("features.tab.checks")}</TabsTrigger>
           </TabsList>
-        </Tabs>
+        </div>
         {feature.tasksTotal ? <Progress done={feature.tasksDone} total={feature.tasksTotal} /> : null}
         <span className="ml-auto flex flex-wrap gap-1.5 md:flex-nowrap">
           {canRun ? (
@@ -268,15 +271,15 @@ function SpecReader({ feature, manyProjects }: { feature: SpecFeature; manyProje
           ) : null}
         </span>
       </div>
-      <DetailBody>
+      <TabsContent value={tab} className="flex min-h-0 flex-1 flex-col"><DetailBody>
         <ErrorNote error={detail.error} />
         {importing && canImport ? <ImportTasks feature={feature} onDone={() => setImporting(false)} /> : null}
         {running && canRun ? <SpecRun project={feature.project} step={next} feature={feature} onSent={() => setRunning(false)} /> : null}
         {flowTask ? <FlowList project={feature.project} taskId={flowTask} /> : null}
         {detail.data === null ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.notFound")}</p> : null}
-        {text !== null ? <DocMarkdown text={text} /> : files ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${tab}.md` })}</p> : null}
-      </DetailBody>
-    </>
+        {tab === "checks" ? <AcceptanceEvidence key={idOf(feature)} item={featureItems([], [feature], [])[0]!} /> : text !== null ? <DocMarkdown text={text} /> : files ? <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${tab}.md` })}</p> : null}
+      </DetailBody></TabsContent>
+    </Tabs>
   );
 }
 

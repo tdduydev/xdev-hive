@@ -2554,6 +2554,10 @@ describe("runs on the hub", () => {
     assert.deepEqual([record!.runId, record!.status, record!.machine, record!.profileId, record!.commits], [run.id, "succeeded", "duy-mbp", "claude-a", 1]);
     assert.match(record!.summary ?? "", /Implemented T-1\./);
     const full = (await hive.call("runs.get", { machineId: record!.machineId, runId: run.id }, admin))!;
+    const local = runner.store.get(run.id)!;
+    assert.match(local.headSha!, /^[a-f0-9]{40}$/);
+    assert.equal(full.headSha, git(local.worktree!, "rev-parse", "HEAD"));
+    assert.equal(record!.headSha, full.headSha);
     assert.match(unstamp(full.log ?? ""), /▶ Bash: npm test\n  ✓ ok 1 - adds/);
     // What it changed goes with it, for the web's Changes tab.
     assert.match(full.patch ?? "", /^diff --git a\//m);
