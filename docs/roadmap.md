@@ -392,3 +392,5 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - [x] **codex-mcp-approve** (pilot xdev-auth ngày 29/9): Codex 0.157 từ chối mọi tool MCP có ghi khi chạy headless ("MCP tool call requires approval, but approval policy is never"), nên agent Codex không claim task hay ghi memory được và AUTH-4 dừng ngay. Run `codex exec` của Hive thêm `-c mcp_servers.xdev-hive.default_tools_approval_mode="approve"` (container: `hive`), block Hive trong `~/.codex/config.toml` có dòng đó; đã thử trên hive tạm: có khoá thì ghi được, không có thì bị chặn.
 
 - [x] **board-refresh**: Board ngừng làm mới ngay khi hết run chờ/chạy, trước lúc run vừa xong được ghi MR (push + mở MR/PR chạy sau khi lưu trạng thái), nên thẻ task thiếu badge MR. Runner giờ đánh dấu run `finishing` (trong `list()`) tới khi xong ghi chú Hive, MR và run tiếp theo; Board coi đó là còn hoạt động.
+
+- [x] **UX-70-QUALITY. Đánh giá chất lượng agent/model**: thẻ Chọn model có cohort 30 ngày theo implement đầu tiên; mẫu số task, review/CI quan sát, retry không tính quota, trung vị thời gian/chi phí chỉ trên task đủ dữ liệu. Lọc theo nhóm; không tác động tự học hay xếp hạng model.

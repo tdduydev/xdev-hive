@@ -9,6 +9,7 @@ import {
   learningStats,
   median,
   proposeTier,
+  qualityStats,
   selectModel,
   type Actor,
   type LearningRun,
@@ -179,6 +180,8 @@ describe("model learning on the hub", () => {
     await hive.call("modelLearning.set", { project: "app", lock: { kind: "ui", size: "m", locked: true } }, lead);
 
     const before = await hive.call("modelLearning.get", { project: "app" }, viewer);
+    assert.equal(before.quality.reduce((n, r) => n + r.tasks, 0), 32);
+    assert.equal(before.quality.find((r) => r.risk === "high")?.tasks, 1);
     const stat = before.stats.find((s) => s.kind === "feature" && s.size === "m")!;
     assert.deepEqual([stat.tier, stat.plan, stat.tasks, stat.clean, stat.costMedian, stat.tokensMedian], ["light", "claude", 10, 9, 4, 2200]);
     const cell = (view: typeof before, kind: string, size: string) => view.cells.find((c) => c.kind === kind && c.size === size)!;
@@ -222,6 +225,19 @@ describe("model learning on the hub", () => {
     hive.close();
   });
 
+  it("quality retains legacy metadata and unfinished tasks, but recent planning cannot refresh an old implementation", async () => {
+    const { hive, finished } = await hub();
+    const id = await finished("feature", "m", "standard", { status: "doing" });
+    hive.db.prepare("UPDATE run_records SET tier = NULL, model = NULL WHERE task_id = ?").run(id);
+    let view = await hive.call("modelLearning.get", { project: "app" }, viewer);
+    assert.equal(view.stats.length, 0);
+    assert.deepEqual([view.quality[0]?.tasks, view.quality[0]?.done, view.quality[0]?.model, view.quality[0]?.tier], [1, 0, null, null]);
+    hive.db.prepare("UPDATE run_records SET finished_at = '2026-08-01T00:00:00.000Z' WHERE task_id = ? AND role = 'implement'").run(id);
+    view = await hive.call("modelLearning.get", { project: "app" }, viewer);
+    assert.equal(view.quality.length, 0, "a recent review alone cannot refresh the cohort window");
+    hive.close();
+  });
+
   it("lets the project's settings right change it, and its readers read it", async () => {
     const { hive } = await hub();
     await assert.rejects(hive.call("modelLearning.set", { project: "app", enabled: false }, viewer), (err) => err instanceof HiveError && err.code === "forbidden");
@@ -260,5 +276,30 @@ describe("model learning on the hub", () => {
     await hive.call("modelLearning.set", { project: "app", lock: { kind: "feature", size: "m", locked: false }, enabled: false }, lead);
     assert.equal((await dispatch(third!)).tier, "standard", "learning off");
     hive.close();
+  });
+});
+
+
+describe("quality cohorts", () => {
+  it("keeps missing evidence out of denominators and incomplete task totals out of medians", () => {
+    const base = { machine: "m", profile: "p", model: "model-a", effort: "high", risk: "normal", taskStatus: "done",
+      startedAt: "2026-10-01T00:00:00.000Z", finishedAt: "2026-10-01T00:01:00.000Z" };
+    const rows = qualityStats([
+      run({ ...base, taskId: "A", pipeline: "failed" }),
+      run({ ...base, taskId: "A", role: "review", verdict: "changes" }),
+      run({ ...base, taskId: "A", createdAt: "2026-10-01T01:00:00.000Z", model: "model-b", pipeline: "success", costUsd: null }),
+      run({ ...base, taskId: "B", taskStatus: "review", costUsd: 0, startedAt: null }),
+      run({ ...base, taskId: "B", role: "review", verdict: null, status: "failed", costUsd: 0, startedAt: null }),
+      run({ ...base, taskId: "C", status: "rate_limited" }),
+      run({ ...base, taskId: "C", createdAt: "2026-10-01T01:00:00.000Z" }),
+      run({ ...base, taskId: "D", risk: "high", model: null, tier: null }),
+      run({ ...base, taskId: "E", role: "plan" }),
+    ]);
+    const row = rows.find((r) => r.model === "model-a")!;
+    assert.deepEqual([row.tasks, row.done, row.retryTasks, row.retries], [3, 2, 1, 1]);
+    assert.deepEqual([row.reviewPass, row.reviewObserved, row.testPass, row.testObserved], [0, 1, 0, 1]);
+    assert.deepEqual([row.costObserved, row.costMedian, row.durationObserved, row.durationMedian], [2, 1, 2, 150000]);
+    assert.equal(rows.length, 2, "high risk / unknown model stays separate; plan-only task excluded");
+    assert.equal(rows.find((r) => r.model === null)?.tasks, 1);
   });
 });

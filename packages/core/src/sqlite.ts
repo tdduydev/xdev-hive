@@ -77,6 +77,7 @@ import {
   learnedTasks,
   learningDue,
   learningStats,
+  qualityStats,
   proposeTier,
   type LearningChange,
   type LearningRun,
@@ -3650,26 +3651,29 @@ export class SqliteHive implements HiveBackend {
    * high risk: a high-risk task starts a tier up, so it says nothing of its cell. Classify runs are not a try of the task.
    */
   // Plans contribute to the task cost, but their tier and errors must not become implementation attempts.
-  #learningRuns(project: string): LearningRun[] {
+  #learningRuns(project: string, quality = false): LearningRun[] {
     const since = new Date(this.#opts.now().getTime() - LEARN_DAYS * 86_400_000).toISOString();
     const rows = this.db
       .prepare(
         `SELECT r.task_id, CASE WHEN json_extract(r.plan, '$.phase') = 'plan' THEN 'plan' ELSE r.role END AS role, r.status, r.verdict, r.tier, r.kind AS plan, r.created_at, json_extract(r.mr, '$.pipeline') AS pipeline,
-           t.kind AS task_kind, t.size AS task_size, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
+           t.kind AS task_kind, t.size AS task_size, t.risk, t.status AS task_status, r.machine_id, r.profile_id, r.model, r.effort, r.started_at, r.finished_at, c.cost_usd, c.priced, c.input_tokens, c.cache_write_tokens, c.cache_read_tokens, c.output_tokens
          FROM run_records r
          JOIN tasks t ON t.id = r.task_id AND t.project = r.project
          LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id
-         WHERE r.project = ?1 AND r.role != 'classify' AND t.status = 'done' AND t.kind IS NOT NULL AND t.size IS NOT NULL
-           AND COALESCE(t.risk, 'normal') != 'high'
-           AND (SELECT MAX(x.finished_at) FROM run_records x WHERE x.project = r.project AND x.task_id = r.task_id) >= ?2`,
+         WHERE r.project = ?1 AND r.role != 'classify' ${quality ? '' : "AND t.status = 'done' AND t.kind IS NOT NULL AND t.size IS NOT NULL AND COALESCE(t.risk, 'normal') != 'high'"}
+           AND (SELECT MAX(x.finished_at) FROM run_records x WHERE x.project = r.project AND x.task_id = r.task_id ${quality ? "AND x.role = 'implement' AND COALESCE(json_extract(x.plan, '$.phase'), '') != 'plan'" : ''}) >= ?2`,
       )
       .all(project, since) as Row[];
     return rows
-      .filter((r) => (LEARNED_KINDS as readonly string[]).includes(str(r.task_kind)))
+      .filter((r) => quality || (LEARNED_KINDS as readonly string[]).includes(str(r.task_kind)))
       .map((r) => {
         const parts = [r.input_tokens, r.cache_write_tokens, r.cache_read_tokens, r.output_tokens].filter((v) => v != null).map(Number);
         return {
           taskId: str(r.task_id),
+          risk: strOrNull(r.risk), taskStatus: str(r.task_status),
+          machine: strOrNull(r.machine_id), profile: strOrNull(r.profile_id),
+          model: strOrNull(r.model), effort: strOrNull(r.effort), pipeline: strOrNull(r.pipeline),
+          startedAt: strOrNull(r.started_at), finishedAt: strOrNull(r.finished_at),
           taskKind: str(r.task_kind) as TaskKind,
           taskSize: str(r.task_size) as TaskSize,
           role: str(r.role),
@@ -3711,7 +3715,7 @@ export class SqliteHive implements HiveBackend {
       by: str(r.changed_by),
       at: str(r.at),
     }));
-    return { project, enabled: this.#learningOn(project), routing: own?.enabled !== false, learnedAt: at ? str(at.value) : null, stats, cells, log };
+    return { project, enabled: this.#learningOn(project), routing: own?.enabled !== false, learnedAt: at ? str(at.value) : null, stats, quality: qualityStats(this.#learningRuns(project, true)), cells, log };
   }
 
   /**
