@@ -61,6 +61,10 @@ export function AgentAssignment({ tasks, onChanged, onAssigned }: { tasks: Task[
       {current.machineId === machineId && position >= 0 ? <span data-agent-position>{t("assignment.position", { n: position + 1 })}</span> : null}
       <span data-agent-waiting>{waiting ? requestErrorText(waiting) : t("assignment.waiting")}</span>
     </div> : null}
+    {current && can ? <div className="flex flex-wrap gap-2">
+      {current.hold && editable ? <Button variant="outline" className="max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => { await client.call("tasks.assign", assignmentInput(single!.id, current)); refresh(); })}>{t("assignment.retry")}</Button> : null}
+      <Button data-assign-remove variant="outline" className="max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => { await client.call("tasks.unassign", { id: single!.id }); refresh(); })}>{t("assignment.remove")}</Button>
+    </div> : null}
     {editable ? <>
       <label htmlFor={`${id}-machine`} className="text-xs font-medium">{t("assignment.machine")}</label>
       <NativeSelect id={`${id}-machine`} data-assign-machine wrapperClassName="w-full min-w-0" className={assignmentControl} value={machineId} onChange={(e) => { setMachine(e.target.value); setProfile(""); setBefore(""); }} disabled={action.busy}>
@@ -83,10 +87,6 @@ export function AgentAssignment({ tasks, onChanged, onAssigned }: { tasks: Task[
       {!machines.loading && !fit.length ? <p className="text-xs">{t("assignment.noMachines")}</p> : null}
       <Button data-assign-save className="max-md:min-h-11" disabled={!machine || action.busy || !!profileId && !machine.profiles.some((p) => p.id === profileId && p.enabled)} onClick={assign}>{t("assignment.assign")}</Button>
     </> : null}
-    {current && can ? <div className="flex flex-wrap gap-2">
-      {current.hold && editable ? <Button variant="outline" className="max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => { await client.call("tasks.assign", assignmentInput(single!.id, current)); refresh(); })}>{t("assignment.retry")}</Button> : null}
-      <Button data-assign-remove variant="outline" className="max-md:min-h-11" disabled={action.busy} onClick={() => void action.run(async () => { await client.call("tasks.unassign", { id: single!.id }); refresh(); })}>{t("assignment.remove")}</Button>
-    </div> : null}
     {!can ? <p className="text-xs text-fg-secondary">{t("assignment.noRight")}</p> : null}
     <ErrorNote error={action.error ?? machines.error ?? queue.error ?? counts.error ?? requests.error} />
   </section>;

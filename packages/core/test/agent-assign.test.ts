@@ -133,23 +133,20 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.deepEqual((await sent(mbp)).map((r) => r.taskId), ["T-2"], "the place is free again");
   });
 
-  it("leaves alone a task someone already started another way", async () => {
-    const { hive, beat, push, sent, take } = await hub();
+  it("does not dispatch an assigned task twice when a manual run is accepted but not reported", async () => {
+    const { hive, beat, push, sent, take, later } = await hub();
     await beat(mbp);
-    await beat(mini);
-    await hive.call("tasks.assign", { id: "T-2", machineId: mbp.name }, lead);
+    later(31);
     await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
-    const first = await sent(mbp);
-    assert.deepEqual(first.map((r) => r.taskId), ["T-2"], "the one place went to the first of the queue");
-    // Meanwhile a person runs T-1 by hand on the other machine, which takes it but has not pushed the run yet.
-    const byHand = await hive.call("runs.dispatch", { machineId: mini.name, project: "app", taskId: "T-1" }, lead);
-    await take(mini, byHand.id, "T-1");
-    // duy-mbp's place comes free, and T-1 is next in its queue — but it is already running on lan-mini.
-    await take(mbp, first[0]!.id, "T-2");
-    await push(mbp, "R-T-2", "T-2", "succeeded");
-    assert.deepEqual(await sent(mbp), [], "never a second run of the same task");
-    const queue = await hive.call("tasks.agentQueue", { machineId: mbp.name }, lead);
-    assert.equal(queue.find((q) => q.task.id === "T-1")!.waiting?.key, "errors.agentTaskBusy");
+    hive.db.prepare("UPDATE tasks SET agent_hold = ? WHERE id = 'T-1'").run(JSON.stringify({ key: "errors.machineOffline", message: "Offline", vars: { machine: "duy-mbp" } }));
+    await beat(mbp);
+    const byHand = await hive.call("runs.dispatch", { machineId: mbp.name, project: "app", taskId: "T-1" }, lead);
+    await take(mbp, byHand.id, "T-1");
+    // Let the assignment scheduler try again, so the reservation (not the hold) prevents a duplicate.
+    hive.db.prepare("UPDATE tasks SET agent_hold = NULL WHERE id = 'T-1'").run();
+    assert.deepEqual(await sent(mbp), [], "accepted requests still reserve the task");
+    await push(mbp, "R-T-1", "T-1", "running");
+    assert.deepEqual(await sent(mbp), [], "reported runs also reserve it");
   });
 
   it("keeps a hand dispatch on the plan the task is pinned to", async () => {
@@ -310,6 +307,36 @@ describe("a task given to one agent (roadmap 50)", () => {
     assert.equal((await hive.call("tasks.claim", { id: "T-1" }, onMbp)).claimed, true);
     // A hub admin may still take it, to unblock a task whose agent will never come back.
     assert.equal((await hive.call("tasks.claim", { id: "T-2" }, onMini)).claimed, true, "nobody's task is claimed as before");
+  });
+
+  it("claims a dispatched run with only the profile.machine label and rejects other machines", async () => {
+    const { hive, beat, take, later } = await hub();
+    await beat(mbp);
+    later(31);
+    await beat(mini);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    hive.db.prepare("UPDATE tasks SET agent_hold = ? WHERE id = 'T-1'").run(JSON.stringify({ key: "errors.machineOffline", message: "Offline", vars: { machine: "duy-mbp" } }));
+    await beat(mbp);
+    const run = await hive.call("runs.dispatch", { project: "app", taskId: "T-1" }, lead);
+    assert.equal(run.machineId, mbp.name, "automatic selection respects the assignment");
+    await take(mbp, run.id, "T-1");
+    const withoutSource = (actor: Actor): Actor => ({ ...actor, source: { via: "mcp" }, run: "R-T-1" });
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, withoutSource(onMini)), fails("errors.taskAssignedElsewhere"));
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, { ...onMbp, source: onMini.source }), fails("errors.taskAssignedElsewhere"));
+    await assert.rejects(hive.call("tasks.claim", { id: "T-1" }, { ...withoutSource(onMbp), agent: "claude-1.duy-mbp-extra" }), fails("errors.taskAssignedElsewhere"));
+    assert.equal((await hive.call("tasks.claim", { id: "T-1" }, withoutSource(onMbp))).claimed, true);
+  });
+
+  it("refuses dispatch to a different machine before creating a request, with unassign as recovery", async () => {
+    const { hive, beat, later } = await hub();
+    await beat(mbp);
+    later(31);
+    await beat(mini);
+    await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name }, lead);
+    await assert.rejects(hive.call("runs.dispatch", { project: "app", taskId: "T-1", machineId: mini.name }, admin), fails("errors.dispatchAssignedElsewhere"));
+    assert.equal((await hive.call("runs.requests", {}, admin)).length, 0);
+    await hive.call("tasks.unassign", { id: "T-1" }, lead);
+    assert.equal((await hive.call("runs.dispatch", { project: "app", taskId: "T-1", machineId: mini.name }, lead)).machineId, mini.name);
   });
 
   it("is what a leader proposes and a project manager confirms", async () => {
