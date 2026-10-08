@@ -184,12 +184,21 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
   const { specText, ...scope } = context;
   await db.call("evidence.record", { ...scope, criterionId: "AC-1", criterion: "AC-1: Kết quả được lưu qua lần tải lại", outcome: "passed", note: "Đã tải lại ứng dụng và đối chiếu dữ liệu lưu trong SQLite." }, admin);
   db.close();
+  const store = new RunStore(path.join(work, "runs.db"));
+  const run = store.insert({ project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+  store.update(run.id, { status: "succeeded", headSha: "c".repeat(40), branch: source.specBranch, finishedAt: new Date().toISOString() });
+  store.db.close();
   for (const phone of [false, true]) {
     await shoot(phone ? "acceptance-mobile" : "acceptance-desktop", `specs?project=${project}&dir=${source.specDir}&branch=ai%2F${taskId}`, 2500, {
       ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
       HIVE_SMOKE_CLICK: "[data-spec-checks-tab]",
       HIVE_SMOKE_EXPECT: "[data-acceptance-evidence] && [data-evidence-result=passed] && [data-evidence-form]",
       HIVE_SMOKE_ASSERT: `document.querySelector('[data-evidence-progress]')?.textContent.includes('1/2') && document.body.textContent.includes('${"a".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth`,
+    });
+    await shoot(phone ? "run-revision-mobile" : "run-revision-desktop", `runs?run=${run.id}`, 2500, {
+      ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+      HIVE_SMOKE_EXPECT: "[data-run-head-sha]",
+      HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
     });
   }
   await gitlab.close();
