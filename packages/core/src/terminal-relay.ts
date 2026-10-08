@@ -69,7 +69,8 @@ export const terminalMachineFrameSchema = z.discriminatedUnion("type", [
   /** First frame on every connection: what the supervisor still runs, so the hub reconciles after either side restarted. */
   z.strictObject({ type: z.literal("hello"), protocol: z.literal(1), sessions: z.array(sessionId).max(TERMINAL_LIMITS.maxSessionsPerMachine * 4) }),
   z.strictObject({ type: z.literal("output"), sessionId, epoch: seq, outputSeq: seq, data: data(TERMINAL_LIMITS.outputFrameBytes) }),
-  z.strictObject({ type: z.literal("inputAck"), sessionId, inputSeq: seq }),
+  /** With the epoch it was written under: after a takeover the new tab counts from 1 again, and must not get old acks. */
+  z.strictObject({ type: z.literal("inputAck"), sessionId, epoch: seq, inputSeq: seq }),
   /** Metadata only, for the hub's audit; the browser sees no ack and the person types again. */
   z.strictObject({ type: z.literal("inputReject"), sessionId, inputSeq: seq, reason: z.enum(TERMINAL_INPUT_REJECTS) }),
   z.strictObject({ type: z.literal("gap"), sessionId, firstAvailableSeq: seq }),

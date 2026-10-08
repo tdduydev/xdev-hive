@@ -238,8 +238,12 @@ describe("69e relay: sequence and dedup", () => {
     await new Promise((r) => setTimeout(r, 400));
     assert.equal(m.of("input").length, 1);
     assert.equal(b.of("inputAck").length, 0);
-    m.send({ type: "inputAck", sessionId: id, inputSeq: 1 } satisfies TerminalMachineFrame);
+    // An ack under another epoch is not this tab's.
+    m.send({ type: "inputAck", sessionId: id, epoch: 3, inputSeq: 1 } satisfies TerminalMachineFrame);
+    m.send({ type: "inputAck", sessionId: id, epoch: 0, inputSeq: 1 } satisfies TerminalMachineFrame);
     await b.wait("inputAck", (f) => f.inputSeq === 1);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(b.of("inputAck").length, 1);
 
     // A forged epoch never reaches the machine, and is counted.
     b.send({ type: "input", epoch: 7, inputSeq: 2, data: Buffer.from("x").toString("base64") });

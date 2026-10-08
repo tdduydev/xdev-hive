@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import type { TerminalHubFrame, TerminalMachineFrame } from "@xdev-hive/core";
+import { TERMINAL_MACHINE_WS_PROTOCOL, type TerminalHubFrame, type TerminalMachineFrame } from "@xdev-hive/core";
+import { WsPeer } from "@xdev-hive/core/node";
 import type { IPty } from "node-pty";
+import { MachineSocket } from "#desktop/main/pty/machine-socket.ts";
 import { MachineTerminalAgent, type AgentHost, type AgentPty, type AgentRecorder } from "#desktop/main/pty/relay-agent.ts";
 import { PtySupervisor, type Audit } from "#desktop/main/pty/supervisor.ts";
 import { ResourceLocks } from "#desktop/main/resource-locks.ts";
@@ -241,6 +245,51 @@ describe("69e machine agent with the real supervisor", { skip: process.platform 
     } finally {
       t.agent.dispose();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("69e machine socket", () => {
+  it("connects out with the bearer in the header only, reconnects after a drop, and never dials plaintext to a remote hub", async () => {
+    const seen: Array<{ auth: string | undefined; url: string | undefined }> = [];
+    const hellos: unknown[] = [];
+    const peers: WsPeer[] = [];
+    const server = createServer();
+    server.on("upgrade", (req, socket, head) => {
+      seen.push({ auth: req.headers.authorization, url: req.url });
+      const accept = createHash("sha1").update(`${req.headers["sec-websocket-key"]}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\nSec-WebSocket-Protocol: ${TERMINAL_MACHINE_WS_PROTOCOL}\r\n\r\n`);
+      const p = new WsPeer(socket, { maxPayload: 1 << 16, server: true, onText: (t) => hellos.push(JSON.parse(t)), onClose: () => undefined }, head);
+      peers.push(p);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    const events: string[] = [];
+    const agent = {
+      connected: (send: (f: TerminalMachineFrame) => boolean) => { events.push("up"); send({ type: "hello", protocol: 1, sessions: [] }); },
+      disconnected: () => events.push("down"),
+      receive: (f: TerminalHubFrame) => events.push(f.type),
+    };
+    const sock = new MachineSocket({ hubUrl: `http://127.0.0.1:${port}`, token: () => "hive_machine_token", agent, minBackoffMs: 30, maxBackoffMs: 60 });
+    const until = async (check: () => boolean) => { const end = Date.now() + 3000; while (!check()) { if (Date.now() > end) throw new Error(`waited: ${events}`); await new Promise((r) => setTimeout(r, 20)); } };
+    try {
+      sock.start();
+      await until(() => hellos.length === 1);
+      assert.deepEqual(seen[0], { auth: "Bearer hive_machine_token", url: "/api/terminal/machine-socket" });
+      peers[0]!.send({ type: "ping", nonce: "n1" });
+      await until(() => events.includes("ping"));
+      peers[0]!.socket.destroy();
+      await until(() => hellos.length === 2);
+      assert.deepEqual(events.filter((e) => e !== "ping"), ["up", "down", "up"]);
+      const logs: string[] = [];
+      const remote = new MachineSocket({ hubUrl: "http://hub.example.test", token: () => "t", agent, log: (l) => logs.push(l) });
+      remote.start();
+      assert.match(logs[0]!, /not https/);
+      remote.stop();
+    } finally {
+      sock.stop();
+      server.close();
+      for (const p of peers) p.socket.destroy();
     }
   });
 });
