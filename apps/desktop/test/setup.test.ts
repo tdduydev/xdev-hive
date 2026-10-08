@@ -36,7 +36,7 @@ const SPECIFY = `case "$1" in
   integration) echo '{"version":"1.0.14.dev0","installed_integrations":["claude","'"$3"'"]}' > .specify/integration.json && echo "installed $3" ;;
 esac`;
 
-function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry"> = {}) {
+function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry" | "writable"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
   const home = tmp("home");
@@ -45,7 +45,7 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
   fakeBin(bin, "claude", 'echo "2.1.283 (Claude Code)"');
   if (opts.npm !== false) {
     // `npm install -g @openai/codex` "installs" codex next to it.
-    fakeBin(bin, "npm", `[ "$3" = "@openai/codex" ] && printf '#!/bin/sh\\necho codex-cli 0.157.1\\n' > "${bin}/codex" && chmod +x "${bin}/codex"; echo "added 1 package"`);
+    fakeBin(bin, "npm", `[ "$1" = "prefix" ] && echo /usr && exit 0; [ "$3" = "@openai/codex" ] && printf '#!/bin/sh\\necho codex-cli 0.157.1\\n' > "${bin}/codex" && chmod +x "${bin}/codex"; echo "added 1 package"`);
     fakeBin(bin, "npx", `[ "$3" = "init" ] && mkdir -p .codegraph && echo db > .codegraph/codegraph.db; echo "npx ok"`);
   }
   if (opts.uv) {
@@ -73,6 +73,8 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
     ...(opts.holdCli ? { holdCli: opts.holdCli } : {}),
     ...(opts.platform ? { platform: opts.platform } : {}),
     ...(opts.registry ? { registry: opts.registry } : {}),
+    // npm's fake global prefix is /usr: writable unless a test says not, whatever the machine running the tests allows.
+    writable: opts.writable ?? (() => true),
     tools: () => hub.tools,
     toolTrust: () => hub.trust,
   });
@@ -128,6 +130,23 @@ describe("Setup: this machine", () => {
     assert.equal(res.item.state, "installed");
     assert.match(res.item.detail, /codex-cli 0\.157\.1/);
     assert.match(res.output, /added 1 package/);
+  });
+
+  it("installs and upgrades under ~/.local when npm's global prefix needs root (Node from apt)", async () => {
+    const m = machine({ platform: "linux", writable: (dir) => dir !== "/usr/lib/node_modules" });
+    await m.setup.install("cli:codex");
+    const prefix = path.join(m.home, ".local");
+    assert.ok(calls(m.bin).includes(`npm install -g @openai/codex --prefix ${prefix} telemetry=`), calls(m.bin).join("\n"));
+
+    const own = machine({ platform: "linux", writable: () => true });
+    await own.setup.install("cli:codex");
+    assert.ok(calls(own.bin).includes("npm install -g @openai/codex telemetry="), "a prefix the user can write is left alone");
+
+    const codex = AGENT_CLIS.find((c) => c.kind === "codex")!;
+    assert.deepEqual(cliUpgrade(codex, "/home/u/.local/lib/node_modules/@openai/codex/bin/codex.js", "/home/u/.local/bin/codex", "/home/u")?.args, [
+      "install", "-g", "@openai/codex@latest", "--prefix", "/home/u/.local",
+    ]);
+    assert.deepEqual(cliUpgrade(codex, "/usr/lib/node_modules/@openai/codex/bin/codex.js", "/usr/bin/codex", "/home/u")?.args, ["install", "-g", "@openai/codex@latest"]);
   });
 
   it("without npm, says to install Node.js and offers no button", async () => {
