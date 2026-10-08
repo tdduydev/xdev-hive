@@ -1,6 +1,6 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import { HUB_SCOPE, type HubInfo, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
+import { HUB_SCOPE, isCliActionProposalKey, type HubInfo, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
@@ -136,7 +136,8 @@ export function buildInbox(src: InboxSources): InboxItem[] {
 
   for (const p of src.proposals ?? []) {
     if (p.status !== "pending" || !can(docProject(p.docKey), approvalOf(p.docKey))) continue;
-    items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: p.docKey, proposal: p });
+    const operation = isCliActionProposalKey(p.docKey);
+    items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: operation ? docProject(p.docKey) ?? "" : p.docKey, proposal: p });
   }
 
   for (const p of src.cleanup ?? []) {

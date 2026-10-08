@@ -18,6 +18,71 @@ async function connect(hive: SqliteHive, name = "claude@duy", opts: { role?: "ag
 const text = (r: Awaited<ReturnType<Client["callTool"]>>) => (r.content as Array<{ text: string }>)[0]!.text;
 
 describe("mcp tools", () => {
+  it("shows CLI leader tools only to an interactive credential with the matching grant", async () => {
+    const hive = new SqliteHive(":memory:");
+    const base: Actor = { name: "claude@owner", role: "member", mcpCredential: true, agent: "claude", onBehalf: "owner", access: { projects: { app: "lead" } } };
+    const names = async (actor: Actor) => (await (await connectAs(hive, actor)).listTools()).tools.map((tool) => tool.name);
+    const lead = await names(base);
+    for (const tool of ["task_create", "task_set_deps", "task_status", "task_assign", "run_dispatch", "plan_create"]) assert.ok(lead.includes(tool), tool);
+    const member = await names({ ...base, access: { projects: { app: "member" } } });
+    assert.ok(member.includes("task_status"));
+    assert.ok(!member.includes("task_create"));
+    assert.ok(!member.includes("run_dispatch"));
+    assert.ok(!member.includes("plan_create"));
+    const viewerGrant = await names({ ...base, access: { projects: { app: "viewer" } } });
+    assert.ok(!viewerGrant.includes("task_create"));
+    assert.ok(!viewerGrant.includes("propose_merge"));
+    for (const actor of [{ ...base, role: "viewer" as const }, { ...base, runCredential: { project: "app", task: "T-1", run: "R-1", machine: "m", readOnly: false } }, { ...base, chatReply: 1 }]) {
+      const found = await names(actor);
+      assert.ok(!found.includes("task_create"));
+      assert.ok(!found.includes("run_dispatch"));
+    }
+  });
+
+  it("creates a CLI plan atomically with agent audit and rejects a cyclic plan", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin: Actor = { name: "admin", role: "admin" };
+    await hive.call("tasks.create", { id: "seed", project: "app", title: "Seed" }, admin);
+    const actor: Actor = { name: "codex@owner", role: "member", mcpCredential: true, access: { projects: { app: "lead" } }, agent: "codex", onBehalf: "owner", source: { via: "mcp" } };
+    const client = await connectAs(hive, actor);
+    const plan = { project: "app", spec: { key: "project/app/cli-plan", title: "CLI plan", content: "Build the feature" }, tasks: [
+      { id: "T-1", title: "First", acceptance: "First works", dependsOn: [] },
+      { id: "T-2", title: "Second", acceptance: "Second works", dependsOn: ["T-1"] },
+    ], batches: [{ title: "One", taskIds: ["T-1"] }, { title: "Two", taskIds: ["T-2"] }] };
+    const created = await client.callTool({ name: "plan_create", arguments: plan });
+    assert.equal(created.isError, undefined, text(created));
+    assert.deepEqual(JSON.parse(text(created)).taskIds, ["T-1", "T-2"]);
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).find((task) => task.id === "T-2")?.dependsOn, ["T-1"]);
+    assert.equal((await hive.call("admin.audit", { action: "tasks.create" }, admin)).find((entry) => entry.target === "T-2")?.onBehalf, "owner");
+    const cyclic = await client.callTool({ name: "plan_create", arguments: { ...plan, spec: { ...plan.spec, key: "project/app/cli-cycle" }, tasks: [
+      { id: "T-3", title: "Third", acceptance: "Third works", dependsOn: ["T-4"] },
+      { id: "T-4", title: "Fourth", acceptance: "Fourth works", dependsOn: ["T-3"] },
+    ], batches: [{ title: "Cycle", taskIds: ["T-3", "T-4"] }] } });
+    assert.equal(cyclic.isError, true);
+    assert.equal(await hive.call("docs.get", { key: "project/app/cli-cycle" }, admin), null);
+  });
+
+  it("keeps a CLI operation pending until someone approves it on the hub", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin: Actor = { name: "admin", role: "admin" };
+    await hive.call("tasks.create", { id: "seed", project: "app", title: "Seed" }, admin);
+    const actor: Actor = { name: "codex@owner", role: "member", mcpCredential: true, access: { projects: { app: "lead" } }, agent: "codex", onBehalf: "owner", source: { via: "mcp" } };
+    const client = await connectAs(hive, actor);
+    const proposed = await client.callTool({ name: "propose_stop_agents", arguments: { project: "app", reason: "Maintenance" } });
+    assert.equal(proposed.isError, undefined, text(proposed));
+    const { id, status } = JSON.parse(text(proposed));
+    assert.equal(status, "pending");
+    const proposalAudit = (await hive.call("admin.audit", { action: "proposals.create" }, admin))[0]!;
+    assert.deepEqual([proposalAudit.agent, proposalAudit.onBehalf], ["codex", "owner"]);
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
+    assert.equal((await hive.call("proposals.list", { status: "pending" }, admin)).some((proposal) => proposal.id === id), true);
+    await assert.rejects(hive.call("proposals.approve", { id }, { name: "owner", role: "member", access: { projects: { app: "lead" } } }), /own|yourself|tự/i);
+    assert.equal((await hive.call("proposals.approve", { id }, admin)).status, "approved");
+    assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, ["app"]);
+    await assert.rejects(hive.call("proposals.create", { action: { method: "agents.resume", project: "app", input: { project: "app" } }, reason: "No right" }, { ...actor, access: { projects: { app: "viewer" } } }), /docPropose/);
+    await assert.rejects(hive.call("proposals.create", { action: { method: "agents.stop", project: null, input: { project: null } }, reason: "Hub-wide" }, actor), /admin|Admin/);
+    await assert.rejects(hive.call("proposals.create", { action: { method: "admin.commandCreate", project: "app", input: { machineId: "m", itemId: "other:agents" } }, reason: "Wrong service" }, actor), /another project/);
+  });
   it("exposes the agent tool set", async () => {
     const client = await connect(new SqliteHive(":memory:"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();

@@ -21,6 +21,17 @@ async function board() {
 }
 
 describe("task dependencies", () => {
+  it("lets an interactive MCP leader manage tasks with account audit, while keeping run credentials scoped", async () => {
+    const hive = new SqliteHive(":memory:");
+    const cli: Actor = { name: "codex@duy", role: "member", access: { projects: { app: "lead" } }, mcpCredential: true, agent: "codex", onBehalf: "duy", source: { via: "mcp" } };
+    await hive.call("tasks.create", { id: "T-1", project: "app", title: "First" }, cli);
+    await hive.call("tasks.create", { id: "T-2", project: "app", title: "Second", dependsOn: ["T-1"] }, cli);
+    await assert.rejects(hive.call("tasks.setDeps", { id: "T-1", dependsOn: ["T-2"] }, cli), key("errors.taskDepCycle"));
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-1")?.dependsOn, []);
+    const audit = await hive.call("admin.audit", { action: "tasks.create" }, admin);
+    assert.deepEqual(audit.map((entry) => [entry.agent, entry.onBehalf]), [["codex", "duy"], ["codex", "duy"]]);
+    await assert.rejects(hive.call("tasks.create", { id: "T-3", project: "app", title: "Blocked" }, { ...cli, runCredential: { project: "app", task: "T-1", run: "R-1", machine: "m", readOnly: false } }), (error: unknown) => error instanceof HiveError && error.code === "forbidden");
+  });
   it("keeps a task waiting until what it depends on is done, then unlocks it", async () => {
     const { hive, get } = await board();
     assert.deepEqual([(await get("T-3")).dependsOn, (await get("T-3")).waitingOn], [["T-1", "T-2"], ["T-1", "T-2"]]);

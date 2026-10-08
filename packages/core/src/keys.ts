@@ -35,6 +35,10 @@ export function parseDocKey(key: string): ParsedDocKey {
   );
 }
 
+/** Reserved proposal keys are review queue entries, not documents to publish. */
+export const CLI_ACTION_SLUG_PREFIX = "cli-action-";
+export const isCliActionProposalKey = (key: string): boolean => parseDocKey(key).slug.startsWith(CLI_ACTION_SLUG_PREFIX);
+
 /** Short name of one machine: lowercase letters, digits, "-" (max 24). */
 export const MACHINE_ID = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
