@@ -1,7 +1,7 @@
 import * as React from "react"
 import { cn } from "cn"
 
-// DS input: 32 tall, 1px control border, focus = blue border + 3px selected halo; errors get a 2px danger border.
+// Cosmic styling is shared in cosmic.css so existing input callers keep their native form API.
 function Input({ className, type, ...props }: React.ComponentProps<"input">) {
   return (
     <input

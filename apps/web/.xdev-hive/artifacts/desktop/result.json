@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "name": "login-token",
+      "ok": false,
+      "error": "timed out waiting for button \"Dùng token truy cập thay cho tài khoản\": no visible button \"Dùng token truy cập thay cho tài khoản\"",
+      "ms": 15544
+    },
+    {
+      "name": "cosmic-primitives",
+      "ok": false,
+      "error": "timed out waiting for cosmic themes",
+      "ms": 15415
+    }
+  ],
+  "errors": [],
+  "exitCode": 1
+}

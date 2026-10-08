@@ -1,4 +1,4 @@
-/* xDev Hive design system (docs/design/2026-09-redesign) on shadcn/ui + Tailwind v4.
+/* xDev Hive design system (docs/design/hive-2026-10) on shadcn/ui + Tailwind v4.
    The design's semantic tokens live in ./tokens; shadcn's variables alias them so the ui/ components and the
    pages pick up the new look. Light is :root, dark is [data-theme="dark"] on <html> (lib/theme.ts sets it);
    a subtree can re-theme itself with data-theme, which is why the aliases are declared on [data-theme] too. */
@@ -6,12 +6,10 @@
 
 @import "tw-animate-css";
 
-@import "@fontsource/be-vietnam-pro/400.css";
-@import "@fontsource/be-vietnam-pro/400-italic.css";
-@import "@fontsource/be-vietnam-pro/500.css";
-@import "@fontsource/be-vietnam-pro/600.css";
-@import "@fontsource/be-vietnam-pro/700.css";
-@import "@fontsource-variable/space-grotesk/wght.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 
 @import "./tokens/primitives.css";
@@ -19,6 +17,8 @@
 @import "./tokens/typography.css";
 @import "./tokens/spacing.css";
 @import "./tokens/motion.css";
+@import "./tokens/cosmic.css";
+@import "./components/ui/cosmic.css";
 @import "./components/ResponsiveTable.css";
 @import "./mobile.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
