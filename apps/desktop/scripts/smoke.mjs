@@ -577,6 +577,7 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
   store.update(limited.id, { status: "rate_limited", profileId: "codex-plus", startedAt: hoursAgo(4), finishedAt: hoursAgo(3.5), costReported: 1 });
   store.resetStats("codex-plus", hoursAgo(30));
   store.setCooldown("claude-max-1", new Date(Date.now() + 100 * 60_000).toISOString(), "You've hit your usage limit");
+  store.setResume("codex-plus", { until: new Date(Date.now() + 120 * 60_000).toISOString(), at: hoursAgo(0.2), by: "an" });
   store.db.close();
 }
 await shoot("agents-tokens", "agents", 2500, {
@@ -602,11 +603,12 @@ for (const size of ["1100x800", "800x800"]) {
     HIVE_SMOKE_ASSERT: "document.documentElement.scrollWidth <= innerWidth && !document.querySelector('[data-machine-settings][open]')",
   });
 }
-// Every row's quota (roadmap 52): claude-max-1 resting with Bỏ nghỉ next to its countdowns, codex-plus with the
-// numbers of its session file, a reset counter ("từ <ngày>") and a limit hit, and Đọc lại quota above Quản lý gói.
+// Every row's quota (roadmap 52): claude-max-1 resting with Dùng tiếp next to its countdowns, codex-plus with who
+// chose Dùng tiếp on it and the numbers of its session file, a reset counter ("từ <ngày>") and a limit hit, and Đọc lại quota above Quản lý gói.
 await shoot("agents-quota", "agents", 3000, {
   HIVE_SMOKE_EXPECT: [
-    '[data-profile="claude-max-1"] [data-resting] [data-end-rest]',
+    '[data-profile="claude-max-1"] [data-resting] [data-resume="claude-max-1"]',
+    '[data-profile="codex-plus"] [data-resumed="codex-plus"]',
     '[data-profile="claude-max-1"] [data-meter="session"] [data-reset-left]',
     '[data-profile="claude-max-1"] [data-meter="week"] [data-reset-left]',
     '[data-profile="claude-max-1"] [data-stat-line] .text-warning',

@@ -4,7 +4,7 @@ import type { DiffReview } from "#core/diff-review.ts";
 import type { Access, Grant } from "./access.ts";
 import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { ModelSelection } from "./model-router.ts";
-import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, RunnerSettings, RunStatus } from "./agents.ts";
+import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, ProfileResume, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
@@ -297,6 +297,8 @@ export interface AgentProfileStatus extends AgentProfile {
   cooldownReason: string | null;
   /** Hub actor of the machine that reported the rest, when it came from the hub (shared account). */
   cooldownFrom: string | null;
+  /** The last Dùng tiếp (who, when, until when its thresholds are off); absent or null when there was none. */
+  resumed?: ProfileResume | null;
   /** Where the profile's CLI resolves on the login-shell PATH; null = not installed. */
   cliPath: string | null;
   /** Last sign-in check; null before the first one. */
@@ -533,6 +535,11 @@ export interface DesktopBridge {
   saveProfile(profile: AgentProfile, previousId?: string): Promise<AgentProfileStatus[]>;
   removeProfile(id: string): Promise<AgentProfileStatus[]>;
   resetCooldown(id: string): Promise<AgentProfileStatus[]>;
+  /**
+   * Dùng tiếp: reads the profile's quota again, turns its stop thresholds off until the limit resets, ends its rest
+   * (on the hub too) and lets the hub hand it runs at once; records who asked.
+   */
+  resumeProfile(id: string): Promise<AgentProfileStatus[]>;
   /** Reads the sign-in and plan usage again (roadmap 52): the given profiles, or every enabled one. One read at a time. */
   refreshUsage(ids?: string[]): Promise<AgentProfileStatus[]>;
   /** Counts the profile's runs from now on; its run history stays (roadmap 52). */
