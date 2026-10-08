@@ -204,7 +204,7 @@ export function TodayPage() {
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(() => new URLSearchParams(window.location.hash.split("?")[1]).get("item"));
   const mobileDetail = useMobileDetail("item");
   const pick = (key: string | null) => {
     setSel(key);
