@@ -19,21 +19,21 @@ const menu = (me: Me, c: WebCaps = caps) => {
 
 describe("web menu by job (roadmap 49b)", () => {
   it("gives a viewer the work and the knowledge to read, no chat, settings or administration", () => {
-    assert.deepEqual(menu(viewer), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "machines"]);
+    assert.deepEqual(menu(viewer), ["today", "tasks", "pipeline", "features", "runs", "docs", "memory", "skills", "artifacts", "history", "graph", "machines"]);
   });
 
   it("gives a member the same: Chat needs chatUse, which the member role does not have", () => {
-    assert.deepEqual(menu(member), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "machines"]);
+    assert.deepEqual(menu(member), ["today", "tasks", "pipeline", "features", "runs", "docs", "memory", "skills", "artifacts", "history", "graph", "machines"]);
     assert.ok(menu(account({ app: { permissions: ["view", "chatUse"] } })).includes("chat"), "a grant with chatUse shows Chat");
   });
 
   it("adds Chat and Cài đặt service for a project lead, still no Quản trị", () => {
-    assert.deepEqual(menu(lead), ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "settings", "machines"]);
+    assert.deepEqual(menu(lead), ["today", "tasks", "chat", "pipeline", "features", "runs", "docs", "memory", "skills", "artifacts", "history", "graph", "machines", "settings"]);
   });
 
   it("gives the hub admin every entry: fifteen entries with proposals on knowledge tabs", () => {
     const all = menu(admin);
-    assert.deepEqual(all, ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "settings", "machines", "admin"]);
+    assert.deepEqual(all, ["today", "tasks", "chat", "pipeline", "features", "runs", "docs", "memory", "skills", "artifacts", "history", "graph", "machines", "settings", "admin"]);
     assert.equal(all.filter((id) => id !== "proposals").length, 15);
   });
 

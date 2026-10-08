@@ -273,6 +273,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
   "a11y-menu": ["login-token"],
+  "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
   "responsive-shell-pages": ["responsive-shell"],
   "a11y-overlays": ["login-token"],
@@ -440,9 +441,29 @@ async function main() {
     if (mobile) await tab.click('button[aria-label="Đóng menu"]');
   });
 
+  await step("workspace-home", async () => {
+    const tab = current = tabs.admin;
+    await tab.go("today");
+    await tab.waitFor("workspace overview", () => document.querySelector(".workspace-metrics") && document.querySelectorAll(".workspace-metric").length === 4);
+    await tab.waitFor("real task totals", () => [...document.querySelectorAll(".workspace-metric strong")].every(el => el.textContent !== "—"));
+    const totals = await tab.eval(() => [...document.querySelectorAll(".workspace-metric strong")].map(el => Number(el.textContent)));
+    const tasks = await rpc("tasks.list", {});
+    expect(totals[2] === tasks.filter(task => task.status === "blocked").length, "blocked count differs from hub");
+    expect(totals[3] === tasks.filter(task => task.status === "done").length, "done count differs from hub");
+    await tab.shot("workspace-home-new");
+    await tab.click('.workspace-metric[href*="section=inbox"]');
+    await tab.waitFor("existing inbox actions", () => !!document.querySelector(".workspace-inbox") && !!document.querySelector('[role="listbox"]'));
+    await tab.click(".workspace-back");
+    await tab.waitFor("overview back", () => !!document.querySelector(".workspace-home"));
+    await tab.go("pipeline");
+    await tab.waitFor("acceptance overview", () => document.querySelector(".workspace-section-tabs") && document.body.innerText.includes("Kết quả cần nghiệm thu"));
+    await tab.click('.workspace-section-tabs a[href*="workspaceTab=process"]');
+    await tab.waitFor("pipeline configuration", () => !!document.querySelector("[data-pipeline-project]"));
+  });
+
   await step("responsive-shell", async () => {
     const tab = (current = tabs.admin);
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     if (mobile) {
       const layout = await tab.eval(() => {
         const nav = document.querySelector(".hive-mobile-nav");
@@ -476,7 +497,7 @@ async function main() {
     await tab.eval(() => document.querySelector('.hive-skip-link').focus());
     await tab.key("Enter");
     expect(await tab.eval(() => document.activeElement?.id === "hive-main" && location.hash === "#/tasks"), "skip link must focus content without changing the route");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
   });
 
   await step("responsive-shell-pages", async () => {
@@ -500,7 +521,7 @@ async function main() {
         }
       }
     }
-    await tab.go("today");
+    await tab.go("today?section=inbox");
   });
 
   await step("project-onboarding", async () => {
@@ -691,7 +712,7 @@ async function main() {
       await tab.waitFor("release queue paused", () => document.querySelector("[data-release-queue]")?.textContent.includes("Hàng chờ đã dừng"));
       if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "release fits phone");
       await tab.shot("auto-release-failed");
-      await tab.go("today");
+      await tab.go("today?section=inbox");
       await tab.waitFor("release failure in Today", () => document.body.textContent.includes("OPS-release-9.0.1"));
       await tab.shot("auto-release-today");
     } finally {
@@ -990,12 +1011,12 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Chat", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Tệp của agent", "Quy trình", "Cài đặt service", "Máy & agent", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Sơ đồ", "Tính năng", "Task", "Agent đang chạy", "Tài liệu", "Skill", "Memory", "Tệp của agent", "Quy trình", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
-      await tab.go("today");
+      await tab.go("today?section=inbox");
       if (mobile) await tab.click(`button[aria-label="Ẩn hoặc hiện thanh bên"]`);
       const items = await tab.waitFor(`${who}'s menu`, () => {
         // The label is the link's first span; a count may follow it.
@@ -1917,7 +1938,7 @@ async function main() {
           await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId, project: "payment", taskId: "PLAN-E2E", taskTitle: "Lập kế hoạch sửa hoàn tiền", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: at, finishedAt: at, planText }] });
         };
         await finishPlan(first, "R-impl-plan1", "## Việc sẽ làm\nSửa hoàn tiền.\n## File\npayment.ts\n## Cách kiểm\nnpm test\n## Rủi ro\nKhông đổi dữ liệu.");
-        await tab.reload(); await tab.go("today");
+        await tab.reload(); await tab.go("today?section=inbox");
         await tab.click(`[data-inbox-key="plan:${first.plan.id}:1"]`);
         await tab.waitFor("plan ready in Today", () => !!document.querySelector("[data-plan-note]"));
         await tab.shot(`${String(n).padStart(2, "0")}-plan-today`);
@@ -2687,7 +2708,7 @@ async function main() {
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
     await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@lan"));
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.click("[data-project-picker-trigger]");
     await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("payment");
@@ -3077,7 +3098,7 @@ async function main() {
 
   await step("backup-late-today", async () => {
     const tab = (current = tabs.admin);
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     const alert = await until("the overdue backup alert", async () => (await rpc("alerts.list", {})).open.find((a) => a.rule === "backup_overdue"));
     await tab.waitFor("the overdue backup in Hôm nay", () => {
       const row = document.querySelector(`[data-inbox-key="alert:${alert.id}"]`);
@@ -3420,7 +3441,7 @@ async function main() {
 
     const tab = (current = tabs.lan);
     await tab.reload();
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     // Lan leads payment: what she decides comes first, then the agents waiting on her, then what to review.
     const groups = await tab.waitFor("Hôm nay grouped for a lead", () => {
       const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
@@ -3436,7 +3457,7 @@ async function main() {
     await tab.waitFor("the run's question", () => document.body.innerText.includes("dùng API cũ hay mới"));
     await tab.click("button", "Mở run");
     await tab.waitFor("the run on Agent đang chạy", () => location.hash.startsWith("#/runs") && document.body.innerText.includes("Hỏi cách làm"));
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
     expect(await tab.eval(() => {
       const actions = document.querySelector("[data-today-actions]");
@@ -4007,7 +4028,7 @@ async function main() {
     const read = await machineRpc("memory.cleanupRead", { id: run.id });
     expect(read.entries.every((m) => m.project === "payment"), "cleanup MCP snapshot contains only project memory");
     await machineRpc("memory.cleanupFinish", { id: run.id, suggestions: [{ kind: "merge", ids: [a.id, b.id], content: "Knowledge fixture: use package aliases for imports", reason: "Knowledge memory merge" }] });
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.waitFor("cleanup gathered in Today", () => document.body.innerText.includes("Knowledge memory merge"));
     await tab.go("memory?tab=pending");
     await tab.waitFor("memory cleanup proposal", () => document.body.innerText.includes("Knowledge memory merge"));
@@ -4295,7 +4316,7 @@ async function main() {
     await tab.click('[data-artifact-link="report.md"]');
     await tab.waitFor("summary opens report", () => document.querySelector('[data-artifact-content] h1'));
     await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.waitFor("review inbox", () => document.body.innerText.includes("Review tệp của agent"));
     await tab.click('[data-inbox-key^="review:payment:ART-1:"]');
     await tab.waitFor("review report shortcut", () => document.querySelector('[data-review-reports]'));
@@ -4490,7 +4511,7 @@ async function main() {
     expect(await tab.eval(() => !!document.querySelector('[data-pick-task="SOURCE-FAST-0"]') && !!document.querySelector('[data-pick-task="SOURCE-FAST-500"]')), "dispatch dropped a page boundary task");
     await tab.shot("source-dispatch-complete");
     // The dispatch link selects the project in the shared scope; Today must load all of its review tasks too.
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.waitFor("complete Today review list", () => document.querySelectorAll('[data-inbox-key^="review:inbox-source-e2e:"]').length === 501);
     await tab.shot("source-today-complete");
   });
@@ -4641,7 +4662,7 @@ async function main() {
     }
     await rpc("mergeQueue.configure", { project, config: { enabled: true, machineId: machine.id, commands: ["true"], waitMinutes: 0, mode: "push" } });
     await tab.go("tasks");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.eval(() => {
       window.__closeWarning = "";
       window.confirm = (message) => { window.__closeWarning = message; return false; };
@@ -4672,7 +4693,7 @@ async function main() {
     // Reopen the fixture to exercise the close action after its branch has landed.
     await rpc("tasks.update", { id: "CLOSE-APPROVE", status: "review" });
     await tab.go("tasks");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key^="review:${project}:CLOSE-APPROVE:"]`);
     await tab.eval(() => { window.__closeWarning = ""; });
     await tab.click("button", "Chuyển sang Xong");

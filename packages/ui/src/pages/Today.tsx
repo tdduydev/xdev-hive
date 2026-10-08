@@ -17,7 +17,7 @@ import { Chip, DetailActions, DetailHeader, KvRows } from "#ui/components/panes.
 import { ErrorNote } from "#ui/components/common.tsx";
 import { DesktopConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, hashParam, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
 import { groupInbox, shortAgo, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
@@ -201,11 +201,11 @@ function scopeText(item: InboxItem, t: TFunction): string {
   return item.kind === "leader" && item.action.project === HUB_SCOPE ? t("chat.actionHub") : item.scope || t("inbox.shared");
 }
 
-export function TodayPage() {
+export function TodayInboxPage() {
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
-  const [sel, setSel] = useState<string | null>(() => new URLSearchParams(window.location.hash.split("?")[1]).get("item"));
+  const [sel, setSel] = useState<string | null>(() => hashParam("item"));
   const mobileDetail = useMobileDetail("item");
   const pick = (key: string | null) => {
     setSel(key);
@@ -851,11 +851,13 @@ function Detail({
       <DetailHeader chips={<Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
-          {body}
-          <ErrorNote error={error} />
+          {client.desktop ? <>{body}<ErrorNote error={error} /></> : <>
+            <div className="flex flex-col gap-3">{body}<ErrorNote error={error} /></div>
+            <div data-today-actions><DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /></div>
+          </>}
         </div>
       </div>
-      <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} />
+      {client.desktop ? <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /> : null}
     </div>
   );
 }

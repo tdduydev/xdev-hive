@@ -1,0 +1,313 @@
+{
+  "results": [
+    {
+      "page": "today",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Hôm nay, làm việc gì?"
+    },
+    {
+      "page": "work",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Công việc"
+    },
+    {
+      "page": "detail",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Thiết kế lại không gian làm việc"
+    },
+    {
+      "page": "chat",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Bạn muốn Hive làm gì?"
+    },
+    {
+      "page": "approvals",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Nghiệm thu & phát hành"
+    },
+    {
+      "page": "projects",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Dự án & tính năng"
+    },
+    {
+      "page": "knowledge",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Kiến thức của nhóm"
+    },
+    {
+      "page": "history",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Lịch sử & tìm kiếm"
+    },
+    {
+      "page": "agents",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Máy & agent"
+    },
+    {
+      "page": "automation",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Automation"
+    },
+    {
+      "page": "settings",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Quản trị không gian"
+    },
+    {
+      "page": "today",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Hôm nay, làm việc gì?"
+    },
+    {
+      "page": "work",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Công việc"
+    },
+    {
+      "page": "detail",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Thiết kế lại không gian làm việc"
+    },
+    {
+      "page": "chat",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Bạn muốn Hive làm gì?"
+    },
+    {
+      "page": "approvals",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Nghiệm thu & phát hành"
+    },
+    {
+      "page": "projects",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Dự án & tính năng"
+    },
+    {
+      "page": "knowledge",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Kiến thức của nhóm"
+    },
+    {
+      "page": "history",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Lịch sử & tìm kiếm"
+    },
+    {
+      "page": "agents",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Máy & agent"
+    },
+    {
+      "page": "automation",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Automation"
+    },
+    {
+      "page": "settings",
+      "width": 1440,
+      "scroll": 1425,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Quản trị không gian"
+    },
+    {
+      "page": "today",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Hôm nay, làm việc gì?"
+    },
+    {
+      "page": "work",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Công việc"
+    },
+    {
+      "page": "detail",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Thiết kế lại không gian làm việc"
+    },
+    {
+      "page": "chat",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Bạn muốn Hive làm gì?"
+    },
+    {
+      "page": "approvals",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Nghiệm thu & phát hành"
+    },
+    {
+      "page": "projects",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Dự án & tính năng"
+    },
+    {
+      "page": "knowledge",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Kiến thức của nhóm"
+    },
+    {
+      "page": "history",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Lịch sử & tìm kiếm"
+    },
+    {
+      "page": "agents",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Máy & agent"
+    },
+    {
+      "page": "automation",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Automation"
+    },
+    {
+      "page": "settings",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(247, 249, 252)",
+      "heading": "Quản trị không gian"
+    },
+    {
+      "page": "today",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Hôm nay, làm việc gì?"
+    },
+    {
+      "page": "work",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Công việc"
+    },
+    {
+      "page": "detail",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Thiết kế lại không gian làm việc"
+    },
+    {
+      "page": "chat",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Bạn muốn Hive làm gì?"
+    },
+    {
+      "page": "approvals",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Nghiệm thu & phát hành"
+    },
+    {
+      "page": "projects",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Dự án & tính năng"
+    },
+    {
+      "page": "knowledge",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Kiến thức của nhóm"
+    },
+    {
+      "page": "history",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Lịch sử & tìm kiếm"
+    },
+    {
+      "page": "agents",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Máy & agent"
+    },
+    {
+      "page": "automation",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Automation"
+    },
+    {
+      "page": "settings",
+      "width": 390,
+      "scroll": 375,
+      "theme": "rgb(20, 39, 69)",
+      "heading": "Quản trị không gian"
+    }
+  ],
+  "errors": []
+}

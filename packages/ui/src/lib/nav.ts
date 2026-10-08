@@ -30,12 +30,9 @@ export type WebPage =
  * Knowledge proposals live on their content pages (49f).
  */
 export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
-  { label: null, ids: ["today", "chat"] },
-  { label: "nav.groupDoing", ids: ["graph", "features", "tasks", "runs"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "skills", "memory", "artifacts", "history"] },
-  { label: "nav.groupProject", ids: ["pipeline", "settings"] },
-  { label: "nav.groupMachines", ids: ["machines"] },
-  { label: "nav.groupHubAdmin", ids: ["admin"] },
+  { label: "workspace.work", ids: ["today", "tasks", "chat", "pipeline", "features", "runs"] },
+  { label: "workspace.space", ids: ["docs", "memory", "skills", "artifacts", "history", "graph"] },
+  { label: "workspace.operations", ids: ["machines", "settings", "admin"] },
 ];
 
 /** ⌘1–5 on the web: Hôm nay, Chat, Task, Agent đang chạy, Tài liệu, the pages of a working day. */
