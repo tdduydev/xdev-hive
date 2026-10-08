@@ -216,7 +216,7 @@ export class Updater {
    * apt/dpkg must own system files; the desktop never replaces them as the current user. restart: the package is in,
    * so the caller relaunches into it. A dismissed password dialog leaves the download ready for another try.
    */
-  async #installDeb(file: string): Promise<{ restart: boolean }> {
+  async #installDeb(file: string, relaunch: boolean): Promise<{ restart: boolean }> {
     const fail = (err: unknown): never => {
       this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
       this.#log(`deb install failed: ${this.#state.error}`);
@@ -231,7 +231,14 @@ export class Updater {
         return fail(err);
       }
       if (result === "installed") {
-        this.#log(`installed ${this.#state.version} with apt-get; relaunching`);
+        this.#log(`installed ${this.#state.version} with apt-get${relaunch ? "; relaunching" : ""}`);
+        // Not app.relaunch(): the quit path ends the process with reallyExit once cleanup is done (Electron's own
+        // teardown can hang), which would skip Electron's relauncher. A helper outlives this process instead.
+        if (relaunch) {
+          await this.#startHelper("/bin/sh", ["-c", 'while kill -0 "$PID" 2>/dev/null; do sleep 0.3; done; exec "$APP"'], {
+            detached: true, stdio: "ignore", env: { ...process.env, PID: String(process.pid), APP: this.#host.execPath },
+          }).catch((err) => this.#log(`relaunch helper failed: ${String(err)}`));
+        }
         return { restart: true };
       }
       this.#set({ state: "ready" });
@@ -268,7 +275,7 @@ export class Updater {
       this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
       throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
     }
-    if (this.updateKind === "deb") return this.#installDeb(file);
+    if (this.updateKind === "deb") return this.#installDeb(file, relaunch);
     this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
     this.#set({ state: "installing" });
     try {
