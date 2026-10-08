@@ -799,8 +799,8 @@ export function createHubApp({
           result = automation.save(i, owner, actor);
         } else if (method === "automation.dryRun") result = automation.dryRun(Number(i.id), i.event as never);
         else if (method === "automation.retry") {
-          hive.audit(actor, "automation.retry", String(i.id), "manual retry");
           result = await automation.retry(Number(i.id));
+          hive.audit(actor, "automation.retry", String(i.id), "manual retry");
         } else throw new HiveError("bad_request", `Unknown method ${method}`);
         res.json({ result });
         return;

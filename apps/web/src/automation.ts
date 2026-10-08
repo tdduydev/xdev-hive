@@ -45,6 +45,7 @@ export class Automation {
     return rule;
   }
   matches(rule: Rule, event: HiveEvent): boolean {
+    if (!event || typeof event !== "object") return false;
     return rule.project === event.project && rule.trigger === event.type && rule.conditions.every(c => {
       let value: unknown = event;
       for (const key of c.path.split(".")) {
@@ -57,10 +58,11 @@ export class Automation {
   dryRun(id: number, event: HiveEvent) {
     const rule = this.list().find(r => r.id === id);
     if (!rule) throw new HiveError("not_found", "Automation rule not found");
+    if (!event || typeof event !== "object") throw new HiveError("bad_request", "Event is required");
     return { matches: this.matches(rule, event), enabled: rule.enabled, action: rule.action, executionPermissionsChecked: false };
   }
   async onEvent(event: HiveEvent): Promise<void> {
-    if (event.automation) return;
+    if (!event || event.automation) return;
     const serialized = JSON.stringify(event);
     let identity: string | number;
     switch (event.type) {
@@ -95,8 +97,9 @@ export class Automation {
     if (!claimed.changes) return;
     let status = "done";
     let error: string | null = null;
-    const actor = this.resolve(rule.owner);
+    let actor: Actor | null = null;
     try {
+      actor = this.resolve(rule.owner);
       if (!actor) throw new HiveError("forbidden", "Automation owner is no longer authorized");
       const paused = await this.hive.call("agents.paused", {}, actor);
       if (paused.hub || paused.projects.includes(rule.project)) throw new HiveError("forbidden", "Agents are paused");
