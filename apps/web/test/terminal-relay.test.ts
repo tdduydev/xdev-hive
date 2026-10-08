@@ -254,14 +254,17 @@ describe("69e relay: sequence and dedup", () => {
     await m.wait("lease", (f) => f.sessionId === id);
   });
 
-  it("ignores frames a machine sends about a session it does not run", async () => {
+  it("cuts off a machine that sends frames about a session it does not run, relaying none of them", async () => {
     const m = await machine();
     const { id, b } = await running(m);
     live.push({ id, m, b });
-    out(m, "00000000-0000-4000-8000-00000000dead", 1, "forged");
     out(m, id, 1, "real");
     await b.wait("output");
+    out(m, "00000000-0000-4000-8000-00000000dead", 2, "forged");
+    assert.equal(await m.waitClose(), TERMINAL_RELAY_CLOSE.protocol);
+    await new Promise((r) => setTimeout(r, 100));
     assert.deepEqual(b.of("output").map((f) => Buffer.from(f.data, "base64").toString()), ["real"]);
+    assert.ok(audits("terminal.frameRejected").some((d) => d.includes("foreignSession")));
   });
 });
 
