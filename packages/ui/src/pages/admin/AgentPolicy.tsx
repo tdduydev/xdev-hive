@@ -304,7 +304,7 @@ export function AgentPolicyCard({ editableOnly = false }: { editableOnly?: boole
 }
 
 /** What runs of the row get, in words. */
-function Effective({ policy: p }: { policy: AgentPolicy }) {
+export function Effective({ policy: p }: { policy: AgentPolicy }) {
   const t = useT();
   const models = POLICY_AGENT_KINDS.map((k) => [k, modelsFor(p, k)] as const).filter(([, list]) => list !== null);
   return (

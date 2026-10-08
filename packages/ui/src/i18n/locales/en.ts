@@ -1,6 +1,22 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  onboarding: {
+    title: "From project to first task",
+    intro: "Continue from saved progress. You can create a task now and set up an agent later.",
+    keyHint: "Choose a project or enter a new key: lowercase letters, numbers, dots, underscores and hyphens.",
+    repo: "1. Project repository",
+    repoHint: "No repository reported by a runner yet.",
+    desktopHint: "Open xDev Hive on the machine with the repository. Go to Start → Projects to add the folder and install missing items.",
+    agent: "2. Connection and agent",
+    agentHint: "To run tasks, connect the machine, enable intake and sign in to an agent.",
+    policy: "3. Effective policy",
+    policyHint: "Projects inherit the hub policy. Check models, edit permissions and network before assigning work.",
+    openPolicy: "View project policy",
+    firstTask: "4. First task",
+    openTask: "Open task {id}",
+    createHint: "Creating a task saves work in the project. Choose an agent and assign it from Tasks.",
+  },
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Up arrow", down: "Down arrow", left: "Left arrow", right: "Right arrow", interrupt: "Ctrl-C: interrupt" },
     osUserName: "OS user: {user}",

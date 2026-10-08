@@ -93,6 +93,7 @@ export function NewWorkDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           <span>{t(`newWork.${kind}`)}</span><span className="text-xs font-normal text-fg-secondary">{t(`newWork.${kind}Hint`)}</span>
         </Button>)}
         {!projects.some((p) => allow(p, "chatUse") || allow(p, "taskManage")) ? <p>{t("newWork.noPermission")}</p> : null}
+        <Button type="button" variant="outline" data-onboarding-open onClick={() => { onOpenChange(false); window.location.hash = "#/start"; }}>{t("onboarding.title")}</Button>
       </div>
       {path ? <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (ready) submit(); }}>
         <div className="flex flex-col gap-1.5"><Label htmlFor="new-work-project">{t("newTask.project")}</Label><NativeSelect id="new-work-project" value={project} disabled={!!created || action.busy} onChange={(e) => { setProject(e.target.value); setAgent(""); setProfile(""); setRun(false); }}>

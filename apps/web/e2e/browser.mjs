@@ -263,6 +263,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "merge-queue": ["login-token"],
   "auto-release": ["login-token"],
   "login-token": [],
+  "project-onboarding": ["login-token"],
   "artifacts-page": ["login-token"],
   "chat-everywhere": ["login-token"],
   "chat-design": ["login-token"],
@@ -429,6 +430,44 @@ async function main() {
       document.querySelector('[data-page-tab="queue"]')?.getAttribute("aria-current") === "page",
     );
     if (mobile) await tab.click('button[aria-label="Đóng menu"]');
+  });
+
+  await step("project-onboarding", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.click("[data-new-work-open]");
+    await tab.click("[data-onboarding-open]");
+    await tab.waitFor("project guide", () => !!document.querySelector("[data-project-onboarding]"));
+    await tab.click("#onboarding-project");
+    await tab.shortcut("a");
+    await tab.type("onboarding-e2e");
+    await tab.click("#onboarding-task-id");
+    await tab.type("ONBOARDING-E2E-1");
+    await tab.click("#onboarding-task-title");
+    await tab.type("Kiểm tra dự án mới");
+    await tab.waitFor("effective policy", () => !!document.querySelector("[data-onboarding-policy]"));
+    await tab.reload();
+    await tab.waitFor("resume unsaved task draft", () => document.querySelector("#onboarding-task-id")?.value === "ONBOARDING-E2E-1" && document.querySelector("#onboarding-task-title")?.value === "Kiểm tra dự án mới");
+    await tab.shot(`${String(n).padStart(2, "0")}-project-onboarding`);
+    await tab.click("[data-onboarding-create]");
+    await tab.waitFor("first task saved", () => document.querySelector("[data-onboarding-open-task]")?.textContent.includes("ONBOARDING-E2E-1"));
+    expect((await rpc("tasks.list", { project: "onboarding-e2e" })).length === 1, "exactly one task in a new project");
+    expect(!(await rpc("runs.requests", { project: "onboarding-e2e" })).length, "saving a task does not dispatch it");
+    await tab.reload();
+    await tab.waitFor("resume project and task", () => document.querySelector("#onboarding-project")?.value === "onboarding-e2e" && !!document.querySelector("[data-onboarding-open-task]"));
+    expect(await tab.eval(() => !document.querySelector("[data-onboarding-create]")), "resume offers the saved task instead of creating it again");
+    await tab.click("[data-onboarding-open-task]");
+    await tab.waitFor("task panel", () => document.querySelector('[data-slot="sheet-content"]')?.textContent.includes("Kiểm tra dự án mới"));
+    await tab.go("start");
+    await tab.click("#onboarding-project");
+    await tab.shortcut("a");
+    await tab.type("onboarding-empty");
+    await tab.click("#onboarding-task-id");
+    await tab.waitFor("new project has no previous project's task", () => !!document.querySelector("[data-onboarding-create]") && !document.querySelector("[data-onboarding-open-task]"));
+    // Other steps begin with the seeded shared scope.
+    await tab.eval(() => { localStorage.removeItem("xdev-hive.scope"); for (const key of Object.keys(sessionStorage)) if (key.startsWith("xdev-hive.onboarding:")) sessionStorage.removeItem(key); });
+    await tab.reload();
+    await tab.go("today");
   });
 
   if (mobile && tabs.admin) await mobileAudit({ tab: tabs.admin, out, step, expect });

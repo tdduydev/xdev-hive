@@ -1,10 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { AgentProfileStatus, DesktopSettings, SetupReport } from "@xdev-hive/core";
-import { remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
+import type { AgentProfileStatus, DesktopSettings, Machine, SetupReport } from "@xdev-hive/core";
+import { projectReadiness, remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
 const settings = (patch: Partial<DesktopSettings> = {}): DesktopSettings => ({ mode: "hub", hasHubToken: false, projects: [], runner: { acceptHubRuns: false }, ...patch } as DesktopSettings);
 const report: SetupReport = { machine: [{ id: "shim", label: "Hive", state: "installed", detail: "", action: null }], projects: [{ project: "demo", repo: "/demo", items: [] }] };
 const profile = (patch: Partial<AgentProfileStatus> = {}): AgentProfileStatus => ({ enabled: true, cliPath: "/bin/codex", login: { loggedIn: true }, ...patch } as AgentProfileStatus);
+test("project guide evaluates only the selected repository and requires a checked installation", () => {
+  const s = settings({ mode: "local", projects: [{ name: "demo", repo: "/demo" }, { name: "other", repo: "/other" }] });
+  assert.deepEqual(projectReadiness("demo", s, report, [profile()], [], true), { repo: true, agent: true });
+  assert.equal(projectReadiness("other", s, report, [profile()], [], true).repo, false);
+  assert.deepEqual(projectReadiness("", s, report, [profile()], [], true), { repo: false, agent: false });
+});
+test("hub desktop requires connection and intake; disabled or unknown-login agents stay incomplete", () => {
+  for (const patch of [{ hasHubToken: false }, { hasHubToken: true }, { hasHubToken: true, runner: { acceptHubRuns: false } as DesktopSettings["runner"] }]) {
+    assert.equal(projectReadiness("demo", settings(patch), report, [profile()], [], true).agent, false);
+  }
+  const s = settings({ hasHubToken: true, runner: { acceptHubRuns: true } as DesktopSettings["runner"] });
+  assert.equal(projectReadiness("demo", s, report, [profile()], [], true).agent, true);
+  assert.equal(projectReadiness("demo", s, report, [profile({ login: null })], [], true).agent, false);
+  assert.equal(projectReadiness("demo", s, report, [profile({ enabled: false })], [], true).agent, false);
+});
+test("web readiness does not borrow a connected agent from a different project's machine", () => {
+  const m = { projects: ["demo"], online: true, acceptsRuns: true, profiles: [{ enabled: true, installed: true, loggedIn: true }] } as Machine;
+  const ready = (machines: Machine[]) => projectReadiness("demo", null, null, [], machines, false);
+  assert.deepEqual(ready([m]), { repo: true, agent: true });
+  assert.deepEqual(projectReadiness("other", null, null, [], [m], false), { repo: false, agent: false });
+  assert.deepEqual(ready([{ ...m, online: false }]), { repo: true, agent: false });
+  assert.equal(ready([{ ...m, acceptsRuns: false }]).agent, false);
+  assert.equal(ready([{ ...m, profiles: [{ ...m.profiles[0]!, installed: false }] }]).agent, false);
+  assert.equal(ready([{ ...m, profiles: [{ ...m.profiles[0]!, loggedIn: null }] }]).agent, false);
+});
 test("new hub machine needs connection, project, login and intake", () => {
   const steps = startSteps(settings(), { machine: [{ ...report.machine[0]!, state: "missing" }], projects: [] }, []);
   assert.equal(remainingSteps(steps), 5);
