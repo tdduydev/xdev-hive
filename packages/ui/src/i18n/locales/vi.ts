@@ -2,6 +2,30 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  workspace: { capped: "Số liệu trong 500 công việc và 200 lượt chạy gần nhất. Mở danh sách để kiểm tra theo trạng thái.","results":"Kết quả cần nghiệm thu","process":"Quy trình & model","acceptanceIntro":"Kiểm tra kết quả, bằng chứng và phiên bản trước khi chấp thuận.","evidenceIntro":"Mở bàn giao, bằng chứng và các hành động theo quyền của bạn.","noResults":"Chưa có kết quả đang chờ nghiệm thu.","releases":"Hàng đợi phát hành","pickReleaseProject":"Chọn một dự án trên thanh bên để xem và duyệt bản phát hành.",
+    "title": "Hôm nay, làm việc gì?",
+    "subtitle": "Những quyết định cần bạn và tiến độ của cả nhóm.",
+    "newWork": "Giao việc cho Hive",
+    "decisions": "Cần bạn quyết định",
+    "running": "Đang thực hiện",
+    "blocked": "Cần tháo gỡ",
+    "completed": "Đã hoàn tất",
+    "open": "Xem chi tiết",
+    "inspect": "Xem kết quả & xử lý",
+    "allInbox": "Tất cả việc cần xử lý",
+    "noRuns": "Chưa có lượt chạy đang thực hiện.",
+    "openRun": "Mở lượt chạy",
+    "inspectBlocker": "Xem nguyên nhân & bước tiếp theo",
+    "noBlockers": "Không có công việc bị chặn.",
+    "next": "Tiếp tục công việc",
+    "acceptance": "Nghiệm thu & phát hành",
+    "back": "Về Hôm nay",
+    "work": "Làm việc",
+    "space": "Không gian",
+    "operations": "Vận hành",
+    "project": "Dự án & tính năng"
+},
+
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Mũi tên lên", down: "Mũi tên xuống", left: "Mũi tên trái", right: "Mũi tên phải", interrupt: "Ctrl-C: ngắt lệnh" },
     osUserName: "OS user: {user}",

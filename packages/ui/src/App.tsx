@@ -1,3 +1,5 @@
+import { WorkspaceAcceptance } from "#ui/pages/WorkspaceAcceptance.tsx";
+import { WebTodayPage } from "#ui/pages/WorkspaceHome.tsx";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TerminalProvider } from "#ui/components/RemoteTerminal.tsx";
 import {
@@ -58,7 +60,7 @@ import { PipelinePage } from "./pages/Pipeline.tsx";
 import { SpecsPage } from "./pages/Specs.tsx";
 import { SystemsPage } from "./pages/Systems.tsx";
 import { TaskWorkPage } from "./pages/Tasks.tsx";
-import { TodayPage } from "./pages/Today.tsx";
+import { TodayInboxPage as TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 import { StartPage } from "#ui/pages/Start.tsx";
@@ -391,7 +393,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   // There Task is the Board alone, over this machine's projects, so it says so. The web names two entries by the job
   // they are for (roadmap 49b) until 49e gives Agent đang chạy a page of its own (49d did Tính năng); the app keeps
   // Lượt chạy.
-  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : PAGES[id].label);
+  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : web && id === "pipeline" ? "workspace.acceptance" : web && id === "features" ? "workspace.project" : PAGES[id].label);
   const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,
@@ -435,7 +437,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         subtitle={subtitle}
         webUrl={webUrl}
       >
-        <PageBoundary page={current}>{PAGES[current].render()}</PageBoundary>
+        <PageBoundary page={current}>{web && current === "today" ? <WebTodayPage inboxView={new URLSearchParams(window.location.hash.split("?")[1]).has("item") || new URLSearchParams(window.location.hash.split("?")[1]).get("section") === "inbox"} /> : web && current === "pipeline" ? <WorkspaceAcceptance /> : PAGES[current].render()}</PageBoundary>
       </ClientShell>
     </InboxProvider>
   );

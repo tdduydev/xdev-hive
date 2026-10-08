@@ -195,7 +195,7 @@ function ClientFrame({
     [narrow, setSidebar],
   );
 
-  const mobileItems = ["today", "tasks", "chat", "runs", "agents"]
+  const mobileItems = (desktop ? ["today", "tasks", "chat", "runs", "agents"] : ["today", "tasks", "chat", "pipeline"])
     .map((id) => items.find((item) => item.id === id))
     .filter((item): item is NavEntry => !!item)
     .slice(0, 4);
@@ -270,6 +270,7 @@ function ClientFrame({
       <div className={cn("shrink-0 px-2.5 pb-1.5", noDrag)}>
         {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.chooseScope")} title={scopeName ?? t("shell.chooseScope")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><Layers3 className="size-4" aria-hidden="true" /></button> : <ScopeSwitcher />}
       </div>
+      {!desktop && !rail ? <div className="workspace-new-work"><button type="button" onClick={() => setNewTask(true)} className="workspace-new-button"><Plus aria-hidden="true" className="size-4" />{t("workspace.newWork")}</button></div> : null}
       {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
       <div data-nav-list className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2.5 pt-0.5 pb-2.5">
         {groups.map((g, gi) => (
@@ -373,7 +374,7 @@ function ClientFrame({
 
   return (
     <>
-      <div inert={narrow && sidebar} className="hive-shell fixed inset-0 flex flex-col bg-surface text-fg-primary">
+      <div data-workspace-web={!desktop || undefined} data-workspace-page={current} inert={narrow && sidebar} className="hive-shell fixed inset-0 flex flex-col bg-surface text-fg-primary">
         <a href="#hive-main" onClick={(event) => { event.preventDefault(); mainRef.current?.focus(); }} className="hive-skip-link">{t("shell.skipToContent")}</a>
         <div className="flex min-h-0 flex-1">
           {!narrow ? nav : null}
