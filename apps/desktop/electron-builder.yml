@@ -29,11 +29,16 @@ mac:
     - zip
 win:
   target: nsis
+  # The Mac's node-pty build (build/Release) would load before the Windows prebuilds: leave it out.
+  files:
+    - "!**/node-pty/build/**"
 nsis:
   artifactName: xdev-hive-${version}-win-${arch}-setup.${ext}
 linux:
   # The default comes from the package name (@xdev-hive/desktop), which is not a valid file name.
   executableName: xdev-hive
+  files:
+    - "!**/node-pty/build/**"
   target:
     - target: AppImage
       arch: [x64, arm64]
