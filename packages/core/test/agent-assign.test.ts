@@ -153,9 +153,14 @@ describe("a task given to one agent (roadmap 50)", () => {
   });
 
   it("keeps a hand dispatch on the plan the task is pinned to", async () => {
-    const { hive, beat } = await hub();
+    const { hive, beat, take, push } = await hub();
     await beat(mbp, { profiles: [profile("claude-1"), profile("codex-1")] });
     await hive.call("tasks.assign", { id: "T-1", machineId: mbp.name, profileId: "claude-1" }, lead);
+    // Assignment already starts a run; a manual retry needs that run to release the pinned plan's slot.
+    const [first] = await hive.call("runs.requests", { project: "app" }, lead);
+    assert.equal(first!.profileId, "claude-1");
+    await take(mbp, first!.id, "T-1");
+    await push(mbp, "R-T-1", "T-1", "failed");
     const pinned = await hive.call("runs.dispatch", { project: "app", taskId: "T-1", role: "implement" }, lead);
     assert.equal(pinned.profileId, "claude-1", "no plan named: the pin still holds");
     const other = await hive.call("runs.dispatch", { project: "app", taskId: "T-2", role: "implement" }, lead);
