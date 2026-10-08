@@ -36,7 +36,7 @@ const SPECIFY = `case "$1" in
   integration) echo '{"version":"1.0.14.dev0","installed_integrations":["claude","'"$3"'"]}' > .specify/integration.json && echo "installed $3" ;;
 esac`;
 
-function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry" | "writable"> = {}) {
+function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry" | "writable" | "runtimeRoots"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
   const home = tmp("home");
@@ -75,6 +75,7 @@ function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick
     ...(opts.registry ? { registry: opts.registry } : {}),
     // npm's fake global prefix is /usr: writable unless a test says not, whatever the machine running the tests allows.
     writable: opts.writable ?? (() => true),
+    ...(opts.runtimeRoots ? { runtimeRoots: opts.runtimeRoots } : {}),
     tools: () => hub.tools,
     toolTrust: () => hub.trust,
   });
@@ -141,6 +142,11 @@ describe("Setup: this machine", () => {
     const own = machine({ platform: "linux", writable: () => true });
     await own.setup.install("cli:codex");
     assert.ok(calls(own.bin).includes("npm install -g @openai/codex telemetry="), "a prefix the user can write is left alone");
+
+    // A Node unpacked in the Linux app's folder is writable, but a CLI installed there goes away with the app.
+    const runtime = machine({ platform: "linux", writable: () => true, runtimeRoots: () => ["/usr"] });
+    await runtime.setup.install("cli:codex");
+    assert.ok(calls(runtime.bin).includes(`npm install -g @openai/codex --prefix ${path.join(runtime.home, ".local")} telemetry=`), calls(runtime.bin).join("\n"));
 
     const codex = AGENT_CLIS.find((c) => c.kind === "codex")!;
     assert.deepEqual(cliUpgrade(codex, "/home/u/.local/lib/node_modules/@openai/codex/bin/codex.js", "/home/u/.local/bin/codex", "/home/u")?.args, [
