@@ -38,8 +38,7 @@ export function QuotaPage() {
     <ErrorNote error={machines.error ?? cooldowns.error} />
     {machines.data ? <div data-quota-totals>
       <SummaryStrip label={t("quota.total")} items={[
-        { id: "dispatch", label: t("dashboardAgents.dispatch"), value: total.slots, href: "#/machines?tab=map" },
-        { id: "slots", label: t("dashboardAgents.slots"), value: total.slots, sub: t("quota.capacity", { count: total.available, slots: total.slots }), href: "#/machines?tab=map" },
+        { id: "dispatch", label: t("dashboardAgents.dispatch"), value: total.slots, sub: t("quota.capacity", { count: total.available, slots: total.slots }), href: "#/machines?tab=map" },
         { id: "full", label: t("dashboardAgents.full"), value: total.full == null ? "—" : `~${number(total.full)}`, sub: total.unknown ? t("quota.missing", { count: total.unknown }) : undefined, href: "#/machines?tab=quota" },
         { id: "reset", label: t("dashboardAgents.reset"), value: total.nextAt ? new Date(total.nextAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—", sub: total.nextAt ? formatTime(total.nextAt) : undefined, href: "#/machines?tab=quota" },
       ]} />
