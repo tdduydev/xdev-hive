@@ -22,7 +22,7 @@ import type { AgentKind, AgentRole, PreferKind } from "./agents.ts";
 import { ARTIFACTS_PER_RUN, artifactName, checkArtifact, isArtifactText, type Artifact } from "./artifacts.ts";
 import type { BlobStore } from "./blobs.ts";
 import { HiveError, type ErrorText } from "./errors.ts";
-import { agentsDocKey, decisionsDocKey, parseDocKey, PROJECT_NAME, titleFromSlug, type ParsedDocKey } from "./keys.ts";
+import { agentsDocKey, CLI_ACTION_SLUG_PREFIX, decisionsDocKey, isCliActionProposalKey, parseDocKey, PROJECT_NAME, titleFromSlug, type ParsedDocKey } from "./keys.ts";
 import { parseSkill, type SkillSummary } from "./skills.ts";
 import { chatFileName, checkChatFile, isImage } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES, DOC_ASSETS_PER_DOC, DOC_TREE_DEPTH, docLinkRefs, linkSnippet, resolveDocLink } from "./doclinks.ts";
@@ -1958,6 +1958,11 @@ const AGENT_METHODS = new Set<Method>([
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
 ]);
 
+// Interactive MCP credentials may manage the owner's board. A run credential remains limited to its own task.
+const CLI_LEADER_METHODS = new Set<Method>([
+  "tasks.create", "tasks.setDeps", "tasks.assign", "runs.dispatch", "plans.create",
+]);
+
 // Legacy names can be forged before their first migrated heartbeat; they must not authorize machine reports or work.
 const MACHINE_METHODS = new Set<Method>([
   "machines.heartbeat", "machines.commandResult", "runs.push", "runs.report", "runs.requestResult", "runs.preparePlan", "runs.mergeResult",
@@ -2003,13 +2008,19 @@ export class SqliteHive implements HiveBackend {
       status: str(status), summary: strOrNull(summary), error: strOrNull(error), mr: { pipeline: strOrNull(pipeline) },
     }));
     this.#migrate();
+    if (this.#opts.migrateTo >= MIGRATIONS.length) {
+      // A stopped process cannot tell whether an in-flight operation took effect; never retry it automatically.
+      this.db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE status = 'executing'")
+        .run("Execution was interrupted; check the operation's effect before creating a new proposal.");
+    }
     this.#machineIdentityReady = (this.db.prepare("PRAGMA table_info(machines)").all() as Row[]).some((r) => r.name === "token_id");
     this.#handlers = this.#buildHandlers();
   }
 
   async call<M extends Method>(method: M, input: MethodInput<M>, caller: Actor): Promise<MethodOutput[M]> {
     if (caller.runCredential || caller.mcpCredential) {
-      if (!AGENT_METHODS.has(method)) throw new HiveError("forbidden", "An agent credential cannot call this method.");
+      if (!AGENT_METHODS.has(method) && !(caller.mcpCredential && !caller.runCredential && !caller.chatReply && CLI_LEADER_METHODS.has(method)))
+        throw new HiveError("forbidden", "An agent credential cannot call this method.");
       if (caller.runCredential && (method === "tasks.claim" || method === "tasks.update") && (input as { id?: string }).id !== caller.runCredential.task)
         throw new HiveError("forbidden", "A run credential can work only on its task.");
     }
@@ -2273,6 +2284,13 @@ export class SqliteHive implements HiveBackend {
       case "docs.syncRequest":
         return this.#need(actor, i.project, "contextEdit", `Project ${i.project}`);
       case "proposals.create":
+        if ("action" in i) {
+          if (!actor.mcpCredential || actor.runCredential || actor.chatReply !== undefined)
+            throw new HiveError("forbidden", "Only an interactive MCP credential can propose an operation.");
+          if (i.action.project === null && ["agents.stop", "agents.resume", "agentPolicy.set"].includes(i.action.method))
+            this.#needHubAdmin(actor, "Hub operation proposal");
+          return this.#need(actor, i.action.project, "docPropose", "CLI operation proposal");
+        }
         return this.#need(actor, owner(i.docKey), "docPropose", `Doc ${i.docKey}`);
       case "proposals.approve":
       case "proposals.reject": {
@@ -2280,9 +2298,13 @@ export class SqliteHive implements HiveBackend {
         // A change to what agents read is the context's to approve; any other a doc reviewer's.
         const research = row ? this.db.prepare("SELECT * FROM research_runs WHERE doc_key = ?").get(str(row.doc_key)) as Row | undefined : undefined;
         if (research && !this.#researchVisible(research, actor)) throw new HiveError("not_found", "Proposal not found.");
+        const operation = row && isCliActionProposalKey(str(row.doc_key));
+        if (operation && method === "proposals.approve" &&
+          (!actor.humanSession || actor.role === "agent" || isAgentActor(actor) || actor.mcpCredential || actor.runCredential || actor.chatReply !== undefined))
+          throw new HiveError("forbidden", "Only a human session can approve an operation.");
         if (row) this.#need(actor, owner(str(row.doc_key)), this.#docPermission(str(row.doc_key)) === "contextEdit" ? "contextEdit" : "docApprove", `Proposal #${i.id}`);
         // Rejecting your own proposal is only taking it back.
-        if (row && method === "proposals.approve") this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
+        if (row && method === "proposals.approve" && !operation) this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
         return;
       }
       case "memory.cleanupSettings":
@@ -6433,7 +6455,7 @@ export class SqliteHive implements HiveBackend {
     }
   }
 
-  #createChatPlan(plan: ChatPlan, caller: Actor, autoDispatch = true): NonNullable<ChatAction["result"]> {
+  #createChatPlan(plan: ChatPlan, caller: Actor, autoDispatch = true, cli = false): NonNullable<ChatAction["result"]> {
     const actor = this.#withSystems(caller);
     const { spec, doc, tasks, made, automation } = this.#tx(() => {
       this.#validateChatPlan(plan, actor, null);
@@ -6442,8 +6464,14 @@ export class SqliteHive implements HiveBackend {
         ...task, project: task.project ?? plan.project!, kind: taskKind,
         note: `${acceptance}\n\nSpec: [[${plan.spec.key}]]`,
       }));
-      // Apply exactly the underlying methods' permissions, including system document rights and archived services.
-      authorize("docs.save", actor); this.#check("docs.save", spec, actor); this.#assertProjectOpen("docs.save", spec);
+      // A CLI plan can create a validated new spec with docPropose; changing an existing doc still needs docs.save rights.
+      if (cli) {
+        const owner = parseDocKey(spec.key).project;
+        this.#need(actor, owner, "docPropose", `Plan ${spec.key}`);
+      } else {
+        authorize("docs.save", actor); this.#check("docs.save", spec, actor);
+      }
+      this.#assertProjectOpen("docs.save", spec);
       for (const task of tasks) {
         authorize("tasks.create", actor); this.#check("tasks.create", task, actor); this.#assertProjectOpen("tasks.create", task);
       }
@@ -7434,7 +7462,36 @@ export class SqliteHive implements HiveBackend {
         ).map(toProposal),
 
       "proposals.create": (input, actor) => {
+        if ("action" in input) {
+          const { method, project, input: raw } = input.action;
+          if (project && !this.#projectNames().includes(project)) throw new HiveError("not_found", `Project ${project} not found.`);
+          const parsed = parseInput(method, raw as never);
+          if ("project" in parsed && parsed.project !== project)
+            throw new HiveError("bad_request", "The operation and proposal must name the same project.");
+          if (method === "runs.merge" || method === "runs.cancel") {
+            const runInput = parsed as ParsedInput<"runs.merge">;
+            const run = db.prepare("SELECT project FROM run_records WHERE machine_id = ? AND run_id = ?")
+              .get(runInput.machineId, runInput.runId) as Row | undefined;
+            if (!run || str(run.project) !== project) throw new HiveError("not_found", "Run not found in the proposal's project.");
+          }
+          if (method === "admin.commandCreate") {
+            const item = (parsed as ParsedInput<"admin.commandCreate">).itemId;
+            const itemProject = item === "shim" || item.startsWith("cli:") || item.startsWith("tool:") ? null : item.slice(0, item.indexOf(":"));
+            if (itemProject && itemProject !== project) throw new HiveError("forbidden", `${item} belongs to another project.`);
+          }
+          const content = JSON.stringify({ method, project, input: parsed }, null, 2);
+          assertNoSecret(content, "Proposed operation");
+          assertNoHidden(content, "Proposed operation");
+          assertNoSecret(input.reason, "Reason");
+          const docKey = `${project ? `project/${project}` : "org"}/${CLI_ACTION_SLUG_PREFIX}${randomUUID().replace(/-/g, "")}`;
+          const res = db.prepare(
+            `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, on_behalf, created_at)
+             VALUES (?, 0, ?, ?, ?, ?, ?, ?)`,
+          ).run(docKey, content, input.reason, actor.name, sourceJson(actor.source), actor.onBehalf ?? null, this.#now());
+          return this.#getProposal(num(res.lastInsertRowid));
+        }
         const parsed = parseDocKey(input.docKey);
+        if (parsed.slug.startsWith(CLI_ACTION_SLUG_PREFIX)) throw new HiveError("bad_request", "Reserved proposal key.");
         if (parsed.skill) SqliteHive.#checkSkill(parsed, input.content);
         assertNoSecret(input.content, "Proposed content");
         assertNoSecret(input.reason, "Reason");
@@ -7461,8 +7518,23 @@ export class SqliteHive implements HiveBackend {
         return this.#getProposal(num(res.lastInsertRowid));
       },
 
-      "proposals.approve": ({ id }, actor) =>
-        this.#tx(() => {
+      "proposals.approve": async ({ id }, actor) => {
+        const pending = this.#getProposal(id);
+        if (isCliActionProposalKey(pending.docKey)) {
+          const action = JSON.parse(pending.content) as { method: Method; input: Record<string, unknown> };
+          this.#tx(() => {
+            if (this.#getProposal(id).status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already decided.`);
+            db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run(actor.name, this.#now(), id);
+          });
+          try {
+            await this.call(action.method, action.input as never, actor);
+            db.prepare("UPDATE proposals SET status = 'approved' WHERE id = ? AND status = 'executing'").run(id);
+          } catch (error) {
+            db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE id = ?").run(String((error as Error).message ?? error).slice(0, 500), id);
+          }
+          return this.#getProposal(id);
+        }
+        return this.#tx(() => {
           const p = this.#getProposal(id);
           if (p.status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already ${p.status}.`, { key: "errors.proposalDecided", vars: { id } });
           const current = this.#getDoc(p.docKey)?.version ?? 0;
@@ -7478,7 +7550,8 @@ export class SqliteHive implements HiveBackend {
             decide("approved", null);
           }
           return this.#getProposal(id);
-        }),
+        });
+      },
 
       "proposals.reject": ({ id, note }, actor) => {
         const p = this.#getProposal(id);
@@ -7891,6 +7964,12 @@ export class SqliteHive implements HiveBackend {
         ),
 
       "tasks.create": (input, actor) => this.#tx(() => this.#createTask(input, actor)),
+
+      "plans.create": (input, actor) => {
+        if (!actor.mcpCredential || actor.runCredential || actor.chatReply !== undefined)
+          throw new HiveError("forbidden", "Only an interactive MCP credential can create a plan.");
+        return this.#createChatPlan(input, actor, false, true) as { specKey: string; taskIds: string[] };
+      },
 
       "tasks.setDeps": ({ id, dependsOn }, actor) =>
         this.#tx(() => {

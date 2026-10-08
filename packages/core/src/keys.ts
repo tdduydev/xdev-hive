@@ -35,6 +35,11 @@ export function parseDocKey(key: string): ParsedDocKey {
   );
 }
 
+/** Generated proposal keys are review queue entries, not documents to publish. */
+export const CLI_ACTION_SLUG_PREFIX = "cli-action-";
+const CLI_ACTION_SLUG = new RegExp(`^${CLI_ACTION_SLUG_PREFIX}[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$`);
+export const isCliActionProposalKey = (key: string): boolean => CLI_ACTION_SLUG.test(parseDocKey(key).slug);
+
 /** Short name of one machine: lowercase letters, digits, "-" (max 24). */
 export const MACHINE_ID = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
