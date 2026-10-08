@@ -28,7 +28,7 @@ export interface SpecFeature {
   stage: SpecStage;
   tasksDone: number;
   tasksTotal: number;
-  /** Short sha of the ref that was read. */
+  /** SHA of the ref that was read; older machines may report an abbreviated SHA. */
   commit: string;
   /** The machine that pushed it. */
   machine: string;

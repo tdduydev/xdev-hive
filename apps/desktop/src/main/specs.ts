@@ -31,16 +31,18 @@ const fit = (text: string | null) => (text !== null && text.length > SPEC_FILE_M
 
 /** The features of one ref; `branch` is what they are labelled with ("" for the target branch). */
 export function readSpecs(repo: string, ref: string, branch = ""): PushedSpec[] {
+  // Freeze the ref once so a concurrent commit cannot pair old files with a new revision.
+  const commit = tryGit(repo, ["rev-parse", `${ref}^{commit}`]);
+  if (!commit) return [];
   // The tree form lists only what is in specs/, with each entry's type: folders are features, files are not.
-  const tree = tryGit(repo, ["ls-tree", `${ref}:specs`]);
+  const tree = tryGit(repo, ["ls-tree", `${commit}:specs`]);
   if (!tree) return [];
-  const commit = git(repo, ["rev-parse", "--short", `${ref}^{commit}`]);
   const out: PushedSpec[] = [];
   for (const line of tree.split("\n")) {
     const m = /^\d+ tree [0-9a-f]+\t(.+)$/.exec(line);
     if (!m || !SPEC_DIR.test(m[1]!)) continue;
     const dir = m[1]!;
-    const files = Object.fromEntries(SPEC_FILES.map((f) => [f, fit(tryGit(repo, ["show", `${ref}:specs/${dir}/${f}.md`]))])) as unknown as SpecFiles;
+    const files = Object.fromEntries(SPEC_FILES.map((f) => [f, fit(tryGit(repo, ["show", `${commit}:specs/${dir}/${f}.md`]))])) as unknown as SpecFiles;
     if (SPEC_FILES.every((f) => files[f] === null)) continue;
     out.push({ dir, branch, commit, files });
   }
