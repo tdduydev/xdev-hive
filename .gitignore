@@ -20,6 +20,7 @@ deploy/.env
 **/.xdev-hive/artifacts/
 # Local test evidence can exceed the artifact upload limit; keep it outside commits.
 .xdev-hive/test-output/
+.xdev-hive/*.log
 # The vendored ui-ux-pro-max skill keeps its search data in data/ (roadmap 49).
 !.claude/skills/ui-ux-pro-max/data/
 # Bytecode the vendored skill's search.py leaves behind; a run must not commit it.

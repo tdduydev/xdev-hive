@@ -669,6 +669,15 @@ async function main() {
     const styles = await tab.eval(() => [...document.querySelectorAll("[data-cosmic-fixture]")].map(el => ({ theme: el.dataset.theme, font: getComputedStyle(el).fontFamily, surface: getComputedStyle(el.querySelector('[data-slot="card"]')).backgroundColor })));
     expect(styles.every(style => style.font.includes("Inter")), "Inter must be self-hosted and applied");
     expect(styles[0].surface === "rgb(29, 28, 32)" && styles[1].surface === "rgb(255, 255, 255)", `nested themes: ${JSON.stringify(styles)}`);
+    if (mobile) {
+      const sizing = await tab.eval(() => [...document.querySelectorAll('[data-cosmic-fixture]')].map(el => ({
+        inputFont: parseFloat(getComputedStyle(el.querySelector('[data-slot="input"]')).fontSize),
+        smallButtons: [...el.querySelectorAll('[data-slot="button"][data-size="sm"]')].map(button => button.getBoundingClientRect().height),
+        switches: [...el.querySelectorAll('input[role="switch"]')].map(input => ({ height: input.getBoundingClientRect().height, target: input.closest('label').getBoundingClientRect().height })),
+        overflow: el.scrollWidth > el.clientWidth,
+      })));
+      expect(sizing.every(theme => theme.inputFont >= 16 && theme.smallButtons.every(height => height >= 44) && theme.switches.every(input => input.height === 26 && input.target >= 44) && !theme.overflow), `mobile cosmic sizing: ${JSON.stringify(sizing)}`);
+    }
     // Render the source bundle independently so the comparison cannot inherit component implementation mistakes.
     const context = { window: {}, React: { ...React, useEffect() {} } };
     runInNewContext(readFileSync(path.resolve(import.meta.dirname, "../../../docs/design/hive-2026-10/_ds/lumibase-design-system-cffa39a8-d3bd-4d37-982f-2d2208c49e76/_ds_bundle.js"), "utf8"), context);
@@ -720,7 +729,7 @@ async function main() {
       const result = { height: style.height, padding: style.paddingLeft, radius: style.borderRadius };
       return result;
     });
-    expect(overrides.height === "24px" && overrides.padding === "4px" && overrides.radius === "8px", `caller utilities: ${JSON.stringify(overrides)}`);
+    expect(overrides.height === (mobile ? "44px" : "24px") && overrides.padding === "4px" && overrides.radius === "8px", `caller utilities with mobile touch minimum: ${JSON.stringify(overrides)}`);
     await tab.click('[data-cosmic-fixture="dark"] .cosmic-segments button', "Đang chạy");
     expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] .cosmic-segments button[aria-pressed="true"]').textContent === "Đang chạy"), "filter selection must update");
     await tab.click('[data-cosmic-fixture="dark"] input[role="switch"]');
@@ -728,9 +737,10 @@ async function main() {
     await tab.key(" ");
     expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "Space must toggle the focused switch");
     await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
-    expect(await tab.eval(() => getComputedStyle(document.querySelector('.cosmic-glass-overlay')).backdropFilter === "none"), "reduced motion disables glass filter");
+    await tab.waitFor("reduced motion disables glass filter", () => getComputedStyle(document.querySelector('.cosmic-glass-overlay')).backdropFilter === "none");
     await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
-    await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("dark fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="dark"]').getBoundingClientRect().top < 150);
     await tab.shot(`cosmic-dark-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => document.querySelector('[data-cosmic-fixture="light"]').scrollIntoView({ block: "start" }));
     await tab.waitFor("light fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="light"]').getBoundingClientRect().top < 150);

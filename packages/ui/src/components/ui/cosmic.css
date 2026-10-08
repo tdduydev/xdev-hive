@@ -44,7 +44,7 @@
 .cosmic-fixture-stack{display:grid;gap:var(--space-4)}
 .cosmic-fixture-wrap{display:flex;flex-wrap:wrap;align-items:center;gap:var(--space-2)}
 .cosmic-fixture label{display:grid;gap:var(--space-2);font:var(--type-label)}
-@media(max-width:767px){.cosmic-fixture{padding:var(--space-4)}.cosmic-fixture-grid{grid-template-columns:minmax(0,1fr)}[data-slot="button"][data-size="sm"]{min-height:var(--control-h-touch)}[data-slot="input"]{font-size:16px}.cosmic-row{flex-wrap:wrap}.cosmic-fixture [data-slot="card"]{min-width:0}}
+@media(max-width:767px){.cosmic-fixture{padding:var(--space-4)}.cosmic-fixture-grid{grid-template-columns:minmax(0,1fr)}[data-slot="button"][data-size="sm"]{min-height:var(--control-h-touch)}.cosmic-row{flex-wrap:wrap}.cosmic-fixture [data-slot="card"]{min-width:0}}
 @media(prefers-reduced-motion:reduce){.cosmic-glass-overlay{backdrop-filter:none}[data-slot="button"]{filter:none!important}[data-slot="button"]:is(:hover,:active):not(:disabled){transform:none!important}}
 [data-slot="toggle"]{border-radius:var(--radius-control);background:var(--glass-bg);box-shadow:var(--ring-glass);min-height:var(--control-h-touch)}
 [data-slot="toggle"][data-state="on"]{background:var(--action-primary-bg);color:var(--action-primary-fg)}

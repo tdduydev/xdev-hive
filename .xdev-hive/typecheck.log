@@ -1,6 +1,0 @@
-> npm run typecheck --workspaces --if-present
-> tsc -p tsconfig.json
-> tsc -p tsconfig.json
-> tsc -p tsconfig.json && tsc -p test/tsconfig.json
-> tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json
-> tsc -p tsconfig.json && tsc -p client/tsconfig.json
