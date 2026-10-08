@@ -1,3 +1,4 @@
+import { MachineRunnerControls, ProfileThresholds } from "#ui/components/MachineRunnerControls.tsx";
 import { WorktreeManager } from "#ui/components/Worktrees.tsx";
 // Bản đồ agent (roadmap 31b): each machine a column of its profiles, each profile with the runs it has now and what
 // the agent is doing, the machine's queue under them, and the open batches on the right. Profiles picked here get one
@@ -240,6 +241,7 @@ function MachineManagement({ machine: m, onChanged }: { machine: Machine; onChan
       <MachineTools machine={m} />
       <TerminalEntry source="machine" machineId={m.id} project={m.projects.length === 1 ? m.projects[0] : undefined} />
       {mayManage(me, m) ? <WorktreeManager machine={m} /> : null}
+      {mayManage(me, m) ? <details className="px-1 text-xs" data-runner-controls><summary className="flex min-h-11 cursor-pointer items-center text-fg-muted select-none md:min-h-7">{t("machines.runnerTitle")}</summary><MachineRunnerControls machine={m} onChanged={onChanged} /></details> : null}
       {mayManage(me, m) && m.profiles.length ? (
         <details className="px-1 text-xs">
           <summary className="min-h-11 cursor-pointer content-center text-fg-muted select-none md:min-h-7">{t("agentMap.manage")}</summary>
@@ -439,7 +441,8 @@ function ProfileControls({ machine: m, onChanged }: { machine: Machine; onChange
             ) : (
               <PriorityInput key={`${p.id}-${waiting?.priority ?? p.priority}`} value={waiting?.priority ?? p.priority!} busy={action.busy} label={t("machines.profilePriority")} onSave={(v) => set(p, { priority: v })} />
             )}
-            {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
+            {p.stopAtSession !== undefined && p.stopAtWeek !== undefined ? <ProfileThresholds key={`${p.id}-${waiting?.stopAtSession ?? p.stopAtSession}-${waiting?.stopAtWeek ?? p.stopAtWeek}`} machine={m} profile={p} onChanged={onChanged} /> : null}
+            {waiting ? <span role="status" className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
           </div>
         );
       })}

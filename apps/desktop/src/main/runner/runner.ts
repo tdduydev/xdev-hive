@@ -79,6 +79,8 @@ import {
   type ToolApproval,
   toolHash,
   type ProfileChange,
+  type RunnerChange,
+  type MachineRunnerSettings,
   type RunMergeOrder,
   type RunMr,
   type QuotaCooldown,
@@ -181,7 +183,7 @@ export interface RunnerHost {
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
-  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[] };
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
@@ -216,6 +218,7 @@ export interface HubUpdate {
   toolApprovals?: ToolApproval[];
   /** Profile changes asked for on the web (roadmap 18d); a hub older than them sends none. */
   profileChanges?: ProfileChange[];
+  runnerChange?: RunnerChange | null;
   /** Merges asked for on the web (roadmap 18c), while this machine takes runs from the hub. */
   mergeRuns?: RunMergeOrder[];
   /** Repos of this machine the hub archived or deleted (roadmap 47); a hub older than it sends none. */
@@ -1378,6 +1381,7 @@ export class Runner {
       tools: res.tools ?? null,
       toolApprovals: res.toolApprovals ?? [],
       profileChanges: res.profileChanges ?? [],
+      runnerChange: res.runnerChange ?? null,
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns && !this.#updateDrain ? (res.mergeRuns ?? []) : [],
       archivedProjects: res.archivedProjects ?? [],
