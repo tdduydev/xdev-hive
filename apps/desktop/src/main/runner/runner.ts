@@ -36,7 +36,6 @@ import {
   cacheReadShare,
   assertNoSecret,
   AGENT_ROLES,
-  ROUTED_KINDS,
   PREFER_KINDS,
   agentActorName,
   ARTIFACT_DIR,
@@ -757,7 +756,13 @@ export class Runner {
     const policy = !extra.fromHub && this.#host.mode() === "hub"
       ? await this.#host.backend().call("sdlc.get", {}, this.#runnerActor())
       : null;
-    if (policy) req = { ...req, allowedAgentKinds: (policy.projects[req.project]?.allowedAgentKinds ?? [...ROUTED_KINDS]) as AgentKind[] };
+    // As the hub does for its requests: only kinds the service chose restrict the pick (sqlite #withAllowedKinds).
+    const allowedKinds = policy?.projects[req.project]?.allowedAgentKinds;
+    if (allowedKinds) req = { ...req, allowedAgentKinds: allowedKinds as AgentKind[] };
+    const pinnedKind = req.profileId ? this.#host.profiles().find(p => p.id === req.profileId)?.kind : null;
+    if (pinnedKind && req.allowedAgentKinds && !req.allowedAgentKinds.includes(pinnedKind)) {
+      throw new HiveError("bad_request", `Agent kind ${pinnedKind} is not allowed for ${req.project}.`, { key: "errors.agentKindPolicy", vars: { kind: pinnedKind, project: req.project } });
+    }
     if (role === "implement" && policy) {
       const tasks = await this.#host.backend().call("tasks.list", { project: req.project }, this.#runnerActor());
       if (needsPlanApproval(policy.projects[req.project]?.planApproval, tasks.find((t) => t.id === req.taskId)?.size ?? null)) {

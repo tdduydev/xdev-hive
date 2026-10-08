@@ -1772,6 +1772,15 @@ describe("Runner", () => {
     await a.runner.settle();
   });
 
+  it("rejects a pinned Board profile excluded by service policy instead of queueing forever", async () => {
+    const a = await setup([profile("copilot-1", "copilot", 1, "ok")], {}, "hub");
+    await a.hive.call("sdlc.setProject", { project: "demo", settings: { gates: {}, allowedAgentKinds: ["claude", "codex"] } }, admin);
+    await assert.rejects(a.runner.enqueue({ project: "demo", taskId: "T-1", profileId: "copilot-1" }),
+      (e: unknown) => e instanceof HiveError && e.key === "errors.agentKindPolicy");
+    assert.equal(a.calls().length, 0);
+    assert.equal(a.runner.list().length, 0);
+  });
+
   it("applies service kinds to an unpinned run started from the desktop Board", async () => {
     const a = await setup([
       profile("copilot-1", "copilot", 1, "ok"),
