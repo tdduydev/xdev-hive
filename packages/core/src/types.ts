@@ -40,6 +40,8 @@ export interface Actor {
    * never falls back to a token's name, so it can tell who owns a machine (roadmap 18d).
    */
   account?: string;
+  /** Verified hub_tokens.id (the parent for scoped credentials). Never taken from headers or RPC input. */
+  tokenId?: string;
   /** Set only after the hub verifies a credential issued for one run. Never derived from request headers. */
   runCredential?: { project: string; task: string; run: string; machine: string; readOnly: boolean };
   /** Verified MCP credential, including interactive sessions that have no assigned run. */

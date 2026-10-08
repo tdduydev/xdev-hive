@@ -597,6 +597,8 @@ export const schemas = {
     deliveredMessages: z.array(z.number().int().positive()).max(100).default([]),
   }),
   "machines.list": z.object({}),
+  /** Explicit token rotation; machine id is kept, so the replacement token must have the same name. */
+  "machines.repair": z.object({ machineId: machineRef, tokenId: z.string().min(1).max(100) }),
   "machines.worktrees": z.object({ machineId: machineRef }),
   "machines.manageWorktrees": z.object({
     machineId: machineRef,
@@ -1299,6 +1301,7 @@ export interface MethodOutput {
     archivedProjects: string[];
   };
   "machines.list": Machine[];
+  "machines.repair": Machine;
   "machines.worktrees": MachineWorktrees;
   "machines.manageWorktrees": WorktreeCommand;
   "machines.tools": MachineToolAccess;
@@ -1498,6 +1501,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "mergeQueue.finish": "agent",
   "machines.heartbeat": "agent",
   "machines.list": "viewer",
+  "machines.repair": "member",
   "machines.tools": "viewer",
   "machines.approveTool": "viewer",
   "machines.worktrees": "viewer",

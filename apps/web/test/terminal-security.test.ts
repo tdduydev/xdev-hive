@@ -67,6 +67,14 @@ it("accepts a terminal machine report only from the machine's own token, whoever
       ["the machine token used by an MCP server", machineToken, "mcp"],
     ];
     for (const [who, bearer, source] of lookalikes) {
+      if (who.startsWith("mallory")) {
+        // Check terminal rights after the attempted takeover: a heartbeat used to replace the stored owner.
+        const collision = await call({ bearer, label: "runner.test", source }, {
+          method: "machines.heartbeat", input: { machine: "test", instance: "bbbbbbbb", projects: ["app"], terminal: cap },
+        });
+        assert.equal(collision.status, 403, who);
+        assert.equal(store.machine(machine.id)!.owner, "alice", who);
+      }
       const actor = await actorOf({ bearer, label: "runner.test", source });
       assert.equal(actor.name, machine.id, `${who} does reach the machine's name`);
       assert.equal(report(actor), "notMachine", who);
