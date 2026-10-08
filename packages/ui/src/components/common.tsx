@@ -114,6 +114,7 @@ export function Page({ wide, className, children }: { wide?: boolean; className?
 
 export const STATUS_TONE: Record<string, string> = {
   pending: "warn",
+  executing: "running",
   approved: "ok",
   rejected: "danger",
   conflict: "danger",

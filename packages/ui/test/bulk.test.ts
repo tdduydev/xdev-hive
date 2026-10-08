@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Memory, Proposal } from "@xdev-hive/core";
-import { runBulk, splitMemory, splitProposals } from "#ui/lib/bulk.ts";
+import { bulkSelectableProposals, runBulk, splitMemory, splitProposals } from "#ui/lib/bulk.ts";
 
 // The shape the client throws (a HiveError carries its code), without needing the core package at run time.
 const hiveError = (code: string, message: string) => Object.assign(new Error(message), { code });
@@ -11,6 +11,10 @@ const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", sta
 const ids = (xs: Array<{ id: number }>) => xs.map((x) => x.id);
 
 describe("bulk approve", () => {
+  it("keeps operation proposals out of select all and bulk approval", () => {
+    const rows = [proposal({ id: 1 }), proposal({ id: 2, docKey: "project/app/cli-action-abc" }), proposal({ id: 3, status: "approved" })];
+    assert.deepEqual(ids(bulkSelectableProposals(rows, () => true)), [1]);
+  });
   it("skips proposals whose doc moved past their base version", () => {
     const versions = new Map([
       ["org/a", 2],

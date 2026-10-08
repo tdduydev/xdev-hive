@@ -991,6 +991,7 @@ export const vi = {
   },
   proposalStatus: {
     pending: "Chờ duyệt",
+    executing: "Đang thực hiện",
     approved: "Đã duyệt",
     rejected: "Từ chối",
     conflict: "Xung đột",
