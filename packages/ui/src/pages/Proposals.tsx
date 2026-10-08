@@ -188,7 +188,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               <div className="text-xs text-muted-foreground">
                 {p.author} · {formatTime(p.createdAt)}
                 {sourceText(p.source)}
-                {p.reviewer && p.status !== "pending" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
+                {p.reviewer && p.status !== "pending" && p.status !== "executing" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>

@@ -12,8 +12,8 @@ const ids = (xs: Array<{ id: number }>) => xs.map((x) => x.id);
 
 describe("bulk approve", () => {
   it("keeps operation proposals out of select all and bulk approval", () => {
-    const rows = [proposal({ id: 1 }), proposal({ id: 2, docKey: "project/app/cli-action-abc" }), proposal({ id: 3, status: "approved" })];
-    assert.deepEqual(ids(bulkSelectableProposals(rows, () => true)), [1]);
+    const rows = [proposal({ id: 1 }), proposal({ id: 2, docKey: "project/app/cli-action-00000000000040008000000000000000" }), proposal({ id: 3, status: "approved" }), proposal({ id: 4, docKey: "project/app/cli-action-guide" })];
+    assert.deepEqual(ids(bulkSelectableProposals(rows, () => true)), [1, 4]);
   });
   it("skips proposals whose doc moved past their base version", () => {
     const versions = new Map([
