@@ -1,6 +1,29 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+ workspace: { capped: "Counts cover the latest 500 tasks and 200 runs. Open the list to inspect by status.","results":"Results to accept","process":"Process & models","acceptanceIntro":"Inspect results, evidence and revisions before approval.","evidenceIntro":"Open the handover, evidence and actions allowed by your permissions.","noResults":"No results are waiting for acceptance.","releases":"Release queue","pickReleaseProject":"Select a project in the sidebar to inspect and approve releases.",
+  "title": "What needs your attention today?",
+  "subtitle": "Your decisions and the progress of your team.",
+  "newWork": "Give Hive work",
+  "decisions": "Needs your decision",
+  "running": "In progress",
+  "blocked": "Needs unblocking",
+  "completed": "Completed",
+  "open": "View details",
+  "inspect": "Inspect results & act",
+  "allInbox": "All items to handle",
+  "noRuns": "No runs are in progress.",
+  "openRun": "Open run",
+  "inspectBlocker": "Inspect cause & next steps",
+  "noBlockers": "No tasks are blocked.",
+  "next": "Continue your work",
+  "acceptance": "Acceptance & release",
+  "back": "Back to Today",
+  "work": "Work",
+  "space": "Workspace",
+  "operations": "Operations",
+  "project": "Projects & features"
+},
   blockers: {
   "title": "Blocked",
   "hint": "See causes and next steps. Open details to act with your permissions; status refreshes from the hub.",

@@ -148,13 +148,15 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const key = scopeKey(scope);
   const [service, setService] = useServiceFilter(scope);
   const [own, setViewState] = useState<View>(readView);
-  const chosen = fixed ?? own;
+  const [linkedStatus] = useHashParam("status");
+  const chosen = fixed ?? (linkedStatus ? "list" : own);
   const view = (chosen === "agent" || chosen === "blockers") && me.mode !== "hub" ? "list" : chosen;
   const setView = (v: View) => {
     setViewState(v);
     writeView(v);
   };
   const [status, setStatus] = useState<TaskStatus | "">("");
+  useEffect(() => { if (linkedStatus && TASK_STATUSES.includes(linkedStatus as TaskStatus)) setStatus(linkedStatus as TaskStatus); }, [linkedStatus]);
   // The board's columns are the statuses: it always gets every task.
   const filter = view === "list" ? status : "";
   const taskPoll = usePoll(me.mode === "hub" ? 5000 : null);
