@@ -1,4 +1,5 @@
 import { allDispatchTasks } from "#ui/lib/inbox-source.ts";
+import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { TaskRunChain } from "#ui/components/RunRedispatch.tsx";
 import { ImplementationPlans } from "#ui/components/ImplementationPlans.tsx";
@@ -570,7 +571,9 @@ function StatusSelect({ task, onChanged }: { task: Task; onChanged: () => void }
         aria-label={t("tasks.statusOf", { id: task.id })}
         onChange={(e) =>
           void action.run(async () => {
-            await client.call("tasks.update", { id: task.id, status: e.target.value as TaskStatus });
+            const next = e.target.value as TaskStatus;
+            if (next === "done" && !await confirmTaskClose(client, task, t)) return;
+            await client.call("tasks.update", { id: task.id, status: next });
             onChanged();
           })
         }
