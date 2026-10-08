@@ -19,22 +19,22 @@ const menu = (me: Me, c: WebCaps = caps) => {
 
 describe("web menu by job (roadmap 49b)", () => {
   it("gives a viewer the work and the knowledge to read, no chat, settings or administration", () => {
-    assert.deepEqual(menu(viewer), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "pipeline", "machines"]);
+    assert.deepEqual(menu(viewer), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "machines"]);
   });
 
   it("gives a member the same: Chat needs chatUse, which the member role does not have", () => {
-    assert.deepEqual(menu(member), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "pipeline", "machines"]);
+    assert.deepEqual(menu(member), ["today", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "machines"]);
     assert.ok(menu(account({ app: { permissions: ["view", "chatUse"] } })).includes("chat"), "a grant with chatUse shows Chat");
   });
 
   it("adds Chat and Cài đặt service for a project lead, still no Quản trị", () => {
-    assert.deepEqual(menu(lead), ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "pipeline", "settings", "machines"]);
+    assert.deepEqual(menu(lead), ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "settings", "machines"]);
   });
 
-  it("gives the hub admin every entry: fourteen entries with proposals on knowledge tabs", () => {
+  it("gives the hub admin every entry: fifteen entries with proposals on knowledge tabs", () => {
     const all = menu(admin);
-    assert.deepEqual(all, ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "pipeline", "settings", "machines", "admin"]);
-    assert.equal(all.filter((id) => id !== "proposals").length, 14);
+    assert.deepEqual(all, ["today", "chat", "graph", "features", "tasks", "runs", "docs", "skills", "memory", "artifacts", "history", "pipeline", "settings", "machines", "admin"]);
+    assert.equal(all.filter((id) => id !== "proposals").length, 15);
   });
 
   it("shows Cài đặt service to whoever manages members alone, with only what they may do", () => {

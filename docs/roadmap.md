@@ -351,6 +351,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - [x] **69f. terminal-ui** (0.146.3): UI xterm dùng chung, vi/en, form từ Máy/Run/Chat và link chỉ điền scope; step-up người dùng cookie, thanh phím mobile, dán có xem trước, nhập IME fallback, reconnect không gửi lại input, detach/stop và chỉ mục audit. E2e dùng hub/WS thật với máy tổng hợp; production vẫn fail closed khi chưa có identity máy. Worktree, tải transcript và IME bàn phím thật thuộc phần nghiệm thu tiếp theo của 69.
 
+- [x] **UX-70-HISTORY. Timeline và tìm kiếm lịch sử** (0.147.0): trang *Lịch sử* của hub tái dùng chat, run, chốt SDLC và audit; tìm nội dung tiếng Việt, lọc task/nguồn/ngày/phạm vi, phân trang sau khi lọc quyền, liên kết tới nguồn. Audit và chat toàn hub chỉ dành cho hub admin. Run hiện bản ghi mới nhất; không tạo bản sao nhật ký. Có unit test quyền, phân trang và tìm kiếm; e2e desktop/mobile thêm bước `history-page`, cần chạy lại trên máy mở được Electron (môi trường task SIGABRT trước khi mở trình duyệt).
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to hc-duytd20-linux"); giờ runner gửi kèm máy.
