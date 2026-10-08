@@ -38,6 +38,8 @@ services:
       HIVE_OIDC_SCOPES: ${HIVE_OIDC_SCOPES:-}
       # Unset: the SeaweedFS below. Files already in the database move there; backups copy them to /data/backups/files.
       HIVE_SEAWEEDFS_URL: ${HIVE_SEAWEEDFS_URL-http://seaweedfs:8888}
+      # Remote terminal (spec 69): off unless HIVE_REMOTE_TERMINAL=1 in deploy/.env. Machines connect over https only.
+      HIVE_REMOTE_TERMINAL: ${HIVE_REMOTE_TERMINAL:-}
     depends_on: [seaweedfs]
     volumes:
       - hive-data:/data
