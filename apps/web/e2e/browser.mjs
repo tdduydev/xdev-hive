@@ -1806,6 +1806,9 @@ async function main() {
     await step("models-in-pipeline", async () => {
       const original = await rpc("modelRouter.get", {});
       try {
+        const qualityAt = new Date().toISOString();
+        await rpc("tasks.create", { id: "QUALITY-E2E", project: "payment", title: "Quality cohort", kind: "feature", size: "m", risk: "normal" });
+        await rpc("runs.push", { machine: "quality-fixture", runs: [{ runId: "R-quality", project: "payment", taskId: "QUALITY-E2E", taskTitle: "Quality cohort", role: "implement", profileId: "quality-profile", kind: "codex", model: "quality-model", tier: "standard", status: "failed", createdAt: qualityAt, startedAt: qualityAt, finishedAt: qualityAt }] });
         await tab.go("pipeline?project=payment");
         await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Opus"));
         await tab.click('[data-pipeline-gate="review"]');
@@ -1818,6 +1821,13 @@ async function main() {
         await tab.waitFor("step editor closed", () => !document.querySelector("[data-pipeline-editor]"));
         await tab.click('[data-model-tab="models"]');
         await tab.waitFor("task cell table", () => document.querySelectorAll('[data-model-row]').length === 11);
+        await tab.waitFor("quality cohort visible", () => [...document.querySelectorAll('[data-quality-cohort]')].some((el) => el.textContent.includes("quality-model")));
+        await tab.click('[data-model-quality] input');
+        await tab.type("quality-model");
+        await tab.waitFor("quality filter applied", () => document.querySelectorAll('[data-quality-cohort]').length === 1);
+        expect(await tab.eval(() => document.querySelector('[data-quality-cohort]').textContent.includes("0/1")), "failed unfinished task stays in denominator");
+        await tab.eval(() => document.querySelector('[data-model-quality]').scrollIntoView());
+        await tab.shot(`${String(n).padStart(2, "0")}-model-quality`);
         await tab.waitFor("supported profile models alongside routing", () => !!document.querySelector("[data-supported-models] h2") && document.querySelector('[data-supported-profile="codex-1"]')?.textContent.includes("gpt-6-luna"));
         expect(await tab.eval(() => !document.querySelector('[data-hub-model-save]')), "project manager cannot edit hub tiers");
         await tab.click('[data-model-profile="economy"]');
