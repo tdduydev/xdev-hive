@@ -811,6 +811,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX acceptance_evidence_scope ON acceptance_evidence(project, task_id, spec_hash, commit_sha, id);
   CREATE TRIGGER acceptance_evidence_immutable BEFORE UPDATE ON acceptance_evidence
     BEGIN SELECT RAISE(ABORT, 'acceptance evidence is immutable'); END;`,
+  `ALTER TABLE run_records ADD COLUMN head_sha TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1087,6 +1088,7 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     parentRun: s(r.parent_run),
     parentMachineId: s(r.parent_machine_id) ?? (r.parent_run ? str(r.machine_id) : null),
     baseSha: s(r.base_sha),
+    headSha: s(r.head_sha),
     ...(withLog ? { instructions: s(r.instructions) ?? s(r.request_instructions) } : {}),
     verdict: s(r.verdict) as Verdict | null,
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch), diffReview: r.diff_review == null ? null : JSON.parse(str(r.diff_review)) } : {}),
@@ -8202,6 +8204,7 @@ export class SqliteHive implements HiveBackend {
               ["parent_run", db.prepare("SELECT parent_machine_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(actor.name, r.runId)?.parent_machine_id ? undefined : r.parentRun],
               ["instructions", r.instructions === undefined ? undefined : clean(r.instructions)],
               ["base_sha", r.baseSha],
+              ["head_sha", r.headSha],
               ["verdict", verdict],
             ];
             const sent = ranOn.filter(([, v]) => v !== undefined);

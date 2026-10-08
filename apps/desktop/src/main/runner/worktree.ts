@@ -290,7 +290,7 @@ export function resetTo(dir: string, branch: string, ref: string): void {
 
 export function branchState(dir: string, baseSha: string): { commits: number; headSha: string | null } {
   const count = tryGit(dir, ["rev-list", "--count", `${baseSha}..HEAD`]);
-  return { commits: count ? Number(count) : 0, headSha: tryGit(dir, ["rev-parse", "--short", "HEAD"]) };
+  return { commits: count ? Number(count) : 0, headSha: tryGit(dir, ["rev-parse", "HEAD"]) };
 }
 
 /**

@@ -700,6 +700,7 @@ export const schemas = {
           parentRun: z.string().regex(/^[\w.-]{1,40}$/).nullable().optional(),
           instructions: z.string().max(4000).optional(),
           baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
+          headSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
