@@ -17,6 +17,7 @@
 //   HIVE_OIDC_ISSUER=https://gitlab.example.com HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
 //     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
 //   HIVE_REMOTE_TERMINAL=1              (remote terminal, spec 69: off unless exactly 1; each machine still opts in locally)
+//   HIVE_GATE_JOBS=1                    (gate jobs, spec 69h1: off unless exactly 1; each machine still declares its templates locally)
 //   HIVE_EMBED_URL=http://ollama:11434/v1 (memory search by meaning too: an OpenAI-compatible /embeddings endpoint;
 //     HIVE_EMBED_MODEL=bge-m3, HIVE_EMBED_KEY for an API, HIVE_EMBED_MIN_SCORE=0.5 cosine for a match by meaning)
 //   HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 (doc files in a SeaweedFS filer instead of the database; the ones already
@@ -82,6 +83,7 @@ const hive = new SqliteHive(dbPath, {
   embedder,
   embedMinScore: Number.isFinite(minScore) ? minScore : 0.5,
   blobs,
+  gateJobs: process.env.HIVE_GATE_JOBS === "1",
   // Deleting a project snapshots the whole hub first (roadmap 47), the same snapshot the Hub page's "Backup ngay"
   // makes. With HIVE_BACKUP_DIR unset this throws errors.backupOff, and nothing is deleted.
   backup: async () => {
