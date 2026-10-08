@@ -1,0 +1,9 @@
+> node e2e/run.mjs /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/desktop --only cosmic-primitives --no-build
+e2e: the hub's web pages
+  ✓ login-token (2440 ms)
+  ✓ cosmic-primitives (1516 ms)
+step times, slowest first (total 3956 ms):
+     2440 ms  ✓ login-token
+     1516 ms  ✓ cosmic-primitives
+2/2 steps passed
+screenshots in /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/desktop

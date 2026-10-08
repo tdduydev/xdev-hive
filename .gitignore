@@ -17,7 +17,7 @@ data/
 deploy/.env
 
 # What agents make in a run (roadmap 41c uploads it to the hub); never part of a commit.
-.xdev-hive/artifacts/
+**/.xdev-hive/artifacts/
 # Local test evidence can exceed the artifact upload limit; keep it outside commits.
 .xdev-hive/test-output/
 # The vendored ui-ux-pro-max skill keeps its search data in data/ (roadmap 49).

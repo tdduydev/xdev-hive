@@ -1,8 +1,8 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "cn";
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
-export function Tag({ tone = "neutral", className, ...props }: ComponentProps<"span"> & { tone?: Tone }) {
-  return <span className={cn("cosmic-tag cosmic-tone", className)} data-tone={tone} {...props} />;
+export function Tag({ tone = "neutral", active = false, className, ...props }: ComponentProps<"span"> & { tone?: Tone; active?: boolean }) {
+  return <span className={cn("cosmic-tag", className)} data-tone={tone} data-active={active} {...props} />;
 }
 /** A native checkbox provides switch keyboard and form behavior without duplicating state. */
 export function Switch({ children, ...props }: Omit<ComponentProps<"input">, "type">) {

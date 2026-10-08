@@ -10,6 +10,22 @@ import { Tag, Switch, SegmentedTabs, StatTile, ListRow, EmptyState, type Tone } 
 import { Toggle } from "#ui/components/ui/toggle.tsx";
 import { translate as t } from "#ui/i18n/translate.ts";
 
+function DesignComparison() {
+  return <section data-theme="dark" data-cosmic-compare className="cosmic-fixture">
+    <h2>{t("cosmicFixture.compare")}</h2>
+    <div className="cosmic-fixture-grid">
+      <div data-compare-shared className="cosmic-fixture-stack">
+        <strong>{t("cosmicFixture.implementation")}</strong>
+        {(["sm", "md", "lg"] as const).map(size => <div key={size} className="cosmic-fixture-wrap">{(["glass", "solid", "blue", "ghost"] as const).map(variant => <Button size={size} variant={variant} key={variant}>{t(`cosmicFixture.${variant}`)}</Button>)}</div>)}
+        <div className="cosmic-fixture-wrap"><Tag>{t("cosmicFixture.tags")}</Tag><Tag active>{t("cosmicFixture.tags")}</Tag><Badge tone="green">{t("cosmicFixture.tags")}</Badge></div>
+        <Input aria-label={t("cosmicFixture.name")} placeholder={t("cosmicFixture.placeholder")} />
+        <div className="cosmic-fixture-wrap"><Switch aria-label={t("cosmicFixture.toggle")} /><Switch defaultChecked aria-label={t("cosmicFixture.toggle")} /></div>
+      </div>
+      <div data-compare-reference className="cosmic-fixture-stack"><strong>{t("cosmicFixture.reference")}</strong></div>
+    </div>
+  </section>;
+}
+
 function ThemeFixture({ theme }: { theme: "dark" | "light" }) {
   const [value, setValue] = useState("all");
   return <section data-theme={theme} data-cosmic-fixture={theme} className="cosmic-fixture" aria-label={t(`cosmicFixture.${theme}`)}>
@@ -18,6 +34,8 @@ function ThemeFixture({ theme }: { theme: "dark" | "light" }) {
       <Card><CardHeader><CardTitle>{t("cosmicFixture.buttons")}</CardTitle></CardHeader><CardContent className="cosmic-fixture-stack">
         {(["sm", "md", "lg"] as const).map(size => <div className="cosmic-fixture-wrap" key={size}>{(["glass", "solid", "blue", "ghost"] as const).map(variant => <Button key={variant} variant={variant} size={size}>{t(`cosmicFixture.${variant}`)} · {size}</Button>)}</div>)}
         <Button disabled>{t("cosmicFixture.disabled")}</Button>
+        <Button data-utility-override variant="glass" size="md" className="h-6 rounded-md px-1">{t("cosmicFixture.sample")}</Button>
+        <Button variant="link">{t("cosmicFixture.open")}</Button>
       </CardContent></Card>
       <Card><CardHeader><CardTitle>{t("cosmicFixture.controls")}</CardTitle></CardHeader><CardContent className="cosmic-fixture-stack">
         <label>{t("cosmicFixture.name")}<Input placeholder={t("cosmicFixture.placeholder")} /></label>
@@ -41,7 +59,7 @@ function ThemeFixture({ theme }: { theme: "dark" | "light" }) {
 /** Browser-only samples, explicitly isolated from product metrics. */
 export function DashboardComponentsFixture() {
   return <Page><PageHeader title={t("cosmicFixture.title")} />
-    <ThemeFixture theme="dark" /><ThemeFixture theme="light" />
+    <DesignComparison /><ThemeFixture theme="dark" /><ThemeFixture theme="light" />
     <SummaryStrip label={t("cosmicFixture.stats")} items={[
       { id: "running", label: t("cosmicFixture.running"), value: 2, href: "#/runs?status=running" },
       { id: "queued", label: t("cosmicFixture.all"), value: 1, href: "#/runs?status=queued" },

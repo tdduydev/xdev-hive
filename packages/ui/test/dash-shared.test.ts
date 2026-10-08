@@ -61,10 +61,25 @@ describe("cosmic primitives", () => {
     const html = renderToStaticMarkup(createElement(DashboardComponentsFixture));
     assert.match(html, /data-cosmic-fixture="dark"/);
     assert.match(html, /data-cosmic-fixture="light"/);
-    assert.equal((html.match(/data-variant="blue"/g) ?? []).length, 6);
-    assert.equal((html.match(/role="switch"/g) ?? []).length, 2);
+    assert.equal((html.match(/data-variant="blue"/g) ?? []).length, 9);
+    assert.equal((html.match(/role="switch"/g) ?? []).length, 4);
     assert.match(html, /aria-pressed="true"/);
     assert.match(html, /không phải số liệu dự án/);
+  });
+  it("keeps primary defaults, link sizing and caller overrides", async () => {
+    const { Button } = await import("#ui/components/ui/button.tsx");
+    const { Input } = await import("#ui/components/ui/input.tsx");
+    const { Card } = await import("#ui/components/ui/card.tsx");
+    assert.match(renderToStaticMarkup(createElement(Button, null, "Save")), /data-variant="default"/);
+    const link = renderToStaticMarkup(createElement(Button, { variant: "link" }, "Open"));
+    assert.match(link, /h-auto/);
+    assert.doesNotMatch(link, /h-8/);
+    const props = { className: "h-6 rounded-md px-1" };
+    for (const element of [createElement(Button, props), createElement(Input, props), createElement(Card, props)]) {
+      const html = renderToStaticMarkup(element);
+      assert.match(html, /h-6 rounded-md px-1/);
+      assert.doesNotMatch(html, /rounded-\[(?:12|24|32)px\]/);
+    }
   });
   it("preserves disabled selectors and selected filter semantics", async () => {
     const { SegmentedTabs, Switch } = await import("#ui/components/ui/primitives.tsx");
