@@ -448,7 +448,7 @@ async function main() {
     await tab.waitFor("effective policy", () => !!document.querySelector("[data-onboarding-policy]"));
     await tab.reload();
     await tab.waitFor("resume unsaved task draft", () => document.querySelector("#onboarding-task-id")?.value === "ONBOARDING-E2E-1" && document.querySelector("#onboarding-task-title")?.value === "Kiểm tra dự án mới");
-    await tab.shot(`${String(n).padStart(2, "0")}-project-onboarding`);
+    await tab.shot(`${String(n).padStart(2, "0")}-project-onboarding-draft`);
     await tab.click("[data-onboarding-create]");
     await tab.waitFor("first task saved", () => document.querySelector("[data-onboarding-open-task]")?.textContent.includes("ONBOARDING-E2E-1"));
     expect((await rpc("tasks.list", { project: "onboarding-e2e" })).length === 1, "exactly one task in a new project");
