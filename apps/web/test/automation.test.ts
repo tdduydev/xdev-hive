@@ -17,6 +17,7 @@ it("filters, dry-runs without writes, deduplicates concurrently, and audits exec
     const automation = new Automation(hive, () => admin);
     const rule = automation.save(input, "owner", admin);
     assert.equal(automation.dryRun(rule.id, event).matches, true);
+    assert.throws(() => automation.dryRun(rule.id, undefined as never), /Event is required/);
     assert.equal(automation.dryRun(rule.id, { ...event, project: "other" } as HiveEvent).matches, false);
     assert.equal((await hive.call("tasks.list", {}, admin)).length, 0);
     await automation.onEvent({ ...event, automation: true });
@@ -26,6 +27,10 @@ it("filters, dry-runs without writes, deduplicates concurrently, and audits exec
     await automation.onEvent({ ...event, alert: { ...(event as Extract<HiveEvent, { type: "alert.opened" }>).alert, lastSeenAt: "later" } } as HiveEvent);
     assert.equal(automation.history().length, 1);
     assert.equal(automation.history()[0]!.status, "done");
+    const runEvent = { type: "run.failed", project: "demo", run: { machine: "m1", runId: "R-1", taskId: "T-1", taskTitle: "Fix", role: "coder", error: "fail", kind: "failed", profileId: null, mrUrl: null, mrIid: null } } as HiveEvent;
+    const runRule = automation.save({ ...input, trigger: "run.failed", conditions: [], action: { method: "tasks.create", input: { project: "demo", id: "FIX-1", title: "Fix" } } }, "owner", admin);
+    await Promise.all([automation.onEvent(runEvent), automation.onEvent({ ...runEvent, run: { ...(runEvent as Extract<HiveEvent, { type: "run.failed" }>).run, error: "different message" } } as HiveEvent)]);
+    assert.equal(automation.history().filter(h => (h as { rule_id: number }).rule_id === runRule.id).length, 1);
     assert.throws(() => automation.save({ ...input, action: { ...input.action, input: { ...input.action.input, project: "other" } } }, "owner", admin));
     assert.throws(() => automation.save({ ...input, action: { method: "agents.stop", input: {} } }, "owner", admin));
   } finally { hive.close(); }
@@ -101,12 +106,17 @@ it("exposes management RPC only to hub admins and rejects revoked owners at exec
     const saved = await rpc(who.token, "automation.save", input);
     assert.equal(saved.status, 200);
     assert.equal((await rpc(who.token, "automation.dryRun", { id: saved.body.result.id, event })).body.result.matches, true);
+    assert.equal((await rpc(who.token, "automation.dryRun", { id: saved.body.result.id })).status, 400);
+    assert.equal(((await rpc(who.token, "automation.list")).body.result as unknown as unknown[]).length, 1);
     assert.equal((await rpc(who.token, "automation.history")).body.result.length, 0);
-    tokens.create("backup", "admin");
+    const backup = tokens.create("backup", "admin");
     tokens.revoke(who.info.id);
     await automation.onEvent(event);
     assert.equal(automation.history()[0]!.status, "failed");
     assert.equal(automation.history()[0]!.error, "forbidden");
+    const retryRes = await rpc(backup.token, "automation.retry", { id: automation.history()[0]!.id });
+    assert.equal(retryRes.status, 200);
+    assert.equal((retryRes.body as unknown as { result: { status: string } }).result.status, "failed");
   } finally {
     await new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
     hive.close();

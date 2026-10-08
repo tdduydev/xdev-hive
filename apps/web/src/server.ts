@@ -133,12 +133,15 @@ const automation = new Automation(hive, (owner) => {
     const user = users.get(owner.slice(5));
     return user && !user.disabled ? { name: user.username, role: user.admin ? "admin" : "member", account: user.username, access: users.access(user) } : null;
   }
-  const token = tokens.get(owner.slice(6));
-  if (!token) return null;
-  const user = token.ownerId ? users.get(token.ownerId) : null;
-  if (token.ownerId && (!user || user.disabled)) return null;
-  return { name: token.name, tokenId: token.id, role: token.role === "admin" && user && !user.admin ? "member" : token.role,
-    ...(user ? { account: user.username, access: users.access(user) } : {}) };
+  if (owner.startsWith("token:")) {
+    const token = tokens.get(owner.slice(6));
+    if (!token) return null;
+    const user = token.ownerId ? users.get(token.ownerId) : null;
+    if (token.ownerId && (!user || user.disabled)) return null;
+    return { name: token.name, tokenId: token.id, role: token.role === "admin" && user && !user.admin ? "member" : token.role,
+      ...(user ? { account: user.username, access: users.access(user) } : {}) };
+  }
+  return null;
 });
 const webhookStore = new WebhookStore(hive.db);
 const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl });
@@ -154,7 +157,7 @@ const alerts = new AlertStore(hive, {
 });
 onEvent = (event) => {
   alerts.onEvent(event);
-  void automation.onEvent(event).catch(() => hubLog.error("Automation event processing failed"));
+  void automation.onEvent(event).catch((err) => hubLog.error(`[xdev-hive] automation event failed: ${(err as Error).message}`));
   void dispatcher.notify(event);
 };
 setInterval(() => void alerts.check().catch((err) => hubLog.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
