@@ -9,6 +9,16 @@ Người dùng đã chọn (8/10):
 
 Thiết kế này thay cách chia menu của UX-71 (`docs/design/ux71/`). Phần nào của UX-71 đã nối API và quyền thật thì giữ logic, chỉ đổi trình bày.
 
+## Giống thiết kế đến từng điểm ảnh (bổ sung 8/10)
+
+Người dùng: "chưa thấy giống với giao diện thiết kế, có thể làm giống luôn đi". Mục tiêu là **giống thiết kế đến từng điểm ảnh**, không phải "theo phong cách".
+
+- **Bản xem trước chạy được:** `docs/design/hive-2026-10/xDev Hive.preview.html`. Đây là template gốc, có thêm đoạn `return` mình dựng lại ở cuối `renderVals()`. Mở bằng `python3 -m http.server 7821 -d docs/design/hive-2026-10`, rồi vào `http://localhost:7821/xDev%20Hive.preview.html?page=<trang>`. Trang là một trong: today, tasks, chat, pipeline, features, runs, docs, memory, skills, artifacts, history, graph, machines, terminal, settings, admin, start.
+- **Ảnh tham chiếu:** `docs/design/hive-2026-10/shots/<trang>-1440.png` (1440×900, tối). Đầy đủ cho today, tasks, chat, pipeline, features, runs, docs, memory, skills, machines. Panel chi tiết của *Hôm nay* chưa hiện. Artifact, Lịch sử, Sơ đồ, Cài đặt service, Quản trị, Terminal, Bắt đầu chỉ có khung, vì dữ liệu của chúng nằm trong phần bị cắt. Với các trang này, dựng theo markup trong template.
+- **Số đo lấy đúng từ style inline của template:** px, khoảng cách, bo góc, cỡ và độ đậm chữ, màu, đổ bóng, ring. Chuyển các giá trị này sang token hoặc lớp Tailwind, nhưng giữ nguyên số đo. Không làm tròn sang thang có sẵn nếu lệch, không tự đổi bố cục, không thêm hay bớt khối. Thiếu token thì thêm token.
+- **Cách so:** dùng cùng dữ liệu mẫu (fixture có dữ liệu giống thiết kế, ví dụ seed demo trong e2e), chụp trang ở 1440×900 tối, đặt cạnh ảnh tham chiếu (`*-compare.png`), và sửa tới khi bố cục, vị trí, kích thước và màu trùng. Chỗ được khác chỉ là dữ liệu thật khác dữ liệu mẫu. Mỗi chỗ còn khác phải ghi vào note bàn giao kèm lý do.
+- **Asset và icon đúng như thiết kế:** Lucide (tên icon ở `navDef` và trong template), ảnh hành tinh làm avatar theo loại gói (claude = violet, codex = green, gemini = blue).
+
 ## Đọc thiết kế thế nào
 
 - `xDev Hive.dc.html` là template của Claude Design: HTML có style inline, binding `{{ … }}`, và `<script data-dc-script>` từ dòng 1875 chứa dữ liệu mẫu và hành vi (`navDef`, `inboxGroups`, các cột board, `artDef`…). File bị cắt ở 256 KB (giới hạn đọc của DesignSync), nên mất phần cuối script. Template (dòng 1–1874) còn nguyên. Đừng cố chạy file; hãy đọc markup và style.
