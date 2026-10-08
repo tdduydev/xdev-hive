@@ -48,3 +48,4 @@ export * from "#core/inbox.ts";
 
 export * from "#core/worktrees.ts";
 export * from "#core/terminal.ts";
+export { TerminalRedactor, type TerminalRedactorState } from "#core/terminal-redact.ts";
