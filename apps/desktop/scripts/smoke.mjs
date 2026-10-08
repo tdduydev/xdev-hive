@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -172,6 +172,28 @@ async function shoot(name, page, delay, extra = {}) {
     console.error(`smoke failed on ${name}`, signal ?? code, existsSync(shot) ? "" : "(no screenshot)");
     process.exit(1);
   }
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
+  const db = new SqliteHive(path.join(work, "local.db"));
+  const project = "demo", taskId = "EVID-SMOKE";
+  const source = { specDir: "070-acceptance", specBranch: `ai/${taskId}` };
+  await db.call("tasks.create", { id: taskId, project, title: "Nghiệm thu giao diện dùng chung" }, admin);
+  await db.call("specs.push", { project, features: [{ dir: source.specDir, branch: source.specBranch, commit: "a".repeat(40), files: { spec: "# Nghiệm thu\n## Acceptance criteria\n- AC-1: Kết quả được lưu qua lần tải lại\n- AC-2: Xem được phiên bản đã kiểm tra\n", plan: null, tasks: null } }] }, admin);
+  const context = await db.call("evidence.context", { project, taskId, ...source }, admin);
+  const { specText, ...scope } = context;
+  await db.call("evidence.record", { ...scope, criterionId: "AC-1", criterion: "AC-1: Kết quả được lưu qua lần tải lại", outcome: "passed", note: "Đã tải lại ứng dụng và đối chiếu dữ liệu lưu trong SQLite." }, admin);
+  db.close();
+  for (const phone of [false, true]) {
+    await shoot(phone ? "acceptance-mobile" : "acceptance-desktop", `specs?project=${project}&dir=${source.specDir}&branch=ai%2F${taskId}`, 2500, {
+      ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
+      HIVE_SMOKE_CLICK: "[data-spec-checks-tab]",
+      HIVE_SMOKE_EXPECT: "[data-acceptance-evidence] && [data-evidence-result=passed] && [data-evidence-form]",
+      HIVE_SMOKE_ASSERT: `document.querySelector('[data-evidence-progress]')?.textContent.includes('1/2') && document.body.textContent.includes('${"a".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth`,
+    });
+  }
+  await gitlab.close();
+  process.exit(0);
 }
 
 // Roadmap 62d: exercise the shared shell chat in local mode without sending to an agent.
