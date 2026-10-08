@@ -3760,6 +3760,7 @@ export const en: Catalog = {
     artifactNotFile: "a link (symlink) or not a regular file",
     artifactSameName: "same name {name} as {other} once the characters it may not have were taken out; rename one of them",
     waitingUpdate: "Waiting for the app update",
+    waitingTerminal: "This worktree is open in a remote terminal: waiting for that session to end",
     waitingParallel: "Waiting for a free slot (parallel agent limit reached)",
     waitingPaused: "Agents of {project} were paused by {by}: waiting until someone lets them run again",
     waitingArchived: "Service {project} is archived on the hub: waiting until it is restored",

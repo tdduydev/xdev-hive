@@ -30,8 +30,8 @@ import { WsPeer, type SqliteHive, type TerminalMachineIdentity, type TerminalSto
 import type { Duplex } from "node:stream";
 
 /** The clocks of §6–§7; tests shorten them, nothing raises them past TERMINAL_LIMITS. */
-export type RelayTimings = Pick<typeof TERMINAL_LIMITS,
-  "leaseMs" | "leaseRenewMs" | "detachedMs" | "idleInputMs" | "unattachedMs" | "heartbeatMs" | "heartbeatTimeoutMs" | "slowConsumerMs" | "firstFrameMs">;
+const TIMING_KEYS = ["leaseMs", "leaseRenewMs", "detachedMs", "idleInputMs", "unattachedMs", "heartbeatMs", "heartbeatTimeoutMs", "slowConsumerMs", "firstFrameMs"] as const;
+export type RelayTimings = Record<(typeof TIMING_KEYS)[number], number>;
 
 export interface TerminalRelayOptions {
   hive: SqliteHive;
@@ -128,8 +128,7 @@ export class TerminalRelayHub {
     this.#o = o;
     this.#now = o.now ?? (() => new Date());
     this.#clock = o.clock ?? (() => performance.now());
-    const t = { ...TERMINAL_LIMITS, ...o.timings };
-    this.#t = Object.fromEntries(Object.entries(t).map(([k, v]) => [k, Math.min(Number(v), Number(TERMINAL_LIMITS[k as keyof RelayTimings] ?? v))])) as unknown as RelayTimings;
+    this.#t = Object.fromEntries(TIMING_KEYS.map((k) => [k, Math.min(o.timings?.[k] ?? TERMINAL_LIMITS[k], TERMINAL_LIMITS[k])])) as RelayTimings;
     this.#startedAt = this.#clock();
     this.#timer = setInterval(() => this.sweep(), o.sweepMs ?? 500);
     this.#timer.unref();
