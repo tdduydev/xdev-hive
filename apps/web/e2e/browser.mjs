@@ -3794,18 +3794,18 @@ async function main() {
 
   // History reuses the retained source records and follows their permission-checked detail routes.
   await step("history-page", async () => {
-    const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method: "runs.push", input: { machine: "history-e2e", runs: Array.from({ length: 33 }, (_, n) => ({ runId: `R-history-${n}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n}`, status: "succeeded", role: "implement", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() })) } }) });
-    const body = await response.json();
-    if (body.error) throw new Error(body.error.message);
     const machineRpc = async (method, input) => {
       const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method, input }) });
       const data = await r.json();
       if (data.error) throw new Error(`${method}: ${data.error.message}`);
       return data.result;
     };
+    for (const batch of [Array.from({ length: 20 }, (_, n) => ({ runId: `R-history-${n}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n}`, status: "succeeded", role: "implement", profileId: "history-claude", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() })), Array.from({ length: 13 }, (_, n) => ({ runId: `R-history-${n + 20}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n + 20}`, status: "succeeded", role: "implement", profileId: "history-claude", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() }))]) {
+      await machineRpc("runs.push", { machine: "history-e2e", runs: batch });
+    }
     await machineRpc("machines.heartbeat", { machine: "history-e2e", instance: "ab000070", projects: ["payment"], acceptsRuns: true, profiles: [{ id: "history-claude", label: "History Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 1 }] });
     const historyMachine = (await rpc("machines.list")).find(m => m.machine === "history-e2e");
-    const thread = await rpc("chat.send", { project: "payment", machineId: historyMachine.id, profileId: "history-claude", text: "history-chat-fixture" });
+    const { thread } = await rpc("chat.send", { project: "payment", machineId: historyMachine.id, profileId: "history-claude", text: "history-chat-fixture" });
     const tab = (current = tabs.admin);
     await tab.reload();
     await tab.go("history");

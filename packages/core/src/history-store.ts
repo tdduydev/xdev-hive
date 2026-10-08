@@ -15,7 +15,8 @@ const sources = `
  SELECT 'gate:' || id, 'gate', COALESCE(decided_at, created_at), project, task_id,
  gate, COALESCE(note, ''), COALESCE(decided_by, ''), status, task_id FROM sdlc_gates
  UNION ALL
- SELECT 'audit:' || id, 'audit', at, NULL, NULL, action, target || ' · ' || detail,
+ SELECT 'audit:' || id, 'audit', at, NULL, NULL, action,
+ CASE WHEN target <> '' AND detail <> '' THEN target || ' · ' || detail ELSE target || detail END,
  actor, '', '' FROM audit`;
 
 export function historyRows(db: DatabaseSync, input: ParsedInput<"history.list">, visible: (entry: HistoryEntry) => boolean) {
@@ -25,7 +26,7 @@ export function historyRows(db: DatabaseSync, input: ParsedInput<"history.list">
     (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2)))
     AND (?3 IS NULL OR kind = ?3) AND (?4 IS NULL OR taskId = ?4)
     AND (?5 IS NULL OR at >= ?5) AND (?6 IS NULL OR at <= ?6)
-    AND (?7 IS NULL OR hive_fold(COALESCE(project, '') || ' ' || COALESCE(taskId, '') || ' ' || title || ' ' || detail || ' ' || actor || ' ' || status) LIKE ?7 ESCAPE '\\')
+    AND (?7 IS NULL OR hive_fold(COALESCE(project, '') || ' ' || COALESCE(taskId, '') || ' ' || COALESCE(title, '') || ' ' || COALESCE(detail, '') || ' ' || COALESCE(actor, '') || ' ' || COALESCE(status, '')) LIKE ?7 ESCAPE '\\')
     ORDER BY at DESC, id DESC`).iterate(input.project ?? null, input.projects ? JSON.stringify(input.projects) : null,
       input.kind ?? null, input.taskId ?? null, input.since ?? null, input.until ?? null, like);
   const entries: HistoryEntry[] = [];
