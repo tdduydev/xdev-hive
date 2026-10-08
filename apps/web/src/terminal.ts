@@ -1,7 +1,7 @@
 // Remote terminal on the hub (spec 69, task 69c): the person's step-up (password or a fresh OIDC login), the
 // terminal.* RPCs that spend its one-time proof, and the browser socket's upgrade that spends a one-time ticket.
 // Who may do what is core's terminalDecision; this file gathers what it needs from the hub's own rows, and spends
-// proofs and tickets in the same transaction as the change they allow. No PTY or relay here (69b, 69e).
+// proofs and tickets in the same transaction as the change they allow. No PTY here (69b); the relay is terminal-relay.ts (69e).
 import { createHash } from "node:crypto";
 import { STATUS_CODES, type IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -15,6 +15,7 @@ import {
   TERMINAL_CLOSE,
   TERMINAL_LIMITS,
   TERMINAL_MACHINE_SOCKET_PATH,
+  TERMINAL_MACHINE_WS_PROTOCOL,
   TERMINAL_SOCKET_PATH,
   TERMINAL_WS_PROTOCOL,
   terminalAuthFrameSchema,
@@ -43,8 +44,16 @@ export interface TerminalRelayContext {
   actor: Actor;
   /** Bytes the client sent after its auth frame. */
   rest: Buffer;
+  /** The person behind the socket's cookie now, or null once signed out: the relay asks again at every sweep. */
+  recheck: () => Actor | null;
 }
 export type TerminalRelay = (socket: Duplex, ctx: TerminalRelayContext) => void;
+
+/** The relay's machine side (69e): it decides who a machine is, from the credential the machine row is pinned to. */
+export interface TerminalMachineRelay {
+  vouches(machineId: string, actor: Actor): boolean;
+  machine(socket: Duplex, head: Buffer, ctx: { machineId: string; actor: Actor; recheck: () => Actor | null }): void;
+}
 
 export interface TerminalHubOptions {
   hive: SqliteHive;
@@ -60,6 +69,8 @@ export interface TerminalHubOptions {
   bearerActor: (req: IncomingMessage, token: string) => Actor | null;
   allowedHosts?: string[];
   relay?: TerminalRelay;
+  /** Without one (no pinned machine identity on this hub), a machine socket is refused with 503. */
+  machineRelay?: TerminalMachineRelay;
   now?: () => Date;
 }
 
@@ -349,8 +360,16 @@ export class TerminalHub {
       if (!actor) return refuse(401);
       if (actor.humanSession || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined || isAgentActor(actor) || actor.role === "viewer")
         return refuse(403);
-      // Which machine a token stands for is not settled yet (SEC-machine-identity), and the relay is 69e's.
-      return refuse(503);
+      const relay = this.#o.machineRelay;
+      if (!relay) return refuse(503);
+      // The machine is the token's name, and only if the machine row is pinned to this very credential.
+      if (!relay.vouches(actor.name, actor)) return refuse(403);
+      const protocols = String(req.headers["sec-websocket-protocol"] ?? "").split(",").map((p) => p.trim());
+      if (!protocols.includes(TERMINAL_MACHINE_WS_PROTOCOL)) return refuse(400);
+      socket.write(handshake(key, TERMINAL_MACHINE_WS_PROTOCOL));
+      const token = bearer![1]!;
+      relay.machine(socket, head, { machineId: actor.name, actor, recheck: () => this.#o.bearerActor(req, token) });
+      return true;
     }
 
     // The browser socket: the hub's own page, a person's cookie, the terminal's protocol. No bearer of any kind.
@@ -423,7 +442,11 @@ export class TerminalHub {
     if (!allowed) return close(TERMINAL_CLOSE.denied, "denied");
     if (!this.#o.relay) return close(TERMINAL_CLOSE.unavailable, "relay");
     stop();
-    this.#o.relay(socket, { session: session!, epoch: redeemed.epoch, actor: now.actor, rest });
+    const recheck = () => {
+      const again = this.#o.cookieActor(req.headers.cookie);
+      return again && again.actor.account === actor.account && again.actor.humanSession === actor.humanSession && !again.user.mustChangePassword ? again.actor : null;
+    };
+    this.#o.relay(socket, { session: session!, epoch: redeemed.epoch, actor: now.actor, rest, recheck });
   }
 }
 
