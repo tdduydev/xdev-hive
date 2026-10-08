@@ -1,3 +1,4 @@
+import type { Automation } from "./automation.ts";
 import { hubLog } from "#web/deploy-log.ts";
 import { createHash, type Hash } from "node:crypto";
 import { createWriteStream, rmSync } from "node:fs";
@@ -65,6 +66,7 @@ export interface HubAppOptions {
   trustProxy?: boolean;
   throttle?: LoginThrottle;
   /** Chat webhooks for hub events (hub admins manage them). */
+  automation?: Automation;
   webhooks?: { store: WebhookStore; dispatcher: WebhookDispatcher };
   /** Sign-in through an OpenID Connect provider (HIVE_OIDC_*). */
   oidc?: OidcClient | null;
@@ -187,6 +189,7 @@ export function createHubApp({
   ui,
   trustProxy = false,
   throttle = new LoginThrottle(),
+  automation,
   webhooks,
   oidc = null,
   chatGrants = new ChatGrants(hive.db),
@@ -780,6 +783,26 @@ export function createHubApp({
           hive.audit(actor, "alerts.setRule", rule.rule, rule.enabled ? "on" : "off");
           res.json({ result: rule });
         } else throw new HiveError("bad_request", `Unknown method ${method}`);
+        return;
+      }
+
+      if (typeof method === "string" && method.startsWith("automation.")) {
+        requireHubAdmin(res);
+        if (!automation) throw new HiveError("bad_request", "Automation unavailable");
+        let result: unknown;
+        if (method === "automation.list") result = automation.list();
+        else if (method === "automation.history") result = automation.history();
+        else if (method === "automation.save") {
+          const user = res.locals.user;
+          const owner = user ? `user:${user.id}` : actor.tokenId ? `token:${actor.tokenId}` : null;
+          if (!owner) throw new HiveError("forbidden", "A persistent identity is required");
+          result = automation.save(i, owner, actor);
+        } else if (method === "automation.dryRun") result = automation.dryRun(Number(i.id), i.event as never);
+        else if (method === "automation.retry") {
+          hive.audit(actor, "automation.retry", String(i.id), "manual retry");
+          result = await automation.retry(Number(i.id));
+        } else throw new HiveError("bad_request", `Unknown method ${method}`);
+        res.json({ result });
         return;
       }
 

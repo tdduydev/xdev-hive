@@ -788,7 +788,7 @@ export const WEBHOOK_EVENTS = [
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 /** Something a person may want to hear about, emitted after the change is stored (see SqliteHiveOptions.onEvent). */
-export type HiveEvent =
+export type HiveEvent = (
   | { type: "proposal.created"; project: string | null; proposal: Proposal }
   | { type: "memory.pending"; project: string | null; memory: Memory }
   | { type: "command.requested"; project: null; command: MachineCommand }
@@ -812,7 +812,8 @@ export type HiveEvent =
   /** A hub admin archived a project (roadmap 47) or took it back out of the archive. */
   | { type: "project.archived"; project: string; by: string; archived: boolean }
   /** A hub admin deleted a project for good: what went with it is in `deleted`. */
-  | { type: "project.deleted"; project: string; by: string; deleted: ProjectDeleted };
+  | { type: "project.deleted"; project: string; by: string; deleted: ProjectDeleted }
+) & { automation?: boolean };
 
 /** The hub's alert rules (roadmap 22m), each turned on or off by a hub admin. */
 export const ALERT_RULES = [

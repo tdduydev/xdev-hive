@@ -33,6 +33,7 @@ import { OidcClient, oidcSettings } from "./oidc.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
 import { DEFAULT_RELEASE_KEEP, ReleaseStore } from "./releases.ts";
+import { Automation } from "./automation.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 import { AlertStore } from "./alerts.ts";
 import { HubInfoSource } from "./hubinfo.ts";
@@ -127,6 +128,18 @@ const allowedHosts = allowedHostsFor(process.env.HIVE_ALLOWED_HOSTS, host, proce
 const publicHost = allowedHosts?.find((h) => !["localhost", "127.0.0.1", "::1", "[::1]"].includes(h));
 // || : compose passes an unset variable as "".
 const publicUrl = process.env.HIVE_PUBLIC_URL || (publicHost ? `https://${publicHost}` : null);
+const automation = new Automation(hive, (owner) => {
+  if (owner.startsWith("user:")) {
+    const user = users.get(owner.slice(5));
+    return user && !user.disabled ? { name: user.username, role: user.admin ? "admin" : "member", account: user.username, access: users.access(user) } : null;
+  }
+  const token = tokens.get(owner.slice(6));
+  if (!token) return null;
+  const user = token.ownerId ? users.get(token.ownerId) : null;
+  if (token.ownerId && (!user || user.disabled)) return null;
+  return { name: token.name, tokenId: token.id, role: token.role === "admin" && user && !user.admin ? "member" : token.role,
+    ...(user ? { account: user.username, access: users.access(user) } : {}) };
+});
 const webhookStore = new WebhookStore(hive.db);
 const dispatcher = new WebhookDispatcher(webhookStore, { publicUrl });
 const sso = oidcSettings(process.env, publicUrl);
@@ -137,10 +150,11 @@ const alerts = new AlertStore(hive, {
   webhooks: webhookStore,
   deployLog,
   backup,
-  onOpen: (alert) => void dispatcher.notify({ type: "alert.opened", project: alert.project, alert }),
+  onOpen: (alert) => onEvent({ type: "alert.opened", project: alert.project, alert }),
 });
 onEvent = (event) => {
   alerts.onEvent(event);
+  void automation.onEvent(event).catch(() => hubLog.error("Automation event processing failed"));
   void dispatcher.notify(event);
 };
 setInterval(() => void alerts.check().catch((err) => hubLog.error(`[xdev-hive] alert check failed: ${(err as Error).message}`)), 60_000).unref();
@@ -229,6 +243,7 @@ const hubApp = createHubApp({
   allowedHosts,
   ui,
   trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+  automation,
   webhooks: { store: webhookStore, dispatcher },
   alerts,
   hub: (hubInfo = new HubInfoSource({
