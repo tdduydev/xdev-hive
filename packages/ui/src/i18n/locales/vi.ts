@@ -1746,6 +1746,8 @@ export const vi = {
     profile: "Gói",
     project: "Service",
     opened: "Đã mở terminal: {profile} trong repo {project}. Phiên này là của bạn, không phải run: không theo chính sách agent và không tính vào trần chi tiêu.",
+    bypass: "Bỏ qua hỏi quyền",
+    openedBypass: "Đã mở terminal: {profile} trong repo {project}, bỏ qua hỏi quyền: CLI tự chạy lệnh và sửa file không hỏi. Phiên này là của bạn, không phải run: không theo chính sách agent và không tính vào trần chi tiêu.",
   },
   agentKind: {
     opencode: "OpenCode",
@@ -2449,6 +2451,8 @@ export const vi = {
     installCli: "Cài CLI",
     cliOpen: "Mở CLI",
     cliOpenIn: "Mở CLI trong {project}",
+    cliOpenBypass: "Mở CLI, bỏ qua hỏi quyền",
+    cliOpenInBypass: "Mở CLI trong {project}, bỏ qua hỏi quyền",
     thresholdsTitle: "Ngưỡng dừng",
     thresholdsNote: "Vạch dọc trên thanh là ngưỡng dừng: runner ngừng giao việc cho gói khi phiên hoặc tuần vượt ngưỡng đặt ở profile. Run mới vào gói còn nhiều quota nhất tính tới ngưỡng dừng; gói chưa biết quota xếp sau, rồi mới xét số ưu tiên. Chỉ gói trên máy này hiện ở đây.",
     state: { running: "Đang chạy", ready: "Sẵn sàng", off: "Tắt", noCli: "Chưa có CLI", signedOut: "Chưa đăng nhập", overLimit: "Chạm ngưỡng", resting: "Đang nghỉ", near: "Gần ngưỡng" },

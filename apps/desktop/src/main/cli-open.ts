@@ -3,7 +3,7 @@
 // Only Hive's server is added, under the profile's name, so what they claim or remember shows as that profile.
 // No Electron imports.
 import { opencodeUserConfig } from "#desktop/main/runner/opencode.ts";
-import type { AgentProfile } from "@xdev-hive/core";
+import { CLI_BYPASS_ARGS, type AgentProfile } from "@xdev-hive/core";
 import { MCP_NAME, hiveMcpServer, hiveMcpServerAt, mcpLaunch } from "./installer.ts";
 import { loginDirEnv } from "./runner/login.ts";
 import { VIBE_HIVE_TOOLS } from "#desktop/main/runner/vibe.ts";
@@ -24,8 +24,17 @@ const tomlLiteral = (s: string) => {
 export function cliCommand(
   profile: AgentProfile,
   /** path: the PATH runs get; null keeps the terminal's own (cmd.exe inherits the app's env). shim: its full path. */
-  opts: { project: string; repo: string; bin: string; path: string | null; shim: string; mcpFile: string; title: string; done: string },
+  opts: { project: string; repo: string; bin: string; path: string | null; shim: string; mcpFile: string; title: string; done: string; bypass?: boolean },
 ): CliOpen {
+  const open = cliArgs(profile, opts);
+  if (!opts.bypass) return open;
+  const extra = CLI_BYPASS_ARGS[profile.kind];
+  // Refused, not ignored: a box ticked on a CLI with no checked flag would otherwise open a session that still asks.
+  if (!extra) throw new Error(`No permission bypass for ${profile.kind}`);
+  return { ...open, command: { ...open.command, args: [...open.command.args, ...extra] } };
+}
+
+function cliArgs(profile: AgentProfile, opts: Parameters<typeof cliCommand>[1]): CliOpen {
   const server = hiveMcpServer(profile.id, opts.project);
   // PATH so the CLI finds the hive-mcp shim (and node) the way runs do: Terminal on macOS starts from the login
   // profile, whose PATH may lack them.
