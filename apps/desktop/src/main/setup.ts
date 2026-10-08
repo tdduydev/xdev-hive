@@ -2,7 +2,8 @@
 // repo (Hive's agent config, codegraph, superpowers, Spec Kit), and how to install what is missing.
 // No Electron imports: the main process provides a SetupHost, tests provide a fake one.
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   compareVersions,
@@ -69,6 +70,8 @@ export interface SetupHost {
   holdCli?: (kind: AgentKind, held: boolean) => void;
   /** The real path of a CLI (symlinks followed), which tells how it was installed. */
   realpath?: (bin: string) => string;
+  /** Whether this user can write into `dir` (or the folder that would hold it); tests pass their own. */
+  writable?: (dir: string) => boolean;
   /**
    * The hub's tool catalog from the runner's last heartbeat (roadmap 28b). Absent or null (local mode, a hub older
    * than 28b, no heartbeat yet): the machine's items are the app's own, as before the catalog.
@@ -94,15 +97,44 @@ export interface CliUpgrade {
  * How the CLI at `real` (its path with symlinks followed) was installed, so it is upgraded the same way and no second
  * copy lands elsewhere on PATH. null: not known, the person upgrades it as they installed it.
  */
-export function cliUpgrade(cli: (typeof AGENT_CLIS)[number], real: string, own: string): CliUpgrade | null {
+export function cliUpgrade(cli: (typeof AGENT_CLIS)[number], real: string, own: string, home?: string): CliUpgrade | null {
   const p = real.replaceAll("\\", "/");
-  if (p.includes(`/node_modules/${cli.pkg}/`)) return { method: "npm", bin: "npm", args: ["install", "-g", `${cli.pkg}@latest`] };
+  if (p.includes(`/node_modules/${cli.pkg}/`)) {
+    const args = ["install", "-g", `${cli.pkg}@latest`];
+    // Installed under the user's own prefix (npm's global one needed root): upgraded there too, or npm tries /usr again.
+    const user = home && userNpmPrefix(home).replaceAll("\\", "/");
+    if (user && p.startsWith(`${user}/lib/node_modules/`)) args.push("--prefix", userNpmPrefix(home));
+    return { method: "npm", bin: "npm", args };
+  }
   // Claude Code's native installer (~/.local/share/claude/versions/…) and its older local install (~/.claude/local).
   if (cli.kind === "claude" && (p.includes("/.local/share/claude/") || p.includes("/.claude/local/"))) return { method: "native", bin: own, args: ["update"] };
   if (cli.kind === "opencode" && p.includes("/.opencode/bin/")) return { method: "native", bin: own, args: ["upgrade"] };
   const brew = /\/(Cellar|Caskroom)\/([^/]+)\//.exec(p);
   if (brew) return { method: "brew", bin: "brew", args: brew[1] === "Caskroom" ? ["upgrade", "--cask", brew[2]!] : ["upgrade", brew[2]!] };
   return null;
+}
+
+/**
+ * Where a CLI goes when npm's global prefix belongs to root (Node from apt on Ubuntu, the nodejs.org pkg on macOS):
+ * bins land in ~/.local/bin, which agentPath always includes and Ubuntu's ~/.profile puts on PATH.
+ */
+export function userNpmPrefix(home: string): string {
+  return path.join(home, ".local");
+}
+
+/** `dir` or, when it does not exist yet, the nearest folder above it that would hold it. */
+function canWrite(dir: string): boolean {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (existsSync(d)) {
+      try {
+        accessSync(d, constants.W_OK);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (path.dirname(d) === d) return false;
+  }
 }
 
 /** The registry's newest version is looked up again after this long; a failed lookup sooner. */
@@ -271,7 +303,8 @@ export class Setup {
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
-      const r = await this.#run(npm, ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg], { env, timeoutMs: 15 * 60_000 });
+      const args = ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg, ...(await this.#npmPrefixArgs(npm, env))];
+      const r = await this.#run(npm, args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
         throw new HiveError("bad_request", `npm install -g ${cli.pkg} lỗi:\n${output}`, { key: "errors.commandFailed", vars: { command: `npm install -g ${cli.pkg}`, output } });
@@ -290,6 +323,23 @@ export class Setup {
       else throw notFound(id);
     }
     return { item: await this.item(id), output };
+  }
+
+  #home(): string {
+    return this.#host.home ?? os.homedir();
+  }
+
+  /**
+   * `--prefix ~/.local` when npm's global prefix is one this user cannot write: without sudo, `npm install -g` there
+   * fails with EACCES, and the app never asks for root. Windows' prefix is the user's own %AppData%\npm.
+   */
+  async #npmPrefixArgs(npm: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+    if (this.#platform === "win32") return [];
+    const r = await this.#run(npm, ["prefix", "-g"], { env, timeoutMs: 15_000 });
+    const prefix = r.ok ? r.output.trim().split("\n").pop()!.trim() : "";
+    if (!path.isAbsolute(prefix)) return [];
+    const writable = this.#host.writable ?? canWrite;
+    return writable(path.join(prefix, "lib", "node_modules")) ? [] : ["--prefix", userNpmPrefix(this.#home())];
   }
 
   /** Runs `argv` (argv[0] already resolved to `bin`): the output's tail, or an error that carries it. */
@@ -439,7 +489,7 @@ export class Setup {
     if (!version || !latest || compareVersions(latest, version) <= 0) {
       return { ...base, state: "installed", detail: `${firstLine(v.output) || "?"} · ${bin}`, action: null, version, latest };
     }
-    const upgrade = cliUpgrade(cli, this.#realpath(bin), bin);
+    const upgrade = cliUpgrade(cli, this.#realpath(bin), bin, this.#home());
     return {
       ...base,
       state: "installed",
@@ -453,7 +503,7 @@ export class Setup {
   /** Upgrades an installed CLI the way it was installed (roadmap 33), while no run uses it and none starts. */
   async #upgrade(cli: (typeof AGENT_CLIS)[number], pathEnv: string, env: NodeJS.ProcessEnv): Promise<string> {
     const own = resolveBin(cli.bin, pathEnv)!;
-    const upgrade = cliUpgrade(cli, this.#realpath(own), own);
+    const upgrade = cliUpgrade(cli, this.#realpath(own), own, this.#home());
     if (!upgrade) throw new HiveError("bad_request", tr("setupItem.upgradeUnknown", { label: cli.label, pkg: cli.pkg }), { key: "setupItem.upgradeUnknown", vars: { label: cli.label, pkg: cli.pkg } });
     const busy = this.#host.cliBusy?.(cli.kind) ?? 0;
     if (busy) throw new HiveError("conflict", tr("setupItem.cliBusy", { label: cli.label, count: busy }), { key: "setupItem.cliBusy", vars: { label: cli.label, count: busy } });
