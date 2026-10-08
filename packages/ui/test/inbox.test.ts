@@ -1,12 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { may, permissionsOn, type ImplementationPlan, type Actor, type AgentRun, type ChatAction, type HubAlert, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
+import { may, permissionsOn, type ImplementationPlan, type Actor, type AgentRun, type ChatAction, type HubAlert, type HubInfo, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
 import { buildInbox, groupInbox, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;
 
 describe("inbox", () => {
+  it("mirrors hub health AttentionList entries and backup overdue alerts", () => {
+    const hub = {
+      startedAt: "2026-10-01T00:00:00Z",
+      files: { lastError: "store unavailable" },
+      search: { lastError: "index failed" },
+      deployLog: { startedAt: "2026-10-02T00:00:00Z", errors: 2 },
+    } as HubInfo;
+    const backup = { id: 3, rule: "backup_overdue", key: "backup", severity: "medium", vars: { dir: "/backups", hours: 8 }, project: null, openedAt: "2026-10-02T01:00:00Z", lastSeenAt: "2026-10-02T01:00:00Z", resolvedAt: null, resolvedBy: null, ackedBy: null, ackedAt: null } as HubAlert;
+    const items = buildInbox({ hubInfo: hub, alerts: [backup] });
+    assert.deepEqual(items.map((item) => item.key).sort(), ["alert:3", "hubIssue:deploy:2026-10-02T00:00:00Z:2", "hubIssue:files:store unavailable", "hubIssue:search:index failed"].sort());
+    assert.deepEqual(items.map((item) => inboxGroup(item)).sort(), ["watch", "watch", "watch", "watch"]);
+  });
   it("keeps service proposals in their service and hub-only proposals in the shared scope", () => {
     const action = (project: string): ChatAction => ({ id: project === "*" ? 1 : 2, project, threadId: 4, status: "proposed", createdAt: "2026-10-07T00:00:00Z" }) as ChatAction;
     const items = buildInbox({ leader: [action("*"), action("pay")] });
