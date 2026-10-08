@@ -149,6 +149,19 @@ describe("69d encrypted spool", () => {
     done();
   });
 
+  it("rejects arbitrary close metadata before writing it", () => {
+    const { root, master, done } = setup();
+    try {
+      const id = sid();
+      const rec = TerminalRecorder.open({ root, sessionId: id, master });
+      rec.spawn(80, 24);
+      // Simulate an untyped caller rather than relying on compile-time restrictions.
+      assert.throws(() => Reflect.apply(rec.close, rec, [PROFILE]));
+      assert.equal(rec.failed, "closed");
+      assert.deepEqual(readTerminalTranscript(root, id, master).events.map((e) => e.type), ["spawn"]);
+    } finally { done(); }
+  });
+
   it("does not read the raw archive, nor a spool someone edited", () => {
     const { dir, root, master, done } = setup();
     const id = sid();
@@ -333,6 +346,53 @@ describe("69d hub recording store", () => {
     done();
   });
 
+  it("rejects secret-bearing reasons and malformed timestamps on upload", async () => {
+    const { h, s, store, dir, done } = await hub();
+    try {
+      const [valid] = terminalRecordingChunks(machineChunks(s.id, ["safe"]));
+      const close = valid!.events.at(-1)!;
+      for (const event of [
+        { ...close, reason: PROFILE },
+        { ...close, at: PROFILE },
+        { ...close, at: "2026-02-30T00:00:00.000Z" },
+        { ...close, at: "2026-10-08T00:00:00.000Z" + PROFILE },
+      ]) {
+        const malformed = { ...valid!, events: [event] };
+        assert.equal(terminalRecordingChunkSchema.safeParse(malformed).success, false);
+        assert.throws(() => store.put(runner, s.id, malformed), { code: "bad_request" });
+      }
+      assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM terminal_audit_chunks").get()!.n, 0);
+      assert.deepEqual(readdirSync(path.join(dir, "recordings")), []);
+      assert.equal(store.put(runner, s.id, valid), "stored");
+    } finally { done(); }
+  });
+
+  it("detects missing chunks and broken links, including across page cursors", async () => {
+    const { h, s, store, done } = await hub();
+    try {
+      let anchor = { seq: 0, hash: "0".repeat(64) };
+      for (let seq = 1; seq <= 10; seq++) {
+        const [chunk] = terminalRecordingChunks([{ seq, at: "2026-10-08T00:00:00.000Z", type: "output", text: `line ${seq}\n` }], anchor);
+        store.put(runner, s.id, chunk);
+        anchor = chunk!;
+      }
+      const read = (cursor = 0) => store.read(person("alice"), { project: "app", sessionId: s.id, cursor, hubEnabled: true, stepUp: true });
+      assert.equal(read().next, 8);
+      assert.equal(read(8).events.length, 2);
+      for (const seq of [1, 2, 8, 9]) {
+        h.db.exec("SAVEPOINT damage");
+        h.db.prepare("DELETE FROM terminal_audit_chunks WHERE session_id = ? AND seq = ?").run(s.id, seq);
+        for (const cursor of [0, 8]) assert.throws(() => read(cursor), { code: "conflict" });
+        assert.equal(h.db.prepare("SELECT COUNT(*) AS n FROM audit WHERE detail LIKE 'failed%'").get()!.n, 2);
+        h.db.exec("ROLLBACK TO damage; RELEASE damage");
+      }
+      h.db.prepare("UPDATE terminal_audit_chunks SET prev_hash = ? WHERE session_id = ? AND seq = 2").run("f".repeat(64), s.id);
+      assert.throws(() => read(), { code: "conflict" });
+      assert.throws(() => read(8), { code: "conflict" });
+      for (const cursor of [-1, 0.5, NaN, Infinity]) assert.throws(() => read(cursor), { code: "bad_request" });
+    } finally { done(); }
+  });
+
   it("accepts chunks whose events were built with keys in any order", async () => {
     const { s, store, done } = await hub();
     const [a] = terminalRecordingChunks([
@@ -359,9 +419,9 @@ describe("69d hub recording store", () => {
   });
 
   it("has no field for raw output", () => {
-    const raw = { seq: 1, prevHash: "0".repeat(64), hash: "0".repeat(64), events: [{ seq: 1, at: "x", type: "output", data: "aGk=" }] };
+    const raw = { seq: 1, prevHash: "0".repeat(64), hash: "0".repeat(64), events: [{ seq: 1, at: "2026-10-08T00:00:00.000Z", type: "output", data: "aGk=" }] };
     assert.equal(terminalRecordingChunkSchema.safeParse(raw).success, false);
-    const extra = { seq: 1, prevHash: "0".repeat(64), hash: "0".repeat(64), archive: "x", events: [{ seq: 1, at: "x", type: "spawn", cols: 1, rows: 1 }] };
+    const extra = { seq: 1, prevHash: "0".repeat(64), hash: "0".repeat(64), archive: "x", events: [{ seq: 1, at: "2026-10-08T00:00:00.000Z", type: "spawn", cols: 1, rows: 1 }] };
     assert.equal(terminalRecordingChunkSchema.safeParse(extra).success, false);
   });
 
@@ -468,7 +528,7 @@ describe("69d hub recording store", () => {
 
   it("pages long recordings and purges them after retention", async () => {
     const { h, s, sessions, store, dir, tick, done } = await hub();
-    const events = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, at: "t", type: "output" as const, text: "z ".repeat(30_000) + "\n" }));
+    const events = Array.from({ length: 40 }, (_, i) => ({ seq: i + 1, at: "2026-10-08T00:00:00.000Z", type: "output" as const, text: "z ".repeat(30_000) + "\n" }));
     const chunks = terminalRecordingChunks(events);
     assert.ok(chunks.length > 8);
     for (const c of chunks) store.put(runner, s.id, c);
