@@ -2424,6 +2424,7 @@ export const en: Catalog = {
     groupFilter: "Filter by run group",
     taskFilter: "Filter by task",
     machineFilter: "Filter by machine",
+    moreFilters: "More filters",
     allGroups: "All run groups",
     allTasks: "All tasks",
     allMachines: "All machines",

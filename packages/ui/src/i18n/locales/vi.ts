@@ -2429,6 +2429,7 @@ export const vi = {
     groupFilter: "Lọc theo đợt chạy",
     taskFilter: "Lọc theo task",
     machineFilter: "Lọc theo máy",
+    moreFilters: "Lọc thêm",
     allGroups: "Mọi đợt chạy",
     allTasks: "Mọi task",
     allMachines: "Mọi máy",
