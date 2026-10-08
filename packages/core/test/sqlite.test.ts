@@ -122,7 +122,7 @@ describe("proposals", () => {
       const recovered = (await reopened.call("proposals.list", {}, admin)).find((p) => p.id === proposal.id)!;
       assert.equal(recovered.status, "conflict");
       assert.match(recovered.reviewNote ?? "", /interrupted/i);
-      await rejects(reopened.call("proposals.approve", { id: proposal.id }, admin), "bad_request");
+      await rejects(reopened.call("proposals.approve", { id: proposal.id }, { ...admin, humanSession: "session-admin" }), "bad_request");
       reopened.db.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
