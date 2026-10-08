@@ -4,6 +4,7 @@ import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type Me
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
 import { diffReviewSchema } from "#core/diff-review.ts";
 import { terminalCapabilitySchema } from "#core/terminal.ts";
+import { gateInputs, type GateHeartbeatReply, type GateJob, type GateState, type GateTemplatesView } from "#core/gate.ts";
 import { cleanupSuggestionSchema, MEMORY_CLEANUP_ERRORS, type MemoryCleanupSetting, type MemoryCleanupRun, type MemoryCleanupProposal } from "#core/memory-cleanup.ts";
 import { z } from "zod";
 import { PLAN_APPROVAL_MODES, PLAN_MAX, type ImplementationPlan } from "#core/plan-approval.ts";
@@ -569,6 +570,8 @@ export const schemas = {
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Remote terminal opt-in (spec 69). Absent (older app) or malformed reads as none, never as the last one sent. */
     terminal: terminalCapabilitySchema.nullable().default(null).catch(null),
+    /** Gate jobs (spec 69h1 §3): checked by the hub piece by piece, so a bad manifest never fails the beat. */
+    gate: z.unknown().optional(),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
@@ -1045,6 +1048,21 @@ export const schemas = {
 
   /** The hub's agent policy and each visible project's part (roadmap 27a). */
   /** The lifecycle gates (roadmap 34): the hub's ceiling and each project's modes, what applies now. */
+  /**
+   * Gate jobs (spec 69h1, 69h2). A person creates, approves, cancels and reconciles from the web (a session cookie,
+   * never a bearer); the machine the job names takes it and reports with the lease take gave it.
+   */
+  "gate.templates": gateInputs.templates,
+  "gate.create": gateInputs.create,
+  "gate.approve": gateInputs.approve,
+  "gate.cancel": gateInputs.cancel,
+  "gate.reconcile": gateInputs.reconcile,
+  "gate.take": gateInputs.take,
+  "gate.progress": gateInputs.progress,
+  "gate.artifact": gateInputs.artifact,
+  "gate.result": gateInputs.result,
+  "gate.list": gateInputs.list,
+  "gate.get": gateInputs.get,
   "autoRelease.green": greenBatchSchema,
   "autoRelease.list": z.object({ project }),
   "autoRelease.take": z.object({ project }),
@@ -1297,6 +1315,8 @@ export interface MethodOutput {
      * One list for both states — the app shows one label, and a deleted project is just as gone. Older apps ignore it.
      */
     archivedProjects: string[];
+    /** What the hub kept of the gate manifests sent and which it still lacks (spec 69h1 §3). Absent: no gate sent. */
+    gate?: GateHeartbeatReply;
   };
   "machines.list": Machine[];
   "machines.worktrees": MachineWorktrees;
@@ -1371,6 +1391,17 @@ export interface MethodOutput {
   "agents.paused": AgentsPaused;
   "policy.get": TeamPolicy;
   "policy.set": TeamPolicy;
+  "gate.templates": GateTemplatesView;
+  "gate.create": GateJob;
+  "gate.approve": GateJob;
+  "gate.cancel": GateJob;
+  "gate.reconcile": GateJob;
+  "gate.take": { job: GateJob; leaseToken: string } | null;
+  "gate.progress": { state: GateState; leaseUntil: string | null };
+  "gate.artifact": { name: string; sha256: string; bytes: number };
+  "gate.result": GateJob;
+  "gate.list": GateJob[];
+  "gate.get": GateJob;
   "autoRelease.green": AutoReleaseRecord;
   "autoRelease.list": AutoReleaseView;
   "autoRelease.take": AutoReleaseRecord | null;
@@ -1579,6 +1610,17 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "agents.paused": "viewer",
   "policy.get": "viewer",
   "policy.set": "admin",
+  "gate.templates": "viewer",
+  "gate.create": "member",
+  "gate.approve": "member",
+  "gate.cancel": "member",
+  "gate.reconcile": "member",
+  "gate.take": "agent",
+  "gate.progress": "agent",
+  "gate.artifact": "agent",
+  "gate.result": "agent",
+  "gate.list": "viewer",
+  "gate.get": "viewer",
   "autoRelease.green": "agent",
   "autoRelease.list": "viewer",
   "autoRelease.take": "agent",
