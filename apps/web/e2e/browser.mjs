@@ -279,6 +279,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "run-redispatch": [],
   "inbox-source-complete": [],
   "scope-search-tasks": ["login-token"],
+  "blocker-center": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
   "docs-system-default": ["login-token"],
@@ -704,6 +705,26 @@ async function main() {
     await tab.waitFor("landed merge", () => document.querySelector("[data-merge-queue]")?.textContent.includes("Đã vào nhánh đích"));
     expect((await rpc("tasks.list", { project })).find(t => t.id === "MERGE-E2E")?.status === "done", "landing completes the task");
     await tab.shot("merge-queue-landed");
+  });
+
+  await step("blocker-center", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("tasks.create", { project: "payment", id: "BLOCKER-DEP", title: "Dependency blocker", dependsOn: ["PAY-1"] });
+    await rpc("tasks.create", { project: "payment", id: "BLOCKER-UNKNOWN", title: "Needs diagnosis" });
+    await rpc("tasks.update", { id: "BLOCKER-UNKNOWN", status: "blocked", note: "Inspect the latest run" });
+    await tab.go("tasks");
+    await tab.click('[data-task-view="blockers"]');
+    await tab.waitFor("dependency blocker", () => document.querySelector('[data-blocker-kind="dependency"]')?.textContent.includes("BLOCKER-DEP"));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= window.innerWidth), "blocker centre fits viewport");
+    if (mobile) expect(await tab.eval(() => [...document.querySelectorAll('[data-blocker-filter]')].every(button => button.getBoundingClientRect().height >= 44)), "blocker filters have touch targets");
+    await tab.click('[data-blocker-filter="unknown"]');
+    await tab.waitFor("diagnosis filter", () => document.querySelector('[data-blocker-kind="unknown"]')?.textContent.includes("BLOCKER-UNKNOWN") && !document.querySelector('[data-blocker-kind="dependency"]'));
+    await tab.click('[data-blocker-filter="dependency"]');
+    await tab.click('[data-blocker-kind="dependency"] button');
+    await tab.waitFor("task resolution sheet", () => document.body.innerText.includes("Dependency blocker") && !!document.querySelector('[role="dialog"]'));
+    await tab.key("Escape");
+    await tab.shot(`${String(n).padStart(2, "0")}-blocker-center`);
+    await tab.click('[data-task-view="kanban"]');
   });
 
   await step("scope-search-tasks", async () => {

@@ -1,6 +1,39 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  blockers: {
+  "title": "Blocked",
+  "hint": "See causes and next steps. Open details to act with your permissions; status refreshes from the hub.",
+  "filter": "Filter blocker causes",
+  "loading": "Loading items needing attention…",
+  "empty": "No blocked work in this filter.",
+  "hidden": "{n} dependencies are outside your viewing permissions.",
+  "readOnly": "You can view this; someone with the relevant permission must act.",
+  "open": "Open resolution details",
+  "kind": {
+    "all": "All",
+    "dependency": "Dependencies",
+    "quota": "Quota / budget",
+    "policy": "Policy",
+    "review": "Approval",
+    "test": "Tests",
+    "conflict": "Conflicts",
+    "release": "Release",
+    "offline": "Machine offline",
+    "unknown": "Needs diagnosis"
+  },
+  "next": {
+    "dependency": "Complete dependencies before dispatch.",
+    "quota": "Check quota reset or select an account with available quota before retrying.",
+    "policy": "Check policy and permissions with a project administrator before retrying.",
+    "review": "Inspect evidence and decide at the pending approval step.",
+    "test": "Inspect test results, fix failures and run checks again.",
+    "conflict": "Inspect both sides and resolve the conflict before continuing.",
+    "release": "Inspect release logs, fix the cause and use the existing release workflow.",
+    "offline": "Reconnect the machine or select an online machine before dispatch.",
+    "unknown": "Inspect notes and run results to diagnose the cause before retrying."
+  }
+},
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Up arrow", down: "Down arrow", left: "Left arrow", right: "Right arrow", interrupt: "Ctrl-C: interrupt" },
     osUserName: "OS user: {user}",

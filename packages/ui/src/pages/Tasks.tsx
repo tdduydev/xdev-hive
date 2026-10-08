@@ -1,3 +1,4 @@
+import { BlockerCenter } from "#ui/components/BlockerCenter.tsx";
 import { allDispatchTasks } from "#ui/lib/inbox-source.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { TaskRunChain } from "#ui/components/RunRedispatch.tsx";
@@ -54,13 +55,13 @@ const PENDING_MS = 3000;
 /** An agent splitting a job lists its parts within minutes: look again this often, so they show to be checked. */
 const OPEN_GROUP_MS = 5000;
 
-type View = "kanban" | "list" | "agent";
+type View = "kanban" | "list" | "agent" | "blockers";
 // Each reader's own choice, in this browser only (roadmap 30a): Kanban unless they picked the list.
 const VIEW_KEY = "hive-tasks-view";
 const readView = (): View => {
   try {
     const saved = localStorage.getItem(VIEW_KEY);
-    return saved === "list" || saved === "agent" ? saved : "kanban";
+    return saved === "list" || saved === "agent" || saved === "blockers" ? saved : "kanban";
   } catch {
     return "kanban";
   }
@@ -78,7 +79,7 @@ function ViewSwitch({ value, onChange, board, agents = false }: { value: View; o
   const t = useT();
   return (
     <div role="radiogroup" aria-label={t("tasks.view")} className="ml-auto flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
-      {(["kanban", "list", ...(agents ? ["agent" as const] : [])] as const).map((v) => (
+      {(["kanban", "list", ...(agents ? ["agent" as const, "blockers" as const] : [])] as const).map((v) => (
         <button
           key={v}
           type="button"
@@ -88,7 +89,7 @@ function ViewSwitch({ value, onChange, board, agents = false }: { value: View; o
           onClick={() => onChange(v)}
           className={cn("h-7 max-md:min-h-11 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold outline-none focus-visible:focus-ring", value === v ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary")}
         >
-          {t(v === "agent" ? "assignment.byAgent" : v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
+          {t(v === "blockers" ? "blockers.title" : v === "agent" ? "assignment.byAgent" : v === "kanban" && board ? "tasks.view_board" : `tasks.view_${v}`)}
         </button>
       ))}
     </div>
@@ -147,7 +148,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   const [service, setService] = useServiceFilter(scope);
   const [own, setViewState] = useState<View>(readView);
   const chosen = fixed ?? own;
-  const view = chosen === "agent" && me.mode !== "hub" ? "list" : chosen;
+  const view = (chosen === "agent" || chosen === "blockers") && me.mode !== "hub" ? "list" : chosen;
   const setView = (v: View) => {
     setViewState(v);
     writeView(v);
@@ -227,9 +228,9 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
 
 
   const [agentFilter, setAgentFilter] = useState("");
-  const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll]);
+  const machines = useQuery(async () => hub ? client.call("machines.list", {}) : [], [client, hub, poll, taskPoll]);
   const lanes = agentLanes(machines.data ?? [], list.data ?? [], t("assignment.any"), t("assignment.unassigned"));
-  const visible = filterAgent(list.data ?? [], agentFilter).filter((task) => (linkedIds === null || linkedIds.split(",").includes(task.id))).filter((task) => !linkedKind || (task.status !== "done" && (linkedKind === "fast" ? ["docs", "small-fix", "test"] : linkedKind.split(",")).includes(task.kind ?? "")));
+  const visible = filterAgent(list.data ?? [], view === "blockers" ? "" : agentFilter).filter((task) => (linkedIds === null || linkedIds.split(",").includes(task.id))).filter((task) => !linkedKind || (task.status !== "done" && (linkedKind === "fast" ? ["docs", "small-fix", "test"] : linkedKind.split(",")).includes(task.kind ?? "")));
   return (
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
@@ -245,7 +246,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
             ))}
           </NativeSelect>
         ) : null}
-        {hub ? <NativeSelect data-agent-filter aria-label={t("assignment.agent")} wrapperClassName="max-w-full" className="max-md:min-h-11 max-md:text-base" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+        {hub && view !== "blockers" ? <NativeSelect data-agent-filter aria-label={t("assignment.agent")} wrapperClassName="max-w-full" className="max-md:min-h-11 max-md:text-base" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
           <NativeSelectOption value="">{t("assignment.all")}</NativeSelectOption>
           {lanes.map((lane) => <NativeSelectOption key={lane.key} value={lane.key}>{lane.label}</NativeSelectOption>)}
         </NativeSelect> : null}
@@ -348,7 +349,8 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
           </button>
         </div>
       ) : null}
-      {list.data?.length === 0 ? <Empty>{t("tasks.none")}</Empty> : null}
+      {list.data?.length === 0 && view !== "blockers" ? <Empty>{t("tasks.none")}</Empty> : null}
+      {hub && view === "blockers" ? <BlockerCenter tasks={visible} machines={machines.data ?? []} project={service || scoped || undefined} onOpen={setOpenId} /> : null}
       {hub && view === "agent" ? <AgentBoard tasks={visible} machines={machines.data ?? []} onOpen={setOpenId} onChanged={reload} /> : null}
       {list.data?.length && view === "kanban" ? (
         <TaskKanban
