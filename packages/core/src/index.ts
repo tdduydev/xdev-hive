@@ -55,3 +55,4 @@ export * from "#core/terminal-relay.ts";
 export * from "#core/evidence.ts";
 export * from "#core/acceptance-criteria.ts";
 export type { HistoryEntry } from "#core/history.ts";
+export * from "#core/gate.ts";

@@ -1,6 +1,6 @@
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type ResearchJob } from "@xdev-hive/core";
+import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
@@ -220,6 +220,8 @@ export interface HubUpdate {
   mergeRuns?: RunMergeOrder[];
   /** Repos of this machine the hub archived or deleted (roadmap 47); a hub older than it sends none. */
   archivedProjects?: string[];
+  /** The gate manifests the hub kept and the ones it lacks (spec 69h1 §3); a hub older than 69h2 sends none. */
+  gate?: GateHeartbeatReply;
 }
 
 /** What the MR watcher saw of a run's MR, as the hub keeps it (roadmap 18c); null without an MR. */
@@ -1355,6 +1357,7 @@ export class Runner {
       // The user let project managers drive this machine from the web; without that a merge waits until it expires.
       mergeRuns: this.#host.settings().acceptHubRuns && !this.#updateDrain ? (res.mergeRuns ?? []) : [],
       archivedProjects: res.archivedProjects ?? [],
+      gate: res.gate,
     };
     // Before the requests below are taken, so their runs start under the policy the hub just sent.
     this.#agentPolicy = update.agentPolicy ?? null;
@@ -1919,6 +1922,9 @@ export class Runner {
   #asMachine(actor: Actor): Actor {
     return { ...actor, source: { via: "mcp", machine: this.#host.machine() } };
   }
+
+  /** Who this machine is to the hub; the gate executor (69h2) reports with it, like the merge queue and releases. */
+  hubActor(): Actor { return this.#runnerActor(); }
 
   #runnerActor(): Actor {
     return this.#asMachine({ name: agentActorName("runner", this.#host.mode(), this.#host.machine(), this.#opts.user), role: "agent" });
