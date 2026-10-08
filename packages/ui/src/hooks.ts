@@ -74,6 +74,21 @@ export function useHashParam(name: string): [string | null, () => void] {
   return [value, clear];
 }
 
+const plain = (v: unknown): v is Record<string, unknown> => {
+  if (v === null || typeof v !== "object") return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+};
+
+/** Same JSON-shaped value. Anything else (bytes, Date, Map, class) only counts as the same when it is the same object. */
+export function sameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((x, i) => sameData(x, b[i]));
+  if (!plain(a) || !plain(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && sameData(a[k], b[k]));
+}
+
 export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T> {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +103,8 @@ export function useQuery<T>(fn: () => Promise<T>, deps: unknown[]): QueryState<T
     fnRef.current().then(
       (value) => {
         if (!alive) return;
-        setData(value);
+        // A poll that brings the same answer keeps the old object: memos and memo() below it skip the work.
+        setData((prev) => (sameData(prev, value) ? prev : value));
         setError(null);
         setLoading(false);
       },

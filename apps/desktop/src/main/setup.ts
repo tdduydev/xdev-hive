@@ -40,6 +40,7 @@ import { resolveBin } from "./runner/command.ts";
 import { VIBE_VERSION } from "#desktop/main/runner/vibe.ts";
 import { supportsAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
+import { insideRuntime } from "#desktop/main/linux-tools.ts";
 
 export interface RunResult {
   ok: boolean;
@@ -50,7 +51,9 @@ export type Run = (bin: string, args: string[], opts: { cwd?: string; env: NodeJ
 
 export interface SetupHost {
   /** Login-shell PATH; refresh=true after an install may have changed it. */
-  pathEnv(refresh?: boolean): string;
+  pathEnv(refresh?: boolean): string | Promise<string>;
+  /** Linux: folders that go away with the app (its runtime root), where no CLI may be installed. */
+  runtimeRoots?(): string[];
   /** Base env for child processes (already carries pathEnv). */
   env(): NodeJS.ProcessEnv;
   projects(): DesktopProject[];
@@ -247,7 +250,7 @@ export class Setup {
   }
 
   async status(): Promise<SetupReport> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     const clis = await Promise.all(AGENT_CLIS.map((c) => this.#cli(c, pathEnv)));
     const specify = await this.#findSpecify(pathEnv);
     const tools = await Promise.all(this.#catalogTools().map((e) => this.#tool(e, pathEnv)));
@@ -258,7 +261,7 @@ export class Setup {
   }
 
   async item(id: string): Promise<SetupItem> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     if (id === "shim") return this.#shim(pathEnv);
     if (id === "cli:specify") return this.#specify(await this.#findSpecify(pathEnv), pathEnv);
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
@@ -272,7 +275,7 @@ export class Setup {
   }
 
   async install(id: string): Promise<SetupInstallResult> {
-    const pathEnv = this.#host.pathEnv(true);
+    const pathEnv = await this.#host.pathEnv(true);
     const env = { ...this.#host.env(), PATH: pathEnv };
     let output: string;
     const cli = AGENT_CLIS.find((c) => id === `cli:${c.kind}`);
@@ -338,6 +341,8 @@ export class Setup {
     const r = await this.#run(npm, ["prefix", "-g"], { env, timeoutMs: 15_000 });
     const prefix = r.ok ? r.output.trim().split("\n").pop()!.trim() : "";
     if (!path.isAbsolute(prefix)) return [];
+    // A Node unpacked next to the Linux app is writable, but what goes there goes away with the app (linux-tools.ts).
+    if (insideRuntime(prefix, this.#host.runtimeRoots?.() ?? [])) return ["--prefix", userNpmPrefix(this.#home())];
     const writable = this.#host.writable ?? canWrite;
     return writable(path.join(prefix, "lib", "node_modules")) ? [] : ["--prefix", userNpmPrefix(this.#home())];
   }
