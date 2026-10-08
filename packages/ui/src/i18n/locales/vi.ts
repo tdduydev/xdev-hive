@@ -461,7 +461,7 @@ export const vi = {
     chooseScope: "Chọn phạm vi",
 
     updateReady: "Khởi động lại để lên v{version}",
-    updateReadyDeb: "Cài v{version} (cần quyền quản trị)",
+    updateReadyDeb: "Cài v{version} (hỏi mật khẩu máy)",
     updateDownloading: "Đang tải v{version} · {percent}%",
     updateReadyShort: "v{version} sẵn sàng",
     updateWaiting: "Chờ run xong để cập nhật v{version}",
@@ -3876,7 +3876,7 @@ export const vi = {
   desktop: {
     updateReadyTitle: "Bản {version} đã tải xong",
     updateReadyBody: "Khởi động lại xDev Hive để cập nhật.",
-    updateReadyBodyDeb: "Mở xDev Hive và bấm Cài để cài gói .deb bằng quyền quản trị, rồi mở lại app.",
+    updateReadyBodyDeb: "Mở xDev Hive và bấm Cài: nhập mật khẩu máy một lần, app tự mở lại bản mới.",
     trayOpen: "Mở xDev Hive",
     trayProposals: "Đề xuất chờ duyệt",
     trayQuit: "Thoát",

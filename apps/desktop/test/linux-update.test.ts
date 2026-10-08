@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { extractedInstallScript, extractLinuxUpdate, linuxLayout, linuxUpdateService, updateCommand, type UpdateCommand } from "#desktop/main/linux-update.ts";
+import { extractedInstallScript, extractLinuxUpdate, installDeb, linuxLayout, linuxUpdateService, updateCommand, type UpdateCommand } from "#desktop/main/linux-update.ts";
 
 const dirs: string[] = [];
 function layout() {
@@ -99,5 +99,27 @@ describe("extracted Linux app updates", () => {
       assert.match(readFileSync(calls, "utf8"), /--user stop fake.service\n--user restart fake.service/);
       if (fail) assert.match(readFileSync(path.join(l.root, "install-error"), "utf8"), /restored old build/);
     }
+  });
+});
+
+describe("deb install through pkexec", () => {
+  const failing = (fields: Record<string, unknown>): UpdateCommand => async () => { throw Object.assign(new Error("exit"), fields); };
+
+  it("runs apt-get under pkexec with the package's absolute path", async () => {
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const result = await installDeb("/home/u/.config/xdev-hive/updates/x.deb", async (file, args) => { calls.push({ file, args }); return { stdout: "" }; });
+    assert.equal(result, "installed");
+    assert.equal(calls[0]!.file, "pkexec");
+    assert.deepEqual(calls[0]!.args.slice(0, 2), ["/usr/bin/apt-get", "install"]);
+    assert.equal(calls[0]!.args.at(-1), "/home/u/.config/xdev-hive/updates/x.deb");
+  });
+
+  it("tells a dismissed prompt, a missing pkexec and a refusal apart", async () => {
+    const deb = "/tmp/x.deb";
+    assert.equal(await installDeb(deb, failing({ code: 126 })), "cancelled");
+    assert.equal(await installDeb(deb, failing({ code: "ENOENT" })), "unavailable");
+    await assert.rejects(() => installDeb(deb, failing({ code: 127 })), /Not authorized/);
+    await assert.rejects(() => installDeb(deb, failing({ code: 100, stderr: "Reading package lists...\nE: Could not get lock /var/lib/dpkg/lock-frontend" })), /Could not get lock/);
+    await assert.rejects(() => installDeb("relative.deb", failing({})), /Not a \.deb/);
   });
 });

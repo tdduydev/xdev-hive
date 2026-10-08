@@ -9,7 +9,7 @@
 // hub, which hands them to machines as updates (roadmap 22i; admins pick the version on Phiên bản app).
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { uploadToHub } from "#desktop/scripts/hub-upload.mjs";
 import { generateWhatsNew, readWhatsNewOverride } from "#desktop/scripts/whatsnew.mjs";
@@ -54,6 +54,9 @@ const assets = readdirSync(release)
   .sort()
   .map((f) => path.join(release, f));
 const sums = assets.map((f) => `${createHash("sha256").update(readFileSync(f)).digest("hex")}  ${path.basename(f)}`).join("\n");
+// Ubuntu's self-updating install (no password on update): GitHub only, the hub hands out builds, not scripts.
+const installScript = path.join(release, "install-linux.sh");
+copyFileSync(path.join(desktop, "scripts", "install-linux.sh"), installScript);
 const sumsFile = path.join(release, "SHA256SUMS.txt");
 writeFileSync(sumsFile, `${sums}\n`);
 for (const f of assets) console.log(`${(statSync(f).size / 1e6).toFixed(0).padStart(5)} MB  ${path.basename(f)}`);
@@ -86,6 +89,7 @@ const notes = `## Tải về
 | macOS Intel | \`xdev-hive-${version}-mac-x64.dmg\` |
 | Windows x64 | \`xdev-hive-${version}-win-x64-setup.exe\` |
 | Windows ARM | \`xdev-hive-${version}-win-arm64-setup.exe\` |
+| Ubuntu, tự cập nhật (khuyên dùng) | \`install-linux.sh\` + AppImage bên dưới |
 | Ubuntu/Debian x64 | \`xdev-hive-${version}-linux-amd64.deb\` |
 | Ubuntu/Debian ARM64 | \`xdev-hive-${version}-linux-arm64.deb\` |
 | Linux x64 | \`xdev-hive-${version}-linux-x86_64.AppImage\` |
@@ -94,7 +98,8 @@ const notes = `## Tải về
 Bản build chưa có chứng chỉ ký của Apple/Microsoft:
 - **macOS**: lần đầu mở, macOS chặn. Vào *System Settings → Privacy & Security* bấm *Open Anyway*, hoặc chạy \`xattr -dr com.apple.quarantine "/Applications/xDev Hive.app"\`.
 - **Windows**: SmartScreen hiện cảnh báo, bấm *More info → Run anyway*.
-- **Ubuntu/Debian**: \`sudo apt install ./xdev-hive-${version}-linux-amd64.deb\` (ARM64: đổi amd64 thành arm64). Cập nhật trong app tải và kiểm SHA-256, rồi mở trình cài của hệ thống; cần xác nhận quyền quản trị và mở lại app sau khi cài.
+- **Ubuntu (khuyên dùng, tự cập nhật không hỏi mật khẩu)**: tải \`install-linux.sh\` và AppImage đúng kiến trúc, chạy \`sh install-linux.sh xdev-hive-${version}-linux-x86_64.AppImage\`. App cài vào \`~/.local/share/xdev-hive\`, không cần sudo hay FUSE; mỗi lần cập nhật app tự đổi bản và mở lại. Đang dùng bản .deb: thoát app, chạy lệnh trên, rồi \`sudo apt remove xdev-hive\` (cấu hình và dữ liệu giữ nguyên).
+- **Ubuntu/Debian (.deb)**: \`sudo apt install ./xdev-hive-${version}-linux-amd64.deb\` (ARM64: đổi amd64 thành arm64). Cập nhật trong app tải và kiểm SHA-256, rồi hỏi mật khẩu máy một lần và tự mở lại bản mới.
 - **Ubuntu 22.04–26.04 AppImage**: cần FUSE 2 để chạy; cài \`libfuse2\` (Ubuntu 22.04/23.10) hoặc \`libfuse2t64\` (Ubuntu 24.04 trở lên). Sau đó chạy \`chmod +x xdev-hive-*.AppImage\` rồi \`./xdev-hive-*.AppImage\`. Nếu không có FUSE, có thể giải nén bằng \`./xdev-hive-*.AppImage --appimage-extract\` rồi chạy \`./squashfs-root/AppRun\`.
 
 Kiểm tra file: \`SHA256SUMS.txt\`.
@@ -104,6 +109,6 @@ ${whatsNew}
 const notesFile = path.join(release, "NOTES.md");
 writeFileSync(notesFile, notes);
 // The commit that was built, not main as it is by now: another session may have pushed while this one built.
-if (!hubOnly) run("gh", ["release", "create", tag, ...assets, sumsFile, "--target", out("git", ["rev-parse", "HEAD"]), "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
+if (!hubOnly) run("gh", ["release", "create", tag, ...assets, installScript, sumsFile, "--target", out("git", ["rev-parse", "HEAD"]), "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
 if (!hubOnly) run("gh", ["release", "edit", tag, "--notes-file", notesFile], { cwd: repoRoot });
 await toHub(notes);

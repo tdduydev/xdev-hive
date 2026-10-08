@@ -114,3 +114,27 @@ export const extractedInstallScript = [
   'log "update installed"',
   "",
 ].join("\n");
+
+export type DebInstall = "installed" | "cancelled" | "unavailable";
+
+/**
+ * Installs a verified .deb through polkit: the person types their password once in the system dialog, and nothing is
+ * left for them to open by hand. apt-get (not dpkg -i) so a new Depends is pulled in; the lock timeout rides out an
+ * unattended-upgrades run instead of failing on it. "unavailable": no pkexec (a server without a desktop session).
+ */
+export async function installDeb(file: string, run: UpdateCommand = updateCommand): Promise<DebInstall> {
+  if (!path.isAbsolute(file) || !file.endsWith(".deb")) throw new Error("Not a .deb package path.");
+  try {
+    await run("pkexec", ["/usr/bin/apt-get", "install", "-y", "--allow-downgrades", "-o", "DPkg::Lock::Timeout=120", file], { timeout: 15 * 60_000 });
+    return "installed";
+  } catch (err) {
+    // execFile: code is the exit status (number) once the child ran, an errno string when it could not start.
+    const e = err as Error & { code?: string | number; stderr?: string };
+    if (e.code === "ENOENT") return "unavailable";
+    // pkexec: 126 = the person closed the dialog, 127 = not authorized (or no polkit agent to ask with).
+    if (e.code === 126) return "cancelled";
+    if (e.code === 127) throw new Error("Not authorized to install the package (polkit).");
+    const detail = String(e.stderr ?? "").trim().split("\n").filter((l) => /^E:|error/i.test(l)).slice(-2).join(" ");
+    throw new Error(detail || e.message);
+  }
+}
