@@ -1,13 +1,10 @@
-// The app frame of the redesign (docs/design/2026-09-redesign, "xDev Hive Client"): a 236px sidebar (logo, scope,
-// grouped pages, this machine's running agents, account), a 52px top bar (title, ⌘K search, Task mới) and a 26px
-// status bar (hub, runs, quota, version). Used by the desktop app and by people who are not hub admins on the web.
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Download, ExternalLink, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, X } from "lucide-react";
+import { Download, ExternalLink, Layers3, Menu, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, UserRound, X } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
 import { AccountMenu } from "#ui/components/Account.tsx";
-import { HiveWordmark } from "#ui/components/Brand.tsx";
+import { HiveWordmark, XMark } from "#ui/components/Brand.tsx";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
 import { scopeId } from "#ui/lib/scope.ts";
 import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
@@ -16,12 +13,12 @@ import { LeaderChatPanel } from "#ui/shell/LeaderChatPanel.tsx";
 import { useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
-import { CommandPalette, type PaletteCommand } from "./CommandPalette.tsx";
-import { NewTaskDialog } from "./NewTaskDialog.tsx";
+import { CommandPalette, type PaletteCommand } from "#ui/shell/CommandPalette.tsx";
+import { NewTaskDialog } from "#ui/shell/NewTaskDialog.tsx";
 import { NewWorkDialog } from "#ui/shell/NewWorkDialog.tsx";
-import { InShellContext } from "./frame.ts";
-import { useDocOutbox, useHubConnection } from "./connection.tsx";
-import { ToastProvider } from "./toast.tsx";
+import { InShellContext } from "#ui/shell/frame.ts";
+import { useDocOutbox, useHubConnection } from "#ui/shell/connection.tsx";
+import { ToastProvider } from "#ui/shell/toast.tsx";
 
 type Icon = ComponentType<{ className?: string }>;
 
@@ -120,23 +117,27 @@ function ClientFrame({
   const { theme } = useTheme();
   const narrow = useMedia("(max-width: 767px)");
   const [sidebar, setSidebarState] = useState(() => narrow ? false : readSidebar());
+  const rail = !narrow && !sidebar;
+  const mainRef = useRef<HTMLElement>(null);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
+  const drawerReturnFocus = useRef<HTMLButtonElement>(null);
   const [palette, setPalette] = useState(false);
   const [newTask, setNewTask] = useState(false);
   useEffect(() => {
-    if (narrow) setSidebarState(false);
+    setSidebarState(narrow ? false : readSidebar());
   }, [narrow]);
   const setSidebar = useCallback((open: boolean | ((was: boolean) => boolean)) => {
     setSidebarState((was) => {
       const next = typeof open === "function" ? open(was) : open;
       try {
-        localStorage.setItem(SIDEBAR_KEY, next ? "open" : "closed");
+        // Closing a phone drawer must not overwrite the desktop layout preference.
+        if (!narrow) localStorage.setItem(SIDEBAR_KEY, next ? "open" : "closed");
       } catch {
         // Not remembered.
       }
       return next;
     });
-  }, []);
+  }, [narrow]);
 
   const desktop = client.desktop;
   const info = useQuery(async () => (desktop ? desktop.appInfo() : null), [desktop]);
@@ -193,6 +194,11 @@ function ClientFrame({
     },
     [narrow, setSidebar],
   );
+
+  const mobileItems = ["today", "tasks", "chat", "runs", "agents"]
+    .map((id) => items.find((item) => item.id === id))
+    .filter((item): item is NavEntry => !!item)
+    .slice(0, 4);
 
   // ⌘K palette · ⌘⇧L leader · ⌘B sidebar · ⌘N new task · ⌘1–6 pages.
   useEffect(() => {
@@ -252,22 +258,23 @@ function ClientFrame({
       id="hive-navigation"
       aria-label={t("shell.nav")}
       className={cn(
-        "flex w-[236px] shrink-0 flex-col border-r border-line-subtle bg-subtle",
+        "hive-sidebar flex shrink-0 flex-col border-r border-line-subtle bg-subtle",
+        rail && "hive-sidebar-rail",
         narrow && "h-full w-full border-r-0",
       )}
     >
-      <div className={cn("flex h-[52px] shrink-0 items-center px-4", mac && "pl-[84px]", drag)}>
-        <HiveWordmark height={30} />
+      <div className={cn("hive-topbar flex shrink-0 items-center px-4", rail && "justify-center px-0", mac && !rail && "pl-[84px]", drag)}>
+        {rail ? (!mac ? <XMark size={24} /> : null) : <HiveWordmark height={30} />}
         {narrow ? <button type="button" aria-label={t("shell.closeSidebar")} onClick={() => setSidebar(false)} className="ml-auto grid size-10 place-items-center rounded-sm text-fg-secondary"><X className="size-4" /></button> : null}
       </div>
       <div className={cn("shrink-0 px-2.5 pb-1.5", noDrag)}>
-        <ScopeSwitcher />
+        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.chooseScope")} title={scopeName ?? t("shell.chooseScope")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><Layers3 className="size-4" aria-hidden="true" /></button> : <ScopeSwitcher />}
       </div>
       {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
       <div data-nav-list className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2.5 pt-0.5 pb-2.5">
         {groups.map((g, gi) => (
           <div key={g.label ?? `g${gi}`} className="flex flex-col gap-px">
-            {g.label ? <div className="px-2 pt-3 pb-1 text-[11px]/4 font-semibold text-fg-muted">{g.label}</div> : null}
+            {g.label && !rail ? <div className="px-2 pt-3 pb-1 text-[11px]/4 font-semibold text-fg-muted">{g.label}</div> : null}
             {g.items.map((item) => {
               const on = item.id === current;
               const Icon = item.icon;
@@ -279,16 +286,18 @@ function ClientFrame({
                   aria-current={on ? "page" : undefined}
                   title={item.shortcut ? t("shell.shortcut", { label: item.label, key: item.shortcut }) : item.label}
                   className={cn(
-                    "flex h-[30px] max-md:min-h-10 shrink-0 items-center gap-2 rounded-sm px-2 text-[13px]/none outline-none focus-visible:focus-ring",
+                    "flex min-h-8 max-md:min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-[13px]/5 outline-none focus-visible:focus-ring active:bg-pressed",
+                    rail && "relative justify-center px-0",
                     on ? "bg-selected font-semibold text-selected-fg" : "text-fg-primary hover:bg-hover",
                   )}
                 >
-                  <Icon className={cn("size-4 shrink-0", on ? "text-fg-brand" : "text-fg-muted")} />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  <Icon aria-hidden="true" className={cn("size-4 shrink-0", on ? "text-fg-brand" : "text-fg-muted")} />
+                  <span className={rail ? "sr-only" : "min-w-0 flex-1 truncate"}>{item.label}</span>
                   {item.badge && item.badge.count > 0 ? (
                     <span
                       className={cn(
                         "inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-[5px] text-[11px]/none font-semibold",
+                        rail && "absolute right-0 top-0",
                         item.badge.strong ? "bg-primary text-primary-foreground" : "text-fg-muted",
                       )}
                     >
@@ -301,7 +310,7 @@ function ClientFrame({
           </div>
         ))}
       </div>
-      {desktop ? (
+      {desktop && !rail ? (
         <div className="mx-2.5 mb-2.5 flex shrink-0 flex-col gap-px rounded-md border border-line-subtle bg-surface px-1.5 pt-2 pb-1.5">
           <a
             href="#/runs"
@@ -324,14 +333,14 @@ function ClientFrame({
           ))}
         </div>
       ) : null}
-      <div className={cn("flex shrink-0 items-center gap-1 border-t border-line-subtle px-2 py-2", noDrag)}>
-        <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} onNavigate={() => narrow && setSidebar(false)} />
+      <div className={cn("flex shrink-0 items-center gap-1 border-t border-line-subtle px-2 py-2", rail && "flex-col", noDrag)}>
+        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} onNavigate={() => narrow && setSidebar(false)} />}
         <button
           type="button"
           onClick={() => toggleTheme(theme)}
           aria-label={t("theme.toggle")}
           title={t("theme.toggle")}
-          className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring"
+          className="grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring"
         >
           {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
         </button>
@@ -364,27 +373,28 @@ function ClientFrame({
 
   return (
     <>
-      <div inert={narrow && sidebar} className="fixed inset-0 flex flex-col bg-surface text-fg-primary">
+      <div inert={narrow && sidebar} className="hive-shell fixed inset-0 flex flex-col bg-surface text-fg-primary">
+        <a href="#hive-main" onClick={(event) => { event.preventDefault(); mainRef.current?.focus(); }} className="hive-skip-link">{t("shell.skipToContent")}</a>
         <div className="flex min-h-0 flex-1">
-          {sidebar && !narrow ? nav : null}
+          {!narrow ? nav : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
-            <header className={cn("flex h-[52px] min-w-0 shrink-0 items-center gap-0.5 border-b border-line-subtle bg-surface px-3", drag, mac && !sidebar && !narrow && "pl-[78px]")}>
+            <header className={cn("hive-topbar flex min-w-0 shrink-0 items-center gap-2 border-b border-line-subtle bg-surface px-3", drag, mac && rail && "pl-4")}>
               <button
                 ref={sidebarTrigger}
                 type="button"
-                onClick={() => setSidebar((s) => !s)}
+                onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar((s) => !s); }}
                 aria-label={t("shell.toggleSidebar")}
                 aria-expanded={sidebar}
                 aria-controls="hive-navigation"
                 title={t("shell.sidebarShortcut")}
                 className={cn(
-                  "grid size-[30px] max-md:size-10 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
+                  "grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
                   noDrag,
                 )}
               >
                 <PanelLeft className="size-4" />
               </button>
-              <div className="ml-2 flex min-w-0 max-w-[320px] flex-col">
+              <div className="ml-2 flex min-w-0 max-w-[320px] flex-1 flex-col md:flex-none">
                 <span className="truncate text-sm/[18px] font-semibold text-fg-strong" data-shell-title>
                   {scopeName ? <span className="font-normal text-fg-secondary">{scopeName} › </span> : null}
                   {title}
@@ -484,11 +494,20 @@ function ClientFrame({
                 </button>
               </div>
             ) : null}
-            <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-canvas max-md:overflow-x-hidden">
+            <main id="hive-main" ref={mainRef} tabIndex={-1} aria-label={title} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-canvas max-md:overflow-x-hidden">
               <InShellContext.Provider value={true}>{children}</InShellContext.Provider>
             </main>
           </div>
         </div>
+        {narrow ? <nav aria-label={t("shell.quickNav")} className="hive-mobile-nav flex shrink-0 border-t border-line-subtle bg-surface">
+          {mobileItems.map((item) => {
+            const Icon = item.icon;
+            return <a key={item.id} href={`#/${item.id}`} aria-current={current === item.id ? "page" : undefined} className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", current === item.id ? "font-semibold text-fg-brand bg-selected" : "text-fg-secondary")}>
+              <Icon className="size-5" aria-hidden="true" /><span className="max-w-full truncate">{item.label}</span>
+            </a>;
+          })}
+          <button type="button" onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar(true); }} aria-expanded={sidebar} aria-controls="hive-navigation" className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", !mobileItems.some((item) => item.id === current) ? "font-semibold text-fg-brand bg-selected" : "text-fg-secondary")}><Menu className="size-5" aria-hidden="true" /><span>{t("shell.menu")}</span></button>
+        </nav> : null}
         <footer className="flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2 max-md:hidden">
           {hubMode
             ? statusItem(
@@ -530,10 +549,10 @@ function ClientFrame({
             side="left"
             showCloseButton={false}
             aria-describedby={undefined}
-            className="w-[236px] gap-0 sm:w-[236px] sm:max-w-[236px]"
+            className="hive-navigation-drawer gap-0"
             onCloseAutoFocus={(event) => {
               event.preventDefault();
-              sidebarTrigger.current?.focus();
+              (drawerReturnFocus.current ?? sidebarTrigger.current)?.focus();
             }}
           >
             <SheetTitle className="sr-only">{t("shell.nav")}</SheetTitle>

@@ -26,10 +26,10 @@ export function SummaryStrip({ items, label }: { items: SummaryItem[]; label: st
           key={i.id}
           href={i.href}
           data-summary={i.id}
-          className="flex min-w-0 flex-col gap-1 rounded-xl border border-line-default bg-surface px-3.5 py-3 outline-none hover:border-fg-secondary focus-visible:focus-ring max-md:min-h-11"
+          className="flex min-w-0 flex-col gap-1 rounded-lg border border-line-default bg-surface px-4 py-4 outline-none hover:border-line-strong active:bg-pressed focus-visible:focus-ring max-md:min-h-11"
         >
           <span className="text-xs text-fg-muted">{i.label}</span>
-          <span className={cn("text-[26px]/8 font-bold tabular-nums", i.tone ? TONE[i.tone] : "text-fg-strong")}>{i.value}</span>
+          <span className={cn("type-numeric-lg", i.tone ? TONE[i.tone] : "text-fg-strong")}>{i.value}</span>
           {i.sub ? <span className="truncate text-xs text-fg-muted">{i.sub}</span> : null}
         </a>
       ))}

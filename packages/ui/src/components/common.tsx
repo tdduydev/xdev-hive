@@ -5,7 +5,6 @@ import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui/components/ui/alert";
 import { Badge as UiBadge } from "@xdev-hive/ui/components/ui/badge";
 import { useT } from "#ui/i18n/index.tsx";
-import { useInShell } from "#ui/shell/frame.ts";
 
 /** Status colours: tinted backgrounds with the matching text, readable in light and dark. */
 const TONE: Record<string, string> = {
@@ -89,7 +88,7 @@ export function PageIntro({ children }: { children: string }) {
   return (
     <div className="min-w-0 max-w-3xl flex-1 type-body-sm text-fg-secondary">
       <p className={expanded ? "" : "max-md:line-clamp-1"}>{children}</p>
-      <button type="button" className="hidden min-h-10 text-fg-link underline md:hidden max-md:block" onClick={() => setExpanded((value) => !value)}>
+      <button type="button" aria-expanded={expanded} className="hidden min-h-11 text-fg-link underline md:hidden max-md:block" onClick={() => setExpanded((value) => !value)}>
         {t(expanded ? "common.showLess" : "common.showMore")}
       </button>
     </div>
@@ -97,30 +96,20 @@ export function PageIntro({ children }: { children: string }) {
 }
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
-  // Inside the app frame the top bar shows the title: keep it for screen readers, show the description and actions.
-  if (useInShell()) {
-    return (
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="sr-only">{title}</h1>
-        {subtitle ? <PageIntro>{subtitle}</PageIntro> : <span className="flex-1" />}
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-      </header>
-    );
-  }
   return (
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div className="min-w-0 space-y-1">
+    <header className="hive-page-header flex flex-wrap items-start justify-between gap-4">
+      <div className="min-w-0 flex-1 space-y-2">
         <h1 className="type-display-md text-fg-strong">{title}</h1>
         {subtitle ? <PageIntro>{subtitle}</PageIntro> : null}
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
   );
 }
 
 /** Page body for converted pages (the legacy ones use the .page class). */
 export function Page({ wide, className, children }: { wide?: boolean; className?: string; children: ReactNode }) {
-  return <div className={cn("mx-auto flex w-full flex-col gap-5 p-4 md:px-6 md:py-5", wide ? "max-w-7xl" : "max-w-6xl", className)}>{children}</div>;
+  return <div className={cn("hive-page mx-auto flex min-w-0 w-full flex-col gap-6", wide && "hive-page-wide", className)}>{children}</div>;
 }
 
 export const STATUS_TONE: Record<string, string> = {

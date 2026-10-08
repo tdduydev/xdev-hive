@@ -526,3 +526,34 @@
     border-radius: 4px;
   }
 }
+
+/* Shared geometry keeps every page aligned with the same shell and design tokens. */
+@layer components {
+  .hive-sidebar { width: var(--sidebar-w); }
+  .hive-sidebar-rail { width: var(--sidebar-rail-w); }
+  .hive-topbar { height: var(--topbar-h); }
+  .hive-page { max-width: var(--content-max); padding: var(--gutter); }
+  .hive-page-wide { max-width: none; }
+  .hive-page-tabs { max-width: var(--content-max); }
+  .hive-detail-body { max-width: var(--reading-max); }
+  .hive-page-header { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+  .hive-mobile-nav { padding: var(--space-1) var(--space-2) max(var(--space-1), env(safe-area-inset-bottom)); }
+  .hive-skip-link {
+    position: absolute; z-index: var(--z-sticky); top: var(--space-2); left: var(--space-2);
+    padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+    background: var(--bg-raised); color: var(--text-link); box-shadow: var(--shadow-2);
+    transform: translateY(calc(-100% - var(--space-4)));
+  }
+  .hive-skip-link:focus-visible { transform: translateY(0); }
+  @media (max-width: 767px) {
+    .hive-page { padding: var(--gutter-mobile); gap: var(--space-5); }
+    .hive-topbar { padding-top: env(safe-area-inset-top); height: calc(var(--topbar-h) + env(safe-area-inset-top)); }
+    .hive-sidebar { width: 100%; padding-bottom: env(safe-area-inset-bottom); }
+  }
+}
+
+/* The drawer must override SheetContent’s generic full-width utilities. */
+[data-slot="sheet-content"].hive-navigation-drawer {
+  width: min(320px, calc(100vw - var(--space-12)));
+  max-width: 100vw;
+}
