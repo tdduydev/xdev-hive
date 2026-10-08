@@ -3462,6 +3462,14 @@ async function main() {
     await tab.eval(() => localStorage.setItem("xdev-hive.locale", "vi"));
     await tab.reload();
     viewer.win.close();
+    await rpc("runs.push", { machine: "acceptance-fixture", runs: [{ runId: "R-evidence-sha", project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", status: "succeeded", profileId: null, branch: specBranch, headSha: "c".repeat(40), createdAt: new Date().toISOString() }] });
+    await tab.go("runs?run=R-evidence-sha");
+    await tab.waitFor("the run exposes its exact code revision", () => document.querySelector('[data-run-head-sha]')?.textContent.includes("c".repeat(40)));
+    if (mobile) expect(await tab.eval(() => {
+      const heading = document.querySelector('[data-run-heading]');
+      return document.documentElement.scrollWidth <= innerWidth && heading.getBoundingClientRect().width >= innerWidth - 48 && heading.querySelector('h2').getBoundingClientRect().height <= 60;
+    }), "run heading keeps the mobile width while full code revision wraps");
+    await tab.shot("acceptance-run-revision");
   });
 
   // Roadmap 31b: the agent map shows each machine's subscriptions; two picked open one prompt for both, or the Task page.
