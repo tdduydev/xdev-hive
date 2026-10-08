@@ -124,6 +124,11 @@ export class WsPeer {
     this.#reader = new WsReader(o.maxPayload, o.server);
     socket.on("data", (c: Buffer) => this.#data(c));
     socket.on("close", () => this.#gone(null));
+    // An http server's sockets are half-open: the peer's FIN is only "end", and "close" would wait for ours.
+    socket.on("end", () => {
+      socket.end();
+      this.#gone(null);
+    });
     socket.on("error", () => this.#gone(null));
     if (head?.length) queueMicrotask(() => this.#data(head));
   }
