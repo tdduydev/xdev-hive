@@ -24,6 +24,10 @@ mac:
   category: public.app-category.developer-tools
   # Ad-hoc signature until there is a Developer ID: Apple Silicon refuses an app whose bundle seal is broken.
   identity: "-"
+  # npmRebuild compiles node-pty's build/ for each arch. The package's own prebuilds include darwin-x64, and Intel code
+  # inside the arm64 bundle made macOS ask an M1 without Rosetta to install it on first launch.
+  files:
+    - "!**/node-pty/prebuilds/**"
   target:
     - dmg
     - zip
