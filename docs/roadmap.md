@@ -358,6 +358,13 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **71b. leader-protocol**: `org/agent-protocol` có mục *Vai trò* (quản lý thì làm leader, làm task thì làm worker); skill `hive-leader` áp dụng cả cho Claude Code/Codex, có mục *Từ CLI*; README.
   - [ ] **71c. cli-leader-e2e**: e2e trên hub demo: `lead` tạo task có phụ thuộc, giao run, đề xuất merge; `member` không thấy tool tạo task.
 
+- **72. cosmic-redesign** (hỏi 8/10: "đọc thiết kế về làm giao diện"; thiết kế từ Claude Design project `e9ddc9b3…`, bản sao `docs/design/hive-2026-10/`; chọn: tối theo thiết kế + sáng suy ra, dùng nguyên asset của thiết kế, cả 20 trang một đợt). Spec: [docs/specs/72-cosmic-redesign.md](specs/72-cosmic-redesign.md). Tách:
+  - [ ] **72a. tokens-primitives**: token tối/sáng, Inter tự host, nền sao, component dùng chung (nút kính, card, tag, badge, input, toggle).
+  - [ ] **72b. shell**: sidebar 3 nhóm, bộ chọn phạm vi, thanh trên, Sáng/Tối, ngăn kéo mobile.
+  - [ ] **72c. today** · [ ] **72d. tasks** · [ ] **72e. runs** · [ ] **72f. docs** · [ ] **72g. machines** · [ ] **72h. chat**
+  - [ ] **72i. pipeline-features** · [ ] **72j. knowledge** (Memory, Skill, Artifact) · [ ] **72k. history-graph** · [ ] **72l. settings-admin** · [ ] **72m. terminal-start**
+  - [ ] **72n. e2e-screens**: e2e web/mobile, smoke desktop, bộ ảnh tối/sáng 1440 và 390.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
