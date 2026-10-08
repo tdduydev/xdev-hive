@@ -2300,7 +2300,12 @@ export class SqliteHive implements HiveBackend {
         if (research && !this.#researchVisible(research, actor)) throw new HiveError("not_found", "Proposal not found.");
         if (row) this.#need(actor, owner(str(row.doc_key)), this.#docPermission(str(row.doc_key)) === "contextEdit" ? "contextEdit" : "docApprove", `Proposal #${i.id}`);
         // Rejecting your own proposal is only taking it back.
-        if (row && method === "proposals.approve") this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
+        if (row && method === "proposals.approve") {
+          if (isCliActionProposalKey(str(row.doc_key))) {
+            if (!actor.humanSession || actor.mcpCredential || actor.runCredential || actor.chatReply !== undefined)
+              throw new HiveError("forbidden", "Only a human session can approve an operation.");
+          } else this.#notSelf(actor, [str(row.owner)], `Proposal #${i.id}`);
+        }
         return;
       }
       case "memory.cleanupSettings":
