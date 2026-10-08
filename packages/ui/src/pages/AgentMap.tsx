@@ -18,6 +18,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { usageAsOf } from "#ui/lib/agents.ts";
 import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
 import { shortAgo } from "#ui/lib/inbox.ts";
+import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 
 const STATE_KIND: Record<ProfileState, ChipKind> = {
   offline: "neutral",
@@ -187,6 +188,7 @@ function MachineColumn({
         </div>
       ) : null}
       <MachineTools machine={m} />
+      <TerminalEntry source="machine" machineId={m.id} project={m.projects.length === 1 ? m.projects[0] : undefined} />
       {mayManage(me, m) ? <WorktreeManager machine={m} /> : null}
       {mayManage(me, m) && m.profiles.length ? (
         <details className="px-1 text-xs">

@@ -248,6 +248,8 @@ export class TerminalRelayHub {
     l.detachedAt = null;
     let s = s0;
     if (s.state === "detached") s = this.#move(s.id, "active", "reattached") ?? s;
+    // UI can type as soon as it sees active: publish a takeover's epoch to the machine before that state/replay.
+    if (s.state === "active") this.#renew(l, s);
     this.#toBrowser(b, { type: "state", state: s.state, ...(s.lastReason ? { reason: s.lastReason } : {}) });
     if (s.state === "requested") this.#open(l, s);
   }

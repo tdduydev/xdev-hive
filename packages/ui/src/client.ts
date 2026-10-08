@@ -23,6 +23,7 @@ import {
   type HubCleanup,
   type HubInfo,
 } from "@xdev-hive/core";
+import { newTerminalSocket, type TerminalApi } from "#ui/lib/terminal-client.ts";
 
 /** What the UI needs from its host. The web hub implements it over HTTP, the desktop app over IPC. */
 /** An account as a project's Thành viên page shows it (roadmap 25): admins have every permission. */
@@ -35,6 +36,8 @@ export interface ProjectMember {
 }
 
 export interface HiveClient {
+  /** Cookie humans only; deliberately absent on bearer/IPC clients. */
+  terminal?: TerminalApi;
   call<M extends Method>(method: M, input: MethodInput<M>): Promise<MethodOutput[M]>;
   me(): Promise<Me>;
   /** Hub only: API tokens for people and agents. */
@@ -182,6 +185,17 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
           device: {
             authorize: (input: { port: number; state: string; challenge: string; name: string }) => request<{ url: string }>("/api/device/authorize", input),
           },
+          terminal: {
+            capabilities: (input) => rpc("terminal.capabilities", input),
+            create: (input) => rpc("terminal.create", input),
+            attach: (input) => rpc("terminal.attach", input),
+            list: (project) => rpc("terminal.list", { project }),
+            get: (project, sessionId) => rpc("terminal.get", { project, sessionId }),
+            terminate: (sessionId) => rpc("terminal.terminate", { sessionId, reason: "userClosed" }),
+            recording: (input) => rpc("terminal.recording", input),
+            stepUp: (input) => request("/api/terminal/step-up", input),
+            socket: () => newTerminalSocket(new URL(baseUrl || "/", window.location.href).href),
+          } satisfies TerminalApi,
         }),
     users: {
       list: () => rpc<HubUser[]>("users.list"),

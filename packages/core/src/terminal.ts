@@ -133,6 +133,8 @@ export const terminalCapabilitySchema = z.object({
   platforms: z.array(z.enum(TERMINAL_PLATFORMS)).max(TERMINAL_PLATFORMS.length),
   auditReady: z.boolean(),
   guiReady: z.boolean(),
+  /** Reported by the local policy, never inferred from the Hive account or machine label. */
+  osUser: z.string().min(1).max(200).optional(),
 });
 export type TerminalCapability = z.output<typeof terminalCapabilitySchema>;
 
