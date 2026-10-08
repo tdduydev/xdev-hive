@@ -12,3 +12,4 @@ export {
   type TerminalRecordingPage,
 } from "./terminal-recording.ts";
 export { TerminalProofs, newStepUpId, type TerminalStepUpContext } from "./terminal-proofs.ts";
+export { encodeWsClose, encodeWsFrame, WsPeer, WsReader, WS_OP, type WsMessage, type WsPeerOptions } from "./ws-codec.ts";

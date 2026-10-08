@@ -39,12 +39,13 @@ import {
   type AppRollout,
   type UpdateReport,
 } from "@xdev-hive/core";
-import type { SqliteHive } from "@xdev-hive/core/node";
+import { TerminalStore, type SqliteHive, type TerminalMachineIdentity } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
 import { DEVICE_CHALLENGE, DEVICE_STATE, DeviceGrants, loopbackCallback } from "./device.ts";
 import { SSO_ERRORS, type OidcClient } from "./oidc.ts";
 import { ChatGrants } from "./grants.ts";
 import { TerminalHub, type TerminalRelay } from "./terminal.ts";
+import { TerminalRelayHub, type RelayTimings } from "./terminal-relay.ts";
 import type { TokenStore } from "./tokens.ts";
 import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
@@ -79,8 +80,15 @@ export interface HubAppOptions {
   hub?: HubInfoSource;
   /** Remote terminal (spec 69): HIVE_REMOTE_TERMINAL=1. Off by default. */
   remoteTerminal?: boolean;
-  /** The terminal relay (69e); without one, a socket that passed every check is closed. */
+  /** A browser-socket relay to use instead of the built-in one (tests of the ticket check). */
   terminalRelay?: TerminalRelay;
+  /**
+   * Who a machine is, from the credential its row is pinned to (SEC-machine-identity). The relay (69e) runs only with
+   * it: without it no machine socket is taken and a browser socket that passed every check is closed.
+   */
+  terminalIdentity?: TerminalMachineIdentity;
+  /** Shorter relay clocks, for tests. */
+  terminalTimings?: Partial<RelayTimings>;
 }
 
 const CSP = [
@@ -188,6 +196,8 @@ export function createHubApp({
   hub,
   remoteTerminal = false,
   terminalRelay,
+  terminalIdentity,
+  terminalTimings,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -347,8 +357,17 @@ export function createHubApp({
     };
   const auth = authenticate({ cookie: true });
 
+  const relayHub = terminalIdentity
+    ? new TerminalRelayHub({
+        hive, store: new TerminalStore(hive.db, () => new Date()), identity: terminalIdentity, enabled: () => remoteTerminal,
+        browserAlive: (hash) => users.sessionAlive(hash), timings: terminalTimings, ...(terminalTimings ? { sweepMs: 50 } : {}),
+      })
+    : null;
+  app.locals.terminalRelay = relayHub;
   const terminal = new TerminalHub({
-    hive, users, oidc, throttle, enabled: remoteTerminal, allowedHosts, relay: terminalRelay,
+    hive, users, oidc, throttle, enabled: remoteTerminal, allowedHosts,
+    relay: terminalRelay ?? (relayHub ? (socket, ctx) => relayHub.browser(socket, ctx) : undefined),
+    ...(relayHub ? { machineRelay: relayHub } : {}),
     cookieActor: (header) => {
       const session = cookieValue(header, SESSION_COOKIE);
       const user = session ? users.sessionUser(session) : null;

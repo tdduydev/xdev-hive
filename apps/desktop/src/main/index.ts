@@ -52,6 +52,7 @@ import {
   type SyncReport,
   type TransferReport,
   type TransferSide,
+  TERMINAL_LIMITS,
 } from "@xdev-hive/core";
 import { antigravityHome } from "#desktop/main/runner/antigravity.ts";
 import { canClassify } from "#desktop/main/runner/classify.ts";
@@ -92,6 +93,8 @@ import { LOGIN_DIR_ENV, LoginMonitor, loginParts, readLoginHow, usageRefresher }
 import { isDebInstall, platformKey, Updater, type UpdateStatus } from "#desktop/main/updater.ts";
 import { linuxLayout, pruneLinuxVersions } from "#desktop/main/linux-update.ts";
 import { IdleUpdate } from "#desktop/main/idle-update.ts";
+import { RemoteTerminal } from "#desktop/main/pty/remote-terminal.ts";
+import { ResourceLocks } from "#desktop/main/resource-locks.ts";
 import { Runner, type HubUpdate, type RunnerEvent } from "./runner/runner.ts";
 import { agentPath } from "./runner/shell-path.ts";
 import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
@@ -839,6 +842,11 @@ const reportedProfiles = (): ReportedProfile[] =>
 
 let updater: Updater;
 let idleUpdate: IdleUpdate | undefined;
+/** Who works in which checkout here (spec 69 §11): a remote terminal against runs, merges and releases. */
+const resourceLocks = new ResourceLocks();
+let remoteTerminal: RemoteTerminal | undefined;
+/** The app waits to update: no new remote terminal either. */
+let updateDraining = false;
 let installingUpdate = false;
 let notifiedUpdate: string | null = null;
 
@@ -1688,8 +1696,7 @@ if (!app.requestSingleInstanceLock()) {
     const active = runner.store.active().length;
     const takesWork = config.runner.acceptHubRuns || active > 0;
     mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
-    void runner
-      .stop()
+    void Promise.all([runner.stop(), remoteTerminal?.stop()])
       .then(() => {
         mainLog.write("runner stopped");
         // The rollout says "install when the app quits": the helper swaps the build once this process is gone, and
@@ -1797,9 +1804,10 @@ if (!app.requestSingleInstanceLock()) {
         projects: () => config.projects,
         mode: () => config.mode,
         machine: () => config.machine,
+        terminalHolds: (project, checkout) => resourceLocks.holder(project, checkout) === "terminal",
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report() }),
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
@@ -1829,13 +1837,31 @@ if (!app.requestSingleInstanceLock()) {
         chatFile: (id) => (backend instanceof SqliteHive ? (backend.chatFile(id, { name: "runner", role: "agent" })?.bytes ?? null) : null),
       },
     );
+    resourceLocks.probe((project, checkout) => runner.checkoutBusy(project, checkout));
+    remoteTerminal = new RemoteTerminal({
+      dataDir: path.dirname(configPath()),
+      hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
+      projects: () => config.projects.map((p) => p.name),
+      locks: resourceLocks,
+      draining: () => updateDraining,
+      known: () => [config.hub.token, ...Object.values(config.agentTokens)].filter((t): t is string => typeof t === "string" && t.length >= 8),
+      log: (line) => mainLog.write(line),
+    });
     idleUpdate = new IdleUpdate({
       status: () => updater.status(),
       enabled: () => updater.updateKind !== "deb" && (config.runner.autoUpdateIdle ?? config.runner.acceptHubRuns),
-      drain: (value) => runner.drainForUpdate(value),
+      drain: (value) => {
+        updateDraining = value;
+        runner.drainForUpdate(value);
+      },
       work: () => {
         const work = runner.updateWork();
-        return { busy: work.busy || merging.size > 0, deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0) };
+        // An open remote terminal holds its checkout and a person at it: wait for it, at most its absolute TTL.
+        const terminal = remoteTerminal?.busy ?? false;
+        return {
+          busy: work.busy || merging.size > 0 || terminal,
+          deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0, terminal ? Date.now() + TERMINAL_LIMITS.absoluteTtlMs : 0),
+        };
       },
       install: () => installAndRestart(true),
       log: (line) => mainLog.write(line),
