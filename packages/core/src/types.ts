@@ -454,6 +454,8 @@ export interface ReportedProfile extends QuotaOutlook {
   statsSince?: string | null;
   /** Lower runs first (AgentProfile.priority). Absent from apps older than 0.95, which cannot take changes from the hub. */
   priority?: number;
+  stopAtSession?: number;
+  stopAtWeek?: number;
   /** Runs it takes at once (AgentProfile.maxConcurrent); absent from apps older than 0.110, counted as 1. */
   maxConcurrent?: number;
   /**
@@ -473,6 +475,8 @@ export interface ProfileChange {
   profileId: string;
   enabled: boolean | null;
   priority: number | null;
+  stopAtSession?: number | null;
+  stopAtWeek?: number | null;
   requestedBy: string;
   requestedAt: string;
 }
@@ -1383,6 +1387,18 @@ export interface MachineRun {
   since: string;
 }
 
+/** Public, remotely editable settings only: never include local paths, commands or credentials. */
+export interface MachineRunnerSettings {
+  maxParallel: number;
+  mrEnabled: boolean;
+  mrWhen: "after_review" | "after_success";
+}
+export interface RunnerChange {
+  settings: Partial<MachineRunnerSettings>;
+  requestedBy: string;
+  requestedAt: string;
+}
+
 /** A desktop runner as the hub last heard from it. */
 export interface Machine {
   /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
@@ -1404,6 +1420,8 @@ export interface Machine {
   gateRunner?: boolean;
   /** Older apps do not report their runner limit; auto-dispatch assumes one. */
   maxParallel?: number;
+  runnerSettings?: MachineRunnerSettings;
+  runnerChange?: RunnerChange | null;
   /** The hub account its token belongs to: with hub admins, the only one who may change its profiles from the web. */
   owner: string | null;
   /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */

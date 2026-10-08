@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HiveError, type Actor } from "#core/index.ts";
-import { SqliteHive } from "#core/node.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const mbp: Actor = { name: "runner.duy-mbp@duy", role: "agent" };
 const imac: Actor = { name: "runner.duy-imac@duy", role: "agent" };
@@ -225,4 +228,92 @@ describe("quota outlook heartbeat", () => {
     for (const key of Object.keys(outlook) as Array<keyof typeof outlook>) assert.deepEqual(profile[key], outlook[key]);
     hive.close();
   });
+});
+
+describe("remote runner settings", () => {
+  const owner: Actor = { name: "lan", role: "member", account: "lan" };
+  const machine: Actor = { name: "runner.remote@lan", role: "agent", account: "lan" };
+  const settings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" as const };
+  const p = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
+  function setup() {
+    const c = clock();
+    const hive = new SqliteHive(":memory:", { now: c.now });
+    const report = (extra = {}) => hive.call("machines.heartbeat", { machine: "remote", instance: "abcdef01", profiles: [p], runnerSettings: settings, ...extra }, machine);
+    return { hive, c, report };
+  }
+  it("allows owner and hub admin, denies other people, scoped admins and agents; audits settings", async () => {
+    const { hive, report } = setup(); await report();
+    const input = { machineId: machine.name, settings: { maxParallel: 4, mrEnabled: true } };
+    for (const actor of [{ name: "other", role: "member", account: "other" }, { ...admin, access: { projects: {} } }, machine, { ...admin, agent: "codex.remote" }] as Actor[]) {
+      await assert.rejects(hive.call("machines.setRunner", input, actor), (e: unknown) => e instanceof HiveError && e.code === "forbidden");
+    }
+    let m = await hive.call("machines.setRunner", input, owner);
+    assert.deepEqual(m.runnerChange?.settings, input.settings);
+    m = await hive.call("machines.setRunner", { machineId: machine.name, settings: { mrWhen: "after_success" } }, admin);
+    assert.deepEqual(m.runnerChange?.settings, { ...input.settings, mrWhen: "after_success" });
+    const audit = (await hive.call("admin.audit", { limit: 10 }, admin)).filter(e => e.action === "machines.setRunner");
+    assert.equal(audit.length, 2);
+    assert.match(audit[0]!.detail!, /after_success/);
+  });
+  it("resends until all settings are reported, handles reverting pending changes, expires after a day", async () => {
+    const { hive, c, report } = setup(); await report();
+    await hive.call("machines.setRunner", { machineId: machine.name, settings: { maxParallel: 4, mrEnabled: true } }, owner);
+    assert.deepEqual((await report()).runnerChange?.settings, { maxParallel: 4, mrEnabled: true });
+    assert.ok((await report({ runnerSettings: { ...settings, maxParallel: 4 } })).runnerChange);
+    assert.equal((await report({ runnerSettings: { ...settings, maxParallel: 4, mrEnabled: true } })).runnerChange, null);
+    assert.equal((await hive.call("machines.list", {}, viewer))[0]!.maxParallel, 4);
+    await hive.call("machines.setRunner", { machineId: machine.name, settings: { maxParallel: 3 } }, owner);
+    assert.equal((await hive.call("machines.setRunner", { machineId: machine.name, settings: { maxParallel: 4 } }, owner)).runnerChange, null);
+    await hive.call("machines.setRunner", { machineId: machine.name, settings: { maxParallel: 3 } }, owner);
+    c.advance(24 * 60 + 1); assert.equal((await report()).runnerChange, null);
+  });
+  it("requires capability and validates public settings with the desktop's bounds", async () => {
+    const { hive, report } = setup(); await report({ runnerSettings: undefined, profiles: [{ ...p, stopAtSession: undefined, stopAtWeek: undefined }] });
+    await assert.rejects(hive.call("machines.setRunner", { machineId: machine.name, settings: { maxParallel: 4 } }, owner), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
+    await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: p.id, stopAtSession: 50 }, owner), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
+    await report();
+    for (const settings of [{}, { maxParallel: 0 }, { maxParallel: 9 }, { maxParallel: 1.5 }, { mrEnabled: "true" }, { mrWhen: "other" }, { token: "private" }]) {
+      await assert.rejects(hive.call("machines.setRunner", { machineId: machine.name, settings } as never, owner), (e: unknown) => e instanceof HiveError && e.code === "bad_request");
+    }
+    await report({ runnerSettings: undefined });
+    await assert.rejects(hive.call("machines.setRunner", { machineId: machine.name, settings: { mrEnabled: true } }, owner), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
+    for (const stopAtSession of [0, 101, 1.5]) await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: p.id, stopAtSession }, owner));
+  });
+  it("coalesces thresholds with enabled/priority and waits for full acknowledgement", async () => {
+    const { hive, report } = setup(); await report();
+    await hive.call("machines.setProfile", { machineId: machine.name, profileId: p.id, enabled: false, stopAtSession: 70 }, owner);
+    await hive.call("machines.setProfile", { machineId: machine.name, profileId: p.id, stopAtWeek: 60, priority: 5 }, admin);
+    let b = await report({ profiles: [{ ...p, enabled: false, priority: 5, stopAtSession: 70 }] });
+    assert.equal(b.profileChanges.length, 1);
+    assert.equal(b.profileChanges[0]!.stopAtWeek, 60);
+    b = await report({ profiles: [{ ...p, enabled: false, priority: 5, stopAtSession: 70, stopAtWeek: 60 }] });
+    assert.deepEqual(b.profileChanges, []);
+    const audit = (await hive.call("admin.audit", { limit: 10 }, admin)).filter(e => e.action === "machines.setProfile");
+    assert.match(audit[0]!.detail!, /stopAtWeek/);
+  });
+});
+
+
+it("migrates existing machines and pending profile changes without losing them", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-machine-settings-migration-"));
+  const file = join(dir, "hub.db");
+  try {
+    const before = new SqliteHive(file, { migrateTo: migrationIndex("ADD COLUMN runner_settings") });
+    before.db.prepare("INSERT INTO machines(id, machine, instance, version, runs, last_seen, profiles, projects, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("runner.remote@lan", "remote", "abcdef01", "0.146.1", "[]", "2026-10-08T00:00:00.000Z", "[]", "[]", "lan");
+    before.db.prepare("INSERT INTO machine_profile_changes(machine_id, profile_id, enabled, priority, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?)")
+      .run("runner.remote@lan", "claude-1", 0, 5, "lan", "2026-10-08T00:00:00.000Z");
+    before.close();
+    const after = new SqliteHive(file);
+    try {
+      const m = (await after.call("machines.list", {}, viewer))[0]!;
+      assert.equal(m.owner, "lan");
+      assert.equal(m.runnerSettings, undefined);
+      assert.equal(m.runnerChange, null);
+      assert.equal(m.profileChanges[0]!.enabled, false);
+      assert.equal(m.profileChanges[0]!.priority, 5);
+      assert.equal(m.profileChanges[0]!.stopAtSession, null);
+      assert.equal(m.profileChanges[0]!.stopAtWeek, null);
+    } finally { after.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
