@@ -101,6 +101,15 @@ export class TerminalStore {
     return this.get(id)!;
   }
 
+  /**
+   * What the machine learned while killing a session the hub had already ended (revoked, expired): the exit code and
+   * whether something may have outlived the process group. Only fills in; never changes the state or clears a flag.
+   */
+  noteExit(id: string, exitCode: number | null, cleanupUncertain: boolean): void {
+    this.db.prepare("UPDATE terminal_sessions SET exit_code = COALESCE(exit_code, ?), cleanup_uncertain = MAX(cleanup_uncertain, ?) WHERE id = ? AND closed_at IS NOT NULL")
+      .run(exitCode, cleanupUncertain ? 1 : 0, id);
+  }
+
   /** "Chuyển điều khiển": a new writer epoch, so input still in flight from the old tab is refused. */
   takeControl(id: string, expectedVersion: number): TerminalSession {
     const done = this.db.prepare(
