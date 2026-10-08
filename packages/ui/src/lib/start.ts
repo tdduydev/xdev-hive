@@ -1,4 +1,22 @@
-import type { AgentProfileStatus, DesktopSettings, SetupReport } from "@xdev-hive/core";
+import type { AgentProfileStatus, DesktopSettings, Machine, SetupReport } from "@xdev-hive/core";
+
+export function projectReadiness(project: string, settings: DesktopSettings | null | undefined, report: SetupReport | null | undefined, profiles: AgentProfileStatus[], machines: Machine[], desktop: boolean): { repo: boolean; agent: boolean } {
+  if (!project) return { repo: false, agent: false };
+  if (desktop) {
+    const repo = settings?.projects.find((p) => p.name === project);
+    const checked = report?.projects.find((p) => p.project === project);
+    const connected = settings?.mode === "local" || (settings?.mode === "hub" && settings.hasHubToken && settings.runner.acceptHubRuns);
+    return {
+      repo: !!repo && !!checked && checked.items.every((i) => i.state === "installed"),
+      agent: !!connected && profiles.some((p) => p.enabled && !!p.cliPath && (p.login?.loggedIn === true || p.hasToken)),
+    };
+  }
+  const hosts = machines.filter((m) => m.projects.includes(project));
+  return {
+    repo: hosts.length > 0,
+    agent: hosts.some((m) => m.online && m.acceptsRuns && m.profiles.some((p) => p.enabled && p.installed && p.loggedIn === true)),
+  };
+}
 
 export type StartStep = "connection" | "tools" | "projects" | "agents" | "intake";
 export type StepState = "done" | "todo" | "optional";

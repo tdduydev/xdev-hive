@@ -310,7 +310,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     };
     if (!client.desktop) {
       // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
-      const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read"]);
+      const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read", "start"]);
       if (!webAdmin) ids.add("overview");
       return account(ids);
     }

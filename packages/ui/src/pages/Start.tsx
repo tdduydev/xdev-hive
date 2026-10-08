@@ -1,3 +1,4 @@
+import { ProjectOnboarding } from "#ui/components/ProjectOnboarding.tsx";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -39,6 +40,11 @@ export function StartReminder() {
 }
 
 export function StartPage() {
+  const { client } = useHive();
+  return client.desktop ? <DesktopStartPage /> : <div className="mx-auto w-full max-w-[980px] p-4 md:p-6"><ProjectOnboarding /></div>;
+}
+
+function DesktopStartPage() {
   const { client, bump } = useHive();
   const desktop = client.desktop!;
   const t = useT();
@@ -89,6 +95,7 @@ export function StartPage() {
       const maxParallel = Number(new FormData(e.currentTarget).get("parallel"));
       void action.run(async () => { await desktop.updateSettings({ runner: { acceptHubRuns: true, maxParallel } }); refresh(); });
     }}><div className="flex flex-col gap-2"><Label htmlFor="start-parallel">{t("agents.maxAtOnce")}</Label><Input id="start-parallel" name="parallel" type="number" min={1} max={8} required defaultValue={settings.runner.maxParallel} /></div><Button disabled={action.busy}>{t("start.enableIntake")}</Button></form>)}
+    <ProjectOnboarding />
     <Button data-start-today variant="outline" onClick={() => { window.location.hash = "/today"; }}>{t("nav.today")}</Button>
   </div>;
 }
