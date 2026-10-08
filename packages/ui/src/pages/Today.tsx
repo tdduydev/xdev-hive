@@ -142,6 +142,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
       return alertTitle(t, item.alert);
+    case "hubIssue": return t(`inbox.hubIssue.${item.issue}.title`, { detail: firstLine(item.detail, 80) });
     case "releaseFailure": return `${t(item.task.id.startsWith("OPS-release-log-") ? "autoRelease.warning" : "autoRelease.failed")} · ${item.task.id}`;
     case "gate":
       return t("inbox.gate.title", { gate: t(`sdlc.gate.${item.gate.gate}`), task: item.gate.taskId });
@@ -181,6 +182,7 @@ function metaOf(item: InboxItem, t: TFunction): string {
       return t("inbox.request.meta");
     case "alert":
       return alertDetail(t, item.alert);
+    case "hubIssue": return firstLine(item.detail, 80);
     case "releaseFailure": return firstLine(item.task.note ?? "", 80);
     case "gate":
       return item.gate.status === "escalated" ? t("inbox.gate.metaEscalated") : t("inbox.gate.meta", { mode: t(`sdlc.mode.${item.gate.mode}`) });
@@ -720,6 +722,11 @@ function Detail({
         },
         { label: t("inbox.alert.open"), kind: "secondary", run: go("#/admin?tab=alerts") },
       ];
+      break;
+    }
+    case "hubIssue": {
+      body = <P>{item.detail}</P>;
+      actions = [{ label: t("inbox.hubIssue.open"), kind: "primary", run: go("#/admin/hub") }, seenAction()];
       break;
     }
     case "plan": {

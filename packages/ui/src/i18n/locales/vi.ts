@@ -655,6 +655,7 @@ export const vi = {
   },
   inbox: {
     alert: { open: "Mở Cảnh báo" },
+    hubIssue: { files: { title: "Lỗi tệp tài liệu · {detail}" }, search: { title: "Lỗi tìm memory · {detail}" }, deploy: { title: "Lỗi hub · {detail}" }, open: "Mở Hub" },
     gate: {
       title: "Chốt {gate} · {task}",
       meta: "chờ bạn duyệt ({mode})",
@@ -712,7 +713,7 @@ export const vi = {
     },
     tag: {
       plan: "Kế hoạch",
-      releaseFailure: "Phát hành lỗi", cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", waitingRun: "Chờ người", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", gate: "Chốt SDLC", leader: "Leader đề xuất" },
+      releaseFailure: "Phát hành lỗi", cleanup: "Dọn memory", agentHold: "Agent tạm ngừng", ci: "CI lỗi", waitingRun: "Chờ người", proposal: "Đề xuất", review: "Chờ review", memory: "Memory", conflict: "Mâu thuẫn", machine: "Máy này", request: "Yêu cầu cài", alert: "Cảnh báo", hubIssue: "Hub cần chú ý", gate: "Chốt SDLC", leader: "Leader đề xuất" },
     ci: {
       title: "{mr} · pipeline lỗi ở {jobs}",
       titleNoJobs: "{mr} · pipeline lỗi",

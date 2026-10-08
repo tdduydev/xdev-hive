@@ -1,10 +1,10 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import { HUB_SCOPE, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
+import { HUB_SCOPE, type HubInfo, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
-export type InboxKind = "releaseFailure" | "plan" | "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "gate" | "leader";
+export type InboxKind = "releaseFailure" | "plan" | "cleanup" | "agentHold" | "ci" | "waitingRun" | "proposal" | "review" | "memory" | "conflict" | "machine" | "request" | "alert" | "hubIssue" | "gate" | "leader";
 export type InboxTone = "danger" | "warning" | "info";
 
 interface Base {
@@ -31,6 +31,7 @@ export type InboxItem = Base &
     | { kind: "machine"; item: SetupItem }
     | { kind: "request"; command: MachineCommand }
     | { kind: "alert"; alert: HubAlert }
+    | { kind: "hubIssue"; issue: "files" | "search" | "deploy"; detail: string }
     | { kind: "gate"; gate: SdlcGateRecord }
     | { kind: "leader"; action: ChatAction }
   );
@@ -55,6 +56,8 @@ export interface InboxSources {
   machine?: string;
   /** The hub's open alerts (hub admins, roadmap 22m): one not seen yet by an admin is theirs to look at. */
   alerts?: HubAlert[];
+  /** Hub health issues shown in admin AttentionList, mirrored here so Hôm nay is their single inbox. */
+  hubInfo?: HubInfo | null;
   /** Lifecycle gates reached (roadmap 34): those waiting for a person are listed. */
   gates?: SdlcGateRecord[];
   /** What leaders proposed in Chat and nobody confirmed yet. */
@@ -83,6 +86,7 @@ const TONE: Record<InboxKind, InboxTone> = {
   machine: "info",
   request: "info",
   alert: "danger",
+  hubIssue: "warning",
   gate: "warning",
   leader: "info",
 };
@@ -188,6 +192,13 @@ export function buildInbox(src: InboxSources): InboxItem[] {
     items.push({ kind: "alert", key: `alert:${a.id}`, tone: a.severity === "high" ? "danger" : "warning", at: a.openedAt, scope: a.project ?? "hub", alert: a });
   }
 
+  const h = src.hubInfo;
+  if (h) {
+    if (h.files.lastError) items.push({ kind: "hubIssue", issue: "files", key: `hubIssue:files:${h.files.lastError}`, tone: "danger", at: h.startedAt, scope: "hub", detail: h.files.lastError });
+    if (h.search.lastError) items.push({ kind: "hubIssue", issue: "search", key: `hubIssue:search:${h.search.lastError}`, tone: "danger", at: h.startedAt, scope: "hub", detail: h.search.lastError });
+    if (h.deployLog && h.deployLog.errors > 0) items.push({ kind: "hubIssue", issue: "deploy", key: `hubIssue:deploy:${h.deployLog.startedAt}:${h.deployLog.errors}`, tone: "danger", at: h.deployLog.startedAt, scope: "hub", detail: String(h.deployLog.errors) });
+  }
+
   for (const g of src.gates ?? []) {
     if ((g.status !== "waiting" && g.status !== "escalated") || !can(g.project, gatePermission(g))) continue;
     items.push({ kind: "gate", key: `gate:${g.id}`, tone: g.status === "escalated" ? "danger" : TONE.gate, at: g.createdAt, scope: g.project, gate: g });
@@ -219,6 +230,7 @@ export function inboxProject(item: InboxItem): string | null {
       return item.memory.project;
     case "alert":
       return item.alert.project;
+    case "hubIssue": return null;
     case "gate":
       return item.gate.project;
     case "leader":
@@ -244,6 +256,7 @@ export function inboxGroup(item: InboxItem): InboxGroup {
     case "ci":
       return "agent";
     case "alert":
+    case "hubIssue":
     case "machine":
       return "watch";
     default:
