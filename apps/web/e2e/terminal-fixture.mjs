@@ -17,8 +17,8 @@ export async function terminalFixture() {
   users.changePassword(created.user.id, created.password, password);
   const token = tokens.create("terminal-machine", "member", created.user.id).token;
   const app = createHubApp({ hive, users, tokens, remoteTerminal: true, allowedHosts: ["127.0.0.1"],
-    // Fixture identity is explicit; this is not the production machine-identity integration or AC01 evidence.
-    terminalIdentity: { isMachineActor: (id, actor) => id === "terminal-machine" && actor.name === id && actor.account === "terminal-user", pinnedOwner: id => id === "terminal-machine" ? "terminal-user" : null },
+    // The hub's own wiring (server.ts): the row runner.terminal-fixture@terminal-machine is pinned at its first heartbeat.
+    terminalIdentity: { isMachineActor: (id, actor) => hive.isMachineActor(id, actor), pinnedOwner: id => hive.machinePinnedOwner(id) },
   });
   const state = { inputs: [], resizes: [], opens: 0, epoch: 0, kills: 0 };
   const sockets = new Set();
@@ -37,8 +37,10 @@ export async function terminalFixture() {
   });
   await new Promise(resolve => server.once("listening", resolve));
   const port = server.address().port, base = `http://127.0.0.1:${port}`;
+  // The machine's calls carry the runner's label, as the desktop's do: with the token's name that is the machine row.
+  const RUNNER = { "x-hive-agent": "runner.terminal-fixture", "x-hive-source": JSON.stringify({ via: "desktop" }) };
   const rpc = async (method, input, bearer = token) => {
-    const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${bearer}` }, body: JSON.stringify({ method, input }) });
+    const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${bearer}`, ...(bearer === token ? RUNNER : {}) }, body: JSON.stringify({ method, input }) });
     const j = await r.json(); if (j.error) throw new Error(j.error.key ?? j.error.message); return j.result;
   };
   const cap = { protocol: 1, enabled: true, projects: ["demo"], platforms: ["linux"], auditReady: true, guiReady: true, osUser: "synthetic-os-user" };
@@ -50,7 +52,7 @@ export async function terminalFixture() {
   await beat();
   await rpc("runs.push", { machine: "terminal-fixture", runs: [{ runId: "R-terminal", project: "demo", taskId: "TERM-1", taskTitle: "Terminal fixture run", role: "implement", status: "succeeded", profileId: null, createdAt: new Date().toISOString() }] });
   const machine = await new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path: "/api/terminal/machine-socket", headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": randomBytes(16).toString("base64"), authorization: `Bearer ${token}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL } });
+    const req = request({ host: "127.0.0.1", port, path: "/api/terminal/machine-socket", headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": randomBytes(16).toString("base64"), authorization: `Bearer ${token}`, ...RUNNER, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL } });
     req.on("upgrade", (_res, socket, head) => resolve({ socket, head }));
     req.on("response", res => { res.resume(); reject(new Error(`fixture machine upgrade ${res.statusCode}`)); }); req.on("error", reject); req.end();
   });
@@ -71,5 +73,5 @@ export async function terminalFixture() {
   } }, machine.head);
   peer.send({ type: "hello", protocol: 1, sessions: [] });
   const timer = setInterval(() => void beat(), 30_000);
-  return { base, username: "terminal-user", password, machineId: "terminal-machine", close: () => { clearInterval(timer); app.locals.terminalRelay?.stop(); machine.socket.destroy(); for (const socket of sockets) socket.destroy(); server.closeAllConnections(); server.close(); hive.close(); } };
+  return { base, username: "terminal-user", password, machineId: "runner.terminal-fixture@terminal-machine", close: () => { clearInterval(timer); app.locals.terminalRelay?.stop(); machine.socket.destroy(); for (const socket of sockets) socket.destroy(); server.closeAllConnections(); server.close(); hive.close(); } };
 }

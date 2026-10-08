@@ -4149,18 +4149,18 @@ async function main() {
       await tab.click('[data-testid="terminal-open-machine"]');
       await tab.waitFor(`terminal form ${locale}`, () => !!document.querySelector('[data-testid="terminal-create-dialog"]'));
       expect(await tab.eval((label) => document.querySelector('[data-testid="terminal-create-dialog"]').textContent.includes(label), locale === "vi" ? "Quyền tài khoản máy" : "Machine account privileges"), "terminal scope missing in locale");
-      expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo"), "machine form context lost");
+      expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "runner.terminal-fixture@terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo"), "machine form context lost");
       expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "shell opens without explicit consent/step-up");
       await tab.key("Escape");
       await tab.waitFor("terminal form closes without spawn", () => !document.querySelector('[data-testid="terminal-create-dialog"]'));
       expect(await tab.eval(() => document.activeElement?.dataset.testid === "terminal-open-machine"), "terminal focus not restored");
     }
-    await tab.go(`runs?run=${encodeURIComponent("terminal-machine/R-terminal")}`);
+    await tab.go(`runs?run=${encodeURIComponent("runner.terminal-fixture@terminal-machine/R-terminal")}`);
     await tab.click('[data-testid="terminal-open-run"]');
-    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo" && document.querySelector('[data-testid="terminal-checkout"]').value === "repo"), "run terminal context lost");
+    expect(await tab.eval(() => document.querySelector('[data-testid="terminal-machine"]').value === "runner.terminal-fixture@terminal-machine" && document.querySelector('[data-testid="terminal-project"]').value === "demo" && document.querySelector('[data-testid="terminal-checkout"]').value === "repo"), "run terminal context lost");
     await tab.key("Escape");
     await tab.go("chat"); await tab.click('[data-testid="terminal-open-chat"]'); await tab.key("Escape");
-    await tab.go("chat?terminal=1&terminalMachine=terminal-machine&terminalProject=demo&command=ignored");
+    await tab.go(`chat?terminal=1&terminalMachine=${encodeURIComponent("runner.terminal-fixture@terminal-machine")}&terminalProject=demo&command=ignored`);
     await tab.waitFor("chat link prefills form", () => document.querySelector('[data-testid="terminal-create-dialog"]'));
     expect((await (await fetch(`${terminal.base}/__terminal/state`)).json()).opens === 0, "entry/link spawned a shell");
     if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.querySelector('[data-testid="terminal-create-dialog"]').getBoundingClientRect().width === innerWidth), "terminal mobile form overflows");
@@ -4180,7 +4180,8 @@ async function main() {
     expect(await tab.eval(() => !document.activeElement?.classList.contains("xterm-helper-textarea")), "Tab trapped in terminal");
     const keyStart = (await diagnostics()).inputs.length;
     for (const key of ["esc", "tab", "shiftTab", "up", "down", "left", "right", "interrupt"]) await tab.click(`[data-testid="terminal-key-${key}"]`);
-    await tab.click('[data-testid="terminal-key-ctrl"]'); await tab.type("c");
+    // A real key press, as a keyboard sends it: xterm drops a bare insertText while it still holds the Tab keydown above.
+    await tab.click('[data-testid="terminal-key-ctrl"]'); await tab.key("c");
     await until("all terminal keys sent", async () => (await diagnostics()).inputs.length >= keyStart + 9);
     expect(JSON.stringify((await diagnostics()).inputs.slice(keyStart).map(f => f.text)) === JSON.stringify(["\x1b", "\t", "\x1b[Z", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C", "\x03", "\x03"]), "terminal key mapping/one-shot Ctrl changed");
     const before = (await diagnostics()).inputs.length;
