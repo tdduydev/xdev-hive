@@ -1,3 +1,5 @@
+import type { AcceptanceEvidence, EvidenceArtifact } from "#core/evidence.ts";
+import { featureChecks } from "#core/acceptance-criteria.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
@@ -800,6 +802,15 @@ const MIGRATIONS: string[] = [
   `,
   // Keep the binding after token revocation: deleting a token must not reopen the machine for a namesake.
   `ALTER TABLE machines ADD COLUMN token_id TEXT;`,
+  // Append-only results keep who verified which criterion on which revision, including superseded attempts.
+  `CREATE TABLE acceptance_evidence(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL,
+    spec_hash TEXT NOT NULL, commit_sha TEXT NOT NULL, spec_dir TEXT NOT NULL, spec_branch TEXT NOT NULL, criterion_id TEXT NOT NULL,
+    criterion TEXT NOT NULL, outcome TEXT NOT NULL, note TEXT NOT NULL,
+    artifacts TEXT NOT NULL, recorded_by TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE INDEX acceptance_evidence_scope ON acceptance_evidence(project, task_id, spec_hash, commit_sha, id);
+  CREATE TRIGGER acceptance_evidence_immutable BEFORE UPDATE ON acceptance_evidence
+    BEGIN SELECT RAISE(ABORT, 'acceptance evidence is immutable'); END;`,
 ];
 
 function browserSeedSql(): string {
@@ -1147,6 +1158,7 @@ const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s)
  * `text` is the detail as a message key of the UI catalogue, so the log reads in each admin's language.
  */
 const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
+  "evidence.record": (i, o: AcceptanceEvidence) => ({ target: `${i.project} ${i.taskId} #${o.id}`, detail: `${i.criterionId}: ${i.outcome} @ ${i.commitSha}`, text: { key: "audit.evidenceRecorded", vars: { criterion: i.criterionId, outcome: i.outcome, sha: i.commitSha } } }),
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
   "docs.move": (i, o) => ({ target: i.key, detail: i.to ? `→ ${i.to}${o.moved.length > 1 ? ` (+${o.moved.length - 1})` : ""}` : `→ ${i.parent ?? "/"}` }),
   "docs.remove": (i, o) => ({ target: i.key, detail: `− ${o.keys.length}${i.note ? ` · ${i.note}` : ""}` }),
@@ -1381,6 +1393,7 @@ const AGENT_AUDITED: Partial<Record<Method, (input: any, output: any) => { targe
  * docs.assistFinish…), and clearing up (cancelling, removing memory, deleting a thread).
  */
 const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "doc" | "proposal">> = {
+  "evidence.record": "project",
   "autoRelease.green": "project",
   "autoRelease.take": "project",
   "autoRelease.decide": "project",
@@ -2141,6 +2154,16 @@ export class SqliteHive implements HiveBackend {
     const i = input as Record<string, any>;
     const owner = SqliteHive.#docOwner;
     switch (method) {
+      case "evidence.tasks":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "evidence.record":
+      case "evidence.context":
+      case "evidence.list": {
+        this.#need(actor, i.project, method === "evidence.record" ? "qaVerify" : "view", `Project ${i.project}`);
+        const task = this.db.prepare("SELECT project FROM tasks WHERE id = ?").get(i.taskId) as Row | undefined;
+        if (!task || task.project !== i.project) throw new HiveError("not_found", "Task not found.", { key: "errors.notFound" });
+        return;
+      }
       case "mergeQueue.get":
         return this.#need(actor, i.project, "view", `Project ${i.project}`);
       case "mergeQueue.configure":
@@ -2975,7 +2998,9 @@ export class SqliteHive implements HiveBackend {
     const rows = this.db
       .prepare(
         `SELECT a.id, a.size, a.sha256, a.stored FROM artifacts a JOIN tasks t ON t.project = a.project AND t.id = a.task_id
-         WHERE t.status = 'done' AND a.created_at < ?`,
+         WHERE t.status = 'done' AND a.created_at < ?
+         AND NOT EXISTS (SELECT 1 FROM acceptance_evidence e, json_each(e.artifacts) ref
+           WHERE json_extract(ref.value, '$.id') = a.id)`,
       )
       .all(this.#now(-this.#opts.artifactDays * 24 * 60)) as Row[];
     if (!rows.length) return { removed: 0, bytes: 0 };
@@ -2994,6 +3019,13 @@ export class SqliteHive implements HiveBackend {
   /** Gives the pages freed by deletes back to the disk; the WAL is checkpointed first so the file can shrink. */
   vacuum(): void {
     this.db.exec("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
+  }
+
+  #checkEvidenceArtifact(id: number): void {
+    if (this.db.prepare(`SELECT 1 FROM acceptance_evidence e, json_each(e.artifacts) ref
+      WHERE json_extract(ref.value, '$.id') = ? LIMIT 1`).get(id)) {
+      throw new HiveError("bad_request", "This file is retained as acceptance evidence.", { key: "errors.evidenceArtifactPinned" });
+    }
   }
 
   async #dropBlob(sha: string): Promise<void> {
@@ -7053,8 +7085,12 @@ export class SqliteHive implements HiveBackend {
         // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
         const sha = sha256(bytes);
         const allowed = () => {
-          const has = db.prepare("SELECT id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name);
-          if (has) return;
+          const has = db.prepare("SELECT id, sha256, project, task_id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+          if (has) {
+            // A verifier's snapshot must keep pointing at the same bytes and scope after a rerun uploads files.
+            if (has.sha256 !== sha || has.project !== project || has.task_id !== taskId) this.#checkEvidenceArtifact(num(has.id));
+            return;
+          }
           const count = num((db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
           if (count >= ARTIFACTS_PER_RUN) {
             throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
@@ -7089,6 +7125,58 @@ export class SqliteHive implements HiveBackend {
         return artifact;
       },
 
+      "evidence.tasks": ({ project, specDir, specBranch }, actor) => {
+        const root = /^ai\/(.+)$/.exec(specBranch)?.[1] ?? null;
+        const prefix = `${specTaskPrefix(specDir)}-`;
+        // Filter before returning rows: older feature tasks must survive the general board's 500-row cap.
+        const rows = db.prepare(`SELECT t.* FROM tasks t WHERE t.project = ?1 AND (
+          t.id = ?2 OR substr(t.id, 1, length(?3)) = ?3 OR
+          EXISTS (SELECT 1 FROM sdlc_flows f WHERE f.project = ?1 AND f.task_id = t.id AND f.dir = ?4) OR
+          EXISTS (SELECT 1 FROM sdlc_flow_tasks ft JOIN sdlc_flows f ON f.task_id = ft.flow_task
+            WHERE ft.task_id = t.id AND f.project = ?1 AND (f.dir = ?4 OR f.task_id = ?2)))
+          ORDER BY t.updated_at DESC, t.id DESC`).all(project, root, prefix, specDir) as Row[];
+        return this.#tasks(rows).map(task => hideDeps(task, p => sees(actor, p)));
+      },
+      "evidence.context": ({ project, taskId, specDir, specBranch }) => {
+        const row = db.prepare("SELECT files, commit_sha FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, specDir, specBranch) as Row | undefined;
+        const spec = row ? (JSON.parse(str(row.files)) as SpecFiles).spec : null;
+        if (!row || spec === null || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(str(row.commit_sha))) return null;
+        return { project, taskId, specDir, specBranch, specHash: sha256(new TextEncoder().encode(spec)), commitSha: str(row.commit_sha), specText: spec };
+      },
+      "evidence.record": (input, actor) => {
+        assertNoSecret(input.criterionId, "Acceptance criterion identifier");
+        const source = db.prepare("SELECT files, commit_sha FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(input.project, input.specDir, input.specBranch) as Row | undefined;
+        const spec = source ? (JSON.parse(str(source.files)) as SpecFiles).spec : null;
+        if (!source || spec === null || source.commit_sha !== input.commitSha || sha256(new TextEncoder().encode(spec)) !== input.specHash) {
+          throw new HiveError("conflict", "The published specification or code revision has changed. Reload before verifying.", { key: "errors.evidenceRevisionChanged" });
+        }
+        if (!featureChecks(spec).some(criterion => criterion.id === input.criterionId && criterion.text === input.criterion)) {
+          throw new HiveError("bad_request", "This criterion is not in the published specification.", { key: "errors.evidenceCriterionMissing" });
+        }
+        assertNoSecret(input.note, "Acceptance note");
+        assertNoSecret(input.criterion, "Acceptance criterion");
+        const artifacts: EvidenceArtifact[] = input.artifactIds.map(id => {
+          const row = db.prepare("SELECT id, project, task_id, name, sha256, run_id, machine_id FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+          if (!row || row.project !== input.project || row.task_id !== input.taskId) throw new HiveError("not_found", "Artifact not found in this task.", { key: "errors.notFound" });
+          return { id, name: str(row.name), sha256: str(row.sha256), runId: str(row.run_id), machineId: str(row.machine_id) };
+        });
+        const createdAt = this.#now();
+        const result = db.prepare(`INSERT INTO acceptance_evidence(project, task_id, spec_hash, commit_sha, spec_dir, spec_branch, criterion_id, criterion, outcome, note, artifacts, recorded_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(input.project, input.taskId, input.specHash, input.commitSha, input.specDir, input.specBranch, input.criterionId, input.criterion, input.outcome, input.note, JSON.stringify(artifacts), actor.name, createdAt);
+        return { ...input, id: Number(result.lastInsertRowid), recordedBy: actor.name, createdAt, artifacts };
+      },
+      "evidence.list": ({ project, taskId, specHash, commitSha, specDir, specBranch, limit, offset }) => {
+        const rows = db.prepare(`SELECT * FROM acceptance_evidence WHERE project = ? AND task_id = ?
+          AND (? IS NULL OR spec_hash = ?) AND (? IS NULL OR commit_sha = ?)
+          AND (? IS NULL OR spec_dir = ?) AND (? IS NULL OR spec_branch = ?)
+          ORDER BY id DESC LIMIT ? OFFSET ?`)
+          .all(project, taskId, specHash ?? null, specHash ?? null, commitSha ?? null, commitSha ?? null, specDir ?? null, specDir ?? null, specBranch ?? null, specBranch ?? null, limit, offset) as Row[];
+        return rows.map(row => {
+          const artifacts = JSON.parse(str(row.artifacts)) as EvidenceArtifact[];
+          return { id: num(row.id), project, taskId, specHash: str(row.spec_hash), commitSha: str(row.commit_sha), specDir: str(row.spec_dir), specBranch: str(row.spec_branch), criterionId: str(row.criterion_id), criterion: str(row.criterion), outcome: str(row.outcome) as AcceptanceEvidence["outcome"], note: str(row.note), artifacts, artifactIds: artifacts.map(a => a.id), recordedBy: str(row.recorded_by), createdAt: str(row.created_at) };
+        });
+      },
       "artifacts.list": ({ project, projects, taskId, runId, machineId, limit, offset, name, kind }, actor) => {
         // Filter grants and archives before LIMIT/OFFSET: hidden files must never consume a visible page.
         const archived = this.#projectStates();
@@ -7127,6 +7215,7 @@ export class SqliteHive implements HiveBackend {
       "artifacts.remove": async ({ id }) => {
         const row = db.prepare("SELECT project, name, sha256, stored FROM artifacts WHERE id = ?").get(id) as Row | undefined;
         if (!row) return { removed: false, project: null, name: null };
+        this.#checkEvidenceArtifact(id);
         db.prepare("DELETE FROM artifacts WHERE id = ?").run(id);
         if (row.stored) await this.#dropBlob(str(row.sha256));
         return { removed: true, project: str(row.project), name: str(row.name) };
