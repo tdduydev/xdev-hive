@@ -646,6 +646,6 @@
 .hive-shell .workspace-new-button{border-radius:999px;padding:0 22px;letter-spacing:.2px}
 .hive-shell .hive-topbar-chat{height:46px;padding:0 22px;border-radius:999px;font-size:14px;letter-spacing:.2px}
 @media(max-width:767px){.hive-shell .hive-topbar-chat{height:44px;padding:0}}
-[data-workspace-web] footer{display:none}
+[data-workspace-web] .hive-status-footer{display:none}
 .hive-nav-item svg{color:var(--text-strong);opacity:.55}
 .hive-nav-active svg{color:var(--text-strong);opacity:.95}
