@@ -312,10 +312,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **58e. codex-localhost**: tuỳ chọn profile Codex mở được cổng 127.0.0.1 để chạy e2e.
 
 - **59. flow-speed** (hỏi 7/10: "giao nhiều việc, nhiều task á"): từ lúc giao tới lúc phát hành nhanh hơn: thêm máy làm cổng kiểm, e2e bớt lỗi chập chờn, giao lại run, tự cập nhật, ghép lô bằng script. Spec: [docs/specs/59-flow-speed.md](specs/59-flow-speed.md). Tách:
-  - [ ] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
+  - [x] **59a. e2e-linux**: e2e desktop và điện thoại xanh trên Linux (xvfb), phím tắt theo hệ điều hành.
   - [x] **59b. tests-linux**: `npm test` xanh trên Linux, phần phụ thuộc máy sau lớp giả lập.
   - [x] **59c. e2e-needs**: khai báo `NEEDS` cho mọi bước, mỗi bước chạy riêng được bằng `--only`.
-  - [ ] **59d. e2e-click**: `tab.click` chờ phần tử đứng yên và không bị che, thay các bản vá rời (sau 59c).
+  - [x] **59d. e2e-click**: `tab.click` chờ phần tử đứng yên và không bị che, thay các bản vá rời (sau 59c).
   - [x] **59e. run-redispatch**: nút *Giao lại* cho run lỗi, hết giờ, huỷ: đổi máy/gói/thời hạn, làm tiếp trên branch.
   - [x] **59f. auto-update-idle**: app tự cài bản mới khi không có run, cả bản Linux đã giải nén.
   - [x] **59g. batch-tool**: `scripts/review-batch.mjs` ghép một lô, báo xung đột, chạy cổng kiểm.
@@ -323,10 +323,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **59i. deploy-log-check**: hub gom lỗi trong log từ lúc khởi động, thẻ ở *Quản trị › Vận hành*, cảnh báo khi lỗi lặp nhiều.
 
 - **60. autopilot** (hỏi 7/10: "sao mỗi lần làm task phải dí task, chứ không phải chỉ cần chat ra lệnh rồi tự làm"; chọn: cả vòng tự chạy của phiên lẫn autopilot trong Hive, xanh thì tự phát hành): chỉ chat ra lệnh, Hive tự giao, tự ghép, tự phát hành. Spec: [docs/specs/60-autopilot.md](specs/60-autopilot.md). Tách:
-  - [ ] **60a. auto-dispatch**: hub tự giao task sẵn sàng cho gói rảnh (bộ chọn model, quota, `maxParallel`), tự *Giao lại* một lần khi lỗi.
-  - [ ] **60b. merge-queue**: máy vai *Cổng kiểm* gom nhánh `review` thành lô, ghép thử, chạy cổng kiểm; xanh thì push, đỏ thì tạo INT/LAND.
-  - [ ] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
-  - [ ] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
+  - [x] **60a. auto-dispatch**: hub tự giao task sẵn sàng cho gói rảnh (bộ chọn model, quota, `maxParallel`), tự *Giao lại* một lần khi lỗi.
+  - [x] **60b. merge-queue**: máy vai *Cổng kiểm* gom nhánh `review` thành lô, ghép thử, chạy cổng kiểm; xanh thì push, đỏ thì tạo INT/LAND.
+  - [x] **60c. auto-release**: chốt *Phát hành* trong *Quy trình*; tự động thì version, release, deploy, rollout sau mỗi lô xanh.
+  - [x] **60d. chat-to-plan**: leader biến yêu cầu trong chat thành spec, task và *Kế hoạch*; bấm *Làm* một lần hoặc tự chạy.
 
 - **62. chat-control** (hỏi 7/10: "phần chat trên giao diện client để giao task, nghiên cứu… cho dễ quản trị trên Hive"): chat là chỗ quản trị chính. Spec: [docs/specs/62-chat-control.md](specs/62-chat-control.md). Tách:
   - [x] **62a. codex-leader**: leader chạy bằng gói Codex (phiên resume, MCP, propose), tự sang Codex khi Claude hết quota.

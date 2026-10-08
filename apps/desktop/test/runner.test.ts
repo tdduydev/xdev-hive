@@ -288,6 +288,10 @@ describe("pickProfile", () => {
   it("prefers another vendor for reviews and honours pins and roles", () => {
     assert.equal(pickProfile([load(a), load(c)], { ...needs, role: "review", avoidKinds: ["claude"] }, now)?.profile.id, "codex-a");
     assert.equal(pickProfile([load(a, { running: 1 }), load(c)], { ...needs, preferredProfile: "claude-a" }, now), null);
+    const pinned = { ...needs, preferredProfile: "claude-a" };
+    const waitingOnPinned = [load(a, { cooldownUntil: "2026-09-27T09:00:00Z" }), load(c)];
+    assert.equal(pickProfile(waitingOnPinned, pinned, now), null, "a free Codex profile cannot take a run pinned to Claude");
+    assert.match(waitingReason(waitingOnPinned, pinned, now), /quota/, "the wait explains the pinned profile's cooldown");
     const planOnly = { ...c, roles: ["plan" as const] };
     assert.equal(pickProfile([load(planOnly)], needs, now), null);
     assert.equal(pickProfile([load(a), load(b)], { ...needs, excludedProfiles: ["claude-a"] }, now)?.profile.id, "claude-b");
