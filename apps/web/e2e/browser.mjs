@@ -3233,7 +3233,7 @@ async function main() {
     const tab = (current = tabs.admin);
     await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
     await tab.reload();
-    for (const route of ["overview", "today"]) {
+    for (const route of ["overview"]) {
       await tab.go(route);
       await tab.waitFor(`${route}: counts of two systems and lone repo`, () => {
         const totals = (name) => [...document.querySelectorAll(`[data-system-card="${name}"] [data-system-total] [data-system-count]`)].map((el) => el.textContent).join();
@@ -3416,6 +3416,8 @@ async function main() {
     expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
     const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
       document.querySelector('[data-inbox-group="agent"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(await tab.eval(() => !document.querySelector("[data-system-card]")), "Today must focus on inbox without system overview");
+    expect(await tab.eval(() => (document.querySelector("[data-today-shortcuts]")?.getBoundingClientRect().height > 0) === (innerWidth >= 768)), "keyboard hints follow viewport");
     await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
     await tab.click(`[data-inbox-key="${askedKey}"]`);
     await tab.waitFor("the run's question", () => document.body.innerText.includes("dùng API cũ hay mới"));
@@ -3423,6 +3425,13 @@ async function main() {
     await tab.waitFor("the run on Agent đang chạy", () => location.hash.startsWith("#/runs") && document.body.innerText.includes("Hỏi cách làm"));
     await tab.go("today");
     await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
+    expect(await tab.eval(() => {
+      const actions = document.querySelector("[data-today-actions]");
+      const content = actions?.previousElementSibling;
+      if (!content) return false;
+      const gap = actions.getBoundingClientRect().top - content.getBoundingClientRect().bottom;
+      return gap >= 0 && gap <= 16 && actions.parentElement.parentElement.classList.contains("overflow-y-auto");
+    }), "Today actions must immediately follow content in its scroll area");
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
     await tab.click("button", "Duyệt, sang bước sau");
     await until("the spec gate passed from Hôm nay", async () => {

@@ -26,12 +26,12 @@ export function useStartStatus() {
   return query;
 }
 
-export function StartReminder() {
+export function StartReminder({ className = "border-b border-line-subtle p-3" }: { className?: string }) {
   const { client } = useHive();
   const status = useStartStatus();
   const t = useT();
   if (!client.desktop) return null;
-  return <div className="border-b border-line-subtle p-3">
+  return <div className={className}>
     <Button variant="outline" className="h-auto w-full min-h-[var(--control-h-touch)] whitespace-normal text-left" onClick={() => { window.location.hash = "/start"; }}>
       {status.data?.remaining ? t("start.reminder", { count: status.data.remaining }) : t("start.open")}
     </Button>
