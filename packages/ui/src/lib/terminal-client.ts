@@ -39,6 +39,11 @@ export function terminalChunks(text: string, limit: number = TERMINAL_LIMITS.inp
   return chunks;
 }
 
+/** xterm's paste line endings, normalized before splitting so CRLF at a boundary remains one Enter. */
+export function terminalPasteChunks(text: string): string[] {
+  return terminalChunks(text.replace(/\r?\n/g, "\r"), 12 * 1024);
+}
+
 export const encodeTerminal = (s: string): string => btoa(String.fromCharCode(...new TextEncoder().encode(s)));
 export const decodeTerminal = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 export const pasteDisplay = (s: string): string => s.replace(/[\x00-\x1f\x7f]/g, c => c === "\n" ? "↵\n" : c === "\r" ? "␍" : c === "\t" ? "⇥" : `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
@@ -52,6 +57,7 @@ export class TerminalConnection {
   #seen = 0;
   #rendered = 0;
   #active = false;
+  #generation = 0;
   #lastFrame = 0;
   #resumed = false;
   readonly handlers: {
@@ -62,11 +68,13 @@ export class TerminalConnection {
   constructor(handlers: TerminalConnection["handlers"]) { this.handlers = handlers; }
   get lastOutputSeq(): number { return this.#rendered; }
   get writable(): boolean { return this.#active && this.#socket?.readyState === 1; }
+  get generation(): number { return this.#generation; }
   connect(socket: WebSocket, ticket: string, epoch: number): void {
     this.detach();
     this.#socket = socket; this.#epoch = epoch; this.#inputSeq = 0; this.#lastFrame = Date.now(); this.#resumed = false;
     this.handlers.status("connecting");
     socket.onopen = () => {
+      if (this.#socket !== socket) return;
       socket.send(JSON.stringify({ type: "auth", ticket }));
     };
     socket.onmessage = (event) => {
@@ -123,6 +131,7 @@ export class TerminalConnection {
       cols: Math.max(20, Math.min(400, cols)), rows: Math.max(5, Math.min(200, rows)) });
   }
   detach(): void {
+    this.#generation++;
     const socket = this.#socket;
     this.#socket = null; this.#active = false; clearInterval(this.#timer);
     socket?.close();

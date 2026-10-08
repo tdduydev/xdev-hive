@@ -4178,14 +4178,19 @@ async function main() {
     await until("UTF-8 terminal input", async () => (await diagnostics()).inputs.some(f => f.text.includes("Tiếng Việt a\u0306\u0301")));
     await tab.key("Tab");
     expect(await tab.eval(() => !document.activeElement?.classList.contains("xterm-helper-textarea")), "Tab trapped in terminal");
+    const keyStart = (await diagnostics()).inputs.length;
     for (const key of ["esc", "tab", "shiftTab", "up", "down", "left", "right", "interrupt"]) await tab.click(`[data-testid="terminal-key-${key}"]`);
     await tab.click('[data-testid="terminal-key-ctrl"]'); await tab.type("c");
+    await until("all terminal keys sent", async () => (await diagnostics()).inputs.length >= keyStart + 9);
+    expect(JSON.stringify((await diagnostics()).inputs.slice(keyStart).map(f => f.text)) === JSON.stringify(["\x1b", "\t", "\x1b[Z", "\x1b[A", "\x1b[B", "\x1b[D", "\x1b[C", "\x03", "\x03"]), "terminal key mapping/one-shot Ctrl changed");
     const before = (await diagnostics()).inputs.length;
     await tab.click('[data-testid="terminal-ime"]');
     await tab.click('[data-testid="terminal-ime-input"]');
     await tab.eval(() => document.querySelector('[data-testid="terminal-ime-input"]').dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true, data: "" })));
     const composed = "Đường dẫn a\u0306\u0301 / ắ\nsecond-line\x03";
     await tab.type(composed);
+    await tab.click('[data-testid="terminal-ime-send"]');
+    expect(await tab.eval(() => !document.querySelector('[data-testid="terminal-paste-preview"]')), "unfinished IME composition can be sent");
     await tab.eval(() => document.querySelector('[data-testid="terminal-ime-input"]').dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "ắ" })));
     expect((await diagnostics()).inputs.length === before, "IME draft leaked partial input");
     await tab.click('[data-testid="terminal-ime-send"]');
@@ -4219,6 +4224,13 @@ async function main() {
         const metrics = await tab.eval(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, stop: document.querySelector('[data-testid="terminal-stop"]').getBoundingClientRect().height, keys: [...document.querySelectorAll('[data-testid^="terminal-key-"]')].map(el => el.getBoundingClientRect().height), input: parseFloat(getComputedStyle(document.querySelector(".xterm-helper-textarea")).fontSize), screen: document.querySelector('[data-testid="terminal-screen"]').getBoundingClientRect().height }));
         expect(metrics.width === size && metrics.scroll <= size + 1 && metrics.stop >= 44 && metrics.keys.every(h => h >= 44) && metrics.input >= 16 && metrics.screen > 80, `terminal mobile geometry ${JSON.stringify(metrics)}`);
       }
+      tab.win.setContentSize(390, 500); await sleep(250);
+      expect(await tab.eval(() => {
+        const dialog = document.querySelector('[data-testid="terminal-dialog"]').getBoundingClientRect();
+        const stop = document.querySelector('[data-testid="terminal-stop"]').getBoundingClientRect();
+        const screen = document.querySelector('[data-testid="terminal-screen"]').getBoundingClientRect();
+        return Math.abs(dialog.height - visualViewport.height) <= 1 && stop.top >= 0 && stop.bottom <= innerHeight && screen.height > 40 && document.documentElement.scrollWidth <= innerWidth + 1;
+      }), "terminal controls/caret area lost in reduced keyboard viewport");
       tab.win.setContentSize(width, height);
     }
     await tab.shot("terminal-active");

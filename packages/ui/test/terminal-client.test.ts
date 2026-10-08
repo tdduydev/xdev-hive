@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import { createHttpClient } from "#ui/client.ts";
-import { TerminalConnection, terminalChunks, encodeTerminal, decodeTerminal, pasteDisplay, terminalSecure, terminalSocketUrl } from "#ui/lib/terminal-client.ts";
+import { TerminalConnection, terminalChunks, terminalPasteChunks, encodeTerminal, decodeTerminal, pasteDisplay, terminalSecure, terminalSocketUrl } from "#ui/lib/terminal-client.ts";
 
 class Socket {
   readyState = 1;
@@ -58,6 +58,13 @@ it("input is gated by active state, never queued/retried; reconnect uses new epo
   c.detach();
 });
 
+it("large paste keeps one Enter for CRLF across frame boundaries, including bracket overhead", () => {
+  const prefix = "a".repeat(12 * 1024 - 1);
+  const chunks = terminalPasteChunks(`${prefix}\r\nTiếng Việt a\u0306\u0301\n`);
+  assert.equal(chunks.join(""), `${prefix}\rTiếng Việt a\u0306\u0301\r`);
+  for (const chunk of chunks) assert.ok(new TextEncoder().encode(`\x1b[200~${chunk}\x1b[201~`).length <= 16 * 1024);
+});
+
 it("output dedups, checks sequence, and ACKs only after rendering; gap resets pointer", () => {
   const rendered: Array<() => void> = [];
   const received: string[] = [];
@@ -87,5 +94,19 @@ it("reconnect while xterm renders a queued output does not paint the replay twic
   assert.equal(writes, 1); assert.equal(c.lastOutputSeq, 0);
   pending.shift()!();
   assert.equal(c.lastOutputSeq, 1); assert.deepEqual(next.frames.at(-1), { type: "ack", outputSeq: 1 });
+  c.detach();
+});
+
+it("replacing a socket invalidates paced paste and never authenticates a late old socket", () => {
+  const c = new TerminalConnection({ output: (_bytes, done) => done(), status: () => undefined, gap: () => undefined });
+  const old = new Socket(); c.connect(old as unknown as WebSocket, "old-ticket", 0);
+  const generation = c.generation;
+  const next = new Socket(); c.connect(next as unknown as WebSocket, "new-ticket", 1);
+  old.onopen?.();
+  assert.deepEqual(old.frames, []);
+  next.onopen?.(); next.receive({ type: "state", state: "active" });
+  assert.equal(c.writable, true);
+  assert.notEqual(c.generation, generation);
+  assert.deepEqual(next.frames, [{ type: "auth", ticket: "new-ticket" }, { type: "ack", outputSeq: 0 }]);
   c.detach();
 });
