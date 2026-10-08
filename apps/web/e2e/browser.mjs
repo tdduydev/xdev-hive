@@ -1011,8 +1011,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;

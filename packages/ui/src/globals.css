@@ -18,6 +18,7 @@
 @import "./tokens/colors.css";
 @import "./tokens/typography.css";
 @import "./tokens/spacing.css";
+@import "./tokens/shell.css";
 @import "./tokens/motion.css";
 @import "./components/ResponsiveTable.css";
 @import "./mobile.css";
@@ -598,3 +599,53 @@
 .workspace-section-tabs a[aria-current]{background:var(--state-selected-bg);color:var(--state-selected-fg);border-color:var(--border-selected)}
 .workspace-section-tabs a:focus-visible{outline:2px solid var(--focus-color);outline-offset:4px}
 @media(max-width:767px){.workspace-section-tabs{padding-inline:var(--space-4)}}
+
+/* Cosmic shell dimensions come from the 72 design template. */
+.hive-shell{background:var(--shell-backdrop);background-size:300px 300px,300px 300px,300px 300px,300px 300px,300px 300px,100% 100%;background-attachment:fixed}
+.hive-shell .hive-sidebar{padding:20px 14px 14px;gap:18px;background:var(--shell-sidebar-bg);box-shadow:var(--shell-sidebar-divider);backdrop-filter:blur(12px);border:0}
+.hive-shell .hive-sidebar-brand{height:36px;padding-inline:8px}
+.hive-shell .hive-sidebar-scope{padding:0}
+.hive-sidebar-scope [data-project-picker-trigger]{height:44px;gap:10px;padding:8px 10px 8px 8px;border:0;border-radius:14px;background:var(--shell-glass);box-shadow:var(--shell-ring);color:var(--text-strong)}
+.hive-sidebar-scope [data-project-picker-trigger]:hover{background:var(--shell-glass-hover)}
+.hive-scope-caption{font-size:11px;line-height:14px;color:var(--text-muted);letter-spacing:.3px}
+.hive-shell .workspace-new-work{padding:0}
+.hive-shell .workspace-new-button{height:46px;min-height:46px;border-radius:12px;background:var(--action-primary-bg);font-size:14px;line-height:20px;font-weight:600;box-shadow:var(--shell-ring)}
+.hive-shell .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
+.hive-nav-group{gap:2px}
+.hive-nav-heading{padding:0 10px 6px;color:var(--shell-text-faint);font-size:11px;line-height:14px;font-weight:500;letter-spacing:.6px;text-transform:uppercase}
+.hive-shell .hive-nav-item{height:36px;min-height:36px;gap:10px;padding:0 10px;border-radius:12px;font-size:13.5px;line-height:18px;font-weight:500}
+.hive-shell .hive-nav-item:hover{background:var(--shell-glass)}
+.hive-shell .hive-nav-active{background:var(--shell-glass);box-shadow:var(--shell-ring);color:var(--text-strong)}
+.hive-nav-shortcut{font-family:var(--font-sans);font-size:11px;line-height:1;font-weight:500;color:var(--shell-text-faint)}
+.hive-nav-count{height:20px;min-width:20px;padding:0 6px;font-size:11px;line-height:1;font-weight:500;color:var(--text-strong)}
+.hive-nav-count:not(.bg-primary){background:var(--shell-count-secondary)}
+.hive-shell .hive-sidebar-account{padding:10px;border:0;border-radius:14px;background:var(--bg-surface);box-shadow:var(--shell-ring)}
+.hive-shell .hive-main-topbar{height:72px;min-height:72px;gap:16px;padding:0 28px;background:transparent;border:0;box-shadow:var(--shell-divider)}
+.hive-topbar-title{min-width:160px}
+.hive-topbar-title>span{font-size:12px;line-height:16px}
+.hive-topbar-title h1{margin:0;font-size:22px;line-height:30px;font-weight:700;letter-spacing:-.2px}
+.hive-shell .hive-topbar-search{height:40px;flex:0 1 260px;gap:10px;padding:0 8px 0 14px;border:0;border-radius:999px;background:var(--shell-glass);box-shadow:var(--shell-ring);font-size:13px;font-weight:500}
+.hive-shell .hive-topbar-search:hover{background:var(--shell-glass-hover)}
+.hive-search-key{padding:4px 8px;border-radius:999px;background:var(--shell-glass);color:var(--text-secondary);font-size:11px;line-height:14px}
+.hive-shell .hive-topbar-chat{height:40px;padding:0 16px;border:0;border-radius:12px;background:var(--shell-glass);box-shadow:var(--shell-ring);font-size:13px}
+.hive-shell .hive-topbar-chat:hover{background:var(--shell-glass-hover)}
+.hive-shell #hive-main{background:transparent}
+@media(max-width:767px){
+  .hive-shell .hive-main-topbar{height:64px;min-height:64px;padding:0 12px;gap:8px}
+  .hive-topbar-title{min-width:0}
+  .hive-topbar-title h1{font-size:18px;line-height:24px}
+  .hive-shell .hive-sidebar{padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  .hive-shell .hive-nav-item{min-height:44px;height:44px}
+  .hive-shell .hive-topbar-chat{height:44px}
+}
+@media(min-width:768px){.hive-sidebar-toggle{display:none}}
+[data-workspace-web] .hive-sidebar:not(.hive-sidebar-rail) .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
+.hive-shell .hive-sidebar-rail{padding-inline:8px}
+.hive-shell .hive-sidebar-rail .hive-sidebar-scope{display:flex;justify-content:center}
+.hive-shell .hive-sidebar-rail .hive-sidebar-account{padding:4px}
+.hive-shell .workspace-new-button{border-radius:999px;padding:0 22px;letter-spacing:.2px}
+.hive-shell .hive-topbar-chat{height:46px;padding:0 22px;border-radius:999px;font-size:14px;letter-spacing:.2px}
+@media(max-width:767px){.hive-shell .hive-topbar-chat{height:44px;padding:0}}
+[data-workspace-web] footer{display:none}
+.hive-nav-item svg{color:var(--text-strong);opacity:.55}
+.hive-nav-active svg{color:var(--text-strong);opacity:.95}

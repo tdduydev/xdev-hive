@@ -455,6 +455,9 @@ export const vi = {
     device: "Cho app desktop dùng tài khoản của bạn",
   },
   shell: {
+    artifacts: "Artifact",
+    assignAgent: "Giao việc cho agent",
+    scope: "Phạm vi",
     skipToContent: "Chuyển đến nội dung",
     quickNav: "Điều hướng nhanh",
     menu: "Menu",
@@ -478,7 +481,7 @@ export const vi = {
     toggleSidebar: "Ẩn hoặc hiện thanh bên",
     closeSidebar: "Đóng menu",
     sidebarShortcut: "Thanh bên (⌘B)",
-    search: "Tìm task, tài liệu hoặc chạy lệnh",
+    search: "Tìm task, tài liệu, run…",
     newTask: "Task mới",
     openWeb: "Mở web",
     openWebHint: "Các trang của service, task, tài liệu và quản trị nằm trên web của hub",
