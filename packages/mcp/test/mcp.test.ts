@@ -77,7 +77,10 @@ describe("mcp tools", () => {
     assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
     assert.equal((await hive.call("proposals.list", { status: "pending" }, admin)).some((proposal) => proposal.id === id), true);
     await assert.rejects(hive.call("proposals.approve", { id }, { name: "owner", role: "member", access: { projects: { app: "lead" } } }), /own|yourself|tự/i);
-    assert.equal((await hive.call("proposals.approve", { id }, admin)).status, "approved");
+    const approval = hive.call("proposals.approve", { id }, admin);
+    assert.equal((await hive.call("proposals.list", {}, admin)).find((p) => p.id === id)?.status, "executing", "approval is not recorded before execution finishes");
+    await assert.rejects(hive.call("proposals.approve", { id }, admin), /already decided/);
+    assert.equal((await approval).status, "approved");
     assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, ["app"]);
     await assert.rejects(hive.call("proposals.create", { action: { method: "agents.resume", project: "app", input: { project: "app" } }, reason: "No right" }, { ...actor, access: { projects: { app: "viewer" } } }), /docPropose/);
     await assert.rejects(hive.call("proposals.create", { action: { method: "agents.stop", project: null, input: { project: null } }, reason: "Hub-wide" }, actor), /admin|Admin/);

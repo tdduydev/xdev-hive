@@ -986,6 +986,7 @@ export const en: Catalog = {
   },
   proposalStatus: {
     pending: "Pending",
+    executing: "Executing",
     approved: "Approved",
     rejected: "Rejected",
     conflict: "Conflict",

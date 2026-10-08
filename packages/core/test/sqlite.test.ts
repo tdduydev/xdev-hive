@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
 import { HiveError, parseSkill, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
@@ -90,6 +93,28 @@ describe("docs", () => {
 });
 
 describe("proposals", () => {
+  it("marks an interrupted operation as uncertain on reopening", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "hive-operation-"));
+    try {
+      const filename = path.join(dir, "hive.db");
+      const first = new SqliteHive(filename);
+      await first.call("tasks.create", { id: "seed", project: "app", title: "Seed" }, admin);
+      const actor: Actor = { name: "cli@owner", role: "member", mcpCredential: true, access: { projects: { app: "lead" } } };
+      const proposal = await first.call("proposals.create", { action: { method: "agents.stop", project: "app", input: { project: "app" } }, reason: "Maintenance" }, actor);
+      first.db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run("duy", new Date().toISOString(), proposal.id);
+      first.db.close();
+
+      const reopened = new SqliteHive(filename);
+      const recovered = (await reopened.call("proposals.list", {}, admin)).find((p) => p.id === proposal.id)!;
+      assert.equal(recovered.status, "conflict");
+      assert.match(recovered.reviewNote ?? "", /interrupted/i);
+      await rejects(reopened.call("proposals.approve", { id: proposal.id }, admin), "bad_request");
+      reopened.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("applies an approved proposal as a new version credited to the agent", async () => {
     const hive = new SqliteHive(":memory:");
     await hive.call("docs.save", { key: "project/app/agents", content: "old" }, admin);

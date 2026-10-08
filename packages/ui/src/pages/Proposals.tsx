@@ -12,7 +12,7 @@ import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_T
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { runBulk, splitProposals } from "#ui/lib/bulk.ts";
+import { bulkSelectableProposals, runBulk, splitProposals } from "#ui/lib/bulk.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { knowledgeProposals } from "#ui/lib/knowledge.ts";
 import { docOwner, scopeLabel } from "#ui/lib/scope.ts";
@@ -36,7 +36,7 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
   const proposals = list.data ? knowledgeProposals(list.data, scope, kind) : undefined;
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
-  const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey)));
+  const selectable = bulkSelectableProposals(proposals ?? [], (p) => allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
   const label = (p: Proposal) => isCliActionProposalKey(p.docKey) ? t("proposals.operation", { id: p.id }) : `#${p.id} ${p.docKey}`;
   const finish = (text: string, trouble: boolean) => {
@@ -148,9 +148,10 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
   const { client, bump } = useHive();
   const t = useT();
   const allow = useCan();
-  const [open, setOpen] = useState(p.status === "pending");
-  const [note, setNote] = useState("");
   const operation = isCliActionProposalKey(p.docKey);
+  const [open, setOpen] = useState(p.status === "pending" && !operation);
+  const [reviewed, setReviewed] = useState(false);
+  const [note, setNote] = useState("");
   const method = operation ? (JSON.parse(p.content) as { method: string }).method : null;
   const current = useQuery(
     () => (open && !operation ? client.call("docs.get", { key: p.docKey }) : Promise.resolve(undefined)),
@@ -177,7 +178,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
           <div className="flex flex-wrap items-start gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                {manage ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
+                {manage && !operation ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
                 <Badge tone={STATUS_TONE[p.status]}>{t(`proposalStatus.${p.status}`)}</Badge>
                 <OwnerBadge owner={docOwner(p.docKey)} />
                 <span className="min-w-0 font-mono text-xs break-all">{operation ? method : p.docKey}</span>
@@ -191,7 +192,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>
-            <Button className="max-md:min-h-11" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <Button className="max-md:min-h-11" variant="ghost" onClick={() => { if (operation && !open) setReviewed(true); setOpen(!open); }} aria-expanded={open}>
               {operation ? (open ? t("proposals.hideOperation") : t("proposals.showOperation")) : (open ? t("proposals.hideChanges") : t("proposals.showChanges"))}
             </Button>
           </div>
@@ -224,7 +225,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               >
                 {t("proposals.reject")}
               </Button>
-              <Button className="max-md:min-h-11" onClick={() => decide("approve")} disabled={action.busy}>
+              <Button className="max-md:min-h-11" onClick={() => decide("approve")} disabled={action.busy || (operation && !reviewed)}>
                 {t("proposals.approve")}
               </Button>
             </div>

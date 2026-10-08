@@ -2008,6 +2008,11 @@ export class SqliteHive implements HiveBackend {
       status: str(status), summary: strOrNull(summary), error: strOrNull(error), mr: { pipeline: strOrNull(pipeline) },
     }));
     this.#migrate();
+    if (this.#opts.migrateTo >= MIGRATIONS.length) {
+      // A stopped process cannot tell whether an in-flight operation took effect; never retry it automatically.
+      this.db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE status = 'executing'")
+        .run("Execution was interrupted; check the operation's effect before creating a new proposal.");
+    }
     this.#machineIdentityReady = (this.db.prepare("PRAGMA table_info(machines)").all() as Row[]).some((r) => r.name === "token_id");
     this.#handlers = this.#buildHandlers();
   }
@@ -7515,10 +7520,11 @@ export class SqliteHive implements HiveBackend {
           const action = JSON.parse(pending.content) as { method: Method; input: Record<string, unknown> };
           this.#tx(() => {
             if (this.#getProposal(id).status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already decided.`);
-            db.prepare("UPDATE proposals SET status = 'approved', reviewer = ?, decided_at = ? WHERE id = ?").run(actor.name, this.#now(), id);
+            db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run(actor.name, this.#now(), id);
           });
           try {
             await this.call(action.method, action.input as never, actor);
+            db.prepare("UPDATE proposals SET status = 'approved' WHERE id = ? AND status = 'executing'").run(id);
           } catch (error) {
             db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE id = ?").run(String((error as Error).message ?? error).slice(0, 500), id);
           }
