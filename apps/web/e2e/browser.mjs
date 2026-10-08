@@ -3098,7 +3098,7 @@ async function main() {
 
   await step("backup-late-today", async () => {
     const tab = (current = tabs.admin);
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     const alert = await until("the overdue backup alert", async () => (await rpc("alerts.list", {})).open.find((a) => a.rule === "backup_overdue"));
     await tab.waitFor("the overdue backup in Hôm nay", () => {
       const row = document.querySelector(`[data-inbox-key="alert:${alert.id}"]`);
@@ -4662,7 +4662,7 @@ async function main() {
     }
     await rpc("mergeQueue.configure", { project, config: { enabled: true, machineId: machine.id, commands: ["true"], waitMinutes: 0, mode: "push" } });
     await tab.go("tasks");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.eval(() => {
       window.__closeWarning = "";
       window.confirm = (message) => { window.__closeWarning = message; return false; };
@@ -4693,7 +4693,7 @@ async function main() {
     // Reopen the fixture to exercise the close action after its branch has landed.
     await rpc("tasks.update", { id: "CLOSE-APPROVE", status: "review" });
     await tab.go("tasks");
-    await tab.go("today");
+    await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key^="review:${project}:CLOSE-APPROVE:"]`);
     await tab.eval(() => { window.__closeWarning = ""; });
     await tab.click("button", "Chuyển sang Xong");

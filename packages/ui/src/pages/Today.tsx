@@ -202,7 +202,6 @@ function scopeText(item: InboxItem, t: TFunction): string {
 }
 
 export function TodayInboxPage() {
-  const { scope } = useHive();
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
@@ -852,11 +851,13 @@ function Detail({
       <DetailHeader chips={<Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
-          {body}
-          <ErrorNote error={error} />
+          {client.desktop ? <>{body}<ErrorNote error={error} /></> : <>
+            <div className="flex flex-col gap-3">{body}<ErrorNote error={error} /></div>
+            <div data-today-actions><DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /></div>
+          </>}
         </div>
       </div>
-      <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} />
+      {client.desktop ? <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /> : null}
     </div>
   );
 }
