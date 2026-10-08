@@ -40,10 +40,13 @@ if (!hubOnly) run("npm", ["run", "build"]);
 const builder = (...args) => run("npx", ["electron-builder", ...args, "--publish", "never"], { env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false" } });
 if (!hubOnly) {
   builder("--mac", "--arm64", "--x64");
+  // node-gyp cannot cross-compile node-pty from a Mac: Windows takes the package's N-API prebuilds as they are, and
+  // Linux has none (the remote terminal reports node-pty missing there until one is built on Linux).
+  const noRebuild = "-c.npmRebuild=false";
   // One installer per architecture (a combined one would double the download).
-  builder("--win", "--x64");
-  builder("--win", "--arm64");
-  builder("--linux", "--x64", "--arm64");
+  builder("--win", "--x64", noRebuild);
+  builder("--win", "--arm64", noRebuild);
+  builder("--linux", "--x64", "--arm64", noRebuild);
 }
 
 const assets = readdirSync(release)
