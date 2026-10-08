@@ -798,6 +798,8 @@ const MIGRATIONS: string[] = [
   ALTER TABLE terminal_stepups ADD COLUMN method TEXT NOT NULL DEFAULT 'password';
   ALTER TABLE terminal_stepups ADD COLUMN authenticated_at TEXT;
   `,
+  // Keep the binding after token revocation: deleting a token must not reopen the machine for a namesake.
+  `ALTER TABLE machines ADD COLUMN token_id TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1900,10 +1902,20 @@ const AGENT_METHODS = new Set<Method>([
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
 ]);
 
+// Legacy names can be forged before their first migrated heartbeat; they must not authorize machine reports or work.
+const MACHINE_METHODS = new Set<Method>([
+  "machines.heartbeat", "machines.commandResult", "runs.push", "runs.report", "runs.requestResult", "runs.preparePlan", "runs.mergeResult",
+  "artifacts.put", "specs.push", "docs.assistTake", "docs.assistProgress", "docs.assistFinish",
+  "memory.cleanupTake", "memory.cleanupRead", "memory.cleanupProgress", "memory.cleanupFinish",
+  "chat.poll", "chat.progress", "chat.finish", "research.finish", "mergeQueue.take", "mergeQueue.progress", "mergeQueue.finish",
+  "autoRelease.take", "autoRelease.progress", "autoRelease.result", "autoRelease.rollout",
+]);
+
 export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
+  readonly #machineIdentityReady: boolean;
   /** The desktop app's own machine in local mode (roadmap 48): it never heartbeats, so it is no row of `machines`. */
   #chatMachine: (() => Machine | null) | null = null;
 
@@ -1934,6 +1946,7 @@ export class SqliteHive implements HiveBackend {
       status: str(status), summary: strOrNull(summary), error: strOrNull(error), mr: { pipeline: strOrNull(pipeline) },
     }));
     this.#migrate();
+    this.#machineIdentityReady = (this.db.prepare("PRAGMA table_info(machines)").all() as Row[]).some((r) => r.name === "token_id");
     this.#handlers = this.#buildHandlers();
   }
 
@@ -1944,6 +1957,13 @@ export class SqliteHive implements HiveBackend {
         throw new HiveError("forbidden", "A run credential can work only on its task.");
     }
     authorize(method, caller);
+    const machine = this.#machineIdentityReady ? this.db.prepare("SELECT token_id FROM machines WHERE id = ?").get(caller.name) as Row | undefined : undefined;
+    if (machine?.token_id != null && !caller.runCredential && !caller.mcpCredential && !this.isMachineActor(caller.name, caller))
+      throw new HiveError("forbidden", "This token is not paired with the machine.", { key: "errors.machineIdentityForbidden" });
+    // A legacy machine gets its identity only at heartbeat, before it can take work or report results. Callers that are no
+    // machine row (the desktop app's own `desktop@<token>` calls) keep working: no machine's records are reachable by name.
+    if (machine && machine.token_id == null && MACHINE_METHODS.has(method) && method !== "machines.heartbeat" && caller.tokenId)
+      throw new HiveError("forbidden", "Heartbeat with the paired machine token first.", { key: "errors.machineIdentityForbidden" });
     const actor = this.#withSystems(caller);
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
@@ -1952,6 +1972,59 @@ export class SqliteHive implements HiveBackend {
     const output = this.#hideArchived(method, parsed as ParsedInput<Method>, this.#filter(method, await handler(parsed, actor), actor));
     this.#report(method, parsed, output, actor);
     return output;
+  }
+
+  /** Use this for machine reporting (including terminal); scoped agent credentials are never machine credentials. */
+  isMachineActor(machineId: string, actor: Actor): boolean {
+    if (!this.#machineIdentityReady) return false;
+    if (actor.name !== machineId || actor.role === "viewer" || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) return false;
+    const row = this.db.prepare("SELECT token_id, owner FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+    if (!row) return false;
+    if (row.token_id == null) return this.#opts.local && !actor.tokenId;
+    return !!actor.tokenId && actor.tokenId === row.token_id && (actor.account ?? null) === strOrNull(row.owner);
+  }
+
+  /**
+   * The desktop's password sign-in replaces its token with a new one of the same name and account: that is the owner
+   * re-pairing in person, so the machines of the old token follow the new one instead of being locked out.
+   */
+  rebindMachineToken(fromTokenId: string, toTokenId: string, actor: Actor): number {
+    if (!this.#machineIdentityReady) return 0;
+    return this.#tx(() => {
+      // Run credentials of the old token die with it: verify joins them to their parent hub_tokens row.
+      const rows = this.db.prepare("SELECT id FROM machines WHERE token_id = ?").all(fromTokenId) as Row[];
+      for (const row of rows) {
+        this.db.prepare("UPDATE machines SET token_id = ? WHERE id = ?").run(toTokenId, str(row.id));
+        this.audit(actor, "machines.repair", str(row.id), `${fromTokenId} → ${toTokenId} · sign-in`, { key: "audit.machineRepaired" });
+      }
+      return rows.length;
+    });
+  }
+
+  #bindMachine(actor: Actor, machine: string): void {
+    const row = this.db.prepare("SELECT token_id, owner FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    if (actor.tokenId) {
+      const token = this.db.prepare("SELECT name FROM hub_tokens WHERE id = ?").get(actor.tokenId) as Row | undefined;
+      if (!token || actor.name !== `runner.${machine}@${str(token.name)}`)
+        throw new HiveError("forbidden", "This token is not paired with the machine.", { key: "errors.machineIdentityForbidden" });
+    }
+    if (row?.token_id != null) {
+      if (!this.isMachineActor(actor.name, actor)) throw new HiveError("forbidden", "This token is not paired with the machine.", { key: "errors.machineIdentityForbidden" });
+      return;
+    }
+    // Direct/local backends have no hub credential; the HTTP hub requires one before entering this handler.
+    if (!actor.tokenId) return;
+    const token = this.db.prepare("SELECT name, owner_id, role FROM hub_tokens WHERE id = ?").get(actor.tokenId) as Row | undefined;
+    if (!token || token.role === "viewer" || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined ||
+        actor.name !== `runner.${machine}@${str(token.name)}` || (row && strOrNull(row.owner) !== (actor.account ?? null)))
+      throw new HiveError("forbidden", "This token is not paired with the machine.", { key: "errors.machineIdentityForbidden" });
+    if (row) {
+      // Old rows carry no token id: a namesake owned by somebody else is never a migration candidate.
+      const candidates = this.db.prepare("SELECT id FROM hub_tokens WHERE name = ? AND owner_id IS ? AND role != 'viewer'").all(str(token.name), strOrNull(token.owner_id)) as Row[];
+      if (candidates.length !== 1) throw new HiveError("forbidden", "Machine identity is ambiguous; its owner or admin must re-pair it.", { key: "errors.machineIdentityAmbiguous" });
+      this.db.prepare("UPDATE machines SET token_id = ? WHERE id = ?").run(actor.tokenId, actor.name);
+      this.audit(actor, "machines.bind", actor.name, "legacy heartbeat", { key: "audit.machineBound" });
+    }
   }
 
   /** The audit line and event of a write, as `call` makes them: also for writes a chat plan makes inside one transaction. */
@@ -2400,11 +2473,11 @@ export class SqliteHive implements HiveBackend {
       case "cooldowns.clear": {
         if (this.#isHubAdmin(actor)) return;
         // Subscription accounts can be shared: every reporting machine owns its cooldown, as does its human owner.
-        const machines = this.db.prepare(`SELECT id, owner FROM machines WHERE EXISTS (
+        const machines = this.db.prepare(`SELECT id, owner, token_id FROM machines WHERE EXISTS (
           SELECT 1 FROM json_each(machines.profiles) p WHERE json_extract(p.value, '$.account') = ?
         )`).all(i.account) as Row[];
         const human = actor.role !== "agent" && !isAgentActor(actor) && actor.account !== undefined;
-        if (machines.some((m) => str(m.id) === actor.name || (human && actor.account === strOrNull(m.owner)))) return;
+        if (machines.some((m) => (str(m.id) === actor.name && (actor.tokenId ? this.isMachineActor(str(m.id), actor) : m.token_id == null)) || (human && actor.account === strOrNull(m.owner)))) return;
         throw new HiveError("forbidden", "Only a reporting machine, its owner or a hub admin changes this subscription's cooldown.", { key: "errors.cooldownForbidden" });
       }
       case "specs.push":
@@ -4570,17 +4643,14 @@ export class SqliteHive implements HiveBackend {
     }
   }
 
-  /**
-   * The machines a call speaks for, or [] for a person: the runner's own token (its name is the machine's hub id), and
-   * an agent run on a machine, which says so in its write source. A hub may hold two rows for one machine name (two
-   * accounts' tokens), and the agent's token tells them apart no better than its user does — so all of them count.
-   */
+  /** Bound rows require the verified parent token, even when a source header supplies the machine label. */
   #callerMachines(actor: Actor): string[] {
-    const own = this.db.prepare("SELECT id FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
-    if (own) return [str(own.id)];
+    const owns = (r: Row) => r.token_id == null ? !actor.tokenId : actor.tokenId === r.token_id && (actor.account ?? null) === strOrNull(r.owner);
+    const own = this.db.prepare("SELECT id, token_id, owner FROM machines WHERE id = ?").get(actor.name) as Row | undefined;
+    if (own && owns(own)) return [str(own.id)];
     const name = actor.source?.machine;
     if (!name) return [];
-    return (this.db.prepare("SELECT id FROM machines WHERE machine = ?").all(name) as Row[]).map((r) => str(r.id));
+    return (this.db.prepare("SELECT id, token_id, owner FROM machines WHERE machine = ?").all(name) as Row[]).filter(owns).map((r) => str(r.id));
   }
 
   /** A machine by hub id, or by the name people know it as (as a chat proposal names one). */
@@ -7803,6 +7873,7 @@ export class SqliteHive implements HiveBackend {
 
       "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal }, actor) =>
         this.#tx(() => {
+          this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
           runs = runs.filter((r) => may(actor, r.project, "taskWork"));
           costs = costs.filter((c) => may(actor, c.project, "taskWork"));
@@ -7827,12 +7898,12 @@ export class SqliteHive implements HiveBackend {
             prev = str(row.instance);
           }
           db.prepare(
-            `INSERT INTO machines(id, machine, instance, prev_instance, version, runs, last_seen, duplicate_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO machines(id, machine, instance, prev_instance, version, runs, last_seen, duplicate_at, token_id, owner)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET machine = excluded.machine, instance = excluded.instance,
                prev_instance = excluded.prev_instance, version = excluded.version, runs = excluded.runs,
                last_seen = excluded.last_seen, duplicate_at = excluded.duplicate_at`,
-          ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt);
+          ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt, actor.tokenId ?? null, actor.account ?? null);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
           if (worktrees) db.prepare("UPDATE machines SET worktrees = ? WHERE id = ?").run(JSON.stringify(worktrees), actor.name);
@@ -7855,7 +7926,7 @@ export class SqliteHive implements HiveBackend {
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // Missing on older clients and cleared on the first heartbeat after a restart.
           db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
-          db.prepare("UPDATE machines SET owner = ? WHERE id = ?").run(actor.account ?? null, actor.name);
+          if (!actor.tokenId) db.prepare("UPDATE machines SET owner = ? WHERE id = ? AND token_id IS NULL").run(actor.account ?? null, actor.name);
           db.prepare("DELETE FROM machine_profile_changes WHERE requested_at < ?").run(this.#now(-PROFILE_CHANGE_HOURS * 60));
           if (profiles) {
             const drop = db.prepare("DELETE FROM machine_profile_changes WHERE machine_id = ? AND profile_id = ?");
@@ -7879,7 +7950,8 @@ export class SqliteHive implements HiveBackend {
             );
           }
           db.prepare("DELETE FROM run_costs WHERE finished_at < ?").run(this.#now(-COST_DAYS * 24 * 60));
-          db.prepare("DELETE FROM machines WHERE last_seen < ?").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
+          // Forgetting an offline hub machine would let a namesake inherit its id and old records, even after migration.
+          db.prepare("DELETE FROM machines WHERE token_id IS NULL AND last_seen < ? AND NOT EXISTS (SELECT 1 FROM hub_tokens)").run(this.#now(-MACHINE_TTL_DAYS * 24 * 60));
           this.#expireCommands();
           const pending = (
             db.prepare("SELECT * FROM machine_commands WHERE machine_id = ? AND status = 'pending' ORDER BY id").all(actor.name) as Row[]
@@ -9284,6 +9356,24 @@ export class SqliteHive implements HiveBackend {
       }),
 
       "machines.tools": ({ machineId }, actor) => this.#machineToolAccess(machineId, actor),
+      "machines.repair": ({ machineId, tokenId }, actor) => this.#tx(() => {
+        const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+        if (!row) throw new HiveError("not_found", "Machine not found.", { key: "errors.machineNotFound", vars: { machine: machineId } });
+        if (!this.#mayApproveTool(actor, strOrNull(row.owner)) || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
+          throw new HiveError("forbidden", "Only the machine owner or a hub admin may re-pair it.", { key: "errors.machineRepairForbidden" });
+        const token = db.prepare("SELECT * FROM hub_tokens WHERE id = ?").get(tokenId) as Row | undefined;
+        const owner = token?.owner_id == null ? null : db.prepare("SELECT username, disabled FROM hub_users WHERE id = ?").get(str(token.owner_id)) as Row | undefined;
+        if (!token || token.role === "viewer" || (token.owner_id != null && (!owner || num(owner.disabled) === 1)) ||
+            machineId !== `runner.${str(row.machine)}@${str(token.name)}` ||
+            (!this.#isHubAdmin(actor) && strOrNull(owner?.username) !== strOrNull(row.owner)))
+          throw new HiveError("bad_request", "Choose an active machine token with the same name and owner.", { key: "errors.machineRepairToken" });
+        // Rotation invalidates agents already issued for this machine, even if someone later pairs the old token again.
+        if (row.token_id != null) db.prepare("DELETE FROM run_credentials WHERE parent_id = ? AND machine = ?").run(str(row.token_id), str(row.machine));
+        db.prepare("UPDATE machines SET token_id = ?, owner = ?, last_seen = ?, prev_instance = NULL, duplicate_at = NULL WHERE id = ?")
+          .run(tokenId, strOrNull(owner?.username), "1970-01-01T00:00:00.000Z", machineId);
+        this.audit(actor, "machines.repair", machineId, `${strOrNull(row.token_id) ?? "legacy"} → ${tokenId}`, { key: "audit.machineRepaired" });
+        return this.#toMachine(db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row);
+      }),
       "machines.approveTool": ({ machineId, toolId, hash }, actor) => this.#tx(() => {
         const access = this.#machineToolAccess(machineId, actor);
         if (!access.canApprove) throw new HiveError("forbidden", "Only a person owning the machine or a hub admin approves tools.", { key: "errors.machineToolForbidden" });
