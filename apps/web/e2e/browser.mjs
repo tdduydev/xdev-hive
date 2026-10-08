@@ -280,6 +280,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-run-status": ["login-token"],
   "run-redispatch": [],
   "inbox-source-complete": [],
+  "close-unmerged-task": ["inbox-source-complete"],
   "scope-search-tasks": ["login-token"],
   "blocker-center": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
@@ -4618,6 +4619,65 @@ async function main() {
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");
+  });
+
+  await step("close-unmerged-task", async () => {
+    const tab = tabs.inboxSource;
+    const project = "inbox-source-e2e";
+    const instance = "c105ec10";
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.close-e2e" }, body: JSON.stringify({ method, input }) });
+      const result = await response.json();
+      if (result.error) throw new Error(`${method}: ${result.error.message}`);
+      return result.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "close-e2e", instance, projects: [project], gateRunner: true });
+    const machine = (await rpc("machines.list")).find(item => item.machine === "close-e2e");
+    const pushReview = async (taskId, verdict) => machineRpc("runs.push", { machine: "close-e2e", runs: [{ runId: `R-${taskId}`, project, taskId, taskTitle: taskId, role: "review", status: "succeeded", verdict, branch: `ai/${taskId}`, profileId: null, createdAt: new Date().toISOString() }] });
+    for (const [taskId, verdict] of [["CLOSE-NO-REVIEW", null], ["CLOSE-CHANGES", "changes"], ["CLOSE-APPROVE", "approve"]]) {
+      await rpc("tasks.create", { project, id: taskId, title: taskId, kind: "small-fix" });
+      if (verdict) await pushReview(taskId, verdict);
+      await rpc("tasks.update", { id: taskId, status: "review" });
+    }
+    await rpc("mergeQueue.configure", { project, config: { enabled: true, machineId: machine.id, commands: ["true"], waitMinutes: 0, mode: "push" } });
+    await tab.go("tasks");
+    await tab.go("today");
+    await tab.eval(() => {
+      window.__closeWarning = "";
+      window.confirm = (message) => { window.__closeWarning = message; return false; };
+    });
+    const tryClose = async (taskId) => {
+      await tab.click(`[data-inbox-key^="review:${project}:${taskId}:"]`);
+      await tab.eval(() => { window.__closeWarning = ""; });
+      await tab.click("button", "Chuyển sang Xong");
+      const warning = await tab.waitFor(`close warning for ${taskId}`, () => window.__closeWarning);
+      // Cancelling keeps the detail open; phones must return to the list before selecting another task.
+      if (mobile) await tab.click("button", "Quay lại danh sách");
+      return warning;
+    };
+    const warning = await tryClose("CLOSE-NO-REVIEW");
+    expect(warning.includes("chưa có lượt review"), `close warning: ${warning}`);
+    expect((await rpc("tasks.list", { project, status: "review" })).some((task) => task.id === "CLOSE-NO-REVIEW"), "cancelled close changed the task status");
+    expect(await tab.eval(() => !!document.querySelector('[data-inbox-key^="review:inbox-source-e2e:CLOSE-NO-REVIEW:"]')), "cancelled close removed the review item");
+    const changes = await tryClose("CLOSE-CHANGES");
+    expect(changes.includes("cần sửa") && changes.includes("ai/CLOSE-CHANGES"), `rejected review warning: ${changes}`);
+    const queueHint = await tryClose("CLOSE-APPROVE");
+    expect(queueHint.includes("hàng chờ"), `approved queue hint: ${queueHint}`);
+    const batch = await machineRpc("mergeQueue.take", { project, instance });
+    expect(batch?.items.some(item => item.taskId === "CLOSE-APPROVE"), "approved branch was not queued");
+    await machineRpc("runs.push", { machine: "close-e2e", runs: [{ runId: "R-CLOSE-APPROVE-NO-BRANCH", project, taskId: "CLOSE-APPROVE", taskTitle: "CLOSE-APPROVE", role: "implement", status: "succeeded", branch: null, profileId: null, createdAt: new Date(Date.now() + 1000).toISOString() }] });
+    const approved = await tryClose("CLOSE-APPROVE");
+    expect(approved.includes("ai/CLOSE-APPROVE") && !approved.includes("hàng chờ"), `approved unmerged warning: ${approved}`);
+    await machineRpc("mergeQueue.finish", { id: batch.id, instance, result: { status: "landed", sha: "b".repeat(40), step: "landed", outcomes: [{ taskId: "CLOSE-APPROVE", status: "included", sha: "a".repeat(40) }] } });
+    // Reopen the fixture to exercise the close action after its branch has landed.
+    await rpc("tasks.update", { id: "CLOSE-APPROVE", status: "review" });
+    await tab.go("tasks");
+    await tab.go("today");
+    await tab.click(`[data-inbox-key^="review:${project}:CLOSE-APPROVE:"]`);
+    await tab.eval(() => { window.__closeWarning = ""; });
+    await tab.click("button", "Chuyển sang Xong");
+    expect(await tab.eval(() => window.__closeWarning) === "", "landed branch still warned before close");
+    expect((await rpc("tasks.list", { project, status: "done" })).some(task => task.id === "CLOSE-APPROVE"), "landed branch did not close");
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));
