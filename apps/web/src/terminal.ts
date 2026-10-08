@@ -19,6 +19,7 @@ import {
   TERMINAL_SOCKET_PATH,
   TERMINAL_WS_PROTOCOL,
   terminalAuthFrameSchema,
+  terminalCapabilitySchema,
   terminalDecision,
   terminalInputs,
   terminalStepUpInput,
@@ -240,7 +241,7 @@ export class TerminalHub {
         const { check } = this.#check("capabilities", actor, i);
         assertTerminal(check);
         const m = check.machine!;
-        return { machineId: m.id, unavailable: terminalUnavailable(m.capability, i.project), busy: this.store.liveOnMachine(m.id) >= TERMINAL_LIMITS.maxSessionsPerMachine };
+        return { machineId: m.id, unavailable: terminalUnavailable(m.capability, i.project), busy: this.store.liveOnMachine(m.id) >= TERMINAL_LIMITS.maxSessionsPerMachine, osUser: terminalCapabilitySchema.safeParse(m.capability).data?.osUser ?? null };
       }
       case "terminal.create": {
         const i = parse(terminalInputs.create, input);

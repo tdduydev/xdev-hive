@@ -7,6 +7,7 @@ import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Penci
 import { cn } from "cn";
 import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, DEFAULT_MODEL_TIERS, HUB_SCOPE, policySummary, type AgentPolicy, type ChatAction, type ChatPlan, type ChatEffort, type ChatMessage, type ChatThread, type ResearchInput } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -151,6 +152,7 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
         actions={
           managed.length ? (
             <>
+              <TerminalEntry source="chat" project={project ?? undefined} />
               <Button size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
                 <BookMarked />
                 {t("chat.guideOpen")}

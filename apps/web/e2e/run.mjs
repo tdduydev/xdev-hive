@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import electron from "electron";
 import { seed } from "./seed.mjs";
+import { terminalFixture } from "./terminal-fixture.mjs";
 
 const webDir = path.resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -81,11 +82,12 @@ async function runOnce(out) {
   }
 
   const seeded = await seed(base, admin);
+  const terminal = !only || only.split(",").some(step => step.startsWith("terminal-")) ? await terminalFixture() : null;
   const resultFile = path.join(out, "result.json");
   rmSync(resultFile, { force: true });
   const browser = spawn(electron, [path.join(import.meta.dirname, "browser.mjs")], {
     stdio: "inherit",
-    env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_ONLY: only ?? "", HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded }), ELECTRON_ENABLE_LOGGING: "" },
+    env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_ONLY: only ?? "", HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded, terminal }), ELECTRON_ENABLE_LOGGING: "" },
   });
   // Chromium can hang while tearing down windows on macOS after every check has finished.
   // Only a completed result may shorten teardown; a stuck test still fails at the overall timeout.
@@ -107,6 +109,7 @@ async function runOnce(out) {
   clearTimeout(teardownTimer);
   clearTimeout(timer);
   stop();
+  terminal?.close();
   if (code !== 0) console.error(`\nhub log:\n${hubLog.split("\n").slice(-40).join("\n")}`);
   console.log(`screenshots in ${out}`);
   return { code, results: readResult(resultFile) };

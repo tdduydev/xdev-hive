@@ -356,10 +356,13 @@ describe("69e relay: one writer", () => {
     const b2 = await browser(cookies.alice!, t.ticket);
     live.at(-1)!.b = b2;
     assert.equal(await b.waitClose(), TERMINAL_RELAY_CLOSE.superseded);
-    // The machine hears the new epoch with the next lease, so input of the old one is refused there too.
-    await m.wait("lease", (f) => f.epoch === 1);
+    // The UI can type immediately on active; its machine must already know the new epoch.
+    await b2.wait("state", (f) => f.state === "active");
     b2.send({ type: "input", epoch: 1, inputSeq: 1, data: Buffer.from("x").toString("base64") });
     await m.wait("input", (f) => f.epoch === 1);
+    const leaseAt = m.frames.findIndex(f => f.type === "lease" && f.epoch === 1);
+    const inputAt = m.frames.findIndex(f => f.type === "input" && f.epoch === 1);
+    assert.ok(leaseAt >= 0 && leaseAt < inputAt, "takeover input preceded its epoch lease");
   });
 });
 

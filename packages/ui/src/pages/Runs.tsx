@@ -8,6 +8,7 @@ import { ServiceFilter, useServiceFilter } from "#ui/components/ServiceFilter.ts
 // what came of it in words under it. The app lists this machine's runs only (roadmap 35a); the web lists every machine's
 // (runs.push). The detail opens on the summary — the agent's last words, its steps, the MR — and keeps the log in a tab.
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 import { ModelRunChip } from "#ui/components/ModelChip.tsx";
 import { Wrench, X } from "lucide-react";
 import { cn } from "cn";
@@ -758,6 +759,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
   // The one button the run's state calls for comes first and filled: stop it, open its MR, or run it again.
   const actions = (
     <>
+      <TerminalEntry source="run" project={run.project} checkoutRef={run.worktree ? `worktree:${run.taskId}` : "repo"} runActive={live} />
       {live ? (
         <Button
           size="sm"
@@ -919,6 +921,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   // The one button the run's state calls for: stop it while it runs, open its MR once it is done.
   const actions = (
     <>
+      <TerminalEntry source="run" machineId={run.machineId} project={run.project} checkoutRef={run.branch?.startsWith("ai/") ? `worktree:${run.taskId}` : "repo"} runActive={live} />
       {live && !run.cancelRequestedBy && manage ? (
         <Button
           size="sm"
