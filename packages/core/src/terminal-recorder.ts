@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { TERMINAL_LIMITS } from "./terminal.ts";
+import { TERMINAL_LIMITS, TERMINAL_REASONS, type TerminalReason } from "./terminal.ts";
 import { TerminalRedactor } from "./terminal-redact.ts";
 
 export const RECORDER_FAILURES = ["diskFull", "quota", "writeFailed", "cryptoFailed", "closed", "keyInvalid", "notReady"] as const;
@@ -100,13 +100,13 @@ export const chainHash = (prev: string, body: string): string => createHash("sha
 
 /** What the transcript holds: no input values, output only as redacted text. */
 export const transcriptEventSchema = z.discriminatedUnion("type", [
-  z.strictObject({ seq: z.number().int().min(1), at: z.string(), type: z.literal("spawn"), cols: z.number().int(), rows: z.number().int() }),
-  z.strictObject({ seq: z.number().int().min(1), at: z.string(), type: z.literal("resize"), cols: z.number().int(), rows: z.number().int() }),
-  z.strictObject({ seq: z.number().int().min(1), at: z.string(), type: z.literal("sensitive-input"), bytes: z.number().int().min(0) }),
-  z.strictObject({ seq: z.number().int().min(1), at: z.string(), type: z.literal("output"), text: z.string() }),
+  z.strictObject({ seq: z.number().int().min(1), at: z.iso.datetime(), type: z.literal("spawn"), cols: z.number().int(), rows: z.number().int() }),
+  z.strictObject({ seq: z.number().int().min(1), at: z.iso.datetime(), type: z.literal("resize"), cols: z.number().int(), rows: z.number().int() }),
+  z.strictObject({ seq: z.number().int().min(1), at: z.iso.datetime(), type: z.literal("sensitive-input"), bytes: z.number().int().min(0) }),
+  z.strictObject({ seq: z.number().int().min(1), at: z.iso.datetime(), type: z.literal("output"), text: z.string() }),
   z.strictObject({
-    seq: z.number().int().min(1), at: z.string(), type: z.literal("close"),
-    reason: z.string().max(40), exitCode: z.number().int().nullable(),
+    seq: z.number().int().min(1), at: z.iso.datetime(), type: z.literal("close"),
+    reason: z.enum(TERMINAL_REASONS), exitCode: z.number().int().nullable(),
   }),
 ]);
 export type TranscriptEvent = z.output<typeof transcriptEventSchema>;
@@ -206,9 +206,11 @@ export class TerminalRecorder {
   }
 
   /** Writes what the redactor still held and the close event, then closes the files. Safe to call twice. */
-  close(reason: string, exitCode: number | null = null): void {
+  close(reason: TerminalReason, exitCode: number | null = null): void {
     if (!this.#open) return;
     try {
+      // Runtime callers can bypass TypeScript; never persist arbitrary close metadata.
+      transcriptEventSchema.parse({ seq: this.#seq + 1, at: this.#now().toISOString(), type: "close", reason, exitCode });
       // After a quota stop the files are still whole and the close event fits in the reserve; after a write or
       // cipher failure nothing more is written.
       if (!this.#failed || this.#failed === "quota") {

@@ -137,7 +137,7 @@ export class TerminalRecordingStore {
       if (same.hash === chunk.hash) return "duplicate";
       throw new HiveError("conflict", "Another terminal recording chunk is stored at this place.", { key: "errors.terminal.chunkConflict" });
     }
-    const last = this.db.prepare(`SELECT seq, hash, storage_ref, (SELECT COALESCE(SUM(bytes), 0) FROM terminal_audit_chunks WHERE session_id = ?) AS total
+    const last = this.db.prepare(`SELECT seq, hash, prev_hash, storage_ref, (SELECT COALESCE(SUM(bytes), 0) FROM terminal_audit_chunks WHERE session_id = ?) AS total
       FROM terminal_audit_chunks WHERE session_id = ? ORDER BY seq DESC LIMIT 1`).get(sessionId, sessionId) as Row | undefined;
     if (chunk.seq !== Number(last?.seq ?? 0) + 1 || chunk.prevHash !== String(last?.hash ?? GENESIS_HASH))
       throw new HiveError("conflict", "Terminal recording chunk does not follow the last one.", { key: "errors.terminal.chunkGap" });
@@ -172,7 +172,7 @@ export class TerminalRecordingStore {
     mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     const tmp = `${file}.tmp`;
     try {
-      writeFileSync(tmp, sealFrame(this.key(sessionId), this.aad(sessionId, chunk.seq, chunk.hash), body), { mode: 0o600, flag: "wx" });
+      writeFileSync(tmp, sealFrame(this.key(sessionId), this.aad(sessionId, chunk.seq, chunk.hash, chunk.prevHash), body), { mode: 0o600, flag: "wx" });
       renameSync(tmp, file);
       this.db.prepare(`INSERT INTO terminal_audit_chunks(session_id, seq, first_event, last_event, bytes, hash, prev_hash, storage_ref, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(sessionId, chunk.seq, chunk.events[0]!.seq, chunk.events.at(-1)!.seq, body.length,
@@ -203,8 +203,18 @@ export class TerminalRecordingStore {
         machine: session ? this.machine(session.machineId) : null, session: session ?? undefined, stepUp: input.stepUp,
       });
       allowed = true;
-      const rows = this.db.prepare("SELECT seq, hash, storage_ref FROM terminal_audit_chunks WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?")
-        .all(input.sessionId, cursor, PAGE_CHUNKS + 1) as Row[];
+      if (!Number.isSafeInteger(cursor) || cursor < 0)
+        throw new HiveError("bad_request", "Invalid terminal recording cursor.", { key: "errors.terminal.chunk" });
+      // Check from genesis even on later pages: a cursor must not hide a deleted prefix or middle chunk.
+      const chain = this.db.prepare("SELECT seq, hash, prev_hash, storage_ref FROM terminal_audit_chunks WHERE session_id = ? ORDER BY seq")
+        .all(input.sessionId) as Row[];
+      let previous = GENESIS_HASH;
+      for (const [i, row] of chain.entries()) {
+        if (Number(row.seq) !== i + 1 || row.prev_hash !== previous) throw tampered();
+        previous = String(row.hash);
+      }
+      if (cursor > chain.length) throw tampered();
+      const rows = chain.slice(cursor, cursor + PAGE_CHUNKS + 1);
       const events: TranscriptEvent[] = [];
       let hubRedacted = 0;
       let next: number | null = null;
@@ -253,12 +263,12 @@ export class TerminalRecordingStore {
   private body(sessionId: string, r: Row): ChunkBody {
     try {
       const sealed = readFileSync(path.join(this.dir, String(r.storage_ref)));
-      return JSON.parse(openFrame(this.key(sessionId), this.aad(sessionId, Number(r.seq), String(r.hash)), sealed.subarray(4)).toString()) as ChunkBody;
+      return JSON.parse(openFrame(this.key(sessionId), this.aad(sessionId, Number(r.seq), String(r.hash), String(r.prev_hash)), sealed.subarray(4)).toString()) as ChunkBody;
     } catch {
       throw tampered();
     }
   }
 
   private key(sessionId: string): Buffer { return terminalSubkey(this.master, sessionId, "recording"); }
-  private aad(sessionId: string, seq: number, h: string): string { return `${sessionId}:recording:${seq}:${h}`; }
+  private aad(sessionId: string, seq: number, h: string, prev: string): string { return `${sessionId}:recording:${seq}:${h}:${prev}`; }
 }
