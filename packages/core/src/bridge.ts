@@ -549,7 +549,8 @@ export interface DesktopBridge {
   /** Opens a terminal running `claude setup-token` with the profile's login folder. */
   openSetupToken(id: string): Promise<{ opened: boolean }>;
   /** Opens a terminal running the profile's CLI in a project's repo, for the person to work in (roadmap 32a). */
-  openCli(id: string, project: string): Promise<{ opened: boolean }>;
+  /** bypass: the CLI's own switch to skip its permission prompts (CLI_BYPASS_ARGS); refused for a kind without one. */
+  openCli(id: string, project: string, opts?: { bypass?: boolean }): Promise<{ opened: boolean }>;
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; projects?: string[]; limit?: number }): Promise<AgentRun[]>;

@@ -122,6 +122,17 @@ describe("sign-in terminal", () => {
     assert.equal(gemini.command.env.HIVE_AGENT, "gemini-1");
   });
 
+  it("skips permission prompts only when asked, with the CLI's own interactive switch", () => {
+    const shim = "/Applications/xDev Hive.app/Contents/Resources/hive-mcp";
+    const opts = { project: "xdev-hive", repo: "/r", bin: "/b", path: "/usr/bin", shim, mcpFile: "/m/mcp.json", title: "t", done: "d" };
+    const claude = { ...AGENT_TEMPLATES.claude, id: "claude-1" };
+    assert.deepEqual(cliCommand(claude, { ...opts, bypass: true }).command.args, ["--mcp-config", "/m/mcp.json", "--dangerously-skip-permissions"]);
+    assert.deepEqual(cliCommand(claude, { ...opts, bypass: false }).command.args, ["--mcp-config", "/m/mcp.json"]);
+    assert.deepEqual(cliCommand({ ...AGENT_TEMPLATES.codex, id: "codex-1" }, { ...opts, bypass: true }).command.args.slice(-1), ["--dangerously-bypass-approvals-and-sandbox"]);
+    assert.deepEqual(cliCommand({ ...AGENT_TEMPLATES.gemini, id: "gemini-1" }, { ...opts, bypass: true }).command.args, ["--yolo"]);
+    assert.throws(() => cliCommand({ ...AGENT_TEMPLATES.opencode, id: "opencode-1" }, { ...opts, bypass: true }), /No permission bypass/, "a kind with no checked flag never opens still asking");
+  });
+
   it("takes the sign-in command and only the login-dir env from a profile", () => {
     const parts = loginParts({ ...AGENT_TEMPLATES.claude, env: { CLAUDE_CONFIG_DIR: "~/.claude-2", ANTHROPIC_API_KEY: "never-in-a-script" } })!;
     assert.deepEqual(parts, { args: ["auth", "login"], env: { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude-2") } });

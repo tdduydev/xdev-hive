@@ -152,6 +152,19 @@ export const AUTONOMY_ARGS: Record<Exclude<AgentKind, "custom">, Record<Autonomy
   },
 };
 
+/**
+ * The switch that lets a CLI opened for the person (roadmap 32a) skip its permission prompts, by kind. Interactive, so
+ * not AUTONOMY_ARGS: Codex's --sandbox alone still asks before each command. A kind missing here has no flag the app
+ * has checked for its interactive mode, and the Open CLI box does not offer it.
+ */
+export const CLI_BYPASS_ARGS: Partial<Record<AgentKind, string[]>> = {
+  claude: ["--dangerously-skip-permissions"],
+  antigravity: ["--dangerously-skip-permissions"],
+  codex: ["--dangerously-bypass-approvals-and-sandbox"],
+  gemini: ["--yolo"],
+  copilot: ["--allow-all-tools"],
+};
+
 /** What each flag value means; a value missing here counts as edit, as the spec says. */
 const AUTONOMY_VALUES: Record<string, Autonomy> = {
   plan: "read",

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { SquareTerminal } from "lucide-react";
-import type { AgentProfileStatus } from "@xdev-hive/core";
+import { CLI_BYPASS_ARGS, type AgentProfileStatus } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { useAction, useHive } from "#ui/hooks.ts";
@@ -22,10 +23,13 @@ export function OpenCli({ profiles, projects }: { profiles: AgentProfileStatus[]
   const usable = profiles.filter(canOpenCli).sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.priority - b.priority);
   const [profileId, setProfileId] = useState("");
   const [project, setProject] = useState("");
-  const [opened, setOpened] = useState<{ profile: string; project: string } | null>(null);
+  // Per open, off by default: each terminal is asked for on its own, never remembered.
+  const [bypass, setBypass] = useState(false);
+  const [opened, setOpened] = useState<{ profile: string; project: string; bypass: boolean } | null>(null);
   if (!usable.length || !projects.length || !client.desktop) return null;
   const profile = usable.find((p) => p.id === profileId) ?? usable[0]!;
   const target = projects.includes(project) ? project : projects[0]!;
+  const canBypass = !!CLI_BYPASS_ARGS[profile.kind];
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -54,16 +58,24 @@ export function OpenCli({ profiles, projects }: { profiles: AgentProfileStatus[]
           data-open-cli={`${profile.id}:${target}`}
           onClick={() =>
             void action.run(async () => {
-              await client.desktop!.openCli(profile.id, target);
-              setOpened({ profile: profile.id, project: target });
+              const skip = canBypass && bypass;
+              await client.desktop!.openCli(profile.id, target, { bypass: skip });
+              setOpened({ profile: profile.id, project: target, bypass: skip });
+              setBypass(false);
             })
           }
         >
           <SquareTerminal />
           {t("openCli.open", { cli: profile.kind === "custom" ? profile.label : t(`agentKind.${profile.kind}`) })}
         </Button>
+        {canBypass ? (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={bypass} onCheckedChange={(v) => setBypass(v === true)} data-open-cli-bypass={profile.id} />
+            {t("openCli.bypass")}
+          </label>
+        ) : null}
       </div>
-      {opened ? <Notice tone="info">{t("openCli.opened", opened)}</Notice> : null}
+      {opened ? <Notice tone={opened.bypass ? "warn" : "info"}>{t(opened.bypass ? "openCli.openedBypass" : "openCli.opened", { profile: opened.profile, project: opened.project })}</Notice> : null}
       <ErrorNote error={action.error} />
     </div>
   );

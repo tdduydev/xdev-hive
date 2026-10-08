@@ -502,7 +502,7 @@ function openSetupToken(id: string): { opened: boolean } {
  * A terminal with the profile's CLI in a project's repo, for the person at this machine to work in (roadmap 32a). Hive's
  * MCP server goes in under the profile's id. Not a run: no agent policy, no spending cap, nothing in the run store.
  */
-function openCli(id: string, name: string): { opened: boolean } {
+function openCli(id: string, name: string, opts?: { bypass?: boolean }): { opened: boolean } {
   const profile = config.agents.find((a) => a.id === id);
   if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
   const p = project(name);
@@ -524,6 +524,7 @@ function openCli(id: string, name: string): { opened: boolean } {
     mcpFile,
     title: `xDev Hive: ${tr("desktop.cliTitle", { profile: profile.id, project: p.name })}`,
     done: tr("desktop.cliDone"),
+    bypass: opts?.bypass === true,
   });
   if (mcpConfig) {
     mkdirSync(dir, { recursive: true });

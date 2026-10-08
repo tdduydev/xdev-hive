@@ -1742,6 +1742,8 @@ export const en: Catalog = {
     profile: "Profile",
     project: "Service",
     opened: "Terminal opened: {profile} in the {project} repo. This session is yours, not a run: agent policy and spending caps do not apply.",
+    bypass: "Skip permission prompts",
+    openedBypass: "Terminal opened: {profile} in the {project} repo, skipping permission prompts: the CLI runs commands and edits files without asking. This session is yours, not a run: agent policy and spending caps do not apply.",
   },
   agentKind: {
     opencode: "OpenCode",
@@ -2445,6 +2447,8 @@ export const en: Catalog = {
     installCli: "Install the CLI",
     cliOpen: "Open the CLI",
     cliOpenIn: "Open the CLI in {project}",
+    cliOpenBypass: "Open the CLI, skipping permission prompts",
+    cliOpenInBypass: "Open the CLI in {project}, skipping permission prompts",
     thresholdsTitle: "Stop thresholds",
     thresholdsNote: "The vertical mark on a bar is the stop threshold: the runner stops handing a subscription work once its session or week passes the threshold set on the profile. A new run goes to the subscription with the most plan left before its threshold; one whose usage is not known comes after, then the priority number. Only this machine's subscriptions show here.",
     state: { running: "Running", ready: "Ready", off: "Off", noCli: "No CLI", signedOut: "Signed out", overLimit: "At limit", resting: "Resting", near: "Near limit" },

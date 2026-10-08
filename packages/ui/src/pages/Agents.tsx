@@ -17,6 +17,7 @@ import {
   cacheReadShare,
   TOKEN_WINDOWS,
   usageStop,
+  CLI_BYPASS_ARGS,
   flagValue,
   type AgentKind,
   type AgentProfile,
@@ -655,7 +656,7 @@ function ProfileRow({
   const action = useAction();
   const [check, setCheck] = useState<ProfileCheck | null>(null);
   const [loginOpened, setLoginOpened] = useState(false);
-  const [openedCli, setOpenedCli] = useState<{ profile: string; project: string } | null>(null);
+  const [openedCli, setOpenedCli] = useState<{ profile: string; project: string; bypass: boolean } | null>(null);
   const [token, setToken] = useState("");
   const state = profileState(p);
   const fix = rowFix(p);
@@ -769,15 +770,18 @@ function ProfileRow({
             <DropdownMenuContent align="end">
               <DropdownMenuItem data-edit-profile={p.id} onSelect={onEdit}>{t("agents.edit")}</DropdownMenuItem>
               {canOpenCli(p)
-                ? projects.map((name) => (
-                    <DropdownMenuItem
-                      key={name}
-                      data-open-cli={`${p.id}:${name}`}
-                      onSelect={() => void action.run(async () => (await desktop.openCli(p.id, name), setOpenedCli({ profile: p.id, project: name })))}
-                    >
-                      {projects.length > 1 ? t("agents.cliOpenIn", { project: name }) : t("agents.cliOpen")}
-                    </DropdownMenuItem>
-                  ))
+                ? projects.flatMap((name) =>
+                    // A separate item, not a setting: each terminal opened without prompts is chosen on its own.
+                    [false, ...(CLI_BYPASS_ARGS[p.kind] ? [true] : [])].map((bypass) => (
+                      <DropdownMenuItem
+                        key={`${name}:${bypass}`}
+                        data-open-cli={`${p.id}:${name}${bypass ? ":bypass" : ""}`}
+                        onSelect={() => void action.run(async () => (await desktop.openCli(p.id, name, { bypass }), setOpenedCli({ profile: p.id, project: name, bypass })))}
+                      >
+                        {projects.length > 1 ? t(bypass ? "agents.cliOpenInBypass" : "agents.cliOpenIn", { project: name }) : t(bypass ? "agents.cliOpenBypass" : "agents.cliOpen")}
+                      </DropdownMenuItem>
+                    )),
+                  )
                 : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -1007,7 +1011,7 @@ function ProfileRow({
         <div className="flex flex-col gap-2 px-4 pb-3">
           {(loginOpened || waiting) && state === "signedOut" ? <Notice tone="info">{t(waiting ? "agents.loginWaiting" : "agents.loginOpened")}</Notice> : null}
           {loginOpened && p.kind === "copilot" ? <Notice tone="info">{t("agents.copilotLoginUnknown")}</Notice> : null}
-          {openedCli ? <Notice tone="info">{t("openCli.opened", openedCli)}</Notice> : null}
+          {openedCli ? <Notice tone={openedCli.bypass ? "warn" : "info"}>{t(openedCli.bypass ? "openCli.openedBypass" : "openCli.opened", { profile: openedCli.profile, project: openedCli.project })}</Notice> : null}
           <ErrorNote error={action.error} />
         </div>
       ) : null}
