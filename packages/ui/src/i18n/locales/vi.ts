@@ -358,6 +358,11 @@ export const vi = {
     device: "Cho app desktop dùng tài khoản của bạn",
   },
   shell: {
+    skipToContent: "Chuyển đến nội dung",
+    quickNav: "Điều hướng nhanh",
+    menu: "Menu",
+    chooseScope: "Chọn phạm vi",
+
     updateReady: "Khởi động lại để lên v{version}",
     updateReadyDeb: "Cài v{version} (cần quyền quản trị)",
     updateDownloading: "Đang tải v{version} · {percent}%",

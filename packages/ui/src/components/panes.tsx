@@ -38,7 +38,7 @@ export function FilterChips<T extends string>({ value, options, onChange }: { va
             aria-pressed={on}
             onClick={() => onChange(o.id)}
             className={cn(
-              "h-[22px] cursor-pointer rounded-full border px-2 text-[11px]/none font-medium outline-none focus-visible:focus-ring",
+              "min-h-7 cursor-pointer rounded-full border px-3 py-1 text-xs/4 font-medium outline-none focus-visible:focus-ring active:bg-pressed",
               on ? "border-line-selected bg-selected text-selected-fg" : "border-line-default bg-surface text-fg-secondary hover:text-fg-strong",
             )}
           >
@@ -53,9 +53,9 @@ export function FilterChips<T extends string>({ value, options, onChange }: { va
 
 export function ListPane({ head, children, label, className }: { head: ReactNode; children: ReactNode; label: string; className?: string }) {
   return (
-    <div className={cn("flex min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:min-w-[260px] md:flex-none md:shrink md:basis-[320px]", className)}>
-      <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">{head}</div>
-      <div role="region" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
+    <div className={cn("hive-list-pane flex min-h-0 min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:min-w-[260px] md:flex-none md:shrink md:basis-[320px]", className)}>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-4 py-3">{head}</div>
+      <div role="region" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-2">
         {children}
       </div>
     </div>
@@ -93,8 +93,8 @@ export function ListItem({
         aria-current={selected ? "true" : undefined}
         onClick={onClick}
         className={cn(
-          "flex min-w-0 flex-1 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 text-left outline-none focus-visible:focus-ring max-md:min-h-11",
-          selected ? "bg-surface shadow-e1" : "hover:bg-hover",
+          "flex min-w-0 flex-1 cursor-pointer flex-col gap-1 rounded-md border border-transparent px-3 py-3 text-left outline-none focus-visible:focus-ring max-md:min-h-11",
+          selected ? "border-line-selected bg-selected" : "hover:border-line-strong hover:bg-hover",
           dim && "opacity-70",
         )}
       >
@@ -111,28 +111,28 @@ export function ListItem({
 
 export function DetailHeader({ chips, scope, when, title, mono }: { chips?: ReactNode; scope?: string; when?: string; title: ReactNode; mono?: boolean }) {
   return (
-    <div className="flex shrink-0 flex-col gap-1.5 border-b border-line-subtle px-6 pt-4 pb-3.5">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-4 py-4 md:px-6">
       <div className="flex flex-wrap items-center gap-1.5">
         {chips}
         {scope ? <span className="font-mono text-xs/none font-medium text-fg-muted">{scope}</span> : null}
         {when ? <span className="text-xs/none text-fg-muted">{when}</span> : null}
       </div>
-      <h2 className={cn("m-0 text-lg/[26px] font-semibold text-pretty text-fg-strong", mono ? "font-mono [overflow-wrap:anywhere]" : "font-display")}>{title}</h2>
+      <h2 className={cn("m-0 type-display-md text-pretty text-fg-strong wrap-anywhere", mono ? "font-mono [overflow-wrap:anywhere]" : "font-display")}>{title}</h2>
     </div>
   );
 }
 
 export function DetailBody({ children }: { children: ReactNode }) {
   return (
-    <div tabIndex={0} className="min-h-0 flex-1 overflow-y-auto outline-none focus-visible:focus-ring">
-      <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">{children}</div>
+    <div tabIndex={0} className="min-h-0 min-w-0 flex-1 overflow-y-auto outline-none focus-visible:focus-ring">
+      <div className="hive-detail-body flex min-w-0 flex-col gap-4 px-4 py-5 md:px-6">{children}</div>
     </div>
   );
 }
 
 export function DetailFooter({ children, foot }: { children?: ReactNode; foot?: ReactNode }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-subtle px-6 py-[11px]">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle bg-subtle px-4 py-3 md:px-6">
       {children}
       {foot ? <span className="ml-auto min-w-0 text-xs/4 text-fg-muted">{foot}</span> : null}
     </div>
@@ -156,7 +156,7 @@ export function PaneEmpty({ children, action }: { children: ReactNode; action?: 
 /** Label / value rows (Loại, Phạm vi, Ghi bởi…). */
 export function KvRows({ rows }: { rows: Array<[string, ReactNode, boolean?]> }) {
   return (
-    <div className="grid grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]/5">
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:grid-cols-[120px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px]/5">
       {rows.map(([k, v, mono]) => (
         <div key={k} className="contents">
           <span className="text-fg-muted">{k}</span>
