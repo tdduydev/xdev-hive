@@ -16,6 +16,15 @@ export const LEARNED_KINDS = TASK_KINDS.filter((k) => k !== "review");
 export interface LearningRun {
   taskId: string;
   taskKind: TaskKind;
+  risk?: string | null;
+  machine?: string | null;
+  profile?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  taskStatus?: string;
+  pipeline?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
   taskSize: TaskSize;
   role: string;
   status: string;
@@ -104,6 +113,7 @@ export interface ModelLearningView {
   /** The last nightly round on this hub; null: none yet. */
   learnedAt: string | null;
   stats: ModelLearningStat[];
+  quality: ModelQualityStat[];
   cells: ModelLearningCell[];
   log: ModelLearningLogEntry[];
 }
@@ -215,4 +225,53 @@ export function learningDue(last: string | null, now: Date): boolean {
   const since = now.getTime() - Date.parse(last);
   if (since >= 48 * 3_600_000) return true;
   return since >= 20 * 3_600_000 && now.getHours() >= 1 && now.getHours() < 5;
+}
+
+/** Observational cohorts, never inputs to routing. Missing evidence is not a pass or a free run. */
+export interface ModelQualityStat {
+  kind: string; size: string; risk: string | null;
+  machine: string | null; profile: string | null; model: string | null; effort: string | null;
+  tier: string | null; plan: string | null;
+  tasks: number; done: number; retries: number; retryTasks: number;
+  reviewPass: number; reviewObserved: number; testPass: number; testObserved: number;
+  costObserved: number; durationObserved: number; costMedian: number | null; durationMedian: number | null;
+}
+
+export function qualityStats(runs: LearningRun[]): ModelQualityStat[] {
+  const tasks = new Map<string, LearningRun[]>();
+  for (const run of runs) tasks.set(run.taskId, [...(tasks.get(run.taskId) ?? []), run]);
+  const groups = new Map<string, ModelQualityStat & { costs: number[]; durations: number[] }>();
+  for (const list of tasks.values()) {
+    const sorted = [...list].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const attempts = sorted.filter((r) => r.role === "implement");
+    const first = attempts[0];
+    if (!first) continue;
+    const cohort = { kind: first.taskKind, size: first.taskSize, risk: first.risk ?? null,
+      machine: first.machine ?? null, profile: first.profile ?? null, model: first.model ?? null,
+      effort: first.effort ?? null, tier: first.tier, plan: first.plan };
+    const key = JSON.stringify(cohort);
+    const row = groups.get(key) ?? { ...cohort, tasks: 0, done: 0, retries: 0, retryTasks: 0,
+      reviewPass: 0, reviewObserved: 0, testPass: 0, testObserved: 0, costObserved: 0,
+      durationObserved: 0, costMedian: null, durationMedian: null, costs: [], durations: [] };
+    row.tasks++;
+    if (first.taskStatus === "done") row.done++;
+    // Quota rotations are infrastructure noise, not code retries.
+    const retries = Math.max(0, attempts.filter((r) => r.status !== "rate_limited").length - 1);
+    row.retries += retries;
+    if (retries) row.retryTasks++;
+    const reviews = sorted.filter((r) => r.role === "review" && r.status === "succeeded" && (r.verdict === "approve" || r.verdict === "changes"));
+    if (reviews.length) { row.reviewObserved++; if (reviews.every((r) => r.verdict === "approve")) row.reviewPass++; }
+    const tests = attempts.filter((r) => r.pipeline === "success" || r.pipeline === "failed");
+    if (tests.length) { row.testObserved++; if (tests.every((r) => r.pipeline !== "failed")) row.testPass++; }
+    if (sorted.every((r) => r.costUsd !== null)) {
+      row.costObserved++; row.costs.push(sorted.reduce((n, r) => n + r.costUsd!, 0));
+    }
+    const durations = sorted.map((r) => r.startedAt && r.finishedAt ? Date.parse(r.finishedAt) - Date.parse(r.startedAt) : NaN);
+    if (durations.every((n) => Number.isFinite(n) && n >= 0)) {
+      row.durationObserved++; row.durations.push(durations.reduce((a, b) => a + b, 0));
+    }
+    groups.set(key, row);
+  }
+  return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, { costs, durations, ...row }]) =>
+    ({ ...row, costMedian: median(costs), durationMedian: median(durations) }));
 }
