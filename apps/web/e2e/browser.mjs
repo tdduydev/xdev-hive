@@ -4,6 +4,9 @@
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
 import axe from "axe-core";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { runInNewContext } from "node:vm";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
@@ -666,6 +669,58 @@ async function main() {
     const styles = await tab.eval(() => [...document.querySelectorAll("[data-cosmic-fixture]")].map(el => ({ theme: el.dataset.theme, font: getComputedStyle(el).fontFamily, surface: getComputedStyle(el.querySelector('[data-slot="card"]')).backgroundColor })));
     expect(styles.every(style => style.font.includes("Inter")), "Inter must be self-hosted and applied");
     expect(styles[0].surface === "rgb(29, 28, 32)" && styles[1].surface === "rgb(255, 255, 255)", `nested themes: ${JSON.stringify(styles)}`);
+    // Render the source bundle independently so the comparison cannot inherit component implementation mistakes.
+    const context = { window: {}, React: { ...React, useEffect() {} } };
+    runInNewContext(readFileSync(path.resolve(import.meta.dirname, "../../../docs/design/hive-2026-10/_ds/lumibase-design-system-cffa39a8-d3bd-4d37-982f-2d2208c49e76/_ds_bundle.js"), "utf8"), context);
+    const ds = context.window.LumibaseDesignSystem_cffa39;
+    const h = React.createElement;
+    const reference = renderToStaticMarkup(h(React.Fragment, null,
+      ...["sm", "md", "lg"].map(size => h("div", { className: "cosmic-fixture-wrap", key: size }, ...["glass", "solid", "blue", "ghost"].map((variant, i) => h(ds.Button, { size, variant, key: variant }, ["Kính", "Tím", "Xanh", "Trong suốt"][i])))),
+      h("div", { className: "cosmic-fixture-wrap" }, h(ds.Tag, null, "Nhãn & trạng thái"), h(ds.Tag, { active: true }, "Nhãn & trạng thái"), h(ds.Badge, { tone: "green" }, "Nhãn & trạng thái")),
+      h(ds.Input, { placeholder: "Nhập tên công việc", "aria-label": "Tên công việc" }),
+      h("div", { className: "cosmic-fixture-wrap", style: { minHeight: 44 } }, h(ds.Toggle, { "aria-label": "Tắt" }), h(ds.Toggle, { checked: true, "aria-label": "Bật" }))));
+    await tab.eval((html) => {
+      const el = document.querySelector("[data-compare-reference]");
+      el.style.cssText = "--color-text:var(--text-primary);--color-text-secondary:var(--text-secondary);--color-violet:var(--action-primary-bg);--color-blue:var(--action-blue-bg);--color-green:var(--accent-green);--color-glass:var(--glass-bg);--color-surface-3:var(--surface-3);--color-surface-4:var(--surface-4);--color-surface-sunken:var(--surface-sunken);--radius-full:999px;--radius-xs:8px;--radius-sm:12px;--text-micro:600 11px/16px var(--font-sans);--text-body-sm:500 14px/22px var(--font-sans);--shadow-sm:var(--switch-thumb-shadow);--duration:240ms;--ease-out:var(--ease-standard)";
+      el.insertAdjacentHTML("beforeend", html);
+    }, reference);
+    if (!mobile) {
+      const measurements = await tab.eval(() => {
+        const shared = [...document.querySelectorAll('[data-compare-shared] [data-slot="button"]')];
+        const original = [...document.querySelectorAll('[data-compare-reference] button:not([role])')];
+        return shared.map((el, i) => {
+          const a = getComputedStyle(el), b = getComputedStyle(original[i]);
+          return { size: el.dataset.size, variant: el.dataset.variant, mismatch: ["height", "paddingLeft", "paddingRight", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "gap", "borderRadius", "backgroundColor", "boxShadow", "color", "textShadow"].filter(key => a[key] !== b[key]) };
+        });
+      });
+      expect(measurements.every(m => !m.mismatch.length), `source bundle comparison: ${JSON.stringify(measurements)}`);
+      const controls = await tab.eval(() => {
+        const shared = document.querySelector('[data-compare-shared]');
+        const reference = document.querySelector('[data-compare-reference]');
+        const pairs = [
+          [shared.querySelector('.cosmic-tag'), reference.children[4].children[0]],
+          [shared.querySelector('.cosmic-tag[data-active="true"]'), reference.children[4].children[1]],
+          [shared.querySelector('[data-slot="badge"]'), reference.children[4].children[2]],
+          [shared.querySelector('[data-slot="input"]'), reference.children[5]],
+          [shared.querySelector('input[role="switch"]'), reference.querySelector('button[role="switch"]')],
+          [shared.querySelector('input[role="switch"]:checked'), reference.querySelector('button[aria-checked="true"]')],
+        ];
+        return pairs.map(([a, b], i) => ({ control: i, mismatch: ["height", "paddingLeft", "paddingRight", "borderRadius", "backgroundColor", "boxShadow"].filter(key => getComputedStyle(a)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "") !== getComputedStyle(b)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "")) }));
+      });
+      expect(controls.every(c => !c.mismatch.length), `source controls comparison: ${JSON.stringify(controls)}`);
+      writeFileSync(path.join(out, "cosmic-measurements.json"), JSON.stringify({ buttons: measurements, controls }, null, 2));
+      await tab.eval(() => document.querySelector('[data-cosmic-compare]').scrollIntoView({ block: "start" }));
+      await tab.eval(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await sleep(150);
+      await tab.shot("cosmic-design-compare");
+    }
+    const overrides = await tab.eval(() => {
+      const button = document.querySelector('[data-utility-override]');
+      const style = getComputedStyle(button);
+      const result = { height: style.height, padding: style.paddingLeft, radius: style.borderRadius };
+      return result;
+    });
+    expect(overrides.height === "24px" && overrides.padding === "4px" && overrides.radius === "8px", `caller utilities: ${JSON.stringify(overrides)}`);
     await tab.click('[data-cosmic-fixture="dark"] .cosmic-segments button', "Đang chạy");
     expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] .cosmic-segments button[aria-pressed="true"]').textContent === "Đang chạy"), "filter selection must update");
     await tab.click('[data-cosmic-fixture="dark"] input[role="switch"]');
@@ -673,7 +728,7 @@ async function main() {
     await tab.key(" ");
     expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "Space must toggle the focused switch");
     await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
-    expect(await tab.eval(() => getComputedStyle(document.querySelector('.cosmic-button-glass')).backdropFilter === "none"), "reduced motion disables glass filter");
+    expect(await tab.eval(() => getComputedStyle(document.querySelector('.cosmic-glass-overlay')).backdropFilter === "none"), "reduced motion disables glass filter");
     await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
     await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
     await tab.shot(`cosmic-dark-${mobile ? "390x844" : "1440x900"}`);

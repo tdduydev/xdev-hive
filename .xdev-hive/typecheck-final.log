@@ -1,0 +1,27 @@
+> npm run typecheck --workspaces --if-present
+> tsc -p tsconfig.json
+> tsc -p tsconfig.json
+> tsc -p tsconfig.json && tsc -p test/tsconfig.json
+test/dash-shared.test.ts(78,55): error TS2769: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '(({ className, variant, size, asChild, ...props }: ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<...> & { ...; }) => Element) | (({ className, type, controlSize, icon, trailing, ...props }: ClassAttributes<...> & ... 1 more ... & { ...; }) => Element)' is not assignable to parameter of type 'string | ComponentClass<ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<...> & { ...; }, any> | FunctionComponent<...>'.
+      Type '({ className, type, controlSize, icon, trailing, ...props }: ClassAttributes<HTMLInputElement> & InputHTMLAttributes<HTMLInputElement> & { controlSize?: "lg" | ... 2 more ... | undefined; icon?: ReactNode; trailing?: ReactNode; }) => Element' is not assignable to type 'string | ComponentClass<ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<...> & { ...; }, any> | FunctionComponent<...>'.
+        Type '({ className, type, controlSize, icon, trailing, ...props }: ClassAttributes<HTMLInputElement> & InputHTMLAttributes<HTMLInputElement> & { controlSize?: "lg" | ... 2 more ... | undefined; icon?: ReactNode; trailing?: ReactNode; }) => Element' is not assignable to type 'FunctionComponent<ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<(props?: (ConfigVariants<...> & ClassProp) | undefined) => string> & { ...; }>'.
+          Types of parameters '__0' and 'props' are incompatible.
+            Type 'ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<(props?: (ConfigVariants<...> & ClassProp) | undefined) => string> & { ...; }' is not assignable to type 'ClassAttributes<HTMLInputElement> & InputHTMLAttributes<HTMLInputElement> & { controlSize?: "lg" | ... 2 more ... | undefined; icon?: ReactNode; trailing?: ReactNode; }'.
+              Type 'ClassAttributes<HTMLButtonElement> & ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<(props?: (ConfigVariants<...> & ClassProp) | undefined) => string> & { ...; }' is not assignable to type 'ClassAttributes<HTMLInputElement>'.
+                Types of property 'ref' are incompatible.
+                  Type 'Ref<HTMLButtonElement> | undefined' is not assignable to type 'Ref<HTMLInputElement> | undefined'.
+                    Type 'RefObject<HTMLButtonElement | null>' is not assignable to type 'Ref<HTMLInputElement> | undefined'.
+                      Type 'RefObject<HTMLButtonElement | null>' is not assignable to type 'RefObject<HTMLInputElement | null>'.
+                        Type 'HTMLButtonElement | null' is not assignable to type 'HTMLInputElement | null'.
+                          Type 'HTMLButtonElement' is missing the following properties from type 'HTMLInputElement': accept, align, alt, autocomplete, and 36 more.
+> tsc -p tsconfig.json && tsc -p src/renderer/tsconfig.json
+> tsc -p tsconfig.json && tsc -p client/tsconfig.json
+npm error Lifecycle script `typecheck` failed with error:
+npm error code 1
+npm error path /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/packages/ui
+npm error workspace @xdev-hive/ui@0.1.0
+npm error location /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/packages/ui
+npm error command failed
+npm error command sh -c tsc -p tsconfig.json && tsc -p test/tsconfig.json

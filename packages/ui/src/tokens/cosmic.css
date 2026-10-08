@@ -19,14 +19,18 @@
 --action-secondary-bg:var(--glass-bg);--action-secondary-hover:var(--glass-hover);--action-secondary-active:var(--surface-4);--action-secondary-fg:var(--text-primary);--action-secondary-border:var(--border-default);
 --action-ghost-hover:var(--glass-hover);--action-ghost-active:var(--glass-bg);
 --radius-card:24px;--radius-pill:32px;--radius-control:12px;--radius-chip:8px;
+--button-glass-bg:rgba(255,255,255,.55);--button-glass-overlay:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+--button-glass-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(35,28,55,.14),inset 0 -7px 14px rgba(35,28,55,.08),0 7px 20px -4px rgba(35,28,55,.18);--button-text-shadow:none;
+--button-solid-shadow:0 8px 24px -8px rgba(123,97,255,.7);--button-blue-shadow:0 8px 24px -8px rgba(24,160,251,.7);--switch-thumb:#FFFFFF;--switch-thumb-shadow:0px 2px 4px 0px rgba(0,0,0,.32);
 --button-h-sm:34px;--button-h-md:46px;--button-h-lg:54px;
 --ease-standard:cubic-bezier(.22,1,.36,1);--duration-base:240ms;
 
 }
 [data-theme="dark"]{
+--button-glass-bg:rgba(24,23,28,.55);--button-glass-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(255,255,255,.14),inset 0 -7px 14px rgba(0,0,0,.28),0 7px 20px -4px rgba(0,0,0,.55);--button-text-shadow:0 1px 2px rgba(0,0,0,.55);
 --surface-1:#1D1C20;--surface-2:#242325;--surface-3:#29292B;--surface-4:#343236;--surface-sunken:#171619;
 --bg-canvas:#0E0E11;--text-strong:#FFFFFF;--text-primary:#FFFFFF;--text-secondary:#BDBDC0;--text-muted:#A9A9A9;
---action-primary-bg:#7B61FF;--action-primary-hover:#8D77FF;--action-primary-active:#6952DB;--action-blue-bg:#18A0FB;--action-blue-fg:#0E0E11;
+--action-primary-bg:#7B61FF;--action-primary-hover:#8D77FF;--action-primary-active:#6952DB;--action-blue-bg:#18A0FB;--action-blue-fg:#FFFFFF;
 --text-brand:#9580FF;--text-link:#9580FF;--text-link-hover:#FFFFFF;
 --glass-bg:rgba(255,255,255,.08);--glass-hover:rgba(255,255,255,.14);--border-subtle:rgba(255,255,255,.08);--border-default:rgba(255,255,255,.16);--border-strong:rgba(255,255,255,.24);--border-control:#77727F;
 --state-selected-bg:#38343F;--state-selected-fg:#FFFFFF;--state-selected-border:#9580FF;--focus-color:#9580FF;

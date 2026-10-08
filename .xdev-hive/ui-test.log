@@ -1,0 +1,19 @@
+▶ dashboard shared rules
+  ✔ caps the summary strip at 4 numbers (0.760292ms)
+  ✔ lists the worst attention first and keeps the order within a level (0.110542ms)
+  ✔ renders each summary number as its filter link and keeps the four-item cap (255.857958ms)
+  ✔ renders row actions beside their attention text, including disabled actions (100.247166ms)
+✔ dashboard shared rules (360.488459ms)
+▶ cosmic primitives
+  ✔ renders theme variants without project metrics and labels native controls (2483.90975ms)
+  ✔ keeps primary defaults, link sizing and caller overrides (5.953375ms)
+  ✔ preserves disabled selectors and selected filter semantics (0.660625ms)
+✔ cosmic primitives (2493.876833ms)
+ℹ tests 7
+ℹ suites 2
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3383.444291

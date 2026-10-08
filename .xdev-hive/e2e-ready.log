@@ -1,0 +1,21 @@
+> node e2e/run.mjs /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/desktop --only cosmic-primitives --no-build
+e2e: the hub's web pages
+  ✓ login-token (4336 ms)
+  ✗ cosmic-primitives: caller utilities: {"height":"24px","padding":"4px","radius":"8px"}
+step times, slowest first (total 5345 ms):
+     4336 ms  ✓ login-token
+     1009 ms  ✗ cosmic-primitives
+1/2 steps passed; failed: cosmic-primitives
+screenshots in /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/desktop
+hub log:
+  First admin account: duy
+  Temporary password (shown once; the first sign-in asks for a new one):
+  aZxH-nGac-TVhr
+[xdev-hive] hub on http://127.0.0.1:58365 (production), db /var/folders/_f/4mplbk_j1074rdxxdvsfctqw0000gn/T/hive-e2e-yyiqep/hub.db
+npm error Lifecycle script `e2e` failed with error:
+npm error code 1
+npm error path /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/apps/web
+npm error workspace @xdev-hive/web@0.1.0
+npm error location /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/apps/web
+npm error command failed
+npm error command sh -c node e2e/run.mjs /Users/admin/.xdev-hive/worktrees/xdev-hive/R-72a/.xdev-hive/artifacts/desktop --only cosmic-primitives --no-build
