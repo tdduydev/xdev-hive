@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { describeBuild, uploadToHub } from "#desktop/scripts/hub-upload.mjs";
+import { describeBuild, importOverSsh, readReleaseEnv, uploadToHub } from "#desktop/scripts/hub-upload.mjs";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -208,4 +208,41 @@ describe("release upload to the hub", () => {
 
 after(() => {
   for (const dir of testTmpDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("release to the hub over SSH", () => {
+  it("streams the files into the container, then imports them there", async () => {
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-ssh-release-"));
+    const files = ["xdev-hive-1.2.3-mac-arm64.zip", "SHA256SUMS.txt", "NOTES.md"].map((n) => path.join(dir, n));
+    const calls: Array<{ from: string[] | null; to: string[]; env: Record<string, string | undefined> }> = [];
+    await importOverSsh({ ssh: "xdev-server", version: "1.2.3", files, by: "ssh:duy@x.y", log: () => {}, run: async (from, to, env) => void calls.push({ from, to, env }) });
+    assert.deepEqual(calls[0]!.from, ["tar", "-cf", "-", "-C", dir, "xdev-hive-1.2.3-mac-arm64.zip", "SHA256SUMS.txt", "NOTES.md"]);
+    assert.equal(calls[0]!.env.COPYFILE_DISABLE, "1");
+    assert.deepEqual(calls[0]!.to.slice(0, 6), ["ssh", "xdev-server", "docker", "exec", "-i", "xdev-hive-hub-1"]);
+    assert.match(calls[0]!.to.at(-1)!, /^'rm -rf \/data\/incoming\/1\.2\.3 && mkdir -p .* && tar -xf - -C \/data\/incoming\/1\.2\.3'$/);
+    assert.equal(calls[1]!.from, null);
+    assert.deepEqual(calls[1]!.to.slice(4, 13), ["xdev-hive-hub-1", "node", "apps/web/src/import-release.ts", "--dir", "/data/incoming/1.2.3", "--version", "1.2.3", "--notes", "/data/incoming/1.2.3/NOTES.md"]);
+    assert.equal(calls[1]!.to.at(-1), "'ssh:duy@x.y'");
+  });
+
+  it("refuses what the remote shell would read as more than a name", async () => {
+    const run = async () => assert.fail("nothing runs");
+    await assert.rejects(importOverSsh({ ssh: "host; rm -rf /", version: "1.2.3", files: ["/a/x.zip"], by: "x", run }), /host and container names only/);
+    await assert.rejects(importOverSsh({ ssh: "host", version: "1.2.3 && id", files: ["/a/x.zip"], by: "x", run }), /Not a version/);
+  });
+
+  it("reads release.env without overriding the shell, and refuses a token others can read", () => {
+    const dir = testTmpDir(path.join(os.tmpdir(), "hive-release-env-"));
+    const file = path.join(dir, "release.env");
+    writeFileSync(file, "# comment\nexport HIVE_RELEASE_SSH=xdev-server\nHIVE_RELEASE_HUB=\"http://10.0.0.1:7780\"\n");
+    const env: Record<string, string | undefined> = { HIVE_RELEASE_HUB: "https://from-shell" };
+    assert.deepEqual(readReleaseEnv(file, env), { HIVE_RELEASE_SSH: "xdev-server" });
+    assert.equal(env.HIVE_RELEASE_HUB, "https://from-shell");
+    writeFileSync(file, "HIVE_RELEASE_TOKEN=secret\n");
+    chmodSync(file, 0o644);
+    assert.throws(() => readReleaseEnv(file, {}), /chmod 600/);
+    chmodSync(file, 0o600);
+    assert.deepEqual(readReleaseEnv(file, {}), { HIVE_RELEASE_TOKEN: "secret" });
+    assert.deepEqual(readReleaseEnv(path.join(dir, "missing.env"), {}), {});
+  });
 });

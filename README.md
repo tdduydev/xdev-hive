@@ -540,6 +540,7 @@ Dùng được cùng Cloudflare Tunnel (`HIVE_TUNNEL=1 HIVE_LAN=1 bash deploy/up
 
 - Máy trong LAN: app desktop → *Hub dùng chung* → URL `http://10.86.140.52:7780`; trình duyệt mở cùng địa chỉ. Đăng nhập web chạy như thường, cookie phiên không đặt `Secure` khi vào bằng `http`.
 - `HIVE_RELEASE_HUB=http://10.86.140.52:7780` đưa bản phát hành lên qua LAN, không qua tunnel.
+- Máy phát hành SSH được vào máy chủ hub thì không cần token: đặt `HIVE_RELEASE_SSH=xdev-server` (tên trong `~/.ssh/config`) trong `~/.config/xdev-hive/release.env` (`chmod 600`). `npm run release` gửi bản build qua SSH vào container hub, hub kiểm SHA-256 từng file rồi thêm vào Phiên bản app (`apps/web/src/import-release.ts`).
 - SSO (OIDC) vẫn quay về `HIVE_PUBLIC_URL` công khai, nên máy đăng nhập SSO phải ra được địa chỉ đó. Đăng nhập bằng mật khẩu thì không cần.
 - Caddy của cổng LAN bỏ `X-Forwarded-For` / `-Proto` khách gửi và đặt lại theo kết nối thật, nên một máy trong LAN không khai man địa chỉ để lách giới hạn đăng nhập sai của địa chỉ nó.
 

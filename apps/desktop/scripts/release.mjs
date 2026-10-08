@@ -5,13 +5,16 @@
 //   npm run release -w @xdev-hive/desktop -- --whatsnew <file>   (use edited release notes)
 // Needs: a clean checkout of origin/main, `gh` signed in with push access. macOS builds are ad-hoc
 // signed (no Developer ID yet); Windows installers are unsigned.
-// With HIVE_RELEASE_HUB (https://hive.example) and HIVE_RELEASE_TOKEN (a hub admin's token) the builds also go to the
-// hub, which hands them to machines as updates (roadmap 22i; admins pick the version on Phiên bản app).
+// The builds also go to the hub, which hands them to machines as updates (roadmap 22i; admins pick the version on
+// Phiên bản app), by one of:
+//   HIVE_RELEASE_SSH=xdev-server (the hub's host; [HIVE_RELEASE_SSH_CONTAINER], default xdev-hive-hub-1): over SSH, no token
+//   HIVE_RELEASE_HUB=https://hive.example and HIVE_RELEASE_TOKEN=<a hub admin's token>: the HTTP upload
+// Either may sit in ~/.config/xdev-hive/release.env (KEY=VALUE, chmod 600) instead of the shell.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { uploadToHub } from "#desktop/scripts/hub-upload.mjs";
+import { importOverSsh, readReleaseEnv, uploadToHub } from "#desktop/scripts/hub-upload.mjs";
 import { generateWhatsNew, readWhatsNewOverride } from "#desktop/scripts/whatsnew.mjs";
 
 const desktop = path.resolve(import.meta.dirname, "..");
@@ -23,6 +26,7 @@ const hubOnly = process.argv.includes("--hub-only");
 const whatsNewOverride = readWhatsNewOverride(process.argv.slice(2), readFileSync);
 const { version } = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8"));
 const tag = `v${version}`;
+for (const k of Object.keys(readReleaseEnv())) console.log(`${k} from ~/.config/xdev-hive/release.env`);
 
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", cwd: desktop, ...opts });
 const out = (cmd, args) => execFileSync(cmd, args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -70,12 +74,18 @@ if (dry) {
   process.exit(0);
 }
 
-/** Uploads every build and the notes to the hub, when HIVE_RELEASE_HUB and HIVE_RELEASE_TOKEN say where. */
-async function toHub(notes) {
+/** Puts every build and the notes on the hub: over SSH when HIVE_RELEASE_SSH names its host, else the HTTP upload. */
+async function toHub(notes, notesFile) {
+  const ssh = process.env.HIVE_RELEASE_SSH;
+  if (ssh) {
+    const by = `ssh:${out("git", ["config", "user.email"]) || process.env.USER || "release"}`;
+    await importOverSsh({ ssh, container: process.env.HIVE_RELEASE_SSH_CONTAINER || undefined, version, files: [...assets, sumsFile, notesFile], by });
+    return;
+  }
   const hub = process.env.HIVE_RELEASE_HUB;
   const token = process.env.HIVE_RELEASE_TOKEN;
   if (!hub || !token) {
-    console.log("HIVE_RELEASE_HUB / HIVE_RELEASE_TOKEN not set: the hub does not get this release.");
+    console.log("No HIVE_RELEASE_SSH, nor HIVE_RELEASE_HUB + HIVE_RELEASE_TOKEN: the hub does not get this release.");
     return;
   }
   await uploadToHub({ hub, token, version, assets, notes });
@@ -112,4 +122,4 @@ writeFileSync(notesFile, notes);
 // The commit that was built, not main as it is by now: another session may have pushed while this one built.
 if (!hubOnly) run("gh", ["release", "create", tag, ...assets, installScript, sumsFile, "--target", out("git", ["rev-parse", "HEAD"]), "--title", `xDev Hive ${tag}`, "--notes-file", notesFile], { cwd: repoRoot });
 if (!hubOnly) run("gh", ["release", "edit", tag, "--notes-file", notesFile], { cwd: repoRoot });
-await toHub(notes);
+await toHub(notes, notesFile);
