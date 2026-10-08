@@ -264,6 +264,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "auto-release": ["login-token"],
   "login-token": [],
   "artifacts-page": ["login-token"],
+  "history-page": ["login-token"],
   "chat-everywhere": ["login-token"],
   "chat-design": ["login-token"],
   "a11y-pages": ["login-token"],
@@ -3790,6 +3791,52 @@ async function main() {
       });
     }
   }
+
+  // History reuses the retained source records and follows their permission-checked detail routes.
+  await step("history-page", async () => {
+    const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method: "runs.push", input: { machine: "history-e2e", runs: Array.from({ length: 33 }, (_, n) => ({ runId: `R-history-${n}`, project: "payment", taskId: "PAY-1", taskTitle: `history-fixture ${n}`, status: "succeeded", role: "implement", summary: "Đối soát lịch sử", createdAt: new Date().toISOString(), finishedAt: new Date().toISOString() })) } }) });
+    const body = await response.json();
+    if (body.error) throw new Error(body.error.message);
+    const machineRpc = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method, input }) });
+      const data = await r.json();
+      if (data.error) throw new Error(`${method}: ${data.error.message}`);
+      return data.result;
+    };
+    await machineRpc("machines.heartbeat", { machine: "history-e2e", instance: "ab000070", projects: ["payment"], acceptsRuns: true, profiles: [{ id: "history-claude", label: "History Claude", kind: "claude", enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 1 }] });
+    const historyMachine = (await rpc("machines.list")).find(m => m.machine === "history-e2e");
+    const thread = await rpc("chat.send", { project: "payment", machineId: historyMachine.id, profileId: "history-claude", text: "history-chat-fixture" });
+    const tab = (current = tabs.admin);
+    await tab.reload();
+    await tab.go("history");
+    await tab.waitFor("history loaded", () => !!document.querySelector('[data-history-row]'));
+    await tab.click('[data-history-search]');
+    await tab.type("history-fixture");
+    await tab.waitFor("history search page", () => document.querySelectorAll('[data-history-row]').length === 30 && [...document.querySelectorAll('[data-history-row]')].every(el => el.textContent.includes("history-fixture")));
+    await tab.click('[data-history-page] button', "Trang sau");
+    await tab.waitFor("history second page", () => document.querySelectorAll('[data-history-row]').length === 3);
+    const links = await tab.eval(() => [...document.querySelectorAll('[data-history-row] a')].map(el => el.getAttribute('href')));
+    expect("history has run links", links.some(href => href.startsWith('#/runs?run=')), links);
+    await tab.click('[data-history-page] button', "Trang trước");
+    await tab.waitFor("history previous page", () => document.querySelectorAll('[data-history-row]').length === 30);
+    await tab.select('[data-history-page] select', "gate");
+    await tab.waitFor("source filter resets pagination", () => !document.querySelector('[data-history-row]') && document.querySelector('[data-history-page]').textContent.includes("Trang 1"));
+    await tab.click('[data-history-page] button', "Xóa bộ lọc");
+    await tab.waitFor("reset restores history", () => !!document.querySelector('[data-history-row]'));
+    await accessibilityAudit({ tab, out, expect, routes: ["history"], filename: "history-accessibility.json" });
+    await tab.shot("history-page");
+    const reader = current = tabs.historyReader = await signInWithToken("history-reader", people.hoa.token, "history");
+    await reader.waitFor("reader history", () => !!document.querySelector('[data-history-row]'));
+    const readerRows = await rpc("history.list", {}, people.hoa.token);
+    expect(readerRows.entries.every(e => e.project === "payment" && e.kind !== "audit"), "history respects reader grants");
+    await reader.click(`[data-history-row] a[href="#/chat?thread=${thread.id}"]`);
+    await reader.waitFor("reader can follow chat link", () => document.body.innerText.includes("history-chat-fixture") && document.body.innerText.includes("Bạn chỉ có quyền xem"));
+    await reader.go("history");
+    await reader.waitFor("reader run link", () => !!document.querySelector('[data-history-row] a[href^="#/runs?run="]'));
+    await reader.click('[data-history-row] a[href^="#/runs?run="]');
+    await reader.waitFor("history run opens summary", () => !!document.querySelector('[data-run-tab="summary"][aria-selected="true"]'));
+
+  });
 
   // Roadmap 41c: what a run made is on the run and on its task, and the project manager can take it away.
   await step("artifacts-page", async () => {

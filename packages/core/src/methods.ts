@@ -1,3 +1,4 @@
+import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
@@ -1158,6 +1159,14 @@ export const schemas = {
   "admin.machines": z.object({}),
   "admin.commandCreate": z.object({ machineId: machineRef, itemId: setupItemId }),
   "admin.commandCancel": z.object({ id }),
+  "history.list": z.object({
+    project: project.optional(), projects: projectList,
+    query: z.string().max(200).optional(), taskId: taskId.optional(),
+    kind: z.enum(["run", "chat", "gate", "audit"]).optional(),
+    since: z.iso.datetime().optional(), until: z.iso.datetime().optional(),
+    offset: z.number().int().min(0).max(100000).default(0),
+    limit: z.number().int().min(1).max(100).default(50),
+  }),
   "admin.audit": z.object({
     limit: z.number().int().min(1).max(1000).default(200),
     action: z.string().max(60).optional(),
@@ -1176,6 +1185,7 @@ export type MethodInput<M extends Method> = z.input<(typeof schemas)[M]>;
 export type ParsedInput<M extends Method> = z.output<(typeof schemas)[M]>;
 
 export interface MethodOutput {
+  "history.list": { entries: HistoryEntry[]; hasMore: boolean };
   "docs.list": DocSummary[];
   "docs.get": Doc | null;
   "docs.history": DocVersion[];
@@ -1636,6 +1646,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "admin.machines": "admin",
   "admin.commandCreate": "admin",
   "admin.commandCancel": "admin",
+  "history.list": "viewer",
   "admin.audit": "admin",
 };
 

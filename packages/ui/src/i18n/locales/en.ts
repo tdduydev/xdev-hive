@@ -1,6 +1,25 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  history: {
+    "title": "History",
+    "sub": "Timeline and search",
+    "hint": "Search chats, runs and SDLC gates you can view. Administrative audit is reserved for hub admins. The timeline shows retained records; runs show their latest state.",
+    "search": "Search content",
+    "task": "Task ID",
+    "kind": "Source",
+    "all": "All",
+    "run": "Run",
+    "chat": "Chat",
+    "gate": "SDLC gate",
+    "audit": "Administrative audit",
+    "since": "From date",
+    "until": "To date",
+    "invalidDates": "The end date must be on or after the start date.",
+    "loading": "Loading history…",
+    "empty": "No matching records. Try clearing filters or choosing another scope.",
+    "reset": "Clear filters"
+},
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Up arrow", down: "Down arrow", left: "Left arrow", right: "Right arrow", interrupt: "Ctrl-C: interrupt" },
     osUserName: "OS user: {user}",
