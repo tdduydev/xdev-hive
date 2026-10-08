@@ -2360,6 +2360,7 @@ export const vi = {
     binary: "file nhị phân",
     diffError: "Không đọc được thay đổi của run này.",
     worktree: "worktree {branch}",
+    codeRevision: "Bản code: {sha}",
   },
   agents: {
     geminiLabelHint: "để trống: Gemini (Google) 2…",
