@@ -11,3 +11,4 @@ export {
   TerminalRecordingStore, terminalRecordingChunks, terminalRecordingChunkSchema, type TerminalMachineIdentity, type TerminalRecordingChunk,
   type TerminalRecordingPage,
 } from "./terminal-recording.ts";
+export { TerminalProofs, newStepUpId, type TerminalStepUpContext } from "./terminal-proofs.ts";

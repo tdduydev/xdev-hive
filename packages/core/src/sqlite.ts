@@ -791,6 +791,13 @@ const MIGRATIONS: string[] = [
     hash TEXT NOT NULL, prev_hash TEXT NOT NULL, storage_ref TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY(session_id, seq));
   `,
+  // Terminal step-up (69c): a proof for attach or recording is bound to its session too, and keeps how and when the
+  // person proved themselves (auth freshness in the audit, spec §8).
+  `
+  ALTER TABLE terminal_stepups ADD COLUMN session_id TEXT;
+  ALTER TABLE terminal_stepups ADD COLUMN method TEXT NOT NULL DEFAULT 'password';
+  ALTER TABLE terminal_stepups ADD COLUMN authenticated_at TEXT;
+  `,
 ];
 
 function browserSeedSql(): string {
