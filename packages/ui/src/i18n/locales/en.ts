@@ -3580,6 +3580,7 @@ export const en: Catalog = {
     secret: "The content seems to contain a {kind}. Secrets must never be stored in xDev Hive.",
     noLoginCommand: "The {kind} CLI has no sign-in command to open.",
     badCandidates: "Candidates must be between 1 and {max}.",
+    agentKindPolicy: "Agent kind {kind} is not allowed in project {project}.",
     badPreferKind: "Not a subscription kind to prefer: {kind}",
     candidatesImplementOnly: "Only an Implement run can have several candidates.",
     candidatesPinned: "Several candidates rotate subscriptions: do not pin one.",

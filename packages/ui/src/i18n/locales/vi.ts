@@ -3585,6 +3585,7 @@ export const vi = {
     secret: "Nội dung có vẻ chứa {kind}. Không bao giờ lưu secret vào xDev Hive.",
     noLoginCommand: "CLI {kind} không có lệnh đăng nhập để mở.",
     badCandidates: "Số bản phải từ 1 đến {max}.",
+    agentKindPolicy: "Loại agent {kind} không được phép trong dự án {project}.",
     badPreferKind: "Loại gói ưu tiên không hợp lệ: {kind}",
     candidatesImplementOnly: "Chỉ việc Làm mới chạy nhiều bản.",
     candidatesPinned: "Nhiều bản cần tự xoay gói sub, không ghim một gói.",

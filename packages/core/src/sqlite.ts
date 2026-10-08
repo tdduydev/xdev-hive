@@ -4345,6 +4345,11 @@ export class SqliteHive implements HiveBackend {
     if (profileId && !m.profiles.some((p) => p.id === profileId && p.enabled)) {
       throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
     }
+    const pinnedKind = profileId ? m.profiles.find(p => p.id === profileId)?.kind : null;
+    const allowedKinds = this.#sdlcPolicy().projects[project]?.allowedAgentKinds;
+    if (pinnedKind && allowedKinds && !allowedKinds.includes(pinnedKind)) {
+      throw new HiveError("bad_request", `Agent kind ${pinnedKind} is not allowed for ${project}.`, { key: "errors.agentKindPolicy", vars: { kind: pinnedKind, project } });
+    }
     if (candidates > 1 && role !== "implement") throw new HiveError("bad_request", "Only implement runs have candidates.", { key: "errors.candidatesImplementOnly" });
     if (candidates > 1 && profileId) throw new HiveError("bad_request", "Candidates rotate profiles; do not pin one.", { key: "errors.candidatesPinned" });
     if (task) {
@@ -6661,9 +6666,13 @@ export class SqliteHive implements HiveBackend {
     return this.#withAllowedKinds(toRunRequest(row));
   }
 
+  /**
+   * Only a service that chose its kinds restricts the machine's pick: an unset policy sends none, so a machine's own
+   * profiles (custom ones too) keep taking its hub runs as before the setting existed.
+   */
   #withAllowedKinds(request: RunRequest): RunRequest {
-    const own = this.#sdlcPolicy().projects[request.project];
-    return { ...request, allowedAgentKinds: (own?.allowedAgentKinds ?? DEFAULT_AGENT_KINDS) as AgentKind[] };
+    const own = this.#sdlcPolicy().projects[request.project]?.allowedAgentKinds;
+    return own ? { ...request, allowedAgentKinds: own as AgentKind[] } : request;
   }
 
   /**
