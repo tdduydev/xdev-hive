@@ -355,6 +355,11 @@ export const en: Catalog = {
     device: "Let the desktop app use your account",
   },
   shell: {
+    skipToContent: "Skip to content",
+    quickNav: "Quick navigation",
+    menu: "Menu",
+    chooseScope: "Choose scope",
+
     updateReady: "Restart to update to v{version}",
     updateReadyDeb: "Install v{version} (needs admin rights)",
     updateDownloading: "Downloading v{version} · {percent}%",

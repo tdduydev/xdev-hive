@@ -23,7 +23,7 @@ export function PageTabs<T extends string>({
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       {/* A single tab is no choice: the page alone then. */}
       {tabs.length > 1 ? (
-        <nav aria-label={label} className="mx-auto w-full max-w-7xl px-4 pt-3 md:px-6">
+        <nav aria-label={label} className="hive-page-tabs mx-auto min-w-0 w-full px-4 pt-3 md:px-6">
           <div className="flex gap-1 overflow-x-auto border-b border-line-default [scrollbar-width:none]">
             {tabs.map((tab) => {
               const on = tab === current;
