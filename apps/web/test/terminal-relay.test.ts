@@ -11,6 +11,7 @@ import {
   type TerminalCapability,
   type TerminalHubFrame,
   type TerminalMachineFrame,
+  type TerminalServerFrame,
 } from "@xdev-hive/core";
 import { SqliteHive, WsPeer, type TerminalMachineIdentity } from "@xdev-hive/core/node";
 import { createHubApp, terminalUpgrade } from "#web/app.ts";
@@ -120,7 +121,7 @@ function upgrade(path: string, headers: Record<string, string>): Promise<{ statu
 }
 
 type Machine = Peer<TerminalHubFrame>;
-type Browser = Peer<{ type: string; [k: string]: any }>;
+type Browser = Peer<TerminalServerFrame>;
 
 async function machine(running: string[] = [], token = machineToken): Promise<Machine> {
   const u = await upgrade("/api/terminal/machine-socket", { authorization: `Bearer ${token}`, "sec-websocket-protocol": TERMINAL_MACHINE_WS_PROTOCOL });
@@ -132,7 +133,7 @@ async function machine(running: string[] = [], token = machineToken): Promise<Ma
 async function browser(cookie: string, ticket: string): Promise<Browser> {
   const u = await upgrade("/api/terminal/socket", { cookie: `hive_session=${cookie}`, origin: base, "sec-websocket-protocol": TERMINAL_WS_PROTOCOL });
   assert.equal(u.status, 101);
-  const b = new Peer<{ type: string }>(u.socket!, u.head!);
+  const b = new Peer<TerminalServerFrame>(u.socket!, u.head!);
   b.send({ type: "auth", ticket });
   return b;
 }
@@ -399,7 +400,7 @@ describe("69e relay: revoke and lease", () => {
       assert.ok(Date.now() - t0 < 2000);
       assert.equal(kill.reason, "logout");
     } finally {
-      cookies.alice = saved;
+      cookies.alice = saved!;
     }
   });
 

@@ -1,4 +1,5 @@
-// Local spike only: deliberately not connected to IPC, MCP, heartbeat or the hub.
+// The PTY under a remote terminal (spec 69): local policy, spawn, input, resize and stop. Driven only by the relay
+// agent (relay-agent.ts) after the local policy file opted in; not connected to IPC or MCP.
 import { constants, openSync, fstatSync, readFileSync, closeSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
