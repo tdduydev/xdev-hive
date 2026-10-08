@@ -66,8 +66,11 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     terminal.loadAddon(fit); terminal.open(host.current); term.current = terminal;
     terminal.parser.registerOscHandler(52, () => true);
     terminal.parser.registerOscHandler(8, () => true);
+    // xterm sets internal _keyDownSeen = true on keydown; escaping on Tab keydown means xterm never sees keyup, leaving _keyDownSeen stuck true and dropping subsequent input/IME events.
+    const resetKeyDown = () => { if ((terminal as any)._core) (terminal as any)._core._keyDownSeen = false; };
+    terminal.textarea?.addEventListener("focus", resetKeyDown);
     terminal.attachCustomKeyEventHandler(e => {
-      if (e.key === "Tab" && tabOutRef.current) return false;
+      if (e.key === "Tab" && tabOutRef.current) { resetKeyDown(); return false; }
       // Clipboard shortcuts use the browser path below; Ctrl-C without a selection interrupts the PTY.
       if ((e.metaKey || (e.ctrlKey && e.shiftKey)) && ["c", "v"].includes(e.key.toLowerCase())) return false;
       if (e.ctrlKey && e.key.toLowerCase() === "c" && terminal.hasSelection()) return false;
@@ -107,10 +110,11 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     fit.fit();
     if (attachment.ticket) conn.connect(api.socket(), attachment.ticket, attachment.session.writerEpoch);
     const node = host.current;
-    return () => { conn.detach(); data.dispose(); resize.disconnect(); theme.disconnect(); node.removeEventListener("paste", onPaste, true); terminal.dispose(); connection.current = null; term.current = null; };
+    return () => { conn.detach(); data.dispose(); resize.disconnect(); theme.disconnect(); node.removeEventListener("paste", onPaste, true); terminal.textarea?.removeEventListener("focus", resetKeyDown); terminal.dispose(); connection.current = null; term.current = null; };
   }, [api, attachment]);
 
   useEffect(() => { if (term.current?.textarea) term.current.textarea.setAttribute("aria-label", t("terminal.input")); }, [t]);
+  useEffect(() => { if (ctrl) term.current?.focus(); }, [ctrl]);
 
   const authenticate = (method: "password" | "oidc") => {
     const operation = verify;
@@ -163,12 +167,12 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     <ErrorNote error={action.error} />
     <div data-testid="terminal-screen" ref={host} className="terminal-screen min-h-0 min-w-0 flex-1 overflow-hidden rounded-md border border-line-default bg-code-bg p-1" />
     <div role="group" aria-label={t("terminal.keys")} className="flex shrink-0 gap-2 overflow-x-auto pb-1">
-      <Button data-testid="terminal-key-ctrl" variant={ctrl ? "default" : "outline"} aria-pressed={ctrl} disabled={!writable || pasteBusy} onClick={() => { ctrlRef.current = !ctrl; setCtrl(!ctrl); term.current?.focus(); }}>{t(ctrl ? "terminal.ctrlOn" : "terminal.ctrl")}</Button>
-      {keys.map(key => <Button key={key} data-testid={`terminal-key-${key}`} aria-label={t(`terminal.keyNames.${key}`)} variant="outline" disabled={!writable} onClick={() => { ctrlRef.current = false; setCtrl(false); send(keyBytes[key]); term.current?.focus(); }}>{t(`terminal.keysLabel.${key}`)}</Button>)}
+      <Button data-testid="terminal-key-ctrl" variant={ctrl ? "default" : "outline"} aria-pressed={ctrl} disabled={!writable || pasteBusy} onMouseDown={e => e.preventDefault()} onClick={() => { ctrlRef.current = !ctrl; setCtrl(!ctrl); term.current?.focus(); }}>{t(ctrl ? "terminal.ctrlOn" : "terminal.ctrl")}</Button>
+      {keys.map(key => <Button key={key} data-testid={`terminal-key-${key}`} aria-label={t(`terminal.keyNames.${key}`)} variant="outline" disabled={!writable} onMouseDown={e => e.preventDefault()} onClick={() => { ctrlRef.current = false; setCtrl(false); send(keyBytes[key]); term.current?.focus(); }}>{t(`terminal.keysLabel.${key}`)}</Button>)}
     </div>
     <div className="flex max-h-[35%] shrink-0 flex-col gap-2 overflow-y-auto">
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" data-testid="terminal-keyboard" disabled={!writable} onClick={() => term.current?.focus()}>{t("terminal.keyboard")}</Button>
+        <Button variant="outline" data-testid="terminal-keyboard" disabled={!writable} onMouseDown={e => e.preventDefault()} onClick={() => term.current?.focus()}>{t("terminal.keyboard")}</Button>
         <Button data-testid="terminal-copy" variant="outline" onClick={() => void action.run(async () => { const selection = term.current?.getSelection() ?? ""; if (selection) { try { await navigator.clipboard.writeText(selection); } catch { setCopied(selection); } } })}>{t("terminal.copy")}</Button>
         <Button data-testid="terminal-paste" variant="outline" disabled={!writable || pasteBusy} onClick={() => void action.run(async () => { try { setPaste(await navigator.clipboard.readText()); } catch { setPaste(""); } })}>{t("terminal.paste")}</Button>
         <Button variant="outline" aria-pressed={fallback} data-testid="terminal-ime" onClick={() => setFallback(!fallback)}>{t("terminal.ime")}</Button>
