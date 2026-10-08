@@ -2,6 +2,39 @@
 import type { KeyPaths, Translation } from "#ui/i18n/types.ts";
 
 export const vi = {
+  blockers: {
+  "title": "Bị kẹt",
+  "hint": "Xem nguyên nhân và bước tiếp theo. Mở chi tiết để xử lý theo quyền; trạng thái cập nhật từ hub.",
+  "filter": "Lọc nguyên nhân bị kẹt",
+  "loading": "Đang tải các việc cần xử lý…",
+  "empty": "Không có việc bị kẹt trong bộ lọc này.",
+  "hidden": "Còn {n} phụ thuộc ngoài phạm vi quyền xem.",
+  "readOnly": "Bạn có thể xem; cần người có quyền phù hợp để xử lý.",
+  "open": "Mở chi tiết xử lý",
+  "kind": {
+    "all": "Tất cả",
+    "dependency": "Phụ thuộc",
+    "quota": "Quota / chi tiêu",
+    "policy": "Chính sách",
+    "review": "Chờ duyệt",
+    "test": "Kiểm thử",
+    "conflict": "Xung đột",
+    "release": "Phát hành",
+    "offline": "Máy offline",
+    "unknown": "Cần xác minh"
+  },
+  "next": {
+    "dependency": "Hoàn tất việc phụ thuộc trước khi giao chạy.",
+    "quota": "Kiểm tra thời điểm hồi quota hoặc chọn tài khoản còn quota trước khi thử lại.",
+    "policy": "Kiểm tra chính sách và quyền với quản trị dự án trước khi thử lại.",
+    "review": "Xem bằng chứng và quyết định tại bước duyệt đang chờ.",
+    "test": "Xem kết quả kiểm thử, sửa lỗi rồi chạy kiểm tra lại.",
+    "conflict": "Xem hai phía xung đột và giải quyết trước khi tiếp tục.",
+    "release": "Xem log phát hành, khắc phục nguyên nhân rồi dùng luồng phát hành hiện có.",
+    "offline": "Kết nối lại máy hoặc chọn máy online trước khi giao chạy.",
+    "unknown": "Xem ghi chú và kết quả lượt chạy để xác minh nguyên nhân trước khi thử lại."
+  }
+},
   terminal: {
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Mũi tên lên", down: "Mũi tên xuống", left: "Mũi tên trái", right: "Mũi tên phải", interrupt: "Ctrl-C: ngắt lệnh" },
     osUserName: "OS user: {user}",
