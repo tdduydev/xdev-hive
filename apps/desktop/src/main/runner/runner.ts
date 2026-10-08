@@ -1646,6 +1646,8 @@ export class Runner {
             error: clip(r.error, 2000),
             branch: r.branch,
             baseSha: r.baseSha,
+            // Legacy local records may hold a short SHA; never present that as an exact evidence revision.
+            headSha: r.headSha && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(r.headSha) ? r.headSha : null,
             instructions: r.instructions,
             commits: r.commits,
             mrUrl: r.mrUrl,

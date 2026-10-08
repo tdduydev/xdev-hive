@@ -1450,6 +1450,7 @@ function createWindow(): void {
                  const el = document.querySelector(${JSON.stringify(sel)});
                  if (!el) return;
                  if (el.closest('[data-slot="dropdown-menu-trigger"]')) el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+                 else if (el.matches('[data-slot="tabs-trigger"]')) el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
                  else el.click();
                })()`,
             )

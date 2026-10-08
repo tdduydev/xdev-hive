@@ -1,3 +1,4 @@
+import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type AcceptanceEvidence, type EvidenceContext } from "#core/evidence.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
@@ -346,6 +347,10 @@ export const schemas = {
    * One file an agent made during a run (roadmap 41c), in base64, from the machine that ran it. One per call: 20
    * files of 5 MB in one request would be far over what the hub takes. The same name from the same run replaces it.
    */
+  "evidence.record": evidenceRecordSchema,
+  "evidence.context": evidenceSourceSchema.extend({ project, taskId }),
+  "evidence.tasks": evidenceSourceSchema.extend({ project }),
+  "evidence.list": evidenceScopeSchema.partial({ specHash: true, commitSha: true }).extend({ specDir: evidenceSourceSchema.shape.specDir.optional(), specBranch: evidenceSourceSchema.shape.specBranch.optional(), limit: z.number().int().min(1).max(200).default(100), offset: z.number().int().min(0).default(0) }),
   "artifacts.put": z.object({
     project,
     taskId,
@@ -695,6 +700,7 @@ export const schemas = {
           parentRun: z.string().regex(/^[\w.-]{1,40}$/).nullable().optional(),
           instructions: z.string().max(4000).optional(),
           baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
+          headSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
@@ -1195,6 +1201,10 @@ export interface MethodOutput {
   "docs.assetGet": { asset: DocAsset; data: string } | null;
   "docs.assetPut": DocAsset;
   "docs.assetRemove": { removed: boolean };
+  "evidence.record": AcceptanceEvidence;
+  "evidence.context": EvidenceContext | null;
+  "evidence.tasks": Task[];
+  "evidence.list": AcceptanceEvidence[];
   "artifacts.put": Artifact;
   "artifacts.list": Artifact[];
   "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
@@ -1443,6 +1453,10 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assetGet": "viewer",
   "docs.assetPut": "agent",
   "docs.assetRemove": "agent",
+  "evidence.record": "member",
+  "evidence.context": "viewer",
+  "evidence.tasks": "viewer",
+  "evidence.list": "viewer",
   "artifacts.put": "agent",
   "artifacts.list": "viewer",
   "artifacts.get": "viewer",

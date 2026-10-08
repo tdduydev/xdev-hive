@@ -264,6 +264,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "auto-release": ["login-token"],
   "login-token": [],
   "artifacts-page": ["login-token"],
+  "acceptance-evidence": ["login-token"],
   "chat-everywhere": ["login-token"],
   "chat-design": ["login-token"],
   "a11y-pages": ["login-token"],
@@ -3444,10 +3445,12 @@ async function main() {
 
     // Kiểm thử: SC-001 is Xong khi, the two scenarios the checklist; a mark stays after a reload (this browser's).
     await tab.click('[data-feature-tab="checks"]');
+    await tab.click('details summary', "Checklist cá nhân trên trình duyệt");
     await tab.waitFor("three items to check", () => document.querySelectorAll("[data-check]").length === 3 && document.querySelector("[data-checks-progress]")?.textContent.includes("0/3"));
     await tab.click('[data-check="SC-001"] [role="checkbox"]');
     await tab.waitFor("one checked", () => document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
     await tab.reload();
+    await tab.click('details summary', "Checklist cá nhân trên trình duyệt");
     await tab.waitFor("the mark kept, on the same tab", () => document.querySelector('[data-check="SC-001"]')?.hasAttribute("data-checked") && document.querySelector("[data-checks-progress]")?.textContent.includes("1/3"));
     await tab.shot(`${String(n).padStart(2, "0")}-features-checks`);
 
@@ -3467,6 +3470,71 @@ async function main() {
     await tab.waitFor("#/specs on Tính năng", () => location.hash.startsWith("#/features?") && document.querySelector("[data-feature-title]")?.getAttribute("data-feature-title") === "Xuất hoá đơn");
     // Leave the hub as it was: the plan step's request is not for this test.
     for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-FEAT")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
+  await step("acceptance-evidence", async () => {
+    const project = "payment", taskId = "EVID-E2E", specDir = "070-nghiem-thu", specBranch = `ai/${taskId}`;
+    const spec = "# Nghiệm thu dùng chung\n## Acceptance criteria\n- **AC-001**: Người kiểm lưu kết quả kèm báo cáo\n- **AC-002**: Người khác xem lại được sau khi tải lại\n";
+    const publish = (commit, text = spec) => rpc("specs.push", { project, features: [{ dir: specDir, branch: specBranch, commit, files: { spec: text, plan: null, tasks: null } }] });
+    await rpc("tasks.create", { id: taskId, project, title: "Kiểm nghiệm thu dùng chung" });
+    await publish("a".repeat(40));
+    const artifact = await rpc("artifacts.put", { project, taskId, runId: "R-evidence", name: "verification.log", data: Buffer.from("expected: shared result\nactual: shared result\n").toString("base64") });
+    const context = await rpc("evidence.context", { project, taskId, specDir, specBranch });
+    expect(context?.commitSha === "a".repeat(40), "the hub supplies the full tested SHA");
+    const route = `features?project=${project}&dir=${specDir}&branch=${encodeURIComponent(specBranch)}&view=checks`;
+    const tab = current = tabs.admin;
+    await tab.go(route);
+    await tab.waitFor("shared verification form", () => !!document.querySelector("[data-evidence-form]") && document.querySelector('[data-evidence-progress]')?.textContent.includes("0/2"));
+    await tab.shot("acceptance-before-verification");
+    await tab.select("[data-evidence-outcome]", "passed");
+    await tab.waitFor("passed selected", () => document.querySelector("[data-evidence-outcome]")?.value === "passed");
+    await tab.click("[data-evidence-note]");
+    await tab.type("Web 390/1440px: lưu kết quả, tải lại; mong đợi dữ liệu giữ nguyên; thực tế đúng.");
+    await tab.click("[data-evidence-form] label", "verification.log");
+    await tab.click("[data-evidence-save]");
+    await tab.waitFor("shared passed result", () => !!document.querySelector('[data-evidence-result="passed"]') && document.querySelector('[data-evidence-progress]')?.textContent.includes("1/2"));
+    const rows = await rpc("evidence.list", context);
+    expect(rows.length === 1 && rows[0].outcome === "passed" && rows[0].artifactIds[0] === artifact.id, "UI saved the real result and attached file to the right revision");
+    await tab.reload();
+    await tab.waitFor("verification survives reload", () => document.querySelector('[data-evidence-progress]')?.textContent.includes("1/2"));
+    await tab.shot("acceptance-after-verification");
+    await tab.click('[data-evidence-result] a', "verification.log");
+    await tab.waitFor("the exact verified log opens", () => document.querySelector('[data-artifact-content]')?.textContent.includes("actual: shared result"));
+    await tab.shot("acceptance-attached-log");
+    await tab.go(route);
+    await tab.waitFor("verification form after opening the log", () => !!document.querySelector('[data-evidence-form]'));
+    const viewer = current = await signInWithToken("evidence-reader", people.hoa.token, route);
+    await viewer.waitFor("another person reads shared verification", () => !!document.querySelector('[data-evidence-result="passed"]'));
+    expect(await viewer.eval(() => !document.querySelector("[data-evidence-form]")), "reader has no verification form");
+    current = tab;
+    await tab.click("[data-evidence-note]"); await tab.type("Attempt on a now superseded revision.");
+    await publish("b".repeat(40), spec + "- **AC-003**: Revision mới phải kiểm lại\n");
+    await tab.click("[data-evidence-save]");
+    await tab.waitFor("stale verification refused", () => document.body.innerText.includes("Đặc tả hoặc commit đã đồng bộ vừa thay đổi"));
+    expect((await rpc("evidence.list", context)).length === 1, "stale save did not create a result");
+    await tab.reload();
+    await tab.waitFor("new revision starts unverified", () => document.querySelector('[data-evidence-progress]')?.textContent.includes("0/3") && document.body.innerText.includes("Bản trước"));
+    await tab.shot("acceptance-revision-changed");
+    if (mobile) expect(await tab.eval(() => {
+      const box = document.querySelector("[data-acceptance-evidence]");
+      return box.scrollWidth <= box.clientWidth + 1 && [...box.querySelectorAll("button, select, textarea, a")].every(el => el.getBoundingClientRect().height >= 44);
+    }), "acceptance evidence fits the phone and has 44px controls");
+    await accessibilityAudit({ tab, out, expect, routes: [route], filename: "acceptance-accessibility.json" });
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "en"));
+    await tab.reload();
+    await tab.waitFor("English verification labels", () => document.querySelector('[data-acceptance-evidence]')?.textContent.includes("Shared acceptance evidence"));
+    await tab.shot("acceptance-english");
+    await tab.eval(() => localStorage.setItem("xdev-hive.locale", "vi"));
+    await tab.reload();
+    viewer.win.close();
+    await rpc("runs.push", { machine: "acceptance-fixture", runs: [{ runId: "R-evidence-sha", project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", status: "succeeded", profileId: null, branch: specBranch, headSha: "c".repeat(40), createdAt: new Date().toISOString() }] });
+    await tab.go("runs?run=R-evidence-sha");
+    await tab.waitFor("the run exposes its exact code revision", () => document.querySelector('[data-run-head-sha]')?.textContent.includes("c".repeat(40)));
+    if (mobile) expect(await tab.eval(() => {
+      const heading = document.querySelector('[data-run-heading]');
+      return document.documentElement.scrollWidth <= innerWidth && heading.getBoundingClientRect().width >= innerWidth - 48 && heading.querySelector('h2').getBoundingClientRect().height <= 60;
+    }), "run heading keeps the mobile width while full code revision wraps");
+    await tab.shot("acceptance-run-revision");
   });
 
   // Roadmap 31b: the agent map shows each machine's subscriptions; two picked open one prompt for both, or the Task page.

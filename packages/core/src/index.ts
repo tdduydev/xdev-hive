@@ -51,3 +51,6 @@ export * from "#core/terminal.ts";
 export { TerminalRedactor, type TerminalRedactorState } from "#core/terminal-redact.ts";
 export * from "#core/terminal-auth.ts";
 export * from "#core/terminal-relay.ts";
+
+export * from "#core/evidence.ts";
+export * from "#core/acceptance-criteria.ts";
