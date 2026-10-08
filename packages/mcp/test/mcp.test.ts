@@ -39,6 +39,14 @@ describe("mcp tools", () => {
     }
   });
 
+  it("shows CLI leader tools for the stdio shim actor", async () => {
+    const hive = new SqliteHive(":memory:");
+    const actor: Actor = { name: "codex@owner", role: "agent", mcpCredential: true, agent: "codex", onBehalf: "owner" };
+    const names = (await (await connectAs(hive, actor)).listTools()).tools.map((tool) => tool.name);
+    assert.ok(names.includes("task_create"));
+    assert.ok(names.includes("plan_create"));
+  });
+
   it("creates a CLI plan atomically with agent audit and rejects a cyclic plan", async () => {
     const hive = new SqliteHive(":memory:");
     const admin: Actor = { name: "admin", role: "admin" };
@@ -76,10 +84,12 @@ describe("mcp tools", () => {
     assert.deepEqual([proposalAudit.agent, proposalAudit.onBehalf], ["codex", "owner"]);
     assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
     assert.equal((await hive.call("proposals.list", { status: "pending" }, admin)).some((proposal) => proposal.id === id), true);
-    await assert.rejects(hive.call("proposals.approve", { id }, { name: "owner", role: "member", access: { projects: { app: "lead" } } }), /own|yourself|tự/i);
-    const approval = hive.call("proposals.approve", { id }, admin);
+    await assert.rejects(hive.call("proposals.approve", { id }, actor), /human session/i);
+    await assert.rejects(hive.call("proposals.approve", { id }, { ...actor, mcpCredential: false, runCredential: { project: "app", task: "seed", run: "R-1", machine: "m", readOnly: false } }), /agent credential|human session/i);
+    const owner: Actor = { name: "owner", role: "member", humanSession: "session-owner", access: { projects: { app: "lead" } } };
+    const approval = hive.call("proposals.approve", { id }, owner);
     assert.equal((await hive.call("proposals.list", {}, admin)).find((p) => p.id === id)?.status, "executing", "approval is not recorded before execution finishes");
-    await assert.rejects(hive.call("proposals.approve", { id }, admin), /already decided/);
+    await assert.rejects(hive.call("proposals.approve", { id }, owner), /already decided/);
     assert.equal((await approval).status, "approved");
     assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, ["app"]);
     await assert.rejects(hive.call("proposals.create", { action: { method: "agents.resume", project: "app", input: { project: "app" } }, reason: "No right" }, { ...actor, access: { projects: { app: "viewer" } } }), /docPropose/);

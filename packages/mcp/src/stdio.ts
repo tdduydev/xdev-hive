@@ -30,7 +30,7 @@ const local: Partial<Actor> = config.mode === "local" ? { agent, onBehalf: os.us
 const chatReply = config.mode === "local" && /^[1-9]\d{0,15}$/.test(process.env.HIVE_CHAT_REPLY ?? "") ? Number(process.env.HIVE_CHAT_REPLY) : undefined;
 // HIVE_READONLY=1: set by the runner for profiles marked read-only.
 const readOnly = process.env.HIVE_READONLY === "1";
-const actor: Actor = { name, role: "agent", source, ...local, ...(run ? { run } : {}), ...(chatReply ? { chatReply } : {}) };
+const actor: Actor = { name, role: "agent", source, ...local, mcpCredential: !run && !chatReply && !readOnly, ...(run ? { run } : {}), ...(chatReply ? { chatReply } : {}) };
 const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly });
 await server.connect(new StdioServerTransport());
 console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${name}`);
