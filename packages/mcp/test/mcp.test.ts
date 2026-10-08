@@ -5,6 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHiveMcpServer, type HiveMcpOptions } from "#mcp/index.ts";
+import { stdioActor } from "#mcp/stdio-actor.ts";
 
 async function connect(hive: SqliteHive, name = "claude@duy", opts: { role?: "agent" | "viewer"; readOnly?: boolean } = {}) {
   const server = createHiveMcpServer(hive, { name, role: opts.role ?? "agent" }, { defaultProject: "app", readOnly: opts.readOnly });
@@ -39,12 +40,21 @@ describe("mcp tools", () => {
     }
   });
 
-  it("shows CLI leader tools for the stdio shim actor", async () => {
+  it("shows and executes CLI leader tools for the stdio shim actor", async () => {
     const hive = new SqliteHive(":memory:");
-    const actor: Actor = { name: "codex@owner", role: "agent", mcpCredential: true, agent: "codex", onBehalf: "owner" };
-    const names = (await (await connectAs(hive, actor)).listTools()).tools.map((tool) => tool.name);
-    assert.ok(names.includes("task_create"));
-    assert.ok(names.includes("plan_create"));
+    for (const mode of ["local", "hub"] as const) {
+      const actor = stdioActor(mode, "mini", "owner", { HIVE_AGENT: "codex" });
+      const client = await connectAs(hive, actor);
+      const names = (await client.listTools()).tools.map((tool) => tool.name);
+      assert.ok(names.includes("task_create"), mode);
+      assert.ok(names.includes("plan_create"), mode);
+      const created = await client.callTool({ name: "task_create", arguments: { id: `stdio-${mode}`, project: "app", title: "From stdio" } });
+      assert.equal(created.isError, undefined, text(created));
+      for (const env of [{ HIVE_RUN: "R-1" }, { HIVE_READONLY: "1" }, ...(mode === "local" ? [{ HIVE_CHAT_REPLY: "1" }] : [])]) {
+        const restricted = await connectAs(hive, stdioActor(mode, "mini", "owner", env), { readOnly: env.HIVE_READONLY === "1" });
+        assert.ok(!(await restricted.listTools()).tools.some((tool) => tool.name === "task_create"));
+      }
+    }
   });
 
   it("creates a CLI plan atomically with agent audit and rejects a cyclic plan", async () => {
@@ -84,9 +94,17 @@ describe("mcp tools", () => {
     assert.deepEqual([proposalAudit.agent, proposalAudit.onBehalf], ["codex", "owner"]);
     assert.deepEqual((await hive.call("agents.paused", {}, admin)).projects, []);
     assert.equal((await hive.call("proposals.list", { status: "pending" }, admin)).some((proposal) => proposal.id === id), true);
-    await assert.rejects(hive.call("proposals.approve", { id }, actor), /human session/i);
+    await assert.rejects(hive.call("proposals.approve", { id }, actor), /agent credential|human session/i);
     await assert.rejects(hive.call("proposals.approve", { id }, { ...actor, mcpCredential: false, runCredential: { project: "app", task: "seed", run: "R-1", machine: "m", readOnly: false } }), /agent credential|human session/i);
     const owner: Actor = { name: "owner", role: "member", humanSession: "session-owner", access: { projects: { app: "lead" } } };
+    for (const caller of [
+      { ...owner, humanSession: undefined },
+      { ...owner, role: "agent" as const },
+      { ...owner, source: { via: "mcp" as const } },
+      { ...owner, mcpCredential: true },
+      { ...owner, runCredential: { project: "app", task: "seed", run: "R-1", machine: "m", readOnly: false } },
+      { ...owner, chatReply: 1 },
+    ]) await assert.rejects(hive.call("proposals.approve", { id }, caller), /agent credential|human session/i);
     const approval = hive.call("proposals.approve", { id }, owner);
     assert.equal((await hive.call("proposals.list", {}, admin)).find((p) => p.id === id)?.status, "executing", "approval is not recorded before execution finishes");
     await assert.rejects(hive.call("proposals.approve", { id }, owner), /already decided/);
