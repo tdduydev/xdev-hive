@@ -3,6 +3,10 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
+import axe from "axe-core";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { runInNewContext } from "node:vm";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
@@ -272,6 +276,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-pages": ["login-token"],
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
+  "cosmic-primitives": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -651,11 +656,103 @@ async function main() {
       }));
       expect(shared.links.every((link) => link.href?.startsWith("#/") && link.href.includes("?status=")), `summary items must link to filters: ${JSON.stringify(shared.links)}`);
       const actions = Object.fromEntries(shared.actions.map((action) => [action.id, action]));
-      expect(actions.quota?.action === "Xem máy" && !actions.quota?.disabled, "attention action should be available on its row");
-      expect(actions.backup?.action === "Đang kiểm tra" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
+      expect(actions.quota?.action === "Xem chi tiết" && !actions.quota?.disabled, "attention action should be available on its row");
+      expect(actions.backup?.action === "Vô hiệu hóa" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
       await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet", "ops?e2e=dashboard-components"], filename: "components-accessibility.json" });
     });
   }
+  await step("cosmic-primitives", async () => {
+    const tab = (current = tabs.admin);
+    await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
+    await tab.go("ops?e2e=dashboard-components");
+    await tab.waitFor("cosmic themes", () => document.querySelectorAll("[data-cosmic-fixture]").length === 2);
+    const styles = await tab.eval(() => [...document.querySelectorAll("[data-cosmic-fixture]")].map(el => ({ theme: el.dataset.theme, font: getComputedStyle(el).fontFamily, surface: getComputedStyle(el.querySelector('[data-slot="card"]')).backgroundColor })));
+    expect(styles.every(style => style.font.includes("Inter")), "Inter must be self-hosted and applied");
+    expect(styles[0].surface === "rgb(29, 28, 32)" && styles[1].surface === "rgb(255, 255, 255)", `nested themes: ${JSON.stringify(styles)}`);
+    if (mobile) {
+      const sizing = await tab.eval(() => [...document.querySelectorAll('[data-cosmic-fixture]')].map(el => ({
+        inputFont: parseFloat(getComputedStyle(el.querySelector('[data-slot="input"]')).fontSize),
+        smallButtons: [...el.querySelectorAll('[data-slot="button"][data-size="sm"]')].map(button => button.getBoundingClientRect().height),
+        switches: [...el.querySelectorAll('input[role="switch"]')].map(input => ({ height: input.getBoundingClientRect().height, target: input.closest('label').getBoundingClientRect().height })),
+        overflow: el.scrollWidth > el.clientWidth,
+      })));
+      expect(sizing.every(theme => theme.inputFont >= 16 && theme.smallButtons.every(height => height >= 44) && theme.switches.every(input => input.height === 26 && input.target >= 44) && !theme.overflow), `mobile cosmic sizing: ${JSON.stringify(sizing)}`);
+    }
+    // Render the source bundle independently so the comparison cannot inherit component implementation mistakes.
+    const context = { window: {}, React: { ...React, useEffect() {} } };
+    runInNewContext(readFileSync(path.resolve(import.meta.dirname, "../../../docs/design/hive-2026-10/_ds/lumibase-design-system-cffa39a8-d3bd-4d37-982f-2d2208c49e76/_ds_bundle.js"), "utf8"), context);
+    const ds = context.window.LumibaseDesignSystem_cffa39;
+    const h = React.createElement;
+    const reference = renderToStaticMarkup(h(React.Fragment, null,
+      ...["sm", "md", "lg"].map(size => h("div", { className: "cosmic-fixture-wrap", key: size }, ...["glass", "solid", "blue", "ghost"].map((variant, i) => h(ds.Button, { size, variant, key: variant }, ["Kính", "Tím", "Xanh", "Trong suốt"][i])))),
+      h("div", { className: "cosmic-fixture-wrap" }, h(ds.Tag, null, "Nhãn & trạng thái"), h(ds.Tag, { active: true }, "Nhãn & trạng thái"), h(ds.Badge, { tone: "green" }, "Nhãn & trạng thái")),
+      h(ds.Input, { placeholder: "Nhập tên công việc", "aria-label": "Tên công việc" }),
+      h("div", { className: "cosmic-fixture-wrap", style: { minHeight: 44 } }, h(ds.Toggle, { "aria-label": "Tắt" }), h(ds.Toggle, { checked: true, "aria-label": "Bật" }))));
+    await tab.eval((html) => {
+      const el = document.querySelector("[data-compare-reference]");
+      el.style.cssText = "--color-text:var(--text-primary);--color-text-secondary:var(--text-secondary);--color-violet:var(--action-primary-bg);--color-blue:var(--action-blue-bg);--color-green:var(--accent-green);--color-glass:var(--glass-bg);--color-surface-3:var(--surface-3);--color-surface-4:var(--surface-4);--color-surface-sunken:var(--surface-sunken);--radius-full:999px;--radius-xs:8px;--radius-sm:12px;--text-micro:600 11px/16px var(--font-sans);--text-body-sm:500 14px/22px var(--font-sans);--shadow-sm:var(--switch-thumb-shadow);--duration:240ms;--ease-out:var(--ease-standard)";
+      el.insertAdjacentHTML("beforeend", html);
+    }, reference);
+    if (!mobile) {
+      const measurements = await tab.eval(() => {
+        const shared = [...document.querySelectorAll('[data-compare-shared] [data-slot="button"]')];
+        const original = [...document.querySelectorAll('[data-compare-reference] button:not([role])')];
+        return shared.map((el, i) => {
+          const a = getComputedStyle(el), b = getComputedStyle(original[i]);
+          return { size: el.dataset.size, variant: el.dataset.variant, mismatch: ["height", "paddingLeft", "paddingRight", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "gap", "borderRadius", "backgroundColor", "boxShadow", "color", "textShadow"].filter(key => a[key] !== b[key]) };
+        });
+      });
+      expect(measurements.every(m => !m.mismatch.length), `source bundle comparison: ${JSON.stringify(measurements)}`);
+      const controls = await tab.eval(() => {
+        const shared = document.querySelector('[data-compare-shared]');
+        const reference = document.querySelector('[data-compare-reference]');
+        const pairs = [
+          [shared.querySelector('.cosmic-tag'), reference.children[4].children[0]],
+          [shared.querySelector('.cosmic-tag[data-active="true"]'), reference.children[4].children[1]],
+          [shared.querySelector('[data-slot="badge"]'), reference.children[4].children[2]],
+          [shared.querySelector('[data-slot="input"]'), reference.children[5]],
+          [shared.querySelector('input[role="switch"]'), reference.querySelector('button[role="switch"]')],
+          [shared.querySelector('input[role="switch"]:checked'), reference.querySelector('button[aria-checked="true"]')],
+        ];
+        return pairs.map(([a, b], i) => ({ control: i, mismatch: ["height", "paddingLeft", "paddingRight", "borderRadius", "backgroundColor", "boxShadow"].filter(key => getComputedStyle(a)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "") !== getComputedStyle(b)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "")) }));
+      });
+      expect(controls.every(c => !c.mismatch.length), `source controls comparison: ${JSON.stringify(controls)}`);
+      writeFileSync(path.join(out, "cosmic-measurements.json"), JSON.stringify({ buttons: measurements, controls }, null, 2));
+      await tab.eval(() => document.querySelector('[data-cosmic-compare]').scrollIntoView({ block: "start" }));
+      await tab.eval(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await sleep(150);
+      await tab.shot("cosmic-design-compare");
+    }
+    const overrides = await tab.eval(() => {
+      const button = document.querySelector('[data-utility-override]');
+      const style = getComputedStyle(button);
+      const result = { height: style.height, padding: style.paddingLeft, radius: style.borderRadius };
+      return result;
+    });
+    expect(overrides.height === (mobile ? "44px" : "24px") && overrides.padding === "4px" && overrides.radius === "8px", `caller utilities with mobile touch minimum: ${JSON.stringify(overrides)}`);
+    await tab.click('[data-cosmic-fixture="dark"] .cosmic-segments button', "Đang chạy");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] .cosmic-segments button[aria-pressed="true"]').textContent === "Đang chạy"), "filter selection must update");
+    await tab.click('[data-cosmic-fixture="dark"] input[role="switch"]');
+    expect(await tab.eval(() => !document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "switch must toggle");
+    await tab.key(" ");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "Space must toggle the focused switch");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await tab.waitFor("reduced motion disables glass filter", () => getComputedStyle(document.querySelector('.cosmic-glass-overlay')).backdropFilter === "none");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("dark fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="dark"]').getBoundingClientRect().top < 150);
+    await tab.shot(`cosmic-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="light"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("light fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="light"]').getBoundingClientRect().top < 150);
+    await tab.win.webContents.executeJavaScript(axe.source);
+    const contrast = await tab.eval(async () => {
+      const { violations } = await window.axe.run(document.querySelector('[data-cosmic-fixture="light"]'), { runOnly: { type: "rule", values: ["color-contrast"] } });
+      return violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
+    });
+    expect(!contrast.length, `light cosmic contrast: ${JSON.stringify(contrast)}`);
+    await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+  });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {

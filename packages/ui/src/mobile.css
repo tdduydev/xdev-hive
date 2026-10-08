@@ -41,7 +41,8 @@
   label:has(input[type="checkbox"], input[type="radio"]) {
     min-height: var(--control-h-touch);
   }
-  input[type="checkbox"], input[type="radio"] {
+  /* Native switches draw at 44×26; their label supplies the 44px tap area. */
+  input[type="checkbox"]:not([role="switch"]), input[type="radio"] {
     min-width: var(--control-h-touch);
     min-height: var(--control-h-touch);
   }

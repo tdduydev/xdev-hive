@@ -1,6 +1,7 @@
 import type { Catalog } from "./vi.ts";
 
 export const en: Catalog = {
+  cosmicFixture: { compare: "Design comparison", implementation: "Shared components", reference: "Original design","title": "Shared components", "dark": "Dark theme", "light": "Light theme", "buttons": "Actions", "glass": "Glass", "solid": "Violet", "blue": "Blue", "ghost": "Ghost", "disabled": "Disabled", "controls": "Inputs & selectors", "name": "Task name", "placeholder": "Enter a task name", "toggle": "Notifications", "tabs": "Filter status", "all": "All", "running": "Running", "done": "Completed", "tags": "Tags & status", "neutral": "Neutral", "info": "Information", "success": "Success", "warning": "Warning", "danger": "Error", "empty": "No data yet", "emptyDetail": "Real data appears when tasks are available.", "stats": "Task count", "sample": "Component examples, not project metrics", "row": "Example task", "open": "View details"},
  workspace: { capped: "Counts cover the latest 500 tasks and 200 runs. Open the list to inspect by status.","results":"Results to accept","process":"Process & models","acceptanceIntro":"Inspect results, evidence and revisions before approval.","evidenceIntro":"Open the handover, evidence and actions allowed by your permissions.","noResults":"No results are waiting for acceptance.","releases":"Release queue","pickReleaseProject":"Select a project in the sidebar to inspect and approve releases.",
   "title": "What needs your attention today?",
   "subtitle": "Your decisions and the progress of your team.",
