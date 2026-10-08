@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { TerminalProvider } from "#ui/components/RemoteTerminal.tsx";
 import {
   Activity,
   BookOpen,
@@ -441,7 +442,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
 
   return (
     <HiveContext.Provider value={{ client, me: withSystems, bump, scope, setScope, projects, systems }}>
-      <TooltipProvider>{frame}</TooltipProvider>
+      <TooltipProvider><TerminalProvider>{frame}</TerminalProvider></TooltipProvider>
     </HiveContext.Provider>
   );
 }

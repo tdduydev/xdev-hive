@@ -70,6 +70,7 @@ export class RemoteTerminal {
       protocol: TERMINAL_PROTOCOL, enabled, projects: policy ? Object.keys(policy.projects).filter((p) => known.has(p)) : [], platforms, auditReady,
       // The app runs in the person's desktop session; a headless Linux helper would say false here.
       guiReady: true,
+      ...(policy ? { osUser: policy.osUser } : {}),
     };
   }
 
