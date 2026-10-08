@@ -173,6 +173,11 @@ export interface RunnerHost {
   mode(): "local" | "hub";
   /** This machine's name in hub leases (config.machine). */
   machine(): string;
+  /**
+   * A remote terminal holds this checkout of the project ("repo" or "worktree:<task id>", spec 69 §11): no run, merge
+   * or release starts under it. Left out where there is no terminal.
+   */
+  terminalHolds?(project: string, checkout: string): boolean;
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
@@ -519,7 +524,7 @@ export class Runner {
 
   constructor(host: RunnerHost, opts: RunnerOptions) {
     this.#host = host;
-    this.#autoRelease = new AutoReleaseWorker({ backend: () => host.backend(), actor: () => this.#runnerActor(), projects: () => host.projects(), env: () => host.env(), allowed: (project) => host.mode() === "hub" && host.settings().acceptHubRuns && !this.#updateDrain && !this.#mergeQueue.busy && !this.#paused?.hub && (!project || !this.#paused?.projects.includes(project)) && this.store.active().length === 0 && !this.#chats.active && !this.#assists.busy && !this.#syncs.size }, path.join(opts.dataDir, "auto-release"));
+    this.#autoRelease = new AutoReleaseWorker({ backend: () => host.backend(), actor: () => this.#runnerActor(), projects: () => host.projects(), env: () => host.env(), allowed: (project) => host.mode() === "hub" && host.settings().acceptHubRuns && !this.#updateDrain && !this.#mergeQueue.busy && !this.#paused?.hub && (!project || (!this.#paused?.projects.includes(project) && !host.terminalHolds?.(project, "repo"))) && this.store.active().length === 0 && !this.#chats.active && !this.#assists.busy && !this.#syncs.size }, path.join(opts.dataDir, "auto-release"));
     this.#opts = {
       diffReview: true,
       user: os.userInfo().username,
@@ -657,6 +662,17 @@ export class Runner {
     if (this.#updateDrain === value) return;
     this.#updateDrain = value;
     if (!value) void this.tick();
+  }
+
+  /**
+   * What of this runner works in a checkout now (spec 69 §11), for the machine's shared locks: a run in its worktree,
+   * the merge queue or a release in the repo. The merge queue and release worker are project-wide, so they hold the
+   * repo of every project while they run.
+   */
+  checkoutBusy(project: string, checkout: string): "run" | "merge" | "release" | null {
+    if (checkout === "repo") return this.#mergeQueue.busy ? "merge" : this.#autoRelease.busy ? "release" : null;
+    const task = /^worktree:(.+)$/.exec(checkout)?.[1];
+    return task && this.worktreeActive(project, task) ? "run" : null;
   }
 
   updateWork(): { busy: boolean; deadline: number } {
@@ -1369,7 +1385,7 @@ export class Runner {
     if (!this.#updateDrain && !res.duplicate && !res.paused?.hub) await this.#autoRelease.poll().catch(() => undefined);
     if (this.#host.settings().gateRunner && !this.#updateDrain && !this.#autoRelease.busy && !res.duplicate && !res.paused?.hub) {
       void this.#mergeQueue.poll({ backend: this.#host.backend(), actor: this.#runnerActor(), instance: this.#instance,
-        projects: this.#host.projects().filter(p => !res.paused?.projects.includes(p.name)), dataDir: this.#opts.dataDir,
+        projects: this.#host.projects().filter(p => !res.paused?.projects.includes(p.name) && !this.#host.terminalHolds?.(p.name, "repo")), dataDir: this.#opts.dataDir,
         env: this.#host.env(), remote: this.#host.mergeRemote?.(), openMr: this.#host.openMergeBatch?.bind(this.#host),
       }).catch(() => { /* The durable batch and local journal are retried at the next heartbeat. */ });
     }
@@ -1729,6 +1745,10 @@ export class Runner {
         const now = this.#opts.now();
         for (const run of this.store.queued()) {
           if (this.#worktreeBusy.has(`${run.project}/${run.taskId}`)) continue;
+          if (this.#host.terminalHolds?.(run.project, `worktree:${run.taskId}`)) {
+            this.#waiting.set(run.id, tr("runNote.waitingTerminal"));
+            continue;
+          }
           if (this.#updateDrain) {
             this.#waiting.set(run.id, tr("runNote.waitingUpdate"));
             continue;

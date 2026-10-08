@@ -1,4 +1,5 @@
-// Local spike only: deliberately not connected to IPC, MCP, heartbeat or the hub.
+// The PTY under a remote terminal (spec 69): local policy, spawn, input, resize and stop. Driven only by the relay
+// agent (relay-agent.ts) after the local policy file opted in; not connected to IPC or MCP.
 import { constants, openSync, fstatSync, readFileSync, closeSync, realpathSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
@@ -150,9 +151,10 @@ export class PtySupervisor {
     } catch { void this.stop(); throw new Error("terminal-local-policy-denied"); }
   }
 
-  write(data: string): void {
+  /** Bytes as the browser sent them: a Buffer keeps a UTF-8 sequence split across two frames whole. */
+  write(data: string | Buffer): void {
     const pty = this.#check();
-    const bytes = Buffer.byteLength(data);
+    const bytes = typeof data === "string" ? Buffer.byteLength(data) : data.length;
     if (bytes > 16_384) throw new Error("terminal-input-too-large");
     // node-pty has no public tcgetattr API. Omit ALL input payloads, even with
     // echo on, rather than racing a password prompt or guessing from output.
@@ -167,6 +169,12 @@ export class PtySupervisor {
     try { this.#audit({ type: "resize", cols, rows }); pty.resize(cols, rows); }
     catch { void this.stop(); throw new Error("terminal-resize-failed"); }
   }
+
+  /** Backpressure (spec 69 §7): the browser is behind, so the shell blocks on its own output instead of us buffering it. */
+  pause(): void { if (this.#pty && !this.#closing) this.#pty.pause(); }
+  resume(): void { if (this.#pty && !this.#closing) this.#pty.resume(); }
+
+  get running(): boolean { return !!this.#pty; }
 
   stop(): Promise<void> {
     if (this.#closing) return this.#closing;

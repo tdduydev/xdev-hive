@@ -3764,6 +3764,7 @@ export const vi = {
     artifactNotFile: "là liên kết (symlink) hoặc không phải file thường",
     artifactSameName: "trùng tên {name} với {other} sau khi bỏ ký tự không hợp lệ; đổi tên một trong hai",
     waitingUpdate: "Chờ app cập nhật xong",
+    waitingTerminal: "Worktree này đang mở trong terminal từ xa: chờ phiên terminal kết thúc",
     waitingParallel: "Đang chờ slot trống (đã đạt số agent chạy song song)",
     waitingPaused: "Agent của {project} đang tạm ngưng bởi {by}: chờ có người cho agent chạy lại",
     waitingArchived: "Service {project} đã lưu trữ trên hub: chờ tới khi được khôi phục",

@@ -111,6 +111,7 @@ async function setup(
     toolTrust?: RunnerHost["toolTrust"];
     onChat?: RunnerOptions["onChat"];
     chatFile?: RunnerOptions["chatFile"];
+    terminalHolds?: RunnerHost["terminalHolds"];
   } = {},
 ) {
   const repo = tmp("repo");
@@ -140,6 +141,7 @@ async function setup(
     hub: machine.hub ?? (() => ({ url: "https://runner-fixture.test", token: "hive_machine_fixture" })),
     ...(machine.download ? { download: machine.download } : {}),
     ...(machine.toolTrust ? { toolTrust: machine.toolTrust } : {}),
+    ...(machine.terminalHolds ? { terminalHolds: machine.terminalHolds } : {}),
   };
   const dataDir = tmp("data");
   const hubUpdates: HubUpdate[] = [];
@@ -4148,6 +4150,28 @@ describe("Gemini native runner", () => {
       assert.equal(done.status, "rate_limited");
       assert.match(done.error!, /QUOTA_EXHAUSTED/);
       assert.equal(done.exitCode, 0);
+    } finally { await runner.stop(); hive.close(); }
+  });
+});
+
+describe("runner and the remote terminal's checkout locks (spec 69 §11)", () => {
+  it("does not start a run in a worktree a terminal holds, and tells the run's checkout to the locks", async () => {
+    let held = true;
+    const { runner, hive } = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", {
+      terminalHolds: (project, checkout) => held && project === "demo" && checkout === "worktree:T-1",
+    });
+    try {
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      await runner.settle();
+      assert.equal(runner.store.get(run.id)!.status, "queued");
+      assert.match(runner.list()[0]!.error ?? "", /terminal từ xa/);
+      assert.equal(runner.checkoutBusy("demo", "repo"), null);
+      held = false;
+      await runner.tick();
+      await until(() => runner.checkoutBusy("demo", "worktree:T-1") === "run" || runner.store.get(run.id)!.status !== "queued");
+      await runner.settle();
+      assert.equal(runner.store.get(run.id)!.status, "succeeded", runner.store.get(run.id)!.error ?? "");
+      assert.equal(runner.checkoutBusy("demo", "worktree:T-1"), null);
     } finally { await runner.stop(); hive.close(); }
   });
 });
