@@ -16,7 +16,10 @@ extraResources:
   - from: resources
     to: icons
 asar: true
-npmRebuild: false
+npmRebuild: true
+asarUnpack:
+  # forkpty needs both the native addon and the executable spawn-helper on disk.
+  - "**/node-pty/**"
 mac:
   category: public.app-category.developer-tools
   # Ad-hoc signature until there is a Developer ID: Apple Silicon refuses an app whose bundle seal is broken.
