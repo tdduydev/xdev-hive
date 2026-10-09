@@ -39,9 +39,10 @@ describe("auto-dispatch (60a)", () => {
     const { hive, beat, create } = fixture();
     const unknown: Actor = { name: "old-runner", role: "agent" };
     await beat({ platform: "win" });
-    await beat({}, unknown);
+    await beat({ platform: null }, unknown);
     await create("win-only", { platforms: ["windows"] });
     assert.equal((await hive.call("machines.list", {}, admin)).find((m) => m.id === runner.name)?.platform, "windows");
+    assert.equal((await hive.call("machines.list", {}, admin)).find((m) => m.id === unknown.name)?.platform, null);
     await assert.rejects(hive.call("runs.dispatch", { project: "app", taskId: "win-only", machineId: unknown.name }, admin), (e: unknown) => (e as { key?: string }).key === "errors.machinePlatformMismatch");
     assert.equal((await hive.call("runs.dispatch", { project: "app", taskId: "win-only", machineId: runner.name }, admin)).machineId, runner.name);
     hive.close();

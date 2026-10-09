@@ -60,6 +60,20 @@ async function hub() {
 const fails = (key: string) => (e: unknown) => e instanceof HiveError && e.key === key;
 
 describe("a task given to one agent (roadmap 50)", () => {
+  it("lets a task manager change platforms without taking a running task's lease", async () => {
+    const { hive, task } = await hub();
+    const claimed = await hive.call("tasks.claim", { id: "T-1" }, dev);
+    assert.equal(claimed.claimed, true);
+    const before = await task("T-1");
+    await assert.rejects(hive.call("tasks.update", { id: "T-1", platforms: ["mac"] }, dev), fails("errors.need.taskManage"));
+    const changed = await hive.call("tasks.update", { id: "T-1", platforms: ["mac"] }, lead);
+    assert.deepEqual([changed.platforms, changed.status, changed.owner, changed.leaseUntil], [["mac"], "doing", before.owner, before.leaseUntil]);
+    const manager: Actor = { name: "planner", role: "member", access: { projects: { app: { permissions: ["view", "taskManage"] } } } };
+    assert.deepEqual((await hive.call("tasks.update", { id: "T-1", platforms: ["linux"] }, manager)).platforms, ["linux"]);
+    await assert.rejects(hive.call("tasks.update", { id: "T-1", status: "review" }, manager), fails("errors.need.taskWork"));
+    hive.close();
+  });
+
   it("shows a platform mismatch in the queue and waits for a matching OS", async () => {
     const { hive, beat, task } = await hub();
     await beat(mbp, { platform: "linux" });
