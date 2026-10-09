@@ -384,7 +384,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **75d. root-compose** (0.150.0; chưa thử `docker compose up` thật): `compose.yaml` ở gốc repo, profile `embed`, `https`, `tunnel`; README phần cài đặt.
 
 - **76. access-first** (hỏi 9/10: "tách web, app ra hai phần riêng không làm chung vì bị rối… tập trung vào bộ phân quyền trước, mình sẽ bắt đầu cấp account cho các phòng ban dùng MCP, và người dùng sẽ đọc và duyệt tài liệu"). Người dùng đã duyệt spec ngày 9/10: một người thuộc được nhiều phòng ban, token MCP hạn 30/90 ngày, chế độ cục bộ của app chạy hub nhúng. Spec: [docs/specs/76-access-first.md](specs/76-access-first.md). Prompt thiết kế lại UI: [docs/design/76-redesign-prompt.md](design/76-redesign-prompt.md). Tách:
-  - [ ] **76a. access-fixes**: vá 4 lỗi P0 (token trả lời chat gọi được mọi RPC; viewer duyệt được tool; token của admin không bị grants giới hạn; RPC của web nằm ngoài bảng quyền), mỗi lỗi có test.
+  - [x] **76a. access-fixes** (0.151.0): vá 4 lỗi P0 (token trả lời chat gọi được mọi RPC; viewer duyệt được tool; token của admin không bị grants giới hạn; RPC của web nằm ngoài bảng quyền), mỗi lỗi có test.
   - [ ] **76b. one-authorize**: kiểm quyền một chỗ cho mọi method, gộp các bảng vai, test ma trận actor × method, giao diện khớp với hub.
   - [ ] **76c. teams**: phòng ban, trưởng phòng, quyền lấy vai cao nhất, link mời theo phòng (cần R-72l-users vào main).
   - [ ] **76d. mcp-tokens**: token MCP cá nhân (dự án, chỉ đọc hoặc đề xuất, hạn 30/90 ngày), trang *Kết nối MCP* có lệnh mẫu cho Claude Code và Codex, admin thu hồi được.
