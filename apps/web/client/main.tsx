@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HiveApp, I18nProvider, Login, signIn, signInProviders, signOut, useT, type MessageKey } from "@xdev-hive/ui";
+import { createHttpClient, HiveApp, HubSetup, hubSetupState, I18nProvider, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
 import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
@@ -140,10 +140,21 @@ function Root() {
   );
 }
 
+/** A hub started for setup (roadmap 75) shows its setup page before anything else; a hub from before it has no endpoint. */
+function Start() {
+  const [setup, setSetup] = useState<HubSetupState | null>(null);
+  useEffect(() => {
+    hubSetupState().then(setSetup, () => setSetup({ pending: false }));
+  }, []);
+  if (!setup) return null;
+  if (setup.pending) return <HubSetup locked={setup.locked} defaults={setup.defaults} onDone={() => setSetup({ pending: false })} />;
+  return <Root />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider>
-      <Root />
+      <Start />
     </I18nProvider>
   </StrictMode>,
 );

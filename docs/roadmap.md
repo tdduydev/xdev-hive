@@ -377,6 +377,12 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **74a. github-repo-list** (0.149.0): `GitHubClient` liệt kê repo của org (`/orgs/{org}/repos`), user (`/users/{user}/repos`) hay của chính token (`/user/repos`), phân trang theo header `Link`; mỗi repo có `full_name`, `clone_url`, `ssh_url`, `default_branch`, `archived`. github.com và GHES.
   - [x] **74b. github-import** (0.149.0; smoke thẻ GitHub chưa chụp): thẻ *Nhập từ GitHub* ở *Dự án & cài đặt* như *Nhập từ group GitLab*: ô org/user, thư mục gốc (`desktop:pickFolder`), SSH/HTTPS, gợi ý project key và thư mục. `githubOrg` / `importGithub` theo mẫu `gitlabGroup` / `importGitlab`, dùng lại `planImport` / `importRepos`; clone URL lấy lại từ GitHub, không từ trang; token không vào `.git/config`; thư mục có sẵn cùng remote thì dùng luôn, khác remote thì báo; repo đã là dự án hoặc archived thì bỏ qua; dự án mới có `githubRepo` và `targetBranch` = nhánh mặc định. Test `github-import.test.ts` (mock GitHub: phân trang, org/user, clone có sẵn, xung đột remote, token không lộ), smoke thẻ import, chuỗi vi/en. Rủi ro: PAT fine-grained thiếu `Metadata: read` hoặc org chưa duyệt token thì không thấy repo private; rate limit.
 
+- **75. setup-wizard** (hỏi 9/10: "làm sao cho hive init màn hình đầu tiên là các thông số cấu hình, chỉ cần deploy bằng 1 lệnh docker compose up"; chọn: HTTP LAN mặc định + profile HTTPS, cấu hình trong volume và env thắng, spec ngắn rồi làm). Spec: [docs/specs/75-setup-wizard.md](specs/75-setup-wizard.md). Tách:
+  - [x] **75a. setup-file** (0.150.0): `settings.json` cạnh DB điền các biến `HIVE_*` chưa đặt; env thắng và bị khoá.
+  - [x] **75b. setup-gate** (0.150.0): `HIVE_SETUP=1` và chưa có tài khoản thì hub in mã cài đặt, chặn API, mở `GET/POST /api/setup`; lưu xong tạo admin, ghi tệp, chạy lại.
+  - [x] **75c. setup-page** (0.150.0; e2e/ảnh màn hình chưa chụp, Electron không chạy được trên máy làm): trang cài đặt trên web (mã, admin, địa chỉ, lưu tệp, embeddings, SSO, backup, tuỳ chọn), vi/en.
+  - [x] **75d. root-compose** (0.150.0; chưa thử `docker compose up` thật): `compose.yaml` ở gốc repo, profile `embed`, `https`, `tunnel`; README phần cài đặt.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to hc-duytd20-linux"); giờ runner gửi kèm máy.
