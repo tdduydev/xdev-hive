@@ -4376,8 +4376,12 @@ async function main() {
     const total = (await rpc("artifacts.list", { limit: 200 })).length;
     await tab.waitFor("the files page", () => document.querySelector('[data-artifact-row]') && document.querySelector('[data-artifacts-page]')?.textContent.includes("Trang 1") && !document.querySelector('[data-artifacts-page] [role="status"]') && ![...document.querySelectorAll('[data-artifacts-page] button')].find((b) => b.textContent === "Trang sau")?.disabled);
     expect(total > 50, `fixture has a second page: ${total} files`);
-    await tab.click('[data-artifacts-page] button', "Trang sau");
-    await tab.waitFor("second page", () => document.querySelector('[data-artifacts-page]')?.textContent.includes("Trang 2") && document.querySelector('[data-artifact-row]'));
+    // A refresh in flight disables "Trang sau" for a moment and the click is lost: click again until page 2 shows.
+    for (let tries = 0; ; tries++) {
+      await tab.click('[data-artifacts-page] button', "Trang sau");
+      try { await tab.waitFor("second page", () => document.querySelector('[data-artifacts-page]')?.textContent.includes("Trang 2") && document.querySelector('[data-artifact-row]')); break; }
+      catch (e) { if (tries >= 2 || await tab.eval(() => document.querySelector('[data-artifacts-page]')?.textContent.includes("Trang 2"))) throw e; }
+    }
     await fill('[data-artifact-filter="search"]', "report");
     await tab.waitFor("name filter resets page", () => document.querySelector('[data-artifact-row="report.md"]') && document.querySelector('[data-artifacts-page]')?.textContent.includes("Trang 1") === false);
     if (mobile) {
@@ -4559,13 +4563,20 @@ async function main() {
     const size = mobile ? "390" : "1440";
     const shoot = async (page, scope, ready, route = page) => {
       await tab.eval((v) => localStorage.setItem("xdev-hive.scope", v), scope);
-      await tab.go(route);
+      // The scope is read at start: reload first, then open the page (a ?skill= link is spent once the page reads it).
       await tab.reload();
-      await tab.waitFor(`${page} with the template's data`, ready);
+      await tab.go(route);
+      await tab.waitFor(`${page} with the template's data`, ready).catch(async (e) => {
+        const seen = await tab.eval(() => ({ hash: location.hash, pills: document.querySelectorAll("main [data-skill-proposals]").length, picked: document.querySelector('main [data-pane-item][aria-pressed="true"]')?.textContent, cards: document.querySelectorAll("[data-memory-card]").length }));
+        throw new Error(`${e.message}: ${JSON.stringify(seen)}`);
+      });
       for (const theme of ["dark", "light"]) {
         await tab.eval((v) => { document.documentElement.dataset.theme = v; }, theme);
-        await sleep(200);
-        await tab.shot(`${page}-${size}-${theme}`);
+        // capturePage right after a theme flip sometimes throws UnknownVizError; the next frame captures fine.
+        for (let tries = 0; ; tries++) {
+          await sleep(300);
+          try { await tab.shot(`${page}-${size}-${theme}`); break; } catch (e) { if (tries >= 4 || !/UnknownVizError/.test(String(e))) throw e; }
+        }
       }
     };
     try {
@@ -4574,7 +4585,7 @@ async function main() {
       expect(JSON.stringify(chips) === JSON.stringify(["Tất cả · 7", "Chờ duyệt · 1", "Cần xem lại · 1", "Mâu thuẫn · 1", "Chỉ mục cũ · 1"]), `memory chips: ${chips}`);
       expect(!(await tab.eval(() => !!document.querySelector("[data-page-tab]"))), "Memory has no tabs");
       // The template shows web's own e2e-web open.
-      await shoot("skills", "web", () => document.querySelectorAll("main [data-skill-proposals]").length === 2 && (innerWidth < 768 || document.querySelector('main [data-pane-item][aria-pressed="true"]')?.textContent.includes("thay skill chung")), `skills?skill=${encodeURIComponent("project/web/skills/e2e-web")}`);
+      await shoot("skills", "web", () => document.querySelectorAll("main [data-skill-proposals]").length === 2 && (innerWidth < 768 || document.querySelector('main [data-pane-item][aria-pressed="true"]')?.textContent.includes("thay skill chung")), mobile ? "skills" : `skills?skill=${encodeURIComponent("project/web/skills/e2e-web")}`);
       expect(!(await tab.eval(() => !!document.querySelector("[data-page-tab]"))), "Skill has no tabs");
       const shared = await tab.eval(() => [...document.querySelectorAll("main [data-pane-item]")].map((b) => b.innerText.replace(/\s+/g, " ")));
       expect(shared.some((t) => t.includes("Bản chung của e2e-web") && t.includes("Chung · không dùng ở service này")), `shadowed team skill: ${shared}`);
