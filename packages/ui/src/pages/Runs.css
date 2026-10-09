@@ -1,5 +1,5 @@
 /* Lượt chạy (72e): measurements are the design's inline styles (xDev Hive.dc.html, "Lượt chạy" block), colors are tokens. */
-@layer components {
+/* Not in @layer components: the bundle puts that layer before Tailwind's base reset (`*{padding:0}`), which would then win. */
 .runs-page{display:flex;min-width:0;flex:1;flex-direction:column;overflow-y:auto;padding:24px 28px 40px}
 .runs-sub{margin:0 0 20px;font:var(--type-body-sm);color:var(--text-secondary)}
 .runs-live-title{display:flex;align-items:center;gap:10px;margin-bottom:12px;font:600 15px/22px var(--font-sans)}
@@ -59,4 +59,3 @@
 .runs-drawer{inset:0;width:auto;border-radius:0}
 }
 @media(prefers-reduced-motion:reduce){.runs-live-dot,.runs-track>span{animation:none}}
-}
