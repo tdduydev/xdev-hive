@@ -23,6 +23,7 @@ export const worktreeEntrySchema = worktreeTargetSchema.extend({
   modifiedAt: z.iso.datetime(),
   dirty: z.boolean(),
   merged: z.boolean().nullable(),
+  pushed: z.boolean().nullable().default(null),
   active: z.boolean(),
   error: z.string().max(1000).nullable(),
 });
@@ -61,12 +62,13 @@ export interface MachineWorktrees {
 }
 
 /**
- * Why the machine may remove a worktree without asking: a done task whose branch is in the target, or one done for
- * longer than the retention. An active, dirty or unfinished one never. `now` (Dọn ngay) applies the rules although
- * automatic cleanup is off.
+ * A pushed, clean worktree with no active run can be reclaimed when disk is low. Otherwise the task must be done and
+ * either merged or past retention. `now` (Dọn ngay) applies the rules although automatic cleanup is off.
  */
-export function cleanupReason(entry: WorktreeEntry, cleanup: WorktreeCleanup, now: Date, opts: { now?: boolean } = {}): "merged" | "retention" | null {
-  if ((!cleanup.enabled && !opts.now) || entry.active || entry.dirty || entry.taskStatus !== "done") return null;
+export function cleanupReason(entry: WorktreeEntry, cleanup: WorktreeCleanup, now: Date, opts: { now?: boolean; lowDisk?: boolean } = {}): "merged" | "retention" | "lowDisk" | null {
+  if ((!cleanup.enabled && !opts.now) || entry.active || entry.dirty || entry.pushed !== true || entry.taskStatus === null) return null;
+  if (opts.lowDisk) return "lowDisk";
+  if (entry.taskStatus !== "done") return null;
   if (entry.merged === true) return "merged";
   return entry.taskUpdatedAt && +now - Date.parse(entry.taskUpdatedAt) >= cleanup.retentionDays * 86400_000 ? "retention" : null;
 }

@@ -1201,7 +1201,7 @@ export class Runner {
       try {
         const tasks = await this.#host.backend().call("tasks.list", { project: project.name }, this.#runnerActor());
         const items = await registeredWorktrees(project, root);
-        const target = items.length ? await remoteStart(project.repo, project.targetBranch, { timeoutMs: 10_000, retryMs: [] }) : null;
+        const target = items.length ? await remoteStart(project.repo, project.targetBranch, { timeoutMs: 10_000, retryMs: [], remote: project.git?.remote }) : null;
         if (target?.error) errors.push(`${project.name}: ${target.error}`.slice(0, 1000));
         const mergeRef = target?.error ? null : target?.ref ?? undefined;
         // Bound concurrent disk walks so a large runner does not launch hundreds of du processes at heartbeat.
@@ -1250,7 +1250,9 @@ export class Runner {
         if (reason !== "manual") {
           const task = (await this.#host.backend().call("tasks.list", { project: entry.project }, this.#runnerActor())).find(t => t.id === entry.taskId);
           const cleanup = worktreeCleanupSchema.parse(this.#host.settings().worktreeCleanup ?? {});
-          if (!task || !cleanupReason({ ...entry, taskStatus: task.status, taskUpdatedAt: task.updatedAt }, cleanup, this.#opts.now())) throw new HiveError("conflict", "Worktree no longer eligible.", { key: "errors.worktreeChanged" });
+          const lowDisk = reason === "lowDisk" && (await freeBytes(this.#worktreeRoot()) ?? Infinity) < cleanup.minFreeGb * 1024 ** 3;
+          if (reason === "lowDisk" && !lowDisk) throw new HiveError("conflict", "Worktree no longer eligible.", { key: "errors.worktreeChanged" });
+          if (!task || !cleanupReason({ ...entry, taskStatus: task.status, taskUpdatedAt: task.updatedAt }, cleanup, this.#opts.now(), { lowDisk })) throw new HiveError("conflict", "Worktree no longer eligible.", { key: "errors.worktreeChanged" });
         }
         if (this.#worktreeActive(entry.project, entry.taskId)) throw new HiveError("conflict", "Task has an active run.", { key: "errors.worktreeActive" });
         await deleteWorktree(project, this.#worktreeRoot(), entry, force, () => this.#worktreeActive(entry.project, entry.taskId));
@@ -1305,11 +1307,12 @@ export class Runner {
       pruneRunLogs(path.join(this.#opts.dataDir, "runs"), days, this.#opts.now(), new Set(this.store.active().map((r) => r.id)));
     }
     const report = await this.worktrees();
-    const eligible = report.entries.filter(e => cleanupReason(e, report.cleanup, this.#opts.now())).sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
+    const eligible = report.entries.slice().sort((a, b) => a.modifiedAt.localeCompare(b.modifiedAt));
     let free = report.freeBytes;
     for (const entry of eligible) {
       const low = free !== null && free < report.cleanup.minFreeGb * 1024 ** 3;
-      const reason = low ? "lowDisk" : cleanupReason(entry, report.cleanup, this.#opts.now())!;
+      const reason = cleanupReason(entry, report.cleanup, this.#opts.now(), { lowDisk: low });
+      if (!reason) continue;
       await this.manageWorktrees([entry], true, reason);
       if (free !== null) free = await freeBytes(this.#worktreeRoot());
     }
