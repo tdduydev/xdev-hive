@@ -24,6 +24,7 @@
 .runs-track>span{position:absolute;inset:0 auto 0 0;width:40%;border-radius:999px;background:var(--tone);animation:xd-indeterminate 1.6s var(--ease-standard) infinite}
 .runs-track[data-still="true"]>span{animation:none;width:0}
 .runs-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px}
+.runs-filters .cosmic-tag[data-active="true"]{background:color-mix(in srgb,var(--action-primary-bg) 82%,#000)}
 .runs-filters button.cosmic-tag{border:0;cursor:pointer;font-family:inherit}
 .runs-search{flex:0 1 260px;min-width:160px}
 .runs-more{margin-bottom:12px}
@@ -41,7 +42,7 @@
 /* Desktop opens a run on its own, so the drawer is a side panel, not a modal: no scrim, the page keeps its room. */
 .runs-scrim{display:none}
 .runs-page[data-drawer="true"]{padding-right:596px}
-.runs-drawer{position:fixed;top:12px;right:12px;bottom:12px;z-index:41;display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass-strong),var(--shadow-e3);overflow:hidden}
+.runs-drawer{position:fixed;top:88px;right:12px;bottom:12px;z-index:41;display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass-strong),var(--shadow-e3);overflow:hidden}
 .runs-drawer-bar{display:flex;align-items:center;gap:12px;padding:14px 16px 0 22px}
 .runs-drawer-close{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin-left:auto;border:0;border-radius:12px;background:var(--glass-bg);box-shadow:var(--ring-glass);color:var(--text-secondary);cursor:pointer}
 @media(max-width:767px){
