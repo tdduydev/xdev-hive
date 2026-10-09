@@ -2252,6 +2252,7 @@ async function main() {
     const keepTheme = await tab.eval(() => document.documentElement.dataset.theme ?? "");
     for (const theme of ["dark", "light"]) {
       await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      await new Promise(resolve => setTimeout(resolve, 500));
       await tab.shot(`runs-${mobile ? 390 : 1440}-${theme}`);
     }
     await tab.eval(value => { if (value) document.documentElement.dataset.theme = value; else delete document.documentElement.dataset.theme; }, keepTheme);
