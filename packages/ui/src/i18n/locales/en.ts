@@ -3962,6 +3962,7 @@ export const en: Catalog = {
     opencodeInstall: "If the npm launcher fails on this OS/glibc/musl: use the official installer at https://opencode.ai/docs/ and recheck opencode --version. Platform installers are unverified on this machine.",
     agyInstallManual: "Install / update via https://antigravity.google/docs/cli/install/.",
     installNpm: "Install with npm",
+    repairNpm: "Reinstall with npm",
     versionFailed: "{bin} · --version failed: {output}",
     cliOutdated: "{version}, {latest} is out · {path}",
     cliOutdatedManual: "{version}, {latest} is out · {path} · how this CLI was installed is not known: upgrade it the way you installed it",

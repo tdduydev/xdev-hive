@@ -1,5 +1,6 @@
-// Builds the desktop app for every platform on this Mac and publishes a GitHub release (no CI).
+// Builds on macOS for all platforms, or natively on Linux, and publishes a GitHub release (no CI).
 //   npm run release -w @xdev-hive/desktop            (version from package.json, tag v<version>)
+//   npm run release -w @xdev-hive/desktop -- --linux-only  (native Linux architecture only)
 //   npm run release -w @xdev-hive/desktop -- --dry   (build and list the files, publish nothing)
 //   npm run release -w @xdev-hive/desktop -- --hub-only   (skip GitHub: upload the built files to the hub again)
 //   npm run release -w @xdev-hive/desktop -- --whatsnew <file>   (use edited release notes)
@@ -22,6 +23,11 @@ const repoRoot = path.resolve(desktop, "..", "..");
 const release = path.join(desktop, "release");
 const dry = process.argv.includes("--dry");
 const hubOnly = process.argv.includes("--hub-only");
+const linuxOnly = process.argv.includes("--linux-only");
+// Fail before deleting output: macOS signing and native PTY builds require the appropriate host.
+if (!hubOnly && (linuxOnly ? process.platform !== "linux" || !["x64", "arm64"].includes(process.arch) : process.platform !== "darwin")) {
+  throw new Error("Use --linux-only on Linux (native x64/arm64); all-platform releases require macOS.");
+}
 // Read before cleaning release/, since the supplied draft may live there.
 const whatsNewOverride = readWhatsNewOverride(process.argv.slice(2), readFileSync);
 const { version } = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8"));
@@ -42,7 +48,11 @@ if (!dry && !hubOnly) {
 if (!hubOnly) rmSync(release, { recursive: true, force: true });
 if (!hubOnly) run("npm", ["run", "build"]);
 const builder = (...args) => run("npx", ["electron-builder", ...args, "--publish", "never"], { env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: "false" } });
-if (!hubOnly) {
+if (!hubOnly && linuxOnly) {
+  builder("--linux", "AppImage", "deb", `--${process.arch}`);
+  // Native PTY must load from the packaged ASAR before a Linux build is published.
+  run("node", ["scripts/pty-check.mjs", path.join(release, process.arch === "x64" ? "linux-unpacked" : "linux-arm64-unpacked")]);
+} else if (!hubOnly) {
   builder("--mac", "--arm64", "--x64");
   // node-gyp cannot cross-compile node-pty from a Mac: Windows takes the package's N-API prebuilds as they are, and
   // Linux has none (the remote terminal reports node-pty missing there until one is built on Linux).
@@ -92,7 +102,18 @@ async function toHub(notes, notesFile) {
 }
 
 const whatsNew = whatsNewDraft;
-const notes = `## Tải về
+const notes = linuxOnly ? `## Linux ${process.arch}
+
+Bản này chỉ phát hành cho Linux ${process.arch}; không có build macOS, Windows hoặc kiến trúc Linux khác.
+
+${assets.map(file => `- ${path.basename(file)}`).join("\n")}
+
+Cài theo người dùng, không cần sudo hoặc FUSE: tải \`install-linux.sh\` và AppImage, rồi chạy \`sh install-linux.sh xdev-hive-${version}-linux-${process.arch === "x64" ? "x86_64" : "arm64"}.AppImage\`.
+
+Kiểm tra file bằng \`SHA256SUMS.txt\`.
+
+${whatsNew}
+` : `## Tải về
 
 | Máy | File |
 |---|---|

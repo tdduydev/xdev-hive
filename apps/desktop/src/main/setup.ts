@@ -306,7 +306,7 @@ export class Setup {
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
-      const args = ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg, ...(await this.#npmPrefixArgs(npm, env))];
+      const args = ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg, ...(await this.#npmPrefixArgs(npm, env)), ...(await this.#npmScriptArgs(cli.kind, npm, env))];
       const r = await this.#run(npm, args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
@@ -345,6 +345,14 @@ export class Setup {
     if (insideRuntime(prefix, this.#host.runtimeRoots?.() ?? [])) return ["--prefix", userNpmPrefix(this.#home())];
     const writable = this.#host.writable ?? canWrite;
     return writable(path.join(prefix, "lib", "node_modules")) ? [] : ["--prefix", userNpmPrefix(this.#home())];
+  }
+
+  async #npmScriptArgs(kind: AgentKind, npm: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+    if (kind !== "opencode") return [];
+    // npm 12 blocks postinstall by default; OpenCode's bin is a placeholder until its own script selects the native binary.
+    const result = await this.#run(npm, ["--version"], { env, timeoutMs: 15_000 });
+    const version = result.ok ? parseCliVersion(result.output) : null;
+    return version && Number(version.split(".")[0]) >= 12 ? ["--allow-scripts=opencode-ai"] : [];
   }
 
   /** Runs `argv` (argv[0] already resolved to `bin`): the output's tail, or an error that carries it. */
@@ -483,7 +491,7 @@ export class Setup {
     }
     const env = { ...this.#host.env(), PATH: pathEnv };
     const v = await this.#run(bin, ["--version"], { env, timeoutMs: 15_000 });
-    if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: null, version: null, latest: null };
+    if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: cliUpgrade(cli, this.#realpath(bin), bin, this.#home())?.method === "npm" ? tr("setupItem.repairNpm") : null, version: null, latest: null };
     const version = parseCliVersion(v.output);
     const latest = await this.#latestOf(cli.pkg, pathEnv, env);
     if (cli.kind === "antigravity") return {
@@ -520,6 +528,7 @@ export class Setup {
       if (upgrade.method === "npm" && !upgrade.args.includes("--prefix")) {
         upgrade.args.push(...await this.#npmPrefixArgs(bin, env));
       }
+      if (upgrade.method === "npm") upgrade.args.push(...await this.#npmScriptArgs(cli.kind, bin, env));
       const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
       const r = await this.#run(bin, upgrade.args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
