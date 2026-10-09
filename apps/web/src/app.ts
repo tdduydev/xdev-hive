@@ -332,9 +332,11 @@ export function createHubApp({
       };
     }
     const name = label ? `${label}@${who.name}` : who.name;
-    const tokenSource = source.via === "desktop" && (label || who.role === "agent" || who.role === "viewer") ? { ...source, via: "api" as const } : source;
-    // The desktop header is trusted only when this bearer is paired with the registered machine.
-    const machineSource = (actor: Actor): Actor => source.via === "desktop" && hive.isMachineActor(name, actor) ? { ...actor, source } : actor;
+    const tokenSource = source.via === "desktop" ? { ...source, via: "api" as const } : source;
+    // The desktop window names itself `desktop`, while machine reports use `runner.<machine>`.
+    // Both are trusted only with a bearer paired to a registered machine.
+    const machineSource = (actor: Actor): Actor => source.via === "desktop" &&
+      (hive.isMachineActor(name, actor) || hive.isPairedDesktopToken(actor)) ? { ...actor, source } : actor;
     // A token of no account (CI, the CLI's) stands for itself.
     if (!who.ownerId) return machineSource({ name, role: who.role, tokenId: who.id, source: tokenSource, ...trail(who.name) });
     const user = users.get(who.ownerId);

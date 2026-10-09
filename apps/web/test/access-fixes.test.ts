@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import type { Request, RequestHandler, Response } from "express";
-import type { Actor } from "@xdev-hive/core";
+import { toolHash, worktreeCleanupSchema, type Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import type { ChatGrants } from "#web/grants.ts";
@@ -58,12 +58,56 @@ it("P0-2: a viewer credential of a machine's owner cannot approve tools or manag
   } finally { hive.close(); }
 });
 
+it("P0-2: only the paired owner's machine token may use the desktop source for human decisions", async () => {
+  const { hive, tokens, users, rpc } = harness();
+  try {
+    const owner = users.create({ username: "hoa" }).user;
+    const stranger = users.create({ username: "lan" }).user;
+    users.setGrants(owner.id, { app: "lead" });
+    users.setGrants(stranger.id, { app: "lead" });
+    const paired = tokens.create("hoa-mbp", "member", owner.id);
+    const unpaired = tokens.create("hoa-other", "member", owner.id).token;
+    const foreign = tokens.create("lan-mbp", "member", stranger.id).token;
+    const machineId = "runner.mbp@hoa-mbp";
+    const profile = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10 };
+    const tool = (await hive.call("tools.list", {}, { name: "root", role: "admin" })).find((entry) => entry.id === "rtk")!;
+    const hash = toolHash(tool);
+    const cleanup = worktreeCleanupSchema.parse({});
+    const worktrees = { measuredAt: new Date().toISOString(), totalBytes: 0, freeBytes: 1024 ** 3, cleanup, logs: [], errors: [], entries: [] };
+    hive.db.prepare(`INSERT INTO machines(id, machine, instance, owner, token_id, last_seen, profiles, runner_settings, tool_states, worktrees)
+      VALUES (?, 'mbp', 'i1', 'hoa', ?, ?, ?, ?, ?, ?)`).run(machineId, paired.info.id, new Date().toISOString(), JSON.stringify([profile]), JSON.stringify({ maxParallel: 2, mrEnabled: false, mrWhen: "after_review" }), JSON.stringify([{ id: tool.id, hash, trust: "new" }]), JSON.stringify(worktrees));
+    const desktop = { "x-hive-agent": "desktop", "x-hive-source": JSON.stringify({ via: "desktop" }) };
+    const call = (credential: string, method: string, input: unknown = {}) => rpc(credential, method, input, desktop);
+
+    assert.equal((await call(paired.token, "machines.tools", { machineId })).body.result.canApprove, true);
+    assert.equal((await call(paired.token, "machines.worktrees", { machineId })).status, 200);
+    assert.equal((await call(paired.token, "machines.setProfile", { machineId, profileId: "claude-1", enabled: false })).status, 200);
+    assert.equal((await call(paired.token, "machines.setRunner", { machineId, settings: { maxParallel: 3 } })).status, 200);
+    for (const credential of [unpaired, foreign]) {
+      assert.equal((await call(credential, "machines.tools", { machineId })).body.result.canApprove, false);
+      assert.equal((await call(credential, "machines.worktrees", { machineId })).status, 403);
+      assert.equal((await call(credential, "machines.approveTool", { machineId, toolId: tool.id, hash })).status, 403);
+      assert.equal((await call(credential, "machines.manageWorktrees", { machineId, cleanup })).status, 403);
+      assert.equal((await call(credential, "machines.setProfile", { machineId, profileId: "claude-1", enabled: false })).status, 403);
+      assert.equal((await call(credential, "machines.setRunner", { machineId, settings: { maxParallel: 3 } })).status, 403);
+    }
+    assert.equal((await call(paired.token, "machines.approveTool", { machineId, toolId: tool.id, hash })).status, 200);
+    assert.equal((await call(paired.token, "machines.manageWorktrees", { machineId, cleanup })).status, 200);
+  } finally { hive.close(); }
+});
+
 it("P0-3: a member or agent token of an admin account is cut to its role, not unrestricted", async () => {
   const { hive, tokens, users, rpc } = harness();
   try {
     const admin = users.create({ username: "duy", admin: true }).user;
+    const other = users.create({ username: "another-person" }).user;
     await hive.call("tasks.create", { id: "app-1", project: "app", title: "t" }, { name: "duy", role: "admin" });
-    await hive.call("tasks.create", { id: "zzz-1", project: "zzz", title: "unrelated" }, { name: "duy", role: "admin" });
+    await hive.call("tasks.create", { id: "zzz-1", project: "zzz", title: "unrelated" }, { name: other.username, account: other.username, role: "admin" });
+    const now = new Date().toISOString();
+    hive.db.prepare(`INSERT INTO run_records(machine_id, run_id, machine, project, task_id, task_title, role, status, created_at, updated_at)
+      VALUES ('runner.mbp@duy', 'R-test', 'mbp', 'app', 'app-1', 't', 'implement', 'succeeded', ?, ?)`).run(now, now);
+    const gateId = Number(hive.db.prepare(`INSERT INTO sdlc_gates(project, task_id, gate, mode, status, created_at)
+      VALUES ('app', 'app-1', 'review', 'human', 'waiting', ?)`).run(now).lastInsertRowid);
     const viewer = tokens.create("duy-view", "viewer", admin.id).token;
     const agent = tokens.create("duy-agent", "agent", admin.id).token;
     // Hub-wide settings stay with a hub admin: a token of one, whatever its role, is not that.
@@ -73,6 +117,8 @@ it("P0-3: a member or agent token of an admin account is cut to its role, not un
       assert.equal((await rpc(credential, "hub.info")).status, 403, name);
     }
     for (const id of ["app-1", "zzz-1"]) assert.equal((await rpc(agent, "tasks.update", { id, status: "done" })).status, 403, id);
+    assert.equal((await rpc(agent, "runs.merge", { machineId: "runner.mbp@duy", runId: "R-test" })).status, 403);
+    assert.equal((await rpc(agent, "sdlc.decide", { gateId, decision: "pass" })).status, 403);
     assert.equal((await rpc(agent, "tokens.create", { name: "child", role: "agent" })).status, 403);
     // Still works inside its role: an agent token still reads projects.
     assert.equal((await rpc(agent, "projects.list", {})).status, 200);
