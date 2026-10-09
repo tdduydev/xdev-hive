@@ -335,7 +335,7 @@ function ClientFrame({
         <div className="mx-2.5 mb-2.5 flex shrink-0 flex-col gap-px rounded-md border border-line-subtle bg-surface px-1.5 pt-2 pb-1.5">
           <a
             href="#/runs"
-            className="flex items-center gap-1.5 px-1 pb-1 text-xs/4 font-semibold text-fg-strong outline-none focus-visible:focus-ring"
+            className="flex max-md:min-h-11 items-center gap-1.5 px-1 pb-1 text-xs/4 font-semibold text-fg-strong outline-none focus-visible:focus-ring"
           >
             <span className={cn("size-[7px] rounded-full", running.length ? "bg-success-solid" : "bg-neutral-solid")} />
             {running.length ? t("shell.runsHere", { count: running.length }) : t("shell.noRunsHere")}
@@ -345,7 +345,7 @@ function ClientFrame({
               key={r.id}
               href={`#/runs?run=${encodeURIComponent(r.id)}`}
               title={r.activity ?? r.taskTitle}
-              className="grid h-6 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-xs px-1 text-xs/none text-fg-secondary hover:bg-hover"
+              className="grid h-6 max-md:h-11 grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-1.5 rounded-xs px-1 text-xs/none text-fg-secondary hover:bg-hover"
             >
               <span className="truncate font-mono text-[11px]/none font-medium text-fg-brand">{r.taskId}</span>
               <span className="truncate">{r.profileId ?? "—"}</span>
@@ -441,7 +441,7 @@ function ClientFrame({
                 className={cn("hive-topbar-chat max-md:size-11 max-md:p-0", noDrag)}
               >
                 <MessageSquare className="size-4 md:hidden" aria-hidden />
-                <span className="max-md:sr-only">{t("chat.askLeader")}</span>
+                <span className="max-md:sr-only">{t("shell.chatLeader")}</span>
               </Button>
               {webUrl ? (
                 <a

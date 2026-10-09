@@ -458,6 +458,7 @@ export const vi = {
   shell: {
     artifacts: "Artifact",
     assignAgent: "Giao việc cho agent",
+    chatLeader: "Chat với leader",
     scope: "Phạm vi",
     skipToContent: "Chuyển đến nội dung",
     quickNav: "Điều hướng nhanh",

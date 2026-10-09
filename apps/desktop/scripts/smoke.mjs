@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "shell", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -199,6 +199,34 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
       ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
       HIVE_SMOKE_EXPECT: "[data-run-head-sha]",
       HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
+    });
+  }
+  await gitlab.close();
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "shell") {
+  for (const theme of ["dark", "light"]) {
+    const common = { HIVE_SMOKE_THEME: theme, HIVE_SMOKE_SIZE: "1440x900", HIVE_SMOKE_SIDEBAR: "open" };
+    await shoot(`shell-${theme}`, "today", 1500, {
+      ...common,
+      HIVE_SMOKE_EXPECT: ".hive-sidebar-toggle && .hive-status-footer",
+      HIVE_SMOKE_ASSERT: [
+        'document.querySelector("#hive-navigation").getBoundingClientRect().width === 252',
+        'document.querySelector(".hive-main-topbar").getBoundingClientRect().height === 72',
+        '[...document.querySelectorAll(".hive-nav-item")].every(el => el.getBoundingClientRect().height === 36)',
+        'document.querySelectorAll(".hive-nav-heading").length === 3',
+        'document.querySelector(".hive-status-footer").getBoundingClientRect().height === 26',
+        'document.documentElement.scrollWidth <= innerWidth',
+      ].join(" && "),
+    });
+    await shoot(`shell-${theme}-rail`, "today", 1500, {
+      ...common, HIVE_SMOKE_CLICK: ".hive-sidebar-toggle", HIVE_SMOKE_EXPECT: ".hive-sidebar-rail",
+      HIVE_SMOKE_ASSERT: 'document.querySelector(".hive-sidebar-rail").getBoundingClientRect().width === 64 && document.querySelector(".hive-sidebar-toggle").getBoundingClientRect().width > 0',
+    });
+    await shoot(`shell-${theme}-drawer`, "today", 1500, {
+      ...common, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: ".hive-mobile-nav button", HIVE_SMOKE_EXPECT: ".hive-navigation-drawer #hive-navigation",
+      HIVE_SMOKE_ASSERT: '(() => { const r = document.querySelector(".hive-navigation-drawer").getBoundingClientRect(); return Math.abs(r.x) < 1 ? r.right <= innerWidth - 47 : false; })() && [...document.querySelectorAll(".hive-navigation-drawer button, .hive-navigation-drawer a")].every(el => { const r = el.getBoundingClientRect(); return r.width >= 44 ? r.height >= 44 : false; })',
     });
   }
   await gitlab.close();
@@ -513,15 +541,14 @@ for (const [name, page, delay, extra] of [
   // The Skills panel must have the skill's SKILL.md on screen, not only its frame (roadmap 39h: blank in the 3/10 shot).
   ["skills", "skills", 1500, { HIVE_SMOKE_EXPECT: "[data-skill-doc]" }],
 ]) await shoot(name, page, delay, extra ?? {});
-// The menu of this mode at 1440×900 (roadmap 39f): twelve entries and Chat (48), none of them Board, Tool or Đợt
-// chạy, and the list fits without scrolling.
+// Cosmic's three groups may scroll; the last entry must remain reachable above the fixed account card.
 await shoot("local-nav", "today", 3000, {
   HIVE_SMOKE_SIZE: "1440x900",
   HIVE_SMOKE_SIDEBAR: "open",
   HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/chat"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
   HIVE_SMOKE_ABSENT: 'nav a[href="#/board"] && nav a[href="#/tools"] && nav a[href="#/batches"] && nav a[href="#/machines"]',
   HIVE_SMOKE_ASSERT:
-    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); const last = [...l.querySelectorAll("a")].at(-1); l.scrollTop = l.scrollHeight; const r = last.getBoundingClientRect(); const bounds = l.getBoundingClientRect(); return r.top >= bounds.top ? r.bottom <= bounds.bottom + 1 : false; })()',
 });
 // This machine's own chat (roadmap 48): a thread in the local database whose leader proposed a task, waiting for
 // Xác nhận / Bỏ qua. The reply is written here as the app's runner would report it, so no Claude plan is used.
