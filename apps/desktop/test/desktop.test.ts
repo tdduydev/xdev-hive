@@ -7,7 +7,7 @@ import { after, describe, it } from "node:test";
 import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
-import { branchState, commitAll, ensureWorktree, remoteStart } from "#desktop/main/runner/worktree.ts";
+import { branchPatchAsync, branchState, commitAll, commitAllAsync, ensureWorktree, ensureWorktreeAsync, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
 
 const testTmpDirs = new Set<string>();
@@ -47,6 +47,18 @@ it("reports the full checkout SHA and commit count for evidence", () => {
   assert.deepEqual(branchState(repo, base), { commits: 1, headSha });
   sh(repo, "git", ["checkout", "--detach", base]);
   assert.deepEqual(branchState(repo, base), { commits: 0, headSha: base });
+});
+
+it("creates, diffs and commits a worktree through async Git", async () => {
+  const repo = gitRepo();
+  const dir = path.join(tmp("async-worktree"), "T-async");
+  const wt = await ensureWorktreeAsync(repo, dir, "T-async", null);
+  writeFileSync(path.join(dir, "new.txt"), "async content\n");
+  assert.match(await branchPatchAsync(dir, wt.baseSha), /async content/);
+  const result = await commitAllAsync(dir, "ai(T-async): work", []);
+  assert.equal(result.error, null);
+  assert.match(result.sha ?? "", /^[0-9a-f]+$/);
+  assert.match(await branchPatchAsync(dir, wt.baseSha), /async content/);
 });
 
 describe("installAgents", () => {

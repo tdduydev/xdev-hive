@@ -2,7 +2,7 @@
 // which page (see core mirror.ts). Reads the branch as committed and fetched, never the checkout, so what someone is
 // still writing does not go out; a page whose text, title or place differs gets a new version naming the commit.
 import { HiveError, MIRROR_CONFIG, parseMirrorConfig, planMirror, type Actor, type DesktopProject, type HiveBackend, type MirrorReport } from "@xdev-hive/core";
-import { git, gitErrorText, isGitRepo } from "./git.ts";
+import { git, gitErrorText, gitOutputAsync, isGitRepo, isRepoRoot } from "./git.ts";
 import { remoteStart } from "./runner/worktree.ts";
 
 const show = (repo: string, ref: string, file: string): string | null => {
@@ -12,20 +12,26 @@ const show = (repo: string, ref: string, file: string): string | null => {
     return null;
   }
 };
+const showAsync = (repo: string, ref: string, file: string): Promise<string | null> =>
+  gitOutputAsync(repo, ["show", `${ref}:${file}`]).catch(() => null);
 
 /** Whether the checkout has a mirror config at all: no fetch for projects that do not mirror. */
 export const mirrors = (repo: string): boolean => isGitRepo(repo) && show(repo, "HEAD", MIRROR_CONFIG) !== null;
+export const mirrorsAsync = async (repo: string): Promise<boolean> => isRepoRoot(repo) && (await showAsync(repo, "HEAD", MIRROR_CONFIG)) !== null;
 
 /** `since`: the commit mirrored last time; the same one again is not read twice. */
 export async function mirrorDocs(backend: HiveBackend, actor: Actor, project: DesktopProject, opts: { fetch?: boolean; since?: string } = {}): Promise<MirrorReport> {
   const report: MirrorReport = { commit: null, changed: [], unchanged: 0, missing: [], skipped: [] };
-  if (!isGitRepo(project.repo)) return report;
+  if (!isRepoRoot(project.repo)) return report;
   const ref = (opts.fetch === false ? null : (await remoteStart(project.repo, project.targetBranch)).ref) ?? "HEAD";
-  const config = show(project.repo, ref, MIRROR_CONFIG);
+  const config = await showAsync(project.repo, ref, MIRROR_CONFIG);
   if (config === null) return report;
-  report.commit = git(project.repo, ["rev-parse", "--short", `${ref}^{commit}`]);
+  report.commit = await gitOutputAsync(project.repo, ["rev-parse", "--short", `${ref}^{commit}`]);
   if (opts.since && opts.since === report.commit) return report;
-  const { pages, missing } = planMirror(parseMirrorConfig(config), (file) => show(project.repo, ref, file));
+  const files = parseMirrorConfig(config);
+  const contents = new Map<string, string | null>();
+  for (const file of new Set(files.map((p) => p.file))) contents.set(file, await showAsync(project.repo, ref, file));
+  const { pages, missing } = planMirror(files, (file) => contents.get(file) ?? null);
   report.missing = missing;
   const key = (slug: string) => `project/${project.name}/${slug}`;
   // Folders first: a section's page goes under one that must be there.

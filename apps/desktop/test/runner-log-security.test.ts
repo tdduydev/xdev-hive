@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { it } from "node:test";
@@ -27,8 +27,15 @@ it("refuses traversal in renderer run log requests", async () => {
     assert.ok(!runner.log("R-token").includes("a".repeat(43)));
     writeFileSync(path.join(dataDir, "runs", "R-open.log"), "-----BEGIN PRIVATE KEY-----\nsynthetic material");
     assert.ok(!runner.log("R-open", 20).includes("material"));
+    assert.ok(!(await runner.logRecent("R-old", 200)).includes("synthetic material"));
+    assert.ok(!(await runner.logRecent("R-open", 20)).includes("material"));
+    assert.ok(!(await runner.logRecent("R-token")).includes("a".repeat(43)));
+    assert.equal(await runner.logRecent("R-test"), "run sentinel");
+    writeFileSync(path.join(dataDir, "runs", "R-test.log"), "changed run sentinel");
+    assert.equal(await runner.logRecent("R-test"), "changed run sentinel", "size changes invalidate the tail cache");
     for (const id of ["../outside", "/tmp/outside", "..\\outside"]) {
       assert.throws(() => runner.log(id), { code: "bad_request" });
+      await assert.rejects(runner.logRecent(id), { code: "bad_request" });
     }
   } finally {
     await runner.stop();
@@ -52,4 +59,29 @@ it("writes only redacted prompt and output even with byte-sized chunks", async (
     assert.ok(!saved.includes("synthetic material"));
     assert.ok(saved.endsWith("normal é\n"));
   } finally { writer.destroy(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("reads only a marked log suffix and invalidates the cache when its mtime changes", async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), "hive-log-tail-"));
+  const hive = new SqliteHive(":memory:");
+  const runner = new Runner({
+    backend: () => hive, profiles: () => [], projects: () => [], mode: () => "local",
+    machine: () => "test", env: () => ({}),
+    settings: () => ({ maxParallel: 1, maxAttempts: 1, worktreeRoot: null, acceptHubRuns: false, gateRunner: false }),
+  }, { dataDir, user: "test", chatPollMs: 0 });
+  try {
+    mkdirSync(path.join(dataDir, "runs"), { recursive: true });
+    const file = path.join(dataDir, "runs", "R-long.log");
+    const writer = redactedRunLog(file);
+    writer.end(`${"old line\n".repeat(100_000)}last line\n`);
+    await new Promise<void>((resolve, reject) => { writer.on("finish", resolve); writer.on("error", reject); });
+    assert.ok(readFileSync(`${file}.redacted`).length === 0);
+    assert.ok((await runner.logRecent("R-long", 80)).includes("last line"));
+    assert.ok((await runner.logRecent("R-long", 80)).length < 150);
+    writeFileSync(file, `${"old line\n".repeat(100_000)}next line\n`);
+    utimesSync(file, new Date("2026-01-01"), new Date("2026-01-01"));
+    assert.ok((await runner.logRecent("R-long", 80)).includes("next line"));
+  } finally {
+    await runner.stop(); runner.store.db.close(); hive.close(); rmSync(dataDir, { recursive: true, force: true });
+  }
 });
