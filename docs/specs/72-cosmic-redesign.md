@@ -44,6 +44,7 @@ Người dùng: "chưa thấy giống với giao diện thiết kế, có thể 
 - Component dùng chung trong `packages/ui` (Button, Card, Tag/Chip, Badge, Input, Toggle, SegmentedTabs, ListRow, StatTile, EmptyState…) theo thiết kế. Trang dùng lại component, không chép style inline của template.
 - Chữ trên giao diện vào `packages/ui/src/i18n/locales/vi.ts` (gốc) và `en.ts`.
 - Dữ liệu và quyền giữ như hiện tại: thiết kế chỉ là dữ liệu mẫu, không bịa số.
+- **Không bỏ tính năng đang có.** Thiết kế không vẽ một chức năng hiện có (ô tìm, bộ lọc, chế độ xem khác, hành động) thì vẫn giữ nó, đặt vào chỗ hợp lý và làm theo ngôn ngữ thiết kế. e2e của tính năng đó phải đạt như trên main.
 - **Tính năng mới trong thiết kế thì làm luôn** (người dùng, 9/10: "có tính năng mới thì làm tính năng đó luôn"). Nút, hành động, bộ lọc hay số liệu nào có trong thiết kế mà Hive chưa có, task của trang đó làm cả phần dưới: method trong core, quyền, MCP nếu hợp, migration nếu cần, có test. Ví dụ: "Reset tuần" trên thẻ gói, CPU/RAM/ổ đĩa của máy, phiên bản artifact, phím J/K/E trên Hôm nay, "Chuyển thành chung" cho memory, "Đổi gói" cho run lỗi. Tính năng quá lớn cho một run (hệ thống mới, nhiều màn) thì tạo task con `R-72<x>-<slug>` bằng `propose_task`/`task_create`, ghi rõ vào note bàn giao, và trang hiện phần đã có.
 - Mobile: mỗi trang chạy được ở 390 px (sidebar thành ngăn kéo, bảng thành danh sách). Thiết kế chỉ có desktop, nên mobile suy ra theo cùng ngôn ngữ.
 - App desktop dùng chung shell web, nên làm ở `packages/ui` là cả hai cùng đổi.
