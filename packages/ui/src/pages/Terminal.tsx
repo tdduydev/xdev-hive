@@ -53,7 +53,7 @@ export function TerminalPage() {
         <Button size="sm" variant="ghost" className="self-start" onClick={() => setForm(null)}>{t("common.cancel")}</Button>
       </div> : null}
     </div>
-    <div className="flex h-[calc(100dvh-120px)] min-h-[480px] min-w-0 flex-col max-lg:h-[calc(100dvh-160px)] max-lg:min-h-[420px]">
+    <div className="flex h-[calc(100dvh-160px)] min-h-[480px] min-w-0 flex-col max-lg:min-h-[420px]">
       {attachment ? <TerminalScreen key={attachment.session.id} api={api} attachment={attachment} onDetach={() => { setAttachment(null); sessions.reload(); }} />
         : <div data-testid="terminal-idle" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[var(--code-bg)] shadow-[var(--ring-glass-strong)]">
           <div className="flex shrink-0 flex-wrap items-center gap-[10px] bg-[var(--surface-1)] py-[10px] pr-3 pl-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
