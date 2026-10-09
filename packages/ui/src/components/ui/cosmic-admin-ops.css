@@ -47,13 +47,21 @@
 .cx-ops-cell-text>span[data-mono]{font-family:var(--font-mono);font-size:12px}
 .cx-ops-cell-text>small{font:500 11px/15px var(--font-sans);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cx-ops-row-actions{display:flex;justify-content:flex-end;gap:6px}
+.cx-ops-sort{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;max-width:100%;cursor:pointer;text-transform:inherit;letter-spacing:inherit}
+.cx-ops-sort:hover,.cx-ops-sort:focus-visible{color:var(--text-strong)}
+.cx-ops-sort:focus-visible{outline:2px solid var(--focus-ring,currentColor);outline-offset:2px;border-radius:4px}
+.cx-ops-sort[data-sort=asc]::after{content:"↑"}
+.cx-ops-sort[data-sort=desc]::after{content:"↓"}
+.cx-ops-count{margin-left:auto;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:-4px 0 16px;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-pager>span{margin-right:auto}
 .cx-ops-table-empty{padding:18px 20px;font:var(--design-body-sm);color:var(--text-muted)}
 
 /* The DataTable that keeps search, filters, sorting and paging (audit, machines on Phiên bản) sits in the same glass. */
 .cx-ops-data{margin-bottom:16px;padding:12px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass);min-width:0}
 
 @media(max-width:767px){
-.cx-ops-card-actions button,.cx-ops-row-actions button,.cx-ops-toolbar button,.cx-ops-form button,.cx-ops-panel button{min-height:44px}
+.cx-ops-card-actions button,.cx-ops-row-actions button,.cx-ops-sort,.cx-ops-pager button,.cx-ops-toolbar button,.cx-ops-form button,.cx-ops-panel button{min-height:44px}
 .cx-ops-stat[data-link],.cx-ops-toolbar a{min-height:44px}
 .cx-ops-table-head,.cx-ops-table-row{padding-inline:16px}
 }
