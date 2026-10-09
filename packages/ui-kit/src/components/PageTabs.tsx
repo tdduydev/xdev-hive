@@ -1,4 +1,3 @@
-import * as React from "react";
 // Tabs of one menu entry (roadmap 49b: Cài đặt dự án, Máy & agent, Quản trị, Agent đang chạy). Each tab is a link to
 // #/<page>?tab=<id>, so a tab has an address to share, and Back returns to the tab before.
 import type { ReactNode } from "react";

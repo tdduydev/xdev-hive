@@ -15,6 +15,7 @@
     "./i18n/*.ts": "./src/i18n/*.ts",
     "./lib/hooks/*.ts": "./src/lib/hooks/*.ts",
     "./lib/*.ts": "./src/lib/*.ts",
+    "./lib/*": "./src/lib/*.ts",
     "./tokens/*": "./src/tokens/*"
   },
   "imports": {
