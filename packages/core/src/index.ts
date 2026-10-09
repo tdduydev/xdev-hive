@@ -23,6 +23,7 @@ export * from "./methods.ts";
 export * from "./mirror.ts";
 export * from "./policy.ts";
 export * from "./sdlc.ts";
+export * from "./prompt-layers.ts";
 export * from "./step-prompt.ts";
 export * from "./plan-approval.ts";
 export * from "#core/run-timeout.ts";

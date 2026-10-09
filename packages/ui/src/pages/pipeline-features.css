@@ -115,12 +115,48 @@ a.ft-row:hover { box-shadow: var(--ring-glass-strong); }
   .pf-mode, .pf-step, .pf-select [data-slot="native-select"] { min-height: 44px; }
 }
 
-/* The Prompt tab of a gate's panel (72i): a mono textarea, its counter, and the versions below. */
-.pf-prompt { display: flex; flex-direction: column; gap: 12px; }
-.pf-prompt-text { min-height: 180px; border: 0; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 12.5px/20px 'SF Mono', ui-monospace, Menlo, monospace; }
-.pf-prompt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* The Prompt tab (72i): roles, the layers a run's prompt is put together from, and the prompt a sample task gets. Measures are the template's (xDev Hive.dc.html, plPrompt). */
+.pf-prompt { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.pf-micro { padding: 4px 10px 6px; font: var(--ds-micro); letter-spacing: .5px; text-transform: uppercase; color: var(--text-faint); }
+.pf-prompt-roles { flex: 1 1 220px; max-width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; border-radius: 24px; background: var(--surface-1); box-shadow: var(--ring-glass); }
+.pf-role { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 0; border-radius: 14px; background: transparent; color: var(--text-strong); text-align: left; cursor: pointer; font-family: inherit; }
+.pf-role:hover { background: var(--glass-bg); }
+.pf-role[aria-pressed="true"] { background: var(--violet-tint); box-shadow: var(--ring-violet); }
+.pf-role-head { display: flex; align-items: center; gap: 8px; font: 600 13.5px/18px var(--font-sans); }
+.pf-role-head > span:first-child { flex: 1; }
+.pf-role-custom { font: var(--ds-micro); color: var(--accent-violet-soft); }
+.pf-role .pf-cap { text-wrap: pretty; }
+.pf-prompt-layers { flex: 999 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.pf-prompt-intro { font: var(--ds-body-sm); color: var(--text-secondary); text-wrap: pretty; }
+.pf-layer { display: flex; flex-direction: column; border-radius: 18px; background: var(--surface-1); box-shadow: var(--ring-glass); overflow: hidden; }
+.pf-layer-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border: 0; background: transparent; color: var(--text-strong); text-align: left; cursor: pointer; font-family: inherit; }
+.pf-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.pf-swatch-sm { width: 8px; height: 8px; border-radius: 2px; }
+.pf-layer-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.pf-layer-label { font: 600 13.5px/18px var(--font-sans); }
+.pf-micro-meta { font: var(--ds-micro); color: var(--text-faint); white-space: nowrap; }
+.pf-chev { flex: none; width: 14px; height: 14px; opacity: .5; transition: transform .15s; }
+.pf-layer[data-open="true"] .pf-chev { transform: rotate(180deg); }
+.pf-layer-body { display: flex; flex-direction: column; gap: 8px; padding: 0 16px 14px; }
+.pf-layer-solo { padding-top: 14px; }
+.pf-layer-pre { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-secondary); font: 500 12px/20px 'SF Mono', ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pf-prompt-text { min-height: 180px; padding: 12px 14px; border: 0; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 12.5px/20px 'SF Mono', ui-monospace, Menlo, monospace; resize: vertical; }
+.pf-prompt-steps, .pf-prompt-vars { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pf-var { height: 24px; padding: 0 8px; border: 0; border-radius: 8px; background: var(--violet-tint); color: var(--accent-violet-soft); font: 500 11.5px/1 'SF Mono', ui-monospace, monospace; cursor: pointer; }
+.pf-var:hover { background: var(--violet-tint-soft); box-shadow: var(--ring-violet-faint); }
 .pf-prompt-old { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--surface-sunken); box-shadow: var(--ring-glass); }
 .pf-prompt-old pre { margin: 0; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); font: 500 12px/20px 'SF Mono', ui-monospace, Menlo, monospace; }
 .pf-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.pf-subtabs { display: flex; gap: 2px; box-shadow: var(--hairline); overflow-x: auto; }
-@media (max-width: 767px) { .pf-prompt button { min-height: 44px; min-width: 44px; } .pf-prompt-text { font-size: 16px; } }
+.pf-final { flex: 1 1 360px; max-width: 100%; display: flex; flex-direction: column; border-radius: 24px; background: var(--surface-1); box-shadow: var(--ring-glass); overflow: hidden; }
+.pf-final-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 16px; box-shadow: var(--hairline); }
+.pf-final-title { display: flex; flex-direction: column; flex: 1; min-width: 160px; }
+.pf-final-title b { font: 600 14px/20px var(--font-sans); }
+.pf-final-tasks { display: flex; gap: 4px; flex-wrap: wrap; }
+.pf-final-body { max-height: 640px; overflow: auto; padding: 10px 0; background: var(--surface-sunken); font: 500 11.5px/19px 'SF Mono', ui-monospace, Menlo, monospace; }
+.pf-seg { display: grid; grid-template-columns: 3px minmax(0, 1fr); gap: 12px; padding: 4px 14px 4px 0; }
+.pf-seg-bar { border-radius: 2px; background: var(--border-strong); }
+.pf-seg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); }
+.pf-seg-text[data-real="false"] { color: var(--text-faint); }
+.pf-final-legend { display: flex; gap: 12px; flex-wrap: wrap; padding: 10px 16px; box-shadow: var(--hairline-top); }
+.pf-final-legend > span { display: inline-flex; align-items: center; gap: 6px; font: var(--ds-caption); color: var(--text-muted); }
+@media (max-width: 767px) { .pf-prompt button { min-height: 44px; min-width: 44px; } .pf-prompt-text { font-size: 16px; } .pf-prompt .pf-var { height: 44px; } .pf-micro-meta { white-space: normal; text-align: right; } }
