@@ -36,7 +36,7 @@ it("P0-1: a chat reply's token cannot call the web-only RPCs or mint an ownerles
     const before = tokens.count();
     assert.equal((await rpc("hivechat_test", "tokens.create", { name: "evil", role: "admin" })).status, 403);
     assert.equal(tokens.count(), before);
-    for (const method of ["tokens.list", "hub.info", "users.list", "releases.list", "webhooks.list", "budgets.set", "tasks.create", "agents.stop", "projects.retire", "machines.worktrees", "machines.tools"]) {
+    for (const method of ["tokens.list", "hub.info", "users.list", "releases.list", "webhooks.list", "budgets.set", "tasks.create", "agents.stop", "projects.retire", "machines.worktrees", "machines.tools", "chat.progress", "chat.finish", "chat.decide"]) {
       assert.equal((await rpc("hivechat_test", method)).status, 403, method);
     }
   } finally { hive.close(); }

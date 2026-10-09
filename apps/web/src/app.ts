@@ -35,6 +35,7 @@ import {
   type Actor,
   type Grant,
   type Me,
+  type Method,
   type Role,
   type WebhookInput,
   type ChatRequest,
@@ -169,6 +170,9 @@ const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
   "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
   "users.list": "hubAdmin", "users.create": "hubAdmin", "users.update": "hubAdmin", "users.setGrants": "hubAdmin", "users.resetPassword": "hubAdmin",
 };
+
+// The leader proposes with its reply token; progress and finish use the paired machine's token in chat.ts.
+const CHAT_RPC = new Set<Method>(["chat.propose"]);
 
 /** Changes whose handler writes no audit line of its own. */
 const WEB_RPC_AUDITED = new Set(["releases.notes", "alerts.ack", "webhooks.test", "automation.save"]);
@@ -361,8 +365,8 @@ export function createHubApp({
         }
         // The reply's token also fetches the message's files (the runner reads them before it writes).
         const chatFile = actor.chatReply !== undefined && req.method === "GET" && req.path.startsWith("/api/chat/files/");
-        if (actor.chatReply !== undefined && !chatFile && !["/mcp", "/api/me"].includes(req.path)) {
-          res.status(403).json({ error: { code: "forbidden", message: "Chat credentials are limited to MCP calls." } });
+        if (actor.chatReply !== undefined && !chatFile && !["/mcp", "/api/me", "/api/rpc"].includes(req.path)) {
+          res.status(403).json({ error: { code: "forbidden", message: "Chat credentials are limited to leader calls." } });
           return;
         }
         if ((actor.runCredential || actor.mcpCredential) && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
@@ -721,6 +725,8 @@ export function createHubApp({
       const i = (input ?? {}) as Record<string, unknown>;
       const actor = actorOf(res);
       const user = userOf(res);
+      if (actor.chatReply !== undefined && (!isMethod(method) || !CHAT_RPC.has(method)))
+        throw new HiveError("forbidden", "A chat credential can call leader methods only.");
       // Web-only RPCs (tokens, releases, account settings) do not pass through SqliteHive.call.
       // A chat reply's token is an agent's too: it must not reach tokens.create or any other web-only RPC (spec 76, P0-1).
       if ((actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
