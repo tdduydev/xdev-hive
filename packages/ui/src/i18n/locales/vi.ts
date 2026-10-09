@@ -2405,6 +2405,7 @@ export const vi = {
     removed: "Đã xoá {name}",
   },
   redispatch: {
+    swapProfile: "Đổi gói",
     title: "Giao lại", send: "Giao lại run", hint: "Giao lại {run} của task {task}; có thể đổi máy và gói.",
     continueBranch: "Làm tiếp trên branch hiện có", branchHint: "Giữ công việc trên {branch}. Khi đổi máy, commit WIP và đẩy branch ở máy cũ trước; máy mới phải lấy được branch này.",
     freshHint: "Run mới bắt đầu từ branch đích của service, trên một branch riêng.",
@@ -2482,6 +2483,7 @@ export const vi = {
     rerun: "Chạy lại",
     rerunDone: "Đã xếp hàng chạy lại {task}",
     cancelLocal: "Dừng run",
+    cancelPending: "Huỷ yêu cầu",
     cancelLocalDone: "Đã gửi lệnh dừng {id}",
     onlyView: "Chỉ xem: run chạy trên {machine}",
     tokens: "Token: {input} vào mới · {write} ghi cache · {read} đọc cache · {output} ra · {share} input đọc từ cache",
