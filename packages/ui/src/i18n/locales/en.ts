@@ -454,6 +454,7 @@ export const en: Catalog = {
   shell: {
     artifacts: "Artifacts",
     assignAgent: "Assign work to an agent",
+    chatLeader: "Chat with leader",
     scope: "Scope",
     skipToContent: "Skip to content",
     quickNav: "Quick navigation",

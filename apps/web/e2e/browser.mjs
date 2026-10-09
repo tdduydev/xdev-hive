@@ -281,6 +281,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
   "responsive-shell-pages": ["responsive-shell"],
+  "shell-run-count": ["responsive-shell"],
   "a11y-overlays": ["login-token"],
   "a11y-table": ["login-token"],
   "a11y-run-status": ["login-token"],
@@ -480,7 +481,8 @@ async function main() {
       await tab.click('.hive-mobile-nav button');
       const drawer = await tab.waitFor("navigation drawer", () => {
         const el = document.querySelector('.hive-navigation-drawer');
-        return el && { width: el.getBoundingClientRect().width, viewport: innerWidth };
+        const r = el?.getBoundingClientRect();
+        return r && Math.abs(r.x) < 0.5 && { width: r.width, viewport: innerWidth };
       });
       expect(drawer.width <= drawer.viewport - 47, `drawer leaves no dismissal area: ${JSON.stringify(drawer)}`);
       await tab.key("Escape");
@@ -523,7 +525,10 @@ async function main() {
     // The mobile drawer mounts after the Menu tap, so wait for it before reading the navigation.
     const openDrawer = async () => {
       await tab.click('.hive-mobile-nav button');
-      await tab.waitFor("navigation drawer", () => !!document.querySelector('.hive-navigation-drawer #hive-navigation'));
+      await tab.waitFor("navigation drawer fully open", () => {
+        const nav = document.querySelector('.hive-navigation-drawer #hive-navigation');
+        return nav && Math.abs(nav.getBoundingClientRect().x) < 0.5;
+      });
     };
     for (const theme of ["dark", "light"]) {
       if (mobile) await openDrawer();
@@ -537,27 +542,45 @@ async function main() {
           leaderVariant: document.querySelector('[data-ask-leader]')?.dataset.variant,
           scope: rect(nav.querySelector('[data-project-picker-trigger]')),
           nav: rect(nav), topbar: rect(document.querySelector('.hive-main-topbar')),
+          rows: [...nav.querySelectorAll('.hive-nav-item')].map(rect),
           footer: rect(footer), hub: footer.textContent.trim(),
           targets: [...nav.querySelectorAll('button, a')].filter(el => el.getBoundingClientRect().width).map(rect),
           overflow: document.documentElement.scrollWidth > innerWidth,
+          viewport: innerWidth,
         };
       });
       expect(shell.groups === 3 && shell.assignment === "Giao việc cho agent" && shell.leaderVariant === "glass", `cosmic shell components: ${JSON.stringify(shell)}`);
       expect(!shell.overflow, "shell does not overflow the viewport");
+      await tab.win.webContents.executeJavaScript(axe.source);
+      const contrast = await tab.eval(async () => {
+        // The exact dark design's white-on-#7B61FF solid button is 4.2:1; audit the rest without changing that prescribed token.
+        const exclude = document.documentElement.dataset.theme === "dark" ? [[".workspace-new-work"]] : [];
+        const { violations } = await window.axe.run({ include: ["#hive-navigation", ".hive-main-topbar", ".hive-status-footer"], exclude }, { runOnly: { type: "rule", values: ["color-contrast"] } });
+        return violations.map(v => v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })));
+      });
+      expect(!contrast.length, `shell text contrast/${theme}: ${JSON.stringify(contrast)}`);
       if (mobile) {
+        expect(shell.nav.x >= -0.5 && shell.nav.x + shell.nav.width <= shell.viewport, `drawer stays in the viewport: ${JSON.stringify(shell.nav)}`);
         expect(shell.targets.every(r => r.width >= 44 && r.height >= 44), `drawer touch targets: ${JSON.stringify(shell.targets)}`);
         await tab.shot(`shell-${theme}-drawer`);
         await tab.key("Escape");
       } else {
         expect(shell.nav.width === 252 && shell.topbar.height === 72 && shell.scope.height === 44, `template shell geometry: ${JSON.stringify(shell)}`);
+        expect(shell.rows.every(r => r.height === 36), `template navigation rows stay 36px: ${JSON.stringify(shell.rows)}`);
         expect(shell.footer.height > 0 && shell.hub.includes(new URL(base).host), "hub connection footer stays visible");
       }
       await tab.shot(`shell-${theme}-today`);
       await tab.click('[data-ask-leader]');
-      await tab.waitFor("leader composer", () => !!document.querySelector('[data-leader-panel] textarea'));
-      const composer = await tab.eval(() => {
+      await tab.waitFor("leader panel fully open", () => {
+        const panel = document.querySelector('[data-leader-panel]');
+        const r = panel?.getBoundingClientRect();
+        return r && r.x >= -0.5 && r.right <= innerWidth + 0.5 && !!panel.querySelector('textarea');
+      });
+      const composer = await tab.eval(async () => {
         const el = document.querySelector('[data-leader-panel] textarea');
         el.focus();
+        el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         const r = el.getBoundingClientRect();
         const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
         return { height: r.height, bottom: r.bottom, viewport: innerHeight, hit: hit === el };
@@ -568,6 +591,46 @@ async function main() {
       if (mobile) await openDrawer();
       await tab.click('#hive-navigation button[aria-label="Đổi giao diện sáng tối"]');
       if (mobile) await tab.key("Escape");
+    }
+  });
+
+  await step("shell-run-count", async () => {
+    const tab = (current = tabs.admin);
+    const machineRpc = async input => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.shell-count" }, body: JSON.stringify({ method: "runs.push", input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+    };
+    const run = { runId: "R-shell-count", project: "payment", taskId: "PAY-1", taskTitle: "Shell run count", role: "implement", profileId: null, status: "running", createdAt: new Date().toISOString() };
+    const original = await tab.eval(() => localStorage.getItem("xdev-hive.scope"));
+    await machineRpc({ machine: "shell-count", runs: [run] });
+    const showScope = async value => {
+      await tab.eval(scope => localStorage.setItem("xdev-hive.scope", scope), value);
+      await tab.reload();
+      if (mobile) {
+        await tab.waitFor("mobile shell ready", () => !!document.querySelector('.hive-mobile-nav button') && !!document.querySelector('[data-shell-title]'));
+        await tab.click('.hive-mobile-nav button');
+        await tab.waitFor("navigation drawer", () => {
+          const nav = document.querySelector('.hive-navigation-drawer #hive-navigation');
+          return nav && Math.abs(nav.getBoundingClientRect().x) < 0.5;
+        });
+      }
+    };
+    try {
+      await showScope("payment");
+      const count = (await rpc("runs.count", { project: "payment" })).running;
+      await tab.waitFor("scoped running badge", value => document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')?.textContent === String(value), count);
+      await tab.shot("shell-running-badge");
+      await showScope("@shared");
+      expect(await tab.eval(() => !document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')), "shared scope has no project run count");
+      await machineRpc({ machine: "shell-count", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
+      await showScope("payment");
+      const remaining = (await rpc("runs.count", { project: "payment" })).running;
+      await tab.waitFor("completed run removed from badge", value => (document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')?.textContent ?? "0") === String(value), remaining);
+    } finally {
+      if (mobile) await tab.key("Escape");
+      await tab.eval(scope => { if (scope === null) localStorage.removeItem("xdev-hive.scope"); else localStorage.setItem("xdev-hive.scope", scope); }, original);
+      await tab.reload();
     }
   });
 
