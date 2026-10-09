@@ -1,0 +1,55 @@
+/* Chat page measures copied from the design template (docs/design/hive-2026-10 "Chat", lines 626-691). */
+/* In the components layer so Tailwind utilities (hidden, lg:flex) on the same element still win. */
+@layer components{
+/* nowrap: a wrapped line would size to its content and let a long transcript grow past the page instead of scrolling. */
+.chat-layout{display:flex;flex-wrap:nowrap;gap:16px;align-items:stretch;min-height:0;max-height:100%}
+.chat-sessions{flex:1 1 240px;max-width:100%;display:flex;flex-direction:column;gap:4px;padding:12px 8px;border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass);min-width:0}
+.chat-sessions-head{display:flex;align-items:center;padding:4px 10px 8px}
+.chat-sessions-head>span{flex:1;font:var(--text-micro);letter-spacing:.5px;text-transform:uppercase;color:var(--text-faint)}
+.chat-session{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:none;border-radius:14px;background:transparent;color:var(--text-primary);text-align:left;cursor:pointer;font-family:inherit;width:100%;min-width:0}
+.chat-session:hover{background:var(--glass-bg)}
+.chat-session[aria-current="true"]{background:var(--chat-violet-sel);box-shadow:inset 0 0 0 1px var(--chat-violet-sel-line)}
+.chat-session-title{font:600 13px/18px var(--font-sans);text-wrap:pretty}
+.chat-session-meta{font:var(--text-caption);color:var(--text-muted)}
+.chat-slot{flex:999 1 480px;min-width:0;min-height:0;display:flex;flex-direction:column}
+.chat-main{flex:1;min-width:0;display:flex;flex-direction:column;border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass);overflow:hidden;min-height:560px}
+.chat-head{display:flex;align-items:center;gap:12px;padding:14px 20px;box-shadow:inset 0 -1px 0 var(--chat-divider)}
+.chat-head-planet{width:32px;height:32px;border-radius:50%;flex-shrink:0;box-shadow:0 0 24px rgba(123,97,255,.45)}
+.chat-head-planet[data-planet="green"]{box-shadow:0 0 24px rgba(46,196,124,.45)}
+.chat-head-planet[data-planet="blue"]{box-shadow:0 0 24px rgba(24,160,251,.45)}
+.chat-head-text{display:flex;flex-direction:column;flex:1 1 120px;min-width:120px}
+.chat-head-title{font:600 14px/20px var(--font-sans)}
+.chat-head-sub{font:var(--text-caption);color:var(--text-muted)}
+.chat-transcript{flex:1;display:flex;flex-direction:column;gap:18px;padding:22px 24px;overflow:auto}
+.chat-msg{display:flex;flex-direction:column;gap:8px}
+.chat-msg[data-me="true"]{align-items:flex-end}
+.chat-msg[data-me="false"]{align-items:flex-start}
+.chat-bubble{max-width:640px;padding:12px 16px;border-radius:18px;background:var(--surface-2);box-shadow:var(--ring-glass);font:var(--text-body-sm);color:var(--text-primary);white-space:pre-wrap;text-wrap:pretty}
+.chat-msg[data-me="true"] .chat-bubble{background:var(--chat-user-bg)}
+.chat-bubble[data-markdown]{white-space:normal}
+.chat-steps{display:flex;flex-direction:column;gap:4px;max-width:640px;width:100%;padding:10px 14px;border-radius:14px;background:var(--surface-sunken);box-shadow:var(--ring-glass)}
+.chat-step{display:flex;gap:8px;font:500 12px/18px 'SF Mono',ui-monospace,monospace;color:var(--text-muted)}
+.chat-step>span:first-child{color:var(--accent-green)}
+.chat-actions{display:flex;flex-direction:column;gap:8px;max-width:640px;width:100%}
+.chat-action{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:16px;background:var(--chat-violet-tint);box-shadow:inset 0 0 0 1px var(--chat-violet-line)}
+.chat-action-body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px}
+.chat-action-kind{font:var(--text-micro);color:var(--text-brand);letter-spacing:.4px;text-transform:uppercase}
+.chat-action-subject{font:600 13px/18px var(--font-sans)}
+.chat-action-reason{font:var(--text-caption);color:var(--text-muted)}
+.chat-action-done{font:600 12px/1 var(--font-sans);color:var(--accent-green)}
+.chat-composer{display:flex;flex-direction:column;gap:8px;padding:14px 16px;box-shadow:inset 0 1px 0 var(--chat-divider)}
+.chat-composer-row{display:flex;align-items:flex-end;gap:10px}
+.chat-main[data-scroll]{overflow-y:auto}
+.chat-composer-field{flex:1;min-width:0}
+.chat-input{width:100%;resize:none;padding:12px 16px;border:none;border-radius:18px;background:var(--surface-sunken);box-shadow:var(--ring-glass);color:var(--text-primary);font:var(--text-body-sm);outline:none}
+.chat-input:focus-visible{box-shadow:inset 0 0 0 2px var(--focus-color)}
+.chat-input::placeholder{color:var(--text-faint)}
+/* Who wrote it and when: shown on hover or focus so the transcript matches the design; always shown on touch and while a reply is not done. */
+.chat-msg{position:relative}
+.chat-msg-meta{font:var(--text-caption);color:var(--text-muted)}
+.chat-msg[data-me="true"]>.chat-msg-meta{position:absolute;top:100%;right:0;display:flex;align-items:center;opacity:0;z-index:1;white-space:nowrap}
+.chat-msg[data-me="true"]:hover>.chat-msg-meta,.chat-msg[data-me="true"]:focus-within>.chat-msg-meta{opacity:1}
+.chat-msg[data-me="false"] .chat-msg-meta:not([data-live]){position:absolute;top:-16px;left:0;display:flex;opacity:0;z-index:1}
+.chat-msg[data-me="false"]:hover .chat-msg-meta:not([data-live]),.chat-msg[data-me="false"]:focus-within .chat-msg-meta:not([data-live]){opacity:1}
+@media(hover:none),(max-width:767px){.chat-msg[data-me="true"]>.chat-msg-meta,.chat-msg[data-me="false"] .chat-msg-meta:not([data-live]){position:static;display:flex;opacity:1}.chat-msg[data-me="true"]>.chat-msg-meta{opacity:1;flex-wrap:wrap;justify-content:flex-end;white-space:normal;text-align:right}}
+}

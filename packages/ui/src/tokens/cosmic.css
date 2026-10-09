@@ -63,3 +63,6 @@
 --text-faint:rgba(255,255,255,.43);--track:rgba(255,255,255,.07);--glass-faint:rgba(255,255,255,.06);--reset-off-bg:rgba(255,255,255,.04);
 --os-mac-bg:rgba(255,255,255,.12);--os-mac-fg:#FFFFFF;--os-ubuntu-fg:#F7A27F;--os-win-fg:#8FD0FD;
 }
+/* Chat page (72h). */
+:root,[data-theme]{--chat-violet-tint:rgba(123,97,255,.08);--chat-violet-line:rgba(123,97,255,.3);--chat-violet-sel:rgba(123,97,255,.14);--chat-violet-sel-line:rgba(123,97,255,.45);--chat-user-bg:rgba(123,97,255,.22);--chat-divider:rgba(35,28,55,.06)}
+[data-theme="dark"]{--text-faint:rgba(255,255,255,.43);--chat-divider:rgba(255,255,255,.06)}
