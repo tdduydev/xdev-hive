@@ -317,15 +317,20 @@ export function TodayInboxPage() {
       // Global inbox shortcuts must not swallow Enter on links or activate actions behind a dialog.
       if (el && (el.isContentEditable || el.closest('input, textarea, select, nav, [role="dialog"], [role="menu"]'))) return;
       if (document.querySelector('[role="dialog"]')) return;
-      if (e.key === "Enter" && el?.closest('a, button, summary')) return;
+      if (e.key === "Enter" && el?.closest('a, button, summary, [role="option"]')) return;
       const i = selKey ? keys.indexOf(selKey) : -1;
       const k = e.key.toLowerCase();
+      const move = (key: string) => {
+        pick(key);
+        // Keep the listbox's active option and DOM focus together for keyboard and screen reader users.
+        if (!mobileDetail.mobile) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-inbox-key="${CSS.escape(key)}"]`)?.focus());
+      };
       if (k === "j" || e.key === "ArrowDown") {
         e.preventDefault();
-        if (keys[i + 1]) pick(keys[i + 1]!);
+        if (keys[i + 1]) move(keys[i + 1]!);
       } else if (k === "k" || e.key === "ArrowUp") {
         e.preventDefault();
-        if (i > 0) pick(keys[i - 1]!);
+        if (i > 0) move(keys[i - 1]!);
       } else if (k === "e" && current) {
         e.preventDefault();
         seen(current);
@@ -435,6 +440,7 @@ export function TodayInboxPage() {
                         key={item.key}
                         itemKey={item.key}
                         on={item.key === current?.key}
+                        tabStop={item.key === (current?.key ?? list[0]?.key)}
                         dot={todayDot(item)}
                         title={titleOf(item, t)}
                         scope={scopeText(item, t)}
@@ -450,6 +456,7 @@ export function TodayInboxPage() {
                     key={d.key}
                     itemKey={d.key}
                     on={d.key === doneCurrent?.key}
+                    tabStop={d.key === (doneCurrent?.key ?? inbox.done[0]?.key)}
                     dot={TONE_DOT[d.tone]}
                     title={d.title}
                     scope={d.scope}
@@ -478,15 +485,22 @@ export function TodayInboxPage() {
   );
 }
 
-function Row({ itemKey, on, dot, title, scope, meta, age, onPick }: { itemKey: string; on: boolean; dot: TodayDot; title: string; scope: string; meta: string; age: string; onPick: () => void }) {
+function Row({ itemKey, on, tabStop, dot, title, scope, meta, age, onPick }: { itemKey: string; on: boolean; tabStop: boolean; dot: TodayDot; title: string; scope: string; meta: string; age: string; onPick: () => void }) {
   return (
     <div
       role="option"
       aria-selected={on}
+      tabIndex={tabStop ? 0 : -1}
       data-inbox-key={itemKey}
       onClick={onPick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onPick();
+        }
+      }}
       className={cn(
-        "mx-2 grid cursor-pointer grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 rounded-[14px] px-2.5 py-3 text-left",
+        "mx-2 grid cursor-pointer grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 rounded-[14px] px-2.5 py-3 text-left outline-none focus-visible:focus-ring",
         on ? "bg-(--today-row-selected-bg) shadow-[var(--today-row-selected-ring)]" : "hover:bg-(--glass-bg)",
       )}
     >
