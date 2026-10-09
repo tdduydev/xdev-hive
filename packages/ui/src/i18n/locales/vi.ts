@@ -369,6 +369,7 @@ export const vi = {
     badLink: "Liên kết đăng nhập này không hợp lệ. Bấm đăng nhập qua trình duyệt trong app để mở lại.",
   },
   graph: {
+    legendSolid: "Đường liền: phụ thuộc cùng service", legendDashed: "Đường đứt: phụ thuộc chéo service trong hệ thống",
     layers: "Lớp sơ đồ", system: "Hệ thống", completed: "đã xong", running: "Đang chạy",
     hideOldDone: "Ẩn task xong quá 7 ngày", openOnly: "Chỉ task chưa xong", minimap: "Bản đồ nhỏ", mine: "Task của tôi", byAgent: "Lọc theo agent", allAgents: "Mọi agent",
     fit: "Vừa màn hình", reset: "Xếp lại", list: "Danh sách", pickProject: "Chọn một service để xem lớp Task.",
