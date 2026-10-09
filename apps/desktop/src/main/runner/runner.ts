@@ -1,3 +1,4 @@
+import { fetchTaskBranch, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
 import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
@@ -26,6 +27,7 @@ import { installAntigravityMcp, SHIM_NAME } from "#desktop/main/installer.ts";
 import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFileCli, spawnCli } from "#desktop/main/spawn-cli.ts";
 import { randomBytes } from "node:crypto";
 import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
@@ -99,7 +101,7 @@ import {
   type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { git, gitAsync, isGitRepo } from "#desktop/main/git.ts";
+import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
@@ -123,6 +125,7 @@ import {
   parsePick,
   policyBlocks,
   policyLine,
+  promptOnStdin,
   ranOn,
   routeProfile,
   withoutFlags,
@@ -808,6 +811,12 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
+    const hubRuns = this.#host.mode() === "hub" ? await this.#host.backend().call("runs.list", { project: req.project, taskId: req.taskId, limit: 200 }, this.#runnerActor()) : [];
+    // Unselected candidates are evidence, not the branch an ordinary follow-up should resume.
+    const candidatePrefix = `${branchFor(req.taskId)}+c`;
+    const remoteRun = hubRuns.find(r => r.pushed && r.branch?.startsWith("ai/") && r.headSha &&
+      !(r.branch.startsWith(candidatePrefix) && /^\d+$/.test(r.branch.slice(candidatePrefix.length))));
+
     if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous, extra.requestedBy ?? null, extra.plan ?? null);
     const run = this.store.insert(
       {
@@ -824,9 +833,9 @@ export class Runner {
         plan: extra.plan ?? null,
         reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
         // Ordinary dispatch keeps main's fresh-start behavior after a merged branch was cleaned up.
-        branch: !extra.redispatch && previous?.branch && hasBranch(project.repo, previous.branch) ? previous.branch : null,
+        branch: !extra.redispatch ? remoteRun?.branch ?? (previous?.branch && hasBranch(project.repo, previous.branch) ? previous.branch : null) : null,
         redispatch: extra.redispatch ?? null,
-        baseSha: extra.redispatch ? extra.redispatch.baseSha : previous?.baseSha ?? null,
+        baseSha: extra.redispatch ? extra.redispatch.baseSha : remoteRun?.baseSha ?? previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
         selection: req.selection ?? null,
@@ -843,9 +852,21 @@ export class Runner {
   async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null, plan: RunPlan | null = null): Promise<AgentRun> {
     if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
-    const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    let tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    const remote = project.git?.remote ?? "origin";
+    let taskRemoteSha: string | null = null;
+    if (git(project.repo, ["remote"]).split("\n").includes(remote)) {
+      const fetched = await fetchTaskBranch(project.repo, branch, remote);
+      taskRemoteSha = fetched.sha;
+      if (fetched.sha) {
+        if (tip) {
+          try { await gitAsync(project.repo, ["merge-base", "--is-ancestor", tip, fetched.sha]); tip = fetched.sha; }
+          catch { await gitAsync(project.repo, ["merge-base", "--is-ancestor", fetched.sha, tip]); }
+        } else tip = fetched.sha;
+      }
+    }
     // No task branch yet: the candidates start from the target branch as the remote has it now.
-    const start = tip ? null : await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs });
+    const start = tip ? null : await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote: project.git?.remote });
     // Every candidate's branch is cut here, before any of them is queued, so there is no tick to try again at:
     // the ask fails instead of putting the whole group on a base that may be days behind (BUG-stale-base).
     if (start?.error) {
@@ -853,7 +874,7 @@ export class Runner {
       throw new HiveError("unavailable", tr("errors.fetchFailed", vars), { key: "errors.fetchFailed", vars });
     }
     const from = tip ?? git(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
-    const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", branch])) : from;
+    const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", tip])) : from;
     const group = `B-${randomBytes(3).toString("hex")}`;
     const now = this.#iso();
     const runs = Array.from({ length: count }, (_, i) =>
@@ -868,7 +889,7 @@ export class Runner {
           instructions: (req.instructions ?? "").slice(0, 4000),
           reviewAfter: req.reviewAfter ?? false,
           baseSha,
-          bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+          bestOf: { group, n: i + 1, of: count, from, taskRemoteSha, pick: null, reason: null },
           plan,
           preferKind: req.preferKind ?? null,
           allowedAgentKinds: req.allowedAgentKinds ?? null,
@@ -900,7 +921,7 @@ export class Runner {
     let check = this.#steerSupport.get(bin);
     if (!check) {
       check = new Promise<boolean>((resolve) => {
-        execFile(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && /--input-format/.test(stdout) && /stream-json/.test(stdout));
         });
       });
@@ -915,7 +936,7 @@ export class Runner {
     if (!check) {
       check = new Promise<boolean>((resolve) => {
         const probe = gemini ? geminiLaunch(bin, ["--help"], env) : { bin, args: ["exec", "resume", "--help"], env };
-        execFile(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && (gemini ? /--resume/.test(stdout) && /stream-json/.test(stdout) : /resume/.test(stdout) && /SESSION_ID/i.test(stdout)));
         });
       });
@@ -1353,6 +1374,10 @@ export class Runner {
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
+          gitPush: Object.fromEntries(this.#host.projects().map(p => {
+            const last = this.store.list({ project: p.name, limit: 200 }).find(r => r.pushed != null);
+            return [p.name, last?.pushed !== false || !last.pushError];
+          })),
           // Older hubs reject pending work when intake goes off; hold it locally until they understand this flag.
           acceptsRuns: this.#host.settings().acceptHubRuns && (!this.#updateDrain || !this.#supportsUpdateDrain),
           updateDraining: this.#updateDrain && this.#host.settings().acceptHubRuns,
@@ -1667,7 +1692,7 @@ export class Runner {
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null]);
+        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null, r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
@@ -1691,6 +1716,7 @@ export class Runner {
             error: clip(r.error, 2000),
             branch: r.branch,
             baseSha: r.baseSha,
+            startSha: r.startSha, remoteSha: r.remoteSha, pushed: r.pushed, pushError: r.pushError,
             // Legacy local records may hold a short SHA; never present that as an exact evidence revision.
             headSha: r.headSha && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(r.headSha) ? r.headSha : null,
             instructions: r.instructions,
@@ -2122,7 +2148,7 @@ export class Runner {
       const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
       // A candidate has its own; the judge reads the candidates' branches from the task's.
       const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
-      const branch = run.branch ?? branchFor(run.taskId);
+      const branch = run.branch ?? branchFor(candidate ? candidateName(run.taskId, candidate.n) : run.taskId);
       const name = run.role === "research" ? `research-${run.id}` : candidate ? candidateName(run.taskId, candidate.n) : branch.slice(3);
       // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
       // (a follow-up, a review, the kept candidate) goes on from its own history.
@@ -2133,7 +2159,14 @@ export class Runner {
       const pickNote = this.#pickNotes.get(run.id) ?? null;
       this.#pickNotes.delete(run.id);
       const resuming = !!run.branch && !run.branch.endsWith(`+${run.id}`);
-      const fresh = run.role !== "research" && !candidate && (!hasBranch(project.repo, branch) || (run.redispatch?.continueBranch && run.redispatch.crossMachine)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      const remote = project.git?.remote ?? "origin";
+      const hasRemote = git(project.repo, ["remote"]).split("\n").includes(remote);
+      let taskRemote: Awaited<ReturnType<typeof fetchTaskBranch>> | null = null;
+      if (run.role !== "research" && run.bestOf?.n !== 0 && hasRemote) {
+        try { taskRemote = await fetchTaskBranch(project.repo, branch, remote); }
+        catch (err) { await this.#waitForRemote(run, profile, remote, gitErrorText(err)); return; }
+      }
+      const fresh = run.role !== "research" && !candidate && !taskRemote?.ref && !hasBranch(project.repo, branch) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote }) : null;
       if (resuming && fresh && !fresh.ref) throw new HiveError("conflict", `Cannot retrieve branch ${branch}. Commit WIP and push it on the previous machine first.`, { key: "errors.redispatchUnavailable", vars: { branch } });
       // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
       // that old, the run goes back to the queue and tries again at the next tick, then fails.
@@ -2141,16 +2174,22 @@ export class Runner {
         await this.#waitForRemote(run, profile, fresh.remote!, fresh.error);
         return;
       }
+      run = this.store.update(run.id, { remoteSha: taskRemote?.sha ?? null });
       const startNote = fresh?.note ?? queuedNote;
       wt = ensureWorktree(
         project.repo,
         path.join(root, project.name, name),
         run.taskId,
         run.baseSha,
-        candidate ? { branch: branchFor(name), from: candidate.from } : run.role === "research" ? { branch: `research/${run.id}`, from: "HEAD" } : { branch, start: fresh?.ref ?? undefined },
+        candidate ? { branch: branchFor(name), from: taskRemote?.sha ?? candidate.from } : run.role === "research" ? { branch: `research/${run.id}`, from: "HEAD" } : { branch, start: taskRemote?.ref ?? fresh?.ref ?? undefined },
       );
       // A local copy may lag behind the other machine's WIP. Fast-forward only: divergent work stays intact.
-      if (run.redispatch?.crossMachine && run.redispatch.continueBranch && fresh?.ref) await gitAsync(wt.path, ["merge", "--ff-only", fresh.ref]);
+      if (taskRemote?.ref) {
+        try { await gitAsync(wt.path, ["merge", "--ff-only", taskRemote.ref]); }
+        catch (err) { wt = null; throw err; }
+      }
+      if (run.redispatch?.headSha) await gitAsync(wt.path, ["merge-base", "--is-ancestor", run.redispatch.headSha, "HEAD"]);
+      run = this.store.update(run.id, { startSha: git(wt.path, ["rev-parse", "HEAD"]), remoteSha: taskRemote?.sha ?? null, pushed: false, pushError: null });
       // A branch fetched on another machine starts at its WIP tip, but the diff still starts at the old base.
       if (resuming && run.baseSha) {
         if (!tryGit(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`])) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
@@ -2162,6 +2201,7 @@ export class Runner {
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
       run = this.store.update(run.id, { worktree: wt.path, branch: wt.branch, baseSha: wt.baseSha, taskTitle: task.title });
+      await this.pushRuns();
       if (this.#host.mode() === "hub") {
         parentHub = this.#containerHub();
         if (!parentHub) throw new Error("Hub run needs a machine credential.");
@@ -2475,11 +2515,13 @@ export class Runner {
             let agyFailure: string | null = null;
             let modelRejected = false;
             const launch = !box && profile.kind === "gemini" ? geminiLaunch(bin, cmd.args, env) : { bin, args: box ? box.args : cmd.args, env };
-            const child = spawn(launch.bin, launch.args, {
+            // Per launch, not on cmd: the resume branches below rebuild args from initialArgs, which keep the prompt.
+            const sent = !box && process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.bin) ? promptOnStdin(profile.kind, launch.args, cmd.stdin) : { args: launch.args, stdin: cmd.stdin };
+            const child = spawnCli(launch.bin, sent.args, {
               cwd: wt.path,
               env: launch.env,
               detached: process.platform !== "win32",
-              stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+              stdio: [sent.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
               windowsHide: true,
             });
             const live: Live = { child, log, deadline, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
@@ -2497,7 +2539,7 @@ export class Runner {
                 child.stdin.write(claudeUserMessage(text), (err) => err ? reject(err) : resolve());
               });
               child.stdin?.write(cmd.stdin!);
-            } else if (cmd.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(cmd.stdin); }
+            } else if (sent.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(sent.stdin); }
 
             const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
             const lastLine = (text: string) => {
@@ -2734,7 +2776,7 @@ export class Runner {
       const hostEnv = Object.fromEntries(Object.entries(this.#host.env()).filter(([k]) => !k.startsWith("ELECTRON_")));
       const classifyEnv = { ...hostEnv, ...expandEnv(run.diffSummaryFor ? routed.env : profile.env) };
       for (let modelRetry = 0; ; modelRetry++) {
-        const child = spawn(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+        const child = spawnCli(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
         const live: Live = { child, deadline: Date.now() + CLASSIFY_TIMEOUT_MS, cancelled: false, timedOut: false };
         this.#live.set(run.id, live);
         let output = "";
@@ -2834,6 +2876,13 @@ export class Runner {
       await this.#finish(run, profile, wt, outcome);
     } finally {
       this.#finishing.delete(run.id);
+      if (run.bestOf) {
+        await this.#bestOfNext(this.store.get(run.id)!).catch((err: unknown) => {
+          const now = this.store.get(run.id)!;
+          this.store.update(run.id, { error: [now.error, `best-of-n: ${(err as Error).message}`].filter(Boolean).join(" · ") });
+        });
+        void this.tick();
+      }
       // The web sees the end (summary, commits, MR) now rather than at the next push.
       this.#track(
         this.pushRuns()
@@ -2926,7 +2975,16 @@ export class Runner {
     if (run.plan?.phase === "plan") {
       const text = outcome.kind === "exit" ? redactLines(stripHidden((outcome.usage?.text ?? outcome.stdout).trim())).slice(0, PLAN_MAX) : "";
       if (status === "succeeded" && !text) { status = "failed"; error = tr("runNote.planEmpty"); }
-      const done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
+      let done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
+      if (wt && run.branch?.startsWith("ai/")) {
+        const state = branchState(wt.path, wt.baseSha);
+        done = this.store.update(run.id, state);
+        if (state.headSha) {
+          const project = this.#project(run.project);
+          const result = await pushTaskBranch(project.repo, run.branch, state.headSha, run.remoteSha ?? null, project.git?.remote ?? "origin");
+          done = this.store.update(run.id, { ...result, ...(result.pushed ? { remoteSha: state.headSha } : {}) });
+        }
+      }
       // Saving outside the checkout preserves CLI read-only mode and keeps plans out of code commits.
       if (status === "succeeded") writeFileSync(path.join(this.#opts.dataDir, "runs", `${run.id}.plan.md`), text);
       this.#opts.onEvent?.({ type: "finished", run: done });
@@ -2950,7 +3008,12 @@ export class Runner {
 
     const continuation = outcome.kind === "exit" && outcome.timedOut
       ? tr("runNote.continueFrom", { branch: run.branch ?? "—", commit: headSha ?? "—", activity: run.continuation ?? "—" }) : null;
-    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation, ...usage, finishedAt: now.toISOString() });
+    let done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation, ...usage, finishedAt: now.toISOString() });
+    if (wt && run.bestOf?.n !== 0 && headSha && run.branch?.startsWith("ai/")) {
+      const project = this.#project(run.project);
+      const result = await pushTaskBranch(project.repo, run.branch, headSha, run.remoteSha ?? null, project.git?.remote ?? "origin");
+      done = this.store.update(run.id, { ...result, ...(result.pushed ? { remoteSha: headSha } : {}) });
+    }
     if (wt && run.role === "implement" && ["succeeded", "failed", "cancelled"].includes(status) && this.#opts.diffReview !== false) {
       try {
         const patch = redactLines(stripHidden(this.diff(done.id)));
@@ -3020,12 +3083,7 @@ export class Runner {
       );
       this.#opts.onEvent?.({ type: "rotated", run: done, next });
     } else if (run.bestOf) {
-      // The group decides what comes next, once every candidate is done.
-      await this.#bestOfNext(this.store.get(run.id)!).catch((err: unknown) => {
-        const now = this.store.get(run.id)!;
-        this.store.update(run.id, { error: [now.error, `best-of-n: ${(err as Error).message}`].filter(Boolean).join(" · ") });
-      });
-      void this.tick();
+      // #complete chooses once all uploads/reporting finish; another candidate may still need to queue a retry.
       return;
     } else if (status === "succeeded" && run.reviewAfter && run.role !== "review") {
       next = this.store.insert(
@@ -3064,7 +3122,7 @@ export class Runner {
   async #bestOfNext(run: AgentRun): Promise<void> {
     const b = run.bestOf!;
     const group = this.store.group(b.group);
-    if (group.some((r) => r.bestOf!.pick !== null) || group.some((r) => ACTIVE.includes(r.status))) return;
+    if (group.some((r) => r.bestOf!.pick !== null) || group.some((r) => ACTIVE.includes(r.status) || this.#finishing.has(r.id))) return;
     const finals = latestCandidates(group);
     const done = finals.filter((c) => c.status === "succeeded");
     const judge = group.filter((r) => r.bestOf!.n === 0).at(-1) ?? null;
@@ -3142,6 +3200,18 @@ export class Runner {
       ...branchState(wt.path, wt.baseSha),
       ...(notes.length ? { error: notes.join(" · ") } : {}),
     });
+    if (kept.headSha) {
+      try {
+        const remote = project.git?.remote ?? "origin";
+        // Refreshing the lease here could silently authorize overwriting work pushed while the candidates ran.
+        const expected = b.taskRemoteSha ?? null;
+        kept = this.store.update(kept.id, { remoteSha: expected });
+        const result = await pushTaskBranch(project.repo, wt.branch, kept.headSha!, expected, remote);
+        kept = this.store.update(kept.id, { ...result, ...(result.pushed ? { remoteSha: kept.headSha } : {}) });
+      } catch (err) {
+        kept = this.store.update(kept.id, { pushed: false, pushError: redactLines(stripHidden(toErrorPayload(err).message)).slice(0, 4000) });
+      }
+    }
     const task = await this.#groupTask(kept, b.group);
     if (task) {
       const by = judge ? `, giám khảo ${judge.profileId ?? "?"} (run ${judge.id})` : "";

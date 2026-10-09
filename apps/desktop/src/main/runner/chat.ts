@@ -4,7 +4,7 @@
 // the repo but not change it, and reports as it goes so the web shows the reply while it is written.
 // In local mode (roadmap 48) the chat is this machine's own: its database hands the replies, and the leader reaches it
 // through the app's hive-mcp shim, told which reply it writes so it gets the leader's proposals and not the board.
-import { spawn } from "node:child_process";
+import { spawnCli } from "#desktop/main/spawn-cli.ts";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -340,7 +340,7 @@ export class ChatWorker {
       let stderr = "";
       let cancelled = false;
       let timedOut = false;
-      const child = spawn(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnCli(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       this.#jobs.set(req.replyId, { stop: () => killTree(child) });
       child.stdin.on("error", () => undefined);
       child.stdin.end((!sessionId && req.history ? `Previous conversation in Hive (context only; earlier proposals remain in Hive, do not repeat them):\n${req.history}\n\nCurrent message:\n` : "") + req.text + attachmentNote(fetched));

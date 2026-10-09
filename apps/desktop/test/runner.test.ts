@@ -1508,19 +1508,23 @@ describe("Runner", () => {
     assert.equal(existsSync(path.join(dataDir, "worktrees", "demo", "T-1")), false);
   });
 
-  it("goes on from an existing task branch when the remote is out of reach", async (t) => {
+  it("waits for the remote before continuing an existing task branch", async (t) => {
     const { repo, runner } = await setup([profile("claude-1", "claude", 10, "ok")]);
     const { origin } = teamAhead(repo);
     t.after(() => rmSync(`${origin}.off`, { recursive: true, force: true }));
-    // A follow-up or review of a task that already has a branch: nothing to fetch, so a broken remote changes nothing.
+    // Another machine can have advanced the same branch: do not start a follow-up from unchecked local history.
     const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
     await runner.settle();
     assert.equal(runner.store.get(first.id)!.status, "succeeded");
     renameSync(origin, `${origin}.off`);
 
     const second = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => runner.store.get(second.id)!.status === "queued" && /Đang chờ mạng hoặc remote/.test(runner.list()[0]!.error ?? ""), 60_000);
+    assert.equal(git(repo, "rev-parse", "ai/T-1"), runner.store.get(first.id)!.headSha);
+    renameSync(`${origin}.off`, origin);
     await runner.settle();
     assert.equal(runner.store.get(second.id)!.status, "succeeded");
+    assert.equal(runner.store.get(second.id)!.pushed, true);
     assert.equal(runner.store.get(second.id)!.branch, "ai/T-1");
   });
 
@@ -4282,4 +4286,110 @@ it("applies remote settings on a live runner before acknowledging the next heart
     assert.deepEqual(ack.profileChanges, []);
     assert.equal(ack.maxParallel, 1);
   } finally { await s.runner.stop(); }
+});
+
+describe("branch-on-remote", () => {
+  it("waits for candidate push bookkeeping before choosing the winner of a quota retry", async () => {
+    const { repo, runner } = await setup([profile("claude-a", "claude", 1, "limit"), profile("codex-b", "codex", 2, "ok"), profile("gemini-j", "gemini", 3, "review", { roles: ["review"] })]);
+    const { origin } = teamAhead(repo);
+    writeFileSync(path.join(origin, "hooks", "pre-receive"), "#!/bin/sh\nsleep 0.2\n", { mode: 0o755 });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
+    await runner.settle();
+    const group = runner.store.group(run.bestOf!.group);
+    const retry = group.find(r => r.parentRunId === run.id)!;
+    assert.equal(retry.status, "succeeded", retry.error ?? "");
+    assert.ok(group.every(r => r.bestOf!.pick === 2), "the retry is present before the judge selects c2");
+    const kept = group.find(r => r.branch === "ai/T-1" && r.bestOf!.n === 2)!;
+    assert.equal(kept.pushed, true, kept.pushError ?? "");
+    assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), kept.headSha);
+  });
+
+  it("keeps the group's original lease when a winner is picked after another machine pushes", async () => {
+    const { repo, runner } = await setup([profile("a", "claude", 1, "ok"), profile("b", "codex", 2, "ok"), profile("gemini-j", "gemini", 3, "review", { roles: ["review"], env: { FAKE_MODE: "review", FAKE_PICK: "none" } })]);
+    const { origin } = teamAhead(repo);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
+    await runner.settle();
+    const team = tmp("concurrent-winner");
+    git(team, "clone", "-q", origin, ".");
+    git(team, "config", "user.email", "t@example.com"); git(team, "config", "user.name", "Test");
+    git(team, "checkout", "-qb", "ai/T-1");
+    writeFileSync(path.join(team, "other-work.txt"), "other machine\n");
+    git(team, "add", "."); git(team, "commit", "-qm", "concurrent task work"); git(team, "push", "-q", "origin", "ai/T-1");
+    const head = git(team, "rev-parse", "HEAD");
+    const kept = await runner.pick(run.id);
+    assert.equal(kept.status, "succeeded"); assert.equal(kept.pushed, false); assert.ok(kept.pushError);
+    assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), head);
+  });
+
+  it("pushes each best-of-n candidate and the selected task branch", async () => {
+    const { repo, runner } = await setup([profile("a", "claude", 1, "ok"), profile("b", "codex", 2, "ok"), profile("gemini-j", "gemini", 3, "review", { roles: ["review"] })]);
+    const { origin } = teamAhead(repo);
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1", candidates: 2 });
+    await runner.settle();
+    const candidates = runner.store.group(run.bestOf!.group).filter(r => r.bestOf!.n > 0);
+    for (const c of candidates) {
+      assert.equal(c.status, "succeeded", c.error ?? "");
+      assert.equal(git(origin, "rev-parse", `refs/heads/ai/T-1+c${c.bestOf!.n}`), c.headSha);
+    }
+    const kept = candidates.find(c => c.branch === "ai/T-1")!;
+    assert.ok(kept, JSON.stringify(runner.store.group(run.bestOf!.group).map(r => ({ branch: r.branch, status: r.status, error: r.error, summary: r.summary })))); assert.equal(kept.pushed, true);
+    assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), kept.headSha);
+  });
+
+  it("pushes WIP on failure, timeout and graceful app exit", async () => {
+    for (const mode of ["fail", "timeout-wip", "sleep"]) {
+      const { repo, runner } = await setup([profile("a", "claude", 10, mode, mode === "timeout-wip" ? { timeoutMinutes: 0.01 } : {})], { maxAttempts: 1 });
+      const { origin } = teamAhead(repo);
+      const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+      if (mode === "sleep") {
+        await until(() => runner.log(run.id).includes("thinking"), 60_000);
+        writeFileSync(path.join(runner.store.get(run.id)!.worktree!, "exit-work.txt"), "unfinished work\n");
+        await runner.stop();
+      } else await runner.settle();
+      const done = runner.store.get(run.id)!;
+      assert.equal(done.status, mode === "sleep" ? "cancelled" : "failed");
+      assert.equal(done.pushed, true, done.pushError ?? "");
+      assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), done.headSha);
+      if (mode === "sleep") assert.equal(git(origin, "show", "ai/T-1:exit-work.txt"), "unfinished work");
+    }
+  });
+
+  it("pushes committed work after success and fetches a newer remote tip before continuing", async () => {
+    const { repo, runner } = await setup([profile("a", "claude", 10, "ok")]);
+    const { origin } = teamAhead(repo);
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const done = runner.store.get(first.id)!;
+    assert.equal(done.status, "succeeded");
+    assert.equal(done.pushed, true);
+    assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), done.headSha);
+    const team = tmp("branch-team");
+    git(team, "clone", "-q", origin, ".");
+    git(team, "config", "user.email", "t@example.com"); git(team, "config", "user.name", "Test");
+    git(team, "checkout", "-q", "ai/T-1");
+    writeFileSync(path.join(team, "remote-work.txt"), "another machine\n");
+    git(team, "add", "."); git(team, "commit", "-qm", "remote work"); git(team, "push", "-q", "origin", "ai/T-1");
+    const remoteSha = git(team, "rev-parse", "HEAD");
+    const next = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await runner.settle();
+    const continued = runner.store.get(next.id)!;
+    assert.equal(continued.startSha, remoteSha);
+    assert.equal(continued.pushed, true);
+    assert.equal(readFileSync(path.join(continued.worktree!, "remote-work.txt"), "utf8"), "another machine\n");
+  });
+
+  it("records push rejection without failing the run, then retries on the next run", async () => {
+    const { repo, runner } = await setup([profile("a", "claude", 10, "ok")]);
+    const { origin } = teamAhead(repo);
+    const hook = path.join(origin, "hooks", "pre-receive");
+    writeFileSync(hook, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    const first = await runner.enqueue({ project: "demo", taskId: "T-1" }); await runner.settle();
+    assert.equal(runner.store.get(first.id)!.status, "succeeded");
+    assert.equal(runner.store.get(first.id)!.pushed, false);
+    assert.ok(runner.store.get(first.id)!.pushError);
+    rmSync(hook);
+    const next = await runner.enqueue({ project: "demo", taskId: "T-1" }); await runner.settle();
+    assert.equal(runner.store.get(next.id)!.pushed, true);
+    assert.equal(runner.store.get(next.id)!.pushError, null);
+  });
 });

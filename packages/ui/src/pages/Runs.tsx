@@ -343,6 +343,8 @@ function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: s
             {id} · {run.project} · {run.taskId} · {machine}
           </span>
           {run.headSha ? <span className="break-all font-mono text-xs text-fg-secondary" data-run-head-sha>{t("runs.codeRevision", { sha: run.headSha })}</span> : null}
+          {run.startSha ? <span className="break-all font-mono text-xs text-fg-secondary" data-run-start-sha>{t("runs.startRevision", { sha: run.startSha })}</span> : null}
+          {run.pushed != null ? <span className="break-words text-xs text-fg-secondary" data-run-push-state>{t(run.pushed ? "runs.branchPushed" : run.pushError ? "runs.branchPushFailed" : "runs.branchNotPushed")}{run.pushError ? ` · ${run.pushError}` : ""}</span> : null}
         </div>
         <div className="flex flex-wrap justify-end gap-1.5 max-md:w-full max-md:justify-start max-md:gap-2">
           {actions}
@@ -833,6 +835,7 @@ function LocalDetail({ run, machine, gitlabReady, group, onChanged }: { run: Age
           {run.costUsd !== null ? ` · ${t("board.cost", { cost: formatUsd(run.costUsd) })}` : ""}
         </NoteLine>
       ) : null}
+      {run.pushed != null ? <NoteLine tone={run.pushError ? "danger" : "info"}><span data-run-push-state>{t(run.pushed ? "runs.branchPushed" : run.pushError ? "runs.branchPushFailed" : "runs.branchNotPushed")}{run.pushError ? ` · ${run.pushError}` : ""}</span></NoteLine> : null}
       {run.outputTokens !== null ? <TokensLine tokens={run} /> : null}
       {run.compression ? <CompressionLine compression={run.compression} /> : null}
       {b ? (

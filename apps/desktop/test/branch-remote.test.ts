@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { it } from "node:test";
+import { fetchTaskBranch, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
+
+it("explicit lease rejects a concurrent remote change and never permits main", async t => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "hive-lease-")); t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (repo: string, ...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const remote = path.join(root, "remote.git");
+  git(root, "init", "--bare", remote);
+  git(root, "clone", remote, "one");
+  const repo = path.join(root, "one");
+  git(repo, "config", "user.name", "Test"); git(repo, "config", "user.email", "test@example.com");
+  writeFileSync(path.join(repo, "work"), "first"); git(repo, "add", "."); git(repo, "commit", "-m", "first");
+  git(repo, "checkout", "-b", "ai/T1");
+  const first = git(repo, "rev-parse", "HEAD");
+  assert.deepEqual(await pushTaskBranch(repo, "ai/T1", first, null), { pushed: true, pushError: null });
+  assert.equal((await fetchTaskBranch(repo, "ai/T1")).sha, first);
+  writeFileSync(path.join(repo, "work"), "second"); git(repo, "commit", "-am", "second");
+  const second = git(repo, "rev-parse", "HEAD");
+  assert.equal((await pushTaskBranch(repo, "ai/T1", second, first)).pushed, true);
+  const stale = await pushTaskBranch(repo, "ai/T1", first, first);
+  assert.equal(stale.pushed, false); assert.ok(stale.pushError);
+  assert.equal(git(remote, "rev-parse", "refs/heads/ai/T1"), second);
+  assert.equal((await pushTaskBranch(repo, "main", first, null)).pushed, false);
+  const uploadPack = path.join(root, "upload-pack.sh");
+  writeFileSync(uploadPack, '#!/bin/sh\necho "fixture SSH warning" >&2\nexec git-upload-pack "$@"\n', { mode: 0o755 });
+  git(repo, "config", "remote.origin.uploadpack", uploadPack);
+  assert.equal((await fetchTaskBranch(repo, "ai/T1")).sha, second);
+  assert.equal((await fetchTaskBranch(repo, "ai/missing")).sha, null);
+  git(repo, "remote", "set-url", "origin", path.join(root, "missing"));
+  await assert.rejects(fetchTaskBranch(repo, "ai/T1"));
+});

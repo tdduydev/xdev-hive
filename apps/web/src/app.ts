@@ -7,6 +7,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform, type Duplex } from "node:stream";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
+import type { SetupGate } from "./hub-setup.ts";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -91,6 +92,8 @@ export interface HubAppOptions {
   terminalIdentity?: TerminalMachineIdentity;
   /** Shorter relay clocks, for tests. */
   terminalTimings?: Partial<RelayTimings>;
+  /** First-run setup (roadmap 75): while it is pending only health and /api/setup answer. */
+  setup?: SetupGate;
 }
 
 const CSP = [
@@ -201,6 +204,7 @@ export function createHubApp({
   terminalRelay,
   terminalIdentity,
   terminalTimings,
+  setup,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -212,6 +216,9 @@ export function createHubApp({
     if (ui && "dir" in ui) res.setHeader("content-security-policy", CSP);
     next();
   });
+  // The page asks every hub first; one not started for setup simply says so.
+  if (setup) setup.mount(app);
+  else app.get("/api/setup", (_req, res) => void res.json({ result: { pending: false } }));
 
   const json = express.json({ limit: "1mb" });
   // RPC carries a doc's attached file in base64 (docs.assetPut, roadmap 22j): parsed only once the caller is known.

@@ -150,6 +150,17 @@ export async function signInProviders(baseUrl = ""): Promise<{ oidc: { name: str
   return (await hubRequest<{ oidc: { name: string } | null }>(baseUrl, "/api/auth/providers", undefined)).result;
 }
 
+/** A hub started for setup (roadmap 75): whether it waits for it, which settings the environment holds, and the rest's values. */
+export type HubSetupState = { pending: false } | { pending: true; locked: string[]; defaults: Record<string, string> };
+
+export async function hubSetupState(baseUrl = ""): Promise<HubSetupState> {
+  return (await hubRequest<HubSetupState>(baseUrl, "/api/setup", undefined)).result;
+}
+
+export async function saveHubSetup(input: { code: string; admin: { username: string; password: string }; values: Record<string, string> }, baseUrl = ""): Promise<void> {
+  await hubRequest(baseUrl, "/api/setup", input);
+}
+
 export async function signOut(baseUrl = ""): Promise<void> {
   await hubRequest(baseUrl, "/api/logout", {}).catch(() => undefined);
 }

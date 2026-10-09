@@ -20,7 +20,9 @@ const waitFor = async (predicate, label) => {
   const until = Date.now() + 10_000;
   while (!predicate()) { if (Date.now() > until) throw new Error(`Timeout: ${label}`); await new Promise(r => setTimeout(r, 25)); }
 };
-const waitText = text => waitFor(() => output.includes(text), text);
+// Bash on Linux inserts bracketed-paste escapes and a carriage return before command output.
+const plain = text => text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\r\n?/g, '\n');
+const waitText = text => waitFor(() => plain(output).includes(plain(text)), text);
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 try {
   assert.throws(() => s.spawn('fixture'), /policy-denied/);

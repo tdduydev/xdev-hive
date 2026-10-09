@@ -1273,16 +1273,22 @@ const parentDir = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$
 const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "neutral", folder: "info", conflict: "danger", new: "ok" };
 
 /**
- * A whole GitLab group at once (roadmap 19a): the repositories of the group and its subgroups, each with the project
- * key and folder it would get; the chosen ones are cloned (or their folder used) and added, with their GitLab path.
+ * A whole GitLab group at once (roadmap 19a), or a GitHub organization/user (74b): the repositories of the group and
+ * its subgroups, each with the project key and folder it would get; the chosen ones are cloned (or their folder used)
+ * and added, with their GitLab path or GitHub owner/repo.
  */
-export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
+export function GitLabImportCard({ settings, onChanged, forge = "gitlab" }: { settings: DesktopSettings; onChanged: () => void; forge?: "gitlab" | "github" }) {
   const { client, bump, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
+  const gh = forge === "github";
+  // GitLab keeps its ids (the smoke clicks them); the GitHub card beside it needs ids of its own.
+  const sfx = gh ? "-github" : "";
+  const list = (owner: string, baseDir: string) => (gh ? desktop.githubOwner({ owner, baseDir }) : desktop.gitlabGroup({ group: owner, baseDir }));
+  const field = gh ? "githubRepo" : "gitlabProject";
   // Where the projects so far are: their group and the folder they sit in, most likely where the rest go too.
-  const first = settings.projects.find((p) => p.gitlabProject?.includes("/"));
-  const [group, setGroup] = useState(first ? first.gitlabProject!.split("/").slice(0, -1).join("/") : "");
+  const first = settings.projects.find((p) => p[field]?.includes("/"));
+  const [group, setGroup] = useState(first ? first[field]!.split("/").slice(0, -1).join("/") : "");
   const [baseDir, setBaseDir] = useState(first ? parentDir(first.repo) : "~/Work");
   const [protocol, setProtocol] = useState<"ssh" | "https">("ssh");
   // The group's projects as one system (roadmap 19b), named after the group unless changed.
@@ -1303,8 +1309,8 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("projects.importTitle")}</CardTitle>
-        <CardDescription>{t("projects.importHint")}</CardDescription>
+        <CardTitle>{t(gh ? "projects.importGithubTitle" : "projects.importTitle")}</CardTitle>
+        <CardDescription>{t(gh ? "projects.importGithubHint" : "projects.importHint")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <form
@@ -1312,7 +1318,7 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
           onSubmit={(e) => {
             e.preventDefault();
             void listing.run(async () => {
-              const candidates = await desktop.gitlabGroup({ group, baseDir });
+              const candidates = await list(group, baseDir);
               setListed({ group, candidates });
               setPicked(Object.fromEntries(candidates.filter((c) => c.state !== "added" && c.state !== "conflict").map((c) => [c.repo.pathWithNamespace, true])));
               setKeys({});
@@ -1321,13 +1327,13 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
           }}
         >
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-group">{t("projects.importGroup")}</Label>
-            <Input id="import-group" className="font-mono" placeholder="company/team" value={group} onChange={(e) => setGroup(e.target.value)} />
+            <Label htmlFor={`import-group${sfx}`}>{t(gh ? "projects.importOwner" : "projects.importGroup")}</Label>
+            <Input id={`import-group${sfx}`} className="font-mono" placeholder={gh ? "my-company" : "company/team"} value={group} onChange={(e) => setGroup(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-base">{t("projects.importBase")}</Label>
+            <Label htmlFor={`import-base${sfx}`}>{t("projects.importBase")}</Label>
             <div className="flex gap-1">
-              <Input id="import-base" className="min-w-0 font-mono" value={baseDir} onChange={(e) => setBaseDir(e.target.value)} />
+              <Input id={`import-base${sfx}`} className="min-w-0 font-mono" value={baseDir} onChange={(e) => setBaseDir(e.target.value)} />
               <Button
                 type="button"
                 variant="outline"
@@ -1343,18 +1349,18 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-protocol">{t("projects.importProtocol")}</Label>
-            <NativeSelect id="import-protocol" value={protocol} onChange={(e) => setProtocol(e.target.value as "ssh" | "https")}>
+            <Label htmlFor={`import-protocol${sfx}`}>{t("projects.importProtocol")}</Label>
+            <NativeSelect id={`import-protocol${sfx}`} value={protocol} onChange={(e) => setProtocol(e.target.value as "ssh" | "https")}>
               <NativeSelectOption value="ssh">SSH</NativeSelectOption>
               <NativeSelectOption value="https">HTTPS</NativeSelectOption>
             </NativeSelect>
           </div>
-          <Button id="import-list" type="submit" disabled={!group.trim() || !baseDir.trim() || listing.busy}>
+          <Button id={`import-list${sfx}`} type="submit" disabled={!group.trim() || !baseDir.trim() || listing.busy}>
             {t("projects.importList")}
           </Button>
         </form>
         <ErrorNote error={listing.error} />
-        {listed && !listed.candidates.length ? <Empty>{t("projects.importNone", { group: listed.group })}</Empty> : null}
+        {listed && !listed.candidates.length ? <Empty>{t(gh ? "projects.importGithubNone" : "projects.importNone", { group: listed.group })}</Empty> : null}
         {listed?.candidates.length ? (
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
@@ -1414,11 +1420,8 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
               disabled={!chosen.length || bad.length > 0 || dupes.size > 0 || importing.busy}
               onClick={() =>
                 void importing.run(async () => {
-                  const out = await desktop.importGitlab({
-                    group: listed.group,
-                    protocol,
-                    items: chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir })),
-                  });
+                  const items = chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir }));
+                  const out = gh ? await desktop.importGithub({ owner: listed.group, protocol, items }) : await desktop.importGitlab({ group: listed.group, protocol, items });
                   setResults(out.results);
                   const joined = [
                     ...out.results.filter((r) => r.ok).map((r) => r.key),
@@ -1431,15 +1434,15 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
                   bump();
                   onChanged();
                   // What was added is listed as added now.
-                  setListed({ group: listed.group, candidates: await desktop.gitlabGroup({ group: listed.group, baseDir }) });
+                  setListed({ group: listed.group, candidates: await list(listed.group, baseDir) });
                 })
               }
             >
               {importing.busy ? t("projects.importRunning") : t("projects.importRun", { count: chosen.length })}
             </Button>
             <div className="flex items-center gap-2">
-              <Checkbox id="import-to-system" checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
-              <Label htmlFor="import-to-system" className="font-normal">
+              <Checkbox id={`import-to-system${sfx}`} checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
+              <Label htmlFor={`import-to-system${sfx}`} className="font-normal">
                 {t("projects.importToSystem")}
               </Label>
               <Input

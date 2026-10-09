@@ -316,7 +316,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (!client.desktop) {
       // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
       const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read", "start"]);
-      if (!webAdmin) ids.add("overview");
+      // Keep system overview deep links and palette access for hub admins too.
+      ids.add("overview");
       return account(ids);
     }
     // The desktop app on its own machine (roadmap 39f): its runs and, from 48, its own leader chat, which an app

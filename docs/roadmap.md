@@ -365,6 +365,46 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **72i. pipeline-features** · [ ] **72j. knowledge** (Memory, Skill, Artifact) · [ ] **72k. history-graph** · [ ] **72l. settings-admin** · [ ] **72m. terminal-start**
   - [ ] **72n. e2e-screens**: e2e web/mobile, smoke desktop, bộ ảnh tối/sáng 1440 và 390.
 
+- **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
+  - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
+  - [ ] **73b. platform-routing**: task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
+  - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
+  - [ ] **73d. app-runner-console**: app chế độ hub chỉ còn việc của máy (trạng thái, gói agent và quota, run trên máy, worktree, công cụ, cài đặt máy); việc khác mở web. Chế độ cục bộ giữ nguyên.
+  - [ ] **73e. admin-area**: gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền.
+  - [ ] **73f. release-split**: thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.
+
+- **74. github-org-import** (hỏi 9/10: "hive app đã hỗ trợ clone repo vào thư mục và chọn thư mục để đồng bộ gitlab groups và github chưa?"; GitLab có từ 19a/38e, GitHub chưa có). Tách:
+  - [x] **74a. github-repo-list** (0.149.0): `GitHubClient` liệt kê repo của org (`/orgs/{org}/repos`), user (`/users/{user}/repos`) hay của chính token (`/user/repos`), phân trang theo header `Link`; mỗi repo có `full_name`, `clone_url`, `ssh_url`, `default_branch`, `archived`. github.com và GHES.
+  - [x] **74b. github-import** (0.149.0; smoke thẻ GitHub chưa chụp): thẻ *Nhập từ GitHub* ở *Dự án & cài đặt* như *Nhập từ group GitLab*: ô org/user, thư mục gốc (`desktop:pickFolder`), SSH/HTTPS, gợi ý project key và thư mục. `githubOrg` / `importGithub` theo mẫu `gitlabGroup` / `importGitlab`, dùng lại `planImport` / `importRepos`; clone URL lấy lại từ GitHub, không từ trang; token không vào `.git/config`; thư mục có sẵn cùng remote thì dùng luôn, khác remote thì báo; repo đã là dự án hoặc archived thì bỏ qua; dự án mới có `githubRepo` và `targetBranch` = nhánh mặc định. Test `github-import.test.ts` (mock GitHub: phân trang, org/user, clone có sẵn, xung đột remote, token không lộ), smoke thẻ import, chuỗi vi/en. Rủi ro: PAT fine-grained thiếu `Metadata: read` hoặc org chưa duyệt token thì không thấy repo private; rate limit.
+
+- **75. setup-wizard** (hỏi 9/10: "làm sao cho hive init màn hình đầu tiên là các thông số cấu hình, chỉ cần deploy bằng 1 lệnh docker compose up"; chọn: HTTP LAN mặc định + profile HTTPS, cấu hình trong volume và env thắng, spec ngắn rồi làm). Spec: [docs/specs/75-setup-wizard.md](specs/75-setup-wizard.md). Tách:
+  - [x] **75a. setup-file** (0.150.0): `settings.json` cạnh DB điền các biến `HIVE_*` chưa đặt; env thắng và bị khoá.
+  - [x] **75b. setup-gate** (0.150.0): `HIVE_SETUP=1` và chưa có tài khoản thì hub in mã cài đặt, chặn API, mở `GET/POST /api/setup`; lưu xong tạo admin, ghi tệp, chạy lại.
+  - [x] **75c. setup-page** (0.150.0; e2e/ảnh màn hình chưa chụp, Electron không chạy được trên máy làm): trang cài đặt trên web (mã, admin, địa chỉ, lưu tệp, embeddings, SSO, backup, tuỳ chọn), vi/en.
+  - [x] **75d. root-compose** (0.150.0; chưa thử `docker compose up` thật): `compose.yaml` ở gốc repo, profile `embed`, `https`, `tunnel`; README phần cài đặt.
+
+- **76. access-first** (hỏi 9/10: "tách web, app ra hai phần riêng không làm chung vì bị rối… tập trung vào bộ phân quyền trước, mình sẽ bắt đầu cấp account cho các phòng ban dùng MCP, và người dùng sẽ đọc và duyệt tài liệu"). Người dùng đã duyệt spec ngày 9/10: một người thuộc được nhiều phòng ban, token MCP hạn 30/90 ngày, chế độ cục bộ của app chạy hub nhúng. Spec: [docs/specs/76-access-first.md](specs/76-access-first.md). Prompt thiết kế lại UI: [docs/design/76-redesign-prompt.md](design/76-redesign-prompt.md). Tách:
+  - [ ] **76a. access-fixes**: vá 4 lỗi P0 (token trả lời chat gọi được mọi RPC; viewer duyệt được tool; token của admin không bị grants giới hạn; RPC của web nằm ngoài bảng quyền), mỗi lỗi có test.
+  - [ ] **76b. one-authorize**: kiểm quyền một chỗ cho mọi method, gộp các bảng vai, test ma trận actor × method, giao diện khớp với hub.
+  - [ ] **76c. teams**: phòng ban, trưởng phòng, quyền lấy vai cao nhất, link mời theo phòng (cần R-72l-users vào main).
+  - [ ] **76d. mcp-tokens**: token MCP cá nhân (dự án, chỉ đọc hoặc đề xuất, hạn 30/90 ngày), trang *Kết nối MCP* có lệnh mẫu cho Claude Code và Codex, admin thu hồi được.
+  - [ ] **76e. doc-review**: hộp *Chờ bạn duyệt*, nút Yêu cầu sửa và Rút, Reviewer duyệt được skill và AGENTS.md, người duyệt theo đường dẫn, nhật ký duyệt.
+  - [ ] **76f. admin-area**: nhóm Quản trị trên web (thay 73e).
+  - [ ] **76g. ui-kit**: tách `packages/ui-kit` (tokens, primitive, i18n runtime), sau khi lô giao diện 72 vào main.
+  - [ ] **76h. two-shells**: `WebApp` và `DesktopApp` riêng, trang của máy chuyển về `apps/desktop`, trang web chuyển về `apps/web/client` (thay 73d).
+  - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
+
+- **77. client-perf** (hỏi 9/10: "mấy app client này cần làm gì để tối ưu không, cache đồ nữa"). Người dùng trả lời 9/10: dùng TanStack Query, làm SSE ngay đợt này, cache truy vấn trong IndexedDB (xoá khi đăng xuất hoặc đổi quyền). Spec: [docs/specs/77-client-perf.md](specs/77-client-perf.md). Rà soát task theo kiến trúc 76/77: [docs/specs/76-task-triage.md](specs/76-task-triage.md). Tách:
+  - [ ] **77a. desktop-io**: log run chỉ đọc phần đuôi, bất đồng bộ; git bất đồng bộ trên các đường hay chạy; `desktop.runs` chỉ chọn cột cần.
+  - [ ] **77b. heartbeat-own-timer**: heartbeat chạy trên timer riêng, có jitter và chặn chồng nhịp; quét và dò ghi vào cache (thay BUG-heartbeat-stall).
+  - [ ] **77c. hub-timeouts-quit**: mọi lệnh gọi hub có timeout; thoát app có hạn chót khi hub sập, commit WIP vẫn xong.
+  - [ ] **77d. probe-dedup**: `setup.status` và dò login mỗi lúc chỉ chạy một lần, có cache, không mở login shell mỗi lần.
+  - [ ] **77e. static-cache**: asset `immutable` 1 năm, `index.html` `no-cache`, nén, asset thiếu trả 404, bắt `vite:preloadError`.
+  - [ ] **77f. visible-polling**: chỉ poll khi tab đang mở (web và app), dừng poll khi run đã kết thúc.
+  - [ ] **77g. query-cache**: TanStack Query, cache IndexedDB, phân trang hộp việc, log run theo offset.
+  - [ ] **77h. lazy-pages**: mỗi trang nạp khi cần, chunk đầu ≤ 250 KB gzip, ảo hoá log và danh sách dài, worker cho diff và markdown (làm cùng 76h).
+  - [ ] **77i. push-events**: SSE cho run, chat và log, invalidate cache, đi được qua tunnel.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
