@@ -1650,8 +1650,10 @@ function showPage(hash: string): void {
 }
 
 let lastPending = 0;
+let trayRefreshPending = false;
 async function refreshTray(): Promise<void> {
-  if (!tray) return;
+  if (!tray || trayRefreshPending) return;
+  trayRefreshPending = true;
   try {
     const pending = (await backend.call("proposals.list", { status: "pending" }, actor())).length;
     tray.setTitle(pending ? ` ${pending}` : "");
@@ -1666,6 +1668,8 @@ async function refreshTray(): Promise<void> {
     lastPending = pending;
   } catch {
     tray.setToolTip(`xDev Hive: ${tr("desktop.sourceUnreachable")}`);
+  } finally {
+    trayRefreshPending = false;
   }
 }
 
@@ -1801,6 +1805,7 @@ if (!app.requestSingleInstanceLock()) {
     const active = runner.store.active().length;
     const takesWork = config.runner.acceptHubRuns || active > 0;
     mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
+    if (backend instanceof HubBackend) backend.stopForQuit();
     gateExecutor?.stop();
     void quit.start(async () => {
         await Promise.all([runner.stop(), remoteTerminal?.stop(), gateExecutor?.settle()]);

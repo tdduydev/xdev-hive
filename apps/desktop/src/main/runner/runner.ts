@@ -499,6 +499,7 @@ export class Runner {
   #assistTimer: NodeJS.Timeout | undefined;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
+  #chatPollPending = false;
   #hubState: { ok: boolean | null; checkedAt: string | null; lastOkAt: string | null; code: string | null; error: string | null } = {
     ok: null,
     checkedAt: null,
@@ -1547,6 +1548,8 @@ export class Runner {
   async pollChats(): Promise<number> {
     const hub = this.#host.mode() === "hub";
     if (this.#updateDrain || (hub && !this.#host.settings().acceptHubRuns) || this.#chatPollOff) return 0;
+    if (this.#chatPollPending) return 0;
+    this.#chatPollPending = true;
     try {
       const requests = await this.#host.backend().call("chat.poll", {}, this.#runnerActor());
       if (this.#updateDrain) return 0;
@@ -1555,6 +1558,8 @@ export class Runner {
     } catch (err) {
       if (err instanceof HiveError && err.code === "bad_request" && /unknown method/i.test(err.message)) this.#chatPollOff = true;
       throw err;
+    } finally {
+      this.#chatPollPending = false;
     }
   }
 

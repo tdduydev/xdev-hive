@@ -122,6 +122,7 @@ async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token
     credentials: "same-origin",
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
   return hubResult<T>(res);
 }
