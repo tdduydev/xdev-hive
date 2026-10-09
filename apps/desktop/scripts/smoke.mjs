@@ -604,6 +604,9 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
   const limited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(4));
   store.update(limited.id, { status: "rate_limited", profileId: "codex-plus", startedAt: hoursAgo(4), finishedAt: hoursAgo(3.5), costReported: 1 });
   store.resetStats("codex-plus", hoursAgo(30));
+  // The quota screenshot asserts the warning on claude-max-1, so seed a real hit for that same profile.
+  const claudeLimited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(2));
+  store.update(claudeLimited.id, { status: "rate_limited", profileId: "claude-max-1", startedAt: hoursAgo(2), finishedAt: hoursAgo(1.5), costReported: 1 });
   store.setCooldown("claude-max-1", new Date(Date.now() + 100 * 60_000).toISOString(), "You've hit your usage limit");
   store.setResume("codex-plus", { until: new Date(Date.now() + 120 * 60_000).toISOString(), at: hoursAgo(0.2), by: "an" });
   store.db.close();
