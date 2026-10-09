@@ -134,13 +134,17 @@ async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token
     credentials: "same-origin",
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
   return hubResult<T>(res);
 }
 
 /** The hub's answer, or its error with the key the UI translates. */
 async function hubResult<T>(res: Response): Promise<{ status: number; result: T }> {
-  const json = (await res.json().catch(() => null)) as {
+  const json = (await res.json().catch((err: unknown) => {
+    if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) throw err;
+    return null;
+  })) as {
     result?: T;
     error?: { code?: string; message?: string; key?: string; vars?: Record<string, string | number> };
   } | null;
@@ -286,6 +290,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
               const query = `project=${encodeURIComponent(project)}&name=${encodeURIComponent(file.name)}`;
               const res = await fetch(`${baseUrl}/api/chat/files?${query}`, {
                 method: "POST",
+                signal: AbortSignal.timeout(45_000),
                 credentials: "same-origin",
                 headers: { "content-type": file.type || "application/octet-stream", "x-hive-csrf": "1" },
                 body: file,
