@@ -114,7 +114,7 @@ describe("mcp tools", () => {
     await assert.rejects(hive.call("proposals.create", { action: { method: "agents.stop", project: null, input: { project: null } }, reason: "Hub-wide" }, actor), /admin|Admin/);
     await assert.rejects(hive.call("proposals.create", { action: { method: "admin.commandCreate", project: "app", input: { machineId: "m", itemId: "other:agents" } }, reason: "Wrong service" }, actor), /another project/);
   });
-  it("exposes the agent tool set", async () => {
+  it("exposes the agent tool set without task management", async () => {
     const client = await connect(new SqliteHive(":memory:"));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(names, [
@@ -149,6 +149,37 @@ describe("mcp tools", () => {
       "tool_list",
       "tool_status",
     ]);
+  });
+
+  it("shows task_create only to task managers and keeps run credentials from changing platforms", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin: Actor = { name: "duy", role: "admin" };
+    // task_create is the CLI leader's (71a): an interactive credential of an account with taskManage.
+    const manager: Actor = { name: "claude@lan", role: "member", mcpCredential: true, agent: "claude", onBehalf: "lan", access: { projects: { app: "lead" } } };
+    const member: Actor = { ...manager, name: "claude@minh", onBehalf: "minh", access: { projects: { app: "member" } } };
+    const run: Actor = { name: "run-agent", role: "agent", runCredential: { project: "app", task: "T-1", run: "R-1", machine: "mini", readOnly: false } };
+    const has = async (actor: Actor, name: string) => (await (await connectAs(hive, actor)).listTools()).tools.some((t) => t.name === name);
+    assert.equal(await has(member, "task_create"), false);
+    assert.equal(await has(run, "task_create"), false);
+    assert.equal(await has({ ...manager, chatReply: 1 }, "task_create"), false);
+    assert.equal(await has(manager, "task_create"), true);
+    const memberUpdate = (await (await connectAs(hive, member)).listTools()).tools.find((t) => t.name === "task_update")!;
+    assert.equal(Object.hasOwn((memberUpdate.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}, "platforms"), false);
+
+    const client = await connectAs(hive, manager);
+    const created = JSON.parse(text(await client.callTool({ name: "task_create", arguments: { id: "T-1", project: "app", title: "Mac task", platforms: ["mac"] } })));
+    assert.deepEqual(created.platforms, ["mac"]);
+    const changed = JSON.parse(text(await client.callTool({ name: "task_update", arguments: { id: "T-1", platforms: ["linux"] } })));
+    assert.deepEqual([changed.platforms, changed.status], [["linux"], "todo"]);
+
+    const runClient = await connectAs(hive, run);
+    const update = (await runClient.listTools()).tools.find((t) => t.name === "task_update")!;
+    assert.equal(Object.hasOwn((update.inputSchema as { properties?: Record<string, unknown> }).properties ?? {}, "platforms"), false);
+    const attempted = await runClient.callTool({ name: "task_update", arguments: { id: "T-1", status: "review", platforms: ["windows"] } });
+    assert.notEqual(attempted.isError, true);
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin))[0]?.platforms, ["linux"]);
+    await assert.rejects(hive.call("tasks.update", { id: "T-1", platforms: ["windows"] }, run), /cannot create tasks or change/);
+    hive.close();
   });
 
   it("gives read-only agents and viewer tokens the read tools only", async () => {
@@ -779,8 +810,8 @@ describe("mcp tools", () => {
 
     const needsProject = await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", reason: "Asked in the chat" } });
     assert.equal(needsProject.isError, true, "project is required at hub scope");
-    const made = JSON.parse(text(await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", project: "app", reason: "Asked in the chat" } })));
-    assert.deepEqual([made.project, made.status, made.input.project], ["app", "proposed", "app"]);
+    const made = JSON.parse(text(await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", project: "app", platforms: ["windows"], reason: "Asked in the chat" } })));
+    assert.deepEqual([made.project, made.status, made.input.project, made.input.platforms], ["app", "proposed", "app", ["windows"]]);
     const moved = JSON.parse(text(await client.callTool({ name: "propose_task_status", arguments: { id: "S-1", status: "doing", project: "site", reason: "Started" } })));
     assert.equal(moved.project, "site");
     const unknown = await client.callTool({ name: "propose_task_status", arguments: { id: "S-1", status: "doing", project: "ghost", reason: "x" } });
@@ -798,7 +829,7 @@ describe("mcp tools", () => {
     // Only a hub admin confirms, and it then runs as them.
     const decided = await hive.call("chat.decide", { actionId: made.id, accept: true }, admin);
     assert.deepEqual([decided.status, decided.result], ["done", { taskId: "T-9" }]);
-    assert.equal((await hive.call("tasks.list", { project: "app" }, admin)).some((t) => t.id === "T-9"), true);
+    assert.deepEqual((await hive.call("tasks.list", { project: "app" }, admin)).find((t) => t.id === "T-9")?.platforms, ["windows"]);
   });
 
   it("keeps a project chat's leader working the way it did before roadmap 37", async () => {

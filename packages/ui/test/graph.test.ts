@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Machine, ProjectSummary, SdlcFlow, SdlcFlowTask, SdlcGateRecord, Task } from "@xdev-hive/core";
 import { agentGraph, sdlcGraph, systemGraph, taskGraph, layoutGraph, SDLC_STEPS, type GraphNode } from "#ui/lib/graph.ts";
-const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, kind: null, size: null, risk: null, classifiedBy: null, classifiedAt: null, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], agent: null, ...patch });
+const task = (id: string, patch: Partial<Task> = {}): Task => ({ id, project: "shop", title: id, platforms: [], kind: null, size: null, risk: null, classifiedBy: null, classifiedAt: null, status: "todo", owner: null, leaseUntil: null, note: null, updatedAt: "2026-10-06T00:00:00Z", dependsOn: [], waitingOn: [], agent: null, ...patch });
 const NOW = Date.parse("2026-10-06T12:00:00Z");
 const machine = { id: "runner.m", machine: "m", online: true, acceptsRuns: true, projects: ["shop"], profiles: [{ id: "p", label: "Plan", kind: "codex", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2 }], runs: [{ runId: "R1", project: "shop", taskId: "B", taskTitle: "B", role: "implement", status: "running", profileId: "p", since: "2026-10-06T10:00:00Z" }] } as Machine;
 // Absolute position: a child of a group is placed relative to it, as React Flow draws it.

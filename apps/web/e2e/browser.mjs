@@ -299,6 +299,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "inbox-source-complete": [],
   "close-unmerged-task": ["inbox-source-complete"],
   "scope-search-tasks": ["login-token"],
+  "platform-labels": ["login-token"],
   "blocker-center": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
@@ -1143,6 +1144,23 @@ async function main() {
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
+  });
+
+  await step("platform-labels", async () => {
+    await rpc("tasks.create", { id: "PLATFORM-E2E", project: "payment", title: "Platform routing fixture", platforms: ["windows", "linux"] });
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.click('[data-task-view="kanban"]');
+    await tab.waitFor("platform labels on the board", () => {
+      const card = document.querySelector('[data-task="PLATFORM-E2E"]');
+      return card?.textContent.includes("Windows") && card.textContent.includes("Linux");
+    });
+    await tab.click('[data-task="PLATFORM-E2E"]');
+    await tab.waitFor("platform labels in task detail", () => {
+      const sheet = document.querySelector('[data-slot="sheet-content"]');
+      return sheet?.textContent.includes("Windows") && sheet.textContent.includes("Linux");
+    });
+    await tab.key("Escape");
   });
 
   if (mobile) await step("mobile-kanban-forms-dialog", async () => {

@@ -1705,6 +1705,8 @@ export const en: Catalog = {
     cardUnusedDays: "Unused for {days} days",
   },
   tasks: {
+    platform: { windows: "Windows", linux: "Linux", mac: "macOS" },
+    platformAny: "Any OS",
     view: "View",
     view_kanban: "Kanban",
     /** The same view, called the Board in the app, where it is this machine's. */
@@ -4137,6 +4139,7 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     machineCannotPushBranch: "{machine} reports a push failure for {project}. Choose another machine or retry here after restoring Git access.",
     machineNoHubRuns: "{machine} has not turned on Accept runs from the hub.",
     machineNoRepo: "{machine} has no repo for service {project}.",
+    machinePlatformMismatch: "{machine} does not match the task platforms ({platforms}).",
     profileNotOnMachine: "{machine} has no enabled plan {id}.",
     runRequestOpen: "Task {id} already has request #{request} waiting for {machine}.",
     taskRunning: "Task {id} is running (run {run} on {machine}).",

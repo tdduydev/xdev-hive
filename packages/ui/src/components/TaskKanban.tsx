@@ -208,6 +208,7 @@ function KanbanCard({
         ) : null}
       </div>
       <span className="text-[13.5px]/[19px] font-semibold text-pretty text-fg-strong [overflow-wrap:anywhere]">{task.title}</span>
+      {task.platforms.length ? <div className="flex flex-wrap gap-1">{task.platforms.map((p) => <span key={p} className="rounded-chip bg-[var(--chip-bg)] px-2 py-0.5 text-[11px]/4 font-medium text-fg-secondary">{t(`tasks.platform.${p}`)}</span>)}</div> : null}
       {task.note ? <span className="line-clamp-2 text-xs text-fg-secondary [overflow-wrap:anywhere]">{task.note}</span> : null}
       <div className="flex min-w-0 items-center gap-2 text-xs/[18px] font-medium text-fg-muted">
         {showProject ? <span className="max-w-[60%] truncate rounded-chip bg-[var(--chip-bg)] px-2 py-0.5">{task.project}</span> : null}
