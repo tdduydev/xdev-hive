@@ -16,6 +16,10 @@ test("machine prerequisites first, integrations before index, scope respected", 
   assert.deepEqual(setupOrder(report(), ["a"]).map((i) => i.id), ["a:speckit", "a:agents", "a:codegraph-index"]);
   assert.equal(needsSetup({ ...item("cli:codex", "installed"), version: "1.0.0", latest: "2.0.0" }), true);
 });
+test("codegraph goes into .mcp.json before agents copies it to Claude's local scope", () => {
+  const r: SetupReport = { machine: [], projects: [{ project: "a", repo: "/a", items: ["agents", "codegraph-mcp", "codegraph-index", "superpowers"].map((p) => item(`a:${p}`)) }] };
+  assert.deepEqual(setupOrder(r).map((i) => i.id), ["a:codegraph-mcp", "a:agents", "a:superpowers", "a:codegraph-index"]);
+});
 test("refresh unlocks dependent installs; every install is sequential", async () => {
   const current = report(); const calls: string[] = [];
   const left = await installSetupSequence(current, undefined, {

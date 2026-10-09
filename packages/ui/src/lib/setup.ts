@@ -22,10 +22,14 @@ export function setupGroups(projects: ProjectSetup[], systems: { name: string; p
   return groups;
 }
 
-/** Machine prerequisites precede repo configuration; an index is built after the integrations are ready. */
+/**
+ * Machine prerequisites precede repo configuration; an index is built after the integrations are ready. codegraph
+ * goes into .mcp.json before agents runs: on Windows agents copies it into ~/.claude.json, and would otherwise be
+ * missing again after one "install all".
+ */
 export function setupOrder(report: import("@xdev-hive/core").SetupReport, projects?: string[] | "machine") {
   if (projects === "machine") return report.machine.filter(needsSetup);
-  const rank = (i: SetupItem) => i.id.endsWith(":codegraph-index") ? 1 : 0;
+  const rank = (i: SetupItem) => i.id.endsWith(":codegraph-mcp") ? -1 : i.id.endsWith(":codegraph-index") ? 1 : 0;
   return [
     ...(projects ? [] : report.machine),
     ...report.projects.filter((p) => !projects || projects.includes(p.project)).flatMap((p) => [...p.items].sort((a, b) => rank(a) - rank(b))),
