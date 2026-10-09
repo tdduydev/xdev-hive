@@ -486,7 +486,7 @@ export function DocsPage() {
           aria-expanded={kids ? expanded : undefined}
           aria-label={expanded ? t("docs.collapse", { title: n.title }) : t("docs.expand", { title: n.title })}
           onClick={() => setOpen((o) => ({ ...o, [n.key]: !expanded }))}
-          className={cn("grid size-5 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 text-fg-strong opacity-60 outline-none hover:bg-(--glass-hover) focus-visible:focus-ring", !kids && "invisible")}
+          className={cn("grid size-6 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 text-fg-strong opacity-60 outline-none hover:bg-(--glass-hover) focus-visible:focus-ring", !kids && "invisible")}
         >
           {expanded ? <ChevronDown className="size-[13px]" /> : <ChevronRight className="size-[13px]" />}
         </button>
@@ -509,8 +509,8 @@ export function DocsPage() {
           </span>
           {n.doc && pendingKeys.has(n.key) ? <span title={t("docs.pendingDot")} className="size-1.5 shrink-0 rounded-full bg-(--accent-violet) shadow-[0_0_8px_var(--accent-violet)]" /> : null}
           {drafts[n.key] ? <span title={n.doc ? t("docs.draftLocal") : t("docs.unsavedPage")} className="size-1.5 shrink-0 rounded-full bg-warning-solid" /> : null}
-          {n.doc?.mirror ? <span className="text-[11px]/4 font-semibold text-(--text-faint)">{t("docs.mirrorTag")}</span> : null}
-          {kids && !expanded ? <span className="text-[11px]/4 font-semibold text-(--text-faint)">{n.children.length}</span> : null}
+          {n.doc?.mirror ? <span className="text-[11px]/4 font-semibold text-(--text-muted)">{t("docs.mirrorTag")}</span> : null}
+          {kids && !expanded ? <span className="text-[11px]/4 font-semibold text-(--text-muted)">{n.children.length}</span> : null}
         </button>
         {n.doc && !virtual && !path && writable.includes(docOwner(n.key)) ? (
           <button
@@ -591,12 +591,12 @@ export function DocsPage() {
                 )}
               >
                 {t(FILTER_LABEL[f])}
-                <span className="font-medium text-(--text-faint)">{filterCounts[f]}</span>
+                <span className="font-medium text-(--text-muted)">{filterCounts[f]}</span>
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs/[18px] font-medium text-(--text-faint)">{t("docs.searchIn")}</span>
+            <span className="text-xs/[18px] font-medium text-(--text-muted)">{t("docs.searchIn")}</span>
             <div role="radiogroup" aria-label={t("docs.searchIn")} className="flex gap-0.5 rounded-full bg-sunken p-[3px] shadow-[var(--ring-glass)]">
               {(["title", "content"] as const).map((v) => (
                 <button
@@ -725,7 +725,7 @@ export function DocsPage() {
               >
                 <span className="flex items-center gap-1.5 text-[12.5px]/[17px] font-semibold">
                   <span className="min-w-0 flex-1 truncate">{h.doc.title}</span>
-                  <span className="text-[11px]/4 font-semibold text-(--text-faint)">{h.space}</span>
+                  <span className="text-[11px]/4 font-semibold text-(--text-muted)">{h.space}</span>
                 </span>
                 <span className="text-[11.5px]/4 font-medium text-fg-muted [text-wrap:pretty]">
                   {h.pre}
@@ -747,7 +747,7 @@ export function DocsPage() {
               if (filtering && !body) return null;
               return (
                 <div key={sp.id} className="flex flex-col" data-doc-group={sp.id}>
-                  <span className="flex items-center gap-2 px-2.5 pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-faint) uppercase">
+                  <span className="flex items-center gap-2 px-2.5 pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">
                     <span className="flex-1">{spaceTitle(sp)}</span>
                     <span>{sp.docs.length}</span>
                   </span>
@@ -772,7 +772,7 @@ export function DocsPage() {
           </button>
           {showRemoved
             ? removedHere.map((d) => (
-                <div key={d.key} className="flex h-8 items-center gap-2 pr-1.5 pl-[30px] text-[12.5px]/none font-medium text-(--text-faint)">
+                <div key={d.key} className="flex h-8 items-center gap-2 pr-1.5 pl-[30px] text-[12.5px]/none font-medium text-(--text-muted)">
                   <span title={`${d.key} · ${d.removedBy ?? ""}`} className="min-w-0 flex-1 truncate line-through">
                     {d.title}
                   </span>
@@ -1340,7 +1340,7 @@ function DocView({
                   <span className="opacity-40">/</span>
                 </span>
               ))}
-              <span title={docKey} className="ml-1.5 font-mono text-[11.5px]/none font-medium text-(--text-faint)">
+              <span title={docKey} className="ml-1.5 font-mono text-[11.5px]/none font-medium text-(--text-muted)">
                 {docKey}
               </span>
             </nav>
@@ -1369,11 +1369,11 @@ function DocView({
           {!writer ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("docs.viewOnly")}</p> : null}
         </article>
         <aside className="flex flex-[1_1_180px] flex-col gap-1.5 px-1 py-2">
-          <span className="pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-faint) uppercase">{t("docs.onThisPage")}</span>
+          <span className="pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">{t("docs.onThisPage")}</span>
           {toc.map((h) => (
             <span key={h} className="py-[3px] pl-2.5 text-xs/[18px] font-medium text-fg-secondary shadow-[inset_1px_0_0_color-mix(in_srgb,var(--text-strong)_10%,transparent)]">{h}</span>
           ))}
-          <span className="pt-[18px] pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-faint) uppercase">{t("docs.linksTo")}</span>
+          <span className="pt-[18px] pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">{t("docs.linksTo")}</span>
           {back.map((b) => (
             <a key={b.key} href={docHref(b.key)} title={b.snippet} className="text-xs/[18px] font-medium text-fg-link hover:underline">{b.title || titles.get(b.key) || b.key}</a>
           ))}

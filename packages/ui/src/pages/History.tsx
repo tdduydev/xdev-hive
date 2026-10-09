@@ -56,7 +56,7 @@ export function HistoryPage() {
     <div className="flex max-w-[880px] flex-col gap-5">{days.map(([day, entries]) => <section key={day} className="flex flex-col gap-1" aria-label={day}>
       <h2 className="m-0 px-0 pb-2 [font:var(--type-overline)] text-[length:11px] uppercase tracking-[0.5px] text-fg-faint">{day}</h2>
       <ol className="m-0 flex list-none flex-col overflow-hidden rounded-[20px] bg-surface-1 p-0 shadow-[var(--ring-glass)]" aria-label={day}>{entries.map(entry => <li key={entry.id} data-history-row className="grid min-w-0 grid-cols-[52px_10px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-[18px] py-3 shadow-[inset_0_-1px_0_var(--border-subtle)] md:grid-cols-[52px_10px_minmax(0,1fr)_auto]">
-        <time dateTime={entry.at} className="font-mono text-[12px] font-medium leading-none text-fg-faint">{formatClock(entry.at)}</time>
+        <time dateTime={entry.at} className="font-mono text-[12px] font-medium leading-none text-fg-muted">{formatClock(entry.at)}</time>
         <span aria-hidden className="size-2 rounded-full" style={{ background: `var(--accent-${DOT[entry.kind]})`, boxShadow: `0 0 8px var(--accent-${DOT[entry.kind]})` }} />
         <span className="min-w-0 text-[length:13px] leading-5 text-fg-strong">
           <span className="text-fg-secondary">{[entry.actor, t(`history.${entry.kind}`)].filter(Boolean).join(" · ")}</span>{" "}

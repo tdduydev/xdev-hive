@@ -115,6 +115,7 @@ export function SkillsPage() {
               key={s.key}
               type="button"
               aria-pressed={on}
+              data-pane-item
               onClick={() => pick(s.key)}
               className={cn(
                 "flex cursor-pointer flex-col gap-1 rounded-[16px] border-0 px-[14px] py-3 text-left font-[inherit] text-[var(--text-strong)] hover:bg-[var(--glass-bg)]",
@@ -326,6 +327,10 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
         <span className="flex-1" />
         <span className="text-[var(--text-muted)] [font:var(--design-caption)]">{!editable ? t("skills.viewOnly") : t("skills.syncInto", { name: skill.name })}</span>
       </div>
+      <KvRows rows={[
+        [t("knowledge.applies"), parts.description || skill.description || t("skills.noDescription")],
+        [t("knowledge.modified"), `${skill.updatedBy} · ${formatTime(skill.updatedAt)}`],
+      ]} />
       {skill.usage ? <SkillUsage skill={skill} /> : null}
     </>
   );
