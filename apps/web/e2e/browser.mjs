@@ -2278,6 +2278,8 @@ async function main() {
         await tab.shot(`${name}-${mobile ? 390 : 1440}-${theme}`);
       }
     };
+    // Clicking the chip scrolled the list to it; the shot starts at the top, as the design does.
+    await tab.eval(() => { for (const el of [document.querySelector(".runs-page"), document.querySelector("main")]) el?.scrollTo(0, 0); });
     await themeShots("runs");
     await tab.click('[data-run-id="R-d147a"]');
     await tab.waitFor("design run opened", () => document.querySelector("main h2")?.textContent === "Runner: thử gói khác khi hết quota");
