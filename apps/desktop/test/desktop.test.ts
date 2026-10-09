@@ -8,6 +8,7 @@ import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
 import { branchPatchAsync, branchState, commitAll, commitAllAsync, ensureWorktree, ensureWorktreeAsync, remoteStart } from "#desktop/main/runner/worktree.ts";
+import { isGitRepoAsync, withGitWorktreeLock } from "#desktop/main/git.ts";
 import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
 
 const testTmpDirs = new Set<string>();
@@ -59,6 +60,32 @@ it("creates, diffs and commits a worktree through async Git", async () => {
   assert.equal(result.error, null);
   assert.match(result.sha ?? "", /^[0-9a-f]+$/);
   assert.match(await branchPatchAsync(dir, wt.baseSha), /async content/);
+});
+
+it("accepts a project path inside a Git repository for async worktree creation", async () => {
+  const repo = gitRepo();
+  const nested = path.join(repo, "src"); mkdirSync(nested);
+  assert.equal(await isGitRepoAsync(nested), true);
+  const dir = path.join(tmp("nested-worktree"), "T-nested");
+  const wt = await ensureWorktreeAsync(nested, dir, "T-nested", null);
+  assert.equal(wt.created, true);
+});
+
+it("serializes simulated diff and add work per checkout and releases after failure", async () => {
+  const repo = tmp("git-lock");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const order: string[] = [];
+  const diff = withGitWorktreeLock(repo, async () => { order.push("diff start"); await gate; order.push("diff end"); });
+  const add = withGitWorktreeLock(repo, async () => { order.push("add"); });
+  await Promise.resolve();
+  assert.deepEqual(order, ["diff start"]);
+  release();
+  await Promise.all([diff, add]);
+  assert.deepEqual(order, ["diff start", "diff end", "add"]);
+  await assert.rejects(withGitWorktreeLock(repo, async () => { throw new Error("simulated failure"); }));
+  await withGitWorktreeLock(repo, async () => { order.push("after failure"); });
+  assert.equal(order.at(-1), "after failure");
 });
 
 describe("installAgents", () => {

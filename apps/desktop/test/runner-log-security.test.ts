@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { it } from "node:test";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { Runner, redactedRunLog } from "#desktop/main/runner/runner.ts";
+import { Runner, appendRedactedRunLog, redactedRunLog } from "#desktop/main/runner/runner.ts";
+import { readLegacyRunLogTail, readRunLogTail } from "#desktop/main/runner/run-logs.ts";
 
 it("refuses traversal in renderer run log requests", async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "hive-log-security-"));
@@ -84,4 +85,47 @@ it("reads only a marked log suffix and invalidates the cache when its mtime chan
   } finally {
     await runner.stop(); runner.store.db.close(); hive.close(); rmSync(dataDir, { recursive: true, force: true });
   }
+});
+
+it("keeps the suffix of a single line longer than the read window", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-log-line-"));
+  try {
+    const file = path.join(dir, "long.log");
+    writeFileSync(file, `${"x".repeat(100_000)}THE-END`);
+    const tail = await readRunLogTail(file, 48_000);
+    assert.ok(tail.text.endsWith("THE-END"));
+    assert.ok(tail.text.length >= 48_000);
+    assert.ok((await readLegacyRunLogTail(file, 48_000)).text.endsWith("THE-END"));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("redacts PEM material split between append calls and again at the read boundary", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-log-split-"));
+  try {
+    const file = path.join(dir, "split.log");
+    appendRedactedRunLog(file, "-----BEGIN PRIVATE KEY-----\n");
+    appendRedactedRunLog(file, "synthetic material\n-----END PRIVATE KEY-----\nafter\n");
+    assert.doesNotMatch(readFileSync(file, "utf8"), /synthetic material/);
+    assert.doesNotMatch((await readRunLogTail(file, 48_000)).text, /synthetic material/);
+    // A marked file may have been written by an older, chunk-local writer.
+    writeFileSync(file, "-----BEGIN PRIVATE KEY-----\nsynthetic material\n-----END PRIVATE KEY-----\nafter\n");
+    const tail = await readRunLogTail(file, 48_000);
+    assert.doesNotMatch(tail.text, /synthetic material/);
+    assert.match(tail.text, /after/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("hides a legacy PEM body whose BEGIN is outside the bounded suffix", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "hive-log-old-pem-"));
+  try {
+    const file = path.join(dir, "old.log");
+    writeFileSync(file, `-----BEGIN PRIVATE KEY-----\n${"synthetic material\n".repeat(1000)}-----END PRIVATE KEY-----\nafter\n`);
+    const tail = await readLegacyRunLogTail(file, 200);
+    assert.doesNotMatch(tail.text, /synthetic material/);
+    assert.match(tail.text, /after/);
+    assert.ok(tail.text.length < 300);
+    writeFileSync(file, `-----BEGIN PRIVATE KEY-----\n${`${"A".repeat(64)}\n`.repeat(1000)}`);
+    assert.doesNotMatch((await readLegacyRunLogTail(file, 200)).text, /A{20}/,
+      "an open legacy PEM block must not expose base64 lines or a partial boundary line");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

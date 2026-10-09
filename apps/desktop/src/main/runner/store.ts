@@ -9,6 +9,7 @@ import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS run_push_state(id TEXT PRIMARY KEY, metadata_key TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_command_receipts(id TEXT PRIMARY KEY, results TEXT NOT NULL, acked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS worktree_cleanup_log(id INTEGER PRIMARY KEY, entry TEXT NOT NULL);
 
@@ -188,6 +189,15 @@ export class RunStore {
     this.db.exec(SCHEMA);
     const have = new Set((this.db.prepare("PRAGMA table_info(runs)").all() as Row[]).map((c) => String(c.name)));
     for (const [name, ddl] of ADDED_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${ddl}`);
+  }
+
+  pushedMetadataKey(id: string): string | null {
+    const row = this.db.prepare("SELECT metadata_key FROM run_push_state WHERE id = ?").get(id);
+    return row ? String(row.metadata_key) : null;
+  }
+
+  markPushed(id: string, key: string): void {
+    this.db.prepare("INSERT INTO run_push_state(id, metadata_key) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET metadata_key = excluded.metadata_key").run(id, key);
   }
 
   worktreeResult(id: string): WorktreeCommand["results"] | null {

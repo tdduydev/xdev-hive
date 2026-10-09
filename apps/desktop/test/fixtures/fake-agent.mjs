@@ -212,7 +212,7 @@ if (first === "--version") {
 const gemini = process.env.FAKE_GEMINI === "1" || /^gemini/.test(process.env.HIVE_AGENT ?? "");
 let prompt = process.argv[2] ?? "";
 // `claude -p` with no value (the runner's Windows form for a .cmd CLI): the prompt comes on stdin.
-if (prompt === "-p" && !process.argv.includes("--input-format") && !["chat", "assist"].includes(process.env.FAKE_MODE)) {
+if (prompt === "-p" && !["chat", "assist"].includes(process.env.FAKE_MODE) && !process.argv.includes("--input-format")) {
   const value = process.argv[3];
   if (value && !value.startsWith("-")) prompt = value;
   else {

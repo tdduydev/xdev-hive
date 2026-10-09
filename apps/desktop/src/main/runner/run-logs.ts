@@ -1,17 +1,16 @@
 // A run's full log stays on the machine after the hub got its tail (runs.push keeps 200 lines); nothing removed it, so
 // the folder grew with every run. Old ones go with the worktree retention (DATA-cleanup-machine).
-import { createReadStream, readdirSync, rmSync, statSync } from "node:fs";
+import { readdirSync, rmSync, statSync } from "node:fs";
 import { open } from "node:fs/promises";
 import path from "node:path";
-import { redactLines, SecretRedactor } from "@xdev-hive/core";
+import { redactLines } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { StringDecoder } from "node:string_decoder";
 
 /** What a run leaves next to its record: the log and the plan an approved plan run wrote. */
 const RUN_FILE = /^(.+?)\.(log|plan\.md)$/;
 export const redactedMarker = (file: string) => `${file}.redacted`;
 
-/** The writer redacts marked logs. Read only their bounded suffix, dropping a partial first line. */
+/** Read a bounded suffix, including overlap so secrets split at the boundary can be redacted again. */
 export async function readRunLogTail(file: string, maxBytes: number): Promise<{ size: number; mtimeMs: number; text: string }> {
   const handle = await open(file, "r");
   try {
@@ -26,12 +25,23 @@ export async function readRunLogTail(file: string, maxBytes: number): Promise<{ 
       if (!bytesRead) break;
       used += bytesRead;
     }
-    let raw = buffer.subarray(0, used);
+    const raw = buffer.subarray(0, used);
+    // A partial first line may hold a credential. Keep it only when the whole
+    // window is one long final line, whose suffix the caller must still see.
+    let visible = raw.toString("utf8");
     if (start > 0) {
-      const newline = raw.indexOf(10);
-      raw = newline < 0 ? Buffer.alloc(0) : raw.subarray(newline + 1);
+      const firstNewline = visible.indexOf("\n");
+      if (firstNewline >= 0) visible = visible.slice(firstNewline + 1);
+      const firstBegin = visible.search(/-----BEGIN [A-Z ]*PRIVATE KEY-----/);
+      const firstEnd = /-----END [A-Z ]*PRIVATE KEY-----/.exec(visible);
+      // The opening delimiter can be before the bounded window. An ending delimiter proves
+      // the preceding suffix belongs to that key, even though the writer's state is unavailable.
+      if (firstEnd && (firstBegin < 0 || firstEnd.index < firstBegin)) {
+        visible = `(line hidden: it looked like a private key)\n${visible.slice(firstEnd.index + firstEnd[0].length)}`;
+      }
     }
-    const redacted = redactLines(raw.toString("utf8"));
+    const redacted = redactLines(visible).replace(/(^|\n)[A-Za-z0-9+/]{40,100}={0,2}(?=\n|$)/g,
+      "$1(line hidden: it looked like a private key)");
     const tail = limit ? Buffer.from(redacted).subarray(-limit).toString("utf8") : "";
     return { size: stat.size, mtimeMs: stat.mtimeMs, text: (stat.size > limit ? `${tr("runNote.logClipped")}\n` : "") + tail };
   } finally {
@@ -39,19 +49,9 @@ export async function readRunLogTail(file: string, maxBytes: number): Promise<{ 
   }
 }
 
-/** Legacy files may contain an open PEM block before the suffix, so stream them before caching. */
+/** Legacy logs use the same bounded read and redaction at the read boundary. */
 export async function readLegacyRunLogTail(file: string, maxBytes: number): Promise<{ size: number; mtimeMs: number; text: string }> {
-  const handle = await open(file, "r");
-  const stat = await handle.stat();
-  await handle.close();
-  const limit = Math.max(0, Math.floor(maxBytes));
-  const redactor = new SecretRedactor();
-  const decoder = new StringDecoder("utf8");
-  let tail = Buffer.alloc(0);
-  const keep = (text: string) => { tail = limit ? Buffer.concat([tail, Buffer.from(text)]).subarray(-limit) : Buffer.alloc(0); };
-  for await (const chunk of createReadStream(file)) keep(redactor.write(decoder.write(chunk as Buffer)));
-  keep(redactor.write(decoder.end()) + redactor.end());
-  return { size: stat.size, mtimeMs: stat.mtimeMs, text: (stat.size > limit ? `${tr("runNote.logClipped")}\n` : "") + tail.toString("utf8") };
+  return readRunLogTail(file, maxBytes);
 }
 
 /** Removes run files untouched for `days`, never those of a run still going; returns how many and their bytes. */

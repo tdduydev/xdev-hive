@@ -28,7 +28,7 @@ import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { execFileCli, spawnCli } from "#desktop/main/spawn-cli.ts";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -102,7 +102,7 @@ import {
   type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { gitAsync, gitErrorText, gitOutputAsync, isRepoRoot } from "#desktop/main/git.ts";
+import { gitAsync, gitErrorText, gitOutputAsync, isGitRepoAsync } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
@@ -300,9 +300,12 @@ export interface RunnerOptions {
   sync?: (project: DesktopProject) => Promise<SyncReport>;
 }
 
-function appendRedactedRunLog(file: string, text: string): void {
+const appendedLogRedactors = new Map<string, SecretRedactor>();
+export function appendRedactedRunLog(file: string, text: string): void {
   const fresh = !existsSync(file);
-  appendFileSync(file, redactLines(stripHidden(text)));
+  let redactor = appendedLogRedactors.get(file);
+  if (!redactor) { redactor = new SecretRedactor(); appendedLogRedactors.set(file, redactor); }
+  appendFileSync(file, redactor.write(stripHidden(text)));
   if (fresh) writeFileSync(redactedMarker(file), "");
 }
 
@@ -854,7 +857,7 @@ export class Runner {
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
   async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null, plan: RunPlan | null = null): Promise<AgentRun> {
-    if (!isRepoRoot(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
+    if (!(await isGitRepoAsync(project.repo))) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
     let tip = await tryGitAsync(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
     const remote = project.git?.remote ?? "origin";
@@ -1725,17 +1728,24 @@ export class Runner {
       let patches = 0;
       for (const r of recent) {
         if (r.diffSummaryFor) continue;
+        const done = r.status !== "queued" && r.status !== "running";
+        const metadataKey = createHash("sha256").update(JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits,
+          mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null,
+          r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError, r.summary, r.error, r.finishedAt,
+          r.costUsd, r.plan, r.instructions])).digest("hex");
+        // Once a finished snapshot reached the hub, later polls (including after restart) need no log I/O.
+        if (done && (this.#pushed.get(r.id) === metadataKey || this.store.pushedMetadataKey(r.id) === metadataKey)) continue;
         const log = await this.#logTail(r.id);
         // A few patches per push keep the request small; the others go with the next ones.
         const patch = patches < 3 ? await this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null, r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError]);
+        const key = done ? metadataKey : JSON.stringify([metadataKey, log.length, log.slice(-200)]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
       if (!changed.length) return 0;
       const clip = (s: string | null, n: number) => (s === null ? null : s.length > n ? `${s.slice(0, n - 1)}…` : s);
-      await this.#host.backend().call(
+      try { await this.#host.backend().call(
         "runs.push",
         {
           machine: this.#host.machine(),
@@ -1782,8 +1792,17 @@ export class Runner {
           })),
         },
         this.#runnerActor(),
-      );
-      for (const c of changed) this.#pushed.set(c.run.id, c.key);
+      ); } catch (err) {
+        for (const c of changed) if (c.patch !== undefined) this.#patched.delete(c.run.id);
+        throw err;
+      }
+      for (const c of changed) {
+        const done = c.run.status !== "queued" && c.run.status !== "running";
+        // A finished run still owes a patch if this batch exhausted the patch quota.
+        if (done && this.#patched.get(c.run.id)?.key !== `${c.run.status}:${c.run.commits}`) continue;
+        this.#pushed.set(c.run.id, c.key);
+        if (done) this.store.markPushed(c.run.id, c.key);
+      }
       return changed.length;
     } finally {
       this.#pushing = false;
