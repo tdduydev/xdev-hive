@@ -733,16 +733,16 @@ await shoot("today", "today", 4000);
 await shoot("board-run", "board", 3000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
 // The Board at the two widths it has to work at (roadmap 39g). At 1100 there is no room for five columns, so Xong
-// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 the three columns
-// with work in them are open, Bị chặn too (T-003 waits for T-002), and only the empty Xong stays a rail.
+// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 all five columns are
+// open, the empty Xong too (72d: five open columns in the design's order).
 await shoot("board-1100", "board", 5000, {
   HIVE_SMOKE_SIZE: "1100x800",
   HIVE_SMOKE_EXPECT: '[data-board-fit="narrow"] && [data-column-rail="done"] && [data-column-rail="blocked"] && [data-profile-chip]',
 });
 await shoot("board-1440", "board", 5000, {
   HIVE_SMOKE_SIZE: "1440x820",
-  HIVE_SMOKE_EXPECT: '[data-board-fit="wide"] && [data-column-rail="done"]',
-  HIVE_SMOKE_ABSENT: '[data-column-rail="blocked"]',
+  HIVE_SMOKE_EXPECT: '[data-board-fit="wide"] && [data-column="done"]',
+  HIVE_SMOKE_ABSENT: '[data-column-rail]',
 });
 
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
@@ -797,10 +797,10 @@ await shoot("runs-log", "runs", 3000, {
   writeFileSync(file, before);
 }
 
-// The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa opens the Tiptap editor.
+// The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa (72f: a button on the page, not the mode switch) opens the Tiptap editor.
 const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
 await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
-await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
+await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[data-doc-edit]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
 // Waits for the sync's own report: the sync takes about a second, and the DB check below must come after it.
 await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]', HIVE_SMOKE_EXPECT: '[data-project-result="demo"]' });
@@ -884,7 +884,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     // Connected (roadmap 39d): Cài đặt máy is one line about the hub, the account and this machine, with no form.
     const pages = [
       ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="app"] && [data-card="hub"]'],
-      ["runs", "runs", '[data-run-tab="summary"][aria-selected="true"]'],
+      // 72e: the page opens on its list; a run's detail waits for a click (runs-list above checks it).
+      ["runs", "runs", '[data-run-status="succeeded"]'],
       ["agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
       ["worktrees", "worktrees", "[data-worktree-panel]"],
       ["setup", "setup", ""],
