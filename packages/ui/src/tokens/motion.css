@@ -1,11 +1,2 @@
-:root{
---duration-instant:80ms;--duration-fast:120ms;--duration-base:180ms;--duration-slow:240ms;--duration-slower:320ms;
---ease-standard:cubic-bezier(0.2,0,0,1);--ease-enter:cubic-bezier(0,0,0.2,1);--ease-exit:cubic-bezier(0.4,0,1,1);--ease-emphasized:cubic-bezier(0.3,0,0,1);
-}
-@media (prefers-reduced-motion: reduce){:root{--duration-instant:0ms;--duration-fast:0ms;--duration-base:0ms;--duration-slow:0ms;--duration-slower:0ms}}
-@keyframes xd-spin{to{transform:rotate(360deg)}}
-@keyframes xd-pulse{0%,100%{opacity:1}50%{opacity:0.45}}
-@keyframes xd-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
-@keyframes xd-indeterminate{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
-@keyframes xd-ring{to{transform:rotate(360deg)}}
-@keyframes xd-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+/* Kept for in-flight 72 branches; remove in 76h. */
+@import "../../../ui-kit/src/tokens/motion.css";
