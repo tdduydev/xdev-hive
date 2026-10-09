@@ -86,7 +86,7 @@ export interface SetupHost {
 
 /** The first dotted version in a CLI's --version output: "2.1.283 (Claude Code)", "codex-cli 0.157.1", "0.61.0". */
 export function parseCliVersion(output: string): string | null {
-  return /(?<![\w.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?![\w.])/.exec(output)?.[1] ?? null;
+  return /(?<![\w.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?!\w|\.[\w.])/.exec(output)?.[1] ?? null;
 }
 
 /** How a CLI upgrades itself; `bin` is a command looked up on PATH, or the CLI's own path. */

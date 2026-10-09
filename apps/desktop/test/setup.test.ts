@@ -397,6 +397,7 @@ describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
   it("reads the version out of each CLI's --version", () => {
     assert.equal(parseCliVersion("2.1.283 (Claude Code)"), "2.1.283");
     assert.equal(parseCliVersion("codex-cli 0.157.1"), "0.157.1");
+    assert.equal(parseCliVersion("GitHub Copilot CLI 1.0.80.\nRun 'copilot update' to check for updates."), "1.0.80");
     assert.equal(parseCliVersion("0.61.0\n"), "0.61.0");
     assert.equal(parseCliVersion("gemini 0.62.0-preview.3"), "0.62.0-preview.3");
     assert.equal(parseCliVersion("no version here"), null);
