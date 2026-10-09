@@ -94,7 +94,7 @@ describe("research from chat", () => {
       await current.call("tasks.create", { id: "KEEP", project: "app", title: "Keep" }, admin);
       const version = migrationIndex("CREATE TABLE research_runs(");
       // The terminal, machine identity, gate and runner settings migrations came later and replay too.
-      current.db.exec("DROP TABLE acceptance_evidence; ALTER TABLE run_records DROP COLUMN head_sha");
+      current.db.exec("ALTER TABLE run_records DROP COLUMN start_sha; ALTER TABLE run_records DROP COLUMN remote_sha; ALTER TABLE run_records DROP COLUMN pushed; ALTER TABLE run_records DROP COLUMN push_error; ALTER TABLE machines DROP COLUMN git_push; DROP TABLE acceptance_evidence; ALTER TABLE run_records DROP COLUMN head_sha");
       current.db.exec(`ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; DROP TABLE gate_jobs; DROP TABLE gate_manifests; ALTER TABLE machines DROP COLUMN gate_capability; DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; PRAGMA user_version = ${version}`);
       current.close();
       const upgraded = new SqliteHive(file);

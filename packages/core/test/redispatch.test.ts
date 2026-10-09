@@ -148,3 +148,40 @@ describe("run redispatch", () => {
     assert.equal(next.timeoutMinutes, 30);
   });
 });
+
+describe("remote run state", () => {
+  it("round-trips push metadata, preserves it from old clients and sends the hub SHA on redispatch", async t => {
+    const { hive, push, dispatch } = await setup(); t.after(() => hive.close());
+    const head = "b".repeat(40);
+    await push(first, { startSha: sha, headSha: head, remoteSha: head, pushed: true, pushError: null });
+    await push(first);
+    const get = await hive.call("runs.get", { machineId: first.name, runId: "R-old" }, admin);
+    const list = await hive.call("runs.list", { project: "app" }, admin);
+    for (const r of [get, list[0]]) {
+      assert.equal(r?.startSha, sha); assert.equal(r?.headSha, head);
+      assert.equal(r?.remoteSha, head); assert.equal(r?.pushed, true); assert.equal(r?.pushError, null);
+    }
+    assert.equal((await dispatch()).redispatch?.headSha, head);
+  });
+
+  it("avoids dispatch to a machine that reports it cannot push a remote task", async t => {
+    const { hive, push, dispatch, beat } = await setup(); t.after(() => hive.close());
+    await push(first, { headSha: sha, remoteSha: sha, pushed: true });
+    await beat(second, { gitPush: { app: false } });
+    await assert.rejects(dispatch(), /cannot push/);
+    await beat(second, { gitPush: { app: true } });
+    assert.ok((await dispatch()).id);
+  });
+
+  it("migrates existing run rows with unknown push state", async t => {
+    const folder = mkdtempSync(path.join(os.tmpdir(), "hive-remote-migration-")); t.after(() => rmSync(folder, { recursive: true, force: true }));
+    const file = path.join(folder, "hive.db");
+    const index = migrationIndex("ALTER TABLE run_records ADD COLUMN start_sha");
+    const before = new SqliteHive(file, { migrateTo: index });
+    before.db.prepare("INSERT INTO run_records(machine_id, run_id, machine, project, task_id, task_title, role, status, commits, log, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)").run(first.name, "R-old", "one", "app", "T-1", "Work", "implement", "failed", at, at);
+    before.close();
+    const after = new SqliteHive(file); t.after(() => after.close());
+    const run = await after.call("runs.get", { machineId: first.name, runId: "R-old" }, admin);
+    assert.equal(run?.pushed, null); assert.equal(run?.startSha, null); assert.equal(run?.pushError, null);
+  });
+});

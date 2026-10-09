@@ -2485,6 +2485,10 @@ export const en: Catalog = {
     binary: "binary file",
     diffError: "Could not read this run's changes.",
     worktree: "worktree {branch}",
+    startRevision: "Starting SHA: {sha}",
+    branchPushed: "Branch pushed to remote",
+    branchNotPushed: "Branch not pushed to remote",
+    branchPushFailed: "Branch push failed; the next run will retry",
     codeRevision: "Code revision: {sha}",
   },
   agents: {
@@ -3800,6 +3804,7 @@ export const en: Catalog = {
     taskDone: "Task {id} is already done.",
     taskHasRun: "Task {id} already has run {run}.",
     machineOffline: "{machine} is offline.",
+    machineCannotPushBranch: "{machine} reports a push failure for {project}. Choose another machine or retry here after restoring Git access.",
     machineNoHubRuns: "{machine} has not turned on Accept runs from the hub.",
     machineNoRepo: "{machine} has no repo for service {project}.",
     profileNotOnMachine: "{machine} has no enabled plan {id}.",

@@ -2490,6 +2490,10 @@ export const vi = {
     binary: "file nhị phân",
     diffError: "Không đọc được thay đổi của run này.",
     worktree: "worktree {branch}",
+    startRevision: "SHA đầu: {sha}",
+    branchPushed: "Đã đẩy nhánh lên remote",
+    branchNotPushed: "Chưa đẩy nhánh lên remote",
+    branchPushFailed: "Đẩy nhánh thất bại; lượt chạy sau sẽ thử lại",
     codeRevision: "Bản code: {sha}",
   },
   agents: {
@@ -3805,6 +3809,7 @@ export const vi = {
     taskDone: "Task {id} đã xong.",
     taskHasRun: "Task {id} đang có run {run}.",
     machineOffline: "Máy {machine} đang mất kết nối.",
+    machineCannotPushBranch: "Máy {machine} đang báo lỗi push cho {project}. Chọn máy khác hoặc thử lại trên máy này sau khi sửa kết nối Git.",
     machineNoHubRuns: "Máy {machine} chưa bật Được nhận run từ hub.",
     machineNoRepo: "Máy {machine} chưa có repo của service {project}.",
     profileNotOnMachine: "Máy {machine} không có gói {id} đang bật.",

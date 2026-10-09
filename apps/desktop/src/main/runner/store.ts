@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS profile_resumes(
 
 /** Columns added after the first release; created on open when missing. */
 const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
+  ["start_sha", "TEXT"], ["remote_sha", "TEXT"], ["pushed", "INTEGER"], ["push_error", "TEXT"],
   ["mr_url", "TEXT"],
   ["mr_iid", "INTEGER"],
   ["mr_state", "TEXT"],
@@ -88,7 +89,7 @@ const ADDED_COLUMNS: Array<[name: string, ddl: string]> = [
 
 type Row = Record<string, unknown>;
 const JSON_FIELDS = new Set(["skills", "avoidKinds", "allowedAgentKinds", "excludedProfiles", "ciFix", "bestOf", "compression", "selection", "plan", "diffReview", "redispatch"]);
-const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft"]);
+const BOOL_FIELDS = new Set(["reviewAfter", "mrDraft", "pushed"]);
 const column = (field: string) => field.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 
 function toRun(r: Row): AgentRun {
@@ -123,6 +124,8 @@ function toRun(r: Row): AgentRun {
     error: s(r.error),
     commits: Number(r.commits),
     headSha: s(r.head_sha),
+    startSha: s(r.start_sha), remoteSha: s(r.remote_sha),
+    pushed: r.pushed == null ? null : Number(r.pushed) === 1, pushError: s(r.push_error),
     createdAt: String(r.created_at),
     startedAt: s(r.started_at),
     finishedAt: s(r.finished_at),
