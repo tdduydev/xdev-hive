@@ -5,6 +5,7 @@ import type { HistoryEntry } from "#core/history.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
 import { PROJECT_COMMAND_TTL_MS, type MachineProjectCommand, type MachineProjects, type MachineRepo } from "#core/machine-projects.ts";
+import { parseSystemSource, type SystemSource } from "#core/system-source.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
 import { GateStore } from "#core/gate-store.ts";
 import { isTerminalHuman } from "#core/terminal.ts";
@@ -891,6 +892,8 @@ const MIGRATIONS: string[] = [
   `,
   // ADM-member-repo-health: each repo's last git ls-remote on the machine, as JSON RepoAccessReport[].
   `ALTER TABLE machines ADD COLUMN repo_health TEXT;`,
+  // GROUP-init-sync: the forge group a system mirrors and each member's path and clone URLs, as JSON SystemSource.
+  `ALTER TABLE systems ADD COLUMN source TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1294,7 +1297,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     return { target: `${o.machine}/${i.profileId}`, detail: parts, text: { key, vars: { profile: i.profileId, priority: i.priority ?? "" } } };
   },
   "cooldowns.clear": (i) => ({ target: i.account }),
-  "systems.save": (i, o: HiveSystem) => ({ target: i.name, detail: o.projects.join(", "), text: { key: "audit.system", vars: { projects: o.projects.join(", ") } } }),
+  "systems.save": (i, o: HiveSystem) => ({
+    target: i.name,
+    detail: [o.projects.join(", "), i.source === undefined ? "" : i.source ? `source ${i.source.forge}:${i.source.groupPath} (${i.source.members.length})` : "source removed"].filter(Boolean).join(" · "),
+    text: { key: "audit.system", vars: { projects: o.projects.join(", ") } },
+  }),
   "systems.remove": (i) => ({ target: i.name }),
   "projects.archive": (i) => ({ target: i.project, detail: "lưu trữ", text: { key: "audit.projectArchived" } }),
   "projects.restore": (i) => ({ target: i.project, detail: "khôi phục", text: { key: "audit.projectRestored" } }),
@@ -1853,9 +1860,14 @@ const toCommand = (r: Row): MachineCommand => ({
 const toSystem = (r: Row): HiveSystem => ({
   name: str(r.name),
   projects: JSON.parse(str(r.projects)) as string[],
+  source: parseSystemSource(strOrNull(r.source)),
   updatedAt: str(r.updated_at),
   updatedBy: str(r.updated_by),
 });
+
+/** What a reader may see of a source: the members of projects hidden from them name repos they must not learn of. */
+const systemSourceFor = (source: SystemSource | null | undefined, visible: (project: string) => boolean): SystemSource | null =>
+  source ? { ...source, members: source.members.filter((m) => visible(m.project)) } : null;
 
 /** A project list filter as bound to `json_each`: null when there is none. */
 const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify(projects) : null);
@@ -2794,9 +2806,13 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
       case "systems.save":
       case "systems.remove": {
-        // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage.
-        const before = this.#system(i.name)?.projects ?? [];
-        for (const p of new Set([...before, ...((i.projects as string[] | undefined) ?? [])])) this.#need(actor, p, "projectSettings", `Project ${p}`);
+        // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage. The
+        // source's members count too, since a member names where that project's repo is cloned from on every machine.
+        const before = this.#system(i.name);
+        const source = (i as { source?: SystemSource | null }).source;
+        const members = (s: SystemSource | null | undefined) => (s?.members ?? []).map((m) => m.project);
+        const all = [...(before?.projects ?? []), ...((i.projects as string[] | undefined) ?? []), ...(source !== undefined ? [...members(before?.source), ...members(source)] : [])];
+        for (const p of new Set(all)) this.#need(actor, p, "projectSettings", `Project ${p}`);
         return;
       }
       case "tasks.setDeps": {
@@ -3000,7 +3016,7 @@ export class SqliteHive implements HiveBackend {
       // Only the projects it may see; a system of none of them is not shown at all.
       case "systems.list":
         return (out as HiveSystem[])
-          .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)) }))
+          .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)), source: systemSourceFor(s.source, visible) }))
           .filter((s) => s.projects.length > 0) as MethodOutput[M];
       case "systems.repoHealth":
         return (out as SystemMemberHealth[]).filter((h) => visible(h.project)) as MethodOutput[M];
@@ -4275,7 +4291,7 @@ export class SqliteHive implements HiveBackend {
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => shown(r.project)), projects: m.projects.filter(shown) })) as MethodOutput[M];
       // A system keeps its name even when every service of it was archived: its own docs and memory are still there.
       case "systems.list":
-        return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown) })) as MethodOutput[M];
+        return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown), source: systemSourceFor(s.source, shown) })) as MethodOutput[M];
       case "systems.repoHealth":
         return (out as SystemMemberHealth[]).filter((h) => shown(h.project)) as MethodOutput[M];
       default:
@@ -10898,11 +10914,14 @@ export class SqliteHive implements HiveBackend {
         });
       },
 
-      "systems.save": ({ name, projects }, actor) => {
+      "systems.save": ({ name, projects, source }, actor) => {
+        // Left out, the source stays as it was: the editors that only change the projects never send one.
+        const keep = source === undefined;
         db.prepare(
-          `INSERT INTO systems(name, projects, updated_by, updated_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(name) DO UPDATE SET projects = excluded.projects, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-        ).run(name, JSON.stringify([...new Set(projects)].sort()), actor.name, this.#now());
+          `INSERT INTO systems(name, projects, source, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET projects = excluded.projects, updated_by = excluded.updated_by, updated_at = excluded.updated_at,
+             source = CASE WHEN ? THEN systems.source ELSE excluded.source END`,
+        ).run(name, JSON.stringify([...new Set(projects)].sort()), source ? JSON.stringify(source) : null, actor.name, this.#now(), keep ? 1 : 0);
         return this.#system(name)!;
       },
 

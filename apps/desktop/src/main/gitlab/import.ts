@@ -45,14 +45,16 @@ export function planImport(repos: GitLabGroupRepo[], baseDir: string, projects: 
       const already = known.get(repo.pathWithNamespace.toLowerCase());
       if (already) return { repo, key: already.name, dir: already.repo, state: "added" as const };
       const matching = local.filter((clone) => matchesRemote(clone.remote, repo));
-      // An already registered clone wins even when an unregistered copy sorts first in the scan.
-      const clone = matching.find((c) => byDir.has(path.resolve(c.dir))) ?? matching[0];
+      const tree = path.join(baseDir, subgroupPath(repo, group));
+      // An already registered clone wins even when an unregistered copy sorts first in the scan. Then the clone where
+      // the group's tree puts it: svc-core and svc-core-e2e can share one remote, and the e2e copy sorts first.
+      const clone = matching.find((c) => byDir.has(path.resolve(c.dir))) ?? matching.find((c) => path.resolve(c.dir) === path.resolve(tree)) ?? matching[0];
       const owner = clone && byDir.get(path.resolve(clone.dir));
       if (owner) return { repo, key: owner.name, dir: owner.repo, state: "added" as const };
       const key = suggestProjectKey(repo.pathWithNamespace, taken);
       taken.add(key);
       if (clone) return { repo, key, dir: clone.dir, state: "folder" as const };
-      let dir = path.join(baseDir, subgroupPath(repo, group));
+      let dir = tree;
       if (dirs.has(dir)) dir = path.join(baseDir, key);
       dirs.add(dir);
       const occupied = existsSync(dir);
