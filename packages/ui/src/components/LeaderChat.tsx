@@ -976,6 +976,7 @@ function PlanCard({ plan, action: a, taskIds }: { plan: ChatPlan; action: ChatAc
           const where = [
             service !== a.project ? t("chat.actionService", { project: service }) : null,
             item.dependsOn.length ? t("chat.actionDeps", { ids: item.dependsOn.join(", ") }) : null,
+            item.platforms?.length ? item.platforms.map((p) => t(`tasks.platform.${p}`)).join(" · ") : null,
           ].filter(Boolean);
           return (
             <li key={item.id} className="flex flex-col gap-0.5 rounded-md bg-background/60 p-2" data-plan-task={item.id}>
@@ -1082,6 +1083,7 @@ export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch
   // A task for another service of the system (roadmap 19d): which one, first.
   if (a.kind === "task.create" && input.project && input.project !== a.project) detail.push(t("chat.actionService", { project: String(input.project) }));
   if (a.kind === "task.create" && Array.isArray(input.dependsOn) && input.dependsOn.length) detail.push(t("chat.actionDeps", { ids: input.dependsOn.join(", ") }));
+  if ((a.kind === "task.create" || a.kind === "task.update") && Array.isArray(input.platforms)) detail.push(input.platforms.length ? input.platforms.map((p) => t(`tasks.platform.${p}` as never)).join(" · ") : t("tasks.platformAny"));
   if (a.kind === "run.dispatch") {
     detail.push(input.profileId ? t("chat.actionPlan", { plan: String(input.profileId) }) : t("board.rotate"));
     if (Number(input.candidates) > 1) detail.push(t("board.candidatesMany", { n: Number(input.candidates) }));

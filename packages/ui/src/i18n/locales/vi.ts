@@ -1560,6 +1560,8 @@ export const vi = {
     add: "Thêm",
   },
   tasks: {
+    platform: { windows: "Windows", linux: "Linux", mac: "macOS" },
+    platformAny: "Mọi nền tảng",
     view: "Cách xem",
     view_kanban: "Kanban",
     /** Cùng chỗ với Kanban, nhưng trong app là Board của máy này. */
@@ -3812,6 +3814,7 @@ export const vi = {
     machineCannotPushBranch: "Máy {machine} đang báo lỗi push cho {project}. Chọn máy khác hoặc thử lại trên máy này sau khi sửa kết nối Git.",
     machineNoHubRuns: "Máy {machine} chưa bật Được nhận run từ hub.",
     machineNoRepo: "Máy {machine} chưa có repo của service {project}.",
+    machinePlatformMismatch: "Máy {machine} không đúng nền tảng của task ({platforms}).",
     profileNotOnMachine: "Máy {machine} không có gói {id} đang bật.",
     runRequestOpen: "Task {id} đã có yêu cầu #{request} đang chờ máy {machine}.",
     taskRunning: "Task {id} đang chạy (run {run} trên máy {machine}).",

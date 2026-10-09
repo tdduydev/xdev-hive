@@ -15,6 +15,7 @@ import {
   sees,
   skillDocKey,
   TASK_STATUSES,
+  TASK_PLATFORMS,
   TASK_KINDS,
   TASK_SIZES,
   TASK_RISKS,
@@ -768,14 +769,26 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
 
   if (writes && !leader) {
     server.registerTool(
+      "task_create",
+      {
+        title: "Create a task",
+        description: "Create a task on a project board. platforms limits which machine OS may run it; empty means any OS.",
+        inputSchema: { id: z.string(), title: z.string(), project: z.string().optional(), dependsOn: z.array(z.string()).max(20).optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() },
+      },
+      withProject(async ({ id, title, project, dependsOn, platforms }) => run("tasks.create", { id, title, project, dependsOn: dependsOn ?? [], platforms: platforms ?? [] })),
+    );
+  }
+
+  if (writes && !leader) {
+    server.registerTool(
       "task_update",
       {
         title: "Update a task",
         description:
           'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks.',
-        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() },
       },
-      async ({ id, status, note }) => run("tasks.update", { id, status, note }),
+      async ({ id, status, note, platforms }) => run("tasks.update", { id, status, note, platforms }),
     );
   }
 
@@ -825,12 +838,13 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           taskKind: z.enum(TASK_KINDS).optional(),
           size: z.enum(TASK_SIZES).optional(),
           risk: z.enum(TASK_RISKS).optional(),
+          platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
           reason,
         },
       },
-      async ({ id, title, project: p, dependsOn, taskKind, size, risk, reason: why }) =>
+      async ({ id, title, project: p, dependsOn, taskKind, size, risk, platforms, reason: why }) =>
         run("chat.propose", {
-          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}) },
+          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}), ...(platforms ? { platforms } : {}) },
           reason: why,
         }),
     );
