@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
@@ -39,7 +39,8 @@ esac`;
 function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry" | "writable" | "runtimeRoots"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
-  const home = tmp("home");
+  // macOS resolves /var to /private/var; use the same canonical home for CLI realpaths and prefix checks.
+  const home = realpathSync(tmp("home"));
   // uv's tool bin dir, not on PATH (like ~/.local/bin for a login shell that lacks it).
   const uvBin = tmp("uvbin");
   fakeBin(bin, "claude", 'echo "2.1.283 (Claude Code)"');

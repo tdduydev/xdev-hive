@@ -177,15 +177,16 @@ export class UserStore {
   }
 
   /** New account with a temporary password the user must change at first sign-in. */
-  create(input: { username: string; displayName?: string; admin?: boolean; password?: string }): { user: UserInfo; password: string } {
+  /** mustChange false: the person chose the password themselves (the setup page), so no change is asked at sign-in. */
+  create(input: { username: string; displayName?: string; admin?: boolean; password?: string; mustChange?: boolean }): { user: UserInfo; password: string } {
     const username = input.username.trim().toLowerCase();
     if (!USERNAME.test(username)) throw new HiveError("bad_request", "Tên đăng nhập: 2-40 ký tự chữ thường, số, . _ -", { key: "errors.badUsername" });
     if (this.#db.prepare("SELECT 1 FROM hub_users WHERE username = ?").get(username)) throw new HiveError("conflict", `Đã có tài khoản ${username}.`, { key: "errors.usernameTaken", vars: { username } });
     const password = input.password ?? temporaryPassword();
     const id = randomBytes(6).toString("hex");
     this.#db
-      .prepare("INSERT INTO hub_users(id, username, display_name, password_hash, admin, must_change, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)")
-      .run(id, username, (input.displayName ?? "").trim().slice(0, 80) || username, hashPassword(password), input.admin ? 1 : 0, new Date().toISOString());
+      .prepare("INSERT INTO hub_users(id, username, display_name, password_hash, admin, must_change, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, username, (input.displayName ?? "").trim().slice(0, 80) || username, hashPassword(password), input.admin ? 1 : 0, input.mustChange === false ? 0 : 1, new Date().toISOString());
     return { user: this.get(id)!, password };
   }
 

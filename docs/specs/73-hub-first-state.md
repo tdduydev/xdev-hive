@@ -27,6 +27,28 @@ Task có `platforms` (windows / linux / mac, tuỳ chọn). Hub chỉ giao, kể
 
 Worktree trên máy là bộ nhớ tạm: sau khi nhánh đã push và run xong, máy tự dọn worktree theo quota ổ đĩa. Mất máy không mất việc. Trang Worktree (63f) hiện "đã push / chưa push".
 
+## Tách app / web / admin (bổ sung 9/10)
+
+Người dùng: "tính năng nào của app, tính năng nào của web, tính năng nào của admin, cho dễ quản trị, build và deploy". Theo chiến lược 73 (máy chỉ để chạy):
+
+| Nơi | Có gì | Ghi chú |
+|---|---|---|
+| **App desktop, chế độ hub** | Chỉ việc của chính máy này: trạng thái máy (online, CPU/RAM/ổ đĩa), gói agent (đăng nhập CLI, quota, bật/tắt, ưu tiên), run đang chạy và đã chạy trên máy (log), worktree và dung lượng, công cụ và setup (CLI, MCP shim), cài đặt máy (nhận việc, số run song song), cập nhật app. Mọi thứ khác là nút "Mở trên web". | Bỏ Board và Hôm nay khỏi app (roadmap 44): xem trên web. |
+| **App desktop, chế độ cục bộ** (không hub) | Giữ đủ mọi trang như hiện tại, vì app lúc đó là cả hệ thống. | Không đổi. |
+| **Web, người dùng** | Mọi việc: Hôm nay, Task, Chat, Quy trình, Tính năng, Lượt chạy (mọi máy), Tài liệu, Memory, Skill, Artifact, Lịch sử, Sơ đồ, Máy & agent (xem mọi máy), Terminal. | Menu theo quyền. |
+| **Web, quản trị** (nhóm Quản trị, chỉ hiện khi có quyền) | Người dùng & quyền, vai trò hub, sơ đồ tổ chức, chính sách agent và model, ngân sách, cảnh báo, nhật ký, thông báo và webhook, phiên bản app và rollout, vận hành hub (backup, log). Cài đặt service cho lead của service. | Không có trang trùng giữa người dùng và quản trị. |
+
+Hệ quả build và deploy: giao diện web do hub phục vụ, nên đổi web thì chỉ cần **deploy hub**. App desktop chỉ cần **release** khi runner, main process, setup CLI hoặc heartbeat đổi. Vì app hub-mode còn ít trang, đa số thay đổi giao diện không cần release app.
+
+### 73d. app-runner-console
+App hub-mode chỉ còn các mục của máy (bảng trên). Board và Hôm nay của máy chuyển thành link mở web. Chế độ cục bộ giữ nguyên. Shell mới của 72b dùng chung, chỉ khác danh sách mục. e2e và smoke cập nhật.
+
+### 73e. admin-area
+Gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền (hub admin, owner; lead cho Cài đặt service). Kiểm tra: người không có quyền không thấy và không gọi được.
+
+### 73f. release-split
+`release.mjs` và autopilot 60c xác định thay đổi thuộc hub hay app từ diff so với bản trước. Chỉ đổi web/core phía hub thì chỉ deploy hub. Đổi `apps/desktop` (main, runner, preload) hoặc runtime dùng chung với app thì release app và rollout. Ghi rõ trong ghi chú phát hành.
+
 ## Thứ tự
 
 73a trước (chặn đúng lỗi đang làm chậm 72), rồi 73b, 73c. Việc trên runner phải kiểm cả Mac, Ubuntu và Windows: dùng máy đúng nền tảng khi giao.

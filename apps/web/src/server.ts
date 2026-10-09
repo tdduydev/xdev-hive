@@ -12,6 +12,8 @@
 //   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
+//   HIVE_SETUP=1                       (no account yet: a setup page and a code in the log instead of that admin,
+//     roadmap 75; its choices go to settings.json next to the database and fill the HIVE_* variables left unset)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
 //   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
 //   HIVE_OIDC_ISSUER=https://gitlab.example.com HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
@@ -28,6 +30,7 @@ import path from "node:path";
 import { HiveError, openAiEmbedder, terminalHubEnabled, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, terminalUpgrade, type HubAppOptions } from "./app.ts";
+import { applySetupFile, readSetupFile, SetupGate } from "./hub-setup.ts";
 import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
 import { seaweedFromEnv } from "./seaweed.ts";
 import { OidcClient, oidcSettings } from "./oidc.ts";
@@ -46,6 +49,10 @@ const port = Number(process.env.HIVE_PORT ?? 7788);
 const host = process.env.HIVE_HOST ?? "127.0.0.1";
 const dbPath = path.resolve(process.env.HIVE_DB ?? path.join(root, "data", "hub.db"));
 const production = process.env.NODE_ENV === "production";
+// Before anything reads a HIVE_* setting: the setup page's choices fill what the environment leaves unset (roadmap 75).
+const setupPath = path.join(path.dirname(dbPath), "settings.json");
+const setupFile = readSetupFile(setupPath);
+const setupLocked = applySetupFile(process.env, setupFile);
 const backup = backupSettings(process.env);
 
 const logBackup = (when: string, take: () => BackupResult | null) => {
@@ -118,8 +125,23 @@ setInterval(learnRound, 60_000).unref();
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);
 if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");
-// No account yet (first run, or a hub from before accounts): an admin with a temporary password.
-if (users.count() === 0) {
+// No account yet on a hub started for setup (the root compose.yaml): the setup page creates the admin, with the code
+// printed here. Otherwise (deploy/compose.yaml, a hub from before accounts): an admin with a temporary password.
+let setup: SetupGate | undefined;
+if (users.count() === 0 && process.env.HIVE_SETUP === "1" && !setupFile?.done) {
+  setup = new SetupGate({
+    file: setupPath,
+    env: process.env,
+    locked: setupLocked,
+    users,
+    announce: (code) => console.log(`\n  Hub not set up yet: open its page in a browser and enter this setup code:\n\n  ${code}\n`),
+    // Docker's restart policy brings the hub back with the settings it just wrote.
+    onDone: () => {
+      console.log("[xdev-hive] setup saved, restarting to apply it");
+      setTimeout(() => process.exit(0), 300).unref();
+    },
+  });
+} else if (users.count() === 0) {
   const username = (process.env.HIVE_ADMIN_USER ?? "admin").trim().toLowerCase();
   const { password } = users.create({ username, displayName: "Admin", admin: true });
   console.log(`\n  First admin account: ${username}\n  Temporary password (shown once; the first sign-in asks for a new one):\n\n  ${password}\n`);
@@ -274,6 +296,7 @@ const hubApp = createHubApp({
     isMachineActor: (machineId, actor) => hive.isMachineActor(machineId, actor),
     pinnedOwner: (machineId) => hive.machinePinnedOwner(machineId),
   },
+  setup,
 });
 httpServer.on("request", hubApp);
 const upgradeTerminal = terminalUpgrade(hubApp);

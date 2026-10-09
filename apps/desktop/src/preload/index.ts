@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("hive", {
     pickFolder: () => invoke("desktop:pickFolder"),
     gitlabGroup: (input: unknown) => invoke("desktop:gitlabGroup", input),
     importGitlab: (input: unknown) => invoke("desktop:importGitlab", input),
+    githubOwner: (input: unknown) => invoke("desktop:githubOwner", input),
+    importGithub: (input: unknown) => invoke("desktop:importGithub", input),
     syncProject: (name: string) => invoke("desktop:syncProject", name),
     proposeAgents: (name: string) => invoke("desktop:proposeAgents", name),
     installAgents: (name: string) => invoke("desktop:installAgents", name),
