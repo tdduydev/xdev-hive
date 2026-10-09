@@ -55,6 +55,7 @@ const isWorktreeOf = (repo: string, dir: string) =>
     .some((l) => real(l.slice(9)) === real(dir));
 
 export interface RemoteStartOptions {
+  remote?: string;
   timeoutMs?: number;
   /**
    * How long to wait before each further try when the remote cannot be reached; `[]` (the default) tries once.
@@ -89,7 +90,7 @@ export async function remoteStart(repo: string, target: string | undefined, opts
   const head = tryGit(repo, ["rev-parse", "--short", "HEAD"]) ?? "?";
   const remotes = (tryGit(repo, ["remote"]) ?? "").split("\n").filter(Boolean);
   if (!remotes.length) return { ref: null, note: tr("runNote.startNoRemote", { sha: head }), error: null, remote: null };
-  const remote = remotes.includes("origin") ? "origin" : remotes[0]!;
+  const remote = opts.remote ?? (remotes.includes("origin") ? "origin" : remotes[0]!);
   // Never wait on a password prompt: the app has no terminal to show it in.
   const env = { GIT_TERMINAL_PROMPT: "0" };
   let reason = "";
