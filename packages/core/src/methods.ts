@@ -605,6 +605,7 @@ export const schemas = {
     projects: z.array(project).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
+    gitPush: z.record(project, z.boolean()).optional(),
     gateRunner: z.boolean().optional(),
     maxParallel: z.number().int().min(1).max(20).optional(),
     runnerSettings: machineRunnerSettings.optional(),
@@ -733,6 +734,10 @@ export const schemas = {
           instructions: z.string().max(4000).optional(),
           baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
           headSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          startSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          remoteSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          pushed: z.boolean().nullable().optional(),
+          pushError: z.string().max(4000).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */

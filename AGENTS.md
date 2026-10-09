@@ -21,7 +21,7 @@ Comment giải thích VÌ SAO, không phải cái gì.
 
 How the team does recurring work. Claude Code loads them from `.claude/skills/`; any other agent reads one with `skill_get` (xdev-hive MCP) when its description fits the task:
 
-- `hive-leader`: Cách làm leader của một dự án trong trang Chat của xDev Hive. Dùng khi bạn trả lời người quản trị dự án trong chat của Hive, không dùng khi làm một task.
+- `hive-leader`: Cách làm leader của một dự án (hoặc của cả hub) trong trang Chat của xDev Hive. Dùng khi bạn trả lời người quản trị trong chat của Hive, không dùng khi làm một task.
 
 <!-- xdev-hive:end -->
 
@@ -30,8 +30,10 @@ How the team does recurring work. Claude Code loads them from `.claude/skills/`;
 Monorepo của xDev Hive: `packages/core`, `packages/mcp`, `packages/ui`, `apps/web` (hub), `apps/desktop` (Electron). Xem [[cau-truc]].
 
 ## Trước khi merge
-- Không có GitHub CI: chạy `npm run typecheck` và `npm test` tại máy. Đổi giao diện desktop thì chạy thêm `npm run build -w @xdev-hive/desktop` rồi `npm run smoke -w @xdev-hive/desktop -- <thư mục ảnh>`.
+- Không có GitHub CI: chạy `npm run typecheck` và `npm test` tại máy. Đổi giao diện desktop thì chạy thêm `npm run build -w @xdev-hive/desktop` rồi `npm run smoke -w @xdev-hive/desktop -- <thư mục ảnh>`. Đổi giao diện web thì chạy thêm `npm run e2e -w @xdev-hive/web -- <thư mục ảnh>` và `npm run e2e:mobile -w @xdev-hive/web -- <thư mục ảnh>`.
+- Chạy vài bước e2e: thêm `--only <bước>[,<bước>…]` (cả `e2e:mobile`). Lệnh chạy phần seed, các bước đã chọn, và các bước mà chúng cần (bảng `NEEDS` trong `apps/web/e2e/browser.mjs`; bước không khai báo được coi là phụ thuộc mọi bước trước nó). `--repeat N` lặp N lần, mỗi lần một hub mới, rồi in số lần lỗi của từng bước. Cuối log có thời gian từng bước. Bước mới mà dùng tab do bước khác mở thì khai vào `NEEDS`.
 - Mỗi mục roadmap xong: tăng `version` trong `apps/desktop/package.json` và đánh dấu [x] trong `docs/roadmap.md` (xem [[roadmap-tinh-nang]]).
+- Việc còn lại, thứ tự và tiêu chí xong: [[muc-tieu]]; id task trên Hive là chữ đậm đầu mỗi mục.
 
 ## Code
 - Import khác thư mục dùng alias của package (`#ui/`, `#core/`, `#web/`, `#desktop/`, `#mcp/`), không dùng `../`.
@@ -39,5 +41,5 @@ Monorepo của xDev Hive: `packages/core`, `packages/mcp`, `packages/ui`, `apps/
 - Màu, chữ, khoảng cách theo design system: token ở `packages/ui/src/tokens/`, xem [[ban-thiet-ke-2026-09]].
 
 ## Phát hành
-- Deploy hub: `ssh xdev-server 'HIVE_TUNNEL=1 bash ~/Desktop/Codes/xDev/xdev-hive/deploy/update.sh'`.
-- App desktop: `npm run release -w @xdev-hive/desktop` từ bản sạch của origin/main.
+- Deploy hub: `ssh xdev-server 'HIVE_TUNNEL=1 HIVE_LAN=1 bash ~/Desktop/Codes/xDev/xdev-hive/deploy/update.sh'`. Luôn có cả hai cờ: thiếu `HIVE_LAN=1` thì container hub được tạo lại mà không có `HIVE_LAN_HOSTS` (chỉ `deploy/compose.lan.yaml` đặt biến này), và mọi máy, agent, MCP dùng cổng LAN `http://10.86.140.52:7780` nhận lỗi `Invalid Host: 10.86.140.52`, trong khi tên miền công khai vẫn chạy. Dấu hiệu khi deploy: compose báo `xdev-hive-lan-1` là orphan container. Sau deploy, kiểm cả `curl http://10.86.140.52:7780/` lẫn tên miền công khai. Máy trong LAN dùng được hub qua cổng này, kể cả `HIVE_RELEASE_HUB` khi phát hành.
+- App desktop: `npm run release -w @xdev-hive/desktop` từ bản sạch của origin/main, chạy trong một worktree cạnh repo (trong thư mục tạm `/private/tmp` của Claude, electron-builder lỗi `spawn npm ENOENT`).

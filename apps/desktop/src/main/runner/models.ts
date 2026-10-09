@@ -1,7 +1,7 @@
 import { geminiLaunch } from "#desktop/main/runner/gemini-launch.ts";
 import { GEMINI_MODELS, supportsGeminiModels } from "#desktop/main/runner/gemini.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
-import { execFile } from "node:child_process";
+import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -110,7 +110,7 @@ export class ProfileModels {
     if (!bin) return;
     entry.pending = new Promise<void>((resolve) => {
       const probe = profile.kind === "gemini" ? geminiLaunch(bin, ["--version"], env) : { bin, args: profile.kind === "kilo" ? ["models", "kilo"] : ["models"], env };
-      execFile(probe.bin, probe.args, { env: probe.env, cwd: os.tmpdir(), timeout: 3000, killSignal: "SIGKILL", maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+      execFileCli(probe.bin, probe.args, { env: probe.env, cwd: os.tmpdir(), timeout: 3000, killSignal: "SIGKILL", maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
         entry.models = err ? null : profile.kind === "gemini" ? supportsGeminiModels(stdout) ? [...GEMINI_MODELS] : null : profile.kind === "opencode" ? opencodeModels(stdout) : profile.kind === "kilo" ? kiloModels(stdout) : agyModels(stdout);
         entry.pending = undefined;
         resolve();

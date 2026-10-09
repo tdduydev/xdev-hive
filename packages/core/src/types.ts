@@ -880,6 +880,10 @@ export interface FeedEvent {
  * Kept 30 days after its last update.
  */
 export interface RunRecord {
+  startSha?: string | null;
+  remoteSha?: string | null;
+  pushed?: boolean | null;
+  pushError?: string | null;
   plan?: import("#core/plan-approval.ts").RunPlan | null;
   diffReview?: DiffReview | null;
   /** The machine's hub actor, which with runId names the run. */
@@ -1011,6 +1015,7 @@ export interface RunRequestError {
 
 /** A retry may move machines; run ids alone are only unique on their originating machine. */
 export interface RunRedispatch {
+  headSha?: string | null;
   machineId: string;
   runId: string;
   continueBranch: boolean;
