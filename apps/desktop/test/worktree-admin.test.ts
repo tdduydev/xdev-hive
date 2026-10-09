@@ -8,7 +8,7 @@ import { AGENT_TEMPLATES, worktreeCleanupSchema, type Actor, type RunnerSettings
 import { SqliteHive } from "@xdev-hive/core/node";
 import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
 import { cleanupReason } from "@xdev-hive/core";
-import { deleteWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
+import { deleteWorktree, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { ensureWorktree, hasBranch } from "#desktop/main/runner/worktree.ts";
 
 const admin: Actor = { name: "admin", role: "admin" };
@@ -105,6 +105,23 @@ describe("runner worktree administration", () => {
       assert.equal(entry.pushed, null, "an unreachable remote is unknown, not proof of a push");
       assert.equal((await f.runner.manageWorktrees([entry], true))[0]?.ok, false);
       assert.equal(existsSync(f.wt.path), true);
+    } finally { f.close(); }
+  });
+
+  it("uses the configured remote when rechecking a merged worktree for deletion", async () => {
+    const f = await fixture();
+    try {
+      const remote = git(f.repo, "remote", "get-url", "origin");
+      git(f.repo, "remote", "rename", "origin", "publish");
+      git(f.repo, "remote", "add", "origin", path.join(f.dir, "missing.git"));
+      git(f.repo, "fetch", "-q", "publish", "main");
+      assert.equal(git(f.repo, "remote", "get-url", "publish"), remote);
+      const project = { name: "demo", repo: f.repo, targetBranch: "main", git: { remote: "publish" } };
+      const entry = await inspectWorktree(project, { path: f.wt.path, branch: f.wt.branch, taskId: "T-1" }, undefined, false);
+      assert.equal(entry.merged, true);
+      assert.equal(entry.pushed, true);
+      await deleteWorktree(project, f.root, entry, false);
+      assert.equal(existsSync(f.wt.path), false);
     } finally { f.close(); }
   });
 
