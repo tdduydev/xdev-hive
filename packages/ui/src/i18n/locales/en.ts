@@ -1539,6 +1539,7 @@ export const en: Catalog = {
     review: "Needs review",
     reviewHint: "A file this entry is about changed on the service's branch. If it is still true, press Still true to take the files as they are now; if not, fix or remove it.",
     stillTrue: "Still true",
+    monthsAgo: "{n} months ago",
     filesChanged: "Changed: {files}",
     filesMissing: "Gone: {files}",
     files: "Files",

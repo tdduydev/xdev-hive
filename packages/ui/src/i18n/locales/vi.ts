@@ -1544,6 +1544,7 @@ export const vi = {
     review: "Cần xem lại",
     reviewHint: "File mà mục này nói tới đã đổi trên nhánh của service. Nếu nội dung vẫn đúng, bấm Vẫn đúng để lấy file hiện tại làm mốc; nếu sai thì sửa hoặc xoá.",
     stillTrue: "Vẫn đúng",
+    monthsAgo: "{n} tháng trước",
     filesChanged: "File đã đổi: {files}",
     filesMissing: "File không còn: {files}",
     files: "File",

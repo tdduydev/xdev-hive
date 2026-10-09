@@ -186,6 +186,9 @@ export function MemoryPage({ pendingFirst = false }: { pendingFirst?: boolean })
 
   // "1 giờ trước" on a card (template); the detail keeps the exact time.
   const ago = (iso: string) => {
+    // Past a month the template counts months ("3 tháng trước"): "92 ngày" is harder to read at a glance.
+    const months = Math.floor((Date.now() - Date.parse(iso)) / (30 * 86_400_000));
+    if (months >= 1) return t("memory.monthsAgo", { n: months });
     const when = shortAgo(iso, Date.now(), t);
     return when === t("inbox.ago.now") ? when : t("inbox.agoLong", { when });
   };
