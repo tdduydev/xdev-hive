@@ -746,7 +746,7 @@ export function DocsPage() {
               // A filter hides the spaces it leaves empty, as in the design.
               if (filtering && !body) return null;
               return (
-                <div key={sp.id} className="flex flex-col" data-doc-space={sp.id}>
+                <div key={sp.id} className="flex flex-col" data-doc-group={sp.id}>
                   <span className="flex items-center gap-2 px-2.5 pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-faint) uppercase">
                     <span className="flex-1">{spaceTitle(sp)}</span>
                     <span>{sp.docs.length}</span>

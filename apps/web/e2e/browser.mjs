@@ -1053,7 +1053,7 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
-      const rows = [...document.querySelectorAll('[data-doc-list] [data-doc-space] > ul > li > div')];
+      const rows = [...document.querySelectorAll('[data-doc-list] [data-doc-group] > ul > li > div')];
       const first = rows.findIndex((r) => r.querySelector('[title="system/ban-hang/tong-quan"]'));
       const groups = ["demo", "ledger", "payment"].map((p) => rows.findIndex((r) => r.dataset.serviceGroup === p));
       // Earlier full-suite steps finish tasks and create the system journal before this page.
