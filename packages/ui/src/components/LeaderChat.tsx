@@ -3,7 +3,7 @@
 // with the agent's steps; project managers send messages and stop a reply. The desktop app has it too (roadmap 48):
 // on a hub the same threads, a new one on this machine by default; in local mode this machine's own, in its database.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { ArrowLeft, BookMarked, Bot, Check, CheckCheck, MessageSquarePlus, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, BookMarked, Bot, CheckCheck, Pencil, RotateCcw, Search, SendHorizontal, Settings2, Square, Trash2, X } from "lucide-react";
 import { cn } from "cn";
 import { CHAT_EFFORTS, CHAT_MODEL_ALIASES, DEFAULT_MODEL_TIERS, HUB_SCOPE, policySummary, type AgentPolicy, type ChatAction, type ChatPlan, type ChatEffort, type ChatMessage, type ChatThread, type ResearchInput } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -12,7 +12,6 @@ import { Card } from "@xdev-hive/ui/components/ui/card";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Badge, Empty, ErrorNote, Notice, PageHeader, StatusDot } from "#ui/components/common.tsx";
 import { ArtifactPreview } from "#ui/components/Artifacts.tsx";
 import { AttachButton, AttachmentBar, MessageFiles, useAttachments } from "#ui/components/ChatFiles.tsx";
@@ -21,6 +20,7 @@ import { CopyButton, ReplyMarkdown } from "#ui/components/ReplyMarkdown.tsx";
 import { errorMessage, formatTime, formatUsd, useAction, useCan, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import {
+  ACTION_KIND_KEY,
   ACTION_TONE,
   actionTask,
   chatMachines,
@@ -34,6 +34,8 @@ import {
   REPLY_TONE,
   withAction,
 } from "#ui/lib/chat.ts";
+import { shortAgo } from "#ui/lib/inbox.ts";
+import { cosmicAssets } from "#ui/assets/cosmic.ts";
 import { CHAT_SHORTCUTS, chatStatusCounts, isStatusCommand, matchingShortcuts, shortcutDraft, shortcutArgument, fillShortcutArgument, shortcutRuns, type ChatShortcut } from "#ui/lib/chat-shortcuts.ts";
 import { quotaRows, quotaTotals } from "#ui/lib/quota.ts";
 import { requestErrorText, runLabel } from "#ui/lib/runs.ts";
@@ -41,7 +43,7 @@ import { canEditChatSettings, canUseHubChat } from "#ui/lib/permission-controls.
 import { scopeFilter, scopeId, scopeKey, scopeProject } from "#ui/lib/scope.ts";
 import { useChatDraft, useChatSession, type ChatOpen, type ChatPageContext } from "#ui/components/ChatSession.tsx";
 import { AgentSteps } from "#ui/components/chat/AgentSteps.tsx";
-import { ThreadSearch } from "#ui/components/chat/ThreadSearch.tsx";
+import { ThreadSearch, ThreadSearchButton } from "#ui/components/chat/ThreadSearch.tsx";
 import { ChatSessionBar } from "#ui/components/chat/ChatSessionBar.tsx";
 import { chatSubmitKey, turnSeconds } from "#ui/lib/chat-presentation.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
@@ -145,43 +147,41 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
   }, [managed.length, setOpen]);
 
   return (
-    <div ref={surface} data-leader-chat className={cn(panel ? "flex min-h-0 flex-1 flex-col gap-3 p-4" : "mobile-master-detail mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col gap-3 p-4 md:px-6 md:py-4", "max-md:[&_summary]:min-h-11 max-md:[&_a]:min-h-11 max-md:[&_a]:inline-flex max-md:[&_input]:text-base max-md:[&_select]:text-base max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_textarea]:text-base")}>
-      <PageHeader
-        title={t("nav.chat")}
-        subtitle={panel ? undefined : t("chat.workspaceHint")}
-        actions={
-          managed.length ? (
-            <>
-              <TerminalEntry source="chat" project={project ?? undefined} />
-              <Button size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
-                <BookMarked />
-                {t("chat.guideOpen")}
-              </Button>
-              <Button size="sm" data-chat-new onClick={() => setOpen({ kind: "new" })}>
-              <MessageSquarePlus />
-              {t("chat.new")}
-            </Button>
-            </>
-          ) : null
-        }
-      />
+    <div ref={surface} data-leader-chat className={cn(panel ? "flex min-h-0 flex-1 flex-col gap-3 p-4" : "mobile-master-detail flex h-full min-h-0 w-full flex-col gap-3 p-4 md:px-6 md:py-4", "max-md:[&_summary]:min-h-11 max-md:[&_a]:min-h-11 max-md:[&_a]:inline-flex max-md:[&_input]:text-base max-md:[&_select]:text-base max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_select]:min-h-11 max-md:[&_textarea]:text-base")}>
       {managed.length ? <LeaderGuideSheet key={shown} projects={managed} defaultProject={project} open={guideOpen} onOpenChange={setGuideOpen} /> : null}
       <ErrorNote error={threads.error} />
-      <div className={cn("grid min-h-0 min-w-0 gap-4", panel ? "flex-1 grid-rows-[minmax(0,1fr)]" : "flex-1 grid-rows-[minmax(0,1fr)] lg:grid-cols-[15rem_minmax(0,1fr)]")}>
+      <div className="chat-layout flex-1">
         {/* On a phone the list and the open chat take turns. */}
-        <nav className={cn("flex min-h-0 min-w-0 flex-col gap-2 overflow-y-auto", open && (panel ? "hidden" : "hidden lg:flex"))} aria-label={t("chat.threads")}>
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        <nav className={cn("chat-sessions overflow-y-auto", open && (panel ? "hidden" : "hidden lg:flex"))} aria-label={t("chat.threads")}>
+          <div className="chat-sessions-head">
+            <span>{t("chat.sessions")}</span>
+            {managed.length ? (
+              <Button size="sm" variant="ghost" data-chat-new onClick={() => setOpen({ kind: "new" })}>
+                {t("chat.newShort")}
+              </Button>
+            ) : null}
+          </div>
+          <div className="relative px-2 pb-1">
+            <Search className="pointer-events-none absolute top-1/2 left-5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input className="pl-8" type="search" placeholder={t("chat.search")} aria-label={t("chat.search")} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {threads.data?.length === 0 ? <Empty>{query ? t("chat.noMatch", { query }) : t("chat.none")}</Empty> : null}
-          <ul className="flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-1">
             {(threads.data ?? []).map((th) => (
               <ThreadItem key={th.id} thread={th} showProject={project === null} selected={open?.kind === "thread" && open.id === th.id} onOpen={() => setOpen({ kind: "thread", id: th.id })} />
             ))}
           </ul>
+          {managed.length ? (
+            <div className="mt-1 flex flex-wrap items-center gap-1 px-2">
+              <TerminalEntry source="chat" project={project ?? undefined} />
+              <Button size="sm" variant="ghost" onClick={() => setGuideOpen(true)}>
+                <BookMarked />
+                {t("chat.guideOpen")}
+              </Button>
+            </div>
+          ) : null}
         </nav>
-        <div className={cn("flex min-h-0 min-w-0 flex-col overflow-y-auto", !open && (panel ? "hidden" : "hidden lg:block"))}>
+        <div className={cn("chat-slot", !open && (panel ? "hidden" : "hidden lg:flex"))}>
           {open?.kind === "new" ? (
             <NewThread
               key={draftKey}
@@ -204,7 +204,7 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
               onDeleted={() => (setOpen(null), threads.reload())}
             />
           ) : (
-            <Empty>{managed.length ? t("chat.pick") : t("chat.pickReadOnly")}</Empty>
+            <div className="chat-main justify-center"><Empty>{managed.length ? t("chat.pick") : t("chat.pickReadOnly")}</Empty></div>
           )}
         </div>
       </div>
@@ -212,31 +212,26 @@ export function LeaderChat({ panel = false, context = null }: { panel?: boolean;
   );
 }
 
+function planetOf(kind?: string) {
+  return kind === "codex" ? { name: "green", src: cosmicAssets.planetGreen } : kind === "gemini" ? { name: "blue", src: cosmicAssets.planetBlue } : { name: "violet", src: cosmicAssets.planetViolet };
+}
+
 function ThreadItem({ thread: th, showProject, selected, onOpen }: { thread: ChatThread; showProject: boolean; selected: boolean; onOpen: () => void }) {
   const t = useT();
   return (
     <li>
-      <button
-        type="button"
-        aria-current={selected ? "true" : undefined}
-        className={cn(
-          "flex w-full min-w-0 flex-col gap-1 rounded-lg border px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50",
-          selected && "border-brand/40 bg-brand-soft/60 hover:bg-brand-soft/60",
-        )}
-        onClick={onOpen}
-      >
+      <button type="button" aria-current={selected ? "true" : undefined} className="chat-session outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" onClick={onOpen}>
         <span className="flex w-full items-start gap-2">
-          <span className="line-clamp-2 min-w-0 flex-1 text-sm font-medium wrap-anywhere">{th.title}</span>
+          <span className="chat-session-title line-clamp-2 min-w-0 flex-1 wrap-anywhere">{th.title}</span>
           {th.busy ? (
             <span className="mt-1.5" title={t("chat.answering")}>
               <StatusDot tone="info" className="animate-pulse motion-reduce:animate-none" /><span className="sr-only">{t("chat.answering")}</span>
             </span>
           ) : null}
         </span>
-        <span className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-          {showProject ? <span className="font-mono">{th.project === HUB_SCOPE ? t("chat.hubScope") : th.project}</span> : null}
-          <span className="font-mono">{th.machine}</span>
-          <span>{formatTime(th.updatedAt)}</span>
+        <span className="chat-session-meta">
+          {showProject ? `${th.project === HUB_SCOPE ? t("chat.hubScope") : th.project} · ` : null}
+          {shortAgo(th.updatedAt, Date.now(), t)}
         </span>
       </button>
     </li>
@@ -330,7 +325,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
   };
 
   return (
-    <Card className="gap-4 p-4">
+    <div className="chat-main gap-4 p-4" data-scroll>
       <div className="flex items-center gap-2">
         <Button size="icon-sm" variant="ghost" className={panel ? undefined : "lg:hidden"} onClick={onBack} aria-label={t("chat.threads")}>
           <ArrowLeft />
@@ -455,7 +450,7 @@ function NewThread({ projects, defaultProject, onBack, onStarted, draftKey, cont
         </div>
         <ErrorNote error={action.error} />
       </form>
-    </Card>
+    </div>
   );
 }
 
@@ -499,6 +494,8 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
   // What the leader proposes to do is approved apart from chatting (roadmap 25).
   const approve = thread ? thread.project === HUB_SCOPE ? canUseHubChat(me) : allow(thread.project, "chatApprove") : false;
   const refresh = () => (setBump((n) => n + 1), onChanged());
+  // The planet avatar follows the plan's CLI: claude violet, codex green, gemini blue.
+  const planet = planetOf(machine?.profiles.find((p) => p.id === (messages.findLast((m) => m.role === "assistant")?.author.split("@")[0] ?? thread?.profileId))?.kind);
 
   // Follows the reply as it grows, unless the reader scrolled up to read something else.
   const list = useRef<HTMLDivElement>(null);
@@ -557,24 +554,24 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
   }
 
   return (
-    <Card className={cn("flex flex-col gap-0 py-0", "h-full min-h-0 flex-1 overflow-hidden")} data-chat-thread={threadId}>
-      <header className="shrink-0 flex flex-wrap items-start gap-2 border-b px-4 py-3">
+    <div className="chat-main" data-chat-thread={threadId}>
+      <header className="chat-head shrink-0 flex-wrap">
         <Button size="icon-sm" variant="ghost" className={panel ? undefined : "lg:hidden"} onClick={onBack} aria-label={t("chat.threads")}>
           <ArrowLeft />
         </Button>
-        <div className="min-w-0 flex-1">
-          {thread && manage ? (
-            <ThreadTitle thread={thread} onRenamed={(th) => (setThread(th), onChanged())} onDeleted={onDeleted} />
-          ) : (
-            <h2 className="font-medium wrap-anywhere">{thread?.title ?? "…"}</h2>
-          )}
+        <img className="chat-head-planet" data-planet={planet.name} src={planet.src} alt="" />
+        <span className="chat-head-text">
+          <h2 className="chat-head-title wrap-anywhere" title={thread?.title}>{t("chat.leaderOf", { scope: thread ? (thread.project === HUB_SCOPE ? t("chat.hubScope") : thread.project) : "…" })}</h2>
           {thread ? (
-            <p className="text-xs text-muted-foreground wrap-anywhere">
-              <span className="font-mono">{thread.project === HUB_SCOPE ? t("chat.hubScope") : thread.project}</span> · {t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}
-            </p>
+            <span className="chat-head-sub wrap-anywhere" title={t("chat.startedBy", { who: thread.createdBy, time: formatTime(thread.createdAt) })}>
+              {t("chat.leaderHint")}
+            </span>
           ) : null}
-        </div>
+        </span>
+        <ThreadSearchButton threadId={threadId} />
+        {thread && manage ? <ThreadTitle thread={thread} onRenamed={(th) => (setThread(th), onChanged())} onDeleted={onDeleted} /> : null}
         {thread && manage ? <ThreadSettings thread={thread} onChanged={(th) => (setThread(th), onChanged())} /> : null}
+        {thread?.profileId ? <Badge tone="green">{thread.profileId}</Badge> : null}
       </header>
       <ThreadSearch threadId={threadId} messages={messages} onMatch={(id) => {
         stick.current = false;
@@ -586,7 +583,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
       <div
         data-chat-transcript
         ref={list}
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        className="chat-transcript min-h-0"
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -594,7 +591,7 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
         }}
       >
         <ErrorNote error={error} />
-        <ol className="mx-auto flex w-full max-w-(--reading-max) flex-col gap-6" aria-label={t("chat.transcript")}>
+        <ol className="flex w-full flex-col gap-[18px]" aria-label={t("chat.transcript")}>
           {messages.map((m, index) =>
             m.role === "user" ? (
               <UserMessage key={m.id} message={m} onReuse={manage ? () => setReuse(m) : undefined} />
@@ -617,12 +614,12 @@ function Conversation({ threadId, onBack, onChanged, onDeleted, panel, context }
         </ol>
       </div>
       {newContent ? <Button variant="outline" size="sm" className="mx-auto mb-2" data-chat-new-content onClick={() => { stick.current = true; setNewContent(false); if (list.current) list.current.scrollTop = list.current.scrollHeight; }}>{t("chat.newContent")}</Button> : null}
-      <footer className="max-h-[60%] shrink-0 flex flex-col gap-2 overflow-y-auto border-t px-4 py-3">
+      <footer className="max-h-[60%] shrink-0 flex flex-col gap-2 overflow-y-auto">
         {thread && machines.data && (!machine?.online || !machine.acceptsRuns) ? <Notice tone="warn">{t("chat.machineGone", { machine: thread.machine })}</Notice> : null}
         {thread && manage ? <Composer thread={thread} onSent={refresh} context={context} /> : thread ? <p className="text-xs text-muted-foreground">{t("chat.readOnly")}</p> : null}
       </footer>
       {thread ? <ChatSessionBar thread={thread} messages={messages} machine={machine} /> : null}
-    </Card>
+    </div>
   );
 }
 
@@ -737,7 +734,7 @@ function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onR
   if (editing) {
     return (
       <form
-        className="flex flex-col gap-1"
+        className="flex w-full basis-full flex-col gap-1"
         onSubmit={(e) => {
           e.preventDefault();
           void action.run(async () => {
@@ -760,9 +757,8 @@ function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onR
     );
   }
   return (
-    <div className="flex flex-col gap-1">
+    <>
       <div className="flex items-start gap-1">
-        <h2 className="min-w-0 flex-1 font-medium wrap-anywhere">{thread.title}</h2>
         <Button size="icon-sm" variant="ghost" aria-label={t("chat.rename")} title={t("chat.rename")} onClick={() => setEditing(true)}>
           <Pencil />
         </Button>
@@ -782,17 +778,17 @@ function ThreadTitle({ thread, onRenamed, onDeleted }: { thread: ChatThread; onR
         </Button>
       </div>
       <ErrorNote error={action.error} />
-    </div>
+    </>
   );
 }
 
 function UserMessage({ message: m, onReuse }: { message: ChatMessage; onReuse?: () => void }) {
   const t = useT();
   return (
-    <li data-chat-message={m.id} className="flex flex-col items-end gap-1">
+    <li data-chat-message={m.id} data-me="true" className="chat-msg">
       <MessageFiles files={m.files} />
-      <div className="max-w-[92%] rounded-2xl rounded-br-sm bg-brand-soft px-3 py-2 text-sm whitespace-pre-wrap text-brand-soft-foreground wrap-anywhere">{m.text}</div>
-      <span className="text-xs text-muted-foreground">
+      <div className="chat-bubble wrap-anywhere">{m.text}</div>
+      <span className="chat-msg-meta">
         {m.author} · {formatTime(m.createdAt)}
         {onReuse ? <Button size="sm" variant="ghost" onClick={onReuse}>{t("chat.reuseMessage")}</Button> : null}
       </span>
@@ -832,9 +828,9 @@ function Reply({
   usePoll(live ? LIVE_MS : null);
   const elapsed = turnSeconds(m.createdAt, m.finishedAt ?? Date.now());
   return (
-    <li data-chat-message={m.id} className="flex flex-col items-start gap-2">
-      <div className="flex w-full min-w-0 flex-col gap-3 text-sm">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+    <li data-chat-message={m.id} data-me="false" className="chat-msg" title={formatTime(m.finishedAt ?? m.createdAt)}>
+      <div className="flex w-full min-w-0 flex-col items-start gap-2">
+        <div className="chat-msg-meta flex flex-wrap items-center gap-2" data-live={live || (m.status !== "done" && !!m.status) ? "true" : undefined}>
           <Bot className="size-3.5" aria-hidden />
           <span className="font-mono">{m.author}</span>
           {m.status ? <Badge tone={REPLY_TONE[m.status] ?? "neutral"}>{t(`replyStatus.${m.status}`)}</Badge> : null}
@@ -844,7 +840,7 @@ function Reply({
         </div>
         {m.switchedFrom ? <Notice tone="info">{t("chat.switched", { from: m.switchedFrom, to: m.author.split("@")[0]! })}</Notice> : null}
         {statusProject ? <ChatStatusCard project={statusProject} /> : null}
-        {m.text ? <ReplyMarkdown text={m.text} taskIds={taskIds} /> : live ? <p className="text-muted-foreground">{m.status === "pending" ? t("chat.waitingMachine", { machine }) : t("chat.writing")}</p> : null}
+        {m.text ? <div className="chat-bubble" data-markdown><ReplyMarkdown text={m.text} taskIds={taskIds} /></div> : live ? <p className="chat-bubble text-muted-foreground">{m.status === "pending" ? t("chat.waitingMachine", { machine }) : t("chat.writing")}</p> : null}
         {live && m.activity ? (
           <div className="flex items-center gap-2 text-xs text-info">
             <span className="size-2 shrink-0 animate-pulse rounded-full bg-info motion-reduce:animate-none" aria-hidden />
@@ -883,7 +879,6 @@ function Reply({
         ) : null}
         <ErrorNote error={action.error} />
       </div>
-      <span className="text-xs text-muted-foreground">{formatTime(m.finishedAt ?? m.createdAt)}</span>
     </li>
   );
 }
@@ -916,9 +911,9 @@ function ActionList({
       onDecidedAll(reply.id, actions);
     });
   return (
-    <section className="flex flex-col gap-2" aria-label={t("chat.actions")}>
+    <section className="chat-actions" aria-label={t("chat.actions")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">{t("chat.actions")}</h3>
+        <h3 className="sr-only">{t("chat.actions")}</h3>
         {manage && waiting >= 2 ? (
           <div className="flex flex-wrap items-center gap-1">
             <Button size="sm" className="h-7" disabled={act.busy} title={t("chat.confirmAllHint")} onClick={() => decideAll(true)}>
@@ -1113,18 +1108,19 @@ export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch
     return required ? `${state}, ${t("chat.actionToolRequired")}` : state;
   };
   return (
-    <li className="flex flex-col gap-1.5 rounded-lg border bg-muted/30 p-2.5 text-xs" data-action-status={a.status}>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Badge tone={ACTION_TONE[a.status] ?? "neutral"}>{t(`actionStatus.${a.status}`)}</Badge>
-        <Badge tone="neutral" className="h-auto max-w-full whitespace-normal"><span className="wrap-anywhere" data-action-project={a.project}>{a.project === HUB_SCOPE ? t("chat.actionHub") : t("chat.actionService", { project: a.project })}</span></Badge>
+    <li className="chat-action" data-action-status={a.status}>
+      <div className="chat-action-body">
+        <span className="chat-action-kind">
+          {t(`chat.kindLabel.${ACTION_KIND_KEY[a.kind] ?? "install"}` as never)} · <span data-action-project={a.project}>{a.project === HUB_SCOPE ? t("chat.actionHub") : String(a.kind === "task.create" && input.project ? input.project : a.project)}</span>
+        </span>
         {/* Roadmap 29c: the project lets its leader run this kind alone, as whoever sent the message. */}
-        {a.auto ? <Badge tone="info">{t("chat.autoRan", { who: a.decidedBy ?? "?" })}</Badge> : null}
-        <span className="min-w-0 text-sm wrap-anywhere">
+        {a.auto ? <span className="chat-action-reason">{t("chat.autoRan", { who: a.decidedBy ?? "?" })}</span> : null}
+        <span className="chat-action-subject wrap-anywhere">
           {a.kind === "research.start" ? `${t("chat.researchTitle")}: ${String(input.topic)}` : plan ? (
             `${t("chat.planTitle")}: ${plan.spec.title}`
           ) : a.kind === "task.create" ? (
             <>
-              {t("chat.actionCreate")} {a.status === "done" || (task && taskIds.includes(task)) ? taskLink : <span className="font-mono text-[0.9em]">{task}</span>}: {String(input.title ?? "")}
+              {a.status === "done" || (task && taskIds.includes(task)) ? taskLink : <span>{task}</span>} {String(input.title ?? "")}
             </>
           ) : a.kind === "task.update" ? (
             <>
@@ -1169,55 +1165,56 @@ export function ActionItem({ action: a, taskIds, manage, onDecided, autoDispatch
             rich(t("chat.actionInstall", { item: String(input.itemId ?? "") }), { machine })
           )}
         </span>
+        <span className="chat-action-reason wrap-anywhere" title={t("chat.actionReason", { reason: a.reason })}>{a.reason}</span>
+        {a.kind === "research.start" ? <ResearchCard action={a} manage={manage} onChanged={() => onDecided(a)} /> : null}
+        {plan ? <PlanCard plan={plan} action={a} taskIds={taskIds} /> : null}
+        {detail.length ? <span className="chat-action-reason">{detail.join(" · ")}</span> : null}
+        {a.kind === "agent.policy" ? (
+          <div className="chat-action-reason flex flex-col gap-0.5 wrap-anywhere">
+            <span>{t("chat.actionPolicyBefore", { policy: policyText(a.input.before) })}</span>
+            <span>{t("chat.actionPolicyAfter", { policy: policyText(a.input.policy) })}</span>
+          </div>
+        ) : null}
+        {a.kind === "tool.enable" && a.input.before ? <span className="chat-action-reason">{t("chat.actionToolBefore", { state: toolText(a.input.before) })}</span> : null}
+        {text ? <div className="chat-action-reason whitespace-pre-wrap wrap-anywhere">{String(text)}</div> : null}
+        {a.status === "proposed" && manage && plan ? <label className="flex min-h-11 w-full items-center gap-2 text-sm"><input type="checkbox" checked={autoDispatch} onChange={e => setAutoDispatch(e.target.checked)} disabled={act.busy} data-plan-auto-dispatch />{t("chat.planAutoDispatch")}</label> : null}
+        {a.decidedBy && a.status !== "proposed" ? (
+          <span className="chat-action-reason">
+            {t(a.status === "dismissed" ? "chat.actionDismissedBy" : "chat.actionConfirmedBy", { who: a.decidedBy, time: formatTime(a.decidedAt) })}
+            {a.result?.requestId && task ? (
+              <>
+                {" · "}
+                <a className={LINK} href={`#/tasks?task=${encodeURIComponent(task)}`}>
+                  {t("chat.actionRequest", { id: a.result.requestId })}
+                </a>
+              </>
+            ) : null}
+            {a.result?.commandId ? (
+              <>
+                {" · "}
+                {t("chat.actionCommand", { id: a.result.commandId })}
+              </>
+            ) : null}
+          </span>
+        ) : null}
+        {a.error ? <span className="text-destructive wrap-anywhere">{requestErrorText(a.error)}</span> : null}
+        <ErrorNote error={act.error} />
       </div>
-      {a.kind === "research.start" ? <ResearchCard action={a} manage={manage} onChanged={() => onDecided(a)} /> : null}
-      {plan ? <PlanCard plan={plan} action={a} taskIds={taskIds} /> : null}
-      {detail.length ? <div className="text-muted-foreground">{detail.join(" · ")}</div> : null}
-      {a.kind === "agent.policy" ? (
-        <div className="flex flex-col gap-0.5 rounded-md bg-background/60 p-2 wrap-anywhere">
-          <span>{t("chat.actionPolicyBefore", { policy: policyText(a.input.before) })}</span>
-          <span>{t("chat.actionPolicyAfter", { policy: policyText(a.input.policy) })}</span>
-        </div>
-      ) : null}
-      {a.kind === "tool.enable" && a.input.before ? <div className="text-muted-foreground">{t("chat.actionToolBefore", { state: toolText(a.input.before) })}</div> : null}
-      {text ? <div className="rounded-md bg-background/60 p-2 whitespace-pre-wrap wrap-anywhere">{String(text)}</div> : null}
-      <div className="text-muted-foreground wrap-anywhere">{t("chat.actionReason", { reason: a.reason })}</div>
       {a.status === "proposed" && manage ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {plan ? <label className="flex min-h-11 w-full items-center gap-2 text-sm"><input type="checkbox" checked={autoDispatch} onChange={e => setAutoDispatch(e.target.checked)} disabled={act.busy} data-plan-auto-dispatch />{t("chat.planAutoDispatch")}</label> : null}
-          <Button size="sm" className="min-h-11 min-w-11 md:h-7 md:min-h-0" disabled={act.busy} onClick={() => decide(true)}>
-            <Check />
+        <>
+          <Button size="sm" variant="solid" disabled={act.busy} title={t("chat.confirmHint")} onClick={() => decide(true)}>
             {t(plan ? "chat.planDo" : "chat.confirm")}
           </Button>
-          {plan ? <Button size="sm" variant="outline" disabled={act.busy} onClick={() => setReuse({ text: t("chat.revisePlan", { key: plan.spec.key }), files: [] })}>{t("chat.requestChanges")}</Button> : null}
-          <Button size="sm" variant="ghost" className="min-h-11 min-w-11 md:h-7 md:min-h-0" disabled={act.busy} onClick={() => decide(false)}>
-            <X />
+          {plan ? <Button size="sm" variant="glass" disabled={act.busy} onClick={() => setReuse({ text: t("chat.revisePlan", { key: plan.spec.key }), files: [] })}>{t("chat.requestChanges")}</Button> : null}
+          <Button size="sm" variant="ghost" disabled={act.busy} onClick={() => decide(false)}>
             {t("chat.dismiss")}
           </Button>
-          <span className="text-muted-foreground">{t("chat.confirmHint")}</span>
-        </div>
-      ) : null}
-      {a.decidedBy && a.status !== "proposed" ? (
-        <div className="text-muted-foreground">
-          {t(a.status === "dismissed" ? "chat.actionDismissedBy" : "chat.actionConfirmedBy", { who: a.decidedBy, time: formatTime(a.decidedAt) })}
-          {a.result?.requestId && task ? (
-            <>
-              {" · "}
-              <a className={LINK} href={`#/tasks?task=${encodeURIComponent(task)}`}>
-                {t("chat.actionRequest", { id: a.result.requestId })}
-              </a>
-            </>
-          ) : null}
-          {a.result?.commandId ? (
-            <>
-              {" · "}
-              {t("chat.actionCommand", { id: a.result.commandId })}
-            </>
-          ) : null}
-        </div>
-      ) : null}
-      {a.error ? <div className="text-destructive wrap-anywhere">{requestErrorText(a.error)}</div> : null}
-      <ErrorNote error={act.error} />
+        </>
+      ) : a.status === "proposed" ? null : (
+        <span className="chat-action-done" data-status={a.status} style={a.status === "done" ? undefined : { color: a.status === "failed" ? "var(--status-danger-fg)" : "var(--text-muted)" }}>
+          {a.status === "done" ? "✓ " : ""}{t(`actionStatus.${a.status}`)}
+        </span>
+      )}
     </li>
   );
 }
@@ -1265,7 +1262,7 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
   };
   return (
     <form
-      className="flex flex-col gap-2"
+      className="chat-composer"
       onDragOver={(e) => att.enabled && e.preventDefault()}
       onDrop={att.onDrop}
       onSubmit={(e) => {
@@ -1284,19 +1281,17 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
           <Button type="button" size="sm" variant="ghost" onClick={() => setReuse(null)}>{t("chat.keepDraft")}</Button>
         </div>
       </section> : null}
-      <CommandInput project={thread.project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} rows={2} />
-      {withContext(text, context).length > MAX_TEXT ? <Notice tone="warn">{t("chat.messageTooLong")}</Notice> : null}
       <AttachmentBar att={att} />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <AttachButton att={att} />
-          <span id={`chat-send-hint-${thread.id}`}>{thread.busy ? t("chat.busy") : t("chat.sendHint")}</span>
-        </span>
-        <Button size="sm" type="submit" aria-describedby={`chat-send-hint-${thread.id}`} disabled={!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || (att.uploading || att.failed)}>
-          <SendHorizontal />
+      <span id={`chat-send-hint-${thread.id}`} className="sr-only">{thread.busy ? t("chat.busy") : t("chat.sendHint")}</span>
+      <div className="chat-composer-row">
+        <div className="chat-composer-field">
+          <CommandInput project={thread.project} text={text} onText={setText} onSend={send} onPaste={att.onPaste} maxLength={Math.max(0, MAX_TEXT - contextPrefix(context).length)} rows={2} extra={<AttachButton att={att} />} />
+        </div>
+        <Button size="md" variant="solid" type="submit" aria-describedby={`chat-send-hint-${thread.id}`} disabled={!text.trim() || withContext(text, context).length > MAX_TEXT || thread.busy || action.busy || (att.uploading || att.failed)}>
           {t("chat.send")}
         </Button>
       </div>
+      {withContext(text, context).length > MAX_TEXT ? <Notice tone="warn">{t("chat.messageTooLong")}</Notice> : null}
       <ErrorNote error={action.error} />
     </form>
   );
@@ -1304,7 +1299,8 @@ function Composer({ thread, onSent, context }: { thread: ChatThread; onSent: () 
 
 
 /** One composer for new and existing threads: selecting a shortcut never sends it. */
-function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength = MAX_TEXT }: {
+function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength = MAX_TEXT, extra }: {
+  extra?: React.ReactNode;
   project: string;
   text: string;
   onText: (text: string) => void;
@@ -1374,8 +1370,9 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
     <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label={t("chat.shortcuts.title")} data-chat-chips>
       <Button type="button" size="sm" variant="ghost" className="shrink-0" onClick={() => { onText(text || "/"); setDismissed(false); input.current?.focus(); }}>{t("chat.commandsOpen")}</Button>
       {CHAT_SHORTCUTS.slice(0, 4).map(command => <Button key={command} type="button" size="sm" variant="outline" className="shrink-0 max-md:min-h-(--control-h-touch)" data-chat-command={command} onClick={() => selectCommand(command)}>/{command}<span>{t(`chat.shortcuts.${command}`)}</span></Button>)}
+      {extra}
     </div>
-    <Label htmlFor={`${id}-input`}>{t("chat.message")}</Label>
+    <Label htmlFor={`${id}-input`} className="sr-only">{t("chat.message")}</Label>
     <p id={`${id}-hint`} className="text-xs text-muted-foreground">{t(mobile ? "chat.sendMobileHint" : "chat.shortcuts.hint")}</p>
     <div className="relative">
     {options.length || argument || commandQuery ? <div className="absolute bottom-full z-20 mb-2 w-full space-y-1 rounded-md border bg-card p-1 shadow-md" data-chat-command-menu>
@@ -1386,7 +1383,7 @@ function CommandInput({ project, text, onText, onSend, onPaste, rows, maxLength 
       </div> : <p className="p-2 text-xs" role="status">{t(commandQuery ? "chat.shortcuts.noCommands" : runCommand && runs.loading ? "chat.shortcuts.loading" : "chat.shortcuts.noArguments")}</p>}
       {runCommand ? <ErrorNote error={runs.error} /> : null}
     </div> : null}
-    <Textarea id={`${id}-input`} ref={input} rows={rows} maxLength={maxLength} className="max-h-48 max-md:text-base" placeholder={t("chat.placeholder")} aria-label={t("chat.message")} aria-describedby={`${id}-hint`} role="combobox" aria-expanded={options.length > 0} aria-autocomplete="list" aria-controls={options.length ? `${id}-menu` : undefined} aria-activedescendant={options.length ? `${id}-option-${chosen}` : undefined} value={text}
+    <textarea id={`${id}-input`} ref={input} rows={rows} maxLength={maxLength} className="chat-input max-h-48 max-md:text-base" placeholder={t("chat.placeholder")} aria-label={t("chat.message")} aria-describedby={`${id}-hint`} role="combobox" aria-expanded={options.length > 0} aria-autocomplete="list" aria-controls={options.length ? `${id}-menu` : undefined} aria-activedescendant={options.length ? `${id}-option-${chosen}` : undefined} value={text}
       onChange={e => { onText(e.target.value); setDraftError(null); setCaret(e.target.selectionStart); setActive(0); setDismissed(false); }} onSelect={e => setCaret(e.currentTarget.selectionStart)} onPaste={onPaste}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;

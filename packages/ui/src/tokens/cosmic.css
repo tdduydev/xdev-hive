@@ -51,3 +51,5 @@
 --page-background:radial-gradient(1px 1px at 22px 34px,var(--star-1),transparent 60%),radial-gradient(1px 1px at 140px 90px,var(--star-2),transparent 60%),radial-gradient(1px 1px at 210px 180px,var(--star-3),transparent 60%),radial-gradient(1px 1px at 80px 220px,var(--star-4),transparent 60%),radial-gradient(1.5px 1.5px at 260px 40px,var(--star-5),transparent 60%),var(--page-gradient);
 }
 [data-theme="dark"]{--surface-violet:#38343F;--star-1:rgba(255,255,255,.45);--star-2:rgba(255,255,255,.3);--star-3:rgba(255,255,255,.35);--star-4:rgba(255,255,255,.22);--star-5:rgba(255,255,255,.28)}
+:root,[data-theme]{--text-faint:rgba(35,28,55,.5);--chat-violet-tint:rgba(123,97,255,.08);--chat-violet-line:rgba(123,97,255,.3);--chat-violet-sel:rgba(123,97,255,.14);--chat-violet-sel-line:rgba(123,97,255,.45);--chat-user-bg:rgba(123,97,255,.22);--chat-divider:rgba(35,28,55,.06)}
+[data-theme="dark"]{--text-faint:rgba(255,255,255,.43);--chat-divider:rgba(255,255,255,.06)}

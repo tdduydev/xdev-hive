@@ -2199,7 +2199,7 @@ export const en: Catalog = {
     commandsOpen: "Commands",
     sendMobileHint: "Enter adds a line · Ctrl/⌘Enter sends",
     message: "Message",
-    placeholder: "Ask the leader, or give it work…",
+    placeholder: "Message the leader: describe the work, ask about tasks, runs or machines…",
     sendHint: "Enter sends, Shift+Enter starts a new line.",
     copy: "Copy",
     attach: "Attach",
@@ -2263,6 +2263,8 @@ export const en: Catalog = {
     confirmAllHint: "One after another: tasks are created first, then moved, then runs are queued; it stops at one that fails.",
     dismissAll: "Set all aside",
     stoppedAll: "Stopped at the one that failed; the rest wait for you to decide.",
+    leaderOf: "Leader · {scope}", sessions: "Chat sessions", newShort: "+ New", leaderHint: "proposes tasks, queues runs, you confirm",
+    kindLabel: { research: "Research", plan: "Plan", taskCreate: "Create task", taskUpdate: "Update task", taskClassify: "Classify task", runDispatch: "Queue run", runCancel: "Cancel run", runMerge: "Merge run", profile: "Agent plan", policy: "Agent policy", stop: "Stop agents", resume: "Resume agents", tool: "Tool", install: "Install" },
   },
   modelQuality: {
     title: "Agent / model quality",

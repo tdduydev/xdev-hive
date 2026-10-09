@@ -9,7 +9,12 @@ export function AgentSteps({ replyId, steps }: { replyId: number; steps: string 
   return (
     <details data-chat-steps open={open} onToggle={(e) => setOpen(e.currentTarget.open)} className="text-xs">
       <summary className="flex min-h-11 cursor-pointer items-center gap-2 text-muted-foreground select-none md:min-h-0">{t("chat.steps", { count: stepCount(steps) })} · {t("chat.agentLog")}</summary>
-      <pre className="mt-2 max-h-64 overflow-auto rounded-md border bg-muted/50 p-3 font-mono whitespace-pre-wrap wrap-anywhere">{steps}</pre>
+      <div className="chat-steps mt-2 max-h-64 overflow-auto">
+        {steps.split("\n").filter(Boolean).map((line, i) => {
+          const mark = /^[✓✕▶]/.exec(line)?.[0];
+          return <span key={i} className="chat-step wrap-anywhere"><span data-mark={mark}>{mark ?? "·"}</span>{mark ? line.slice(1).trim() : line}</span>;
+        })}
+      </div>
     </details>
   );
 }

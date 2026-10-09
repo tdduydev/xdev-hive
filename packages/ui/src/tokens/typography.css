@@ -9,3 +9,5 @@
 --tracking-tight:-0.02em;--tracking-normal:0;--tracking-wide:0.06em;
 --weight-regular:400;--weight-medium:500;--weight-semibold:600;--weight-bold:700;
 }
+/* Chat design (docs/design/hive-2026-10) sizes that differ from the --type-* scale by weight or line height. */
+:root{--text-body-sm:500 14px/22px var(--font-sans);--text-caption:500 12px/18px var(--font-sans);--text-micro:600 11px/16px var(--font-sans)}

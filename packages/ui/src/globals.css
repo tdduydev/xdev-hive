@@ -20,6 +20,7 @@
 @import "./tokens/cosmic.css";
 @import "./components/ui/cosmic.css";
 @import "./components/ResponsiveTable.css";
+@import "./components/chat/chat.css";
 @import "./mobile.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
 @import "./tokens/base.css" layer(base);
