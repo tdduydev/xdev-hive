@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   WORK_ROLES,
+  CLI_APPROVAL_METHODS,
   chatPlanSchema,
   researchSchema,
   AGENT_ROLES,
@@ -12,6 +13,7 @@ import {
   MAX_CANDIDATES,
   MEMORY_KINDS,
   PAUSED_HUB,
+  may,
   sees,
   skillDocKey,
   TASK_STATUSES,
@@ -50,7 +52,7 @@ Answers are kept short: memory_search gives 8 entries without their bookkeeping 
 End of session: task_update to "review" with a note (done / not done / how to verify / risks); it is kept beside the handovers before it, which task_notes reads. Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, doc_asset, artifact_list, artifact_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, doc_asset, artifact_list, artifact_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_count, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
@@ -72,6 +74,9 @@ Read before you answer or propose: costs and spending caps with cost_summary; a 
 (rejected or expired requests and why) and setup_missing (what a machine lacks); the agent policy and whether agents are stopped with policy_get;
 the tools runs may get with tool_list, and where each stands on the machines with tool_status; tokens and the share read from the prompt
 cache with token_usage (quote its numbers: never guess what a tool saves); the hub's open alerts with alert_list when you have it.`;
+
+const CLI_LEADER_INSTRUCTIONS = `
+Interactive MCP leader: task_create and task_set_deps manage the board; plan_create creates a spec and its task graph; task_status updates a task; task_assign and run_dispatch queue work. These calls act with your account's project rights and are recorded with your agent identity. Read the board and machines first. Changes to policy, setup, tools, agent pauses and merges require a proposal for hub confirmation.`;
 
 // Roadmap 28f: what an agent acts on. The bookkeeping (author, project, dates, use count, file shas) is for the people on the web, and twenty entries of it cost more than the facts themselves.
 const compactMemory = (m: Memory) => ({
@@ -109,7 +114,7 @@ This chat is the whole hub, not one project: read project_list first (every proj
 when you have it. There is no default project: every propose_* takes project, and it is required — name the project each proposal is for, and do
 not guess one. Only machine_list, project_list and a machine's own setup item (cli:<kind>, shim, tool:<id>) belong to no project, and propose_stop_agents,
 propose_resume_agents and propose_policy without project mean the whole hub, which is a much bigger thing to ask for: say so plainly.
-run_list, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
+run_list, run_count, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
 Group what you propose by project, and leave merges, stopping agents and policy changes for the person to decide.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
@@ -120,10 +125,11 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const writes = !(opts.readOnly ?? actor.role === "viewer");
   // A chat leader works on no task of its own: no claim or status change, proposals instead.
   const leader = writes && actor.chatReply !== undefined;
+  const cliLeader = writes && actor.mcpCredential === true && !actor.runCredential && actor.chatReply === undefined;
   const hubScope = opts.hubScope === true && actor.chatReply !== undefined;
   // The web derives hubScope from the authenticated reply's thread, opened only by a hub admin.
   // Broaden only these reads; proposals and every mutation retain the machine's intersected grants.
-  const hubReads = new Set<Method>(["projects.list", "tasks.list", "runs.list", "runs.requests", "machines.list", "systems.list", "costs.summary", "budgets.list"]);
+  const hubReads = new Set<Method>(["projects.list", "tasks.list", "runs.list", "runs.count", "runs.requests", "machines.list", "systems.list", "costs.summary", "budgets.list"]);
   const readActor: Actor = hubScope ? { ...actor, role: "viewer", access: undefined } : actor;
   const call: HiveBackend["call"] = (method, input, caller) =>
     backend.call(method, input, hubScope && hubReads.has(method) ? readActor : caller);
@@ -131,7 +137,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     ? READ_ONLY_INSTRUCTIONS
     : leader
       ? "Read Hive through its read tools. Before answering, search memory for context. Record decisions in your reply; changes are proposals for the sender to approve." + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS + (hubScope ? LEADER_HUB_INSTRUCTIONS : "")
-      : INSTRUCTIONS;
+      : INSTRUCTIONS + (cliLeader ? CLI_LEADER_INSTRUCTIONS : "");
   const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
   // Roadmap 28f: every answer is JSON without indentation. Only an agent reads these, and the spaces are tokens it pays for.
@@ -483,6 +489,17 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
 
   // Hub mode: what machines pushed (runs.push) and reported (heartbeats); a local database has none.
   server.registerTool(
+    "run_count",
+    {
+      title: "Count active agent runs",
+      description: "Exact running and queued run counts in the visible project scope, independent of run_list's limit. With no project, counts all projects this connection may read.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    overHub(async ({ project: p }) => run("runs.count", { project: p })),
+  );
+
+  server.registerTool(
     "run_list",
     {
       title: "List agent runs",
@@ -777,6 +794,83 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       },
       async ({ id, status, note }) => run("tasks.update", { id, status, note }),
     );
+  }
+
+  if (cliLeader) {
+    const allowed = (permission: "taskManage" | "runDispatch" | "taskWork" | "docPropose") =>
+      opts.defaultProject ? may(actor, opts.defaultProject, permission) :
+        actor.access ? Object.keys(actor.access.projects).some((p) => may(actor, p, permission)) : may(actor, null, permission);
+    if (allowed("taskManage")) {
+      server.registerTool("task_create", {
+        title: "Create a task", description: "Create a task on a project board with the account's taskManage right.",
+        inputSchema: { id: z.string(), project, title: z.string(), priority: z.number().int().min(0).max(100).optional(), note: z.string().optional(), dependsOn: z.array(z.string()).max(20).optional(), kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() },
+      }, withProject(async ({ project: p, ...input }) => run("tasks.create", { ...input, project: p })));
+      server.registerTool("task_set_deps", {
+        title: "Set task dependencies", description: "Replace a task's dependencies; cycles are refused.",
+        inputSchema: { id: z.string(), dependsOn: z.array(z.string()).max(20) },
+      }, async ({ id, dependsOn }) => run("tasks.setDeps", { id, dependsOn }));
+    }
+    const canPlan = opts.defaultProject
+      ? may(actor, opts.defaultProject, "taskManage") && may(actor, opts.defaultProject, "docPropose")
+      : actor.access
+        ? Object.keys(actor.access.projects).some((p) => may(actor, p, "taskManage") && may(actor, p, "docPropose"))
+        : may(actor, null, "taskManage") && may(actor, null, "docPropose");
+    if (canPlan) server.registerTool("plan_create", {
+      title: "Create a plan", description: "Atomically create a new spec and its tasks with acceptance criteria, dependencies and batches. Requires document proposal and task management rights in every affected project.",
+      inputSchema: { ...chatPlanSchema.shape, project: z.string() },
+    }, async (plan) => run("plans.create", plan));
+    if (allowed("runDispatch")) {
+      server.registerTool("task_assign", {
+        title: "Assign a task to an agent", description: "Assign a task to a machine's agent queue.",
+        inputSchema: { id: z.string(), machineId: z.string(), profileId: z.string().nullable().optional(), before: z.string().optional() },
+      }, async ({ id, machineId, profileId, before }) => run("tasks.assign", { id, machineId, profileId: profileId ?? null, before }));
+      server.registerTool("run_dispatch", {
+        title: "Dispatch a task run", description: "Queue a run using the account's runDispatch right.",
+        inputSchema: { project, taskId: z.string(), machineId: z.string().nullable().optional(), role: z.enum(WORK_ROLES).optional(), profileId: z.string().nullable().optional(), reviewAfter: z.boolean().optional(), candidates: z.number().int().min(1).max(MAX_CANDIDATES).optional(), instructions: z.string().optional() },
+      }, withProject(async ({ project: p, taskId, machineId, role, profileId, reviewAfter, candidates, instructions }) => run("runs.dispatch", { project: p, taskId, machineId: machineId ?? null, role, profileId: profileId ?? null, reviewAfter, candidates, instructions })));
+    }
+    if (allowed("taskWork")) server.registerTool("task_status", {
+      title: "Set task status", description: "Move a task to another status with a handover note; core checks the account's taskWork and review rights.",
+      inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
+    }, async ({ id, status, note }) => run("tasks.update", { id, status, note }));
+
+    if (allowed("docPropose")) {
+      const propose = (method: (typeof CLI_APPROVAL_METHODS)[number], input: Record<string, unknown>, project: string | null, why: string) =>
+        run("proposals.create", { action: { method, input, project }, reason: why });
+      const proposalProject = z.string().nullable().optional().describe("Project for this request; null means the hub or a machine-wide change");
+      server.registerTool("propose_merge", {
+        title: "Propose merging a run", description: "Request hub approval to merge a run's MR or PR.",
+        inputSchema: { machineId: z.string(), runId: z.string(), project, reason },
+      }, withProject(async ({ machineId, runId, project: p, reason: why }) => propose("runs.merge", { machineId, runId }, p, why)));
+      server.registerTool("propose_cancel_run", {
+        title: "Propose cancelling a run", description: "Request hub approval to cancel a queued or running run.",
+        inputSchema: { machineId: z.string(), runId: z.string(), project, reason },
+      }, withProject(async ({ machineId, runId, project: p, reason: why }) => propose("runs.cancel", { machineId, runId }, p, why)));
+      server.registerTool("propose_stop_agents", {
+        title: "Propose stopping agents", description: "Request hub approval to stop a project's agents, or the whole hub if project is null.",
+        inputSchema: { project: proposalProject, reason },
+      }, async ({ project: p, reason: why }) => propose("agents.stop", { project: p === undefined ? opts.defaultProject ?? null : p }, p === undefined ? opts.defaultProject ?? null : p, why));
+      server.registerTool("propose_resume_agents", {
+        title: "Propose resuming agents", description: "Request hub approval to resume agents.",
+        inputSchema: { project: proposalProject, reason },
+      }, async ({ project: p, reason: why }) => propose("agents.resume", { project: p === undefined ? opts.defaultProject ?? null : p }, p === undefined ? opts.defaultProject ?? null : p, why));
+      server.registerTool("propose_policy", {
+        title: "Propose agent policy", description: "Request hub approval for a project's agent policy change.",
+        inputSchema: { project, policy: agentPolicyPartSchema.nullable(), reason },
+      }, withProject(async ({ project: p, policy, reason: why }) => propose("agentPolicy.set", { project: p, policy }, p, why)));
+      server.registerTool("propose_profile", {
+        title: "Propose machine profile change", description: "Request hub approval to change a machine's agent profile.",
+        inputSchema: { machineId: z.string(), profileId: z.string(), enabled: z.boolean().optional(), priority: z.number().int().min(0).max(100).optional(), reason },
+      }, async ({ machineId, profileId, enabled, priority, reason: why }) => propose("machines.setProfile", { machineId, profileId, enabled, priority }, null, why));
+      server.registerTool("propose_install", {
+        title: "Propose setup install", description: "Request hub approval for a machine to install a setup item.",
+        inputSchema: { machineId: z.string(), itemId: z.string(), project: proposalProject, reason },
+      }, async ({ machineId, itemId, project: p, reason: why }) => propose("admin.commandCreate", { machineId, itemId }, p === undefined ? opts.defaultProject ?? null : p, why));
+      server.registerTool("propose_tool", {
+        title: "Propose tool setting", description: "Request hub approval to change a project's catalog tool setting.",
+        inputSchema: { id: z.string(), enabled: z.boolean().nullable(), required: z.boolean(), project, reason },
+      }, withProject(async ({ id, enabled, required, project: p, reason: why }) => propose("tools.setProject", { id, project: p, enabled, required }, p, why)));
+    }
   }
 
   if (leader) {

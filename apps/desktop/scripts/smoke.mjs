@@ -40,7 +40,7 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "shell", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
@@ -208,6 +208,34 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
   process.exit(0);
 }
 
+if (process.env.HIVE_SMOKE_ONLY === "shell") {
+  for (const theme of ["dark", "light"]) {
+    const common = { HIVE_SMOKE_THEME: theme, HIVE_SMOKE_SIZE: "1440x900", HIVE_SMOKE_SIDEBAR: "open" };
+    await shoot(`shell-${theme}`, "today", 1500, {
+      ...common,
+      HIVE_SMOKE_EXPECT: ".hive-sidebar-toggle && .hive-status-footer",
+      HIVE_SMOKE_ASSERT: [
+        'document.querySelector("#hive-navigation").getBoundingClientRect().width === 252',
+        'document.querySelector(".hive-main-topbar").getBoundingClientRect().height === 72',
+        '[...document.querySelectorAll(".hive-nav-item")].every(el => el.getBoundingClientRect().height === 36)',
+        'document.querySelectorAll(".hive-nav-heading").length === 3',
+        'document.querySelector(".hive-status-footer").getBoundingClientRect().height === 26',
+        'document.documentElement.scrollWidth <= innerWidth',
+      ].join(" && "),
+    });
+    await shoot(`shell-${theme}-rail`, "today", 1500, {
+      ...common, HIVE_SMOKE_CLICK: ".hive-sidebar-toggle", HIVE_SMOKE_EXPECT: ".hive-sidebar-rail",
+      HIVE_SMOKE_ASSERT: 'document.querySelector(".hive-sidebar-rail").getBoundingClientRect().width === 64 && document.querySelector(".hive-sidebar-toggle").getBoundingClientRect().width > 0',
+    });
+    await shoot(`shell-${theme}-drawer`, "today", 1500, {
+      ...common, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: ".hive-mobile-nav button", HIVE_SMOKE_EXPECT: ".hive-navigation-drawer #hive-navigation",
+      HIVE_SMOKE_ASSERT: '(() => { const r = document.querySelector(".hive-navigation-drawer").getBoundingClientRect(); return Math.abs(r.x) < 1 ? r.right <= innerWidth - 47 : false; })() && [...document.querySelectorAll(".hive-navigation-drawer button, .hive-navigation-drawer a")].every(el => { const r = el.getBoundingClientRect(); return r.width >= 44 ? r.height >= 44 : false; })',
+    });
+  }
+  await gitlab.close();
+  process.exit(0);
+}
+
 // Roadmap 62d: exercise the shared shell chat in local mode without sending to an agent.
 if (process.env.HIVE_SMOKE_ONLY === "chat-everywhere") {
   for (const phone of [false, true]) {
@@ -285,7 +313,8 @@ async function startGuideShots(prefix = "") {
     if (state === "new") extra.HIVE_SMOKE_HASH = "";
     await shoot(`${prefix}start-${state}`, "start", 4000, extra);
     if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
-    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: 'Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent))' });
+    // Today's banner lists what is left; once every step is done there is nothing to offer, so no Start button is expected.
+    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
   }
   writeFileSync(file, before);
 }
@@ -516,15 +545,14 @@ for (const [name, page, delay, extra] of [
   // The Skills panel must have the skill's SKILL.md on screen, not only its frame (roadmap 39h: blank in the 3/10 shot).
   ["skills", "skills", 1500, { HIVE_SMOKE_EXPECT: "[data-skill-doc]" }],
 ]) await shoot(name, page, delay, extra ?? {});
-// The menu of this mode at 1440×900 (roadmap 39f): twelve entries and Chat (48), none of them Board, Tool or Đợt
-// chạy, and the list fits without scrolling.
+// Cosmic's three groups may scroll; the last entry must remain reachable above the fixed account card.
 await shoot("local-nav", "today", 3000, {
   HIVE_SMOKE_SIZE: "1440x900",
   HIVE_SMOKE_SIDEBAR: "open",
   HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/chat"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
   HIVE_SMOKE_ABSENT: 'nav a[href="#/board"] && nav a[href="#/tools"] && nav a[href="#/batches"] && nav a[href="#/machines"]',
   HIVE_SMOKE_ASSERT:
-    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); const last = [...l.querySelectorAll("a")].at(-1); l.scrollTop = l.scrollHeight; const r = last.getBoundingClientRect(); const bounds = l.getBoundingClientRect(); return r.top >= bounds.top ? r.bottom <= bounds.bottom + 1 : false; })()',
 });
 // This machine's own chat (roadmap 48): a thread in the local database whose leader proposed a task, waiting for
 // Xác nhận / Bỏ qua. The reply is written here as the app's runner would report it, so no Claude plan is used.
@@ -579,6 +607,9 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
   const limited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(4));
   store.update(limited.id, { status: "rate_limited", profileId: "codex-plus", startedAt: hoursAgo(4), finishedAt: hoursAgo(3.5), costReported: 1 });
   store.resetStats("codex-plus", hoursAgo(30));
+  // The quota screenshot asserts the warning on claude-max-1, so seed a real hit for that same profile.
+  const claudeLimited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(2));
+  store.update(claudeLimited.id, { status: "rate_limited", profileId: "claude-max-1", startedAt: hoursAgo(2), finishedAt: hoursAgo(1.5), costReported: 1 });
   store.setCooldown("claude-max-1", new Date(Date.now() + 100 * 60_000).toISOString(), "You've hit your usage limit");
   store.setResume("codex-plus", { until: new Date(Date.now() + 120 * 60_000).toISOString(), at: hoursAgo(0.2), by: "an" });
   store.db.close();

@@ -121,6 +121,8 @@ describe("research from chat", () => {
       const done = await hive.call("research.finish", { id: research.id, artifactId: artifact.id, sources: ["other/secret-scope.md"], recommendations: "Scoped findings" }, machine);
       await assert.rejects(hive.call("research.get", { id: research.id }, manager), { code: "not_found" });
       assert.equal((await hive.call("runs.list", { project: "app" }, manager)).length, 0);
+      assert.deepEqual(await hive.call("runs.count", { project: "app" }, manager), { running: 0, queued: 0 });
+      assert.deepEqual(await hive.call("runs.count", { project: "app" }, admin), { running: 1, queued: 0 });
       assert.equal(await hive.call("runs.get", { machineId: machine.name, runId: "R-research" }, manager), null);
       assert.equal((await hive.call("artifacts.list", { project: "app" }, manager)).length, 0);
       await assert.rejects(hive.call("artifacts.get", { id: artifact.id }, manager), { code: "not_found" });

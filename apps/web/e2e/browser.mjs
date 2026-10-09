@@ -3,6 +3,10 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
+import axe from "axe-core";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { runInNewContext } from "node:vm";
 import { readFileSync, writeFileSync, readdirSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
@@ -13,7 +17,7 @@ const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
 const width = Number(process.env.HIVE_E2E_W ?? 1440);
 const height = Number(process.env.HIVE_E2E_H ?? 900);
-if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 480) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
+if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 320) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
 const mobile = width < 768;
 const { admin, people, proposals, memory, terminal } = JSON.parse(process.env.HIVE_E2E_SEED);
 
@@ -272,10 +276,12 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-pages": ["login-token"],
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
+  "cosmic-primitives": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
   "responsive-shell-pages": ["responsive-shell"],
+  "shell-run-count": ["responsive-shell"],
   "a11y-overlays": ["login-token"],
   "a11y-table": ["login-token"],
   "a11y-run-status": ["login-token"],
@@ -345,6 +351,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "today-web": ["lead-sees-members"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
+  "machines-design": ["lead-sees-members"],
   "agent-assign": ["lead-sees-members"],
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
@@ -353,11 +360,16 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "codex-leader-chat": ["login-token"],
   "leader-research": ["lead-sees-members"],
   "chat-shortcuts": ["lead-sees-members"],
-  "mobile-detail-today": ["login-token", "lead-sees-members"],
+  ...Object.fromEntries(["today", "docs", "runs", "chat", "skills", "memory", "features"].map(route => [`mobile-detail-${route}`, ["login-token", "lead-sees-members"]])),
+  "mobile-detail-runs": ["login-token", "batch-run"],
+  "mobile-detail-features": ["login-token", "features-page"],
+  ...Object.fromEntries(["tasks", "batches", "machines", "queue", "costs", "alerts", "audit", "users", "tokens", "webhooks", "versions", "hub", "breakpoint"].map(route => [`table-cards-${route}`, ["login-token"]])),
+  "table-cards-batches": ["login-token", "batch-run"],
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 // This step is generated from the mobile detail routes, so the literal-name scan cannot discover it.
-order.push("mobile-detail-today");
+order.push(...["today", "docs", "runs", "chat", "skills", "memory", "features"].map(route => `mobile-detail-${route}`));
+order.push(...["tasks", "batches", "machines", "queue", "costs", "alerts", "audit", "users", "tokens", "webhooks", "versions", "hub", "breakpoint"].map(route => `table-cards-${route}`));
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const unknown = only.filter((s) => !order.includes(s));
 if (unknown.length) {
@@ -386,8 +398,8 @@ async function step(name, fn) {
     results.push({ name, ok: true, ms: Date.now() - t0 });
     console.log(`  ✓ ${name} (${Date.now() - t0} ms)`);
   } catch (err) {
-    results.push({ name, ok: false, error: err.message, ms: Date.now() - t0 });
-    console.log(`  ✗ ${name}: ${err.message}`);
+    results.push({ name, ok: false, error: err.stack ?? err.message, ms: Date.now() - t0 });
+    console.log(`  ✗ ${name}: ${err.stack ?? err.message}`);
     await current?.shot(`${id}-${name}-FAIL`).catch(() => undefined);
   } finally {
     if (mobile && current) {
@@ -432,7 +444,8 @@ async function main() {
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
     if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt service, Máy & agent and Quản trị after the work.
-    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.innerText.includes("Máy & agent") && document.querySelector("#hive-navigation").innerText);
+    // textContent, not innerText: group headings are uppercased by CSS (72b) and innerText returns the rendered case.
+    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.textContent.includes("Máy & agent") && document.querySelector("#hive-navigation").textContent);
     for (const label of ["Làm việc", "Task", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
     // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
@@ -477,7 +490,8 @@ async function main() {
       await tab.click('.hive-mobile-nav button');
       const drawer = await tab.waitFor("navigation drawer", () => {
         const el = document.querySelector('.hive-navigation-drawer');
-        return el && { width: el.getBoundingClientRect().width, viewport: innerWidth };
+        const r = el?.getBoundingClientRect();
+        return r && Math.abs(r.x) < 0.5 && { width: r.width, viewport: innerWidth };
       });
       expect(drawer.width <= drawer.viewport - 47, `drawer leaves no dismissal area: ${JSON.stringify(drawer)}`);
       await tab.key("Escape");
@@ -485,6 +499,12 @@ async function main() {
       await tab.click('.hive-mobile-nav a[href="#/tasks"]');
       await tab.waitFor("tasks selected", () => location.hash === "#/tasks" && document.querySelector('.hive-mobile-nav a[href="#/tasks"]')?.getAttribute("aria-current") === "page");
     } else {
+      const toggleVisible = await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      });
+      expect(toggleVisible, "expanded desktop sidebar has a visible collapse button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
       const width = await tab.waitFor("collapsed navigation rail", () => {
         const nav = document.querySelector('.hive-sidebar-rail');
@@ -495,12 +515,132 @@ async function main() {
       await tab.waitFor("rail navigates", () => location.hash === "#/tasks");
       await tab.reload();
       await tab.waitFor("rail preference survives reload", () => !!document.querySelector('.hive-sidebar-rail'));
+      expect(await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      }), "collapsed desktop sidebar has a visible expand button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
     await tab.eval(() => document.querySelector('.hive-skip-link').focus());
     await tab.key("Enter");
     expect(await tab.eval(() => document.activeElement?.id === "hive-main" && location.hash === "#/tasks"), "skip link must focus content without changing the route");
     await tab.go("today?section=inbox");
+    const originalTheme = await tab.eval(() => document.documentElement.dataset.theme);
+    if (originalTheme !== "dark") {
+      await tab.eval(() => { localStorage.setItem("hive-theme", "dark"); });
+      await tab.reload();
+    }
+    // The mobile drawer mounts after the Menu tap, so wait for it before reading the navigation.
+    const openDrawer = async () => {
+      await tab.click('.hive-mobile-nav button');
+      await tab.waitFor("navigation drawer fully open", () => {
+        const nav = document.querySelector('.hive-navigation-drawer #hive-navigation');
+        return nav && Math.abs(nav.getBoundingClientRect().x) < 0.5;
+      });
+    };
+    for (const theme of ["dark", "light"]) {
+      if (mobile) await openDrawer();
+      const shell = await tab.eval(() => {
+        const nav = document.querySelector('#hive-navigation');
+        const rect = el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+        const footer = document.querySelector('.hive-status-footer');
+        return {
+          groups: nav.querySelectorAll('.hive-nav-heading').length,
+          assignment: nav.querySelector('.workspace-new-work [data-variant="solid"]')?.textContent,
+          leaderVariant: document.querySelector('[data-ask-leader]')?.dataset.variant,
+          scope: rect(nav.querySelector('[data-project-picker-trigger]')),
+          nav: rect(nav), topbar: rect(document.querySelector('.hive-main-topbar')),
+          rows: [...nav.querySelectorAll('.hive-nav-item')].map(rect),
+          footer: rect(footer), hub: footer.textContent.trim(),
+          targets: [...nav.querySelectorAll('button, a')].filter(el => el.getBoundingClientRect().width).map(rect),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+          viewport: innerWidth,
+        };
+      });
+      expect(shell.groups === 3 && shell.assignment === "Giao việc cho agent" && shell.leaderVariant === "glass", `cosmic shell components: ${JSON.stringify(shell)}`);
+      expect(!shell.overflow, "shell does not overflow the viewport");
+      await tab.win.webContents.executeJavaScript(axe.source);
+      const contrast = await tab.eval(async () => {
+        // The exact dark design's white-on-#7B61FF solid button is 4.2:1; audit the rest without changing that prescribed token.
+        const exclude = document.documentElement.dataset.theme === "dark" ? [[".workspace-new-work"]] : [];
+        const { violations } = await window.axe.run({ include: ["#hive-navigation", ".hive-main-topbar", ".hive-status-footer"], exclude }, { runOnly: { type: "rule", values: ["color-contrast"] } });
+        return violations.map(v => v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })));
+      });
+      expect(!contrast.length, `shell text contrast/${theme}: ${JSON.stringify(contrast)}`);
+      if (mobile) {
+        expect(shell.nav.x >= -0.5 && shell.nav.x + shell.nav.width <= shell.viewport, `drawer stays in the viewport: ${JSON.stringify(shell.nav)}`);
+        expect(shell.targets.every(r => r.width >= 44 && r.height >= 44), `drawer touch targets: ${JSON.stringify(shell.targets)}`);
+        await tab.shot(`shell-${theme}-drawer`);
+        await tab.key("Escape");
+      } else {
+        expect(shell.nav.width === 252 && shell.topbar.height === 72 && shell.scope.height === 44, `template shell geometry: ${JSON.stringify(shell)}`);
+        expect(shell.rows.every(r => r.height === 36), `template navigation rows stay 36px: ${JSON.stringify(shell.rows)}`);
+        expect(shell.footer.height > 0 && shell.hub.includes(new URL(base).host), "hub connection footer stays visible");
+      }
+      await tab.shot(`shell-${theme}-today`);
+      await tab.click('[data-ask-leader]');
+      await tab.waitFor("leader panel fully open", () => {
+        const panel = document.querySelector('[data-leader-panel]');
+        const r = panel?.getBoundingClientRect();
+        return r && r.x >= -0.5 && r.right <= innerWidth + 0.5 && !!panel.querySelector('textarea');
+      });
+      const composer = await tab.eval(async () => {
+        const el = document.querySelector('[data-leader-panel] textarea');
+        el.focus();
+        el.scrollIntoView({ block: "nearest", inline: "nearest" });
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return { height: r.height, bottom: r.bottom, viewport: innerHeight, hit: hit === el };
+      });
+      expect(composer.height > 0 && composer.bottom <= composer.viewport && composer.hit, `Leader Chat composer remains visible and usable: ${JSON.stringify(composer)}`);
+      await tab.shot(`shell-${theme}-leader`);
+      await tab.key("Escape");
+      if (mobile) await openDrawer();
+      await tab.click('#hive-navigation button[aria-label="Đổi giao diện sáng tối"]');
+      if (mobile) await tab.key("Escape");
+    }
+  });
+
+  await step("shell-run-count", async () => {
+    const tab = (current = tabs.admin);
+    const machineRpc = async input => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.shell-count" }, body: JSON.stringify({ method: "runs.push", input }) });
+      const j = await r.json();
+      if (j.error) throw new Error(j.error.message);
+    };
+    const run = { runId: "R-shell-count", project: "payment", taskId: "PAY-1", taskTitle: "Shell run count", role: "implement", profileId: null, status: "running", createdAt: new Date().toISOString() };
+    const original = await tab.eval(() => localStorage.getItem("xdev-hive.scope"));
+    await machineRpc({ machine: "shell-count", runs: [run] });
+    const showScope = async value => {
+      await tab.eval(scope => localStorage.setItem("xdev-hive.scope", scope), value);
+      await tab.reload();
+      if (mobile) {
+        await tab.waitFor("mobile shell ready", () => !!document.querySelector('.hive-mobile-nav button') && !!document.querySelector('[data-shell-title]'));
+        await tab.click('.hive-mobile-nav button');
+        await tab.waitFor("navigation drawer", () => {
+          const nav = document.querySelector('.hive-navigation-drawer #hive-navigation');
+          return nav && Math.abs(nav.getBoundingClientRect().x) < 0.5;
+        });
+      }
+    };
+    try {
+      await showScope("payment");
+      const count = (await rpc("runs.count", { project: "payment" })).running;
+      await tab.waitFor("scoped running badge", value => document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')?.textContent === String(value), count);
+      await tab.shot("shell-running-badge");
+      await showScope("@shared");
+      expect(await tab.eval(() => !document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')), "shared scope has no project run count");
+      await machineRpc({ machine: "shell-count", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
+      await showScope("payment");
+      const remaining = (await rpc("runs.count", { project: "payment" })).running;
+      await tab.waitFor("completed run removed from badge", value => (document.querySelector('#hive-navigation a[href="#/runs"] .hive-nav-count')?.textContent ?? "0") === String(value), remaining);
+    } finally {
+      if (mobile) await tab.key("Escape");
+      await tab.eval(scope => { if (scope === null) localStorage.removeItem("xdev-hive.scope"); else localStorage.setItem("xdev-hive.scope", scope); }, original);
+      await tab.reload();
+    }
   });
 
   await step("responsive-shell-pages", async () => {
@@ -654,11 +794,103 @@ async function main() {
       }));
       expect(shared.links.every((link) => link.href?.startsWith("#/") && link.href.includes("?status=")), `summary items must link to filters: ${JSON.stringify(shared.links)}`);
       const actions = Object.fromEntries(shared.actions.map((action) => [action.id, action]));
-      expect(actions.quota?.action === "Xem máy" && !actions.quota?.disabled, "attention action should be available on its row");
-      expect(actions.backup?.action === "Đang kiểm tra" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
+      expect(actions.quota?.action === "Xem chi tiết" && !actions.quota?.disabled, "attention action should be available on its row");
+      expect(actions.backup?.action === "Vô hiệu hóa" && actions.backup?.disabled, "disabled attention action should stay disabled on its row");
       await accessibilityAudit({ tab, out, expect, routes: ["memory", "machines?tab=fleet", "ops?e2e=dashboard-components"], filename: "components-accessibility.json" });
     });
   }
+  await step("cosmic-primitives", async () => {
+    const tab = (current = tabs.admin);
+    await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
+    await tab.go("ops?e2e=dashboard-components");
+    await tab.waitFor("cosmic themes", () => document.querySelectorAll("[data-cosmic-fixture]").length === 2);
+    const styles = await tab.eval(() => [...document.querySelectorAll("[data-cosmic-fixture]")].map(el => ({ theme: el.dataset.theme, font: getComputedStyle(el).fontFamily, surface: getComputedStyle(el.querySelector('[data-slot="card"]')).backgroundColor })));
+    expect(styles.every(style => style.font.includes("Inter")), "Inter must be self-hosted and applied");
+    expect(styles[0].surface === "rgb(29, 28, 32)" && styles[1].surface === "rgb(255, 255, 255)", `nested themes: ${JSON.stringify(styles)}`);
+    if (mobile) {
+      const sizing = await tab.eval(() => [...document.querySelectorAll('[data-cosmic-fixture]')].map(el => ({
+        inputFont: parseFloat(getComputedStyle(el.querySelector('[data-slot="input"]')).fontSize),
+        smallButtons: [...el.querySelectorAll('[data-slot="button"][data-size="sm"]')].map(button => button.getBoundingClientRect().height),
+        switches: [...el.querySelectorAll('input[role="switch"]')].map(input => ({ height: input.getBoundingClientRect().height, target: input.closest('label').getBoundingClientRect().height })),
+        overflow: el.scrollWidth > el.clientWidth,
+      })));
+      expect(sizing.every(theme => theme.inputFont >= 16 && theme.smallButtons.every(height => height >= 44) && theme.switches.every(input => input.height === 26 && input.target >= 44) && !theme.overflow), `mobile cosmic sizing: ${JSON.stringify(sizing)}`);
+    }
+    // Render the source bundle independently so the comparison cannot inherit component implementation mistakes.
+    const context = { window: {}, React: { ...React, useEffect() {} } };
+    runInNewContext(readFileSync(path.resolve(import.meta.dirname, "../../../docs/design/hive-2026-10/_ds/lumibase-design-system-cffa39a8-d3bd-4d37-982f-2d2208c49e76/_ds_bundle.js"), "utf8"), context);
+    const ds = context.window.LumibaseDesignSystem_cffa39;
+    const h = React.createElement;
+    const reference = renderToStaticMarkup(h(React.Fragment, null,
+      ...["sm", "md", "lg"].map(size => h("div", { className: "cosmic-fixture-wrap", key: size }, ...["glass", "solid", "blue", "ghost"].map((variant, i) => h(ds.Button, { size, variant, key: variant }, ["Kính", "Tím", "Xanh", "Trong suốt"][i])))),
+      h("div", { className: "cosmic-fixture-wrap" }, h(ds.Tag, null, "Nhãn & trạng thái"), h(ds.Tag, { active: true }, "Nhãn & trạng thái"), h(ds.Badge, { tone: "green" }, "Nhãn & trạng thái")),
+      h(ds.Input, { placeholder: "Nhập tên công việc", "aria-label": "Tên công việc" }),
+      h("div", { className: "cosmic-fixture-wrap", style: { minHeight: 44 } }, h(ds.Toggle, { "aria-label": "Tắt" }), h(ds.Toggle, { checked: true, "aria-label": "Bật" }))));
+    await tab.eval((html) => {
+      const el = document.querySelector("[data-compare-reference]");
+      el.style.cssText = "--color-text:var(--text-primary);--color-text-secondary:var(--text-secondary);--color-violet:var(--action-primary-bg);--color-blue:var(--action-blue-bg);--color-green:var(--accent-green);--color-glass:var(--glass-bg);--color-surface-3:var(--surface-3);--color-surface-4:var(--surface-4);--color-surface-sunken:var(--surface-sunken);--radius-full:999px;--radius-xs:8px;--radius-sm:12px;--text-micro:600 11px/16px var(--font-sans);--text-body-sm:500 14px/22px var(--font-sans);--shadow-sm:var(--switch-thumb-shadow);--duration:240ms;--ease-out:var(--ease-standard)";
+      el.insertAdjacentHTML("beforeend", html);
+    }, reference);
+    if (!mobile) {
+      const measurements = await tab.eval(() => {
+        const shared = [...document.querySelectorAll('[data-compare-shared] [data-slot="button"]')];
+        const original = [...document.querySelectorAll('[data-compare-reference] button:not([role])')];
+        return shared.map((el, i) => {
+          const a = getComputedStyle(el), b = getComputedStyle(original[i]);
+          return { size: el.dataset.size, variant: el.dataset.variant, mismatch: ["height", "paddingLeft", "paddingRight", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "gap", "borderRadius", "backgroundColor", "boxShadow", "color", "textShadow"].filter(key => a[key] !== b[key]) };
+        });
+      });
+      expect(measurements.every(m => !m.mismatch.length), `source bundle comparison: ${JSON.stringify(measurements)}`);
+      const controls = await tab.eval(() => {
+        const shared = document.querySelector('[data-compare-shared]');
+        const reference = document.querySelector('[data-compare-reference]');
+        const pairs = [
+          [shared.querySelector('.cosmic-tag'), reference.children[4].children[0]],
+          [shared.querySelector('.cosmic-tag[data-active="true"]'), reference.children[4].children[1]],
+          [shared.querySelector('[data-slot="badge"]'), reference.children[4].children[2]],
+          [shared.querySelector('[data-slot="input"]'), reference.children[5]],
+          [shared.querySelector('input[role="switch"]'), reference.querySelector('button[role="switch"]')],
+          [shared.querySelector('input[role="switch"]:checked'), reference.querySelector('button[aria-checked="true"]')],
+        ];
+        return pairs.map(([a, b], i) => ({ control: i, mismatch: ["height", "paddingLeft", "paddingRight", "borderRadius", "backgroundColor", "boxShadow"].filter(key => getComputedStyle(a)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "") !== getComputedStyle(b)[key].replace(/rgba\(0, 0, 0, 0\) 0px 0px 0px 0px, ?/g, "")) }));
+      });
+      expect(controls.every(c => !c.mismatch.length), `source controls comparison: ${JSON.stringify(controls)}`);
+      writeFileSync(path.join(out, "cosmic-measurements.json"), JSON.stringify({ buttons: measurements, controls }, null, 2));
+      await tab.eval(() => document.querySelector('[data-cosmic-compare]').scrollIntoView({ block: "start" }));
+      await tab.eval(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await sleep(150);
+      await tab.shot("cosmic-design-compare");
+    }
+    const overrides = await tab.eval(() => {
+      const button = document.querySelector('[data-utility-override]');
+      const style = getComputedStyle(button);
+      const result = { height: style.height, padding: style.paddingLeft, radius: style.borderRadius };
+      return result;
+    });
+    expect(overrides.height === (mobile ? "44px" : "24px") && overrides.padding === "4px" && overrides.radius === "8px", `caller utilities with mobile touch minimum: ${JSON.stringify(overrides)}`);
+    await tab.click('[data-cosmic-fixture="dark"] .cosmic-segments button', "Đang chạy");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] .cosmic-segments button[aria-pressed="true"]').textContent === "Đang chạy"), "filter selection must update");
+    await tab.click('[data-cosmic-fixture="dark"] input[role="switch"]');
+    expect(await tab.eval(() => !document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "switch must toggle");
+    await tab.key(" ");
+    expect(await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"] input[role="switch"]').checked), "Space must toggle the focused switch");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await tab.waitFor("reduced motion disables glass filter", () => getComputedStyle(document.querySelector('.cosmic-glass-overlay')).backdropFilter === "none");
+    await tab.cdp("Emulation.setEmulatedMedia", { features: [] });
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="dark"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("dark fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="dark"]').getBoundingClientRect().top < 150);
+    await tab.shot(`cosmic-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => document.querySelector('[data-cosmic-fixture="light"]').scrollIntoView({ block: "start" }));
+    await tab.waitFor("light fixture scrolled into view", () => document.querySelector('[data-cosmic-fixture="light"]').getBoundingClientRect().top < 150);
+    await tab.win.webContents.executeJavaScript(axe.source);
+    const contrast = await tab.eval(async () => {
+      const { violations } = await window.axe.run(document.querySelector('[data-cosmic-fixture="light"]'), { runOnly: { type: "rule", values: ["color-contrast"] } });
+      return violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
+    });
+    expect(!contrast.length, `light cosmic contrast: ${JSON.stringify(contrast)}`);
+    await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+  });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {
@@ -998,7 +1230,7 @@ async function main() {
       await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
-    await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
+    await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("Hoa Trần"));
     // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
@@ -1014,8 +1246,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -2657,8 +2889,10 @@ async function main() {
     await tab.waitFor('retry finished', () => document.querySelector('[data-chat-thread]').textContent.includes('Đã thử lại cùng tệp.'));
     const metrics = await tab.eval(() => {
       const input = document.querySelector('[data-chat-commands] textarea').getBoundingClientRect();
-      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) };
+      const composer = document.querySelector('[data-chat-thread] > footer');
+      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize), composerVisible: !!composer && getComputedStyle(composer).display !== 'none' && composer.getBoundingClientRect().height > 0 };
     });
+    expect(metrics.composerVisible, 'Chat thread footer keeps its composer visible inside the web shell');
     expect(!metrics.overflow && metrics.inputBottom <= metrics.height, `composer stays in viewport: ${JSON.stringify(metrics)}`);
     if (mobile) {
       expect(metrics.font >= 16, 'phone composer text >=16px');
@@ -2719,14 +2953,14 @@ async function main() {
       await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
-    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@lan"));
+    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("Lan Nguyễn"));
     await tab.go("today?section=inbox");
     await tab.click("[data-project-picker-trigger]");
     await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("payment");
     await tab.key("Enter");
     await tab.key("Escape");
-    if (mobile) await tab.key("Escape");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.click("[data-ask-leader]");
     await sleep(450);
     await tab.waitFor("new chat in payment scope", () => document.querySelector('[data-leader-panel] #chat-project')?.value === "payment");
@@ -2928,8 +3162,12 @@ async function main() {
     await tab.click("[data-artifact-preview] button", "Đóng");
     expect(!(await rpc("tasks.list", { project: "payment" })).some(t => t.id === "PAY-RS1"), "research alone creates no work task");
     if (mobile) {
-      const targets = await tab.eval(() => [...document.querySelectorAll('[data-research] button, [data-research] a')].map(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })));
-      expect(targets.every(r => r.h >= 44 && r.w >= 44), "research controls have 44px tap areas");
+      const touchAreas = await tab.eval(() => [...document.querySelectorAll('[data-research] .research-touch-target')].map(el => {
+        const r = el.getBoundingClientRect();
+        const hit = getComputedStyle(el, "::after");
+        return { width: r.width, height: r.height, hitWidth: parseFloat(hit.width), hitHeight: parseFloat(hit.height) };
+      }));
+      expect(touchAreas.every(r => r.hitWidth >= 44 && r.hitHeight >= 44) && touchAreas.some(r => r.height === 34), `research controls keep 34px visuals with 44px hit areas: ${JSON.stringify(touchAreas)}`);
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "research card fits the phone");
     }
     await tab.shot(`${String(n).padStart(2, "0")}-research-report`);
@@ -3041,6 +3279,7 @@ async function main() {
       const targets = await tab.eval(() => [...document.querySelectorAll('#chat-project, #chat-machine, #chat-plan, #chat-new-model, #chat-new-effort')].map((el) => ({ height: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize) })));
       expect(targets.every((el) => el.height >= 44 && el.font >= 16), JSON.stringify(targets));
     }
+    if (mobile) await tab.click(`button[aria-label="Các cuộc chat"]`);
     await tab.click("button", "Hướng dẫn leader");
     await tab.select("#guide-project", "*");
     await tab.waitFor("shared guide and separate hub autonomy", () => document.body.innerText.includes("Leader toàn hub dùng skill hive-leader chung") && document.body.innerText.includes("Cài đặt này độc lập với từng service"));
@@ -3055,6 +3294,8 @@ async function main() {
     await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
     expect(JSON.stringify(await rpc("chat.defaults", { project: "payment" })) === JSON.stringify(beforePayment), "hub settings did not change payment's defaults, commands or autonomy");
     await tab.key("Escape");
+    // On a phone the list and the open chat take turns: going back to the list for the guide closed the draft.
+    if (mobile) await tab.click("[data-chat-new]");
     await tab.click('textarea[aria-label="Tin nhắn"]');
     await tab.type("Điều phối toàn hub 37b");
     await tab.click("button", "Bắt đầu");
@@ -3069,7 +3310,7 @@ async function main() {
     await machineRpc("chat.finish", { replyId: reply.id, status: "done", text: "Đề xuất theo service và máy." });
     await tab.waitFor("all service and hub proposal labels", () => ["payment", "demo", "*"].every((p) => document.querySelector(`[data-action-project="${p}"]`)));
     const labels = await tab.eval(() => [...document.querySelectorAll("[data-action-project]")].map((el) => el.textContent));
-    expect(labels.includes("cho service payment") && labels.includes("cho service demo") && labels.includes("Cả hub"), JSON.stringify(labels));
+    expect(labels.includes("payment") && labels.includes("demo") && labels.includes("Cả hub"), JSON.stringify(labels));
     await tab.shot("hub-leader-proposals");
     await tab.click("button", "Xác nhận tất cả");
     await until("hub proposals confirmed together", async () => (await rpc("chat.get", { threadId: sent.id })).messages.at(-1).actions.every((a) => a.status === "done"));
@@ -3082,6 +3323,7 @@ async function main() {
     await lead.go("chat");
     await lead.click("[data-chat-new]");
     expect(await lead.eval(() => !document.querySelector('#chat-project option[value="*"]')), "a project lead has no whole-hub choice");
+    if (mobile) await lead.click(`button[aria-label="Các cuộc chat"]`);
     await lead.click("button", "Hướng dẫn leader");
     expect(await lead.eval(() => !document.querySelector('#guide-project option[value="*"]')), "a project lead has no whole-hub settings");
     await lead.key("Escape");
@@ -3245,18 +3487,18 @@ async function main() {
       const text = document.body.innerText;
       return text.includes("Việc của kho-api") && text.includes("Việc của kho-web") && !text.includes("Việc của kho-le") && !text.includes("Việc đầu tiên của payment");
     });
-    await tab.waitFor("the system in the title", () => document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › "));
+    await tab.waitFor("the system in the title", () => document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho"));
     await tab.shot(`${String(n).padStart(2, "0")}-scope-system`);
     // A service reads as system › service in the menu and the title.
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[data-scope-toggle="kho"]');
     await tab.click('[role="option"]', "kho-api");
-    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › kho-api › "));
+    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho › kho-api"));
     await tab.waitFor("only kho-api's task", () => document.body.innerText.includes("Việc của kho-api") && !document.body.innerText.includes("Việc của kho-web"));
     // The lone repo: its own scope, named by itself.
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "kho-le");
-    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho-le › "));
+    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho-le"));
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
@@ -3460,14 +3702,14 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("today?section=inbox");
-    // Lan leads payment: what she decides comes first, then the agents waiting on her, then what to review.
-    const groups = await tab.waitFor("Hôm nay grouped for a lead", () => {
+    // 72c: the design's three groups: what to approve (the gate, the leader's proposal), then what to fix (the asking run).
+    const groups = await tab.waitFor("Hôm nay grouped as the design", () => {
       const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
-      return document.querySelector("[data-inbox-role]")?.getAttribute("data-inbox-role") === "lead" && list.includes("agent") && list.includes("decide") && list;
+      return list.includes("fix") && list.includes("approve") && list;
     });
-    expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
-    const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
-      document.querySelector('[data-inbox-group="agent"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(groups[0] === "approve" && groups.indexOf("fix") > 0, `groups: ${groups.join()}`);
+    const askedKey = await tab.waitFor("the asking run in Cần xử lý", () =>
+      document.querySelector('[data-inbox-group="fix"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
     expect(await tab.eval(() => !document.querySelector("[data-system-card]")), "Today must focus on inbox without system overview");
     expect(await tab.eval(() => (document.querySelector("[data-today-shortcuts]")?.getBoundingClientRect().height > 0) === (innerWidth >= 768)), "keyboard hints follow viewport");
     await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
@@ -3481,9 +3723,10 @@ async function main() {
       const actions = document.querySelector("[data-today-actions]");
       const content = actions?.previousElementSibling;
       if (!content) return false;
+      // The design's card spaces its blocks 20px apart.
       const gap = actions.getBoundingClientRect().top - content.getBoundingClientRect().bottom;
-      return gap >= 0 && gap <= 16 && actions.parentElement.parentElement.classList.contains("overflow-y-auto");
-    }), "Today actions must immediately follow content in its scroll area");
+      return gap >= 0 && gap <= 24 && !!actions.closest("[data-today-detail]");
+    }), "Today actions must immediately follow content in the detail card");
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
     await tab.click("button", "Duyệt, sang bước sau");
     await until("the spec gate passed from Hôm nay", async () => {
@@ -3708,8 +3951,8 @@ async function main() {
     expect(signedOut === "signedOut", `codex-1: ${signedOut}`);
     const pickable = await tab.eval(() => document.querySelector('[data-map-profile="lan-mbp/codex-1"]')?.getAttribute("role"));
     expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
-    const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"] [data-usage-resets]')?.textContent ?? "");
-    expect(codexLine.includes("phiên làm mới Oct 5 at 4:00pm") && codexLine.includes("tuần làm mới Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
+    const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"]')?.textContent ?? "");
+    expect(codexLine.includes("Oct 5 at 4:00pm") && codexLine.includes("Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
     expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('[data-map-machine]')].every(el => el.getBoundingClientRect().right <= innerWidth)), "machine grid overflows viewport");
     expect(await tab.eval(() => !!document.querySelector('[data-attention]') && document.querySelectorAll('[data-summary]').length === 4), "missing attention or summary");
     for (const theme of ["light", "dark"]) {
@@ -3724,6 +3967,46 @@ async function main() {
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-picked`);
     await tab.click("[data-map-batch]");
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
+  });
+
+  // Spec 72g: the machine cards with the design's sample machines and plans, shot for the side-by-side with shots/machines-1440.png.
+  await step("machines-design", async () => {
+    const at = (hhmm, weekday) => {
+      const d = new Date(Date.now() + 3 * 86400_000);
+      if (weekday !== undefined) d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7));
+      const [h, m] = hhmm.split(":").map(Number);
+      d.setHours(h, m, 0, 0);
+      return d.toISOString();
+    };
+    const beat = async (machine, acceptsRuns, projects, profiles, runs = []) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, profiles, runs } }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
+    };
+    const plan = (id, kind, used5, usedWk, reset5, weekday, resetsLeft) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, sessionPercent: used5, weekPercent: usedWk, sessionResetsAt: reset5 === "—" ? null : at(reset5), weekResetsAt: at("07:00", weekday), resetsLeft });
+    await beat("mac-mini-hn", true, ["payment"], [
+      plan("claude-max-1", "claude", 100, 61, "15:40", 1, 2), plan("claude-max-2", "claude", 42, 38, "17:05", 3, 1), plan("claude-team", "claude", 18, 22, "18:30", 4, 0),
+      plan("codex-pro-1", "codex", 66, 47, "16:10", 2, 3), plan("codex-pro-2", "codex", 9, 12, "19:00", 5, 1), plan("codex-plus", "codex", 88, 79, "15:55", 1, 1),
+      plan("gemini-adv", "gemini", 34, 18, "16:45", 3, 2), plan("gemini-team", "gemini", 100, 4, "—", 6, 0), plan("gemini-ws", "gemini", 51, 33, "17:20", 4, 1), plan("claude-pro", "claude", 74, 58, "16:25", 2, 2),
+    ]);
+    await beat("mbp-linh", true, ["payment"], [plan("codex-pro", "codex", 72, 44, "16:00", 2, 1), plan("claude-max", "claude", 12, 30, "18:50", 4, 2), plan("gemini-adv", "gemini", 27, 15, "17:40", 5, 0), plan("claude-pro", "claude", 93, 81, "15:20", 1, 1)]);
+    await beat("ci-runner-01", false, ["payment"], [plan("gemini-adv", "gemini", 8, 5, "19:10", 6, 1), plan("claude-team", "claude", 21, 26, "18:15", 4, 1)]);
+    await beat("pc-quang", true, ["payment"], [plan("codex-pro", "codex", 38, 29, "17:30", 3, 1), plan("claude-pro", "claude", 55, 41, "16:50", 2, 1), plan("gemini-adv", "gemini", 12, 9, "18:40", 5, 0)]);
+    const tab = (current = tabs.lan);
+    await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
+    await tab.go("machines?e2e=machine-system");
+    await tab.waitFor("the four machine cards", () => document.querySelectorAll("[data-map-machine]").length >= 4 && document.querySelector('[data-map-profile="mac-mini-hn/claude-max-1"]'));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "machine cards overflow the viewport");
+    // Hide the shell around the cards so the shot lines up with the design's content area.
+    await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-dark`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
+    await sleep(300);
+    await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-light`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
   });
 
   await step("tool-approve-web", async () => {
@@ -4090,6 +4373,7 @@ async function main() {
         const tab = (current = tabs.lan);
         await tab.go(route === "today" ? "today?section=inbox" : route);
         await tab.reload();
+        if (route === "runs") await tab.click("main button", "Tất cả");
         await tab.waitFor("visible list", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
         const listHash = await tab.eval(() => location.hash);
         await tab.shot(`mobile-${route}-list`);
@@ -4115,6 +4399,7 @@ async function main() {
         await assertPane(true);
         await tab.eval(() => history.back());
         await tab.waitFor("Back restores list", (hash) => location.hash === hash, listHash);
+        if (route === "runs") await tab.click("main button", "Tất cả");
         await assertPane(false);
         await tab.eval(() => history.forward());
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
@@ -4249,7 +4534,12 @@ async function main() {
           await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
           report.push(await tab.eval(async theme => {
             const { violations } = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] } });
-            return { theme, violations: violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) })) };
+            const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
+              if (theme !== "dark") return false;
+              const summary = failureSummary.toLowerCase().replaceAll(" ", "");
+              return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
+            };
+            return { theme, violations: violations.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length) };
           }, theme));
         }
       } finally { await tab.eval(theme => document.documentElement.dataset.theme = theme, original); }

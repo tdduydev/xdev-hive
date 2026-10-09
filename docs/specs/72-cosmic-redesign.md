@@ -41,6 +41,8 @@ Người dùng: "chưa thấy giống với giao diện thiết kế, có thể 
 ## Cách làm
 
 - Token: ánh xạ vào token ngữ nghĩa có sẵn trong `packages/ui/src/tokens/` (`[data-theme="dark"]` lấy đúng giá trị thiết kế). Thêm token mới khi cần: ring kính, glow, radius card/pill, nền sao. Không viết màu cứng trong component. Bản sáng: cùng tên token với giá trị sáng (nền gần trắng, ring tối mờ, giữ tím làm màu chính), contrast WCAG AA.
+
+Ngoại lệ tương phản được người dùng chấp nhận (9/10): giữ nguyên màu nhấn trắng trên tím `#7B61FF` (~4,2:1), trắng trên xanh `#18A0FB` (~2,76:1), và chữ brand `#9580FF` trên nền chọn `#38343F` (~3,93:1) của bản tối để khớp thiết kế. E2E/axe chỉ loại đúng ba cặp màu này khi theme là dark; các lỗi tương phản khác vẫn làm bước kiểm tra đỏ. Bản sáng không có ngoại lệ và phải đạt WCAG AA.
 - Component dùng chung trong `packages/ui` (Button, Card, Tag/Chip, Badge, Input, Toggle, SegmentedTabs, ListRow, StatTile, EmptyState…) theo thiết kế. Trang dùng lại component, không chép style inline của template.
 - Chữ trên giao diện vào `packages/ui/src/i18n/locales/vi.ts` (gốc) và `en.ts`.
 - Dữ liệu và quyền giữ như hiện tại: thiết kế chỉ là dữ liệu mẫu, không bịa số.
