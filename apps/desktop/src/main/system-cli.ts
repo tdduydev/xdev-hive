@@ -94,7 +94,7 @@ export function renderSystemContext(system: HiveSystem, ws: SystemWorkspace, doc
     "",
     "## Repos on this machine",
     "",
-    "| Project key | Folder | Path in the group | What it is |",
+    "| Project key | Folder | Subgroup | What it is |",
     "| --- | --- | --- | --- |",
     ...ws.repos.map((r) => `| \`${r.project}\` | \`${cell(r.dir)}\` | ${r.folder.length ? `\`${r.folder.join("/")}\`` : ""} | ${cell(roles[r.project] ?? "")} |`),
     "",
