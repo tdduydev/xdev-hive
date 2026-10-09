@@ -10,7 +10,7 @@ import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { formatTime, hashParam, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { bulkSelectableProposals, runBulk, splitProposals } from "#ui/lib/bulk.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
@@ -34,7 +34,9 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
     [client, onlyPending],
   );
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
-  const proposals = list.data ? knowledgeProposals(list.data, scope, kind) : undefined;
+  // ?doc= narrows to one document's or skill's proposals (a skill's "N đề xuất" pill links here).
+  const only = kind ? hashParam("doc") : null;
+  const proposals = list.data ? knowledgeProposals(list.data, scope, kind).filter((p) => !only || p.docKey === only) : undefined;
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
   const selectable = bulkSelectableProposals(proposals ?? [], (p) => allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
