@@ -35,3 +35,13 @@ it("computes CPU utilization from elapsed CPU ticks rather than load average", a
     assert.equal((await sampler.sample(os.tmpdir())).cpu, undefined, "no elapsed CPU ticks is an unknown measurement");
   } finally { stub.mock.restore(); }
 });
+
+it("keeps the last sample and shares an in-flight refresh", async () => {
+  const sampler = new SystemSampler();
+  assert.equal(sampler.latest, undefined);
+  const [a, b] = [sampler.refresh(os.tmpdir()), sampler.refresh(os.tmpdir())];
+  assert.equal(a, b, "a second tick while sampling reuses the same promise");
+  const s = await a;
+  assert.equal(sampler.latest, s);
+  assert.notEqual(sampler.refresh(os.tmpdir()), a, "the next refresh starts a new sample");
+});
