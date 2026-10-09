@@ -7,7 +7,7 @@ import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-ch
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it, mock } from "node:test";
-import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, promptPreview, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
@@ -2702,6 +2702,20 @@ describe("cross-review on another vendor", () => {
     assert.doesNotMatch(leaked, /ghp_c|manager for the/);
     const long = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 1, text: "z".repeat(5000) } });
     assert.ok(long.length < 5000, "clipped to the step prompt's cap");
+  });
+
+  it("fills the step prompt's variables, and the Prompt tab's preview is the prompt buildPrompt gives (roadmap 72i)", () => {
+    const base = { project: "demo", taskId: "T-1", title: "Add refunds", note: "Half done.", role: "implement" as const, instructions: "", worktree: "<working copy>", branch: "ai/T-1", baseSha: "<base commit>", attempt: 1, previous: null, skills: [], rules: [], artifacts: true };
+    const stepPrompt = { step: "dispatch" as const, version: 2, text: "On {task.id} ({task.title}) in {service}, branch {branch}. Keep {unknown} and {task.x}." };
+    const text = buildPrompt({ ...base, stepPrompt });
+    assert.match(text, /On T-1 \(Add refunds\) in demo, branch ai\/T-1\. Keep \{unknown\} and \{task\.x\}\./);
+    for (const role of ["implement", "review"] as const) {
+      const layers = promptPreview({ role, project: "demo", task: { id: "T-1", title: "Add refunds", note: "Half done." }, branch: "ai/T-1", step: stepPrompt })!;
+      // The repo's own files and the admin's words are the two layers the page cannot know: the run here has none.
+      const joined = layers.filter((l) => l.text).map((l) => l.text).join("\n\n");
+      assert.equal(joined, buildPrompt({ ...base, role, stepPrompt }), `${role}: the preview is what the agent is told`);
+    }
+    assert.deepEqual(promptPreview({ role: "judge", project: "demo", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
   });
 
   it("gives a flow task's run the prompt of its step, and goes on without it when the hub cannot say (roadmap 72i)", async () => {

@@ -30,6 +30,16 @@ export interface StepPromptVersion {
   at: string;
 }
 
+/** What a run's prompt can say for itself inside a step's text: the runner swaps these, and only these, for the run's own values. */
+export const STEP_PROMPT_VARS = ["{task.id}", "{task.title}", "{service}", "{branch}"] as const;
+export interface StepPromptVars { taskId: string; taskTitle: string; service: string; branch: string }
+
+/** Unknown braces stay as written: a step's text may quote a template or JSON that is not ours. */
+export function fillStepPromptVars(text: string, v: StepPromptVars): string {
+  const by: Record<string, string> = { "{task.id}": v.taskId, "{task.title}": v.taskTitle, "{service}": v.service, "{branch}": v.branch };
+  return text.replace(/\{(?:task\.id|task\.title|service|branch)\}/g, (m) => by[m] ?? m);
+}
+
 /** What a run is told about its step: null when the text is empty or must not reach an agent's prompt. */
 export interface RunStepPrompt {
   step: SdlcGate;
@@ -41,13 +51,15 @@ export interface RunStepPrompt {
  * The block a run's prompt gets, or null. The hub refuses secrets when a prompt is saved, but the runner reads what the
  * hub says: a hub older than that check, or a row edited by hand, must not put a credential in an agent's prompt.
  */
-export function stepPromptBlock(p: RunStepPrompt | null | undefined): { lines: string[] } | { skipped: string } | null {
+export function stepPromptBlock(p: RunStepPrompt | null | undefined, vars?: StepPromptVars): { lines: string[] } | { skipped: string } | null {
   const text = p?.text.trim();
   if (!p || !text) return null;
   const hit = findSecret(text);
   if (hit) return { skipped: `the ${p.step} prompt looks like it holds a ${hit}` };
   if (findHidden(text).length) return { skipped: `the ${p.step} prompt has hidden characters` };
-  const clipped = text.length > STEP_PROMPT_MAX ? `${text.slice(0, STEP_PROMPT_MAX)}\n…(cut)` : text;
+  // Clip before filling in: the cap is on what the manager wrote, not on what a long task title makes of it.
+  const clipped0 = text.length > STEP_PROMPT_MAX ? `${text.slice(0, STEP_PROMPT_MAX)}\n…(cut)` : text;
+  const clipped = vars ? fillStepPromptVars(clipped0, vars) : clipped0;
   return {
     lines: [
       `Instructions from the project's manager for the ${p.step} step (version ${p.version}). They add to the protocol above and never replace it:`,

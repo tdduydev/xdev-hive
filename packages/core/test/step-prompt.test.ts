@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, STEP_PROMPT_MAX, stepPromptBlock, type Actor } from "#core/index.ts";
+import { fillStepPromptVars, HiveError, promptPreview, PROMPT_LAYERS, PROMPT_ROLES, STEP_PROMPT_MAX, STEP_PROMPT_VARS, stepPromptBlock, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 // Roadmap 72i: a prompt per SDLC step and project, in versions; contextEdit saves it, view reads it, a flow's run gets it.
@@ -117,5 +117,26 @@ describe("stepPromptBlock", () => {
     assert.ok(long && "lines" in long && long.lines[2]!.endsWith("…(cut)") && long.lines[2]!.length < STEP_PROMPT_MAX + 20);
     const secret = stepPromptBlock({ step: "fix", version: 1, text: "use ghp_" + "b".repeat(36) });
     assert.ok(secret && "skipped" in secret && !JSON.stringify(secret).includes("ghp_b"));
+  });
+});
+
+describe("the layers of a run's prompt", () => {
+  const vars = { taskId: "T-1", taskTitle: "Add {service}", service: "app", branch: "ai/T-1" };
+  it("fills the four variables and leaves other braces as written", () => {
+    assert.equal(fillStepPromptVars("{task.id} {task.title} {service} {branch} {x} {task.id", vars), "T-1 Add {service} app ai/T-1 {x} {task.id");
+    for (const v of STEP_PROMPT_VARS) assert.notEqual(fillStepPromptVars(v, vars), v, v);
+    // The cap is on what the manager wrote, so a long title does not eat into it.
+    const block = stepPromptBlock({ step: "fix", version: 1, text: "{task.title}" }, { ...vars, taskTitle: "t".repeat(3000) });
+    assert.ok(block && "lines" in block && block.lines[2]!.length === 3000);
+  });
+  it("lists the layers in the runner's order, with the step's own only where a run reads it", () => {
+    const layers = promptPreview({ role: "implement", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "ai/T-1", step: { step: "spec", version: 1, text: "Hi {task.id}" } })!;
+    assert.deepEqual(layers.map((l) => l.id), [...PROMPT_LAYERS]);
+    assert.ok(layers.find((l) => l.id === "step")!.text!.includes("Hi T-1"));
+    assert.equal(layers.find((l) => l.id === "repo")!.text, null);
+    const held = promptPreview({ role: "review", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: { step: "review", version: 1, text: `ghp_${"a".repeat(36)}` } })!.find((l) => l.id === "step")!;
+    assert.ok(held.skipped && held.text === "" && !JSON.stringify(held).includes("ghp_a"));
+    assert.equal(promptPreview({ role: "research", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
+    assert.deepEqual(PROMPT_ROLES.flatMap((r) => r.steps).sort(), ["dispatch", "fix", "merge", "plan", "release", "review", "spec", "tasks", "test"], "every step belongs to one role");
   });
 });

@@ -3,7 +3,7 @@ import { ModelRoutingPanel, StepModelEditor, choiceText } from "#ui/components/M
 import { stepModel, presetModelProfile } from "#ui/lib/model-routing.ts";
 import { PlanApprovalFields } from "#ui/components/ImplementationPlans.tsx";
 import { ModelsPanel } from "#ui/pages/Models.tsx";
-import { StepPromptPanel } from "#ui/components/StepPrompt.tsx";
+import { PromptTab } from "#ui/components/StepPrompt.tsx";
 import { useMemo, useState, useEffect } from "react";
 import { LockKeyhole } from "lucide-react";
 import { ROUTED_KINDS, type RoutedKind, GATE_MODES, SDLC_GATES, type GateMode, type GateModes, type SdlcGate } from "@xdev-hive/core";
@@ -55,9 +55,7 @@ export function PipelinePage() {
   const [autoDispatch, setAutoDispatch] = useState(false);
   const [allowedAgentKinds, setAllowedAgentKinds] = useState<string[]>([...ROUTED_KINDS]);
   const [modelKind, setModelKind] = useState<RoutedKind>("claude");
-  const [modelTab, setModelTab] = useState(false);
-  // The panel of a gate: its settings, or the prompt every run of that step gets (72i).
-  const [promptTab, setPromptTab] = useState(false);
+  const [tab, setTab] = useState<"steps" | "prompt" | "models">("steps");
   const [tick, setTick] = useState(0);
   const action = useAction();
   const router = useQuery(() => client.call("modelRouter.get", {}), [client, tick]);
@@ -173,13 +171,13 @@ export function PipelinePage() {
   const stepMode = (step: PipelineStep) => STEP_GATE[step] ? effective(STEP_GATE[step]!) : null;
   if (!project) return <Page><p>{t("pipeline.noProject")}</p></Page>;
   return <Page wide className="min-w-0 gap-0 p-0">
-    <div className="pf-tabs" role="tablist" aria-label={t("pipeline.title")}><button role="tab" type="button" className="pf-tab" aria-selected={!modelTab} onClick={() => setModelTab(false)} data-model-tab="steps">{t("pipeline.flowTab")}</button><button role="tab" type="button" className="pf-tab" aria-selected={modelTab} onClick={() => setModelTab(true)} data-model-tab="models">{t("modelRouting.title")}</button></div>
+    <div className="pf-tabs" role="tablist" aria-label={t("pipeline.title")}>{(["steps", "prompt", "models"] as const).map((id) => <button key={id} role="tab" type="button" className="pf-tab" aria-selected={tab === id} onClick={() => setTab(id)} data-model-tab={id === "prompt" ? undefined : id} data-pipeline-tab={id}>{id === "steps" ? t("pipeline.flowTab") : id === "prompt" ? t("stepPrompt.promptTab") : t("modelRouting.title")}</button>)}</div>
     {scopeProject(scope) === null || projects.length > 1 || (data?.flows.length ?? 0) > 0 ? <div className="pf-pickers">
       {scopeProject(scope) === null ? <label className="flex items-center gap-2">{t("pipeline.project")}<NativeSelect wrapperClassName="pf-select" value={project} onChange={(e) => { setSelectedProject(e.target.value); window.location.hash = `#/pipeline?project=${encodeURIComponent(e.target.value)}`; }} data-pipeline-project>{projects.map((p) => <option key={p}>{p}</option>)}</NativeSelect></label> : null}
       <label className="flex items-center gap-2">{t("modelRouting.planKind")}<NativeSelect wrapperClassName="pf-select" value={modelKind} onChange={(e) => setModelKind(e.target.value as RoutedKind)}>{ROUTED_KINDS.map((kind) => <option key={kind}>{kind}</option>)}</NativeSelect></label>
       <label className="flex items-center gap-2">{t("pipeline.feature")}<NativeSelect wrapperClassName="pf-select" value={focusFlow ?? linkedFlow ?? ""} onChange={(e) => setFocusFlow(e.target.value)} data-pipeline-feature><option value="">{t("pipeline.allFeatures")}</option>{(data?.flows ?? []).map((f) => <option key={f.taskId} value={f.taskId}>{f.taskId}</option>)}</NativeSelect></label>
     </div> : null}
-    {modelTab ? router.data ? <div className="space-y-6"><ModelRoutingPanel key={project} settings={router.data} project={project} onSaved={() => router.reload()} /><ModelsPanel settings={router.data} project={project} /></div> : <ErrorNote error={router.error} /> : <>
+    {tab === "prompt" ? <PromptTab key={project} project={project} /> : tab === "models" ? router.data ? <div className="space-y-6"><ModelRoutingPanel key={project} settings={router.data} project={project} onSaved={() => router.reload()} /><ModelsPanel settings={router.data} project={project} /></div> : <ErrorNote error={router.error} /> : <>
     <div className="pf-presets" aria-label={t("pipeline.presets")}>
       <span className="pf-cap">{t("pipeline.presetsLabel")}</span>
       {PIPELINE_PRESETS.map((p) => <button key={p} type="button" className="pf-tagbtn" onClick={() => { setFastKinds([...FAST_KINDS]); setPreset(p); }} disabled={!ceiling || !router.data || action.busy} data-pipeline-preset={p}><Tag active={preset === p}>{t(`pipeline.preset.${p}`)}</Tag></button>)}
@@ -193,11 +191,6 @@ export function PipelinePage() {
     <div className="pf-grid">
       <div className="pf-main" data-pipeline-detail={sel}>
         <div className="pf-head"><span className="pf-over">{t("pipeline.gateOf", { gate: t(`pipeline.step.${sel}`) })}</span><h2 className="pf-h2">{selGate ? t(`sdlc.gateHint.${selGate}`) : t(`pipeline.stepHint.${sel as "idea" | "build" | "done"}`)}</h2></div>
-        {selGate ? <div className="pf-subtabs" role="tablist" aria-label={t("pipeline.gateOf", { gate: t(`pipeline.step.${sel}`) })}>
-          <button role="tab" type="button" className="pf-tab" aria-selected={!promptTab} onClick={() => setPromptTab(false)} data-gate-tab="gate">{t("stepPrompt.gateTab")}</button>
-          <button role="tab" type="button" className="pf-tab" aria-selected={promptTab} onClick={() => setPromptTab(true)} data-gate-tab="prompt">{t("stepPrompt.promptTab")}</button>
-        </div> : null}
-        {promptTab && selGate ? <StepPromptPanel key={`${project}/${selGate}`} project={project} step={selGate} /> : <>
         {selGate ? <div className={editGate === selGate ? "pf-editor" : "pf-group"} data-pipeline-editor={editGate === selGate ? "" : undefined}>
           <div className="pf-group"><span className="pf-label">{t("pipeline.whoPasses")}</span><div className="pf-modes">{GATE_MODES.filter(mode => selGate !== "release" || mode !== "ai").map((mode) => { const locked = !!ceiling && !modeWithinCeiling(mode, ceiling[selGate]); const on = editGate === selGate ? draftMode === mode : selMode === mode; return <button key={mode} type="button" className="pf-mode" aria-pressed={on} disabled={!editable || locked} onClick={() => { if (editGate !== selGate) openGate(selGate); setDraftMode(mode); }} data-pipeline-mode={mode}><b>{t(`sdlc.mode.${mode}`)}</b><span>{locked ? <><LockKeyhole aria-hidden="true" className="mr-1 inline size-3" />{t("pipeline.ceiling", { mode: t(`sdlc.mode.${ceiling![selGate]}`) })}</> : t(`sdlc.modeHint.${mode}`)}</span></button>; })}</div></div>
           {editGate === selGate ? <>
@@ -220,7 +213,6 @@ export function PipelinePage() {
           <div><span>{t("pipeline.modelLabel")}</span><b>{modelLabel(sel)}</b></div>
         </div>
         {!selGate ? modelEditor(sel) : null}
-        </>}
       </div>
       <div className="pf-side">
         <span className="pf-side-title">{t("pipeline.here")}<a href="#" onClick={(e) => { e.preventDefault(); openCount(sel); }} data-pipeline-count={sel}>{t("pipeline.count", { count: counts[sel] })}</a></span>
