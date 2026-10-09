@@ -2,7 +2,7 @@
 // viewer on the right (versions of the same file, Xem/Mã, download, remove). The hub keeps png/jpg/webp/pdf and md/txt/json/log,
 // so "Xem" is the rendered Markdown, the picture or the PDF note; an HTML file would be shown in a sandboxed iframe.
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, File, FileJson, FileText, Image as ImageIcon, Trash2, type LucideIcon } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Download, ExternalLink, File, FileJson, FileText, Image as ImageIcon, Maximize, Pin, Trash2, type LucideIcon } from "lucide-react";
 import { cn } from "cn";
 import { isArtifactText, isImage, type Artifact } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -19,14 +19,14 @@ import { useToast } from "#ui/shell/toast.tsx";
 const PAGE_SIZE = 50;
 const PREVIEW_BYTES = 128 * 1024;
 const GROUP_ITEMS = 5;
-const kinds = ["markdown", "log", "json", "image", "text", "pdf"] as const;
+const kinds = ["markdown", "log", "json", "image", "text", "pdf", "html"] as const;
 type Kind = typeof kinds[number];
 const groupBys = ["task", "kind", "run"] as const;
 type GroupBy = typeof groupBys[number];
 const bytes = (data: string) => Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
 
-const kindOf = (a: Artifact): Kind => (isImage(a.type) ? "image" : a.type === "application/pdf" ? "pdf" : a.type === "application/json" ? "json" : a.type === "text/markdown" ? "markdown" : a.name.endsWith(".log") ? "log" : "text");
-const iconOf = (a: Artifact): LucideIcon => ({ image: ImageIcon, pdf: File, json: FileJson, markdown: FileText, log: FileText, text: FileText })[kindOf(a)];
+const kindOf = (a: Artifact): Kind => (a.type === "text/html" ? "html" : isImage(a.type) ? "image" : a.type === "application/pdf" ? "pdf" : a.type === "application/json" ? "json" : a.type === "text/markdown" ? "markdown" : a.name.endsWith(".log") ? "log" : "text");
+const iconOf = (a: Artifact): LucideIcon => ({ image: ImageIcon, pdf: File, json: FileJson, markdown: FileText, log: FileText, text: FileText, html: FileText })[kindOf(a)];
 /** Files with the same name from the same task are one file over time: its versions, oldest first. */
 const sameFile = (a: Artifact, b: Artifact) => a.project === b.project && a.taskId === b.taskId && a.name === b.name;
 
@@ -62,15 +62,15 @@ export function ArtifactsPage() {
     return (await client.call("artifacts.get", { id: Number(id), metadataOnly: true }))?.artifact ?? null;
   }, [client, id]);
   const list = useMemo(() => (files.loading || files.error ? [] : files.data?.slice(0, PAGE_SIZE) ?? []), [files.loading, files.error, files.data]);
-  const [picked, setPicked] = useState<number | null>(null);
+  const [picked, setPicked] = useState<Artifact | null>(null);
+  useEffect(() => setPicked(null), [id]);
   // Newest version of each file is the one the library lists; older ones are reached with the version switch.
-  const versionsOf = (a: Artifact) => list.filter((x) => sameFile(x, a)).sort((x, y) => x.createdAt.localeCompare(y.createdAt) || x.id - y.id);
   const library = useMemo(() => {
     const newest = new Map<string, Artifact>();
     for (const a of list) {
       const k = `${a.project}/${a.taskId}/${a.name}`;
       const cur = newest.get(k);
-      if (!cur || a.createdAt > cur.createdAt || (a.createdAt === cur.createdAt && a.id > cur.id)) newest.set(k, a);
+      if (!cur || (a.pinned && !cur.pinned) || (a.pinned === cur.pinned && (a.createdAt > cur.createdAt || (a.createdAt === cur.createdAt && a.id > cur.id)))) newest.set(k, a);
     }
     return [...newest.values()];
   }, [list]);
@@ -81,10 +81,12 @@ export function ArtifactsPage() {
     return [...map.entries()];
   }, [library, groupBy, t]);
   const directArtifact = id && !direct.loading && !direct.error ? direct.data : null;
-  const current = (picked !== null ? list.find((a) => a.id === picked) : null) ?? (directArtifact && (id ? Number(id) === directArtifact.id : false) ? list.find((a) => a.id === directArtifact.id) ?? directArtifact : null) ?? library[0] ?? null;
+  const current = picked ?? (directArtifact && (id ? Number(id) === directArtifact.id : false) ? list.find((a) => a.id === directArtifact.id) ?? directArtifact : null) ?? library[0] ?? null;
+  const versionQuery = useQuery(async () => current ? client.call("artifacts.list", { project: current.project, taskId: current.taskId, name: current.name, limit: 200 }) : [], [client, current?.project, current?.taskId, current?.name]);
+  const versions = (versionQuery.data ?? list).filter((a) => current && sameFile(a, current)).sort((a, b) => a.version - b.version || a.id - b.id);
   const order = library;
   const at = current ? order.findIndex((a) => sameFile(a, current)) : -1;
-  const go = (step: number) => { const next = order[at + step]; if (next) { setPicked(next.id); if (id) clearId(); } };
+  const go = (step: number) => { const next = order[at + step]; if (next) { setPicked(next); if (id) clearId(); } };
 
   return <div className="flex flex-wrap items-start gap-4 px-7 py-4" data-artifacts-page>
     <div className="flex max-h-[calc(100vh-210px)] min-h-[520px] max-w-full flex-[1_1_300px] flex-col overflow-hidden rounded-[24px] bg-[var(--surface-1)] shadow-[var(--ring-glass)] max-md:max-h-none max-md:min-h-0">
@@ -99,10 +101,10 @@ export function ArtifactsPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="flex-1 text-[var(--text-muted)] [font:var(--design-caption)]">{t("artifacts.total", { count: library.length })}</span>
-          <span className="text-[var(--text-faint)] [font:var(--design-caption)]">{t("artifacts.groupBy")}</span>
+          <span className="text-[var(--text-muted)] [font:var(--design-caption)]">{t("artifacts.groupBy")}</span>
           <div className="flex gap-0.5 rounded-full bg-[var(--surface-sunken)] p-[3px] shadow-[var(--ring-glass)]">
             {groupBys.map((g) => (
-              <button key={g} type="button" aria-pressed={groupBy === g} onClick={() => setGroupBy(g)} className={cn("h-6 cursor-pointer rounded-full border-0 px-2.5 text-[11.5px]/none font-semibold", groupBy === g ? "bg-[var(--action-primary-bg)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]")}>
+              <button key={g} type="button" aria-pressed={groupBy === g} onClick={() => setGroupBy(g)} className={cn("h-6 cursor-pointer rounded-full border-0 px-2.5 text-[11.5px]/none font-semibold", groupBy === g ? "bg-[var(--action-primary-active)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]")}>
                 {t(`artifacts.group_${g}`)}
               </button>
             ))}
@@ -113,21 +115,22 @@ export function ArtifactsPage() {
         <ErrorNote error={files.error ?? direct.error} />
         {id && !direct.loading && !direct.error && !direct.data ? <ErrorNote error={t("errors.notFound")} /> : null}
         {files.loading ? <p role="status" className="px-3 py-2 text-[var(--text-muted)] [font:var(--design-caption)]">{t("artifacts.loading")}</p> : null}
-        <div role="table" aria-label={t("artifacts.page")}>
+        <div role="list" aria-label={t("artifacts.page")}>
           {groups.map(([group, items]) => {
             const open = !closed.has(group);
             const shownItems = open ? (more.has(group) ? items : items.slice(0, GROUP_ITEMS)) : [];
-            return <div key={group} role="rowgroup" className="flex flex-col">
+            return <div key={group} role="listitem" className="flex flex-col">
               <button type="button" aria-expanded={open} onClick={() => setClosed((s) => { const n = new Set(s); if (n.has(group)) n.delete(group); else n.add(group); return n; })} className="flex h-[34px] cursor-pointer items-center gap-2 rounded-[10px] border-0 bg-transparent px-2 text-left text-[12px]/none font-semibold text-[var(--text-secondary)] hover:text-[var(--text-strong)]">
                 {open ? <ChevronDown aria-hidden="true" className="size-3 opacity-50" /> : <ChevronRight aria-hidden="true" className="size-3 opacity-50" />}
                 <span className="min-w-0 flex-1 truncate">{group}</span>
-                <span className="text-[var(--text-faint)] [font:var(--design-micro)]">{items.length}</span>
+                <span className="text-[var(--text-muted)] [font:var(--design-micro)]">{items.length}</span>
               </button>
+              <div role="list">
               {shownItems.map((a) => {
                 const Icon = iconOf(a);
                 const on = current ? sameFile(a, current) : false;
-                return <div key={a.id} role="row" data-artifact-row={a.name} className={cn("flex items-center gap-1 rounded-[12px] pr-0.5 hover:bg-[var(--glass-bg)]", on ? "bg-[var(--tint-violet-soft)] shadow-[var(--ring-violet)]" : "bg-transparent")}>
-                  <button type="button" role="cell" aria-current={on} onClick={() => { setPicked(a.id); if (id) clearId(); }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2 py-1.5 text-left font-[inherit] text-[var(--text-strong)]">
+                return <div key={a.id} role="listitem" data-artifact-row={a.name} className={cn("flex items-center gap-1 rounded-[12px] pr-0.5 hover:bg-[var(--glass-bg)]", on ? "bg-[var(--tint-violet-soft)] shadow-[var(--ring-violet)]" : "bg-transparent")}>
+                  <button type="button" aria-current={on} onClick={() => { setPicked(a); if (id) clearId(); }} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2 py-1.5 text-left font-[inherit] text-[var(--text-strong)]">
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[var(--glass-bg)]"><Icon aria-hidden="true" className="size-3.5 opacity-85" /></span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-[12.5px]/[17px] font-semibold">{a.name}</span>
@@ -136,6 +139,7 @@ export function ArtifactsPage() {
                   </button>
                 </div>;
               })}
+              </div>
               {open && items.length > GROUP_ITEMS && !more.has(group) ? <button type="button" onClick={() => setMore((s) => new Set(s).add(group))} className="mt-0.5 mr-0 mb-1.5 ml-11 h-[30px] cursor-pointer border-0 bg-transparent p-0 text-left text-[12px]/none font-semibold text-[var(--violet-soft)] hover:text-[var(--text-strong)]">{t("artifacts.more", { count: items.length - GROUP_ITEMS })}</button> : null}
             </div>;
           })}
@@ -148,11 +152,11 @@ export function ArtifactsPage() {
         </nav> : null}
       </div>
     </div>
-    <ArtifactViewer key={current?.id ?? "none"} artifact={current} versions={current ? versionsOf(current) : []} onVersion={(v) => setPicked(v)} pos={at < 0 ? "" : `${at + 1} / ${order.length}`} onPrev={() => go(-1)} onNext={() => go(1)} canPrev={at > 0} canNext={at >= 0 && at < order.length - 1} onRemoved={() => { setPicked(null); void files.reload(); }} />
+    <ArtifactViewer key={current?.id ?? "none"} artifact={current} versions={versions} onVersion={(v) => { const version = versions.find((a) => a.id === v); if (version) setPicked(version); }} pos={at < 0 ? "" : `${at + 1} / ${order.length}`} onPrev={() => go(-1)} onNext={() => go(1)} canPrev={at > 0} canNext={at >= 0 && at < order.length - 1} onPinned={() => void files.reload()} onRemoved={() => { setPicked(null); void files.reload(); }} />
   </div>;
 }
 
-function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, canPrev, canNext, onRemoved }: { artifact: Artifact | null; versions: Artifact[]; onVersion: (id: number) => void; pos: string; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean; onRemoved: () => void }) {
+function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, canPrev, canNext, onPinned, onRemoved }: { artifact: Artifact | null; versions: Artifact[]; onVersion: (id: number) => void; pos: string; onPrev: () => void; onNext: () => void; canPrev: boolean; canNext: boolean; onPinned: () => void; onRemoved: () => void }) {
   const { client } = useHive();
   const t = useT();
   const toast = useToast();
@@ -161,6 +165,7 @@ function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, ca
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
+  const [pinned, setPinned] = useState(artifact?.pinned ?? false);
   const file = useQuery(async () => !artifact || artifact.type === "application/pdf" ? null : client.call("artifacts.get", { id: artifact.id, maxBytes: PREVIEW_BYTES }), [client, artifact?.id]);
   const data = file.data;
   useEffect(() => {
@@ -192,11 +197,17 @@ function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, ca
     try { await client.call("artifacts.remove", { id: artifact.id }); toast(t("artifacts.removed", { name: artifact.name })); onRemoved(); }
     catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
   };
+  const togglePin = async () => {
+    if (!artifact) return;
+    setBusy(true); setError(null);
+    try { const next = !pinned; await client.call("artifacts.pin", { id: artifact.id, pinned: next }); setPinned(next); onPinned(); toast(t(next ? "artifacts.pin" : "artifacts.unpin")); }
+    catch (err) { setError(errorMessage(err)); } finally { setBusy(false); }
+  };
   const canView = artifact ? artifact.type === "text/markdown" || artifact.type === "text/html" : false;
   const isHtml = artifact?.type === "text/html";
   const tool = "flex size-8 cursor-pointer items-center justify-center rounded-[10px] border-0 bg-transparent text-[var(--text-secondary)] opacity-80 hover:bg-[var(--glass-bg)] hover:opacity-100 disabled:opacity-40 max-md:size-11";
   const nav = "size-[30px] cursor-pointer rounded-[10px] border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] disabled:opacity-30 max-md:size-11";
-  const seg = (on: boolean) => cn("cursor-pointer rounded-full border-0 text-[12px]/none font-semibold", on ? "bg-[var(--action-primary-bg)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]");
+  const seg = (on: boolean) => cn("cursor-pointer rounded-full border-0 text-[12px]/none font-semibold", on ? "bg-[var(--action-primary-active)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]");
   const well = "min-h-[560px] flex-1 max-md:min-h-[320px]";
   return <div className="flex min-w-0 flex-[999_1_520px] flex-col overflow-hidden rounded-[24px] bg-[var(--surface-1)] shadow-[var(--ring-glass-strong)]" data-artifact-viewer>
     <div className="flex flex-wrap items-center gap-2.5 py-3 pr-3.5 pl-[18px] shadow-[inset_0_-1px_0_var(--hairline)]">
@@ -210,13 +221,15 @@ function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, ca
         <button type="button" className={nav} title={t("artifacts.nextFile")} aria-label={t("artifacts.nextFile")} disabled={!canNext} onClick={onNext}><ChevronDown aria-hidden="true" className="mx-auto size-[15px]" /></button>
       </div>
       {versions.length > 1 ? <div className="flex items-center gap-0.5 rounded-full bg-[var(--surface-sunken)] p-[3px] shadow-[var(--ring-glass)]" role="group" aria-label={t("artifacts.versions")}>
-        {versions.map((v, i) => <button key={v.id} type="button" aria-pressed={v.id === artifact?.id} title={`${v.runId} · ${formatTime(v.createdAt)}`} onClick={() => onVersion(v.id)} className={cn(seg(v.id === artifact?.id), "h-[26px] px-2.5 text-[11.5px]/none")}>v{i + 1}</button>)}
+        {versions.map((v) => <button key={v.id} type="button" aria-pressed={v.id === artifact?.id} title={`${v.versionNote ? v.versionNote + " · " : ""}${v.runId} · ${formatTime(v.createdAt)}`} onClick={() => onVersion(v.id)} className={cn(seg(v.id === artifact?.id), "h-[26px] px-2.5 text-[11.5px]/none")}>v{v.version}</button>)}
       </div> : null}
       {canView ? <div className="flex items-center gap-0.5 rounded-full bg-[var(--surface-sunken)] p-[3px] shadow-[var(--ring-glass)]" role="group">
         <button type="button" aria-pressed={mode === "view"} onClick={() => setMode("view")} className={cn(seg(mode === "view"), "h-[26px] px-3")}>{t("artifacts.view")}</button>
         <button type="button" aria-pressed={mode === "code"} onClick={() => setMode("code")} className={cn(seg(mode === "code"), "h-[26px] px-3")}>{t("artifacts.code")}</button>
       </div> : null}
       {artifact ? <div className="flex gap-0.5">
+        {allow(artifact.project, "docPropose") ? <button type="button" className={tool} title={pinned ? t("artifacts.unpin") : t("artifacts.pin")} aria-label={pinned ? t("artifacts.unpin") : t("artifacts.pin")} disabled={busy} onClick={() => void togglePin()}><Pin aria-hidden="true" className={cn("size-[15px]", pinned && "fill-current")} /></button> : null}
+        {isHtml ? <button type="button" className={tool} title={t("artifacts.fullscreen")} aria-label={t("artifacts.fullscreen")} onClick={(e) => { const frame = e.currentTarget.closest("[data-artifact-viewer]")?.querySelector("iframe"); void frame?.requestFullscreen(); }}><Maximize aria-hidden="true" className="size-[15px]" /></button> : null}
         <a className={tool} title={t("artifacts.openRun")} aria-label={t("artifacts.openRun")} href={`#/runs?run=${encodeURIComponent(`${artifact.machineId}/${artifact.runId}`)}`}><ExternalLink aria-hidden="true" className="size-[15px]" /></a>
         <button type="button" className={tool} title={t("artifacts.download", { name: artifact.name })} aria-label={t("artifacts.download", { name: artifact.name })} disabled={busy} onClick={() => void download()}><Download aria-hidden="true" className="size-[15px]" /></button>
         {allow(artifact.project, "projectSettings") ? <button type="button" className={tool} title={t("artifacts.remove", { name: artifact.name })} aria-label={t("artifacts.remove", { name: artifact.name })} disabled={busy} onClick={() => void remove()}><Trash2 aria-hidden="true" className="size-[15px]" /></button> : null}
@@ -225,7 +238,7 @@ function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, ca
     <ErrorNote error={error ?? file.error} />
     {!artifact ? null : file.loading ? <p role="status" className="m-0 p-4 text-[var(--text-muted)] [font:var(--design-body-sm)]">{t("artifacts.loading")}</p> : null}
     {artifact && data?.truncated ? <p className="m-0 px-4 pt-2 text-[var(--text-secondary)] [font:var(--design-caption)]" data-artifact-clipped>{t("artifacts.clipped", { size: fileSize(PREVIEW_BYTES) })}</p> : null}
-    {artifact && isHtml && mode === "view" && text ? <iframe title={artifact.name} srcDoc={text} sandbox="allow-scripts" className={cn("block w-full border-0 bg-white", well)} /> : null}
+    {artifact && isHtml && mode === "view" && text ? <iframe title={artifact.name} srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; navigate-to 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'"><!doctype html>${text}`} sandbox="allow-scripts" className={cn("block w-full border-0 bg-white", well)} /> : null}
     {artifact && artifact.type === "text/markdown" && mode === "view" && text ? <div tabIndex={0} className={cn("overflow-auto p-5 outline-none focus-visible:focus-ring", well)} data-artifact-content><DocMarkdown text={text} /></div> : null}
     {artifact && isArtifactText(artifact.type) && (mode === "code" || !canView) && text ? <div tabIndex={0} data-artifact-content className={cn("max-h-[70vh] overflow-auto bg-[var(--code-well)] py-3 text-[12px]/[20px] font-medium outline-none focus-visible:focus-ring [font-family:var(--font-code-design)]", well)}>
       {lines.map((line, i) => <div key={i} className="grid grid-cols-[52px_minmax(0,1fr)] gap-3 pr-4"><span className="text-right text-[var(--text-faint)] select-none">{i + 1}</span><span className="text-[var(--code-well-fg)] [overflow-wrap:anywhere] whitespace-pre-wrap">{line}</span></div>)}

@@ -64,6 +64,23 @@ describe("the artifact store (roadmap 41c)", () => {
     assert.equal((await put(after)).name, "report.md");
   });
 
+  it("migrates stored artifact rows into versioned rows without losing their bytes", async (t) => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-artifact-versions-migration-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const file = path.join(dir, "hive.db");
+    const before = new SqliteHive(file, { migrateTo: migrationIndex("ALTER TABLE artifacts RENAME TO artifacts_old;") });
+    before.seed("hub");
+    for (const p of ["app"]) await before.call("tasks.create", { id: "APP-1", project: p, title: "Existing task" }, admin);
+    const oldBytes = Buffer.from("<h1>old</h1>");
+    const savedId = Number(before.db.prepare(`INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
+      VALUES ('app', 'APP-1', 'R-1', 'runner.mac-mini-1', 'old.html', 'text/html', ?, ?, NULL, ?, NULL, 'runner.mac-mini-1', NULL, NULL, '2026-10-09T00:00:00.000Z')`).run(oldBytes.length, sha(oldBytes.toString("base64")), oldBytes).lastInsertRowid);
+    before.close();
+    const after = new SqliteHive(file);
+    t.after(() => after.close());
+    assert.equal((await after.call("artifacts.get", { id: savedId }, admin))?.data, oldBytes.toString("base64"));
+    assert.equal((await after.call("artifacts.get", { id: savedId }, admin))?.artifact.version, 1);
+  });
+
   it("keeps a run's file with what made it, and gives it back", async () => {
     const hive = await hub();
     const saved = await put(hive, { name: "shots/board.png", data: png(1, 2), profileId: "claude-1" });
@@ -151,18 +168,31 @@ describe("the artifact store (roadmap 41c)", () => {
     assert.deepEqual(await hive.call("artifacts.list", { project: "app" }, admin), []);
   });
 
-  it("keeps at most twenty files per run, and replaces one sent twice", async () => {
+  it("keeps at most twenty file names per run and retains each upload as a version", async () => {
     const hive = await hub();
     for (let n = 0; n < ARTIFACTS_PER_RUN; n++) await put(hive, { name: `f${n}.md`, data: text(`# ${n}\n`) });
     await assert.rejects(put(hive, { name: "one-too-many.md" }), code("bad_request", "errors.artifactsFull"));
-    // The same name of the same run is the same row: a run reported twice does not double it.
-    const again = await put(hive, { name: "f0.md", data: text("# newer\n") });
+    const again = await hive.call("artifacts.put", { project: "app", taskId: "APP-1", runId: "R-1", name: "f0.md", data: text("# newer\n"), versionNote: "Updated output" }, runner);
     const list = await hive.call("artifacts.list", { project: "app", runId: "R-1" }, admin);
-    assert.equal(list.length, ARTIFACTS_PER_RUN);
+    assert.equal(list.length, ARTIFACTS_PER_RUN + 1);
+    assert.equal(again.version, 2);
+    assert.equal(again.versionNote, "Updated output");
     assert.equal(read((await hive.call("artifacts.get", { id: again.id }, admin))!.data), "# newer\n");
+    const pinned = await hive.call("artifacts.pin", { id: again.id, pinned: true }, admin);
+    assert.equal(pinned.pinned, true);
+    assert.equal((await hive.call("artifacts.list", { project: "app", runId: "R-1" }, admin))[0]?.id, again.id);
     // Another run of the same task has its own twenty.
     await put(hive, { runId: "R-2", name: "f0.md" });
-    assert.equal((await hive.call("artifacts.list", { project: "app", taskId: "APP-1" }, admin)).length, ARTIFACTS_PER_RUN + 1);
+    assert.equal((await hive.call("artifacts.list", { project: "app", taskId: "APP-1" }, admin)).length, ARTIFACTS_PER_RUN + 2);
+  });
+
+  it("accepts HTML as scanned text and refuses secrets", async () => {
+    const hive = await hub();
+    const html = await put(hive, { name: "preview.html", data: text("<!doctype html><h1>Preview</h1>") });
+    assert.equal(html.type, "text/html");
+    assert.equal(read((await hive.call("artifacts.get", { id: html.id }, admin))!.data), "<!doctype html><h1>Preview</h1>");
+    const scrubbed = await put(hive, { name: "bad.html", data: text("const token = 'ghp_1234567890123456789012345678901234567890';") });
+    assert.doesNotMatch(read((await hive.call("artifacts.get", { id: scrubbed.id }, admin))!.data), /ghp_/);
   });
 
   it("puts the bytes in the store by their SHA-256, and keeps the same bytes once", async () => {
@@ -216,6 +246,8 @@ describe("the artifact store (roadmap 41c)", () => {
     await assert.rejects(hive.call("artifacts.get", { id: saved.id }, outsider), code("not_found"));
     await assert.rejects(put(hive, {}, outsider), code("not_found"));
     assert.equal((await hive.call("artifacts.get", { id: saved.id }, member))?.artifact.name, "report.md");
+    assert.equal((await hive.call("artifacts.pin", { id: saved.id, pinned: true }, member)).pinned, true);
+    await assert.rejects(hive.call("artifacts.pin", { id: saved.id, pinned: false }, outsider), code("not_found"));
     // Removing is the manager's: a member of the project cannot.
     await assert.rejects(hive.call("artifacts.remove", { id: saved.id }, member), code("forbidden", "errors.need.projectSettings"));
     assert.deepEqual(await hive.call("artifacts.remove", { id: saved.id }, lead), { removed: true, project: "app", name: "report.md" });

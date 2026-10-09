@@ -254,10 +254,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "List the files runs made",
       description:
         `Files agents made while working and the hub kept (roadmap 41c): smoke screenshots, reports, measurements, plans. Narrow to one task or one run; read one with artifact_get its id. Write your own into ${ARTIFACT_DIR} of your working copy and the run sends them here when it ends.`,
-      inputSchema: { project, taskId: z.string().optional().describe("Only this task's files"), runId: z.string().optional().describe("Only this run's files") },
+      inputSchema: { project, taskId: z.string().optional().describe("Only this task's files"), runId: z.string().optional().describe("Only this run's files"), kind: z.enum(["markdown", "log", "json", "image", "text", "pdf", "html"]).optional().describe("Only this file kind, including HTML") },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, taskId, runId }) => run("artifacts.list", { project: p, taskId, runId })),
+    withProject(async ({ project: p, taskId, runId, kind }) => run("artifacts.list", { project: p, taskId, runId, kind })),
   );
 
   server.registerTool(
@@ -277,6 +277,24 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         return failed(err);
       }
     },
+  );
+
+  if (writes) server.registerTool(
+    "artifact_put",
+    {
+      title: "Save a run artifact",
+      description: "Save one report, HTML page, image or PDF to the current project and task. HTML is previewed in a network-restricted sandbox.",
+      inputSchema: {
+        project: z.string().optional(), taskId: z.string().min(1), runId: z.string().min(1), name: z.string().min(1).max(300),
+        data: z.string().min(1).describe("File bytes encoded as base64"), versionNote: z.string().max(500).optional(),
+      },
+    },
+    withProject(async ({ project: p, taskId, runId, name, data, versionNote }) => {
+      try {
+        const artifact = await call("artifacts.put", { project: p, taskId, runId, name, data, versionNote }, actor);
+        return { content: [{ type: "text", text: JSON.stringify(artifact) }] };
+      } catch (err) { return failed(err); }
+    }),
   );
 
   if (writes) {
