@@ -76,14 +76,14 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
       ...copied.map(f => `:(exclude)${f}`)]),
     modified(dir), diskBytes(dir),
   ]);
-  const target = project.targetBranch ?? await gitAsync(project.repo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"])
-    .then(ref => ref.replace(/^refs\/remotes\/origin\//, "")).catch(() => "main");
-  const remote = await gitAsync(project.repo, ["rev-parse", "--verify", `refs/remotes/origin/${target}^{commit}`]).catch(() => null);
+  const pushRemote = project.git?.remote ?? "origin";
+  const target = project.targetBranch ?? await gitAsync(project.repo, ["symbolic-ref", "--quiet", `refs/remotes/${pushRemote}/HEAD`])
+    .then(ref => ref.slice(`refs/remotes/${pushRemote}/`.length)).catch(() => "main");
+  const remote = await gitAsync(project.repo, ["rev-parse", "--verify", `refs/remotes/${pushRemote}/${target}^{commit}`]).catch(() => null);
   const ref = remote ?? await gitAsync(project.repo, ["rev-parse", "--verify", `refs/heads/${target}^{commit}`]).catch(() => null);
   const targetRef = mergeRef === undefined ? ref : mergeRef;
   const merged = targetRef ? await landed(project.repo, head, targetRef) : null;
   // A tracking ref can be stale after a failed push; ask the configured remote for this exact branch head.
-  const pushRemote = project.git?.remote ?? "origin";
   const pushed = await gitAsync(project.repo, ["ls-remote", "--heads", pushRemote, `refs/heads/${item.branch}`], 10_000)
     .then(output => output.split("\n").some(line => line.split("\t")[0] === head && line.endsWith(`refs/heads/${item.branch}`)), () => null);
   return {
