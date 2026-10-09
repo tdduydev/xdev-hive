@@ -370,6 +370,7 @@ export const schemas = {
     taskId,
     runId,
     profileId: z.string().max(40).nullable().default(null),
+    versionNote: z.string().max(500).optional(),
     /** Relative to .xdev-hive/artifacts/, e.g. "shots/board.png". */
     name: z.string().min(1).max(300),
     data: z.string().min(1).max(Math.ceil((ARTIFACT_MAX_BYTES * 4) / 3) + 8),
@@ -379,7 +380,7 @@ export const schemas = {
     project: project.optional(),
     projects: z.array(project).max(500).optional(),
     name: z.string().max(300).optional(),
-    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf"]).optional(),
+    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf", "html"]).optional(),
     offset: z.number().int().min(0).default(0),
     taskId: taskId.optional(),
     runId: runId.optional(),
@@ -394,6 +395,7 @@ export const schemas = {
   "artifacts.get": z.object({ id, metadataOnly: z.boolean().optional(), maxBytes: z.number().int().min(1).max(ARTIFACT_MAX_BYTES).optional() }),
   /** A project manager removes one (it is written in the audit log); nothing else ever deletes an artifact. */
   "artifacts.remove": z.object({ id }),
+  "artifacts.pin": z.object({ id, pinned: z.boolean() }),
   /**
    * Asks the writing assistant (roadmap 22k): the page as it is being edited, other pages of its space or the team's,
    * memory entries, and repo files (paths or globs, read on the machine that writes it).
@@ -1273,6 +1275,7 @@ export interface MethodOutput {
   "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
   /** project and name say what went, for the audit log; both null when there was nothing to remove. */
   "artifacts.remove": { removed: boolean; project: string | null; name: string | null };
+  "artifacts.pin": Artifact;
   "docs.assist": DocAssist;
   "docs.assists": DocAssist[];
   "docs.assistCancel": DocAssist;
@@ -1542,6 +1545,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "artifacts.get": "viewer",
   // Also projectSettings on the project, which no agent token has: only a person who manages it removes an artifact.
   "artifacts.remove": "member",
+  "artifacts.pin": "member",
   "docs.assist": "agent",
   "docs.assists": "viewer",
   "docs.assistCancel": "agent",
