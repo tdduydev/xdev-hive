@@ -4118,6 +4118,39 @@ describe("redispatch branch choice", () => {
     assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "new WIP\n");
   });
 
+  for (const same of [true, false]) it(`fast-forwards past ${same ? "matching" : "different"} untracked files`, async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const origin = tmp("collision-origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(s.repo, "remote", "add", "origin", origin);
+    git(s.repo, "checkout", "-qb", "ai/T-1");
+    git(s.repo, "push", "-q", "origin", "ai/T-1");
+    git(s.repo, "checkout", "main");
+    const wt = path.join(s.dataDir, "worktrees", "demo", "T-1");
+    mkdirSync(path.dirname(wt), { recursive: true });
+    git(s.repo, "worktree", "add", "-q", wt, "ai/T-1");
+    writeFileSync(path.join(wt, "collision.txt"), same ? "remote\n" : "local\n");
+    const source = tmp("collision-source");
+    git(source, "clone", "-q", origin, ".");
+    git(source, "config", "user.email", "t@example.com"); git(source, "config", "user.name", "Test");
+    git(source, "checkout", "-q", "ai/T-1");
+    writeFileSync(path.join(source, "collision.txt"), "remote\n");
+    git(source, "add", "."); git(source, "commit", "-qm", "incoming file");
+    git(source, "push", "-q", "origin", "ai/T-1");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    assert.equal(readFileSync(path.join(wt, "collision.txt"), "utf8"), "remote\n");
+    const backups = readdirSync(wt).filter(f => f.startsWith("collision.txt.pre-merge-"));
+    assert.equal(backups.length, same ? 0 : 1);
+    if (!same) {
+      assert.equal(readFileSync(path.join(wt, backups[0]!), "utf8"), "local\n");
+      assert.match(done.continuation ?? "", /collision\.txt\.pre-merge-/);
+      assert.equal(git(wt, "ls-files", backups[0]!), "");
+    }
+  });
+
   it("fails clearly when the requested old branch cannot be retrieved", async () => {
     const s = await setup([profile("codex", "codex", 1, "ok")]);
     const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" }, {
