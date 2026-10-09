@@ -3,7 +3,10 @@
 // too or this test fails.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { describe, it } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, describe, it } from "node:test";
 import { HiveError, type Actor, type BlobStore } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
@@ -284,5 +287,114 @@ describe("deleting a project (roadmap 47)", () => {
     assert.ok(audit.some((a) => a.action === "projects.archive" && a.target === "old"));
     const entry = audit.find((a) => a.action === "projects.delete" && a.target === "old");
     assert.ok(entry && entry.detail.includes("backup hub-"), `audit detail: ${entry?.detail}`);
+  });
+});
+
+describe("restoring a deleted project from a snapshot (ADM-backup-restore)", () => {
+  const dirs: string[] = [];
+  after(() => {
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** The hub of the tests above, whose deletion snapshot is a real file: VACUUM INTO, as the hub makes them. */
+  async function snapshotHub() {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "hive-restore-"));
+    dirs.push(dir);
+    const file = path.join(dir, "hub-2026-10-05T08-00-00-000Z.db");
+    const ref: { hive?: SqliteHive } = {};
+    const { hive, blobs } = await hub({
+      backup: async () => {
+        ref.hive!.db.prepare("VACUUM INTO ?").run(file);
+        return { file };
+      },
+    });
+    ref.hive = hive;
+    return { hive, blobs, file };
+  }
+
+  /** Rows of a project per table: every table with a project column, and the ones found by a doc key or task id. */
+  function rowsOf(hive: SqliteHive, project: string): Record<string, number> {
+    const tables = (hive.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as Array<{ name: string }>)
+      .map((t) => t.name)
+      .filter((t) => t !== "project_states")
+      .filter((t) => (hive.db.prepare(`PRAGMA table_info("${t}")`).all() as Array<{ name: string }>).some((c) => c.name === "project"));
+    const out: Record<string, number> = {};
+    const n = (sql: string, ...args: string[]) => (hive.db.prepare(sql).get(...args) as { n: number }).n;
+    for (const t of tables) out[t] = n(`SELECT COUNT(*) AS n FROM "${t}" WHERE project = ?`, project);
+    out.doc_versions = n("SELECT COUNT(*) AS n FROM doc_versions WHERE key LIKE ?", `project/${project}/%`);
+    out.doc_assets = n("SELECT COUNT(*) AS n FROM doc_assets WHERE doc_key LIKE ?", `project/${project}/%`);
+    out.task_deps = n("SELECT COUNT(*) AS n FROM task_deps WHERE task_id LIKE ? OR depends_on LIKE ?", `${project}-%`, `${project}-%`);
+    return out;
+  }
+
+  it("brings back every row the deletion took, the lists that named it and its stored files, and lifts the headstone", async () => {
+    const { hive, blobs, file } = await snapshotHub();
+    const before = rowsOf(hive, "old");
+    assert.ok(before.tasks === 1 && before.docs === 1 && before.memory === 1 && before.task_deps === 1, JSON.stringify(before));
+    const stored = new Map(blobs.files);
+    await hive.call("projects.archive", { project: "old" }, admin);
+    await hive.call("projects.delete", { project: "old", confirm: "old" }, admin);
+    assert.equal(rowsOf(hive, "old").tasks, 0);
+    // What the hub does on its own every minute must not leave rows under the deleted name that would block a restore.
+    hive.queueMemoryCleanup();
+    hive.learnModels();
+
+    const inBackup = hive.backupProjects(file);
+    assert.deepEqual(
+      inBackup.map((p) => [p.project, p.tasks, p.docs, p.memory, p.runs, p.live]),
+      [["keep", 1, 1, 1, 1, true], ["old", 1, 1, 1, 1, false]],
+    );
+
+    const restored = await hive.restoreProject(file, "old", admin, (sha) => stored.get(sha) ?? null);
+    assert.equal(restored.backup, path.basename(file));
+    assert.deepEqual(rowsOf(hive, "old"), before);
+    assert.ok(restored.rows.tasks === 1 && restored.rows.task_deps === 1, JSON.stringify(restored.rows));
+    assert.deepEqual(restored.files, { restored: 1, missing: 0 });
+    assert.ok(blobs.files.has(shaOf(png(3))), "the page's image is back in the store");
+
+    const old = (await hive.call("projects.list", {}, admin)).find((p) => p.project === "old")!;
+    assert.deepEqual([old.state, old.tasks, old.docs, old.memory, old.runs, old.systems], [null, 1, 1, 1, 1, ["shop"]]);
+    assert.equal((await hive.call("docs.get", { key: "project/old/arch" }, admin))?.content, "# old");
+    assert.ok((await hive.call("memory.search", { project: "old", query: "gotcha" }, admin)).some((m) => m.content === "old gotcha"), "found through the full-text index again");
+    const settings = (key: string) => JSON.parse((hive.db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string }).value) as any;
+    assert.deepEqual(Object.keys(settings("agentPolicy").projects).sort(), ["keep", "old"]);
+    assert.deepEqual(Object.keys(settings("policy").projects), ["old"]);
+    assert.deepEqual(settings("budgets").map((b: any) => b.scope.project), ["old"]);
+    // Writable again: the headstone is off.
+    await hive.call("tasks.create", { id: "old-2", project: "old", title: "after the restore" }, admin);
+
+    const audit = await hive.call("admin.audit", { limit: 20 }, admin);
+    const entry = audit.find((a) => a.action === "backups.restoreProject" && a.target === "old");
+    assert.ok(entry && entry.detail.includes(path.basename(file)), `audit detail: ${entry?.detail}`);
+  });
+
+  it("refuses a project the hub has data of: a restore never merges", async () => {
+    const { hive, file } = await snapshotHub();
+    await hive.call("projects.archive", { project: "old" }, admin);
+    await hive.call("projects.delete", { project: "old", confirm: "old" }, admin);
+    await assert.rejects(hive.restoreProject(file, "keep", admin), code("conflict", "errors.restoreHasData"));
+    await hive.restoreProject(file, "old", admin);
+    const rows = rowsOf(hive, "old");
+    await assert.rejects(hive.restoreProject(file, "old", admin), code("conflict", "errors.restoreHasData"));
+    assert.deepEqual(rowsOf(hive, "old"), rows, "nothing was copied twice");
+    // The name freed and used again since the deletion counts as data too.
+    const second = await snapshotHub();
+    await second.hive.call("projects.archive", { project: "old" }, admin);
+    await second.hive.call("projects.delete", { project: "old", confirm: "old" }, admin);
+    await second.hive.call("projects.restore", { project: "old" }, admin);
+    await second.hive.call("tasks.create", { id: "old-7", project: "old", title: "new work" }, admin);
+    await assert.rejects(second.hive.restoreProject(second.file, "old", admin), code("conflict", "errors.restoreHasData"));
+    assert.equal(rowsOf(second.hive, "old").tasks, 1);
+  });
+
+  it("rolls back the whole copy when a row clashes with one the hub made since", async () => {
+    const { hive, file } = await snapshotHub();
+    await hive.call("projects.archive", { project: "old" }, admin);
+    await hive.call("projects.delete", { project: "old", confirm: "old" }, admin);
+    // Task ids are the hub's: one taken by another project since the deletion cannot come back beside it.
+    await hive.call("tasks.create", { id: "old-1", project: "keep", title: "same id, other project" }, admin);
+    await assert.rejects(hive.restoreProject(file, "old", admin), code("conflict", "errors.restoreConflict"));
+    assert.deepEqual(Object.values(rowsOf(hive, "old")).filter(Boolean), [], "no row of it is left half-copied");
+    assert.equal((await hive.call("projects.list", {}, admin)).find((p) => p.project === "old")!.state, "deleted", "the headstone stays");
   });
 });
