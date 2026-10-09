@@ -1,5 +1,7 @@
 import { redactLines, stripHidden } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText } from "#desktop/main/git.ts";
+import { renameSync, existsSync } from "node:fs";
+import path from "node:path";
 
 const env = { GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o ConnectTimeout=15" };
 export function assertTaskBranch(branch: string): void {
@@ -24,6 +26,32 @@ export async function fetchTaskBranch(repo: string, branch: string, remote = "or
   if (!exists) return { sha: null, ref: null };
   await gitAsync(repo, ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:${ref}`], env, 30_000);
   return { ref, sha: git(repo, ["rev-parse", `${ref}^{commit}`]) };
+}
+
+/** Preserve local untracked files that a fetched fast-forward would replace. */
+export function prepareTaskBranchMerge(worktree: string, ref: string): string[] {
+  // A divergent branch must fail without moving any local files.
+  git(worktree, ["merge-base", "--is-ancestor", "HEAD", ref]);
+  const incoming = git(worktree, ["ls-tree", "-r", "--name-only", "-z", ref]).split("\0").filter(Boolean);
+  const tracked = new Set(git(worktree, ["ls-files", "-z"]).split("\0").filter(Boolean));
+  const moved: string[] = [];
+  for (const file of incoming) {
+    if (tracked.has(file) || !existsSync(path.join(worktree, file))) continue;
+    const targetBlob = git(worktree, ["rev-parse", `${ref}:${file}`]);
+    const localBlob = git(worktree, ["hash-object", "--", file]);
+    if (localBlob === targetBlob) {
+      // Staging matching bytes lets Git adopt the file in the fast-forward.
+      git(worktree, ["add", "-f", "--", file]);
+      continue;
+    }
+    const source = path.join(worktree, file);
+    const stamp = Date.now();
+    let backup = `${source}.pre-merge-${stamp}`;
+    for (let n = 1; existsSync(backup); n++) backup = `${source}.pre-merge-${stamp}-${n}`;
+    renameSync(source, backup);
+    moved.push(path.relative(worktree, backup));
+  }
+  return moved;
 }
 
 export async function pushTaskBranch(repo: string, branch: string, headSha: string, expectedSha: string | null, remote = "origin"): Promise<{ pushed: boolean; pushError: string | null }> {

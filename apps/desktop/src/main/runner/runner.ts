@@ -1,4 +1,4 @@
-import { fetchTaskBranch, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
+import { fetchTaskBranch, prepareTaskBranchMerge, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
 import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
@@ -515,6 +515,7 @@ export class Runner {
   readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
   /** Where a queued best-of-n candidate's branch came from (see remoteStart), for its log. */
   readonly #startNotes = new Map<string, string>();
+  readonly #mergeNotes = new Map<string, string>();
   /** How often a run went back to the queue because the remote could not be reached (see FETCH_TRIES). */
   readonly #fetchFails = new Map<string, number>();
   /** Why tick() took the profile it did (roadmap 24c), for the head of the run's log. */
@@ -2185,7 +2186,12 @@ export class Runner {
       );
       // A local copy may lag behind the other machine's WIP. Fast-forward only: divergent work stays intact.
       if (taskRemote?.ref) {
-        try { await gitAsync(wt.path, ["merge", "--ff-only", taskRemote.ref]); }
+        try {
+          const moved = prepareTaskBranchMerge(wt.path, taskRemote.ref);
+          if (moved.length) this.#mergeNotes.set(run.id, `Untracked files preserved before branch fast-forward: ${moved.join(", ")}`);
+          wt.copied.push(...moved);
+          await gitAsync(wt.path, ["merge", "--ff-only", taskRemote.ref]);
+        }
         catch (err) { wt = null; throw err; }
       }
       if (run.redispatch?.headSha) await gitAsync(wt.path, ["merge-base", "--is-ancestor", run.redispatch.headSha, "HEAD"]);
@@ -3008,7 +3014,9 @@ export class Runner {
 
     const continuation = outcome.kind === "exit" && outcome.timedOut
       ? tr("runNote.continueFrom", { branch: run.branch ?? "—", commit: headSha ?? "—", activity: run.continuation ?? "—" }) : null;
-    let done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation, ...usage, finishedAt: now.toISOString() });
+    const mergeNote = this.#mergeNotes.get(run.id);
+    this.#mergeNotes.delete(run.id);
+    let done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation: [mergeNote, continuation].filter(Boolean).join("\n") || null, ...usage, finishedAt: now.toISOString() });
     if (wt && run.bestOf?.n !== 0 && headSha && run.branch?.startsWith("ai/")) {
       const project = this.#project(run.project);
       const result = await pushTaskBranch(project.repo, run.branch, headSha, run.remoteSha ?? null, project.git?.remote ?? "origin");
