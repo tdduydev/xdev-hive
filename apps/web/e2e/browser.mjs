@@ -3649,8 +3649,17 @@ async function main() {
     });
     await tab.shot("startup-log-card");
     if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "startup log card overflows phone");
+    // A pinned snapshot by hand, so the list has a row whatever ran before (ADM-backup-restore).
+    const made = await rpc("hub.backup", {});
     await tab.go("admin/hub");
     await tab.waitFor("the hub's cards", () => ["Tệp tài liệu", "Backup"].every((t) => document.body.innerText.includes(t)));
+    await tab.waitFor("the backups with their pin policy", (file) => {
+      const policy = document.querySelector("[data-backup-policy]")?.textContent ?? "";
+      return policy.includes("Xoay vòng giữ") && policy.includes("không bị xoay vòng") && document.querySelector(`[data-backup-pin="${file}"]`)?.textContent === "Bỏ ghim";
+    }, made.file);
+    await tab.eval(() => document.querySelector("[data-backups]")?.scrollIntoView({ block: "start", behavior: "instant" }));
+    await tab.shot("hub-backups");
+    if (mobile) expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "the backups list overflows phone");
   });
 
   await step("backup-late-today", async () => {
