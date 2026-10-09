@@ -1,7 +1,7 @@
 // Thông báo hệ điều hành cho admin hub khi hub mở cảnh báo (roadmap 22m-2). The hub keeps the alerts (apps/web/src/alerts.ts);
 // the app of a hub admin asks for them about once a minute, riding on the heartbeat, and shows the new ones.
 import type { HubAlert, Me } from "@xdev-hive/core";
-import type { MessageKey } from "@xdev-hive/ui/i18n";
+import type { MessageKey } from "@xdev-hive/ui-kit/i18n";
 
 /** Alerts opened this long before the app first asked are still new: a restart right after one does not lose it. */
 const GRACE_MS = 10 * 60_000;

@@ -25,7 +25,8 @@
     "@xdev-hive/mcp": "*",
     "@xdev-hive/ui": "*",
     "express": "^5.2.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@xdev-hive/ui-kit": "*"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

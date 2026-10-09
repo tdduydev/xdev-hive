@@ -1,7 +1,7 @@
 {
   "name": "@xdev-hive/desktop",
   "productName": "xDev Hive",
-  "version": "0.152.0",
+  "version": "0.153.0",
   "private": true,
   "description": "xDev Hive desktop admin",
   "author": "xDev",
@@ -39,7 +39,8 @@
     "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "vite": "^7.3.7"
+    "vite": "^7.3.7",
+    "@xdev-hive/ui-kit": "*"
   },
   "dependencies": {
     "node-pty": "1.1.0"

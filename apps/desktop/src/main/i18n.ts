@@ -1,7 +1,7 @@
 // The language of what the main process writes for people (tray, notifications, dialogs, Machine
 // setup items, sync notes): the one the interface shows, which the renderer reports (setLocale).
 // Text for agents and for the team's data (prompts, handoff notes, MR descriptions) stays as it is.
-import { DEFAULT_LOCALE, isLocale, translate, type Locale, type MessageKey } from "@xdev-hive/ui/i18n";
+import { DEFAULT_LOCALE, isLocale, translate, type Locale, type MessageKey } from "@xdev-hive/ui-kit/i18n";
 
 let locale: Locale = DEFAULT_LOCALE;
 

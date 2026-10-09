@@ -1,7 +1,2 @@
-/** Lower case without diacritics, for search: "Tài liệu", "tai lieu" and "TAI LIEU" all fold to "tai lieu". */
-export const fold = (s: string): string =>
-  s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/g, "d");
+// Kept for in-flight 72 branches; remove in 76h.
+export * from "@xdev-hive/ui-kit/lib/text.ts";
