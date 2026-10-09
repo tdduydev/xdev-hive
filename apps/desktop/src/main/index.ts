@@ -107,7 +107,7 @@ import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
 import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
-import { mirrorDocs, mirrors } from "./mirror.ts";
+import { mirrorDocs, mirrorsAsync } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
 import { openInTerminal } from "./terminal.ts";
@@ -609,7 +609,7 @@ function syncMr(p: DesktopProject): SyncOptions["mr"] {
 async function syncAndMirror(name: string): Promise<SyncReport> {
   const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit, mr: syncMr(project(name)) });
   // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
-  if (!mirrors(project(name).repo)) return report;
+  if (!(await mirrorsAsync(project(name).repo))) return report;
   const mirror = await mirrorDocs(backend, actor(), project(name));
   if (mirror.commit) mirrored.set(name, mirror.commit);
   return { ...report, mirror };
@@ -637,7 +637,7 @@ async function mirrorAll(): Promise<void> {
     if (hash) specsPushed.set(p.name, hash);
   }
   for (const p of config.projects) {
-    if (!mirrors(p.repo)) continue;
+    if (!(await mirrorsAsync(p.repo))) continue;
     const r = await mirrorDocs(backend, actor(), p, { since: mirrored.get(p.name) }).catch((err: Error) => {
       console.error(`[xdev-hive] mirror ${p.name}: ${err.message}`);
       return null;
@@ -1405,8 +1405,8 @@ function registerIpc(): void {
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runs-count", (filter?: { project?: string; projects?: string[] }) => runner.store.countActive(filter));
   handle("desktop:runMessages", (id: string) => runner.messages(id));
-  handle("desktop:runLog", (id: string) => runner.log(id));
-  handle("desktop:runDiff", (id: string) => runner.diff(id));
+  handle("desktop:runLog", (id: string) => runner.logRecent(id));
+  handle("desktop:runDiff", (id: string) => runner.diffAsync(id));
   handle("desktop:steerRun", (id: string, text: string) => runner.steer(id, text));
   handle("desktop:cancelRun", (id: string): AgentRun => runner.cancel(id));
   handle("desktop:worktrees", () => runner.worktrees(true));

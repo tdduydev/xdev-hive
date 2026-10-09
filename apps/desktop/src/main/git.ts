@@ -2,6 +2,23 @@ import { execFile, execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+const gitQueues = new Map<string, Promise<void>>();
+
+/** Git's index and worktree state must be observed one command at a time per checkout. */
+export async function withGitWorktreeLock<T>(repo: string, action: () => Promise<T>): Promise<T> {
+  const key = path.resolve(repo);
+  const previous = gitQueues.get(key);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  gitQueues.set(key, current);
+  if (previous) await previous;
+  try { return await action(); }
+  finally {
+    if (gitQueues.get(key) === current) gitQueues.delete(key);
+    release();
+  }
+}
+
 export function git(repo: string, args: string[], env: Record<string, string> = {}): string {
   return execFileSync("git", args, {
     cwd: repo,
@@ -13,7 +30,7 @@ export function git(repo: string, args: string[], env: Record<string, string> = 
 
 /** Async variant for network operations (push), so the main process never blocks on the network. */
 export function gitAsync(repo: string, args: string[], env: Record<string, string> = {}, timeoutMs = 120_000): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return withGitWorktreeLock(repo, () => new Promise((resolve, reject) => {
     execFile(
       "git",
       args,
@@ -23,7 +40,20 @@ export function gitAsync(repo: string, args: string[], env: Record<string, strin
         else resolve(`${stdout}${stderr}`.trim());
       },
     );
-  });
+  }));
+}
+
+/** Async stdout-only form of git(), for commands whose output is parsed or shown as a patch. */
+export function gitOutputAsync(repo: string, args: string[], env: Record<string, string> = {}, timeoutMs = 120_000): Promise<string> {
+  return withGitWorktreeLock(repo, () => new Promise((resolve, reject) => {
+    execFile("git", args, {
+      cwd: repo, encoding: "utf8", env: { ...process.env, ...env }, timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024, windowsHide: true,
+    }, (err, stdout, stderr) => {
+      if (err) reject(Object.assign(err, { stdout, stderr }));
+      else resolve(stdout.trim());
+    });
+  }));
 }
 
 export function isGitRepo(repo: string): boolean {
@@ -32,6 +62,10 @@ export function isGitRepo(repo: string): boolean {
   } catch {
     return false;
   }
+}
+
+export async function isGitRepoAsync(repo: string): Promise<boolean> {
+  return gitOutputAsync(repo, ["rev-parse", "--is-inside-work-tree"]).then((v) => v === "true", () => false);
 }
 
 /** A folder is a repository when it has `.git`: a folder, or the file a worktree or submodule has instead. */
