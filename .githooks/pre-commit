@@ -1,0 +1,16 @@
+#!/bin/sh
+# xdev-hive: docs rendered from xDev Hive can only be committed by the Hive app.
+[ "$HIVE_ADMIN" = "1" ] && exit 0
+blocked=$(git diff --cached --name-only | grep -E '^(AGENTS\.md|CLAUDE\.md|docs/decisions\.md|\.claude/rules/xdev-hive/.*|\.xdev-hive/context/.*)$')
+# A nested AGENTS.md or a skill is Hive's when it has the managed block, in the commit or before it.
+nested=$(git diff --cached --name-only | grep -E '/AGENTS\.md$|^\.claude/skills/[^/]+/SKILL\.md$' | while IFS= read -r f; do
+  { git show ":$f" 2>/dev/null; git show "HEAD:$f" 2>/dev/null; } | grep -q 'xdev-hive:start' && printf '%s\n' "$f"
+done)
+blocked=$(printf '%s\n%s\n' "$blocked" "$nested" | sed '/^$/d')
+if [ -n "$blocked" ]; then
+  echo "xDev Hive: các file sau được quản lý trong Hive, không commit trực tiếp:" >&2
+  echo "$blocked" | sed 's/^/  /' >&2
+  echo "Đề xuất bằng doc_propose hoặc sửa trong app Hive, rồi bấm Đồng bộ tài liệu." >&2
+  exit 1
+fi
+exit 0
