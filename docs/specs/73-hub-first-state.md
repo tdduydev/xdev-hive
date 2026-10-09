@@ -27,6 +27,17 @@ Task có `platforms` (windows / linux / mac, tuỳ chọn). Hub chỉ giao, kể
 
 Worktree trên máy là bộ nhớ tạm: sau khi nhánh đã push và run xong, máy tự dọn worktree theo quota ổ đĩa. Mất máy không mất việc. Trang Worktree (63f) hiện "đã push / chưa push".
 
+## 73f. Tách app / web / admin khi phát hành
+
+So diff từ tag app gần nhất đã nằm trong lịch sử nhánh phát hành đến SHA cần phát hành. Không có tag làm mốc thì phát hành app để an toàn. Những lần chỉ deploy hub không tạo tag app mới, nên diff của lần app tiếp theo vẫn tính đủ mọi thay đổi kể từ app trước.
+
+| Đường dẫn thay đổi | Hành động |
+|---|---|
+| `apps/web/`, `deploy/`, tài liệu, test của core | Chỉ chạy lệnh deploy hub; không tăng version, build, upload hoặc rollout app |
+| `apps/desktop/` (main, runner, preload, script đóng gói), `packages/ui/`, `packages/mcp/`, `packages/core/src/`, package manifest/lockfile | Phát hành app và chạy deploy/rollout như trước vì desktop dùng runtime chung |
+
+`release.mjs` dùng `HIVE_HUB_DEPLOY_ARGV` (JSON argv, không qua shell) cho nhánh chỉ hub, tạo `release/HUB-DEPLOY-NOTES.md` và truyền `HIVE_RELEASE_SCOPE=hub`, `HIVE_RELEASE_NOTES_FILE`; `--force-app` ép phát hành app. Autopilot 60c dùng lệnh `deploy` của cấu hình service cho nhánh hub, bỏ qua `prepare`, `release`, `appRollout` và truyền `HIVE_RELEASE_SCOPE=hub`. Ghi chú phát hành app ghi rõ phạm vi; log autopilot chỉ ghi tên bước và kết quả như hợp đồng 60c. Chưa có lệnh `deploy` cho batch chỉ hub thì batch thất bại ở bước deploy.
+
 ## Thứ tự
 
 73a trước (chặn đúng lỗi đang làm chậm 72), rồi 73b, 73c. Việc trên runner phải kiểm cả Mac, Ubuntu và Windows: dùng máy đúng nền tảng khi giao.
