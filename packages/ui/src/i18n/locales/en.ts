@@ -1636,7 +1636,7 @@ export const en: Catalog = {
     view_list: "List",
     showOlderDone: "Show {count} older done tasks",
     title: "Tasks",
-    subtitle: "Track work, read handoffs and send tasks to agents. Use + New to start work.",
+    subtitle: "Every task in the chosen scope. A task waiting on another sits in Blocked; agents cannot take it until that one is done.",
     status: "Status",
     statusOf: "Status of {id}",
     closeWarning: "You can still close {id} after confirming. Check the status below before continuing.",
