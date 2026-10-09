@@ -35,8 +35,29 @@ export function prepareTaskBranchMerge(worktree: string, ref: string): string[] 
   const incoming = git(worktree, ["ls-tree", "-r", "--name-only", "-z", ref]).split("\0").filter(Boolean);
   const tracked = new Set(git(worktree, ["ls-files", "-z"]).split("\0").filter(Boolean));
   const moved: string[] = [];
+  const preserve = (source: string): void => {
+    const stamp = Date.now();
+    let backup = `${source}.pre-merge-${stamp}`;
+    for (let n = 1; lstatSync(backup, { throwIfNoEntry: false }); n++) backup = `${source}.pre-merge-${stamp}-${n}`;
+    renameSync(source, backup);
+    moved.push(path.relative(worktree, backup));
+  };
   for (const file of incoming) {
     if (tracked.has(file)) continue;
+    const parts = file.split("/");
+    let parent = "";
+    let blocked = false;
+    for (const part of parts.slice(0, -1)) {
+      parent = parent ? `${parent}/${part}` : part;
+      const localParent = lstatSync(path.join(worktree, parent), { throwIfNoEntry: false });
+      if (!localParent) break;
+      if (localParent.isDirectory()) continue;
+      // A file or symlink at a parent path makes lstat on the incoming file throw ENOTDIR.
+      if (!tracked.has(parent)) preserve(path.join(worktree, parent));
+      blocked = true;
+      break;
+    }
+    if (blocked) continue;
     const source = path.join(worktree, file);
     const local = lstatSync(source, { throwIfNoEntry: false });
     if (!local) continue;
@@ -45,11 +66,7 @@ export function prepareTaskBranchMerge(worktree: string, ref: string): string[] 
       git(worktree, ["add", "-f", "--", file]);
       continue;
     }
-    const stamp = Date.now();
-    let backup = `${source}.pre-merge-${stamp}`;
-    for (let n = 1; lstatSync(backup, { throwIfNoEntry: false }); n++) backup = `${source}.pre-merge-${stamp}-${n}`;
-    renameSync(source, backup);
-    moved.push(path.relative(worktree, backup));
+    preserve(source);
   }
   return moved;
 }
