@@ -1265,6 +1265,7 @@ async function main() {
     await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
     await tab.type("payment");
     await tab.key("Enter");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("graph");
     await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
     // Waiting for the changed card proves a fresh response reached the graph before checking its edge again.
@@ -4707,7 +4708,6 @@ async function main() {
         const tab = (current = tabs.lan);
         await tab.go(route === "today" ? "today?section=inbox" : route);
         await tab.reload();
-        if (route === "runs") await tab.click("main button", "Tất cả");
         await tab.waitFor("visible list", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
         const listHash = await tab.eval(() => location.hash);
         await tab.shot(`mobile-${route}-list`);
@@ -4734,7 +4734,6 @@ async function main() {
         await assertPane(true);
         await tab.eval(() => history.back());
         await tab.waitFor("Back restores list", (hash) => location.hash === hash, listHash);
-        if (route === "runs") await tab.click("main button", "Tất cả");
         await assertPane(false);
         await tab.eval(() => history.forward());
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
