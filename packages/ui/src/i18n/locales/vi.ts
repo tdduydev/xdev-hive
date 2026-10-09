@@ -577,6 +577,7 @@ export const vi = {
       noReleases: "Hub chưa có bản nào. Script phát hành tải bản build lên khi có HIVE_RELEASE_HUB và HIVE_RELEASE_TOKEN (token admin).",
       saved: "Đã lưu cách phát hành",
       notes: "Ghi chú phát hành",
+      stateKind: { success: "Đang dùng bản đích", running: "Đang tải", info: "Sẵn sàng / đang cài", danger: "Lỗi", neutral: "Chưa cập nhật" },
       col: { machine: "Máy", current: "Hiện tại", target: "Đích", state: "Cập nhật", seen: "Báo lúc" },
       state: { idle: "Chưa tải", downloading: "Đang tải {percent}%", ready: "Đã tải xong", installing: "Đang cài", failed: "Lỗi", current: "Đã lên bản đích", none: "—" },
       noun: "máy",
@@ -972,6 +973,8 @@ export const vi = {
     adminDesc: { roles: "Vai trò hub và ma trận quyền theo service.", org: "Ai giữ vai trò nào ở từng hệ thống và service.", ops: "Sức khoẻ hub, hàng đợi và chi phí.", users: "Người dùng, vai trò hub và quyền theo service.", policy: "Chính sách của hub áp cho mọi dự án.", tools: "Tool và phiên bản hub cho phép.", budgets: "Ngân sách và mức đã dùng.", alerts: "Quy tắc cảnh báo và nơi nhận.", audit: "Nhật ký thao tác trên hub.", webhooks: "Thông báo và webhook gửi ra ngoài.", versions: "Phiên bản app desktop đã phát hành.", hub: "Thông tin và vận hành hub." },
   },
   settingsRows: {
+    guideOwn: "Riêng dự án", guideTeam: "Mặc định của team", commandsHint: "Lệnh nhanh leader nhận ở khung chat.", autoKindHint: "Bật: leader tự chạy, không hỏi lại.",
+    projectCount: "{count} dự án", outside: "Chưa thuộc hệ thống nào", noProjects: "Chưa có dự án.",
     project: "Dự án", projectHint: "Các thay đổi bên dưới áp cho dự án này.",
     autoDispatch: "Tự giao việc", autoDispatchHint: "Task đủ điều kiện được giao cho agent mà không chờ người bấm.",
     fixRoundsHint: "Số lượt agent tự sửa sau khi review hoặc test không đạt.",
@@ -4498,6 +4501,7 @@ export const vi = {
     sharedDefaultHint: "không đặt riêng: xem dữ liệu Chung, đề xuất và ghi memory nếu làm được ở một service",
   },
   // Quản trị operations tabs on the cosmic stats / cards / table blocks (R-72l).
+  adminTable: { empty: "Chưa có mục nào.", search: "Tìm…", all: "Tất cả", noMatch: "Không có dòng nào khớp.", prev: "Trước", next: "Sau", range: "{from}–{to} / {total}" },
   adminOps: {
     budgets: { caps: "Số trần", full: "Đã hết trần", fullNote: "chặn run mới tới kỳ sau", near: "Gần trần", nearNote: "đã dùng từ 70%" },
     alerts: { turnOn: "Bật", turnOff: "Tắt", openNote: "{count} chưa ai biết", high: "Mức cao đang mở", highNote: "cần xử lý trước", recentNote: "7 ngày gần nhất", state: "Trạng thái" },

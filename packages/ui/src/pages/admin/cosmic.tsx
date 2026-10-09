@@ -1,8 +1,11 @@
 // The three generic blocks of the Claude Design admin (template adminStats / adminCards / adminTable, R-72l): the
 // operations tabs only choose the data, so they all read as one family. Sizes live in cosmic-admin-ops.css.
-import type { CSSProperties, ReactNode } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { type AdminTone } from "#ui/lib/admin-ops.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { useT } from "#ui/i18n/index.tsx";
+import { filterItems, pageItems, sortItems, TABLE_PAGE_SIZE, type SortDir, type TableItem } from "#ui/lib/admin-table.ts";
 
 /** A dot's colour is a tone, not a hex, so light and dark themes both get a readable one. */
 
@@ -105,7 +108,7 @@ export interface AdminCell {
   title?: string;
 }
 
-export interface AdminRow {
+export interface AdminRow extends TableItem {
   key: string;
   cells: AdminCell[];
   action?: { label: string; onClick: () => void; disabled?: boolean };
@@ -113,51 +116,126 @@ export interface AdminRow {
   extra?: ReactNode;
 }
 
+export interface AdminFilter {
+  key: string;
+  label: string;
+  options: Array<{ value: string; label: string }>;
+}
+
+interface AdminTableProps {
+  cols: string[];
+  grid: string;
+  minWidth?: number;
+  rows: AdminRow[];
+  empty?: ReactNode;
+  /** Search box over each row's `search`; filters over its `tags`; headers sort by `sort`; pages of `pageSize`. */
+  searchable?: boolean;
+  filters?: AdminFilter[];
+  pageSize?: number;
+  /** What the rows are, for the count line ("12 máy"). */
+  noun?: string;
+}
+
 /**
  * `grid` is a grid-template-columns value (the last track, if the table has row actions, is the actions column);
  * `minWidth` is where the table stops shrinking and scrolls inside its own frame instead of widening the page.
  */
-export function AdminTable({ cols, grid, minWidth = 720, rows, empty }: { cols: string[]; grid: string; minWidth?: number; rows: AdminRow[]; empty?: ReactNode }) {
+export function AdminTable({ cols, grid, minWidth = 720, rows, empty, searchable, filters, pageSize = TABLE_PAGE_SIZE, noun }: AdminTableProps) {
+  const t = useT();
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState<Record<string, string>>({});
+  const [sort, setSort] = useState<{ col: number | null; dir: SortDir }>({ col: null, dir: "asc" });
+  const [page, setPage] = useState(1);
   const hasActions = rows.some((r) => r.action || r.extra);
   const template = hasActions ? `${grid} auto` : grid;
+  const sortable = (i: number) => rows.some((r) => r.sort && r.sort[i] !== undefined);
+  const toolbar = !!searchable || !!filters?.length;
+  const shown = useMemo(() => sortItems(filterItems(rows, query, active), sort.col, sort.dir), [rows, query, active, sort]);
+  const paged = pageItems(shown, page, pageSize);
+  const reset = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setPage(1);
+  };
+  const pickSort = (i: number) => setSort((s) => (s.col === i ? (s.dir === "asc" ? { col: i, dir: "desc" } : { col: null, dir: "asc" }) : { col: i, dir: "asc" }));
   return (
-    <div className="cx-ops-table" role="table">
-      <div style={{ minWidth }}>
-        <div className="cx-ops-table-head" role="row" style={{ gridTemplateColumns: template }}>
-          {cols.map((c, i) => (
-            <span key={`${i}-${c}`} role="columnheader">
-              {c}
-            </span>
+    <>
+      {toolbar ? (
+        <div className="cx-ops-toolbar" data-table-toolbar>
+          {searchable ? (
+            <Input className="h-8 w-56 max-md:min-h-11 max-md:w-full" type="search" value={query} placeholder={t("adminTable.search")} aria-label={t("adminTable.search")} onChange={(e) => reset(setQuery)(e.target.value)} />
+          ) : null}
+          {filters?.map((f) => (
+            <select key={f.key} className="cx-select" data-table-filter={f.key} aria-label={f.label} value={active[f.key] ?? ""} onChange={(e) => reset(setActive)({ ...active, [f.key]: e.target.value })}>
+              <option value="">{`${f.label}: ${t("adminTable.all")}`}</option>
+              {f.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           ))}
-          {hasActions ? <span aria-hidden /> : null}
+          <span className="cx-ops-count" role="status">
+            {noun ? `${shown.length} ${noun}` : shown.length}
+          </span>
         </div>
-        {rows.map((r) => (
-          <div key={r.key} className="cx-ops-table-row" role="row" style={{ gridTemplateColumns: template }}>
-            {r.cells.map((cell, i) => (
-              <span key={i} role="cell" className="cx-ops-cell">
-                {cell.tone ? <i className="cx-ops-dot" style={dotStyle(cell.tone)} /> : null}
-                <span className="cx-ops-cell-text">
-                  <span data-mono={cell.mono || undefined} data-strong={cell.strong || undefined} title={cell.title}>
-                    {cell.text}
-                  </span>
-                  {cell.sub ? <small>{cell.sub}</small> : null}
+      ) : null}
+      <div className="cx-ops-table" role="table">
+        <div style={{ minWidth }}>
+          <div className="cx-ops-table-head" role="row" style={{ gridTemplateColumns: template }}>
+            {cols.map((c, i) =>
+              sortable(i) ? (
+                <span key={`${i}-${c}`} role="columnheader" aria-sort={sort.col === i ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="cx-ops-sort" data-sort={sort.col === i ? sort.dir : undefined} onClick={() => pickSort(i)}>
+                    {c}
+                  </button>
                 </span>
-              </span>
-            ))}
-            {hasActions ? (
-              <span role="cell" className="cx-ops-row-actions">
-                {r.action ? (
-                  <Button variant="ghost" size="sm" disabled={r.action.disabled} onClick={r.action.onClick}>
-                    {r.action.label}
-                  </Button>
-                ) : null}
-                {r.extra}
-              </span>
-            ) : null}
+              ) : (
+                <span key={`${i}-${c}`} role="columnheader">
+                  {c}
+                </span>
+              ),
+            )}
+            {hasActions ? <span aria-hidden /> : null}
           </div>
-        ))}
-        {!rows.length && empty ? <div className="cx-ops-table-empty">{empty}</div> : null}
+          {paged.rows.map((r) => (
+            <div key={r.key} className="cx-ops-table-row" role="row" style={{ gridTemplateColumns: template }}>
+              {r.cells.map((cell, i) => (
+                <span key={i} role="cell" className="cx-ops-cell">
+                  {cell.tone ? <i className="cx-ops-dot" style={dotStyle(cell.tone)} /> : null}
+                  <span className="cx-ops-cell-text">
+                    <span data-mono={cell.mono || undefined} data-strong={cell.strong || undefined} title={cell.title}>
+                      {cell.text}
+                    </span>
+                    {cell.sub ? <small>{cell.sub}</small> : null}
+                  </span>
+                </span>
+              ))}
+              {hasActions ? (
+                <span role="cell" className="cx-ops-row-actions">
+                  {r.action ? (
+                    <Button variant="ghost" size="sm" disabled={r.action.disabled} onClick={r.action.onClick}>
+                      {r.action.label}
+                    </Button>
+                  ) : null}
+                  {r.extra}
+                </span>
+              ) : null}
+            </div>
+          ))}
+          {!paged.rows.length ? <div className="cx-ops-table-empty">{rows.length ? t("adminTable.noMatch") : empty}</div> : null}
+        </div>
       </div>
-    </div>
+      {paged.pages > 1 ? (
+        <div className="cx-ops-pager" data-table-pager>
+          <span role="status">{t("adminTable.range", { from: paged.from, to: paged.to, total: paged.total })}</span>
+          <Button variant="glass" size="sm" disabled={paged.page <= 1} onClick={() => setPage(paged.page - 1)}>
+            {t("adminTable.prev")}
+          </Button>
+          <Button variant="glass" size="sm" disabled={paged.page >= paged.pages} onClick={() => setPage(paged.page + 1)}>
+            {t("adminTable.next")}
+          </Button>
+        </div>
+      ) : null}
+    </>
   );
 }
