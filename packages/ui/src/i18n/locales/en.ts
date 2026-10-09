@@ -452,6 +452,9 @@ export const en: Catalog = {
     device: "Let the desktop app use your account",
   },
   shell: {
+    artifacts: "Artifacts",
+    assignAgent: "Assign work to an agent",
+    scope: "Scope",
     skipToContent: "Skip to content",
     quickNav: "Quick navigation",
     menu: "Menu",
@@ -475,7 +478,7 @@ export const en: Catalog = {
     toggleSidebar: "Show or hide the sidebar",
     closeSidebar: "Close menu",
     sidebarShortcut: "Sidebar (⌘B)",
-    search: "Search tasks, docs or run a command",
+    search: "Search tasks, docs, runs…",
     newTask: "New task",
     openWeb: "Open the web",
     openWebHint: "Services, tasks, docs and admin are on the hub's web",

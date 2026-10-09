@@ -5,6 +5,7 @@ import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
 import { AccountMenu } from "#ui/components/Account.tsx";
 import { HiveWordmark, XMark } from "#ui/components/Brand.tsx";
+import darkWordmark from "#ui/assets/cosmic/xdev-hive-dark.svg";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
 import { scopeId } from "#ui/lib/scope.ts";
 import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
@@ -258,24 +259,24 @@ function ClientFrame({
       id="hive-navigation"
       aria-label={t("shell.nav")}
       className={cn(
-        "hive-sidebar flex shrink-0 flex-col border-r border-line-subtle bg-subtle",
+        "hive-sidebar flex shrink-0 flex-col",
         rail && "hive-sidebar-rail",
         narrow && "h-full w-full border-r-0",
       )}
     >
-      <div className={cn("hive-topbar flex shrink-0 items-center px-4", rail && "justify-center px-0", mac && !rail && "pl-[84px]", drag)}>
-        {rail ? (!mac ? <XMark size={24} /> : null) : <HiveWordmark height={30} />}
-        {narrow ? <button type="button" aria-label={t("shell.closeSidebar")} onClick={() => setSidebar(false)} className="ml-auto grid size-10 place-items-center rounded-sm text-fg-secondary"><X className="size-4" /></button> : null}
+      <div className={cn("hive-sidebar-brand flex shrink-0 items-center", rail && "justify-center px-0", mac && !rail && "pl-[84px]", drag)}>
+        {rail ? (!mac ? <XMark size={24} /> : null) : theme === "dark" ? <img src={darkWordmark} alt="xDev Hive" className="h-[30px] w-auto" /> : <HiveWordmark height={30} />}
+        {narrow ? <button type="button" aria-label={t("shell.closeSidebar")} onClick={() => setSidebar(false)} className="ml-auto grid size-11 place-items-center rounded-sm text-fg-secondary"><X className="size-4" /></button> : null}
       </div>
-      <div className={cn("shrink-0 px-2.5 pb-1.5", noDrag)}>
+      <div className={cn("hive-sidebar-scope shrink-0", noDrag)}>
         {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.chooseScope")} title={scopeName ?? t("shell.chooseScope")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><Layers3 className="size-4" aria-hidden="true" /></button> : <ScopeSwitcher />}
       </div>
-      {!desktop && !rail ? <div className="workspace-new-work"><button type="button" onClick={() => setNewTask(true)} className="workspace-new-button"><Plus aria-hidden="true" className="size-4" />{t("workspace.newWork")}</button></div> : null}
+      {!rail ? <div className="workspace-new-work"><button type="button" data-new-work-open={!narrow || undefined} onClick={() => setNewTask(true)} className="workspace-new-button">{t("shell.assignAgent")}</button></div> : null}
       {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
-      <div data-nav-list className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2.5 pt-0.5 pb-2.5">
+      <div data-nav-list className="hive-sidebar-list flex min-h-0 flex-1 flex-col overflow-y-auto">
         {groups.map((g, gi) => (
-          <div key={g.label ?? `g${gi}`} className="flex flex-col gap-px">
-            {g.label && !rail ? <div className="px-2 pt-3 pb-1 text-[11px]/4 font-semibold text-fg-muted">{g.label}</div> : null}
+          <div key={g.label ?? `g${gi}`} className="hive-nav-group flex flex-col">
+            {g.label && !rail ? <div className="hive-nav-heading">{g.label}</div> : null}
             {g.items.map((item) => {
               const on = item.id === current;
               const Icon = item.icon;
@@ -287,9 +288,9 @@ function ClientFrame({
                   aria-current={on ? "page" : undefined}
                   title={item.shortcut ? t("shell.shortcut", { label: item.label, key: item.shortcut }) : item.label}
                   className={cn(
-                    "flex min-h-8 max-md:min-h-11 shrink-0 items-center gap-2 rounded-md px-3 text-[13px]/5 outline-none focus-visible:focus-ring active:bg-pressed",
+                    "hive-nav-item flex max-md:min-h-11 shrink-0 items-center outline-none focus-visible:focus-ring active:bg-pressed",
                     rail && "relative justify-center px-0",
-                    on ? "bg-selected font-semibold text-selected-fg" : "text-fg-primary hover:bg-hover",
+                    on ? "hive-nav-active" : "text-fg-secondary hover:bg-hover",
                   )}
                 >
                   <Icon aria-hidden="true" className={cn("size-4 shrink-0", on ? "text-fg-brand" : "text-fg-muted")} />
@@ -297,14 +298,13 @@ function ClientFrame({
                   {item.badge && item.badge.count > 0 ? (
                     <span
                       className={cn(
-                        "inline-grid h-[18px] min-w-[18px] place-items-center rounded-full px-[5px] text-[11px]/none font-semibold",
+                        "hive-nav-count inline-grid place-items-center rounded-full",
                         rail && "absolute right-0 top-0",
                         item.badge.strong ? "bg-primary text-primary-foreground" : "text-fg-muted",
                       )}
-                    >
-                      {item.badge.count}
-                    </span>
+                    >{item.badge.count}</span>
                   ) : null}
+                  {!rail && item.shortcut ? <kbd className="hive-nav-shortcut">⌘{item.shortcut}</kbd> : null}
                 </a>
               );
             })}
@@ -334,7 +334,7 @@ function ClientFrame({
           ))}
         </div>
       ) : null}
-      <div className={cn("flex shrink-0 items-center gap-1 border-t border-line-subtle px-2 py-2", rail && "flex-col", noDrag)}>
+      <div className={cn("hive-sidebar-account flex shrink-0 items-center gap-1", rail && "flex-col", noDrag)}>
         {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} onNavigate={() => narrow && setSidebar(false)} />}
         <button
           type="button"
@@ -379,7 +379,7 @@ function ClientFrame({
         <div className="flex min-h-0 flex-1">
           {!narrow ? nav : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
-            <header className={cn("hive-topbar flex min-w-0 shrink-0 items-center gap-2 border-b border-line-subtle bg-surface px-3", drag, mac && rail && "pl-4")}>
+            <header className={cn("hive-topbar hive-main-topbar flex min-w-0 shrink-0 items-center", drag, mac && rail && "pl-4")}>
               <button
                 ref={sidebarTrigger}
                 type="button"
@@ -389,36 +389,31 @@ function ClientFrame({
                 aria-controls="hive-navigation"
                 title={t("shell.sidebarShortcut")}
                 className={cn(
-                  "grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
+                  "hive-sidebar-toggle grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
                   noDrag,
                 )}
               >
                 <PanelLeft className="size-4" />
               </button>
-              <div className="ml-2 flex min-w-0 max-w-[320px] flex-1 flex-col md:flex-none">
-                <span className="truncate text-sm/[18px] font-semibold text-fg-strong" data-shell-title>
-                  {scopeName ? <span className="font-normal text-fg-secondary">{scopeName} › </span> : null}
-                  {title}
-                </span>
-                <span className="truncate text-[11px]/[14px] text-fg-muted">{subtitle}</span>
+              <div className="hive-topbar-title flex min-w-0 flex-1 flex-col">
+                {scopeName ? <span className="truncate text-fg-muted">{scopeName}</span> : null}
+                <h1 className="truncate text-fg-strong" data-shell-title>{title}</h1>
               </div>
-              <span className="hidden flex-1 md:block" />
-              <button type="button" onClick={() => setPalette(true)} aria-label={t("shell.search")} className={cn("ml-auto grid size-10 shrink-0 place-items-center rounded-sm text-fg-secondary md:hidden", noDrag)}>
+              <button type="button" onClick={() => setPalette(true)} aria-label={t("shell.search")} className={cn("ml-auto grid size-11 shrink-0 place-items-center rounded-sm text-fg-secondary md:hidden", noDrag)}>
                 <Search className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setPalette(true)}
                 className={cn(
-                  "hidden h-[30px] w-[320px] min-w-[160px] shrink cursor-pointer items-center gap-2 rounded-[7px] border border-line-default bg-sunken pr-[5px] pl-2.5 text-xs/none text-fg-muted outline-none hover:border-line-strong focus-visible:focus-ring md:flex",
+                  "hive-topbar-search hidden min-w-[120px] shrink cursor-pointer items-center text-fg-muted outline-none focus-visible:focus-ring md:flex",
                   noDrag,
                 )}
               >
-                <Search className="size-3.5 shrink-0" />
+                <Search className="size-[15px] shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-left">{t("shell.search")}</span>
-                <kbd className="rounded-xs border border-line-default bg-surface px-[5px] py-[3px] font-mono text-[10px]/none font-medium text-fg-secondary">⌘K</kbd>
+                <kbd className="hive-search-key">⌘K</kbd>
               </button>
-              <span className="hidden flex-1 md:block" />
               {up?.state === "ready" && up.version ? (
                 <button
                   type="button"
@@ -440,9 +435,9 @@ function ClientFrame({
                 aria-expanded={chat.panelOpen}
                 title={t("chat.askShortcut")}
                 onClick={() => chat.setPanelOpen(true)}
-                className={cn("mr-1 flex h-[30px] max-md:size-11 shrink-0 items-center gap-1.5 rounded-sm border border-line-default px-2.5 max-md:justify-center max-md:p-0 text-xs font-semibold text-fg-primary outline-none hover:bg-hover focus-visible:focus-ring", noDrag)}
+                className={cn("hive-topbar-chat flex max-md:size-11 shrink-0 items-center gap-1.5 max-md:justify-center max-md:p-0 font-semibold text-fg-primary outline-none hover:bg-hover focus-visible:focus-ring", noDrag)}
               >
-                <MessageSquare className="size-4" aria-hidden />
+                <MessageSquare className="size-4 md:hidden" aria-hidden />
                 <span className="max-md:sr-only">{t("chat.askLeader")}</span>
               </button>
               {webUrl ? (
@@ -460,21 +455,17 @@ function ClientFrame({
                   <ExternalLink className="size-3.5" strokeWidth={2} />
                   <span className="max-md:sr-only">{t("shell.openWeb")}</span>
                 </a>
-              ) : (
+              ) : narrow ? (
                 <button
                   type="button"
-                  onClick={() => setNewTask(true)}
                   data-new-work-open
-                  title={t(client.desktop ? "shell.newTaskShortcut" : "newWork.shortcut")}
-                  className={cn(
-                    "flex h-[30px] max-md:size-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-sm bg-primary pr-3 pl-2.5 max-md:justify-center max-md:p-0 text-xs/none font-semibold whitespace-nowrap text-primary-foreground outline-none hover:bg-primary-hover focus-visible:focus-ring",
-                    noDrag,
-                  )}
+                  onClick={() => setNewTask(true)}
+                  aria-label={t("shell.assignAgent")}
+                  className="grid size-11 shrink-0 place-items-center rounded-sm bg-primary text-primary-foreground outline-none focus-visible:focus-ring"
                 >
-                  <Plus className="size-3.5" strokeWidth={2} />
-                  <span className="max-md:sr-only">{t(client.desktop ? "shell.newTask" : "newWork.button")}</span>
+                  <Plus className="size-4" aria-hidden="true" />
                 </button>
-              )}
+              ) : null}
             </header>
             {link.state === "offline" || link.state === "refused" ? (
               <div role="status" className="flex shrink-0 items-center gap-2 border-b border-warning-line bg-warning-soft px-3.5 py-1.5 text-xs/4 font-medium text-fg-strong">
@@ -495,7 +486,7 @@ function ClientFrame({
                 </button>
               </div>
             ) : null}
-            <main id="hive-main" ref={mainRef} tabIndex={-1} aria-label={title} className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-canvas max-md:overflow-x-hidden">
+            <main id="hive-main" ref={mainRef} tabIndex={-1} aria-label={title} className="min-h-0 min-w-0 flex-1 overflow-y-auto max-md:overflow-x-hidden">
               <InShellContext.Provider value={true}>{children}</InShellContext.Provider>
             </main>
           </div>
@@ -509,7 +500,7 @@ function ClientFrame({
           })}
           <button type="button" onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar(true); }} aria-expanded={sidebar} aria-controls="hive-navigation" className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", !mobileItems.some((item) => item.id === current) ? "font-semibold text-fg-brand bg-selected" : "text-fg-secondary")}><Menu className="size-5" aria-hidden="true" /><span>{t("shell.menu")}</span></button>
         </nav> : null}
-        <footer className="flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2 max-md:hidden">
+        <footer className="hive-status-footer flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2 max-md:hidden">
           {hubMode
             ? statusItem(
                 "hub",
