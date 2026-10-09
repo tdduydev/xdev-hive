@@ -67,11 +67,13 @@ import { TodayInboxPage as TodayPage } from "./pages/Today.tsx";
 import { TokensPage } from "./pages/Tokens.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 import { StartPage } from "#ui/pages/Start.tsx";
+import { TerminalPage } from "#ui/pages/Terminal.tsx";
 import { remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
 const GraphPage = lazy(() => import("./pages/Graph.tsx").then((module) => ({ default: module.GraphPage })));
 
 type PageId =
   | "start"
+  | "terminal"
   | "today"
   | "overview"
   | "chat"
@@ -101,6 +103,8 @@ type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
   start: { label: "start.title", sub: "start.sub", icon: ListChecks, render: () => <StartPage /> },
+  // Not in the sidebar (the menu is the shell's): reached from ⌘K and the machine/run terminal links.
+  terminal: { label: "terminal.page", sub: "terminal.pageSub", icon: Terminal, render: () => <TerminalPage /> },
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessagesSquare, render: () => <ChatPage /> },
@@ -176,7 +180,7 @@ const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
 const DESK_INBOX = new Set(["ci", "machine", "request"]);
 /** Not in the sidebar, still in the command palette: Token moved to the account menu on the web (roadmap 49b). */
-const PALETTE_ONLY: PageId[] = ["start", "overview", "tokens"];
+const PALETTE_ONLY: PageId[] = ["start", "terminal", "overview", "tokens"];
 
 type Route = { kind: "client"; id: PageId };
 const HOME: Route = { kind: "client", id: "today" };
@@ -316,6 +320,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     if (!client.desktop) {
       // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
       const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read", "start"]);
+      if (client.terminal) ids.add("terminal");
       // Keep system overview deep links and palette access for hub admins too.
       ids.add("overview");
       return account(ids);

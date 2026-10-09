@@ -312,6 +312,8 @@ async function startGuideShots(prefix = "") {
     if (state === "ready") extra.HIVE_SMOKE_EXPECT += ' && [data-start-step="agents"][data-state="done"]';
     if (state === "new") extra.HIVE_SMOKE_HASH = "";
     await shoot(`${prefix}start-${state}`, "start", 4000, extra);
+    // The size the design's reference shot is taken at (docs/design/hive-2026-10/shots/start-1440.png), to compare side by side.
+    if (state === "half") await shoot(`${prefix}start-half-1440`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "1440x900" });
     if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
     // Today's banner lists what is left; once every step is done there is nothing to offer, so no Start button is expected.
     await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
