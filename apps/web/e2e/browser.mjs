@@ -17,7 +17,7 @@ const base = process.env.HIVE_E2E_BASE;
 const out = process.env.HIVE_E2E_OUT;
 const width = Number(process.env.HIVE_E2E_W ?? 1440);
 const height = Number(process.env.HIVE_E2E_H ?? 900);
-if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 480) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
+if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 320) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
 const mobile = width < 768;
 const { admin, people, proposals, memory, terminal } = JSON.parse(process.env.HIVE_E2E_SEED);
 
