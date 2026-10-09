@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "#ui/components/ui/button.tsx";
 import { Input } from "#ui/components/ui/input.tsx";
+import { Tag } from "#ui/components/ui/primitives.tsx";
 import { NativeSelect, NativeSelectOption } from "#ui/components/ui/native-select.tsx";
 import { ErrorNote, Page } from "#ui/components/common.tsx";
 import { formatTime, useHive, useQuery } from "#ui/hooks.ts";
@@ -43,11 +44,11 @@ export function HistoryPage() {
   return <Page><div className="min-w-0 space-y-4" data-history-page>
     <p className="sr-only">{t("history.hint")}</p>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-      <label className="min-w-0 space-y-1 text-sm"><span>{t("history.search")}</span><Input value={search} onChange={e => setSearch(e.target.value)} maxLength={200} className="min-h-11 text-base md:text-sm" data-history-search /></label>
-      <label className="min-w-0 space-y-1 text-sm"><span>{t("history.task")}</span><Input value={task} onChange={e => setTask(e.target.value)} className="min-h-11 text-base md:text-sm" /></label>
-      <label className="min-w-0 space-y-1 text-sm"><span>{t("history.kind")}</span><NativeSelect wrapperClassName="w-full" value={kind} onChange={e => setKind(e.target.value as typeof kind)} className="min-h-11 text-base md:text-sm"><NativeSelectOption value="">{t("history.all")}</NativeSelectOption>{kinds.map(k => <NativeSelectOption key={k} value={k}>{t(`history.${k}`)}</NativeSelectOption>)}</NativeSelect></label>
-      <label className="min-w-0 space-y-1 text-sm"><span>{t("history.since")}</span><Input type="date" value={since} onChange={e => setSince(e.target.value)} className="min-h-11 text-base md:text-sm" /></label>
-      <label className="min-w-0 space-y-1 text-sm"><span>{t("history.until")}</span><Input type="date" value={until} onChange={e => setUntil(e.target.value)} className="min-h-11 text-base md:text-sm" /></label>
+      <label className="min-w-0 space-y-1.5 text-[length:12px] font-semibold text-fg-secondary"><span>{t("history.search")}</span><Input value={search} onChange={e => setSearch(e.target.value)} maxLength={200} data-history-search /></label>
+      <label className="min-w-0 space-y-1.5 text-[length:12px] font-semibold text-fg-secondary"><span>{t("history.task")}</span><Input value={task} onChange={e => setTask(e.target.value)} /></label>
+      <label className="min-w-0 space-y-1.5 text-[length:12px] font-semibold text-fg-secondary"><span>{t("history.kind")}</span><NativeSelect wrapperClassName="w-full" value={kind} onChange={e => setKind(e.target.value as typeof kind)} className="h-[44px] rounded-[12px] border-0 bg-sunken text-base shadow-[var(--ring-glass)] md:text-sm"><NativeSelectOption value="">{t("history.all")}</NativeSelectOption>{kinds.map(k => <NativeSelectOption key={k} value={k}>{t(`history.${k}`)}</NativeSelectOption>)}</NativeSelect></label>
+      <label className="min-w-0 space-y-1.5 text-[length:12px] font-semibold text-fg-secondary"><span>{t("history.since")}</span><Input type="date" value={since} onChange={e => setSince(e.target.value)} /></label>
+      <label className="min-w-0 space-y-1.5 text-[length:12px] font-semibold text-fg-secondary"><span>{t("history.until")}</span><Input type="date" value={until} onChange={e => setUntil(e.target.value)} /></label>
     </div>
     <ErrorNote error={invalidDates ? t("history.invalidDates") : list.error} />
     {list.loading ? <p role="status" className="text-sm">{t("history.loading")}</p> : null}
@@ -67,6 +68,6 @@ export function HistoryPage() {
         {entry.project ? <span className="col-start-3 break-all text-[length:12px] font-medium leading-4 text-fg-muted md:col-start-auto">{entry.project}</span> : null}
       </li>)}</ol>
     </section>)}</div>
-    <nav aria-label={t("history.title")} className="flex flex-wrap items-center gap-3"><Button variant="outline" className="min-h-11" disabled={!offset || list.loading} onClick={() => setOffset(n => Math.max(0, n - PAGE_SIZE))}>{t("artifacts.previous")}</Button><span className="text-sm">{t("artifacts.pageNumber", { n: offset / PAGE_SIZE + 1 })}</span><Button variant="outline" className="min-h-11" disabled={!data?.hasMore || list.loading} onClick={() => setOffset(n => n + PAGE_SIZE)}>{t("artifacts.next")}</Button><Button variant="ghost" className="min-h-11" onClick={() => { setSearch(""); setQuery(""); setTask(""); setKind(""); setSince(""); setUntil(""); setOffset(0); }}>{t("history.reset")}</Button></nav>
+    <nav aria-label={t("history.title")} className="flex flex-wrap items-center gap-3"><Button variant="glass" size="sm" disabled={!offset || list.loading} onClick={() => setOffset(n => Math.max(0, n - PAGE_SIZE))}>{t("artifacts.previous")}</Button><Tag>{t("artifacts.pageNumber", { n: offset / PAGE_SIZE + 1 })}</Tag><Button variant="glass" size="sm" disabled={!data?.hasMore || list.loading} onClick={() => setOffset(n => n + PAGE_SIZE)}>{t("artifacts.next")}</Button><Button variant="ghost" size="sm" onClick={() => { setSearch(""); setQuery(""); setTask(""); setKind(""); setSince(""); setUntil(""); setOffset(0); }}>{t("history.reset")}</Button></nav>
   </div></Page>;
 }
