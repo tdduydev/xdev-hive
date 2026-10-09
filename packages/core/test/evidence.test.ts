@@ -37,7 +37,8 @@ it("retains the verified file after reload, retention cleanup and attempted repl
   assert.deepEqual(await hive.pruneArtifacts(), { removed: 0, bytes: 0 });
   const pinned = (e: unknown) => e instanceof HiveError && e.key === "errors.evidenceArtifactPinned";
   await assert.rejects(hive.call("artifacts.remove", { id: artifact.id }, admin), pinned);
-  await assert.rejects(hive.call("artifacts.put", { ...upload, data: Buffer.from("Changed bytes").toString("base64") }, runner), pinned);
+  const next = await hive.call("artifacts.put", { ...upload, data: Buffer.from("Changed bytes").toString("base64") }, runner);
+  assert.equal(next.version, 2, "a new version leaves the evidence-pinned bytes untouched");
   assert.equal((await hive.call("artifacts.get", { id: artifact.id }, admin))?.data, upload.data);
   assert.equal((await hive.call("evidence.list", scope, admin))[0]?.artifacts[0]?.sha256, artifact.sha256);
 });

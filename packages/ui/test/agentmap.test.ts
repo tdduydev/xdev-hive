@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Machine, MachineRun, QuotaCooldown, ReportedProfile } from "@xdev-hive/core";
-import { decodeTargets, encodeTargets, machineCards, mapMachines, profileCard } from "#ui/lib/agentmap.ts";
+import { decodeTargets, encodeTargets, hubIntakeControl, machineCards, mapMachines, profileCard } from "#ui/lib/agentmap.ts";
 
 const now = Date.parse("2026-10-02T10:00:00Z");
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({ id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, ...over });
@@ -11,6 +11,16 @@ const machine = (over: Partial<Machine> = {}): Machine =>
 const state = (p: Partial<ReportedProfile>, m: Partial<Machine> = {}, cooldowns: QuotaCooldown[] = []) => profileCard(machine(m), profile(p), cooldowns, now).state;
 
 describe("agent map (roadmap 31b)", () => {
+  it("shows pending hub intake until a capable machine reports its choice, and disables old apps", () => {
+    const old = hubIntakeControl(machine({ runnerSettings: { maxParallel: 1, mrEnabled: false, mrWhen: "after_review" } }));
+    assert.deepEqual(old, { supported: false, value: true, waiting: false });
+    const pending = hubIntakeControl(machine({
+      acceptsRuns: false,
+      runnerSettings: { maxParallel: 1, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: false },
+      runnerChange: { settings: { acceptHubRuns: true }, requestedBy: "owner", requestedAt: "2026-10-02T10:00:00Z" },
+    }));
+    assert.deepEqual(pending, { supported: true, value: true, waiting: true });
+  });
   it("says what each profile's card shows, the first that holds", () => {
     assert.equal(state({}, { online: false }), "offline");
     assert.equal(state({ enabled: false }), "off");

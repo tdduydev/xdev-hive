@@ -37,6 +37,7 @@ import {
   PROPOSAL_STATUSES,
   SELF_APPROVALS,
   TASK_STATUSES,
+  TASK_PLATFORMS,
   type Actor,
   type AgentsPaused,
   type AgentsStop,
@@ -156,6 +157,7 @@ const machineRunnerSettings = z.object({
   maxParallel: z.number().int().min(1).max(8),
   mrEnabled: z.boolean(),
   mrWhen: z.enum(["after_review", "after_success"]),
+  acceptHubRuns: z.boolean().optional(),
 });
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
@@ -243,6 +245,7 @@ export const chatPlanSchema = z.object({
     acceptance: z.string().trim().min(1).max(1500),
     dependsOn: z.array(taskId).max(20).default([]),
     taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   })).min(1).max(50),
   batches: z.array(z.object({ title: z.string().trim().min(1).max(200), taskIds: z.array(taskId).min(1).max(50) })).min(1).max(50),
 });
@@ -265,8 +268,9 @@ const chatAction = z.discriminatedUnion("kind", [
     taskKind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
-  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() }),
   /** Corrects what a task is (roadmap 54b): at least one of the three. */
   z.object({ kind: z.literal("task.classify"), project: project.optional(), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
@@ -369,6 +373,7 @@ export const schemas = {
     taskId,
     runId,
     profileId: z.string().max(40).nullable().default(null),
+    versionNote: z.string().max(500).optional(),
     /** Relative to .xdev-hive/artifacts/, e.g. "shots/board.png". */
     name: z.string().min(1).max(300),
     data: z.string().min(1).max(Math.ceil((ARTIFACT_MAX_BYTES * 4) / 3) + 8),
@@ -378,7 +383,7 @@ export const schemas = {
     project: project.optional(),
     projects: z.array(project).max(500).optional(),
     name: z.string().max(300).optional(),
-    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf"]).optional(),
+    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf", "html"]).optional(),
     offset: z.number().int().min(0).default(0),
     taskId: taskId.optional(),
     runId: runId.optional(),
@@ -393,6 +398,7 @@ export const schemas = {
   "artifacts.get": z.object({ id, metadataOnly: z.boolean().optional(), maxBytes: z.number().int().min(1).max(ARTIFACT_MAX_BYTES).optional() }),
   /** A project manager removes one (it is written in the audit log); nothing else ever deletes an artifact. */
   "artifacts.remove": z.object({ id }),
+  "artifacts.pin": z.object({ id, pinned: z.boolean() }),
   /**
    * Asks the writing assistant (roadmap 22k): the page as it is being edited, other pages of its space or the team's,
    * memory entries, and repo files (paths or globs, read on the machine that writes it).
@@ -429,6 +435,7 @@ export const schemas = {
     status: z.enum(PROPOSAL_STATUSES).optional(),
     docKey: docKey.optional(),
   }),
+  "proposals.count": z.object({ status: z.enum(PROPOSAL_STATUSES).optional() }),
   "proposals.create": z.union([
     z.object({
       docKey,
@@ -537,6 +544,7 @@ export const schemas = {
     kind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).default([]),
   }),
   /** One atomic CLI leader plan: new spec plus its task graph. */
   "plans.create": chatPlanSchema.extend({ project }),
@@ -551,8 +559,10 @@ export const schemas = {
   "tasks.update": z.object({
     id: taskId,
     priority: z.number().int().min(0).max(100).optional(),
-    status: z.enum(TASK_STATUSES),
+    /** Left out, the status, owner and lease stay: that is how platforms alone changes without touching a running task. */
+    status: z.enum(TASK_STATUSES).optional(),
     note: z.string().max(2000).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
   /** Says what a task is (roadmap 54b), by hand: what is given replaces the hub's rules and its classify run. */
   "tasks.classify": z
@@ -590,8 +600,20 @@ export const schemas = {
     /** Random per app start, to tell two live instances apart from a restart. */
     instance: z.string().regex(/^[a-f0-9]{8,64}$/),
     version: z.string().max(40).default(""),
+    /** null: an OS the hub has no routing key for (platformKey); the machine still reports. */
+    platform: z.enum(["win", "windows", "linux", "mac"]).nullable().optional(),
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
+    system: z.object({
+      os: z.enum(["macos", "ubuntu", "windows", "linux"]),
+      osName: z.string().min(1).max(200),
+      hardware: z.string().min(1).max(300),
+      uptime: z.string().max(100).optional(),
+      uptimeSeconds: z.number().finite().min(0).max(1e10).optional(),
+      cpu: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), cores: z.number().int().min(1).max(65536).optional(), load: z.number().min(0).max(1e6).optional() }).optional(),
+      ram: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), usedBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+      disk: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), freeBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+    }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
     worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
@@ -1272,6 +1294,7 @@ export interface MethodOutput {
   "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
   /** project and name say what went, for the audit log; both null when there was nothing to remove. */
   "artifacts.remove": { removed: boolean; project: string | null; name: string | null };
+  "artifacts.pin": Artifact;
   "docs.assist": DocAssist;
   "docs.assists": DocAssist[];
   "docs.assistCancel": DocAssist;
@@ -1281,6 +1304,7 @@ export interface MethodOutput {
   "docs.assistFinish": { ok: boolean };
   "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
+  "proposals.count": { count: number };
   "proposals.create": Proposal;
   "proposals.approve": Proposal;
   "proposals.reject": Proposal;
@@ -1541,6 +1565,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "artifacts.get": "viewer",
   // Also projectSettings on the project, which no agent token has: only a person who manages it removes an artifact.
   "artifacts.remove": "member",
+  "artifacts.pin": "member",
   "docs.assist": "agent",
   "docs.assists": "viewer",
   "docs.assistCancel": "agent",
@@ -1550,6 +1575,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assistFinish": "agent",
   "skills.list": "viewer",
   "proposals.list": "viewer",
+  "proposals.count": "viewer",
   "proposals.create": "agent",
   "proposals.approve": "agent",
   "proposals.reject": "agent",

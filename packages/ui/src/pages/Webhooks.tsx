@@ -1,17 +1,16 @@
-import { ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Admin → Webhooks: chat webhooks (Teams Workflows, Slack) for hub events. The hub keeps the URLs;
 // the page only ever sees a hint of them.
 import { useState } from "react";
 import { WEBHOOK_EVENTS, WEBHOOK_KINDS, type WebhookEvent, type WebhookInfo, type WebhookInput } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { Badge, Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { formatTime, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { LOCALES, useT } from "#ui/i18n/index.tsx";
+import { AdminStats, AdminTable, type AdminRow } from "./admin/cosmic.tsx";
 
 const EMPTY: WebhookInput = { name: "", kind: "teams", url: "", events: [...WEBHOOK_EVENTS], projects: [], locale: "vi", enabled: true };
 const HINT = "text-xs text-muted-foreground";
@@ -21,11 +20,74 @@ export function WebhooksTab() {
   const t = useT();
   const hooks = client.webhooks!;
   const list = useQuery(() => hooks.list(), [hooks]);
+  const action = useAction();
   const [editing, setEditing] = useState<WebhookInput | null>(null);
+  // The last test of each webhook, shown under the table: a row has no room for the hub's error text.
+  const [tested, setTested] = useState<Record<number, { ok: boolean; error: string | null }>>({});
+  const items = list.data ?? [];
+  const rows: AdminRow[] = items.map((w) => ({
+    key: String(w.id),
+    cells: [
+      { text: w.name, sub: w.urlHint, strong: true, tone: !w.enabled ? "neutral" : w.lastError ? "bad" : "ok", title: w.name },
+      { text: w.enabled ? t(`webhooks.kind.${w.kind}`) : `${t(`webhooks.kind.${w.kind}`)} · ${t("webhooks.off")}` },
+      {
+        text: w.events.map((e) => t(`webhooks.event.${e}`)).join(", "),
+        sub: `${w.projects.length ? t("webhooks.onlyProjects", { projects: w.projects.join(", ") }) : t("webhooks.allProjects")} · ${LOCALES[w.locale as keyof typeof LOCALES]?.name ?? w.locale}`,
+        title: w.events.map((e) => t(`webhooks.event.${e}`)).join(", "),
+      },
+      {
+        text: w.lastSentAt ? formatTime(w.lastSentAt) : "—",
+        sub: w.lastSentAt ? (w.lastError ? t("adminOps.webhooks.failed", { error: w.lastError }) : t("adminOps.webhooks.sent")) : undefined,
+        title: w.lastError ?? undefined,
+      },
+    ],
+    action: {
+      label: t("webhooks.test"),
+      disabled: action.busy,
+      onClick: () =>
+        void action.run(async () => {
+          const result = await hooks.test(w.id);
+          setTested((c) => ({ ...c, [w.id]: result }));
+          list.reload();
+        }),
+    },
+    extra: (
+      <>
+        <Button size="sm" variant="ghost" onClick={() => setEditing({ id: w.id, name: w.name, kind: w.kind, url: "", events: w.events, projects: w.projects, locale: w.locale, enabled: w.enabled })}>
+          {t("webhooks.edit")}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+          disabled={action.busy}
+          onClick={() => {
+            if (window.confirm(t("webhooks.confirmRemove", { name: w.name }))) void action.run(async () => (await hooks.remove(w.id), list.reload()));
+          }}
+        >
+          {t("webhooks.remove")}
+        </Button>
+      </>
+    ),
+  }));
   return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted-foreground">{t("webhooks.intro")}</p>
-      <ErrorNote error={list.error} />
+    <div className="cx-ops-stack">
+      <AdminStats
+        stats={[
+          { key: "all", label: t("adminOps.webhooks.count"), value: items.length, tone: "info" },
+          { key: "on", label: t("adminOps.webhooks.enabled"), value: items.filter((w) => w.enabled).length, tone: "ok" },
+          { key: "bad", label: t("adminOps.webhooks.failing"), value: items.filter((w) => w.enabled && w.lastError).length, note: t("adminOps.webhooks.failingNote"), tone: items.some((w) => w.enabled && w.lastError) ? "bad" : "ok" },
+        ]}
+      />
+      <div className="cx-ops-toolbar !mb-0">
+        <p className="cx-ops-hint m-0 min-w-0 flex-1">{t("webhooks.intro")}</p>
+        {!editing ? (
+          <Button size="sm" variant="glass" onClick={() => setEditing(EMPTY)}>
+            {t("webhooks.add")}
+          </Button>
+        ) : null}
+      </div>
+      <ErrorNote error={list.error ?? action.error} />
       {editing ? (
         <WebhookForm
           initial={editing}
@@ -34,73 +96,16 @@ export function WebhooksTab() {
             list.reload();
           }}
         />
-      ) : (
-        <div>
-          <Button onClick={() => setEditing(EMPTY)}>{t("webhooks.add")}</Button>
-        </div>
-      )}
+      ) : null}
       {list.data?.length === 0 && !editing ? <Empty>{t("webhooks.none")}</Empty> : null}
-      {list.data?.map((w) => (
-        <WebhookCard
-          key={w.id}
-          webhook={w}
-          onEdit={() => setEditing({ id: w.id, name: w.name, kind: w.kind, url: "", events: w.events, projects: w.projects, locale: w.locale, enabled: w.enabled })}
-          onChanged={list.reload}
-        />
-      ))}
+      {rows.length ? (
+        <AdminTable cols={[t("webhooks.name"), t("webhooks.kindLabel"), t("webhooks.events"), t("adminOps.webhooks.last")]} grid="minmax(220px,1.2fr) 140px minmax(220px,1.6fr) minmax(150px,1fr)" minWidth={1040} rows={rows} />
+      ) : null}
+      {items.map((w) => {
+        const r = tested[w.id];
+        return r ? <Notice key={w.id} tone={r.ok ? "ok" : "error"} title={`${w.name}: ${r.ok ? t("webhooks.testOk") : t("webhooks.testFailed", { error: r.error ?? "?" })}`} /> : null;
+      })}
     </div>
-  );
-}
-
-function WebhookCard({ webhook: w, onEdit, onChanged }: { webhook: WebhookInfo; onEdit: () => void; onChanged: () => void }) {
-  const { client } = useHive();
-  const t = useT();
-  const action = useAction();
-  const [tested, setTested] = useState<{ ok: boolean; error: string | null } | null>(null);
-  const hooks = client.webhooks!;
-  return (
-    <Card className="py-4">
-      <CardContent className="px-4">
-      <ResponsiveTableFrame className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <b className="min-w-0 break-words">{w.name}</b>
-          <Badge tone="accent">{t(`webhooks.kind.${w.kind}`)}</Badge>
-          {!w.enabled ? <Badge tone="neutral">{t("webhooks.off")}</Badge> : null}
-          <code className="min-w-0 flex-1 font-mono text-xs break-all text-muted-foreground">{w.urlHint}</code>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {w.events.map((e) => (
-            <Badge key={e}>{t(`webhooks.event.${e}`)}</Badge>
-          ))}
-        </div>
-        <div className={HINT}>
-          {w.projects.length ? t("webhooks.onlyProjects", { projects: w.projects.join(", ") }) : t("webhooks.allProjects")} · {LOCALES[w.locale as keyof typeof LOCALES]?.name ?? w.locale}
-          {w.lastSentAt ? ` · ${w.lastError ? t("webhooks.lastFailed", { time: formatTime(w.lastSentAt), error: w.lastError }) : t("webhooks.lastSent", { time: formatTime(w.lastSentAt) })}` : ""}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" disabled={action.busy} onClick={() => void action.run(async () => (setTested(await hooks.test(w.id)), onChanged()))}>
-            {t("webhooks.test")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onEdit}>
-            {t("webhooks.edit")}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            disabled={action.busy}
-            onClick={() => {
-              if (window.confirm(t("webhooks.confirmRemove", { name: w.name }))) void action.run(async () => (await hooks.remove(w.id), onChanged()));
-            }}
-          >
-            {t("webhooks.remove")}
-          </Button>
-        </div>
-        {tested ? <Notice tone={tested.ok ? "ok" : "error"} title={tested.ok ? t("webhooks.testOk") : t("webhooks.testFailed", { error: tested.error ?? "?" })} /> : null}
-        <ErrorNote error={action.error} />
-      </ResponsiveTableFrame>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -112,8 +117,7 @@ function WebhookForm({ initial, onDone }: { initial: WebhookInput; onDone: () =>
   const [w, setW] = useState<WebhookInput>(initial);
   const toggle = (e: WebhookEvent, on: boolean) => setW({ ...w, events: on ? [...w.events, e] : w.events.filter((x) => x !== e) });
   return (
-    <Card className="py-4">
-      <CardContent className="px-4">
+    <div className="cx-ops-panel">
         <form
           className="flex flex-col gap-3"
           onSubmit={(ev) => {
@@ -179,15 +183,14 @@ function WebhookForm({ initial, onDone }: { initial: WebhookInput; onDone: () =>
           </label>
           <ErrorNote error={action.error} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={action.busy}>
+            <Button type="submit" variant="solid" size="sm" disabled={action.busy}>
               {t("webhooks.save")}
             </Button>
-            <Button type="button" variant="ghost" onClick={onDone}>
+            <Button type="button" variant="ghost" size="sm" onClick={onDone}>
               {t("common.cancel")}
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+    </div>
   );
 }

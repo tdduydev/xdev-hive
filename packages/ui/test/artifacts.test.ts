@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import type { Artifact } from "@xdev-hive/core";
 import { artifactParts, textMatches } from "#ui/lib/artifacts.ts";
 
-const artifact = (id: number, name: string): Artifact => ({ id, name, project: "app", taskId: "APP-1", runId: `R-${id}`, machineId: "runner.one", type: "text/markdown", size: 4, sha256: "sha", profileId: null, uploadedBy: "runner.one", source: null, createdAt: `2026-10-07T00:00:0${id}.000Z` });
+const artifact = (id: number, name: string): Artifact => ({ id, name, project: "app", taskId: "APP-1", runId: `R-${id}`, machineId: "runner.one", type: "text/markdown", size: 4, sha256: "sha", profileId: null, uploadedBy: "runner.one", source: null, createdAt: `2026-10-07T00:00:0${id}.000Z`, version: 1, versionNote: "", pinned: false });
 
 describe("artifact references", () => {
   it("links full paths and bare names with punctuation, respecting filename boundaries", () => {

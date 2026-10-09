@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 
 import os from "node:os";
 import path from "node:path";
 import { ARTIFACT_DIR, CONTEXT_DIR, HiveError, MANAGED_START, RULES_DIR } from "@xdev-hive/core";
-import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
+import { git, gitAsync, gitErrorText, gitOutputAsync, isGitRepo, isGitRepoAsync } from "#desktop/main/git.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { RENDERED_FILES } from "#desktop/main/installer.ts";
 
@@ -44,8 +44,10 @@ function tryGit(repo: string, args: string[]): string | null {
     return null;
   }
 }
+const tryGitAsync = (repo: string, args: string[]): Promise<string | null> => gitOutputAsync(repo, args).catch(() => null);
 
 export const hasBranch = (repo: string, branch: string) => tryGit(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
+export const hasBranchAsync = async (repo: string, branch: string) => (await tryGitAsync(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`])) !== null;
 
 /** `dir` is one of the repo's worktrees (call `git worktree prune` first, or a deleted folder still counts). */
 const isWorktreeOf = (repo: string, dir: string) =>
@@ -53,6 +55,9 @@ const isWorktreeOf = (repo: string, dir: string) =>
     .split("\n")
     .filter((l) => l.startsWith("worktree "))
     .some((l) => real(l.slice(9)) === real(dir));
+const isWorktreeOfAsync = async (repo: string, dir: string) =>
+  (await gitOutputAsync(repo, ["worktree", "list", "--porcelain"]))
+    .split("\n").filter((l) => l.startsWith("worktree ")).some((l) => real(l.slice(9)) === real(dir));
 
 export interface RemoteStartOptions {
   remote?: string;
@@ -87,8 +92,8 @@ const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  */
 export async function remoteStart(repo: string, target: string | undefined, opts: RemoteStartOptions = {}): Promise<RemoteStart> {
   const { timeoutMs = 30_000, retryMs = [] } = opts;
-  const head = tryGit(repo, ["rev-parse", "--short", "HEAD"]) ?? "?";
-  const remotes = (tryGit(repo, ["remote"]) ?? "").split("\n").filter(Boolean);
+  const head = await tryGitAsync(repo, ["rev-parse", "--short", "HEAD"]) ?? "?";
+  const remotes = (await tryGitAsync(repo, ["remote"]) ?? "").split("\n").filter(Boolean);
   if (!remotes.length) return { ref: null, note: tr("runNote.startNoRemote", { sha: head }), error: null, remote: null };
   const remote = opts.remote ?? (remotes.includes("origin") ? "origin" : remotes[0]!);
   // Never wait on a password prompt: the app has no terminal to show it in.
@@ -99,7 +104,7 @@ export async function remoteStart(repo: string, target: string | undefined, opts
       let branch = target;
       if (!branch) {
         // The clone's record of the remote's default branch, else the remote itself.
-        const known = tryGit(repo, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
+        const known = await tryGitAsync(repo, ["symbolic-ref", "--quiet", "--short", `refs/remotes/${remote}/HEAD`]);
         branch = known?.startsWith(`${remote}/`)
           ? known.slice(remote.length + 1)
           : (await gitAsync(repo, ["ls-remote", "--symref", remote, "HEAD"], env, timeoutMs)).match(/^ref: refs\/heads\/(\S+)\s+HEAD$/m)?.[1];
@@ -109,7 +114,7 @@ export async function remoteStart(repo: string, target: string | undefined, opts
       await gitAsync(repo, ["fetch", "--quiet", "--no-tags", remote, `+refs/heads/${branch}:${ref}`], env, timeoutMs);
       return {
         ref,
-        note: tr("runNote.startRemote", { ref: `${remote}/${branch}`, sha: git(repo, ["rev-parse", "--short", `${ref}^{commit}`]) }),
+        note: tr("runNote.startRemote", { ref: `${remote}/${branch}`, sha: await gitOutputAsync(repo, ["rev-parse", "--short", `${ref}^{commit}`]) }),
         error: null,
         remote,
       };
@@ -207,6 +212,46 @@ export function ensureWorktree(
   return { path: dir, branch, baseSha, created, copied };
 }
 
+/** Async main-process form of ensureWorktree; preserves the synchronous API used by local fixtures. */
+export async function ensureWorktreeAsync(
+  repo: string, dir: string, taskId: string, knownBase: string | null,
+  opts: { branch?: string; from?: string; start?: string } = {},
+): Promise<Worktree> {
+  if (!(await isGitRepoAsync(repo))) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
+  const branch = opts.branch ?? branchFor(taskId);
+  await gitOutputAsync(repo, ["worktree", "prune"]);
+  const registered = await isWorktreeOfAsync(repo, dir);
+  let created = false;
+  let started: string | null = null;
+  if (!registered) {
+    if (existsSync(dir)) throw new HiveError("conflict", `${dir} đã tồn tại nhưng không phải worktree của repo này`, { key: "errors.worktreeTaken", vars: { path: dir } });
+    mkdirSync(path.dirname(dir), { recursive: true });
+    const branchExists = await tryGitAsync(repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]) !== null;
+    if (!opts.from && !branchExists) started = opts.start ?? "HEAD";
+    try {
+      await gitOutputAsync(repo, opts.from
+        ? ["worktree", "add", "-B", branch, dir, opts.from]
+        : branchExists ? ["worktree", "add", dir, branch] : ["worktree", "add", "-b", branch, dir, started!]);
+    } catch (err) {
+      const reason = gitErrorText(err);
+      throw new HiveError("bad_request", `Không tạo được worktree: ${reason}`, { key: "errors.worktreeCreate", vars: { reason } });
+    }
+    created = true;
+  }
+  const baseSha = started ? await gitOutputAsync(repo, ["rev-parse", `${started}^{commit}`])
+    : knownBase ?? await gitOutputAsync(repo, ["merge-base", "HEAD", branch]);
+  for (const file of AGENT_CONFIG_FILES) {
+    const from = path.join(repo, file);
+    const to = path.join(dir, file);
+    if (existsSync(from) && !existsSync(to)) { mkdirSync(path.dirname(to), { recursive: true }); copyFileSync(from, to); }
+  }
+  const copied: string[] = [];
+  for (const f of AGENT_CONFIG_FILES) {
+    if (existsSync(path.join(dir, f)) && !(await tryGitAsync(dir, ["ls-files", "--", f]))) copied.push(f);
+  }
+  return { path: dir, branch, baseSha, created, copied };
+}
+
 /**
  * Config that agent CLIs write into a working copy on their own, not the agent's work. Codex 0.157 can copy a repo's
  * Claude Code setup there (`.mcp.json` → `.codex/config.toml`, hooks → `.codex/hooks.json`, skills →
@@ -235,6 +280,17 @@ export function renderedPaths(dir: string): string[] {
     } catch {
       // listed but gone (or not a file): nothing to keep out
     }
+  }
+  return out;
+}
+
+export async function renderedPathsAsync(dir: string): Promise<string[]> {
+  const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...AGENT_RUN_DIRS];
+  const listed = (await tryGitAsync(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
+    .split("\n").filter((f) => f && !RENDERED_FILES.includes(f));
+  for (const f of listed) {
+    try { if (readFileSync(path.join(dir, f), "utf8").includes(MANAGED_START)) out.push(f); }
+    catch { /* listed but gone */ }
   }
   return out;
 }
@@ -275,6 +331,30 @@ export function commitAll(dir: string, message: string, exclude: string[], toolD
   }
 }
 
+/** Commit from the runner without freezing Electron while Git scans a large working copy. */
+export async function commitAllAsync(dir: string, message: string, excludePaths: string[], toolDirs: string[] = []): Promise<{ sha: string | null; error: string | null }> {
+  try {
+    if (!(await gitOutputAsync(dir, ["status", "--porcelain"]))) return { sha: null, error: null };
+    const nested = (await tryGitAsync(dir, ["grep", "-l", "--fixed-strings", "xdev-hive:start", "HEAD", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
+      .split("\n").map((l) => l.replace(/^HEAD:/, "")).filter((f) => f && f !== "AGENTS.md");
+    const cliDirs: string[] = [];
+    for (const d of new Set([...AGENT_CLI_DIRS, ...toolDirs])) {
+      if (!(await tryGitAsync(dir, ["ls-tree", "-r", "--name-only", "HEAD", "--", d]))) cliDirs.push(d);
+    }
+    const keepOut: string[] = [];
+    for (const f of [...excludePaths, ...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...AGENT_RUN_DIRS, ...nested, ...cliDirs]) {
+      if (await tryGitAsync(dir, ["check-ignore", "-q", "--", f]) === null) keepOut.push(f);
+    }
+    await gitOutputAsync(dir, ["reset", "-q", "HEAD", "--", STEER_FILE, ...AGENT_RUN_DIRS]);
+    await gitOutputAsync(dir, ["add", "-A", "--", ".", ...keepOut.map((f) => `:(exclude)${f}`)]);
+    if (!(await gitOutputAsync(dir, ["diff", "--cached", "--name-only"]))) return { sha: null, error: null };
+    await gitOutputAsync(dir, ["-c", `core.hooksPath=${os.devNull}`, "commit", "-m", message]);
+    return { sha: await gitOutputAsync(dir, ["rev-parse", "--short", "HEAD"]), error: null };
+  } catch (err) {
+    return { sha: null, error: gitErrorText(err) };
+  }
+}
+
 /**
  * Checks out `branch` at `ref` (the kept candidate) in a worktree, dropping what the working copy held: the judge
  * may have left changes or another checkout behind. Ignored files (dependencies, builds) stay.
@@ -288,10 +368,23 @@ export function resetTo(dir: string, branch: string, ref: string): void {
     throw new HiveError("bad_request", `Không chuyển được branch sang bản đã chọn: ${reason}`, { key: "errors.pickReset", vars: { reason } });
   }
 }
+export async function resetToAsync(dir: string, branch: string, ref: string): Promise<void> {
+  try {
+    await gitOutputAsync(dir, ["checkout", "-q", "-f", "-B", branch, ref]);
+    await gitOutputAsync(dir, ["clean", "-q", "-fd"]);
+  } catch (err) {
+    const reason = gitErrorText(err);
+    throw new HiveError("bad_request", `Không chuyển được branch sang bản đã chọn: ${reason}`, { key: "errors.pickReset", vars: { reason } });
+  }
+}
 
 export function branchState(dir: string, baseSha: string): { commits: number; headSha: string | null } {
   const count = tryGit(dir, ["rev-list", "--count", `${baseSha}..HEAD`]);
   return { commits: count ? Number(count) : 0, headSha: tryGit(dir, ["rev-parse", "HEAD"]) };
+}
+export async function branchStateAsync(dir: string, baseSha: string): Promise<{ commits: number; headSha: string | null }> {
+  const count = await tryGitAsync(dir, ["rev-list", "--count", `${baseSha}..HEAD`]);
+  return { commits: count ? Number(count) : 0, headSha: await tryGitAsync(dir, ["rev-parse", "HEAD"]) };
 }
 
 /**
@@ -340,11 +433,42 @@ export function branchPatch(dir: string, baseSha: string, ref = "HEAD"): string 
   return `${out.slice(0, cut > 0 ? cut : PATCH_MAX)}\n${tr("runNote.patchClipped")}`;
 }
 
+/** Main-process patch path: Git subprocesses yield between each diff and untracked file. */
+export async function branchPatchAsync(dir: string, baseSha: string, ref = "HEAD"): Promise<string> {
+  if (!existsSync(dir)) return "";
+  const args = ["-c", "core.quotepath=off", "diff", "--no-color", "--no-ext-diff", "--find-renames"];
+  const hidden = await renderedPathsAsync(dir);
+  const paths = ["--", ...exclude(hidden)];
+  let out = await tryGitAsync(dir, [...args, ref === "HEAD" ? baseSha : `${baseSha}...${ref}`, ...paths]) ?? "";
+  if (ref === "HEAD") {
+    const untracked = (await tryGitAsync(dir, ["ls-files", "--others", "--exclude-standard"]) ?? "")
+      .split("\n").filter((f) => f && !under(hidden, f)).slice(0, 30);
+    for (const f of untracked) {
+      if (out.length > PATCH_MAX) break;
+      try { await gitOutputAsync(dir, [...args, "--no-index", "--", "/dev/null", f]); }
+      catch (err) {
+        const text = (err as { stdout?: string }).stdout ?? "";
+        if (text) out += `${out && !out.endsWith("\n") ? "\n" : ""}${text.trimEnd()}`;
+      }
+    }
+  }
+  if (out.length <= PATCH_MAX) return out;
+  const cut = out.lastIndexOf("\n", PATCH_MAX);
+  return `${out.slice(0, cut > 0 ? cut : PATCH_MAX)}\n${tr("runNote.patchClipped")}`;
+}
+
 /** `force`: also with untracked files (a candidate's: everything it made is committed on its branch). */
 export function removeWorktree(repo: string, dir: string, force = false): void {
   try {
     git(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dir]);
   } catch (err) {
+    const reason = gitErrorText(err);
+    throw new HiveError("bad_request", `Không xoá được worktree: ${reason}`, { key: "errors.worktreeRemove", vars: { reason } });
+  }
+}
+export async function removeWorktreeAsync(repo: string, dir: string, force = false): Promise<void> {
+  try { await gitOutputAsync(repo, ["worktree", "remove", ...(force ? ["--force"] : []), dir]); }
+  catch (err) {
     const reason = gitErrorText(err);
     throw new HiveError("bad_request", `Không xoá được worktree: ${reason}`, { key: "errors.worktreeRemove", vars: { reason } });
   }

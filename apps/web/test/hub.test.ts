@@ -21,11 +21,12 @@ function testTmpDir(prefix: string): string {
 }
 
 let base = "";
+let hive: SqliteHive;
 let close: () => void;
 const tok: Record<"admin" | "agent" | "viewer", string> = { admin: "", agent: "", viewer: "" };
 
 before(async () => {
-  const hive = new SqliteHive(":memory:", { memoryRequiresApproval: true });
+  hive = new SqliteHive(":memory:", { memoryRequiresApproval: true });
   hive.seed();
   const tokens = new TokenStore(hive.db);
   tok.admin = tokens.create("duy", "admin").token;
@@ -39,13 +40,14 @@ before(async () => {
 });
 after(() => close());
 
-async function rpc(token: string | null, method: string, input?: unknown, agent?: string) {
+async function rpc(token: string | null, method: string, input?: unknown, agent?: string, idempotency?: string) {
   const res = await fetch(`${base}/api/rpc`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(agent ? { "x-hive-agent": agent } : {}),
+      ...(idempotency ? { "x-hive-idempotency": idempotency } : {}),
     },
     body: JSON.stringify({ method, input }),
   });
@@ -53,6 +55,18 @@ async function rpc(token: string | null, method: string, input?: unknown, agent?
 }
 
 describe("hub REST", () => {
+  it("deduplicates replayed task updates and rejects an id reused for another payload", async () => {
+    const capability = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.admin}` } });
+    assert.equal(capability.headers.get("x-hive-report-idempotency"), "1");
+    const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    assert.equal((await rpc(tok.admin, "tasks.create", { id: "IDEMP-1", project: "app", title: "Replay" })).status, 200);
+    const input = { id: "IDEMP-1", status: "review", note: "completed" };
+    assert.equal((await rpc(tok.admin, "tasks.update", input, "desktop", id)).status, 200);
+    assert.equal((await rpc(tok.admin, "tasks.update", input, "desktop", id)).status, 200);
+    assert.equal((await rpc(tok.admin, "tasks.update", { ...input, note: "different" }, "desktop", id)).status, 409);
+    const rows = hive.db.prepare("SELECT id FROM audit WHERE action = 'tasks.update' AND target = 'IDEMP-1'").all();
+    assert.equal(rows.length, 1);
+  });
   it("rejects missing or unknown tokens and foreign Host headers", async () => {
     assert.equal((await rpc(null, "docs.list")).status, 401);
     assert.equal((await rpc("hive_nope", "docs.list")).status, 401);

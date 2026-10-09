@@ -1,6 +1,6 @@
 // Apps started from Finder/Dock get a minimal PATH (/usr/bin:/bin…), so `claude`, `codex`, `gemini`
 // installed through npm/nvm/Homebrew are not found. Ask the user's login shell for its PATH once.
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { shimBinDir } from "#desktop/main/installer.ts";
@@ -10,8 +10,11 @@ let cached: string | null = null;
 
 /** refresh: ask the shell again (after installing Node or a CLI that changed PATH). */
 export function agentPath(refresh = false): string {
-  if (cached !== null && !refresh) return cached;
-  return remember(loginShellPathSync());
+  if (cached === null) {
+    remember(null);
+    void refreshAgentPath();
+  } else if (refresh) void refreshAgentPath();
+  return cached!;
 }
 
 let pending: Promise<string> | null = null;
@@ -41,16 +44,6 @@ const SHELL_ARGS = ["-ilc", 'printf "__HIVE_PATH__%s__HIVE_PATH__" "$PATH"'];
 const SHELL_OPTS = { encoding: "utf8", timeout: 8000 } as const;
 const parsePath = (out: string) => /__HIVE_PATH__(.*?)__HIVE_PATH__/s.exec(out)?.[1] ?? null;
 const loginShell = () => (process.platform === "win32" ? null : process.env.SHELL || "/bin/zsh");
-
-function loginShellPathSync(): string | null {
-  const shell = loginShell();
-  if (!shell) return null;
-  try {
-    return parsePath(execFileSync(shell, SHELL_ARGS, { ...SHELL_OPTS, stdio: ["ignore", "pipe", "ignore"] }));
-  } catch {
-    return null;
-  }
-}
 
 function loginShellPathAsync(): Promise<string | null> {
   const shell = loginShell();

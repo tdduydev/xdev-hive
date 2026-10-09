@@ -17,6 +17,7 @@ import {
   sees,
   skillDocKey,
   TASK_STATUSES,
+  TASK_PLATFORMS,
   TASK_KINDS,
   TASK_SIZES,
   TASK_RISKS,
@@ -126,6 +127,12 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   // A chat leader works on no task of its own: no claim or status change, proposals instead.
   const leader = writes && actor.chatReply !== undefined;
   const cliLeader = writes && actor.mcpCredential === true && !actor.runCredential && actor.chatReply === undefined;
+  // Whether this credential may hold the right anywhere it reaches; core still checks the task's own project.
+  const allowed = (permission: "taskManage" | "runDispatch" | "taskWork" | "docPropose") =>
+    opts.defaultProject ? may(actor, opts.defaultProject, permission) :
+      actor.access ? Object.keys(actor.access.projects).some((p) => may(actor, p, permission)) : may(actor, null, permission);
+  // A run's agent works its task but never decides which OS gets it; the CLI leader of an account with taskManage may (73b).
+  const taskManage = cliLeader && allowed("taskManage");
   const hubScope = opts.hubScope === true && actor.chatReply !== undefined;
   // The web derives hubScope from the authenticated reply's thread, opened only by a hub admin.
   // Broaden only these reads; proposals and every mutation retain the machine's intersected grants.
@@ -254,10 +261,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "List the files runs made",
       description:
         `Files agents made while working and the hub kept (roadmap 41c): smoke screenshots, reports, measurements, plans. Narrow to one task or one run; read one with artifact_get its id. Write your own into ${ARTIFACT_DIR} of your working copy and the run sends them here when it ends.`,
-      inputSchema: { project, taskId: z.string().optional().describe("Only this task's files"), runId: z.string().optional().describe("Only this run's files") },
+      inputSchema: { project, taskId: z.string().optional().describe("Only this task's files"), runId: z.string().optional().describe("Only this run's files"), kind: z.enum(["markdown", "log", "json", "image", "text", "pdf", "html"]).optional().describe("Only this file kind, including HTML") },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, taskId, runId }) => run("artifacts.list", { project: p, taskId, runId })),
+    withProject(async ({ project: p, taskId, runId, kind }) => run("artifacts.list", { project: p, taskId, runId, kind })),
   );
 
   server.registerTool(
@@ -277,6 +284,24 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         return failed(err);
       }
     },
+  );
+
+  if (writes) server.registerTool(
+    "artifact_put",
+    {
+      title: "Save a run artifact",
+      description: "Save one report, HTML page, image or PDF to the current project and task. HTML is previewed in a network-restricted sandbox.",
+      inputSchema: {
+        project: z.string().optional(), taskId: z.string().min(1), runId: z.string().min(1), name: z.string().min(1).max(300),
+        data: z.string().min(1).describe("File bytes encoded as base64"), versionNote: z.string().max(500).optional(),
+      },
+    },
+    withProject(async ({ project: p, taskId, runId, name, data, versionNote }) => {
+      try {
+        const artifact = await call("artifacts.put", { project: p, taskId, runId, name, data, versionNote }, actor);
+        return { content: [{ type: "text", text: JSON.stringify(artifact) }] };
+      } catch (err) { return failed(err); }
+    }),
   );
 
   if (writes) {
@@ -789,21 +814,18 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       {
         title: "Update a task",
         description:
-          'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks.',
-        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional() },
+          'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks. A task manager may change platforms alone.',
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES).optional(), note: z.string().optional(), ...(taskManage ? { platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() } : {}) },
       },
-      async ({ id, status, note }) => run("tasks.update", { id, status, note }),
+      async ({ id, status, note, platforms }) => run("tasks.update", { id, status, note, ...(taskManage ? { platforms } : {}) }),
     );
   }
 
   if (cliLeader) {
-    const allowed = (permission: "taskManage" | "runDispatch" | "taskWork" | "docPropose") =>
-      opts.defaultProject ? may(actor, opts.defaultProject, permission) :
-        actor.access ? Object.keys(actor.access.projects).some((p) => may(actor, p, permission)) : may(actor, null, permission);
-    if (allowed("taskManage")) {
+    if (taskManage) {
       server.registerTool("task_create", {
-        title: "Create a task", description: "Create a task on a project board with the account's taskManage right.",
-        inputSchema: { id: z.string(), project, title: z.string(), priority: z.number().int().min(0).max(100).optional(), note: z.string().optional(), dependsOn: z.array(z.string()).max(20).optional(), kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() },
+        title: "Create a task", description: "Create a task on a project board with the account's taskManage right. platforms limits which machine OS may run it; empty means any OS.",
+        inputSchema: { id: z.string(), project, title: z.string(), priority: z.number().int().min(0).max(100).optional(), note: z.string().optional(), dependsOn: z.array(z.string()).max(20).optional(), kind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() },
       }, withProject(async ({ project: p, ...input }) => run("tasks.create", { ...input, project: p })));
       server.registerTool("task_set_deps", {
         title: "Set task dependencies", description: "Replace a task's dependencies; cycles are refused.",
@@ -919,12 +941,13 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
           taskKind: z.enum(TASK_KINDS).optional(),
           size: z.enum(TASK_SIZES).optional(),
           risk: z.enum(TASK_RISKS).optional(),
+          platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
           reason,
         },
       },
-      async ({ id, title, project: p, dependsOn, taskKind, size, risk, reason: why }) =>
+      async ({ id, title, project: p, dependsOn, taskKind, size, risk, platforms, reason: why }) =>
         run("chat.propose", {
-          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}) },
+          action: { kind: "task.create", id, title, ...(p ? { project: p } : {}), dependsOn: dependsOn ?? [], ...(taskKind ? { taskKind } : {}), ...(size ? { size } : {}), ...(risk ? { risk } : {}), ...(platforms ? { platforms } : {}) },
           reason: why,
         }),
     );
