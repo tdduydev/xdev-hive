@@ -845,6 +845,21 @@ const MIGRATIONS: string[] = [
    ALTER TABLE run_records ADD COLUMN pushed INTEGER;
    ALTER TABLE run_records ADD COLUMN push_error TEXT;
    ALTER TABLE machines ADD COLUMN git_push TEXT;`,
+  `
+  ALTER TABLE artifacts RENAME TO artifacts_old;
+  CREATE TABLE artifacts(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+    name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, stored TEXT, data BLOB NOT NULL,
+    profile_id TEXT, uploaded_by TEXT NOT NULL, on_behalf TEXT, source TEXT, created_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1, version_note TEXT NOT NULL DEFAULT '', pinned INTEGER NOT NULL DEFAULT 0);
+  INSERT INTO artifacts SELECT id, project, task_id, run_id, machine_id, name, type, size, sha256, stored, data,
+    profile_id, uploaded_by, on_behalf, source, created_at, 1, '', 0 FROM artifacts_old;
+  DROP TABLE artifacts_old;
+  CREATE INDEX artifacts_project ON artifacts(project, id);
+  CREATE INDEX artifacts_task ON artifacts(project, task_id);
+  CREATE INDEX artifacts_sha ON artifacts(sha256);
+  CREATE INDEX artifacts_file ON artifacts(project, task_id, name, version);
+  `,
 ];
 
 function browserSeedSql(): string {
@@ -1604,7 +1619,7 @@ const toAsset = (r: Row): DocAsset => ({
 /** The tables whose rows point at bytes in the file store: both are read before a blob is dropped or backed up. */
 const BLOB_TABLES = ["doc_assets", "artifacts"] as const;
 /** Everything but the bytes: a list of artifacts never reads a blob. */
-const ARTIFACT_FIELDS = "id, project, task_id, run_id, machine_id, name, type, size, sha256, profile_id, uploaded_by, source, created_at";
+const ARTIFACT_FIELDS = "id, project, task_id, run_id, machine_id, name, type, size, sha256, profile_id, uploaded_by, source, created_at, version, version_note, pinned";
 const toArtifact = (r: Row): Artifact => ({
   id: num(r.id),
   project: str(r.project),
@@ -1619,6 +1634,9 @@ const toArtifact = (r: Row): Artifact => ({
   uploadedBy: str(r.uploaded_by),
   source: sourceOf(r.source),
   createdAt: str(r.created_at),
+  version: num(r.version ?? 1),
+  versionNote: str(r.version_note ?? ""),
+  pinned: num(r.pinned ?? 0) === 1,
 });
 const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
 const toAssist = (r: Row): DocAssist => ({
@@ -2747,9 +2765,11 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** A run's file, or a gate job's (runId = its job id, no task): the same checks and the same store for both. */
-  async #putArtifact({ project, taskId, runId, profileId, name: raw, data }: { project: string; taskId: string; runId: string; profileId: string | null; name: string; data: string }, actor: Actor): Promise<Artifact> {
+  async #putArtifact({ project, taskId, runId, profileId, name: raw, data, versionNote = "" }: { project: string; taskId: string; runId: string; profileId: string | null; name: string; data: string; versionNote?: string }, actor: Actor): Promise<Artifact> {
     const name = artifactName(raw);
     if (!name) throw new HiveError("bad_request", `${raw} is not a file name.`, { key: "errors.artifactName", vars: { name: raw } });
+    assertNoHidden(versionNote, "versionNote");
+    assertNoSecret(versionNote, "versionNote");
     let bytes = new Uint8Array(Buffer.from(data, "base64"));
     const type = checkArtifact(name, bytes);
     if (isArtifactText(type)) {
@@ -2761,13 +2781,9 @@ export class SqliteHive implements HiveBackend {
     // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
     const sha = sha256(bytes);
     const allowed = () => {
-      const has = this.db.prepare("SELECT id, sha256, project, task_id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
-      if (has) {
-        // A verifier's snapshot must keep pointing at the same bytes and scope after a rerun uploads files.
-        if (has.sha256 !== sha || has.project !== project || has.task_id !== taskId) this.#checkEvidenceArtifact(num(has.id));
-        return;
-      }
-      const count = num((this.db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
+      const exists = this.db.prepare("SELECT 1 AS found FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ? LIMIT 1").get(actor.name, runId, name) as Row | undefined;
+      if (exists) return;
+      const count = num((this.db.prepare("SELECT COUNT(DISTINCT name) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
       if (count >= ARTIFACTS_PER_RUN) {
         throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
       }
@@ -2780,21 +2796,17 @@ export class SqliteHive implements HiveBackend {
     }
     const { artifact, dropped } = this.#tx(() => {
       allowed();
-      const before = this.db.prepare("SELECT sha256, stored FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+      const version = num((this.db.prepare("SELECT COALESCE(MAX(version), 0) AS n FROM artifacts WHERE project = ? AND task_id = ? AND name = ?").get(project, taskId, name) as Row).n) + 1;
       this.db.prepare(
-        `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(machine_id, run_id, name) DO UPDATE SET project = excluded.project, task_id = excluded.task_id,
-           type = excluded.type, size = excluded.size, sha256 = excluded.sha256, stored = excluded.stored, data = excluded.data,
-           profile_id = excluded.profile_id, uploaded_by = excluded.uploaded_by, on_behalf = excluded.on_behalf,
-           source = excluded.source, created_at = excluded.created_at`,
+        `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at, version, version_note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         project, taskId, runId, actor.name, name, type, bytes.length, sha, blobs ? blobs.name : null, blobs ? new Uint8Array(0) : bytes,
-        profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(),
+        profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(), version, versionNote.trim(),
       );
       return {
-        artifact: toArtifact(this.db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?`).get(actor.name, runId, name) as Row),
-        dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
+        artifact: toArtifact(this.db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE id = last_insert_rowid()`).get() as Row),
+        dropped: null,
       };
     });
     if (dropped) await this.#dropBlob(dropped);
@@ -7449,8 +7461,9 @@ export class SqliteHive implements HiveBackend {
              (?8 = 'json' AND type = 'application/json') OR
              (?8 = 'image' AND type LIKE 'image/%') OR
              (?8 = 'text' AND type = 'text/plain' AND lower(name) NOT LIKE '%.log') OR
-             (?8 = 'pdf' AND type = 'application/pdf'))
-           ORDER BY created_at DESC, id DESC LIMIT ?9 OFFSET ?10`
+             (?8 = 'pdf' AND type = 'application/pdf') OR
+             (?8 = 'html' AND type = 'text/html'))
+           ORDER BY pinned DESC, created_at DESC, id DESC LIMIT ?9 OFFSET ?10`
         ).all(JSON.stringify(allowed), project ?? null, listParam(projects), taskId ?? null, runId ?? null,
           machineId ?? null, name?.trim() || null, kind ?? null, limit, offset) as Row[]).map(toArtifact);
       },
@@ -7465,6 +7478,14 @@ export class SqliteHive implements HiveBackend {
         // Never end a preview midway through a UTF-8 character.
         if (truncated) while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
         return { artifact: toArtifact(row), data: Buffer.from(bytes.subarray(0, end)).toString("base64"), ...(maxBytes === undefined ? {} : { truncated }) };
+      },
+
+      "artifacts.pin": ({ id, pinned }, actor) => {
+        const row = db.prepare("SELECT project FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+        if (!row) throw new HiveError("not_found", "Artifact not found.", { key: "errors.notFound" });
+        this.#need(actor, str(row.project), "docPropose", `Artifact #${id}`);
+        db.prepare("UPDATE artifacts SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
+        return toArtifact(db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE id = ?`).get(id) as Row);
       },
 
       "artifacts.remove": async ({ id }) => {
