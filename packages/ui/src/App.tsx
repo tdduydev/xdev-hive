@@ -41,7 +41,7 @@ import { HiveContext, hashParam, useProjectList, useQuery, usePoll, useRetiredPr
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
 import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
-import { readScope, resolveScope, scopeTitle, writeScope, type Scope } from "./lib/scope.ts";
+import { readScope, resolveScope, scopeKey, scopeProject, scopeProjects, scopeTitle, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
@@ -394,6 +394,14 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   };
   // Filled: what waits for you, and alerts the hub rates high.
   const strong = (id: PageId) => id === "today" || (id === "admin" && openAlerts.some((a) => a.severity === "high"));
+  const runTick = usePoll(visible.has("runs") ? 4000 : null);
+  const activeRuns = useQuery(async () => {
+    if (!visible.has("runs") || scope.kind === "shared") return null;
+    const input = { project: scopeProject(scope) ?? undefined, projects: scopeProjects(scope) ?? undefined };
+    const result = client.desktop ? await client.desktop.runsCount?.(input) : await client.call("runs.count", input);
+    return result ? { scope: scopeKey(scope), ...result } : null;
+  }, [client, visible.has("runs"), scopeKey(scope), runTick, tick]);
+  counts.runs = !activeRuns.error && activeRuns.data?.scope === scopeKey(scope) ? activeRuns.data.running : 0;
   const shortcuts = local ? LOCAL_SHORTCUTS : deskHub ? DESK_SHORTCUTS : SHORTCUTS;
   // Desktop Task still opens the board for this machine's projects; every other sidebar label follows the design.
   const label = (id: PageId): MessageKey => deskHub && id === "tasks" ? "nav.board" : id === "artifacts" ? "shell.artifacts" : PAGES[id].label;

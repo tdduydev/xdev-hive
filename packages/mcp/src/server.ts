@@ -52,7 +52,7 @@ Answers are kept short: memory_search gives 8 entries without their bookkeeping 
 End of session: task_update to "review" with a note (done / not done / how to verify / risks); it is kept beside the handovers before it, which task_notes reads. Never store secrets.`;
 
 const READ_ONLY_INSTRUCTIONS = `xDev Hive is the shared memory, docs and task board for every coding agent on this team.
-This connection is read-only: memory_search, doc_list, doc_get, doc_asset, artifact_list, artifact_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
+This connection is read-only: memory_search, doc_list, doc_get, doc_asset, artifact_list, artifact_get, skill_list, skill_get, task_list, task_get, task_notes, task_next, run_list, run_count, run_get, run_requests, machine_list, setup_missing, cost_summary, token_usage, tool_list, tool_status and policy_get (alert_list for hub admins). Search memory for your topic before working.
 Answers are kept short: memory_search gives 8 entries without their bookkeeping (verbose: true for every field), task_list cuts each note to 200 characters (task_get reads one task in full, full: true the whole board).
 Put anything worth sharing (decisions, gotchas, the handoff) in your final message instead of writing it to Hive.`;
 
@@ -114,7 +114,7 @@ This chat is the whole hub, not one project: read project_list first (every proj
 when you have it. There is no default project: every propose_* takes project, and it is required — name the project each proposal is for, and do
 not guess one. Only machine_list, project_list and a machine's own setup item (cli:<kind>, shim, tool:<id>) belong to no project, and propose_stop_agents,
 propose_resume_agents and propose_policy without project mean the whole hub, which is a much bigger thing to ask for: say so plainly.
-run_list, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
+run_list, run_count, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
 Group what you propose by project, and leave merges, stopping agents and policy changes for the person to decide.`;
 
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
@@ -129,7 +129,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const hubScope = opts.hubScope === true && actor.chatReply !== undefined;
   // The web derives hubScope from the authenticated reply's thread, opened only by a hub admin.
   // Broaden only these reads; proposals and every mutation retain the machine's intersected grants.
-  const hubReads = new Set<Method>(["projects.list", "tasks.list", "runs.list", "runs.requests", "machines.list", "systems.list", "costs.summary", "budgets.list"]);
+  const hubReads = new Set<Method>(["projects.list", "tasks.list", "runs.list", "runs.count", "runs.requests", "machines.list", "systems.list", "costs.summary", "budgets.list"]);
   const readActor: Actor = hubScope ? { ...actor, role: "viewer", access: undefined } : actor;
   const call: HiveBackend["call"] = (method, input, caller) =>
     backend.call(method, input, hubScope && hubReads.has(method) ? readActor : caller);
@@ -488,6 +488,17 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   );
 
   // Hub mode: what machines pushed (runs.push) and reported (heartbeats); a local database has none.
+  server.registerTool(
+    "run_count",
+    {
+      title: "Count active agent runs",
+      description: "Exact running and queued run counts in the visible project scope, independent of run_list's limit. With no project, counts all projects this connection may read.",
+      inputSchema: { project },
+      annotations: readOnly,
+    },
+    overHub(async ({ project: p }) => run("runs.count", { project: p })),
+  );
+
   server.registerTool(
     "run_list",
     {
