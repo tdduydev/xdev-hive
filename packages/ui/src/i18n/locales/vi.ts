@@ -1052,7 +1052,7 @@ export const vi = {
   taskStatus: {
     todo: "Chưa làm",
     doing: "Đang làm",
-    review: "Chờ review",
+    review: "Review",
     done: "Xong",
     blocked: "Bị chặn",
   },
@@ -1641,7 +1641,7 @@ export const vi = {
     view_list: "Danh sách",
     showOlderDone: "Xem thêm {count} task đã xong",
     title: "Task",
-    subtitle: "Theo dõi công việc, xem bàn giao và giao cho agent. Dùng + Mới để bắt đầu một việc.",
+    subtitle: "Mọi task theo phạm vi đang chọn. Task chờ task khác nằm ở Bị chặn; agent không nhận được cho tới khi chúng xong.",
     status: "Trạng thái",
     statusOf: "Trạng thái {id}",
     closeWarning: "Bạn vẫn có thể đóng {id} sau khi xác nhận. Kiểm tra trạng thái bên dưới trước khi tiếp tục.",
