@@ -757,13 +757,42 @@ async function main() {
   // 72d: the board in the design's dark theme and in light, same layout; shots feed the compare image.
   await step("cosmic-tasks-board", async () => {
     const tab = (current = tabs.admin);
+    // One card per column, each variant of the design: agents (planet + profile), the activity bar, a red "Chờ <id>" pill, a faded Xong.
+    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", version: "0.142.0", projects: ["payment"], acceptsRuns: true, profiles: ["claude", "codex"].map((id) => ({ id, label: id, kind: id, enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2, sessionPercent: 10, weekPercent: 10 })), runs: [] } }) });
+    const beatJson = await beat.json();
+    if (beatJson.error) throw new Error(`board heartbeat: ${beatJson.error.message}`);
+    const boardMachine = (await rpc("machines.list")).find((m) => m.machine === "board-e2e");
+    await rpc("tasks.create", { project: "payment", id: "CB-DOING", title: "Đồng bộ sổ cái theo lô", priority: 60 });
+    await rpc("tasks.create", { project: "payment", id: "CB-REVIEW", title: "Rà soát luồng hoàn tiền", priority: 50 });
+    await rpc("tasks.create", { project: "payment", id: "CB-DONE", title: "Chuẩn hoá mã lỗi thanh toán", priority: 40 });
+    await rpc("tasks.create", { project: "payment", id: "CB-BLOCKED", title: "Báo cáo đối soát cuối ngày", priority: 30, dependsOn: ["CB-DOING"] });
+    await rpc("tasks.assign", { id: "CB-DOING", machineId: boardMachine.id, profileId: "claude" });
+    await rpc("tasks.assign", { id: "CB-REVIEW", machineId: boardMachine.id, profileId: "codex" });
+    await rpc("tasks.update", { id: "CB-DOING", status: "doing" });
+    await rpc("tasks.update", { id: "CB-REVIEW", status: "review" });
+    await rpc("tasks.update", { id: "CB-DONE", status: "done" });
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
     await tab.go("tasks");
     await tab.click('[data-task-view="kanban"]');
     await tab.waitFor("board columns", () => document.querySelectorAll("[data-column]").length === 5);
-    const geometry = await tab.eval(() => [...document.querySelectorAll("[data-column]")].map((el) => { const s = getComputedStyle(el); return { radius: s.borderTopLeftRadius, pad: s.paddingLeft, min: s.minHeight }; }));
-    // Empty columns fold into a 40px rail when the board is narrower than five columns (Hive's own behaviour), so only the first, which has cards, is measured.
-    if (!mobile) expect(geometry[0].radius === "22px" && geometry[0].pad === "12px" && parseFloat(geometry[0].min) >= 360, `column geometry: ${JSON.stringify(geometry)}`);
+    await tab.waitFor("every column has a card", () => ["todo", "doing", "review", "blocked", "done"].every((s) => document.querySelector(`[data-column="${s}"] [data-task]`)));
+    const variants = await tab.eval(() => {
+      const col = (s) => document.querySelector(`[data-column="${s}"]`);
+      return {
+        order: [...document.querySelectorAll("[data-column]")].map((el) => el.dataset.column).join(),
+        folded: document.querySelectorAll("[data-column-rail]").length,
+        chips: [...document.querySelectorAll("[data-board-filters] [role=button]")].length,
+        doingAgent: !!col("doing").querySelector("[data-task-agent]"),
+        doingBar: !!col("doing").querySelector("[data-task-activity]"),
+        reviewAgent: !!col("review").querySelector("[data-task-agent]"),
+        blockedPill: /Chờ/.test(col("blocked").textContent),
+        doneOpacity: getComputedStyle(col("done").querySelector("[data-task]")).opacity,
+        radius: getComputedStyle(col("todo")).borderTopLeftRadius,
+        min: getComputedStyle(col("todo")).minHeight,
+      };
+    });
+    if (!mobile) expect(variants.order === "todo,doing,review,blocked,done" && variants.folded === 0 && variants.chips >= 3 && variants.radius === "22px" && parseFloat(variants.min) >= 360, `board layout: ${JSON.stringify(variants)}`);
+    expect(variants.doingAgent && variants.doingBar && variants.reviewAgent && variants.blockedPill && variants.doneOpacity === "0.6", `card variants: ${JSON.stringify(variants)}`);
     await sleep(200);
     await tab.shot(`tasks-dark-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => { document.documentElement.dataset.theme = "light"; });

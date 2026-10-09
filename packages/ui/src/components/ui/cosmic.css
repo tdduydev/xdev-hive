@@ -53,3 +53,7 @@
 [data-slot="button"][data-size^="icon"]{border-radius:var(--radius-control)}
 
 }
+
+@keyframes cosmic-activity{from{left:-40%}to{left:100%}}
+.cosmic-activity{animation:cosmic-activity 1.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.cosmic-activity{animation:none;left:0}}

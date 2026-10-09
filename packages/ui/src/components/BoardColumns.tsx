@@ -1,12 +1,12 @@
 // The five status columns of a board, in whatever width is left for them (roadmap 39g). Xong and Bị chặn shrink to a
-// narrow rail with their count when they hold nothing or when five full columns no longer fit, so a 1100px window
+// narrow rail with their count when five full columns no longer fit, so a 1100px window
 // shows the whole board without scrolling sideways; a click opens one of them, a second click folds it back.
 // Shared by the desktop Board and the web's Task page, which draw their own cards inside these columns.
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type DragEvent, type ReactNode } from "react";
 import { Ban, Circle, CircleCheck, GitPullRequest, LoaderCircle } from "lucide-react";
 import { cn } from "cn";
-import { TASK_STATUSES, type TaskStatus } from "@xdev-hive/core";
-import { COLUMN_MIN, fitsEveryColumn, FOLDABLE, foldedColumns } from "#ui/lib/board.ts";
+import { type TaskStatus } from "@xdev-hive/core";
+import { BOARD_ORDER, COLUMN_MIN, fitsEveryColumn, FOLDABLE, foldedColumns } from "#ui/lib/board.ts";
 import { useT } from "#ui/i18n/index.tsx";
 
 /** A folded column: wide enough for its icon, its count and its name read downwards. */
@@ -59,7 +59,7 @@ export function BoardColumns({
   const [opened, setOpened] = useState<TaskStatus[]>([]);
   const [over, setOver] = useState<TaskStatus | null>(null);
   const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches);
-  const [active, setActive] = useState<TaskStatus>(TASK_STATUSES[0]);
+  const [active, setActive] = useState<TaskStatus>("todo");
   const scroller = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -85,13 +85,13 @@ export function BoardColumns({
   const folded = mobile ? new Set<TaskStatus>() : foldedColumns(width, count, new Set(opened));
   const narrow = !fitsEveryColumn(width);
   // Narrow: the open columns share what is left, so the grid can never be wider than the board.
-  const columns = TASK_STATUSES.map((status) => (folded.has(status) ? `${RAIL_WIDTH}px` : narrow ? "minmax(0,1fr)" : `minmax(${COLUMN_DESIGN}px,1fr)`)).join(" ");
+  const columns = BOARD_ORDER.map((status) => (folded.has(status) ? `${RAIL_WIDTH}px` : narrow ? "minmax(0,1fr)" : `minmax(${COLUMN_DESIGN}px,1fr)`)).join(" ");
 
   return (
     <div ref={box} className={cn("min-h-full min-w-0", className)}>
       {mobile ? (
         <div role="tablist" aria-label={t("board.board")} className="mb-2 flex gap-1 overflow-x-auto pb-1">
-          {TASK_STATUSES.map((status) => (
+          {BOARD_ORDER.map((status) => (
             <button key={status} type="button" role="tab" aria-selected={active === status}
               onClick={() => {
                 setActive(status);
@@ -106,21 +106,21 @@ export function BoardColumns({
         style={mobile ? undefined : { gridTemplateColumns: columns }} data-board-fit={mobile ? "mobile" : narrow ? "narrow" : "wide"}
         onScroll={mobile ? (e) => {
           const left = e.currentTarget.scrollLeft;
-          const nearest = TASK_STATUSES.reduce((best, status) => {
+          const nearest = BOARD_ORDER.reduce((best, status) => {
             const el = e.currentTarget.querySelector<HTMLElement>(`[data-column="${status}"]`);
             const distance = Math.abs((el?.offsetLeft ?? 0) - left - e.currentTarget.offsetLeft);
             return distance < best.distance ? { status, distance } : best;
           }, { status: active, distance: Infinity });
           if (nearest.status !== active) setActive(nearest.status);
         } : undefined}>
-        {TASK_STATUSES.map((status) => {
+        {BOARD_ORDER.map((status) => {
           const [Icon, iconCls] = COLUMN_ICON[status];
           const n = count(status);
           const rail = folded.has(status);
           const label = t(`taskStatus.${status}`);
           const title = t("board.column", { status: label, count: n });
           // Foldable while it would fold on its own: otherwise the reader could hide a column they cannot bring back.
-          const foldable = FOLDABLE.includes(status) && (narrow || n === 0);
+          const foldable = FOLDABLE.includes(status) && narrow;
           const fold = () => setOpened((o) => (o.includes(status) ? o.filter((s) => s !== status) : [...o, status]));
           return (
             <section

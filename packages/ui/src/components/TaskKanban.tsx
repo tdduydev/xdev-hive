@@ -196,13 +196,13 @@ function KanbanCard({
         task.status === "done" && "opacity-60",
       )}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="shrink-0 font-mono text-[11.5px]/none font-semibold text-fg-muted">{task.id}</span>
         <span className="flex-1" />
-        {deps.length ? <span className="inline-flex h-5 items-center rounded-full bg-[var(--pill-danger-bg)] px-2 text-[11px]/4 font-semibold text-[var(--pill-danger-fg)]">{t("board.waitingOn", { tasks: deps.join(", ") })}</span> : null}
-        {waiting ? <span className="inline-flex h-5 items-center rounded-full bg-info-soft px-2 text-[11px]/4 font-semibold text-info">{t("tasks.waitingMachine", { machine: waiting.machine })}</span> : null}
+        {deps.length ? <span className="inline-flex h-5 items-center whitespace-nowrap rounded-full bg-[var(--pill-danger-bg)] px-2 text-[11px]/4 font-semibold text-[var(--pill-danger-fg)]">{t("board.waitingOn", { tasks: deps.join(", ") })}</span> : null}
+        {waiting ? <span className="inline-flex h-5 items-center whitespace-nowrap rounded-full bg-info-soft px-2 text-[11px]/4 font-semibold text-info">{t("tasks.waitingMachine", { machine: waiting.machine })}</span> : null}
         {isNext ? (
-          <span title={t("board.nextTaskHint")} className="inline-flex h-5 items-center rounded-full bg-[var(--pill-violet-bg)] px-2 text-[11px]/4 font-semibold text-[var(--pill-violet-fg)]">
+          <span title={t("board.nextTaskHint")} className="inline-flex h-5 items-center whitespace-nowrap rounded-full bg-[var(--pill-violet-bg)] px-2 text-[11px]/4 font-semibold text-[var(--pill-violet-fg)]">
             {t("board.nextTask")}
           </span>
         ) : null}
@@ -219,6 +219,12 @@ function KanbanCard({
           </span>
         ) : owner ? <span className="truncate">{owner}</span> : null}
       </div>
+      {/* Hive keeps no progress figure for a task, so this bar only says "being worked on": a lit segment sliding on the track, still under reduced motion. */}
+      {task.status === "doing" ? (
+        <span data-task-activity aria-hidden="true" className="relative h-1 overflow-hidden rounded-full bg-[var(--chip-bg)]">
+          <span className="cosmic-activity absolute inset-y-0 w-2/5 rounded-full bg-[var(--accent-blue)] shadow-[0_0_8px_var(--accent-blue)]" />
+        </span>
+      ) : null}
     </div>
   );
 }
