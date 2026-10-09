@@ -907,7 +907,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
           HIVE_SMOKE_SIDEBAR: "open",
           HIVE_SMOKE_EXPECT: [`nav a[href="#/${page}"][aria-current="page"]`, "[data-desktop-shell]", nav, web, also].filter(Boolean).join(" && "),
           HIVE_SMOKE_ABSENT: absent,
-          HIVE_SMOKE_ASSERT: fits,
+          // One title per page (the top bar's), and ⌘K's placeholder names what the app has, not tasks or docs.
+          HIVE_SMOKE_ASSERT: `${fits} && document.querySelectorAll("h1").length === 1 && !/task|tài liệu/i.test(document.querySelector(".hive-topbar-search").textContent)`,
         });
       }
     }
