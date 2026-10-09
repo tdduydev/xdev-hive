@@ -12,20 +12,20 @@
 @import "@fontsource/inter/700.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 
-@import "./tokens/primitives.css";
-@import "./tokens/colors.css";
-@import "./tokens/typography.css";
-@import "./tokens/spacing.css";
-@import "./tokens/shell.css";
-@import "./tokens/motion.css";
-@import "./tokens/cosmic.css";
-@import "./tokens/today.css";
-@import "./components/ui/cosmic.css";
+@import "../../ui-kit/src/tokens/primitives.css";
+@import "../../ui-kit/src/tokens/colors.css";
+@import "../../ui-kit/src/tokens/typography.css";
+@import "../../ui-kit/src/tokens/spacing.css";
+@import "../../ui-kit/src/tokens/shell.css";
+@import "../../ui-kit/src/tokens/motion.css";
+@import "../../ui-kit/src/tokens/cosmic.css";
+@import "../../ui-kit/src/tokens/today.css";
+@import "../../ui-kit/src/components/ui/cosmic.css";
 @import "./components/ResponsiveTable.css";
 @import "./components/chat/chat.css";
 @import "./mobile.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
-@import "./tokens/base.css" layer(base);
+@import "../../ui-kit/src/tokens/base.css" layer(base);
 
 .terminal-screen .xterm { height: 100%; }
 .terminal-screen .xterm-helper-textarea { font-size: 16px !important; }
@@ -33,6 +33,9 @@
 
 /* Components live in this package; the apps only import this file. */
 @source "./";
+@source "../../ui-kit/src";
+@source "../../../apps/web/client";
+@source "../../../apps/desktop/src/renderer";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

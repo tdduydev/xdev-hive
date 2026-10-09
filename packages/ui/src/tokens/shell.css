@@ -1,24 +1,2 @@
-:root,[data-theme="light"] {
-  --shell-backdrop: radial-gradient(1px 1px at 22px 34px, rgba(35,30,52,.17), transparent 60%), radial-gradient(1px 1px at 140px 90px, rgba(35,30,52,.12), transparent 60%), linear-gradient(135deg,#FFFFFF 0%,#F7F6FB 32%);
-  --shell-backdrop-size: 300px 300px, 300px 300px, 100% 100%;
-  --shell-sidebar-bg: rgba(248,247,252,.84);
-  --shell-glass: rgba(35,30,52,.05);
-  --shell-glass-hover: rgba(35,30,52,.09);
-  --shell-ring: inset 0 0 0 1px rgba(35,30,52,.12);
-  --shell-divider: inset 0 -1px 0 rgba(35,30,52,.10);
-  --shell-sidebar-divider: inset -1px 0 0 rgba(35,30,52,.10);
-  --shell-count-secondary: rgba(24,160,251,.65);
-  --shell-text-faint: #716D79;
-}
-[data-theme="dark"] {
-  --shell-backdrop-size: 300px 300px, 300px 300px, 300px 300px, 300px 300px, 300px 300px, 100% 100%;
-  --shell-backdrop: radial-gradient(1px 1px at 22px 34px, rgba(255,255,255,.45), transparent 60%), radial-gradient(1px 1px at 140px 90px, rgba(255,255,255,.3), transparent 60%), radial-gradient(1px 1px at 210px 180px, rgba(255,255,255,.35), transparent 60%), radial-gradient(1px 1px at 80px 220px, rgba(255,255,255,.22), transparent 60%), radial-gradient(1.5px 1.5px at 260px 40px, rgba(255,255,255,.28), transparent 60%), linear-gradient(135deg,#1E1E20 0%,#0E0E11 32%);
-  --shell-sidebar-bg: rgba(14,14,17,.72);
-  --shell-glass: rgba(255,255,255,.08);
-  --shell-glass-hover: rgba(255,255,255,.14);
-  --shell-ring: inset 0 0 0 1px rgba(255,255,255,.08);
-  --shell-divider: inset 0 -1px 0 rgba(255,255,255,.06);
-  --shell-sidebar-divider: inset -1px 0 0 rgba(255,255,255,.06);
-  --shell-count-secondary: rgba(24,160,251,.5);
-  --shell-text-faint: #A9A9A9;
-}
+/* Kept for in-flight 72 branches; remove in 76h. */
+@import "../../../ui-kit/src/tokens/shell.css";

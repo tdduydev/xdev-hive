@@ -13,9 +13,9 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@xdev-hive/ui/components",
-    "utils": "@xdev-hive/ui/lib/utils",
-    "ui": "@xdev-hive/ui/components/ui",
-    "lib": "@xdev-hive/ui/lib",
-    "hooks": "@xdev-hive/ui/lib/hooks"
+    "utils": "@xdev-hive/ui-kit/lib/utils",
+    "ui": "@xdev-hive/ui-kit/components/ui",
+    "lib": "@xdev-hive/ui-kit/lib",
+    "hooks": "@xdev-hive/ui-kit/lib/hooks"
   }
 }
