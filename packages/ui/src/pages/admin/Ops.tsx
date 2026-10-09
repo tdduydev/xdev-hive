@@ -21,6 +21,7 @@ import { ACTION_LABEL, MachineCard, useHubTools } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
 import { BudgetsCard } from "./Budgets.tsx";
+import { AdminStats } from "./cosmic.tsx";
 
 const REFRESH_MS = 15_000;
 
@@ -36,7 +37,7 @@ function useTick(ms = REFRESH_MS): number {
 
 function Card({ title, sub, action, children, className }: { title: string; sub?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={cn("flex min-w-0 flex-col gap-3 rounded-[14px] border border-line-default bg-surface p-4", className)}>
+    <section className={cn("cx-ops-panel", className)}>
       <div className="flex flex-wrap items-baseline gap-2">
         <h2 className="m-0 text-sm/5 font-semibold text-fg-strong">{title}</h2>
         {sub ? <span className="text-xs text-fg-muted">{sub}</span> : null}
@@ -163,23 +164,19 @@ export function OpsOverview({ lead }: { lead?: ReactNode } = {}) {
     .slice(0, 6);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="cx-ops-stack">
       <StopAgentsBar lead={lead} />
       <ErrorNote error={runs.error ?? machines.error} />
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2.5">
-        <Kpi href="#/runs" label={t("ops.kpi.running")} value={live.length} sub={t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size })} />
-        <Kpi href="#/machines?tab=queue" label={t("ops.kpi.queue")} value={waiting} sub={t("ops.kpi.queueSub")} />
-        <Kpi label={`${t("ops.kpi.success")} ${t(`ops.range.${range}`)}`} value={rate === null ? "—" : `${rate}%`} sub={t("ops.kpi.successSub", { done, failed, quota })} />
-        <Kpi href="#/machines?tab=fleet" label={t("ops.kpi.online")} value={`${fleet.filter((m) => m.online).length}/${fleet.length}`} sub={t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length })} />
-        <Kpi href="#/machines?tab=costs" label={t("ops.kpi.cost", { range: t(`ops.range.${range}`) })} value={cost === null ? "—" : formatUsd(cost)} sub={t("ops.kpi.costSub")} />
-        <Kpi
-          href="#/today"
-          label={t("ops.kpi.pending")}
-          value={(proposals.data?.length ?? 0) + (memory.data?.length ?? 0)}
-          sub={t("ops.kpi.pendingSub")}
-          warn={Boolean((proposals.data?.length ?? 0) + (memory.data?.length ?? 0))}
-        />
-      </div>
+      <AdminStats
+        stats={[
+          { key: "running", href: "#/runs", label: t("ops.kpi.running"), value: live.length, note: t("ops.kpi.runningSub", { count: new Set(live.map((r) => r.machineId)).size }), tone: live.length ? "run" : "neutral" },
+          { key: "queue", href: "#/machines?tab=queue", label: t("ops.kpi.queue"), value: waiting, note: t("ops.kpi.queueSub"), tone: waiting ? "info" : "neutral" },
+          { key: "success", label: `${t("ops.kpi.success")} ${t(`ops.range.${range}`)}`, value: rate === null ? "—" : `${rate}%`, note: t("ops.kpi.successSub", { done, failed, quota }), tone: rate === null ? "neutral" : rate >= 80 ? "ok" : "warn" },
+          { key: "online", href: "#/machines?tab=fleet", label: t("ops.kpi.online"), value: `${fleet.filter((m) => m.online).length}/${fleet.length}`, note: t("ops.kpi.onlineSub", { count: fleet.filter((m) => !m.online).length }), tone: "ok" },
+          { key: "cost", href: "#/machines?tab=costs", label: t("ops.kpi.cost", { range: t(`ops.range.${range}`) }), value: cost === null ? "—" : formatUsd(cost), note: t("ops.kpi.costSub"), tone: "info" },
+          { key: "pending", href: "#/today", label: t("ops.kpi.pending"), value: (proposals.data?.length ?? 0) + (memory.data?.length ?? 0), note: t("ops.kpi.pendingSub"), tone: (proposals.data?.length ?? 0) + (memory.data?.length ?? 0) ? "warn" : "neutral" },
+        ]}
+      />
       {client.hub ? (
         <Card title={t("deployLog.title")} sub={hub.data?.deployLog ? t("deployLog.since", { time: formatTime(hub.data.deployLog.startedAt) }) : undefined}>
           <ErrorNote error={hub.error} />
@@ -613,9 +610,9 @@ export function OpsAudit() {
     { key: "detail", label: t("ops.col.detail"), width: "minmax(200px,1.4fr)", render: (e) => detail(e), title: (e) => detail(e) },
   ];
   return (
-    <div className="flex flex-col gap-3">
+    <div className="cx-ops-stack">
       <form
-        className="flex flex-wrap items-center gap-2"
+        className="cx-ops-toolbar !mb-0"
         onSubmit={(ev) => {
           ev.preventDefault();
           setFilter({ agent: draft.agent.trim(), user: draft.user.trim(), run: draft.run.trim() });
@@ -632,7 +629,7 @@ export function OpsAudit() {
             onChange={(ev) => setDraft({ ...draft, [k]: ev.target.value })}
           />
         ))}
-        <Button type="submit" size="sm" variant="outline">
+        <Button type="submit" size="sm" variant="glass">
           {t("ops.audit.apply")}
         </Button>
         {filtered ? (
@@ -650,7 +647,8 @@ export function OpsAudit() {
         ) : null}
       </form>
       <ErrorNote error={log.error} />
-      <DataTable responsive
+      {/* Kept as the DataTable: the audit's search, filters, sorting and paging (and its mobile cards) live there. */}
+      <div className="cx-ops-data"><DataTable responsive
         rows={log.data ?? []}
         columns={columns}
         rowKey={(e) => String(e.id)}
@@ -661,7 +659,7 @@ export function OpsAudit() {
           { key: "group", label: t("ops.group2"), value: (e) => groupOf(e.action), options: groups.map(([value, l]) => ({ value, label: l })) },
           { key: "action", label: t("ops.col.action"), value: (e) => e.action, options: Object.keys(ACTION_LABEL).map((a) => ({ value: a, label: label(a) })) },
         ]}
-      />
+      /></div>
     </div>
   );
 }

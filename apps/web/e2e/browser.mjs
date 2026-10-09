@@ -284,6 +284,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-components": ["login-token"],
   "cosmic-primitives": ["login-token"],
   "cosmic-tasks-board": ["login-token"],
+  "cosmic-settings-admin": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -944,6 +945,21 @@ async function main() {
     await tab.shot(`tasks-light-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
   });
+  // R-72l: Cài đặt service and Quản trị chrome, dark and light, for the pixel comparison against docs/design/hive-2026-10/shots.
+  await step("cosmic-settings-admin", async () => {
+    const tab = (current = tabs.admin);
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      for (const route of ["settings?tab=members", "admin?tab=users"]) {
+        await tab.go(route);
+        await tab.waitFor("page content loaded", () => !!document.querySelector("[data-settings-tidy], [data-admin-page]") && !document.querySelector('main [aria-busy="true"]'));
+        expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), `overflow on ${route}/${theme}`);
+        await tab.shot(`cosmic-${theme}-${route.split("?")[0]}-${mobile ? "390x844" : "1440x900"}`);
+      }
+    }
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await tab.go("today");
+  });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {
@@ -1357,8 +1373,8 @@ async function main() {
     await tab.go("admin/users");
     await tab.waitFor("the users table", () => document.body.innerText.includes("@minh"));
     await tab.waitFor("Minh's Phân quyền", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("@minh"));
-      const b = row && [...row.querySelectorAll("button")].find((x) => x.textContent.trim() === "Phân quyền");
+      const row = document.querySelector('[data-user-row="minh"]');
+      const b = row?.querySelector("[data-user-open]");
       b?.setAttribute("data-e2e-target", "");
       return !!b;
     });

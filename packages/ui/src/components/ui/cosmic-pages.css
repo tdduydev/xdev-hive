@@ -1,0 +1,31 @@
+/* Cài đặt service + Quản trị (R-72l). Numbers are the inline styles of docs/design/hive-2026-10/xDev Hive.dc.html lines 1135–1435. */
+@layer components{
+.cx-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.cx-chips a.cosmic-tag{height:30px;padding:0 12px;border-radius:999px;text-decoration:none;cursor:pointer}
+.cx-chips a.cosmic-tag:hover{color:var(--text-strong)}
+.cx-card{display:flex;flex-direction:column;max-width:920px;overflow:hidden;border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass)}
+.cx-row{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:16px 22px;box-shadow:inset 0 -1px 0 var(--border-subtle)}
+.cx-row>span{display:flex;flex:1;flex-direction:column;gap:2px;min-width:220px}
+.cx-row strong{font:600 14px/20px var(--font-sans);color:var(--text-strong)}
+.cx-row small{font:var(--design-caption);color:var(--text-muted);text-wrap:pretty}
+.cx-editor{max-width:920px;margin-top:12px;padding:20px 22px;border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass)}
+.cx-admin-nav{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px 20px;margin-bottom:20px;padding-bottom:2px;box-shadow:inset 0 -1px 0 var(--border-subtle)}
+.cx-admin-group{display:flex;flex-direction:column;gap:4px}
+.cx-admin-group>span{padding-left:10px;font:var(--design-micro);letter-spacing:.5px;text-transform:uppercase;color:var(--text-faint)}
+.cx-admin-group>div{display:flex;gap:2px;max-width:100%}
+.cx-admin-tab{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 12px;background:transparent;color:var(--text-secondary);font:600 13px/1 var(--font-sans);white-space:nowrap;text-decoration:none;box-shadow:none}
+.cx-admin-tab:hover{color:var(--text-strong)}
+.cx-admin-tab[aria-current="page"]{color:var(--text-strong);box-shadow:inset 0 -2px 0 var(--accent-violet)}
+.cx-admin-head{display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px;margin-bottom:16px}
+.cx-admin-head>div{display:flex;flex:1;flex-direction:column;gap:4px;min-width:240px}
+.cx-admin-head h2{margin:0;font:700 20px/28px var(--font-sans);color:var(--text-strong)}
+.cx-admin-head p{margin:0;font:var(--design-body-sm);color:var(--text-muted);text-wrap:pretty}
+.cx-actionbar{display:flex;align-items:center;gap:12px;max-width:920px;margin-bottom:12px}
+.cx-actionbar>span{flex:1;font:var(--design-body-sm);color:var(--text-muted)}
+.cx-row .cosmic-switch{min-height:26px}
+.cx-select{height:32px;padding:0 30px 0 12px;border:0;border-radius:10px;background:var(--glass-bg);box-shadow:var(--ring-glass);color:var(--text-strong);font:600 12.5px/1 var(--font-sans);outline:0;cursor:pointer}
+.cx-select option{background:var(--surface-3)}
+.cx-pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;background:var(--glass-bg);box-shadow:var(--ring-glass);font:600 12px/1 var(--font-sans);color:var(--text-secondary)}
+.cx-stack{margin-top:16px}
+@media(max-width:767px){.cx-actionbar{flex-wrap:wrap}.cx-select{min-height:44px}.cx-row .cosmic-switch{min-height:44px}.cx-pill{max-width:100%;min-height:30px;height:auto;padding:6px 12px;white-space:normal}.cx-admin-nav{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.cx-admin-tab{height:44px}.cx-chips a.cosmic-tag{min-height:44px}}
+}

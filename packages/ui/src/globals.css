@@ -21,6 +21,9 @@
 @import "./tokens/cosmic.css";
 @import "./tokens/today.css";
 @import "./components/ui/cosmic.css";
+@import "./components/ui/cosmic-pages.css";
+@import "./components/ui/cosmic-users.css";
+@import "./components/ui/cosmic-admin-ops.css";
 @import "./components/ResponsiveTable.css";
 @import "./components/chat/chat.css";
 @import "./mobile.css";
