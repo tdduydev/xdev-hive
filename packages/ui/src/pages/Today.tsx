@@ -20,13 +20,13 @@ import { errorMessage, formatTime, hashParam, useCan, useHive, useQuery } from "
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
 import { groupToday, shortAgo, todayDot, type InboxDone, type InboxItem, type TodayDot } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
-import { docOwner } from "#ui/lib/scope.ts";
+import { docOwner, scopeProjects } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { cosmicAssets } from "#ui/assets/cosmic.ts";
 import { remainingSteps, type StartStep } from "#ui/lib/start.ts";
-import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
+import { alertDetail, alertTitle } from "#ui/pages/admin/Alerts.tsx";
 import { ActionItem } from "#ui/components/LeaderChat.tsx";
 
 // ── Detail blocks (the design's paragraph, check list, code, note, key/value and note-field blocks) ──
@@ -126,7 +126,7 @@ function NoteField({ title, value, onChange, placeholder, plan }: { title: strin
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         data-plan-note={plan ? "" : undefined}
-        className="min-h-[76px] resize-y rounded-[14px] bg-(--surface-sunken) px-3.5 py-3 text-[14px]/[22px] font-medium text-fg-strong shadow-[var(--ring-glass)] outline-none placeholder:text-fg-muted focus-visible:focus-ring"
+        className="min-h-[76px] max-md:text-base resize-y rounded-[14px] bg-(--surface-sunken) px-3.5 py-3 text-[14px]/[22px] font-medium text-fg-strong shadow-[var(--ring-glass)] outline-none placeholder:text-fg-muted focus-visible:focus-ring"
       />
     </label>
   );
@@ -183,7 +183,7 @@ function titleOf(item: InboxItem, t: TFunction): string {
     case "conflict":
       return t("inbox.conflict.title", { a: item.memory.id, b: item.other.id });
     case "machine":
-      return t("inbox.machine.title", { label: item.item.label, state: t(`setupState.${item.item.state}`) });
+      return t("inbox.machine.title", { label: item.machine ? `${item.machine} · ${item.item.label}` : item.item.label, state: t(`setupState.${item.item.state}`) });
     case "request":
       return t("inbox.request.title", { who: item.command.requestedBy, label: item.command.label });
     case "alert":
@@ -267,7 +267,20 @@ export function TodayInboxPage() {
   const reloadInbox = inbox.reload;
   useEffect(() => { reloadInbox(); }, [reloadInbox]);
 
-  const groups = useMemo(() => groupToday(inbox.items), [inbox.items]);
+  const { client, me, scope, projects } = useHive();
+  const owners = scope.kind === "shared" ? [] : scopeProjects(scope) ?? projects;
+  const remoteSetup = useQuery(async () => {
+    if (client.desktop || me.mode !== "hub" || me.role !== "admin" || me.access) return [];
+    const missing = await Promise.all(owners.map(async project => ({ project, machines: await client.call("machines.setupMissing", { project }) })));
+    const unique = new Map<string, InboxItem>();
+    for (const { project, machines } of missing) for (const machine of machines) for (const item of machine.items) {
+      const key = `machine:${machine.machineId}:${item.id}:${item.state}`;
+      unique.set(key, { kind: "machine", key, scope: project, tone: "warning", at: "", item: { ...item, action: null }, machineId: machine.machineId, machine: machine.machine });
+    }
+    return [...unique.values()];
+  }, [client, me, owners.join("\n"), now]);
+  const pageItems = useMemo(() => [...inbox.items, ...(remoteSetup.data ?? []).filter(item => !inbox.done.some(done => done.key === item.key))], [inbox.items, inbox.done, remoteSetup.data]);
+  const groups = useMemo(() => groupToday(pageItems), [pageItems]);
   // J / K and the first item follow the groups as shown, not the newest-first order they came in.
   const list = useMemo(() => (tab === "open" ? groups.flatMap((g) => g.items) : []), [tab, groups]);
   const selected = mobileDetail.mobile ? mobileDetail.value : sel;
@@ -283,8 +296,8 @@ export function TodayInboxPage() {
   useEffect(() => {
     if (!mobileDetail.mobile || !mobileDetail.value) return;
     if (inbox.done.some((d) => d.key === mobileDetail.value)) setTab("done");
-    else if (inbox.items.some((i) => i.key === mobileDetail.value)) setTab("open");
-  }, [mobileDetail.mobile, mobileDetail.value, inbox.done, inbox.items]);
+    else if (pageItems.some((i) => i.key === mobileDetail.value)) setTab("open");
+  }, [mobileDetail.mobile, mobileDetail.value, inbox.done, pageItems]);
 
   useEffect(() => {
     if (current) inbox.markRead(current.key);
@@ -299,19 +312,20 @@ export function TodayInboxPage() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
       // Global inbox shortcuts must not swallow Enter on links or activate actions behind a dialog.
-      if (el && (el.isContentEditable || el.closest('a, button, input, textarea, select, summary, nav, [role="dialog"], [role="menu"]'))) return;
+      if (el && (el.isContentEditable || el.closest('input, textarea, select, nav, [role="dialog"], [role="menu"]'))) return;
       if (document.querySelector('[role="dialog"]')) return;
+      if (e.key === "Enter" && el?.closest('a, button, summary')) return;
       const i = selKey ? keys.indexOf(selKey) : -1;
       const k = e.key.toLowerCase();
       if (k === "j" || e.key === "ArrowDown") {
         e.preventDefault();
-        if (keys[i + 1]) setSel(keys[i + 1]!);
+        if (keys[i + 1]) pick(keys[i + 1]!);
       } else if (k === "k" || e.key === "ArrowUp") {
         e.preventDefault();
-        if (i > 0) setSel(keys[i - 1]!);
+        if (i > 0) pick(keys[i - 1]!);
       } else if (k === "e" && current) {
         e.preventDefault();
         seen(current);
@@ -386,7 +400,7 @@ export function TodayInboxPage() {
             <div role="tablist" className="flex gap-1.5">
               {(
                 [
-                  ["open", t("inbox.page.tabOpen"), inbox.items.length],
+                  ["open", t("inbox.page.tabOpen"), pageItems.length],
                   ["done", t("inbox.page.tabDone"), inbox.done.length],
                 ] as const
               ).map(([k, label, n]) => (
@@ -452,7 +466,7 @@ export function TodayInboxPage() {
         </div>
         <div data-today-detail className={cn("min-w-0 flex-[999_1_440px] flex-col gap-3", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden" : "flex", !current && !doneCurrent && !mobileDetail.showingDetail && "md:hidden")}>
           {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
-          <ErrorNote error={inbox.error} />
+          <ErrorNote error={inbox.error ?? remoteSetup.error} />
           {current ? (
             <Detail key={current.key} item={current} now={now} onActions={setActions} finish={finish} seen={seen} />
           ) : doneCurrent ? (
@@ -541,11 +555,12 @@ function Detail({
   finish: (item: InboxItem, note: string, undoable?: boolean) => void;
   seen: (item: InboxItem) => void;
 }) {
-  const { client, bump } = useHive();
+  const { client, bump, me } = useHive();
   const inbox = useInbox();
   const t = useT();
   const allow = useCan();
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   // What to change, for a gate sent back (the agent works from it).
   const [note, setNote] = useState("");
@@ -553,6 +568,8 @@ function Detail({
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
   const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -564,6 +581,7 @@ function Detail({
     } catch (err) {
       setError(errorMessage(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -574,6 +592,14 @@ function Detail({
     window.location.hash = hash;
   };
   const seenAction = (label = t("inbox.seen")): Action => ({ label, kind: "ghost", run: () => seen(item) });
+
+  const stopCi = (project: string, mrUrl: string | null): Action[] => mrUrl && allow(project, "runDispatch") ? [{
+    label: t("inbox.ci.stop"), kind: "ghost", run: act(async () => {
+      if (!window.confirm(t("inbox.ci.stopConfirm"))) return null;
+      await client.call("runs.stopCi", { project, mrUrl });
+      return t("inbox.ci.stopped");
+    }),
+  }] : [];
 
   let body: ReactNode = null;
   let actions: Action[] = [];
@@ -607,6 +633,7 @@ function Detail({
       actions = [
         { label: t("inbox.ci.viewRun"), kind: "primary", run: go(`#/runs?run=${encodeURIComponent(r.id)}`) },
         ...(r.mrUrl ? [{ label: t("inbox.ci.openMr"), kind: "secondary" as const, run: open(r.mrUrl) }] : []),
+        ...stopCi(r.project, r.mrUrl),
         seenAction(),
       ];
       break;
@@ -629,6 +656,7 @@ function Detail({
       actions = [
         { label: t("inbox.waitingRun.open"), kind: "primary", run: go(`#/runs?run=${encodeURIComponent(`${r.machineId}/${r.runId}`)}`) },
         { label: t("inbox.review.openTask"), kind: "secondary", run: go(`#/tasks?task=${encodeURIComponent(r.taskId)}`) },
+        ...(item.reason === "ci" ? stopCi(r.project, r.mrUrl) : []),
         seenAction(),
       ];
       break;
@@ -662,7 +690,8 @@ function Detail({
               label: t("inbox.proposal.approve"),
               kind: "primary",
               run: act(async () => {
-                await client.call("proposals.approve", { id: p.id });
+                const result = await client.call("proposals.approve", { id: p.id });
+                if (result.status !== "approved") throw new Error(t("proposals.stale", { version: doc.data?.version ?? 0 }));
                 return t("inbox.proposal.approved", { doc: p.docKey, version: p.baseVersion + 1 });
               }),
             },
@@ -680,9 +709,11 @@ function Detail({
       break;
     }
     case "review": {
-      const { task, run: r } = item;
+      const { task, run: r, hubRun } = item;
+      const mrUrl = hubRun?.mrUrl ?? r?.mrUrl;
       body = (
         <>
+          {hubRun ? <P>{[hubRun.mrUrl, hubRun.mr?.pipeline ? t("inbox.review.ci", { state: t(`pipelineStatus.${hubRun.mr.pipeline}`) }) : null, hubRun.summary].filter(Boolean).join("\n")}</P> : null}
           {r?.pipelineStatus ? (
             <Li dot={r.pipelineStatus === "success" ? "✓" : r.pipelineStatus === "failed" ? "✗" : "•"} tone={r.pipelineStatus === "success" ? "ok" : r.pipelineStatus === "failed" ? "bad" : "muted"}>
               {t("inbox.review.ci", { state: t(`pipelineStatus.${r.pipelineStatus}`) })}
@@ -698,13 +729,26 @@ function Detail({
               {t("inbox.review.byRun", { run: r.id, profile: r.profileId ?? "—" })}
             </Li>
           ) : null}
+          <NoteField title={t("inbox.page.noteTitle")} value={note} onChange={setNote} placeholder={t("flow.notePlaceholder")} />
           <SectionTitle>{t("inbox.review.handoff")}</SectionTitle>
           <ReviewArtifacts project={task.project} taskId={task.id} note={task.note?.trim() || t("inbox.review.noNote")} />
         </>
       );
       const canMove = allow(task.project, "codeReview");
       actions = [
-        ...(r?.mrUrl ? [{ label: t("inbox.review.openMr"), kind: "primary" as const, run: open(r.mrUrl) }] : []),
+        ...(canMove && hubRun?.mrUrl && (!hubRun.mr?.status || hubRun.mr.status === "opened") && !hubRun.mr?.draft && hubRun.mr?.pipeline !== "failed" && hubRun.merge?.status !== "pending" ? [{
+          label: t("runs.merge"), kind: "primary" as const, run: act(async () => {
+            if (!window.confirm(t("inbox.review.mergeConfirm", { mr: hubRun.mrUrl! }))) return null;
+            await client.call("runs.merge", { machineId: hubRun.machineId, runId: hubRun.runId });
+            return t("inbox.review.mergeRequested");
+          }),
+        }] : []),
+        ...(canMove ? [{ label: t("inbox.review.changes"), kind: "secondary" as const, run: act(async () => {
+          if (!note.trim()) throw new Error(t("inbox.gate.needNote"));
+          await client.call("tasks.requestChanges", { id: task.id, note });
+          return t("inbox.review.changesRequested", { id: task.id });
+        }) }] : []),
+        ...(mrUrl ? [{ label: t("inbox.review.openMr"), kind: "secondary" as const, run: open(mrUrl) }] : []),
         { label: t("inbox.review.openTask"), kind: r?.mrUrl ? "secondary" : "primary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
         ...(canMove
           ? [
@@ -748,10 +792,18 @@ function Detail({
                 return t("inbox.memory.approved", { id: m.id });
               }),
             },
+            ...(m.project !== null && allow(null, "memoryApprove") ? [{
+              label: t("inbox.memory.share"), kind: "secondary" as const, run: act(async () => {
+                if (!window.confirm(t("inbox.memory.shareConfirm"))) return null;
+                await client.call("memory.share", { id: m.id });
+                return t("inbox.memory.shared", { id: m.id });
+              }),
+            }] : []),
             {
               label: t("inbox.memory.reject"),
               kind: "ghost",
               run: act(async () => {
+                if (!window.confirm(t("inbox.memory.removeConfirm", { id: m.id }))) return null;
                 await client.call("memory.remove", { id: m.id });
                 return t("inbox.memory.rejected", { id: m.id });
               }),
@@ -770,6 +822,7 @@ function Detail({
       );
       const resolve = (keep: "this" | "other" | "both", note: string) =>
         act(async () => {
+          if (keep !== "both" && !window.confirm(t("inbox.conflict.confirm", { id: keep === "this" ? a.id : b.id, other: keep === "this" ? b.id : a.id }))) return null;
           await client.call("memory.resolve", { id: a.id, other: b.id, keep });
           return note;
         });
@@ -786,6 +839,13 @@ function Detail({
       const s = item.item;
       body = <CodeBlock lang={s.id} text={s.detail} />;
       actions = [
+        ...(item.machineId && me.role === "admin" && !me.access ? [{
+          label: t("inbox.machine.installRemote"), kind: "primary" as const, run: act(async () => {
+            if (!window.confirm(t("inbox.machine.installConfirm", { machine: item.machine! }))) return null;
+            await client.call("admin.commandCreate", { machineId: item.machineId!, itemId: s.id });
+            return t("inbox.machine.installRequested", { machine: item.machine! });
+          }),
+        }] : []),
         ...(s.action && client.desktop
           ? [
               {
@@ -799,8 +859,8 @@ function Detail({
               },
             ]
           : []),
-        { label: t("inbox.machine.openSetup"), kind: s.action ? "secondary" : "primary", run: go("#/setup") },
-        seenAction(t("inbox.machine.skip")),
+        ...(!item.machineId ? [{ label: t("inbox.machine.openSetup"), kind: "secondary" as const, run: go("#/setup") }] : []),
+        item.machineId ? { label: t("inbox.proposal.reject"), kind: "ghost", run: () => finish(item, t("inbox.machine.installDeclined", { label: s.label }), true) } : seenAction(t("inbox.machine.skip")),
       ];
       break;
     }
@@ -838,7 +898,7 @@ function Detail({
         await client.call("runs.decidePlan", { id: p.id, revision: p.revision, decision, note });
         return t(decision === "approve" ? "planApproval.approved" : "planApproval.sentBack");
       });
-      actions = [{ label: t("planApproval.approve"), kind: "primary", run: decide("approve") }, { label: t("planApproval.changes"), kind: "secondary", run: decide("changes") }, { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(p.taskId)}`) }];
+      actions = allow(p.project, "runDispatch") ? [{ label: t("planApproval.approve"), kind: "primary", run: decide("approve") }, { label: t("planApproval.changes"), kind: "secondary", run: decide("changes") }, { label: t("inbox.gate.openTask"), kind: "ghost", run: go(`#/tasks?task=${encodeURIComponent(p.taskId)}`) }] : [seenAction()];
       break;
     }
     case "releaseFailure": {

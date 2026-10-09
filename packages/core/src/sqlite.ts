@@ -840,6 +840,7 @@ const MIGRATIONS: string[] = [
    ALTER TABLE machines ADD COLUMN runner_change TEXT;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
+  `CREATE TABLE mr_ci_policy(project TEXT NOT NULL, mr_url TEXT NOT NULL, stopped_by TEXT NOT NULL, stopped_at TEXT NOT NULL, PRIMARY KEY(project, mr_url));`,
 ];
 
 function browserSeedSql(): string {
@@ -1213,9 +1214,12 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   },
   "memory.setCleanup": (i) => ({ target: i.project, detail: `enabled=${i.enabled}` }),
   "memory.decideCleanup": (i, o) => ({ target: `${o.project} memory proposal #${i.id}`, detail: o.status }),
+  "runs.stopCi": (i) => ({ target: i.project, detail: i.mrUrl }),
+  "memory.share": (i) => ({ target: `memory #${i.id}`, detail: "shared" }),
   "memory.approve": (i, o) => ({ target: `${o.project ?? "org"} #${i.id}` }),
   "memory.remove": (i) => ({ target: `memory #${i.id}` }),
   "tasks.create": (i) => ({ target: i.id, detail: i.dependsOn?.length ? `${i.title} · ← ${i.dependsOn.join(", ")}` : i.title }),
+  "tasks.requestChanges": (i) => ({ target: i.id, detail: i.note }),
   "tasks.update": (i, o: Task) => ({
     target: o.id,
     detail: `→ ${o.status}${i.note !== undefined ? " · cập nhật ghi chú" : ""}`,
@@ -1954,7 +1958,7 @@ const AGENT_METHODS = new Set<Method>([
   "agentPolicy.get", "agents.paused", "artifacts.get", "artifacts.list", "budgets.list", "costs.summary",
   "docs.assetGet", "docs.assets", "docs.get", "docs.list", "gate.get", "gate.list", "machines.list", "machines.setupMissing",
   "memory.search", "memory.write", "policy.get", "projects.list", "proposals.create", "runs.get",
-  "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
+  "runs.ciPolicy", "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
 ]);
 
@@ -2585,6 +2589,10 @@ export class SqliteHive implements HiveBackend {
         if (row) this.#need(actor, str(row.project), "runDispatch", `Run ${i.runId}`);
         return;
       }
+      case "runs.ciPolicy":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "runs.stopCi":
+        return this.#need(actor, i.project, "runDispatch", `Project ${i.project}`);
       case "runs.merge": {
         const row = this.db.prepare("SELECT project, requested_by FROM run_records WHERE machine_id = ? AND run_id = ?").get(i.machineId, i.runId) as Row | undefined;
         if (!row) return;
@@ -2635,13 +2643,16 @@ export class SqliteHive implements HiveBackend {
       case "memory.checkFiles":
       case "runs.report":
         return this.#need(actor, i.project, "taskWork", `Project ${i.project}`);
+      case "memory.share":
+        // Publishing across the team needs both the source approval and the shared grant.
+        this.#need(actor, null, "memoryApprove", "Shared memory");
       case "memory.approve":
       case "memory.resolve":
       case "memory.keep":
       case "memory.remove": {
         const row = this.db.prepare("SELECT project, COALESCE(on_behalf, author) AS owner FROM memory WHERE id = ?").get(i.id) as Row | undefined;
         if (row) this.#need(actor, str(row.project) === SHARED ? null : str(row.project), "memoryApprove", `Memory #${i.id}`);
-        if (row && method === "memory.approve") this.#notSelf(actor, [str(row.owner)], `Memory #${i.id}`);
+        if (row && (method === "memory.approve" || method === "memory.share")) this.#notSelf(actor, [str(row.owner)], `Memory #${i.id}`);
         return;
       }
       case "tasks.create":
@@ -2677,6 +2688,11 @@ export class SqliteHive implements HiveBackend {
       case "tasks.notes": {
         const task = this.#getTask(i.id);
         if (task) this.#need(actor, task.project, "view", `Task ${i.id}`);
+        return;
+      }
+      case "tasks.requestChanges": {
+        const task = this.#getTask(i.id);
+        if (task) this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
         return;
       }
       case "tasks.claim":
@@ -7838,6 +7854,13 @@ export class SqliteHive implements HiveBackend {
           return this.#getMemory(id);
         }),
 
+      "memory.share": ({ id }) => {
+        const m = this.#getMemory(id);
+        if (m.supersedes !== null || m.supersededBy !== null || m.conflictsWith.length) throw new HiveError("bad_request", "Resolve memory links before changing scope.", { key: "inbox.memory.linked" });
+        db.prepare("UPDATE memory SET project = ?, status = 'approved' WHERE id = ?").run(SHARED, id);
+        return this.#getMemory(id);
+      },
+
       "memory.approve": ({ id }) => {
         this.#getMemory(id);
         db.prepare("UPDATE memory SET status = 'approved' WHERE id = ?").run(id);
@@ -8035,6 +8058,17 @@ export class SqliteHive implements HiveBackend {
           .run(actor.name, this.#now(leaseMinutes), now, id);
         return { claimed: num(res.changes) === 1, task: this.#getTask(id) };
       },
+
+      "tasks.requestChanges": ({ id, note }, actor) => this.#tx(() => {
+        const task = this.#getTask(id);
+        if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
+        if (task.status !== "review") throw new HiveError("conflict", "Task is no longer awaiting review.", { key: "inbox.review.noLongerReview" });
+        const now = this.#now();
+        const kept = SqliteHive.#cleanNote(note);
+        db.prepare("UPDATE tasks SET status = 'todo', owner = NULL, lease_until = NULL, note = ?, updated_at = ? WHERE id = ?").run(kept, now, id);
+        this.#keepNote(id, kept, "todo", actor, now);
+        return this.#getTask(id)!;
+      }),
 
       "tasks.update": ({ id, status, note, priority }, actor) =>
         this.#tx(() => {
@@ -8690,7 +8724,13 @@ export class SqliteHive implements HiveBackend {
           return toRunRecord(db.prepare("SELECT * FROM run_records WHERE machine_id = ? AND run_id = ?").get(machineId, runId) as Row, false);
         }),
 
-      // The run's machine merges with its own token (asked 2/10): the hub keeps no GitLab or GitHub secret.
+      "runs.ciPolicy": ({ project, mrUrl }) => ({ fixCi: !db.prepare("SELECT 1 FROM mr_ci_policy WHERE project = ? AND mr_url = ?").get(project, mrUrl) }),
+      "runs.stopCi": ({ project, mrUrl }, actor) => {
+        db.prepare("INSERT OR IGNORE INTO mr_ci_policy(project, mr_url, stopped_by, stopped_at) VALUES (?, ?, ?, ?)").run(project, mrUrl, actor.name, this.#now());
+        return { fixCi: false };
+      },
+
+      // The run's machine merges with its own token: the hub keeps no forge secret.
       "runs.merge": ({ machineId, runId }, actor) =>
         this.#tx(() => {
           this.#expireMerges();
