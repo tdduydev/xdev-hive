@@ -1,4 +1,3 @@
-import { ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Trang Hub and Context agent (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how
 // it is doing (a backup on request), and what a project's agents get from Hive (the AGENTS.md a sync writes).
 import { useEffect, useState, type ReactNode } from "react";
@@ -13,6 +12,7 @@ import { fileSize } from "#ui/lib/chat.ts";
 import { contextProjects } from "#ui/lib/permission-controls.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
+import { AdminCards, AdminStats, type AdminCard, type AdminTone } from "./cosmic.tsx";
 
 type Tone = "ok" | "warn" | "run" | "neutral";
 const STATE: Record<Tone, string> = {
@@ -22,32 +22,23 @@ const STATE: Record<Tone, string> = {
   neutral: "bg-sunken text-fg-secondary",
 };
 
-function HubCard({
-  title,
-  state,
-  tone,
-  value,
-  detail,
-  action,
-}: {
-  title: string;
-  state: string;
-  tone: Tone;
-  value: ReactNode;
-  detail: ReactNode;
-  action?: ReactNode;
-}) {
-  return (
-    <section className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line-default bg-surface p-4">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-fg-muted">{title}</span>
-        <span className={cn("ml-auto rounded-xs px-1.5 py-0.5 text-[11px] font-semibold", STATE[tone])}>{state}</span>
+const HUB_TONE: Record<Tone, AdminTone> = { ok: "ok", warn: "warn", run: "run", neutral: "neutral" };
+
+/** One status card: the value is what the hub reports, the side is its state word. */
+function hubCard(key: string, title: string, state: string, tone: Tone, value: ReactNode, detail: ReactNode, extra?: ReactNode): AdminCard {
+  return {
+    key,
+    title,
+    side: state,
+    tone: HUB_TONE[tone],
+    body: (
+      <div className="flex flex-col gap-1.5">
+        <span className="truncate font-mono text-base font-semibold text-fg-strong">{value}</span>
+        <span className="cx-ops-hint">{detail}</span>
       </div>
-      <span className="truncate font-mono text-lg font-semibold text-fg-strong">{value}</span>
-      <span className="text-xs/[18px] text-fg-muted [overflow-wrap:anywhere]">{detail}</span>
-      {action ? <div className="mt-1">{action}</div> : null}
-    </section>
-  );
+    ),
+    extra,
+  };
 }
 
 const uptime = (s: number) => {
@@ -97,113 +88,96 @@ export function OpsHub() {
       .finally(() => setBusy(false));
   };
   const s = h?.storage;
+  const cards: AdminCard[] = h
+    ? [
+        hubCard(
+          "version",
+          t("hub.version"),
+          t("hub.ok"),
+          "ok",
+          `hub ${h.version}${h.commit ? ` · ${h.commit}` : ""}`,
+          t("hub.versionDetail", {
+            where: h.container ? t("hub.container") : t("hub.process"),
+            node: h.node,
+            uptime: uptime(h.uptimeSeconds),
+            since: formatTime(h.startedAt),
+          }),
+        ),
+        hubCard("database", t("hub.database"), t("hub.ok"), "ok", `${h.db.path.split("/").pop()} · ${fileSize(h.db.bytes + h.db.walBytes)}`, t("hub.dbDetail", { path: h.db.path, ...h.db.counts })),
+        hubCard(
+          "files",
+          t("hub.files"),
+          !h.files.store ? t("hub.inDb") : h.files.lastError ? t("hub.error") : h.files.inDb ? t("hub.moving") : t("hub.ok"),
+          !h.files.store ? "neutral" : h.files.lastError ? "warn" : h.files.inDb ? "run" : "ok",
+          `${h.files.store ?? "SQLite"} · ${t("hub.filesCount", { count: h.files.count })} · ${fileSize(h.files.bytes)}`,
+          !h.files.store ? t("hub.filesOffHint") : [h.files.where, h.files.lastError, h.files.inDb ? t("hub.filesInDb", { count: h.files.inDb }) : null].filter(Boolean).join(" · "),
+        ),
+        hubCard(
+          "backup",
+          t("hub.backup"),
+          h.backup ? (backupLate ? t("hub.late") : t("hub.ok")) : t("hub.off"),
+          h.backup ? (backupLate ? "warn" : "ok") : "neutral",
+          h.backup ? (h.backup.last ? formatTime(h.backup.last) : t("hub.noBackupYet")) : t("hub.off"),
+          h.backup ? t("hub.backupDetail", { hours: h.backup.hours, keep: h.backup.keep, dir: h.backup.dir, count: h.backup.count }) : t("hub.backupOffHint"),
+          h.backup ? (
+            <Button size="sm" variant="glass" disabled={busy} onClick={backupNow}>
+              {busy ? t("hub.backingUp") : t("hub.backupNow")}
+            </Button>
+          ) : undefined,
+        ),
+        ...(s
+          ? [
+              hubCard(
+                "storage",
+                t("hub.storage"),
+                t("hub.ok"),
+                "ok",
+                fileSize((s.releases?.bytes ?? 0) + s.artifacts.bytes + h.db.bytes + h.db.walBytes),
+                [
+                  s.releases ? t("hub.storageBuilds", { count: s.releases.versions, size: fileSize(s.releases.bytes), keep: s.releases.keep }) : null,
+                  t("hub.storageArtifacts", { count: s.artifacts.count, size: fileSize(s.artifacts.bytes), days: s.artifacts.days }),
+                  t("hub.storageLogs", { days: s.runLogDays }),
+                ].filter(Boolean).join(" · "),
+                <Button size="sm" variant="glass" disabled={busy} onClick={cleanup} data-hub-cleanup>
+                  {busy ? t("hub.cleaning") : t("hub.cleanup")}
+                </Button>,
+              ),
+            ]
+          : []),
+        hubCard(
+          "search",
+          t("hub.search"),
+          h.search.mode === "keyword" ? t("hub.keywordOnly") : h.search.lastError ? t("hub.error") : h.search.indexed < h.search.total ? t("hub.indexing") : t("hub.ok"),
+          h.search.mode === "keyword" ? "neutral" : h.search.lastError ? "warn" : h.search.indexed < h.search.total ? "run" : "ok",
+          h.search.model ? `${h.search.model} · ${h.search.indexed}/${h.search.total}` : t("hub.keywordOnly"),
+          h.search.mode === "keyword" ? t("hub.searchOffHint") : [h.search.url, h.search.lastError, t("hub.waitingVectors", { count: h.search.total - h.search.indexed })].filter(Boolean).join(" · "),
+        ),
+        hubCard("sso", t("hub.sso"), h.sso ? t("hub.on") : t("hub.off"), h.sso ? "ok" : "neutral", h.sso?.name ?? t("hub.passwordOnly"), h.sso ? t("hub.ssoDetail", { issuer: h.sso.issuer, count: h.sso.linked }) : t("hub.ssoOffHint")),
+        hubCard(
+          "hosts",
+          t("hub.hosts"),
+          t("hub.config"),
+          "neutral",
+          h.hosts.allowed?.join(", ") ?? t("hub.anyHost"),
+          [h.hosts.publicUrl, h.hosts.trustProxy ? "HIVE_TRUST_PROXY=1" : null].filter(Boolean).join(" · ") || "—",
+        ),
+      ]
+    : [];
   return (
-    <ResponsiveTableFrame className="flex flex-col gap-3">
+    <div className="cx-ops-stack">
       <ErrorNote error={info.error} />
       {h ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-2.5">
-          <HubCard
-            title={t("hub.version")}
-            state={t("hub.ok")}
-            tone="ok"
-            value={`hub ${h.version}${h.commit ? ` · ${h.commit}` : ""}`}
-            detail={t("hub.versionDetail", {
-              where: h.container ? t("hub.container") : t("hub.process"),
-              node: h.node,
-              uptime: uptime(h.uptimeSeconds),
-              since: formatTime(h.startedAt),
-            })}
-          />
-          <HubCard
-            title={t("hub.database")}
-            state={t("hub.ok")}
-            tone="ok"
-            value={`${h.db.path.split("/").pop()} · ${fileSize(h.db.bytes + h.db.walBytes)}`}
-            detail={t("hub.dbDetail", { path: h.db.path, ...h.db.counts })}
-          />
-          <HubCard
-            title={t("hub.files")}
-            state={!h.files.store ? t("hub.inDb") : h.files.lastError ? t("hub.error") : h.files.inDb ? t("hub.moving") : t("hub.ok")}
-            tone={!h.files.store ? "neutral" : h.files.lastError ? "warn" : h.files.inDb ? "run" : "ok"}
-            value={`${h.files.store ?? "SQLite"} · ${t("hub.filesCount", { count: h.files.count })} · ${fileSize(h.files.bytes)}`}
-            detail={
-              !h.files.store
-                ? t("hub.filesOffHint")
-                : [h.files.where, h.files.lastError, h.files.inDb ? t("hub.filesInDb", { count: h.files.inDb }) : null].filter(Boolean).join(" · ")
-            }
-          />
-          <HubCard
-            title={t("hub.backup")}
-            state={h.backup ? (backupLate ? t("hub.late") : t("hub.ok")) : t("hub.off")}
-            tone={h.backup ? (backupLate ? "warn" : "ok") : "neutral"}
-            value={h.backup ? (h.backup.last ? formatTime(h.backup.last) : t("hub.noBackupYet")) : t("hub.off")}
-            detail={
-              h.backup
-                ? t("hub.backupDetail", { hours: h.backup.hours, keep: h.backup.keep, dir: h.backup.dir, count: h.backup.count })
-                : t("hub.backupOffHint")
-            }
-            action={
-              h.backup ? (
-                <Button size="sm" variant="outline" disabled={busy} onClick={backupNow}>
-                  {busy ? t("hub.backingUp") : t("hub.backupNow")}
-                </Button>
-              ) : undefined
-            }
-          />
-          {s ? (
-            <HubCard
-              title={t("hub.storage")}
-              state={t("hub.ok")}
-              tone="ok"
-              value={fileSize((s.releases?.bytes ?? 0) + s.artifacts.bytes + h.db.bytes + h.db.walBytes)}
-              detail={[
-                s.releases ? t("hub.storageBuilds", { count: s.releases.versions, size: fileSize(s.releases.bytes), keep: s.releases.keep }) : null,
-                t("hub.storageArtifacts", { count: s.artifacts.count, size: fileSize(s.artifacts.bytes), days: s.artifacts.days }),
-                t("hub.storageLogs", { days: s.runLogDays }),
-              ].filter(Boolean).join(" · ")}
-              action={
-                <Button size="sm" variant="outline" disabled={busy} onClick={cleanup} data-hub-cleanup>
-                  {busy ? t("hub.cleaning") : t("hub.cleanup")}
-                </Button>
-              }
-            />
-          ) : null}
-          <HubCard
-            title={t("hub.search")}
-            state={
-              h.search.mode === "keyword"
-                ? t("hub.keywordOnly")
-                : h.search.lastError
-                  ? t("hub.error")
-                  : h.search.indexed < h.search.total
-                    ? t("hub.indexing")
-                    : t("hub.ok")
-            }
-            tone={h.search.mode === "keyword" ? "neutral" : h.search.lastError ? "warn" : h.search.indexed < h.search.total ? "run" : "ok"}
-            value={h.search.model ? `${h.search.model} · ${h.search.indexed}/${h.search.total}` : t("hub.keywordOnly")}
-            detail={
-              h.search.mode === "keyword"
-                ? t("hub.searchOffHint")
-                : [h.search.url, h.search.lastError, t("hub.waitingVectors", { count: h.search.total - h.search.indexed })].filter(Boolean).join(" · ")
-            }
-          />
-          <HubCard
-            title={t("hub.sso")}
-            state={h.sso ? t("hub.on") : t("hub.off")}
-            tone={h.sso ? "ok" : "neutral"}
-            value={h.sso?.name ?? t("hub.passwordOnly")}
-            detail={h.sso ? t("hub.ssoDetail", { issuer: h.sso.issuer, count: h.sso.linked }) : t("hub.ssoOffHint")}
-          />
-          <HubCard
-            title={t("hub.hosts")}
-            state={t("hub.config")}
-            tone="neutral"
-            value={h.hosts.allowed?.join(", ") ?? t("hub.anyHost")}
-            detail={[h.hosts.publicUrl, h.hosts.trustProxy ? "HIVE_TRUST_PROXY=1" : null].filter(Boolean).join(" · ") || "—"}
-          />
-        </div>
+        <AdminStats
+          stats={[
+            { key: "version", label: t("hub.version"), value: <span className="font-mono">{h.version}</span>, note: t("hub.versionDetail", { where: h.container ? t("hub.container") : t("hub.process"), node: h.node, uptime: uptime(h.uptimeSeconds), since: formatTime(h.startedAt) }), tone: "ok" },
+            { key: "db", label: t("hub.database"), value: fileSize(h.db.bytes + h.db.walBytes), note: h.db.path.split("/").pop(), tone: "ok" },
+            { key: "backup", label: t("hub.backup"), value: h.backup ? (backupLate ? t("hub.late") : t("hub.ok")) : t("hub.off"), note: h.backup?.last ? formatTime(h.backup.last) : undefined, tone: h.backup ? (backupLate ? "warn" : "ok") : "neutral" },
+            { key: "files", label: t("hub.files"), value: t("hub.filesCount", { count: h.files.count }), note: fileSize(h.files.bytes), tone: h.files.lastError ? "warn" : "ok" },
+          ]}
+        />
       ) : null}
-    </ResponsiveTableFrame>
+      {h ? <AdminCards cards={cards} /> : null}
+    </div>
   );
 }
 

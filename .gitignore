@@ -30,3 +30,6 @@ apps/web/artifacts/
 # Antigravity's MCP entry: Setup writes it per machine (Windows starts the shim through cmd /c), so one committed
 # copy breaks every other OS.
 .agents/mcp_config.json
+
+# Screenshots e2e/smoke runs leave beside a workspace; evidence goes to .xdev-hive/artifacts instead.
+apps/*/.xdev-hive/

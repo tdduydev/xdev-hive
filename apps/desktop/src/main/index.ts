@@ -81,6 +81,7 @@ import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
+import { pendingProposalCount } from "#desktop/main/tray-count.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
@@ -107,7 +108,7 @@ import { landingPage, signInThroughBrowser } from "./hub-browser.ts";
 import { Setup } from "./setup.ts";
 import { checkCitations } from "./citations.ts";
 import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
-import { mirrorDocs, mirrors } from "./mirror.ts";
+import { mirrorDocs, mirrorsAsync } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
 import { cliCommand } from "./cli-open.ts";
 import { openInTerminal } from "./terminal.ts";
@@ -192,6 +193,10 @@ function reload(): void {
     mainLog.write(`config: could not pin the machine name: ${toErrorPayload(err).message}`);
   }
   backend = resolveBackend(config);
+  if (backend instanceof HubBackend && runner) {
+    backend.setQuitQueue((id, method, input, who) => runner.store.queueHubReport(id, method, input, who));
+    void runner.flushHubReports().catch(() => undefined);
+  }
   // This machine's own chat (local mode, roadmap 48): the database takes it as the machine its threads run on.
   if (backend instanceof SqliteHive) backend.setChatMachine(() => runner?.localChatMachine() ?? null);
 }
@@ -609,7 +614,7 @@ function syncMr(p: DesktopProject): SyncOptions["mr"] {
 async function syncAndMirror(name: string): Promise<SyncReport> {
   const report = await syncProject(backend, actor(), project(name), { autoCommit: config.sync.autoCommit, mr: syncMr(project(name)) });
   // The other way too (roadmap 26): the repo's docs into Hive, when the repo says which.
-  if (!mirrors(project(name).repo)) return report;
+  if (!(await mirrorsAsync(project(name).repo))) return report;
   const mirror = await mirrorDocs(backend, actor(), project(name));
   if (mirror.commit) mirrored.set(name, mirror.commit);
   return { ...report, mirror };
@@ -637,7 +642,7 @@ async function mirrorAll(): Promise<void> {
     if (hash) specsPushed.set(p.name, hash);
   }
   for (const p of config.projects) {
-    if (!mirrors(p.repo)) continue;
+    if (!(await mirrorsAsync(p.repo))) continue;
     const r = await mirrorDocs(backend, actor(), p, { since: mirrored.get(p.name) }).catch((err: Error) => {
       console.error(`[xdev-hive] mirror ${p.name}: ${err.message}`);
       return null;
@@ -713,7 +718,7 @@ function addAccount(input: NewAccount): { id: string; opened: boolean; profiles:
 async function recheckLogins() {
   const ids = logins.signedOut();
   if (ids.length) {
-    await logins.refresh(ids);
+    await logins.refresh(ids, true);
     void runner.tick();
   }
   return runner.profileStatuses();
@@ -721,7 +726,7 @@ async function recheckLogins() {
 
 /** Đọc lại quota on the Agent page (roadmap 52), for one profile or every enabled one. */
 const refreshUsage = usageRefresher(
-  (ids) => logins.refresh(ids),
+  (ids) => logins.refresh(ids, true),
   () => runner.tick(),
   () => runner.profileStatuses(),
 );
@@ -748,7 +753,7 @@ async function checkProfile(id: string): Promise<ProfileCheck> {
       resolve({ ok: !err, output: `${stdout}${stderr}`.trim() || (err ? err.message : "") });
     });
   });
-  await logins.refresh([id]);
+  await logins.refresh([id], true);
   const login = logins.get(id);
   const signIn =
     login?.loggedIn === true
@@ -974,7 +979,10 @@ function onHub(update: HubUpdate): void {
   hubState = update;
   // The catalog decides the machine's tool:<id> items and Spec Kit's version: check again when it changed, so admins
   // see a tool turned on or bumped without waiting for the 10-minute check.
-  if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) void refreshSetup().catch(() => undefined);
+  if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) {
+    setup.invalidateStatus();
+    void refreshSetup().catch(() => undefined);
+  }
   if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
   if (update.runnerChange) {
@@ -1128,7 +1136,7 @@ async function chatUpload(project: unknown, name: unknown, bytes: unknown): Prom
 async function readChatFile(id: number): Promise<{ name: string; type: string; bytes: Uint8Array } | null> {
   const hub = hubAccess();
   if (hub) {
-    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name } });
+    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name }, signal: AbortSignal.timeout(45_000) });
     if (!res.ok) return null;
     return { name: servedName(res.headers.get("content-disposition")) ?? `file-${id}`, type: res.headers.get("content-type") ?? "application/octet-stream", bytes: new Uint8Array(await res.arrayBuffer()) };
   }
@@ -1402,8 +1410,8 @@ function registerIpc(): void {
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runs-count", (filter?: { project?: string; projects?: string[] }) => runner.store.countActive(filter));
   handle("desktop:runMessages", (id: string) => runner.messages(id));
-  handle("desktop:runLog", (id: string) => runner.log(id));
-  handle("desktop:runDiff", (id: string) => runner.diff(id));
+  handle("desktop:runLog", (id: string) => runner.logRecent(id));
+  handle("desktop:runDiff", (id: string) => runner.diffAsync(id));
   handle("desktop:steerRun", (id: string, text: string) => runner.steer(id, text));
   handle("desktop:cancelRun", (id: string): AgentRun => runner.cancel(id));
   handle("desktop:worktrees", () => runner.worktrees(true));
@@ -1651,10 +1659,12 @@ function showPage(hash: string): void {
 }
 
 let lastPending = 0;
+let trayRefreshPending = false;
 async function refreshTray(): Promise<void> {
-  if (!tray) return;
+  if (!tray || trayRefreshPending) return;
+  trayRefreshPending = true;
   try {
-    const pending = (await backend.call("proposals.list", { status: "pending" }, actor())).length;
+    const pending = await pendingProposalCount(backend, actor());
     tray.setTitle(pending ? ` ${pending}` : "");
     tray.setToolTip(pending ? `xDev Hive: ${tr("desktop.pendingProposals", { count: pending })}` : "xDev Hive");
     if (pending > lastPending && Notification.isSupported()) {
@@ -1667,6 +1677,8 @@ async function refreshTray(): Promise<void> {
     lastPending = pending;
   } catch {
     tray.setToolTip(`xDev Hive: ${tr("desktop.sourceUnreachable")}`);
+  } finally {
+    trayRefreshPending = false;
   }
 }
 
@@ -1802,6 +1814,7 @@ if (!app.requestSingleInstanceLock()) {
     const active = runner.store.active().length;
     const takesWork = config.runner.acceptHubRuns || active > 0;
     mainLog.write(`${quitReasons.describe()}; runs ${active}, acceptHubRuns ${config.runner.acceptHubRuns}`);
+    if (backend instanceof HubBackend) backend.stopForQuit();
     gateExecutor?.stop();
     void quit.start(async () => {
         await Promise.all([runner.stop(), remoteTerminal?.stop(), gateExecutor?.settle()]);
@@ -1814,13 +1827,16 @@ if (!app.requestSingleInstanceLock()) {
         await updater.install({ relaunch, hidden: relaunch }).catch(() => undefined);
       }, () => {
         // Chromium can hang in native shutdown even after the runner has finished. Only bypass Electron after
-        // bookkeeping and the update helper have settled; never impose a deadline on committing agent work.
+        // bookkeeping and the update helper have settled. The separate 15s deadline covers stuck cleanup.
         setTimeout(() => {
           mainLog.write("quit fallback: Electron did not exit within 5s after cleanup");
           (process as NodeJS.Process & { reallyExit(code: number): never }).reallyExit(0);
         }, 5000);
         app.quit();
-      }, (err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`));
+      }, (err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`), () => {
+        mainLog.write("quit deadline: forcing app exit after 15s");
+        app.exit(0);
+      });
   });
   app.on("will-quit", () => mainLog.write("will-quit"));
   app.on("quit", (_e, code) => {
@@ -1940,7 +1956,7 @@ if (!app.requestSingleInstanceLock()) {
         terminalHolds: (project, checkout) => resourceLocks.holder(project, checkout) === "terminal" || (checkout === "repo" && !!gateExecutor?.holds(project)),
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability(), gate: gateExecutor?.capability() }),
+        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when, acceptHubRuns: config.runner.acceptHubRuns }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability(), gate: gateExecutor?.capability() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),

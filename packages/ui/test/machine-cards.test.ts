@@ -35,3 +35,17 @@ describe("machine cards (72g)", () => {
     assert.doesNotMatch(html, /RAM/, "a gauge the machine did not report is not drawn");
   });
 });
+
+
+it("formats numeric system measurements in the viewer's language", async () => {
+  const { setActiveLocale } = await import("#ui/i18n/translate.ts");
+  const system: MachineSystem = { os: "linux", osName: "Linux", hardware: "CPU", uptimeSeconds: 6 * 86400, cpu: { percent: 10, detail: "", cores: 14, load: 10.1 }, ram: { percent: 75, detail: "", usedBytes: 48e9, totalBytes: 64e9 }, disk: { percent: 58, detail: "", freeBytes: 420e9, totalBytes: 1e12 } };
+  try {
+    setActiveLocale("vi");
+    let html = renderToStaticMarkup(createElement(MachineSystemBlock, { system }));
+    assert.match(html, /Bật 6 ngày/); assert.match(html, /14 nhân · tải 10.1/); assert.match(html, /48 \/ 64 GB/); assert.match(html, /Còn 420 GB \/ 1 TB/);
+    setActiveLocale("en");
+    html = renderToStaticMarkup(createElement(MachineSystemBlock, { system }));
+    assert.match(html, /Up 6 days/); assert.match(html, /14 cores · load 10.1/); assert.match(html, /Free 420 GB \/ 1 TB/);
+  } finally { setActiveLocale("vi"); }
+});

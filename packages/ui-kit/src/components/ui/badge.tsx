@@ -42,8 +42,10 @@ function Badge({
       className={cn(badgeVariants({ variant }), className)}
       {...props}
     >
-      {dot && !asChild && <span aria-hidden="true" className="cosmic-badge-dot" data-tone={tone} />}
-      {children}
+      {asChild ? children : <>
+        {dot && <span aria-hidden="true" className="cosmic-badge-dot" data-tone={tone} />}
+        {children}
+      </>}
     </Comp>
   )
 }
