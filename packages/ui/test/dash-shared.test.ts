@@ -100,4 +100,10 @@ describe("cosmic primitives", () => {
     assert.match(html, /aria-hidden="true" class="cosmic-glass-overlay"/);
     assert.match(html, /class="cosmic-button-content">Open<\/span>/);
   });
+  it("renders a slotted badge as one anchor without the dot", async () => {
+    const { Badge } = await import("#ui/components/ui/badge.tsx");
+    const html = renderToStaticMarkup(createElement(Badge, { asChild: true }, createElement("a", { href: "#/docs" }, "2 links")));
+    assert.equal((html.match(/<a\b/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /cosmic-badge-dot/);
+  });
 });
