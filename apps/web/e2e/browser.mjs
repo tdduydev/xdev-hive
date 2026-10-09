@@ -262,6 +262,7 @@ class Tab {
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
   "terminal-entry": [],
   "terminal-io": ["terminal-entry"],
+  "terminal-page": ["terminal-entry"],
   "leader-plan": ["lead-sees-members"],
   "auto-dispatch": ["login-token"],
   "merge-queue": ["login-token"],
@@ -4746,6 +4747,20 @@ async function main() {
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");
+  });
+
+  await step("terminal-page", async () => {
+    const tab = current = tabs.terminal;
+    await tab.go("terminal");
+    await tab.waitFor("terminal page", () => document.querySelector("[data-terminal-page]"));
+    await tab.click('[data-testid="terminal-page-new"]');
+    await tab.waitFor("terminal page form", () => !!document.querySelector('[data-terminal-page] [data-testid="terminal-machine"]'));
+    expect(await tab.eval(() => !document.querySelector('[data-terminal-page] [data-testid="terminal-session-attach"]') && document.documentElement.scrollWidth <= innerWidth + 1), "terminal page overflows or lists sessions twice");
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await tab.shot(`terminal-page-${theme}`);
+    }
   });
 
   await step("close-unmerged-task", async () => {
