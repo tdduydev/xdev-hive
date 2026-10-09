@@ -47,7 +47,19 @@ App hub-mode chỉ còn các mục của máy (bảng trên). Board và Hôm nay
 Gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền (hub admin, owner; lead cho Cài đặt service). Kiểm tra: người không có quyền không thấy và không gọi được.
 
 ### 73f. release-split
+
 `release.mjs` và autopilot 60c xác định thay đổi thuộc hub hay app từ diff so với bản trước. Chỉ đổi web/core phía hub thì chỉ deploy hub. Đổi `apps/desktop` (main, runner, preload) hoặc runtime dùng chung với app thì release app và rollout. Ghi rõ trong ghi chú phát hành.
+
+So diff từ tag app gần nhất đã nằm trong lịch sử nhánh phát hành đến SHA cần phát hành. Không có tag làm mốc thì phát hành app để an toàn. Những lần chỉ deploy hub không tạo tag app mới, nên diff của lần app tiếp theo vẫn tính đủ mọi thay đổi kể từ app trước.
+
+| Đường dẫn thay đổi | Hành động |
+|---|---|
+| `apps/web/`, `deploy/`, tài liệu, test của core | Chỉ chạy lệnh deploy hub; không tăng version, build, upload hoặc rollout app |
+| `apps/desktop/` (main, runner, preload, script đóng gói), `packages/ui/`, `packages/mcp/`, `packages/core/src/`, package manifest/lockfile, mọi `tsconfig` | Phát hành app và chạy deploy/rollout như trước vì desktop dùng runtime chung |
+
+Riêng thay đổi chỉ ở trường `version` trong `apps/desktop/package.json` không buộc phát hành app. Luật đường dẫn hiện giữ `packages/ui/` và `packages/core/src/` ở phía app để an toàn; sau 76h app không còn bundle trang web và phạm vi này có thể thu hẹp.
+
+`release.mjs` dùng `HIVE_HUB_DEPLOY_ARGV` (JSON argv, không qua shell) cho nhánh chỉ hub, tạo `release/HUB-DEPLOY-NOTES.md` và truyền `HIVE_RELEASE_SCOPE=hub`, `HIVE_RELEASE_NOTES_FILE`; `--force-app` ép phát hành app. Autopilot 60c dùng lệnh `deploy` của cấu hình service cho nhánh hub, bỏ qua `prepare`, `release`, `appRollout` và truyền `HIVE_RELEASE_SCOPE=hub`. Ghi chú phát hành app ghi rõ phạm vi; log autopilot chỉ ghi tên bước và kết quả như hợp đồng 60c. Chưa có lệnh `deploy` cho batch chỉ hub thì batch thất bại ở bước deploy.
 
 ## Thứ tự
 

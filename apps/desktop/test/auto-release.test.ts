@@ -27,6 +27,16 @@ describe("Gate machine release execution (fake commands only)", () => {
     const result = await executeRelease(job, { ...project, autoRelease: { ...project.autoRelease!, deploy: undefined, checkLogs: undefined, appRollout: false } }, async argv => { steps.push(argv[0]!); }, async () => assert.fail("no rollout"));
     assert.deepEqual(steps, ["prepare", "release"]); assert.equal(result.success, true);
   });
+  it("deploys hub-only batches without preparing, publishing or rolling out app", async () => {
+    const steps: string[] = [];
+    const result = await executeRelease(job, project, async (argv, env) => { steps.push(argv[0]!); assert.equal(env.HIVE_RELEASE_SCOPE, "hub"); }, async () => assert.fail("no rollout"), async () => {}, "hub");
+    assert.deepEqual(steps, ["deploy", "logs"]);
+    assert.deepEqual(result, { success: true, step: "checkLogs", warning: false });
+  });
+  it("fails a hub-only batch without a deploy command", async () => {
+    const result = await executeRelease(job, { ...project, autoRelease: { ...project.autoRelease!, deploy: undefined } }, async () => assert.fail("no app command"), async () => {}, async () => {}, "hub");
+    assert.deepEqual(result, { success: false, step: "deploy", warning: false });
+  });
 });
 
 it("persists a lost result receipt and retries it without re-running release commands", async () => {
