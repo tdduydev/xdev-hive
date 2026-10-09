@@ -28,7 +28,8 @@ import { toolEntrySchema } from "./tools.ts";
 import { ROUTED_KINDS, modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "#core/model-router.ts";
 import { modelLearningSetSchema, type ModelLearningView } from "./model-learning.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
-import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { SDLC_GATES, FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { STEP_PROMPT_HISTORY, STEP_PROMPT_MAX, type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -1188,6 +1189,17 @@ export const schemas = {
     status: z.enum(GATE_STATUSES).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
+  /** The nine steps' prompts as they stand (72i); a step never written has version 0 and no text. */
+  "sdlc.prompts": z.object({ project }),
+  /** One step's versions, the newest first: who saved each and when. */
+  "sdlc.promptHistory": z.object({ project, step: z.enum(SDLC_GATES), limit: z.number().int().min(1).max(STEP_PROMPT_HISTORY).default(STEP_PROMPT_HISTORY) }),
+  /**
+   * A step's prompt as a new version (empty text clears it). baseVersion is the version the editor read: a save over a
+   * newer one is refused, so two people do not undo each other without seeing it.
+   */
+  "sdlc.setPrompt": z.object({ project, step: z.enum(SDLC_GATES), text: z.string().max(STEP_PROMPT_MAX), baseVersion: z.number().int().min(0) }),
+  /** What a run of the task is told for its step (the runner's): null outside a flow, or when its step has no prompt. */
+  "sdlc.runPrompt": z.object({ project, taskId, role: z.enum(AGENT_ROLES) }),
   "modelRouter.get": z.object({}),
   "modelRouter.set": z.union([z.object({ project: z.null(), tiers: modelTableSchema, cells: modelCellsSchema }), z.object({ project, setting: modelProjectSchema })]),
   /** The router's learning table of a project (54d): 30 days of finished tasks per cell, proposals, locks, its log. */
@@ -1500,6 +1512,10 @@ export interface MethodOutput {
   "sdlc.setCeiling": SdlcPolicyView;
   "sdlc.setProject": SdlcPolicyView;
   "sdlc.gates": SdlcGateRecord[];
+  "sdlc.prompts": StepPrompt[];
+  "sdlc.promptHistory": StepPromptVersion[];
+  "sdlc.setPrompt": StepPrompt;
+  "sdlc.runPrompt": RunStepPrompt | null;
   "specs.runStep": { task: Task; request: RunRequest; flow: SdlcFlow };
   "sdlc.decide": SdlcFlow;
   "sdlc.retry": SdlcFlow;
@@ -1731,6 +1747,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "projectSettings" on the project.
   "sdlc.setProject": "agent",
   "sdlc.gates": "viewer",
+  "sdlc.prompts": "viewer",
+  "sdlc.promptHistory": "viewer",
+  // Also "contextEdit" on the project: what agents read, a person's to change, never an agent token's.
+  "sdlc.setPrompt": "agent",
+  // The runner's, with the run's own credential: view on the project is enough.
+  "sdlc.runPrompt": "agent",
   // Also "taskManage" and "runDispatch" on the project, as runs.prompt.
   "specs.runStep": "agent",
   // Also "runDispatch" on the project (and "taskManage" for the tasks gate, which imports tasks).

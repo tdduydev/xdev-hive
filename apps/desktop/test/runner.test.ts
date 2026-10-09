@@ -7,7 +7,7 @@ import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-ch
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it, mock } from "node:test";
-import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, HubBackend, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, HubBackend, toolHash, promptPreview, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
 import { QuitLifecycle } from "#desktop/main/quit.ts";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
@@ -2746,6 +2746,51 @@ describe("cross-review on another vendor", () => {
     assert.equal(pickProfile([load(claude), resting], review, now)!.profile.id, "claude-a", "codex rests for hours: same vendor rather than no review");
     assert.equal(pickProfile([load(claude)], review, now)!.profile.id, "claude-a", "no other vendor at all");
     assert.equal(pickProfile([load(claude), load(codex, { running: 1 })], { ...review, strictKinds: false }, now)!.profile.id, "claude-a", "an implement run does not wait");
+  });
+
+  it("adds the step prompt after the protocol and before the admin's words, and never one that looks like a secret (roadmap 72i)", () => {
+    const base = { project: "demo", taskId: "T-1", title: "x", note: null, role: "implement" as const, instructions: "From the admin.", worktree: "/w", branch: "ai/T-1", baseSha: "abcdef0123", attempt: 1, previous: null, skills: [], rules: [] };
+    const text = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 4, text: "Write tests first." } });
+    assert.match(text, /for the dispatch step \(version 4\)/);
+    assert.ok(text.indexOf("Write tests first.") > text.indexOf("task_update") && text.indexOf("Write tests first.") < text.indexOf("Extra instructions from the admin"));
+    assert.doesNotMatch(buildPrompt(base), /project's manager for the/);
+    const leaked = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 4, text: `token ghp_${"c".repeat(36)}` } });
+    assert.doesNotMatch(leaked, /ghp_c|manager for the/);
+    const long = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 1, text: "z".repeat(5000) } });
+    assert.ok(long.length < 5000, "clipped to the step prompt's cap");
+  });
+
+  it("fills the step prompt's variables, and the Prompt tab's preview is the prompt buildPrompt gives (roadmap 72i)", () => {
+    const base = { project: "demo", taskId: "T-1", title: "Add refunds", note: "Half done.", role: "implement" as const, instructions: "", worktree: "<working copy>", branch: "ai/T-1", baseSha: "<base commit>", attempt: 1, previous: null, skills: [], rules: [], artifacts: true };
+    const stepPrompt = { step: "dispatch" as const, version: 2, text: "On {task.id} ({task.title}) in {service}, branch {branch}. Keep {unknown} and {task.x}." };
+    const text = buildPrompt({ ...base, stepPrompt });
+    assert.match(text, /On T-1 \(Add refunds\) in demo, branch ai\/T-1\. Keep \{unknown\} and \{task\.x\}\./);
+    for (const role of ["implement", "review"] as const) {
+      const layers = promptPreview({ role, project: "demo", task: { id: "T-1", title: "Add refunds", note: "Half done." }, branch: "ai/T-1", step: stepPrompt })!;
+      // The repo's own files and the admin's words are the two layers the page cannot know: the run here has none.
+      const joined = layers.filter((l) => l.text).map((l) => l.text).join("\n\n");
+      assert.equal(joined, buildPrompt({ ...base, role, stepPrompt }), `${role}: the preview is what the agent is told`);
+    }
+    assert.deepEqual(promptPreview({ role: "judge", project: "demo", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
+  });
+
+  it("gives a flow task's run the prompt of its step, and goes on without it when the hub cannot say (roadmap 72i)", async () => {
+    const withPrompt = async (wrap?: (b: HiveBackend) => HiveBackend) => {
+      const a = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub", wrap ? { wrap } : {});
+      await a.hive.call("sdlc.setPrompt", { project: "demo", step: "dispatch", text: "Prefer small commits.", baseVersion: 0 }, admin);
+      a.hive.db.prepare("INSERT INTO sdlc_flow_tasks(task_id, flow_task, project, stage, created_by, updated_at) VALUES ('T-1', 'F-1', 'demo', 'build', 'duy', '2026-10-01T00:00:00.000Z')").run();
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await a.runner.settle();
+      return { a, run };
+    };
+    const ok = await withPrompt();
+    assert.equal(ok.a.runner.store.get(ok.run.id)!.status, "succeeded");
+    assert.match(ok.a.calls()[0]!.prompt, /Prefer small commits\./);
+    assert.match(ok.a.runner.log(ok.run.id), /# step prompt: dispatch v1/);
+    const oldHub = await withPrompt((b) => ({ call: (m, i, actor) => (m === "sdlc.runPrompt" ? Promise.reject(new Error("unknown method")) : b.call(m, i, actor)) }));
+    assert.equal(oldHub.a.runner.store.get(oldHub.run.id)!.status, "succeeded");
+    assert.doesNotMatch(oldHub.a.calls()[0]!.prompt, /Prefer small commits/);
+    assert.match(oldHub.a.runner.log(oldHub.run.id), /# step prompt not read: unknown method/);
   });
 
   it("tells a reviewer to leave the task alone", () => {
