@@ -9835,6 +9835,7 @@ export class SqliteHive implements HiveBackend {
         const m = this.#toMachine(row);
         if (!this.#mayApproveTool(actor, m.owner)) throw new HiveError("forbidden", "Only a hub admin or machine owner changes runner settings.", { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
         if (!m.runnerSettings) throw new HiveError("bad_request", "App too old for runner settings.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+        if (settings.acceptHubRuns !== undefined && m.runnerSettings.acceptHubRuns === undefined) throw new HiveError("bad_request", "App too old to change hub intake.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
         const next = { ...m.runnerChange?.settings, ...settings };
         for (const key of Object.keys(next) as (keyof MachineRunnerSettings)[]) if (next[key] === m.runnerSettings[key]) delete next[key];
         const change: RunnerChange | null = Object.keys(next).length ? { settings: next, requestedBy: actor.account ?? actor.name, requestedAt: this.#now() } : null;
