@@ -390,7 +390,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **76d. mcp-tokens**: token MCP cá nhân (dự án, chỉ đọc hoặc đề xuất, hạn 30/90 ngày), trang *Kết nối MCP* có lệnh mẫu cho Claude Code và Codex, admin thu hồi được.
   - [ ] **76e. doc-review**: hộp *Chờ bạn duyệt*, nút Yêu cầu sửa và Rút, Reviewer duyệt được skill và AGENTS.md, người duyệt theo đường dẫn, nhật ký duyệt.
   - [ ] **76f. admin-area**: nhóm Quản trị trên web (thay 73e).
-  - [ ] **76g. ui-kit**: tách `packages/ui-kit` (tokens, primitive, i18n runtime), sau khi lô giao diện 72 vào main.
+  - [x] **76g. ui-kit** (0.153.0): tách `packages/ui-kit` (tokens, primitive, i18n runtime), sau khi lô giao diện 72 vào main.
   - [ ] **76h. two-shells**: `WebApp` và `DesktopApp` riêng, trang của máy chuyển về `apps/desktop`, trang web chuyển về `apps/web/client` (thay 73d).
   - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
 
