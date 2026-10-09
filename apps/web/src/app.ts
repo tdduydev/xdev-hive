@@ -223,6 +223,8 @@ export function createHubApp({
   const json = express.json({ limit: "1mb" });
   // RPC carries a doc's attached file in base64 (docs.assetPut, roadmap 22j): parsed only once the caller is known.
   const rpcJson = express.json({ limit: "8mb" });
+  hive.db.exec("CREATE TABLE IF NOT EXISTS rpc_idempotency (key TEXT PRIMARY KEY, digest TEXT NOT NULL, result TEXT NOT NULL)");
+  const pendingReports = new Map<string, { digest: string; request: Promise<unknown> }>();
   const secure = (req: Request) => req.secure || (trustProxy && req.get("x-forwarded-proto") === "https");
   const clientIp = (req: Request) => (trustProxy ? (req.get("x-forwarded-for") ?? "").split(",")[0]!.trim() : "") || req.socket.remoteAddress || "?";
 
@@ -588,6 +590,7 @@ export function createHubApp({
   });
 
   app.get("/api/me", authenticate({ cookie: true, allowPasswordChange: true }), (_req, res) => {
+    res.setHeader("x-hive-report-idempotency", "1");
     res.json({ result: me(res) });
   });
 
@@ -960,6 +963,31 @@ export function createHubApp({
       }
       if (method === "chat.poll") {
         res.json({ result: withGrants(await hive.call(method, input as never, actor)) });
+        return;
+      }
+      const requestId = req.get("x-hive-idempotency");
+      if (requestId && (method === "tasks.update" || method === "runs.report")) {
+        if (!actor.tokenId || !/^[0-9a-f-]{36}$/i.test(requestId)) throw new HiveError("bad_request", "Invalid idempotency key.");
+        const key = `${actor.tokenId}:${requestId}`;
+        const digest = createHash("sha256").update(JSON.stringify({ method, input })).digest("hex");
+        const saved = hive.db.prepare("SELECT digest, result FROM rpc_idempotency WHERE key = ?").get(key) as { digest: string; result: string } | undefined;
+        if (saved) {
+          if (saved.digest !== digest) throw new HiveError("conflict", "Idempotency key reused with different input.");
+          res.json({ result: JSON.parse(saved.result) });
+          return;
+        }
+        let pending = pendingReports.get(key);
+        if (pending && pending.digest !== digest) throw new HiveError("conflict", "Idempotency key reused with different input.");
+        if (!pending) {
+          const request = hive.call(method, input as never, actor).then((result) => {
+            hive.db.prepare("INSERT OR IGNORE INTO rpc_idempotency VALUES (?, ?, ?)").run(key, digest, JSON.stringify(result));
+            return result;
+          });
+          pending = { digest, request };
+          pendingReports.set(key, pending);
+          void request.finally(() => pendingReports.delete(key)).catch(() => undefined);
+        }
+        res.json({ result: await pending.request });
         return;
       }
       res.json({ result: await hive.call(method, input as never, actor) });

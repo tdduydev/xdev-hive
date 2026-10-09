@@ -258,7 +258,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
               const query = `project=${encodeURIComponent(project)}&name=${encodeURIComponent(file.name)}`;
               const res = await fetch(`${baseUrl}/api/chat/files?${query}`, {
                 method: "POST",
-                signal: AbortSignal.timeout(15_000),
+                signal: AbortSignal.timeout(45_000),
                 credentials: "same-origin",
                 headers: { "content-type": file.type || "application/octet-stream", "x-hive-csrf": "1" },
                 body: file,
