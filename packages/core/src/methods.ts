@@ -1,6 +1,7 @@
 import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type AcceptanceEvidence, type EvidenceContext } from "#core/evidence.ts";
 import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
+import { machineRepoSchema, projectOrderShape, refineProjectOrder, type MachineProjectCommand, type MachineProjects } from "#core/machine-projects.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
@@ -618,6 +619,10 @@ export const schemas = {
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
     worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
+    /** Every project of the app's config with its folder, the hub's deleted ones too: the web can then offer to drop them. */
+    repos: z.array(machineRepoSchema).max(200).optional(),
+    /** How the project commands went (machines.projectCommand); sent until the hub answers a heartbeat. */
+    projectResults: z.array(z.object({ id: z.uuid(), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100).default([]),
     toolStates: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/), trust: z.enum(["app", "trusted", "new", "changed"]) })).max(500).optional(),
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Remote terminal opt-in (spec 69). Absent (older app) or malformed reads as none, never as the last one sent. */
@@ -663,6 +668,13 @@ export const schemas = {
     force: z.boolean().default(false),
     cleanup: worktreeCleanupSchema.optional(),
   }).refine(v => !!v.targets || !!v.cleanup, "targets or cleanup"),
+  /** Each machine's projects with their folders and the commands below: hub admins only, paths are the machine's own. */
+  "machines.projects": z.object({}),
+  /**
+   * Adds a project to a machine's app config or drops one from it (never deleting the folder). The machine takes it at
+   * its next heartbeat and answers how it went. Hub admins only.
+   */
+  "machines.projectCommand": z.object({ machine: machineRef, ...projectOrderShape }).superRefine(refineProjectOrder),
   "machines.tools": z.object({ machineId: machineRef }),
   /** Human hub admin or machine owner only; hash is the commands shown before approval. */
   "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
@@ -1374,6 +1386,8 @@ export interface MethodOutput {
     tools: MachineTools;
     toolApprovals: ToolApproval[];
     worktreeCommands: WorktreeCommand[];
+    /** Project adds and removes a hub admin asked for; sent until the machine reports them. Older apps ignore it. */
+    projectCommands?: MachineProjectCommand[];
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**
@@ -1416,6 +1430,8 @@ export interface MethodOutput {
   "machines.repair": Machine;
   "machines.worktrees": MachineWorktrees;
   "machines.manageWorktrees": WorktreeCommand;
+  "machines.projects": MachineProjects[];
+  "machines.projectCommand": MachineProjectCommand;
   "machines.tools": MachineToolAccess;
   "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
@@ -1642,6 +1658,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.approveTool": "viewer",
   "machines.worktrees": "viewer",
   "machines.manageWorktrees": "viewer",
+  // A machine's config is not a project right: only a hub admin, and #check also refuses agents holding an admin token.
+  "machines.projects": "admin",
+  "machines.projectCommand": "admin",
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",

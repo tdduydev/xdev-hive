@@ -6,6 +6,7 @@ import { researchSchema, stepPromptBlock, type GateHeartbeatReply, type Research
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs, readLegacyRunLogTail, readRunLogTail, redactedMarker } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
+import { PROJECT_NAME, type MachineProjectCommand } from "@xdev-hive/core";
 import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
 import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
 import { ProfileModels, unsupportedModel } from "#desktop/main/runner/models.ts";
@@ -207,6 +208,11 @@ export interface RunnerHost {
   /** Persist a web approval before the runner records its receipt or starts work with it. */
   applyToolTrust?(trust: Record<string, string>): void;
   applyWorktreeCleanup?(cleanup: WorktreeReport["cleanup"]): void;
+  /**
+   * Adds or drops a project in the app config as a hub admin asked (ADM-machine-projects); never throws, the result
+   * says why it failed. Left out: the app does not report its repos, and the hub offers no such command.
+   */
+  applyProjectCommand?(command: MachineProjectCommand): Promise<{ id: string; ok: boolean; error: string | null }>;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -499,6 +505,9 @@ export class Runner {
   #logCache = new Map<string, { size: number; mtimeMs: number; text: string }>();
   #worktreeCommandQueue: Promise<void> = Promise.resolve();
   #worktreeCommandsActive = 0;
+  /** Project commands run one after another, apart from the heartbeat: a clone may take minutes. */
+  #projectCommandQueue: Promise<void> = Promise.resolve();
+  #projectCommandsTaken = new Set<string>();
   #worktreeCleanupJob: Promise<void> | null = null;
   #worktreeJobs = new Set<Promise<WorktreeCommand["results"]>>();
   #worktreeTimer: NodeJS.Timeout | undefined;
@@ -749,7 +758,7 @@ export class Runner {
       const profile = this.#host.profiles().find((p) => p.id === r.profileId);
       return Date.parse(r.startedAt ?? r.createdAt) + (r.timeoutMinutes ?? profile?.timeoutMinutes ?? 60) * 60_000;
     });
-    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
+    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#projectCommandsTaken.size > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
     return {
       busy: running.length > 0 || this.#inflight.size > 0 || auxiliary,
       // The chat has a 20-minute limit; final commit/report and sync get a bounded grace when no run remains.
@@ -774,7 +783,7 @@ export class Runner {
     this.#assists.stop();
     this.#memoryCleanup.stop();
     this.#autoRelease.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, this.#projectCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -1386,6 +1395,21 @@ export class Runner {
     try { await next; } finally { this.#worktreeCommandsActive--; }
   }
 
+  /** Queued behind each other and never awaited by the heartbeat; the result goes with the heartbeat after it ends. */
+  #takeProjectCommands(commands: MachineProjectCommand[]): void {
+    const apply = this.#host.applyProjectCommand;
+    if (!apply) return;
+    for (const command of commands) {
+      if (this.#projectCommandsTaken.has(command.id) || this.store.projectResult(command.id)) continue;
+      this.#projectCommandsTaken.add(command.id);
+      this.#projectCommandQueue = this.#projectCommandQueue.then(async () => {
+        try { this.store.recordProjectResult(await apply(command)); }
+        catch (err) { this.store.recordProjectResult({ id: command.id, ok: false, error: errorMessage(err).slice(0, 1000) }); }
+        finally { this.#projectCommandsTaken.delete(command.id); }
+      });
+    }
+  }
+
   async cleanWorktrees(): Promise<void> {
     if (this.#updateDrain) return;
     if (this.#worktreeCleanupJob) return this.#worktreeCleanupJob;
@@ -1455,6 +1479,7 @@ export class Runner {
     await this.cleanWorktrees();
     const worktrees = await this.worktrees();
     const worktreeResults = this.store.worktreeResults();
+    const projectResults = this.store.projectResults();
     const deliveredMessages = this.store.steeringAcks();
     const appliedToolApprovals = this.store.toolApprovalAcks();
     const res = await this.#host
@@ -1471,6 +1496,8 @@ export class Runner {
           deliveredMessages,
           worktrees,
           worktreeResults,
+          // Only from an app that can take the commands: the hub reads a reported list as "supports them".
+          ...(this.#host.applyProjectCommand ? { repos: this.#host.projects().filter((p) => PROJECT_NAME.test(p.name) && p.repo.length <= 2000).slice(0, 200).map((p) => ({ project: p.name, path: p.repo })), projectResults } : {}),
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
@@ -1492,6 +1519,7 @@ export class Runner {
     this.store.ackSteering(deliveredMessages);
     this.store.ackToolApprovals(appliedToolApprovals);
     this.store.ackWorktreeResults(worktreeResults.map(r => r.id));
+    if (this.#host.applyProjectCommand) this.store.ackProjectResults(projectResults.map(r => r.id));
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -1537,6 +1565,8 @@ export class Runner {
       this.store.recordToolApproval(approval.id);
     }
     await this.#applyWorktreeCommands(res.worktreeCommands ?? []);
+    // A hub older than them sends none.
+    this.#takeProjectCommands(res.projectCommands ?? []);
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     if (!this.#updateDrain) this.#takeSyncs(update.syncCommands);

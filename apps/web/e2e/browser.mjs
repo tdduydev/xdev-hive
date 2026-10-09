@@ -322,6 +322,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "bulk-approve-memory": ["login-token"],
   "sync-request": ["login-token"],
   "machine-profiles": ["login-password", "lead-sees-members"],
+  "machine-projects": ["login-token"],
   "quota-outlook": ["lead-sees-members"],
   "web-prompt": ["lead-sees-members"],
   "new-work": ["lead-sees-members"],
@@ -1717,6 +1718,34 @@ async function main() {
     await tab.click('[data-map-manage="lan-mbp"]');
     await tab.click("summary", "Bật/tắt và ưu tiên gói");
     await tab.waitFor("claude-1 off, nothing waiting", () => document.querySelector('[aria-label="Bật gói claude-1"]')?.getAttribute("aria-checked") === "false" && !document.body.innerText.includes("chờ máy áp dụng"));
+  });
+
+  // ADM-machine-projects: a machine's config still lists a project the hub deleted. The admin sees it on Máy & agent,
+  // queues the suggested removal, and the machine hears it at its heartbeat and answers; the warning then goes.
+  await step("machine-projects", async () => {
+    await rpc("tasks.create", { id: "ADMG-1", project: "adm-gone", title: "Service đã xoá" });
+    await rpc("projects.archive", { project: "adm-gone" });
+    await rpc("projects.delete", { project: "adm-gone", confirm: "adm-gone" });
+    const both = [{ project: "payment", path: "/work/payment" }, { project: "adm-gone", path: "/work/adm-gone" }];
+    const beat = async (input = {}) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.adm-e2e" },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "adm-e2e", instance: "ad000001", version: "0.155.0", projects: ["payment", "adm-gone"], repos: both, ...input } }),
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(`machine-projects heartbeat: ${j.error.message}`);
+      return j.result;
+    };
+    await beat();
+    const tab = (current = tabs.admin);
+    await tab.go("machines");
+    await tab.waitFor("the deleted-project warning", () => document.querySelector("[data-deleted-project-warning]")?.textContent.includes("adm-gone"));
+    await tab.click('[data-suggest-remove="adm-e2e/adm-gone"]');
+    const cmd = await until("the removal at the machine's heartbeat", async () => (await beat()).projectCommands?.find((c) => c.project === "adm-gone" && c.op === "remove"));
+    await beat({ projects: ["payment"], repos: both.slice(0, 1), projectResults: [{ id: cmd.id, ok: true, error: null }] });
+    await tab.waitFor("the warning gone once the machine answered", () => !document.querySelector("[data-deleted-project-warning]") && !!document.querySelector('[data-machine-projects-card="adm-e2e"]'));
+    expect((await beat()).projectCommands.length === 0, "the answered command is still sent");
   });
 
   await step("quota-outlook", async () => {
