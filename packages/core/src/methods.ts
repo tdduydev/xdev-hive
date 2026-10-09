@@ -784,6 +784,7 @@ export const schemas = {
   "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
   "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
   "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, activeOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.count": z.object({ project: project.optional(), projects: projectList }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -1392,6 +1393,7 @@ export interface MethodOutput {
   "runs.plans": ImplementationPlan[];
   "runs.decidePlan": ImplementationPlan;
   "runs.list": RunRecord[];
+  "runs.count": { running: number; queued: number };
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
   "runs.steer": RunMessage;
@@ -1611,6 +1613,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.plans": "viewer",
   "runs.decidePlan": "agent",
   "runs.list": "viewer",
+  "runs.count": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
   "runs.steer": "agent",

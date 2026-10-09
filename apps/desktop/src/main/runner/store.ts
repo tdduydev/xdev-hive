@@ -345,6 +345,15 @@ export class RunStore {
     ).map(toRun);
   }
 
+  countActive(filter: { project?: string; projects?: string[] } = {}): { running: number; queued: number } {
+    const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
+    const rows = this.db.prepare(`SELECT status, COUNT(*) AS n FROM runs
+      WHERE status IN ('running', 'queued') AND diff_summary_for IS NULL
+      AND (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2))) GROUP BY status`)
+      .all(filter.project ?? null, projects) as Row[];
+    return { running: Number(rows.find(r => r.status === "running")?.n ?? 0), queued: Number(rows.find(r => r.status === "queued")?.n ?? 0) };
+  }
+
   queued(): AgentRun[] {
     return (this.db.prepare("SELECT * FROM runs WHERE status = 'queued' ORDER BY created_at, rowid").all() as Row[]).map(toRun);
   }

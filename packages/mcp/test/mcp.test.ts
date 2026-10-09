@@ -130,6 +130,7 @@ describe("mcp tools", () => {
       "memory_write",
       "policy_get",
       "project_list",
+      "run_count",
       "run_get",
       "run_list",
       "run_requests",
@@ -163,6 +164,7 @@ describe("mcp tools", () => {
         "memory_search",
         "policy_get",
         "project_list",
+        "run_count",
         "run_get",
         "run_list",
         "run_requests",
@@ -707,7 +709,7 @@ describe("mcp tools", () => {
   }
 
   it("gives the hub-wide leader every project, no default project, and reads over the whole hub (roadmap 37)", async () => {
-    const { hive, leader } = await hubWide();
+    const { hive, admin, leader } = await hubWide();
     const open = [{ id: 1, rule: "machine.offline", project: "app" }, { id: 2, rule: "budget.over", project: null }];
     const client = await connectHubLeader(hive, leader, { alerts: { list: async () => open } });
 
@@ -728,6 +730,8 @@ describe("mcp tools", () => {
     const runs = JSON.parse(text(await client.callTool({ name: "run_list", arguments: {} })));
     assert.deepEqual(runs.map((r: { runId: string }) => r.runId).sort(), ["R-app1", "R-site1"]);
     assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_list", arguments: { project: "site" } }))).map((r: { runId: string }) => r.runId), ["R-site1"]);
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_count", arguments: {} }))), await hive.call("runs.count", {}, admin));
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_count", arguments: { project: "site" } }))), await hive.call("runs.count", { project: "site" }, admin));
     const costs = JSON.parse(text(await client.callTool({ name: "cost_summary", arguments: {} })));
     assert.equal(costs.project, null, "the whole hub, with every project's line");
     assert.equal(JSON.parse(text(await client.callTool({ name: "run_requests", arguments: {} }))).length, 0);
@@ -805,6 +809,7 @@ describe("mcp tools", () => {
 
     // The default project stands in for the missing argument, and nothing asks which project.
     assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_list", arguments: {} }))).map((r: { runId: string }) => r.runId), ["R-app1"]);
+    assert.deepEqual(JSON.parse(text(await client.callTool({ name: "run_count", arguments: {} }))), { running: 1, queued: 0 });
     assert.equal(JSON.parse(text(await client.callTool({ name: "cost_summary", arguments: {} }))).project, "app");
     assert.doesNotMatch(client.getInstructions() ?? "", /no default project/);
     const proposed = JSON.parse(text(await client.callTool({ name: "propose_task", arguments: { id: "T-9", title: "Reset page", reason: "Asked in the chat" } })));

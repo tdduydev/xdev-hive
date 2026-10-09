@@ -1954,7 +1954,7 @@ const AGENT_METHODS = new Set<Method>([
   "agentPolicy.get", "agents.paused", "artifacts.get", "artifacts.list", "budgets.list", "costs.summary",
   "docs.assetGet", "docs.assets", "docs.get", "docs.list", "gate.get", "gate.list", "machines.list", "machines.setupMissing",
   "memory.search", "memory.write", "policy.get", "projects.list", "proposals.create", "runs.get",
-  "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
+  "runs.list", "runs.count", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
 ]);
 
@@ -2313,6 +2313,7 @@ export class SqliteHive implements HiveBackend {
       case "memory.search":
       case "skills.list":
       case "runs.list":
+      case "runs.count":
       case "inbox.source":
       case "sdlc.dispatch":
       case "runs.requests":
@@ -8633,6 +8634,15 @@ export class SqliteHive implements HiveBackend {
         if (!sees(actor, project)) return null;
         const row = db.prepare("SELECT * FROM spec_features WHERE project = ? AND dir = ? AND branch = ?").get(project, dir, branch) as Row | undefined;
         return row ? toSpecFeature(row) : null;
+      },
+
+      "runs.count": (input, actor) => {
+        const rows = db.prepare(`SELECT * FROM run_records WHERE status IN ('running', 'queued')
+          AND (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2)))`)
+          .all(input.project ?? null, listParam(input.projects)) as Row[];
+        // Count after the list's privacy/archive filters, without its pagination ceiling.
+        const visible = this.#hideArchived("runs.list", input, this.#filter("runs.list", rows.map(r => toRunRecord(r, false)), actor));
+        return { running: visible.filter(r => r.status === "running").length, queued: visible.filter(r => r.status === "queued").length };
       },
 
       "runs.list": ({ project, projects, limit, taskId, activeOnly }) =>
