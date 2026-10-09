@@ -24,9 +24,10 @@
     "@xdev-hive/core": "*",
     "@xdev-hive/mcp": "*",
     "@xdev-hive/ui": "*",
+    "@xdev-hive/ui-kit": "*",
     "express": "^5.2.1",
-    "zod": "^4.6.5",
-    "@xdev-hive/ui-kit": "*"
+    "lucide-react": "^1.52.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

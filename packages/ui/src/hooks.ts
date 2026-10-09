@@ -23,7 +23,7 @@ export const HiveContext = createContext<HiveContextValue | null>(null);
 
 export function useHive(): HiveContextValue {
   const ctx = useContext(HiveContext);
-  if (!ctx) throw new Error("useHive must be used inside <HiveApp>");
+  if (!ctx) throw new Error("useHive must be used inside a Hive root (WebApp or DesktopApp)");
   return ctx;
 }
 
