@@ -974,7 +974,10 @@ function onHub(update: HubUpdate): void {
   hubState = update;
   // The catalog decides the machine's tool:<id> items and Spec Kit's version: check again when it changed, so admins
   // see a tool turned on or bumped without waiting for the 10-minute check.
-  if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) void refreshSetup().catch(() => undefined);
+  if (JSON.stringify(update.tools ?? null) !== catalogBefore || update.toolApprovals?.length) {
+    setup.invalidateStatus();
+    void refreshSetup().catch(() => undefined);
+  }
   if (update.toolApprovals?.length) void runner.tick();
   if (!smokeShot) void watchAlerts();
   if (update.runnerChange) {
