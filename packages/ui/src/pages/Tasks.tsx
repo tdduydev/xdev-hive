@@ -148,6 +148,8 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   }, [linkedProject, projects, scoped, setScope]);
   const key = scopeKey(scope);
   const [service, setService] = useServiceFilter(scope);
+  // The design lists every service of the scope once there are two or more; a project scope has one and needs no filter.
+  const serviceChips = scope.kind === "project" ? [""] : ["", ...[...new Set(scope.kind === "system" ? scope.projects : projects)].sort()];
   const [own, setViewState] = useState<View>(readView);
   const [linkedStatus] = useHashParam("status");
   const chosen = fixed ?? (linkedStatus ? "list" : own);
@@ -280,7 +282,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
       {view === "kanban" ? (
         <div data-board-filters className="flex flex-wrap items-center gap-2">
-          {scope.kind === "system" ? ["", ...[...new Set(scope.projects)].sort()].map((p) => (
+          {serviceChips.length > 2 ? serviceChips.map((p) => (
             <Tag key={p} role="button" tabIndex={0} data-service-chip={p || undefined} active={service === p} className="cursor-pointer outline-none focus-visible:focus-ring max-md:min-h-11"
               onClick={() => setService(p)}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setService(p); } }}>

@@ -986,7 +986,7 @@ export const vi = {
   taskStatus: {
     todo: "Chưa làm",
     doing: "Đang làm",
-    review: "Chờ review",
+    review: "Review",
     done: "Xong",
     blocked: "Bị chặn",
   },
