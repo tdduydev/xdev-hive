@@ -12,8 +12,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
-import { HubBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
+import { HubBackend } from "@xdev-hive/core";
+import { DESK_MENU } from "../src/renderer/desk-nav.ts";
 import { RunStore } from "../src/main/runner/store.ts";
 import { resetText } from "../src/main/runner/usage.ts";
 import { startMockGitLab } from "../test/fixtures/mock-gitlab.ts";
@@ -314,7 +315,7 @@ async function startGuideShots(prefix = "") {
     await shoot(`${prefix}start-${state}`, "start", 4000, extra);
     if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
     // Today's banner lists what is left; once every step is done there is nothing to offer, so no Start button is expected.
-    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
+    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: prefix ? 'a[href="#/machine"][aria-current="page"]' : 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
   }
   writeFileSync(file, before);
 }
@@ -866,91 +867,50 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const file = path.join(work, "config.json");
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
-    // Task is in the menu again as this machine's Board (roadmap 44); #/board is only an old address of it.
-    // Chat is in it since roadmap 48, the hub's threads.
-    const webPages = ["board", "docs", "memory", "proposals", "skills", "specs", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    // Roadmap 76h: on a hub the app is this machine's work only (Máy này, Gói agent, Run trên máy, Worktree, Công cụ &
+    // setup, Cài đặt máy); Task, Tài liệu, Chat, Quản trị… are buttons that open the hub's web. Their old addresses are
+    // not menu entries here, and #/projects is Cài đặt máy now.
+    const webPages = ["today", "board", "tasks", "chat", "docs", "memory", "proposals", "skills", "specs", "batches", "machines", "members", "tokens", "systems", "tools", "admin", "projects"];
+    const absent = [...webPages.map((p) => `nav a[href="#/${p}"]`), "[data-ask-leader]", "[data-new-work-open]"].join(" && ");
+    // The menu fits the 1100×720 window without scrolling, and the page does not overflow sideways.
+    const fits =
+      'document.documentElement.scrollWidth <= window.innerWidth && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight + 1; })()';
+    const web = ["today", "tasks", "chat", "docs", "admin"].map((id) => `nav a[data-open-web="${id}"][target="_blank"]`).join(" && ");
+    const nav = DESK_MENU.map((id) => `nav a[href="#/${id}"]`).join(" && ");
     // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
-    // Lượt chạy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
-    // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
-    const absent = webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ");
+    // Run trên máy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
+    // Connected (roadmap 39d): Cài đặt máy is one line about the hub, the account and this machine, with no form.
     const pages = [
-      ["hub-today", "today"],
-      ["hub-runs", "runs", '[data-run-tab="summary"][aria-selected="true"]'],
-      ["hub-agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
-      ["hub-setup", "setup"],
-      ["hub-projects", "projects", '[data-hub-link="connected"]'],
+      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="app"] && [data-card="hub"]'],
+      ["runs", "runs", '[data-run-tab="summary"][aria-selected="true"]'],
+      ["agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
+      ["worktrees", "worktrees", "[data-worktree-panel]"],
+      ["setup", "setup", ""],
+      ["settings", "settings", '[data-hub-link="connected"]'],
     ];
-    for (const [name, page, also] of pages) {
-      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: also ? `[data-open-web] && ${also}` : "[data-open-web]", HIVE_SMOKE_ABSENT: absent });
-    }
-    // Roadmap 44: the Board of the projects with a repo here. The hub also has a project this machine does not clone,
-    // which the picker leaves out (it is on the web, behind Mở trên web).
-    const api = new HubBackend(`http://127.0.0.1:${port}`, bootstrap);
-    const seeder = { name: "smoke", role: "admin" };
-    await api.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, seeder);
-    await setupCardShots("hub-");
-    await startGuideShots("hub-");
-    await api.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, seeder);
-    await api.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, seeder);
-    await api.call("tasks.update", { id: "T-002", status: "doing" }, seeder);
-    await api.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, seeder);
-    await api.call("tasks.create", { id: "O-001", project: "other", title: "Việc của máy khác" }, seeder);
-    const board = 'nav a[href="#/tasks"][aria-current="page"] && [data-open-web-board] && section[aria-label="Chưa làm"] [role="button"]';
-    await shoot("hub-board", "tasks", 4000, {
-      HIVE_SMOKE_EXPECT: `[data-open-web] && ${board}`,
-      HIVE_SMOKE_ABSENT: `${absent} && option[value="other"] && [data-task-view]`,
-    });
-    // The old address lands on it too, and a card opens its panel with the run form of this machine.
-    await shoot("hub-board-task", "board", 4000, {
-      HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"]',
-      HIVE_SMOKE_EXPECT: `${board} && aside[aria-label^="T-00"]`,
-    });
-    // Roadmap 48: the hub's chat in the app. Another machine of the team holds a thread (the web sees the same), and
-    // Chat mới says this machine does not take runs from the hub yet, with the switch to turn it on.
-    await api.call(
-      "machines.heartbeat",
-      {
-        machine: "box", instance: randomBytes(8).toString("hex"), version: "0.130.0", projects: ["demo"], acceptsRuns: true, runs: [], costs: [],
-        profiles: [{ id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 }],
-      },
-      { name: "runner.box", role: "agent" },
-    );
-    const box = (await api.call("machines.list", {}, seeder)).find((m) => m.machine === "box");
-    const hubThread = box ? (await api.call("chat.send", { project: "demo", machineId: box.id, text: "Tuần này còn task nào chưa ai nhận?" }, seeder)).thread.id : 0;
-    if (!box) failures.push("hub chat: the hub lists no machine box");
-    await shoot("hub-chat", `chat?thread=${hubThread}`, 3000, {
-      HIVE_SMOKE_EXPECT: `[data-open-web] && nav a[href="#/chat"][aria-current="page"] && [data-chat-thread="${hubThread}"] && button[aria-current="true"]`,
-      HIVE_SMOKE_ABSENT: absent,
-    });
-    await shoot("hub-chat-new", "chat", 3000, {
-      HIVE_SMOKE_CLICK: "[data-chat-new]",
-      HIVE_SMOKE_EXPECT: '[data-open-web] && [data-chat-here="off"] button && a[href="#/agents"] && #chat-project option[value="*"]',
-      HIVE_SMOKE_ABSENT: absent,
-    });
-    // Roadmap 37b: the app reads the hub-wide thread too; RPC substitutes for the machine's leader.
-    if (box) {
-      const sent = await api.call("chat.send", { project: "*", machineId: box.id, text: "Điều phối mọi service" }, seeder);
-      const boxActor = { name: "runner.box", role: "agent" };
-      const request = (await api.call("chat.poll", {}, boxActor)).find((r) => r.replyId === sent.reply.id);
-      if (!request?.grant) failures.push("hub-wide chat: no reply grant");
-      else {
-        const leader = new HubBackend(`http://127.0.0.1:${port}`, request.grant);
-        await leader.call("chat.propose", { action: { kind: "task.create", project: "demo", id: "HUB-37B", title: "Việc từ leader toàn hub", dependsOn: [] }, reason: "Điều phối service" }, boxActor);
-        await leader.call("chat.propose", { action: { kind: "machine.profile", machine: box.machine, profileId: "claude-1", enabled: true }, reason: "Gói của máy" }, boxActor);
-        await api.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Đề xuất theo service và máy." }, boxActor);
-        for (const phone of [false, true]) await shoot(`hub-chat-all${phone ? "-mobile" : ""}`, `chat?thread=${sent.thread.id}`, 3000, {
-          ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
-          HIVE_SMOKE_EXPECT: `[data-chat-thread="${sent.thread.id}"] [data-action-project="demo"] && [data-action-project="*"]`,
-          HIVE_SMOKE_ASSERT: '/Toàn hub|Whole hub/.test(document.body.innerText) && document.documentElement.scrollWidth <= window.innerWidth',
+    // Every page of the machine in both themes, at the window the app opens in.
+    for (const theme of ["dark", "light"]) {
+      for (const [name, page, also] of pages) {
+        await shoot(`hub-${name}-${theme}`, page, 3000, {
+          HIVE_SMOKE_THEME: theme,
+          HIVE_SMOKE_SIZE: "1100x720",
+          HIVE_SMOKE_SIDEBAR: "open",
+          HIVE_SMOKE_EXPECT: [`nav a[href="#/${page}"][aria-current="page"]`, "[data-desktop-shell]", nav, web, also].filter(Boolean).join(" && "),
+          HIVE_SMOKE_ABSENT: absent,
+          HIVE_SMOKE_ASSERT: fits,
         });
       }
     }
-    // A machine with no project: the Board says where to add one.
-    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), projects: [] }, null, 2));
-    await shoot("hub-board-empty", "tasks", 3000, { HIVE_SMOKE_EXPECT: '[data-board-empty] a[href="#/setup"]' });
+    // Old addresses land on the page that took them over.
+    await shoot("hub-alias-projects", "projects", 3000, { HIVE_SMOKE_EXPECT: 'nav a[href="#/settings"][aria-current="page"] && [data-hub-link="connected"]' });
+    // #/today lands on Máy này too: the start-*-today shots below click through it.
+    // Công cụ & setup groups the machine's projects by the hub's system.
+    await new HubBackend(`http://127.0.0.1:${port}`, bootstrap).call("systems.save", { name: "hospital", projects: ["demo", "api"] }, { name: "smoke", role: "admin" });
+    await setupCardShots("hub-");
+    await startGuideShots("hub-");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     // Đổi kết nối brings the sign-in form back over that summary.
-    await shoot("hub-projects-change", "projects", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
+    await shoot("hub-settings-change", "settings", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
     writeFileSync(file, local);
   }
   hub.kill();

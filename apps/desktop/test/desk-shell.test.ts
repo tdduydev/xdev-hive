@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { DESK_ALIASES, DESK_MENU, DESK_PAGES, DESK_SHORTCUTS, resolveDeskHash, webTarget, WEB_ENTRIES } from "#desktop/renderer/desk-nav.ts";
+import { opensOnHome, DESK_ALIASES, DESK_MENU, DESK_PAGES, DESK_SHORTCUTS, resolveDeskHash, webTarget, WEB_ENTRIES } from "#desktop/renderer/desk-nav.ts";
 import { formatBytes, loadPercent, percentOf, uptimeParts } from "#desktop/renderer/machine-format.ts";
 import { machineStats, type StatsSource } from "#desktop/main/machine-stats.ts";
 
@@ -20,6 +20,13 @@ describe("the app's menu on a hub (roadmap 76h)", () => {
     assert.equal(resolveDeskHash(""), "machine");
     assert.deepEqual(DESK_ALIASES, { today: "machine", projects: "settings", tools: "setup" });
     assert.equal(resolveDeskHash("#/projects"), "settings");
+  });
+
+  it("opens the first-run guide only when the app named no place", () => {
+    for (const initial of ["", "#/", "#/today"]) assert.equal(opensOnHome(initial, "#/machine"), true, initial);
+    assert.equal(opensOnHome("", "#/start"), false);
+    assert.equal(opensOnHome("#/agents", "#/agents"), false);
+    assert.equal(opensOnHome("#/settings?connected=1", "#/machine"), false);
   });
 
   it("sends every other page to the hub's web, and stays when the hub is unknown", () => {
