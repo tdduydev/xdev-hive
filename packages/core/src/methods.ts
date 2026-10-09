@@ -426,6 +426,7 @@ export const schemas = {
     status: z.enum(PROPOSAL_STATUSES).optional(),
     docKey: docKey.optional(),
   }),
+  "proposals.count": z.object({ status: z.enum(PROPOSAL_STATUSES).optional() }),
   "proposals.create": z.object({
     docKey,
     baseVersion: z.number().int().min(0),
@@ -1265,6 +1266,7 @@ export interface MethodOutput {
   "docs.assistFinish": { ok: boolean };
   "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
+  "proposals.count": { count: number };
   "proposals.create": Proposal;
   "proposals.approve": Proposal;
   "proposals.reject": Proposal;
@@ -1532,6 +1534,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assistFinish": "agent",
   "skills.list": "viewer",
   "proposals.list": "viewer",
+  "proposals.count": "viewer",
   "proposals.create": "agent",
   "proposals.approve": "agent",
   "proposals.reject": "agent",

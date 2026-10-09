@@ -35,7 +35,7 @@ export async function requestDeviceToken(
       name: input.machine.replace(/[^\w.-]/g, "-").slice(0, 60) || "desktop",
     }),
   });
-  const body = (await res.json().catch(() => null)) as
+  const body = (await hubBody(res, hub)) as
     | { result?: { token: string; user: NonNullable<Me["user"]> }; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
     | null;
   if (!res.ok || !body?.result) {
@@ -69,7 +69,7 @@ export class HubBackend implements HiveBackend {
       signal: this.#shutdown.signal,
       headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": label },
     });
-    const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
+    const body = (await hubBody(res, this.url)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
     if (!res.ok || !body?.result) {
       throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
     }
@@ -90,7 +90,7 @@ export class HubBackend implements HiveBackend {
       },
       body: JSON.stringify({ method, input }),
     });
-    const body = (await res.json().catch(() => null)) as
+    const body = (await hubBody(res, this.url)) as
       | { result?: MethodOutput[M]; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
       | null;
     if (!res.ok || !body || body.error) {
@@ -113,7 +113,7 @@ export async function issueRunCredential(
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}`, "x-hive-agent": `runner.${machine}` },
     body: JSON.stringify({ ...input, machine }),
   });
-  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { code?: string; message?: string } } | null;
+  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { code?: string; message?: string } } | null;
   if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
   return body.result.token;
 }
@@ -134,7 +134,7 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}` },
     body: JSON.stringify({ project, readOnly }),
   });
-  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { message?: string } } | null;
+  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { message?: string } } | null;
   if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
   return body.result.token;
 }
@@ -150,5 +150,17 @@ async function reach(hub: string, url: string, init: RequestInit): Promise<Respo
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     const reason = cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
     throw new HiveError("unavailable", `Cannot reach the hub ${hub}: ${reason}`, { key: "errors.hubUnreachable", vars: { reason } });
+  }
+}
+
+async function hubBody(res: Response, hub: string): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    // A timeout can arrive after headers, while the response body is still stalled.
+    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+      throw new HiveError("unavailable", `Cannot reach the hub ${hub}: ${err.message}`, { key: "errors.hubUnreachable", vars: { reason: err.message } });
+    }
+    return null;
   }
 }
