@@ -330,10 +330,11 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "map-reduce": ["lead-sees-members"],
   "roles": ["lead-sees-members"],
   "sdlc-gates": ["login-token", "lead-sees-members"],
-  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline"], // its nested steps run inside it and set up the plan approval its gate pass waits on
+  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline", "pipeline-prompt"], // its nested steps run inside it and set up the plan approval its gate pass waits on
   "pipeline": ["sdlc-flow"], // nested in sdlc-flow
   "plan-approval": ["sdlc-flow"], // nested in sdlc-flow
   "models-in-pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "pipeline-prompt": ["sdlc-flow"], // nested in sdlc-flow
   "merge-from-web": ["login-password"],
   "diff-review-hunks": ["login-token", "merge-from-web"], // merge-from-web leaves the page and run state it builds on
   "runs-review": ["login-token"],
@@ -2356,6 +2357,8 @@ async function main() {
         await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Opus"));
         await openGateEditor(tab, "review");
         await tab.waitFor("model editor", () => !!document.querySelector('[data-step-model] [data-model-tier]'));
+        // Cỡ task and Theo hub are the same cosmic select as the page's others, not the browser's.
+        expect(await tab.eval(() => document.querySelectorAll('[data-step-model] [data-slot="native-select-wrapper"].pf-select').length >= 2), "task size and tier are cosmic selects");
         await tab.eval(() => { const el = document.querySelector('[data-step-model] [data-model-tier]'); el.value = "light"; el.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.click('[data-step-model-save]');
         await until("review cell saved", async () => (await rpc("modelRouter.get", {})).projects.payment?.cells.review?.m === "light");
@@ -2419,6 +2422,92 @@ async function main() {
         current = tab;
         await tab.go("tasks?task=SPEC-E2E");
         await tab.waitFor("flow after model settings", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+      }
+    });
+    // Roadmap 72i: the Prompt tab of the pipeline page (roles, the layers of a run's prompt, the final prompt). A lead writes a
+    // step's prompt in versions, reads an older one, and a run of that step is told it; a reviewer (no contextEdit) reads but cannot save.
+    await step("pipeline-prompt", async () => {
+      const as = async (who, method, input) => {
+        const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people[who].token}` }, body: JSON.stringify({ method, input }) });
+        return r.json();
+      };
+      const first = "Đọc spec.md của tính năng trước, ghi câu hỏi còn mở ở cuối.";
+      const second = " Không viết code.";
+      try {
+        await tab.go("pipeline?project=payment");
+        await tab.click('[data-pipeline-tab="prompt"]');
+        await tab.click('[data-prompt-role="implement"]');
+        await tab.waitFor("the roles, the layers and the final prompt", () => document.querySelectorAll("[data-prompt-role]").length === 6 && document.querySelectorAll("[data-prompt-layer]").length === 7 && !!document.querySelector("[data-prompt-final-text]"));
+        await tab.waitFor("the prompt tab", () => !!document.querySelector('[data-step-prompt="spec"] [data-step-prompt-text]') && document.querySelector('[data-step-prompt-unsaved]')?.getAttribute("data-step-prompt-unsaved") === "0");
+        await tab.click("[data-step-prompt-text]");
+        await tab.type("Nháp sẽ bị huỷ.");
+        await tab.waitFor("one change not saved", () => document.querySelector("[data-step-prompt-unsaved]")?.getAttribute("data-step-prompt-unsaved") === "1");
+        await tab.click("[data-step-prompt-cancel]");
+        await tab.waitFor("the draft dropped", () => document.querySelector("[data-step-prompt-text]").value === "" && document.querySelector("[data-step-prompt-unsaved]").getAttribute("data-step-prompt-unsaved") === "0");
+        // A variable the runner fills in goes in at the cursor, and the final prompt follows the draft before it is saved.
+        await tab.click('[data-step-prompt-var="{task.id}"]');
+        await tab.waitFor("the variable in the draft and the final prompt", () => document.querySelector("[data-step-prompt-text]").value === "{task.id}" && document.querySelector("[data-prompt-final-text]").textContent.includes("(version 0)"));
+        await tab.click("[data-step-prompt-cancel]");
+        await tab.waitFor("the variable dropped", () => document.querySelector("[data-step-prompt-text]").value === "");
+        await tab.click("[data-step-prompt-text]");
+        await tab.type(first);
+        await tab.click("[data-step-prompt-save]");
+        await until("version 1 saved", async () => (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec")?.version === 1);
+        await tab.waitFor("saved, nothing unsaved", () => document.querySelector("[data-step-prompt-unsaved]")?.getAttribute("data-step-prompt-unsaved") === "0" && document.querySelector("[data-step-prompt-version]")?.textContent.includes("1"));
+        await tab.click("[data-step-prompt-text]");
+        await tab.type(second);
+        await tab.click("[data-step-prompt-save]");
+        await until("version 2 saved", async () => (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec")?.version === 2);
+        await tab.waitFor("both versions listed", () => document.querySelectorAll("[data-prompt-version]").length === 2);
+        await tab.waitFor("the role marked and the final prompt told it", () => !!document.querySelector('[data-prompt-role="implement"] [data-prompt-role-custom]') && !document.querySelector('[data-prompt-role="review"] [data-prompt-role-custom]') && document.querySelector("[data-prompt-final-text]").textContent.includes("(version 2)") && document.querySelector("[data-prompt-final-text]").textContent.includes("Không viết code."));
+        await tab.click('[data-prompt-version-view="1"]');
+        await tab.waitFor("the first version's text", () => document.querySelector("[data-prompt-version-text] pre")?.textContent === "Đọc spec.md của tính năng trước, ghi câu hỏi còn mở ở cuối.");
+        if (mobile) {
+          const fit = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, targets: [...document.querySelectorAll("[data-step-prompt] button")].map((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })) }));
+          expect(!fit.overflow && fit.targets.every((r) => r.w >= 44 && r.h >= 44), `prompt tab mobile: ${JSON.stringify(fit)}`);
+        }
+        // The measures of the template's plPrompt block (xDev Hive.dc.html): radii, gaps, the swatch, the 3px bar, the type.
+        await tab.click('[data-prompt-layer="frame"] button');
+        const m = await tab.eval(() => {
+          const cs = (sel) => getComputedStyle(document.querySelector(sel));
+          const px = (v) => Math.round(parseFloat(v) * 10) / 10;
+          const sw = document.querySelector('[data-prompt-layer="frame"] .pf-swatch').getBoundingClientRect();
+          const bar = document.querySelector("[data-prompt-final-text] .pf-seg-bar").getBoundingClientRect();
+          return {
+            gap: cs(".pf-prompt").columnGap, wrap: cs(".pf-prompt").flexWrap,
+            rolesRadius: cs("[data-prompt-roles]").borderTopLeftRadius, rolesPad: cs("[data-prompt-roles]").padding, rolesGap: cs("[data-prompt-roles]").rowGap,
+            roleRadius: cs(".pf-role").borderTopLeftRadius, rolePad: cs(".pf-role").padding, roleLabel: [cs(".pf-role-head").fontSize, cs(".pf-role-head").fontWeight],
+            layerRadius: cs(".pf-layer").borderTopLeftRadius, layerHeadPad: cs(".pf-layer-head").padding, layerHeadGap: cs(".pf-layer-head").columnGap, layerLabel: [cs(".pf-layer-label").fontSize, cs(".pf-layer-label").fontWeight],
+            swatch: [px(sw.width), px(sw.height), cs(".pf-swatch").borderTopLeftRadius], centerFlex: cs(".pf-prompt-layers").flex,
+            area: [cs(".pf-prompt-text").borderTopLeftRadius, cs(".pf-prompt-text").fontSize, cs(".pf-prompt-text").lineHeight],
+            finalRadius: cs(".pf-final").borderTopLeftRadius, finalBody: [cs(".pf-final-body").maxHeight, cs(".pf-final-body").fontSize, cs(".pf-final-body").lineHeight],
+            segCols: [px(bar.width)], segGap: cs(".pf-seg").columnGap, segPad: cs(".pf-seg").padding,
+          };
+        });
+        writeFileSync(path.join(out, `prompt-tab-measurements-${width}.json`), JSON.stringify(m, null, 2));
+        expect(m.gap === "16px" && m.wrap === "wrap" && m.rolesRadius === "24px" && m.rolesPad === "12px 8px" && m.rolesGap === "4px" && m.roleRadius === "14px" && m.rolePad === "10px 12px" && m.roleLabel.join() === "13.5px,600", `prompt roles measures: ${JSON.stringify(m)}`);
+        expect(m.layerRadius === "18px" && m.layerHeadPad === "12px 16px" && m.layerHeadGap === "10px" && m.layerLabel.join() === "13.5px,600" && m.swatch.join() === "10,10,3px" && m.centerFlex.startsWith("999 1 460px"), `prompt layer measures: ${JSON.stringify(m)}`);
+        expect(m.finalRadius === "24px" && m.finalBody.join() === "640px,11.5px,19px" && m.segCols[0] === 3 && m.segGap === "12px" && m.segPad === "4px 14px 4px 0px", `prompt final measures: ${JSON.stringify(m)}`);
+        // The tab is shot dark and light for the design review, then the theme goes back to what the step found.
+        const was = await tab.eval(() => document.documentElement.dataset.theme ?? "");
+        for (const theme of ["dark", "light"]) {
+          await tab.eval((value) => { document.documentElement.dataset.theme = value; document.querySelector("[data-prompt-roles]").scrollIntoView({ block: "start" }); }, theme);
+          await tab.shot(`${String(n).padStart(2, "0")}-prompt-tab-${theme}`);
+        }
+        await tab.eval((value) => { if (value) document.documentElement.dataset.theme = value; else delete document.documentElement.dataset.theme; }, was);
+        // The run of that step is told it; another step and a task outside the flow are not.
+        const told = await rpc("sdlc.runPrompt", { project: "payment", taskId: "SPEC-E2E", role: "implement" });
+        expect(told?.step === "spec" && told.version === 2 && told.text === first + second, `run prompt: ${JSON.stringify(told)}`);
+        expect((await rpc("sdlc.runPrompt", { project: "payment", taskId: "QUALITY-E2E", role: "implement" })) === null, "a task outside a flow gets none");
+        const reviewer = await as("hoa", "sdlc.prompts", { project: "payment" });
+        expect(reviewer.result?.find((p) => p.step === "spec")?.version === 2, "a reviewer reads it");
+        const refused = await as("hoa", "sdlc.setPrompt", { project: "payment", step: "spec", text: "x", baseVersion: 2 });
+        expect(refused.error, "a reviewer cannot save it");
+      } finally {
+        const now = (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec");
+        if (now?.text) await rpc("sdlc.setPrompt", { project: "payment", step: "spec", text: "", baseVersion: now.version });
+        await tab.go("tasks?task=SPEC-E2E");
+        await tab.waitFor("flow after prompt", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
       }
     });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');
