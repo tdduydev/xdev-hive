@@ -19,6 +19,7 @@
 @import "./tokens/motion.css";
 @import "./tokens/cosmic.css";
 @import "./components/ui/cosmic.css";
+@import "./components/ui/cosmic-pages.css";
 @import "./components/ResponsiveTable.css";
 @import "./mobile.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */

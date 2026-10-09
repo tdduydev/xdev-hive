@@ -73,11 +73,13 @@ export function SettingsPage() {
     members: () => <MembersPage />,
     systems: () => <SystemsPage policy={false} />,
   };
-  return <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 p-4 md:flex-row md:p-6" data-settings-tidy>
-    <nav aria-label={t("sections.tabs")} className="md:w-52 md:shrink-0"><div className="flex flex-col gap-1">{tabs.map((id) => <a key={id} href={`#/settings?tab=${id}`} data-page-tab={id} aria-current={id === tab ? "page" : undefined} onClick={() => setEditing(false)} className={`flex min-h-11 items-center rounded-lg px-3 text-sm no-underline ${id === tab ? "bg-primary/10 font-semibold text-fg-strong" : "text-fg-secondary hover:bg-muted"}`}>{t(`sections.settings.${id}`)}</a>)}</div></nav>
-    <main className="min-w-0 flex-1"><h1 className="mb-3 text-xl font-semibold">{t(`sections.settings.${tab}`)}</h1>
-      {tab === "policy" || tab === "agent" ? body[tab]() : <div className="max-w-2xl rounded-xl border border-line-default bg-card p-4"><p className="mb-3 text-sm leading-relaxed text-fg-secondary">{t(`settingsTidy.summary.${tab}`)}</p><Button variant="outline" className="max-md:min-h-11" onClick={() => setEditing(true)}>{t("settingsTidy.edit")}</Button></div>}
-      {editing && tab !== "policy" && tab !== "agent" ? <section className="mt-4 max-w-2xl rounded-xl border border-line-default bg-card p-4" data-settings-editor><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{t(`sections.settings.${tab}`)}</h2><Button variant="outline" className="max-md:min-h-11" onClick={() => setEditing(false)}>{t("settingsTidy.close")}</Button></div>{body[tab]()}</section> : null}
+  const summary = tab !== "policy" && tab !== "agent";
+  // Chips on top, rows below (design lines 1135–1172); the cards that already exist stay as the editors behind "Sửa".
+  return <div className="mx-auto h-full w-full max-w-7xl overflow-auto p-4 md:p-6" data-settings-tidy>
+    <nav aria-label={t("sections.tabs")} className="cx-chips">{tabs.map((id) => <a key={id} href={`#/settings?tab=${id}`} data-page-tab={id} data-active={id === tab} aria-current={id === tab ? "page" : undefined} onClick={() => setEditing(false)} className="cosmic-tag" data-tone="neutral">{t(`sections.settings.${id}`)}</a>)}</nav>
+    <main className="min-w-0"><h1 className="sr-only">{t(`sections.settings.${tab}`)}</h1>
+      {summary ? <div className="cx-card"><div className="cx-row"><span><strong>{t(`sections.settings.${tab}`)}</strong><small>{t(`settingsTidy.summary.${tab}`)}</small></span><Button variant="glass" size="sm" className="max-md:min-h-11" onClick={() => setEditing(true)}>{t("settingsTidy.edit")}</Button></div></div> : body[tab]()}
+      {editing && summary ? <section className="cx-editor" data-settings-editor><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{t(`sections.settings.${tab}`)}</h2><Button variant="ghost" size="sm" className="max-md:min-h-11" onClick={() => setEditing(false)}>{t("settingsTidy.close")}</Button></div>{body[tab]()}</section> : null}
     </main>
   </div>;
 }
@@ -123,6 +125,13 @@ export function AdminPage() {
   return fixture ? <DashboardComponentsFixture /> : <AdminTabs />;
 }
 
+// Group order is an inference: the design's `adminNav` sits in the truncated part of the template, so only the three-group shape is known.
+const ADMIN_GROUPS: { id: "run" | "access" | "system"; items: AdminTab[] }[] = [
+  { id: "run", items: ["ops", "budgets", "alerts"] },
+  { id: "access", items: ["users", "policy", "tools"] },
+  { id: "system", items: ["audit", "webhooks", "versions", "hub"] },
+];
+
 function AdminTabs() {
   const { client } = useHive();
   const t = useT();
@@ -143,10 +152,20 @@ function AdminTabs() {
     versions: () => ops(<OpsVersions />),
     hub: () => ops(<OpsHub />),
   };
+  const groups = ADMIN_GROUPS.map((g) => ({ ...g, items: g.items.filter((id) => tabs.includes(id)) })).filter((g) => g.items.length);
   return (
-    <PageTabs page="admin" tabs={tabs} current={tab} label={t("sections.tabs")} name={(id) => t(`sections.admin.${id}`)}>
+    <div className="mx-auto h-full w-full max-w-7xl overflow-auto p-4 md:p-6" data-admin-page>
+      <nav aria-label={t("sections.tabs")} className="cx-admin-nav">
+        {groups.map((g) => (
+          <div key={g.id} className="cx-admin-group">
+            <span>{t(`sections.adminGroup.${g.id}`)}</span>
+            <div>{g.items.map((id) => <a key={id} href={`#/admin?tab=${id}`} data-page-tab={id} aria-current={id === tab ? "page" : undefined} className="cx-admin-tab">{t(`sections.admin.${id}`)}</a>)}</div>
+          </div>
+        ))}
+      </nav>
+      <div className="cx-admin-head"><div><h2>{t(`sections.admin.${tab}`)}</h2><p>{t(`sections.adminDesc.${tab}`)}</p></div></div>
       {body[tab]()}
-    </PageTabs>
+    </div>
   );
 }
 
