@@ -248,6 +248,9 @@ export const chatPlanSchema = z.object({
 });
 export type ChatPlan = z.infer<typeof chatPlanSchema>;
 
+/** Operations an interactive MCP session may send to the hub's approval queue. */
+export const CLI_APPROVAL_METHODS = ["runs.merge", "runs.cancel", "agents.stop", "agents.resume", "agentPolicy.set", "machines.setProfile", "admin.commandCreate", "tools.setProject"] as const;
+
 const chatAction = z.discriminatedUnion("kind", [
   researchSchema.omit({ project: true, machineId: true }).extend({ kind: z.literal("research.start"), project: project.optional(), machine: machineRef.optional() }),
   chatPlanSchema.extend({ kind: z.literal("plan.create") }),
@@ -426,12 +429,22 @@ export const schemas = {
     status: z.enum(PROPOSAL_STATUSES).optional(),
     docKey: docKey.optional(),
   }),
-  "proposals.create": z.object({
-    docKey,
-    baseVersion: z.number().int().min(0),
-    content,
-    reason: z.string().min(1).max(500),
-  }),
+  "proposals.create": z.union([
+    z.object({
+      docKey,
+      baseVersion: z.number().int().min(0),
+      content,
+      reason: z.string().min(1).max(500),
+    }),
+    z.object({
+      action: z.object({
+        method: z.enum(CLI_APPROVAL_METHODS),
+        input: z.record(z.string(), z.unknown()),
+        project: project.nullable(),
+      }),
+      reason: z.string().min(1).max(500),
+    }),
+  ]),
   "proposals.approve": z.object({ id }),
   "proposals.reject": z.object({ id, note: z.string().max(500).optional() }),
 
@@ -525,6 +538,8 @@ export const schemas = {
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
   }),
+  /** One atomic CLI leader plan: new spec plus its task graph. */
+  "plans.create": chatPlanSchema.extend({ project }),
   /** Replaces what the task depends on (tasks of the same project, no cycles). */
   "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
   /** Tasks ready to start: to do, nothing they depend on is open, nobody holds them. Those that unlock the most come first. */
@@ -774,6 +789,7 @@ export const schemas = {
   "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
   "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
   "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, activeOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.count": z.object({ project: project.optional(), projects: projectList }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -1290,6 +1306,7 @@ export interface MethodOutput {
   "sdlc.dispatch": { tasks: Task[]; total: number };
   "tasks.list": Task[];
   "tasks.create": Task;
+  "plans.create": { specKey: string; taskIds: string[] };
   "tasks.setDeps": Task;
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
@@ -1381,6 +1398,7 @@ export interface MethodOutput {
   "runs.plans": ImplementationPlan[];
   "runs.decidePlan": ImplementationPlan;
   "runs.list": RunRecord[];
+  "runs.count": { running: number; queued: number };
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
   "runs.steer": RunMessage;
@@ -1557,6 +1575,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "sdlc.dispatch": "viewer",
   "tasks.list": "viewer",
   "tasks.create": "agent",
+  "plans.create": "agent",
   "tasks.setDeps": "agent",
   "tasks.next": "viewer",
   "tasks.claim": "agent",
@@ -1599,6 +1618,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.plans": "viewer",
   "runs.decidePlan": "agent",
   "runs.list": "viewer",
+  "runs.count": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
   "runs.steer": "agent",

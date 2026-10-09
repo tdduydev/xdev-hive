@@ -4,29 +4,31 @@ import { HistoryPage } from "#ui/pages/History.tsx";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TerminalProvider } from "#ui/components/RemoteTerminal.tsx";
 import {
-  Activity,
   BookOpen,
   Bot,
   Boxes,
   Brain,
-  FileText,
+  Cpu,
   FolderGit2,
+  GitMerge,
   GitPullRequestArrow,
+  History,
   Inbox,
   KeyRound,
   Laptop,
+  Layers,
   LayoutGrid,
   ListChecks,
-  ListTodo,
   MessageSquare,
+  MessagesSquare,
   Network,
-  Server,
+  Package,
+  Play,
   Settings2,
-  Workflow,
-  ShieldCheck,
+  Shield,
+  Sparkles,
   SquareKanban,
-  Terminal,
-  WandSparkles,
+  SquareTerminal,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
@@ -39,7 +41,7 @@ import { HiveContext, hashParam, useProjectList, useQuery, usePoll, useRetiredPr
 import { activeIntl, useT, type MessageKey } from "./i18n/index.tsx";
 import { resolveHash } from "./lib/route.ts";
 import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "./lib/nav.ts";
-import { readScope, resolveScope, scopeTitle, writeScope, type Scope } from "./lib/scope.ts";
+import { readScope, resolveScope, scopeKey, scopeProject, scopeProjects, scopeTitle, writeScope, type Scope } from "./lib/scope.ts";
 import { useSystemTheme } from "./lib/theme.ts";
 import { ClientShell, type NavEntry, type NavGroup } from "./shell/ClientShell.tsx";
 import { InboxProvider, useInboxState } from "./shell/inbox.tsx";
@@ -101,30 +103,30 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   start: { label: "start.title", sub: "start.sub", icon: ListChecks, render: () => <StartPage /> },
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
-  chat: { label: "nav.chat", sub: "navSub.chat", icon: MessageSquare, render: () => <ChatPage /> },
+  chat: { label: "nav.chat", sub: "navSub.chat", icon: MessagesSquare, render: () => <ChatPage /> },
   // On the web with Đợt chạy as a tab (roadmap 49b); the desktop app's own runs as they were.
-  runs: { label: "nav.runs", sub: "navSub.runs", icon: Activity, render: () => <RunsWorkPage /> },
-  history: { label: "history.title", sub: "history.sub", icon: Activity, render: () => <HistoryPage /> },
-  artifacts: { label: "artifacts.page", sub: "artifacts.sub", icon: FileText, render: () => <ArtifactsPage /> },
-  docs: { label: "nav.docs", sub: "navSub.docs", icon: FileText, render: () => <KnowledgePage page="docs" /> },
+  runs: { label: "nav.runs", sub: "navSub.runs", icon: Play, render: () => <RunsWorkPage /> },
+  history: { label: "history.title", sub: "history.sub", icon: History, render: () => <HistoryPage /> },
+  artifacts: { label: "artifacts.page", sub: "artifacts.sub", icon: Package, render: () => <ArtifactsPage /> },
+  docs: { label: "nav.docs", sub: "navSub.docs", icon: BookOpen, render: () => <KnowledgePage page="docs" /> },
   // Not in the sidebar: a doc's reading view (#/read?doc=…), under Tài liệu.
   read: { label: "nav.read", sub: "navSub.read", icon: BookOpen, render: () => <DocReaderPage /> },
   // The desktop app's Spec page; on the web Tính năng took its place (roadmap 49d) and #/specs goes there.
   specs: { label: "nav.specs", sub: "navSub.specs", icon: ListChecks, render: () => <SpecsPage /> },
-  features: { label: "nav.features", sub: "navSub.features", icon: ListChecks, render: () => <FeaturesPage /> },
-  skills: { label: "nav.skills", sub: "navSub.skills", icon: WandSparkles, render: () => <KnowledgePage page="skills" /> },
+  features: { label: "nav.features", sub: "navSub.features", icon: Layers, render: () => <FeaturesPage /> },
+  skills: { label: "nav.skills", sub: "navSub.skills", icon: Sparkles, render: () => <KnowledgePage page="skills" /> },
   proposals: { label: "nav.proposals", sub: "navSub.proposals", icon: GitPullRequestArrow, render: () => <ProposalsPage /> },
   memory: { label: "nav.memory", sub: "navSub.memory", icon: Brain, render: () => <KnowledgePage page="memory" /> },
   // The desktop app opens it on the Board of this machine (roadmap 39f); the web keeps the shared Kanban.
-  tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: ListTodo, render: () => <TaskWorkPage /> },
+  tasks: { label: "nav.tasks", sub: "navSub.tasks", icon: SquareKanban, render: () => <TaskWorkPage /> },
   graph: { label: "nav.graph", sub: "navSub.graph", icon: Network, render: () => <Suspense fallback={null}><GraphPage /></Suspense> },
   agents: { label: "nav.agents", sub: "navSub.agents", icon: Bot, render: () => <AgentsPage /> },
   // The web's entries that hold tabs (roadmap 49b): the pages that were in Vận hành and Quản trị before.
-  machines: { label: "nav.machines", sub: "navSub.machines", icon: Server, render: () => <MachinesAgentsPage /> },
-  pipeline: { label: "nav.pipeline", sub: "navSub.pipeline", icon: Workflow, render: () => <PipelinePage /> },
+  machines: { label: "nav.machines", sub: "navSub.machines", icon: Cpu, render: () => <MachinesAgentsPage /> },
+  pipeline: { label: "nav.pipeline", sub: "navSub.pipeline", icon: GitMerge, render: () => <PipelinePage /> },
   settings: { label: "nav.settings", sub: "navSub.settings", icon: Settings2, render: () => <SettingsPage /> },
-  admin: { label: "nav.admin", sub: "navSub.admin", icon: ShieldCheck, render: () => <AdminPage /> },
-  setup: { label: "nav.setup", sub: "navSub.setup", icon: Terminal, render: () => <SetupPage /> },
+  admin: { label: "nav.admin", sub: "navSub.admin", icon: Shield, render: () => <AdminPage /> },
+  setup: { label: "nav.setup", sub: "navSub.setup", icon: SquareTerminal, render: () => <SetupPage /> },
   // Not in the web's sidebar: the account menu opens it (roadmap 49b).
   tokens: { label: "nav.tokens", sub: "navSub.tokens", icon: KeyRound, render: () => <TokensPage /> },
   projects: { label: "nav.projects", sub: "navSub.projects", icon: FolderGit2, render: () => <ProjectsPage /> },
@@ -141,11 +143,9 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
  * & công cụ.
  */
 const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today"] },
-  { label: "nav.groupWork", ids: ["tasks", "chat", "runs"] },
-  { label: "nav.groupKnowledge", ids: ["docs", "specs", "skills", "memory", "proposals"] },
-  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
-  { label: "nav.groupAdmin", ids: ["systems"] },
+  { label: "workspace.work", ids: ["today", "tasks", "chat", "runs"] },
+  { label: "workspace.space", ids: ["docs", "specs", "skills", "memory", "proposals"] },
+  { label: "workspace.operations", ids: ["agents", "setup", "projects", "systems"] },
 ];
 /**
  * The web: one shell for everyone (roadmap 35b), its menu by job since 49b (lib/nav.ts has it, with who sees what):
@@ -170,8 +170,8 @@ const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2
  */
 const DESK_PAGES = new Set<PageId>(["start", "today", "tasks", "chat", "runs", "agents", "setup", "projects", "device"]);
 const DESK_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
-  { label: null, ids: ["today", "tasks", "chat", "runs"] },
-  { label: "nav.groupAgents", ids: ["agents", "setup", "projects"] },
+  { label: "workspace.work", ids: ["today", "tasks", "chat", "runs"] },
+  { label: "workspace.operations", ids: ["agents", "setup", "projects"] },
 ];
 /** What the machine's Hôm nay shows: its runs' CI, its own setup, install requests for it. */
 const DESK_INBOX = new Set(["ci", "machine", "request"]);
@@ -395,11 +395,17 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
   };
   // Filled: what waits for you, and alerts the hub rates high.
   const strong = (id: PageId) => id === "today" || (id === "admin" && openAlerts.some((a) => a.severity === "high"));
+  const runTick = usePoll(visible.has("runs") ? 4000 : null);
+  const activeRuns = useQuery(async () => {
+    if (!visible.has("runs") || scope.kind === "shared") return null;
+    const input = { project: scopeProject(scope) ?? undefined, projects: scopeProjects(scope) ?? undefined };
+    const result = client.desktop ? await client.desktop.runsCount?.(input) : await client.call("runs.count", input);
+    return result ? { scope: scopeKey(scope), ...result } : null;
+  }, [client, visible.has("runs"), scopeKey(scope), runTick, tick]);
+  counts.runs = !activeRuns.error && activeRuns.data?.scope === scopeKey(scope) ? activeRuns.data.running : 0;
   const shortcuts = local ? LOCAL_SHORTCUTS : deskHub ? DESK_SHORTCUTS : SHORTCUTS;
-  // There Task is the Board alone, over this machine's projects, so it says so. The web names two entries by the job
-  // they are for (roadmap 49b) until 49e gives Agent đang chạy a page of its own (49d did Tính năng); the app keeps
-  // Lượt chạy.
-  const label = (id: PageId): MessageKey => (deskHub && id === "tasks" ? "nav.board" : web && id === "runs" ? "nav.running" : web && id === "pipeline" ? "workspace.acceptance" : web && id === "features" ? "workspace.project" : PAGES[id].label);
+  // Desktop Task still opens the board for this machine's projects; every other sidebar label follows the design.
+  const label = (id: PageId): MessageKey => deskHub && id === "tasks" ? "nav.board" : id === "artifacts" ? "shell.artifacts" : PAGES[id].label;
   const groups: NavGroup[] = (deskHub ? DESK_GROUPS : local ? LOCAL_GROUPS : WEB_GROUPS)
     .map((g) => ({
       label: g.label ? t(g.label) : null,

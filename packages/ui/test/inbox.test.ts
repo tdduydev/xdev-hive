@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { may, permissionsOn, type ImplementationPlan, type Actor, type AgentRun, type ChatAction, type HubAlert, type HubInfo, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
-import { buildInbox, groupInbox, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo } from "#ui/lib/inbox.ts";
+import { buildInbox, groupInbox, groupToday, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo, todayDot } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;
@@ -200,5 +200,18 @@ describe("plan approval inbox", () => {
     assert.notEqual(buildInbox({ plans: [{ ...plan, revision: 2 }] })[0]?.key, item?.key);
     assert.deepEqual(buildInbox({ plans: [plan], can: (_, permission) => permission === "view" }), []);
     assert.deepEqual(buildInbox({ plans: [{ ...plan, status: "approved" }] }), []);
+  });
+});
+
+describe("Hôm nay design groups (72c)", () => {
+  it("puts approvals, fixes and machines in the design's three groups, newest first", () => {
+    const items = buildInbox({
+      memory: [memory({ id: 1, status: "pending" }), memory({ id: 2, conflictsWith: [3] }), memory({ id: 3, conflictsWith: [2], createdAt: "2026-09-30T08:00:00Z" })],
+      setup: [{ id: "cli:codex", label: "Codex", state: "missing", detail: "", action: null } as never],
+      machine: "m1",
+    });
+    const groups = groupToday(items);
+    assert.deepEqual(groups.map((g) => [g.group, g.items.map((i) => i.kind)]), [["approve", ["memory"]], ["fix", ["conflict"]], ["machine", ["machine"]]]);
+    assert.deepEqual(groups.map((g) => todayDot(g.items[0]!)), ["blue", "amber", "amber"]);
   });
 });

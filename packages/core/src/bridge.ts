@@ -577,6 +577,7 @@ export interface DesktopBridge {
 
   startRun(request: StartRunRequest): Promise<AgentRun>;
   runs(filter?: { project?: string; projects?: string[]; limit?: number }): Promise<AgentRun[]>;
+  runsCount?(filter?: { project?: string; projects?: string[] }): Promise<{ running: number; queued: number }>;
   runLog(id: string): Promise<string>;
   runMessages(id: string): Promise<RunMessage[]>;
   runDiff(id: string): Promise<string>;

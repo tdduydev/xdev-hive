@@ -19,10 +19,10 @@ const args = process.argv.slice(2);
 const work = mkdtempSync(path.join(os.tmpdir(), "hive-e2e-"));
 // Flags with a value (--only a,b / --repeat 3) must not be taken for the output dir.
 const flag = (name) => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-const only = flag("--only");
+const only = flag("--only") ?? (process.env.HIVE_E2E_ONLY?.trim() || undefined);
 const repeat = flag("--repeat") === undefined ? 1 : Number(flag("--repeat"));
 if (!Number.isInteger(repeat) || repeat < 1) { console.error("--repeat needs a whole number >= 1"); process.exit(2); }
-if (args.includes("--only") && !only) { console.error("--only needs a step name (a,b,…)"); process.exit(2); }
+if (args.includes("--only") && !flag("--only")) { console.error("--only needs a step name (a,b,…)"); process.exit(2); }
 const valueArgs = new Set([flag("--only"), flag("--repeat")]);
 const baseOut = path.resolve(args.find((a) => !a.startsWith("--") && !valueArgs.has(a)) ?? path.join(work, "shots"));
 

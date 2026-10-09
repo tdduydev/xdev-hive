@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld("hive", {
     openCli: (id: string, project: string, opts?: { bypass?: boolean }) => invoke("desktop:openCli", id, project, opts),
     startRun: (request: unknown) => invoke("desktop:startRun", request),
     runs: (filter?: unknown) => invoke("desktop:runs", filter),
+    runsCount: (filter?: unknown) => invoke("desktop:runs-count", filter),
     runMessages: (id: string) => invoke("desktop:runMessages", id),
     runLog: (id: string) => invoke("desktop:runLog", id),
     runDiff: (id: string) => invoke("desktop:runDiff", id),

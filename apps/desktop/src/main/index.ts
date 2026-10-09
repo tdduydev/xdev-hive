@@ -1382,7 +1382,7 @@ function registerIpc(): void {
   });
 
   handle("desktop:profiles", async () => {
-    await Promise.race([firstLoginCheck, new Promise((r) => setTimeout(r, 5_000))]);
+    await Promise.race([firstLoginCheck, new Promise((r) => setTimeout(r, 15_000))]);
     return runner.profileStatuses();
   });
   handle("desktop:saveProfile", saveProfile);
@@ -1400,6 +1400,7 @@ function registerIpc(): void {
   handle("desktop:openCli", openCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
+  handle("desktop:runs-count", (filter?: { project?: string; projects?: string[] }) => runner.store.countActive(filter));
   handle("desktop:runMessages", (id: string) => runner.messages(id));
   handle("desktop:runLog", (id: string) => runner.log(id));
   handle("desktop:runDiff", (id: string) => runner.diff(id));
