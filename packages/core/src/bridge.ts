@@ -2,6 +2,7 @@ import type { WorktreeReport, WorktreeTarget, WorktreeCommand } from "#core/work
 import type { DiffReview } from "#core/diff-review.ts";
 // Contracts between the shared UI and its hosts (web hub, desktop main process). Types only.
 import type { Access, Grant } from "./access.ts";
+import type { HubRole } from "./hub-roles.ts";
 import type { ProfileAutonomy } from "./agent-policy.ts";
 import type { ModelSelection } from "./model-router.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, ProfileResume, RunnerSettings, RunStatus } from "./agents.ts";
@@ -94,10 +95,18 @@ export interface HubUser {
   username: string;
   displayName: string;
   admin: boolean;
+  /** owner / admin / member / viewer; `admin` above is true for the first two. */
+  hubRole: HubRole;
   disabled: boolean;
   mustChangePassword: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  /** In the trash since (the account is also disabled); null for a live account. */
+  deletedAt: string | null;
+  /** When the hub deletes a trashed account for good. */
+  purgeAt: string | null;
+  /** Created by an admin and never signed in: still waiting for the person to accept. */
+  invited: boolean;
   /** Project → role or permissions (roadmap 25); admins see every project whatever this says. */
   grants: Record<string, Grant>;
   /** The shared data (Chung); null: view, and propose / write memory where the account may in some project. */

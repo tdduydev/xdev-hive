@@ -117,4 +117,17 @@
 .cu-orgrole{min-height:44px}
 .cu-faces>.cu-avatar{width:32px;height:32px}
 }
+
+/* R-72l: hub roles, trash and invite links */
+.cu-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:var(--surface-sunken);box-shadow:var(--ring-glass);align-self:flex-start}
+.cu-seg button{height:26px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--text-muted);font:600 12px/1 var(--font-sans);cursor:pointer}
+.cu-seg button[data-active="true"]{background:var(--glass-bg);color:var(--text-strong)}
+.cu-select{height:36px;padding:0 12px;border:0;border-radius:10px;background:var(--glass-bg);box-shadow:var(--ring-glass);color:var(--text-strong);font:500 13px/1 var(--font-sans)}
+.cu-invite{display:flex;align-items:center;gap:12px;padding:10px 16px;box-shadow:inset 0 -1px 0 rgba(255,255,255,.04)}
+.cu-invite .cu-status{min-width:104px}
+.cu-status[data-status="invited"]{--status-color:var(--accent-blue)}
+.cu-status[data-status="trash"]{--status-color:var(--text-muted)}
+.cu-row[data-trash="true"]{opacity:.7}
+.cu-table[data-trash-view]{min-width:1070px}
+.cu-table[data-trash-view] .cu-grid{grid-template-columns:44px minmax(220px,2fr) 130px minmax(200px,2fr) 104px 130px 104px 200px}
 }

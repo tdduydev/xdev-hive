@@ -23,6 +23,8 @@ import {
   permissionsOn,
   HUB_SCOPE,
   PROJECT_NAME,
+  isHubRole,
+  type HubRole,
   sees,
   TERMINAL_STEPUP_PATH,
   readRun,
@@ -159,6 +161,13 @@ function requireHubAdmin(res: Response): void {
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
 }
 
+/** A hub role from a request, or the fallback when it is left out; anything else is a bad_request. */
+function readRole(raw: unknown, fallback: HubRole): HubRole {
+  if (raw === undefined || raw === null) return fallback;
+  if (!isHubRole(raw)) throw new HiveError("bad_request", "Vai trò không hợp lệ.", { key: "errors.badHubRole" });
+  return raw;
+}
+
 function cookieValue(header: string | undefined, name: string): string | null {
   for (const part of (header ?? "").split(";")) {
     const [k, ...v] = part.trim().split("=");
@@ -173,6 +182,9 @@ export function terminalUpgrade(app: express.Express): (req: IncomingMessage, so
   const terminal = app.locals.terminal as TerminalHub;
   return (req, socket, head) => terminal.upgrade(req, socket, head);
 }
+
+/** The actor role of an account: admins as before, a viewer capped to reading (a narrowing), everyone else a member. */
+const accountRole = (u: Pick<UserInfo, "admin" | "hubRole">): Role => (u.admin ? "admin" : u.hubRole === "viewer" ? "viewer" : "member");
 
 function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
@@ -249,9 +261,18 @@ export function createHubApp({
    * the terminal (spec 69) binds proofs to it, and only a session cookie leads here, so no bearer passes for a person.
    */
   const humanActor = (user: UserInfo, session: string): Actor => ({
-    name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
+    name: user.username, role: accountRole(user), access: users.access(user), source: { via: "web" }, account: user.username,
     humanSession: createHash("sha256").update(session).digest("hex"),
   });
+
+  /** A viewer account's agents and tokens read only, whatever role the token was made with. */
+  const capRole = (role: Role, user: UserInfo | null): Role => (user?.hubRole === "viewer" ? "viewer" : role);
+
+  /** Only an owner may hand out, or touch, owner; a token of no account (the operator's) counts as one. */
+  const assertMayGrant = (actor: Actor, role: HubRole): void => {
+    if (role !== "owner" || actor.account === undefined) return;
+    if (users.byUsername(actor.account)?.hubRole !== "owner") throw new HiveError("forbidden", "Chỉ chủ hub mới cấp hoặc sửa vai trò chủ hub.", { key: "errors.ownerOnly" });
+  };
 
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
@@ -286,7 +307,7 @@ export function createHubApp({
         : full;
       if (user) res.locals.user = user;
       return {
-        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
         source: { via: "mcp" }, tokenId: who.id, mcpCredential: true, agent: label || "mcp", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
       };
@@ -302,7 +323,7 @@ export function createHubApp({
       const access = { projects: { [project]: { permissions: [...allowed] } }, shared: { permissions: [...shared] } } as Actor["access"];
       if (user) res.locals.user = user;
       return {
-        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
         source: { via: "mcp", machine, run: runId, task }, run: runId,
         tokenId: who.id, runCredential: who.run, agent: label || "run", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
@@ -315,7 +336,7 @@ export function createHubApp({
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
-    const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
+    const role: Role = capRole(who.role === "admin" && !user.admin ? "member" : who.role, user);
     // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
     return { name, role, tokenId: who.id, access: users.access(user), source, ...trail(user.username), account: user.username };
   };
@@ -477,9 +498,51 @@ export function createHubApp({
       const user = signIn(req);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, clientIp(req));
+      hive.audit({ name: user.username, role: accountRole(user) }, "auth.login", user.username, clientIp(req));
       res.locals.user = user;
       // The new session's id, as the cookie middleware sets it for the requests after this one.
+      res.locals.actor = humanActor(user, session.token);
+      res.json({ result: me(res) });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // Sign-up by link (R-72l). Public like sign-in: the secret in the link is the credential, so wrong guesses are throttled per address.
+  const inviteKey = (req: Request) => `invite|${clientIp(req)}`;
+  app.post("/api/invite/peek", json, (req, res) => {
+    try {
+      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
+      const wait = throttle.blockedFor(inviteKey(req));
+      if (wait) throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60_000)} phút.`, { key: "errors.tooManyAttempts", vars: { minutes: Math.ceil(wait / 60_000) } });
+      try {
+        res.json({ result: users.peekInvite(String((req.body as { token?: unknown } | undefined)?.token ?? "")) });
+      } catch (err) {
+        throttle.fail(inviteKey(req));
+        throw err;
+      }
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  app.post("/api/invite/accept", json, (req, res) => {
+    try {
+      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
+      const wait = throttle.blockedFor(inviteKey(req));
+      if (wait) throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60_000)} phút.`, { key: "errors.tooManyAttempts", vars: { minutes: Math.ceil(wait / 60_000) } });
+      const { token, username, displayName, password } = (req.body ?? {}) as Record<string, unknown>;
+      let user: UserInfo;
+      try {
+        user = users.acceptInvite({ token: String(token ?? ""), username: typeof username === "string" ? username : undefined, displayName: typeof displayName === "string" ? displayName : undefined, password: String(password ?? "") });
+      } catch (err) {
+        if (err instanceof HiveError && err.key === "errors.inviteInvalid") throttle.fail(inviteKey(req));
+        throw err;
+      }
+      const session = users.startSession(user.id);
+      setSession(req, res, session.token, session.maxAge);
+      hive.audit({ name: user.username, role: accountRole(user) }, "users.inviteAccept", user.username, user.hubRole, { key: "audit.inviteAccepted" });
+      res.locals.user = user;
       res.locals.actor = humanActor(user, session.token);
       res.json({ result: me(res) });
     } catch (err) {
@@ -521,8 +584,8 @@ export function createHubApp({
   /** A token for one machine of the account; signing in again from the same machine replaces the old one. */
   const machineToken = (user: UserInfo, rawName: unknown) => {
     const name = String(rawName ?? "").trim();
-    const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
-    const person: Actor = { name: user.username, role: user.admin ? "admin" : "member", account: user.username };
+    const created = tokens.create(name, accountRole(user), user.id);
+    const person: Actor = { name: user.username, role: accountRole(user), account: user.username };
     for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) {
       tokens.revoke(old.id);
       hive.rebindMachineToken(old.id, created.info.id, person);
@@ -643,7 +706,7 @@ export function createHubApp({
         const target = users.get(linkUserId);
         if (!target || target.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
         users.linkIdentity(target.id, identity);
-        hive.audit({ name: target.username, role: target.admin ? "admin" : "member" }, "users.ssoLink", target.username, oidc.settings.name);
+        hive.audit({ name: target.username, role: accountRole(target) }, "users.ssoLink", target.username, oidc.settings.name);
         return void res.redirect(302, "/");
       }
       let user = users.byIdentity(identity);
@@ -658,7 +721,7 @@ export function createHubApp({
       users.touchLogin(user.id);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, `${clientIp(req)} · SSO`);
+      hive.audit({ name: user.username, role: accountRole(user) }, "auth.login", user.username, `${clientIp(req)} · SSO`);
       res.redirect(302, returnTo);
     } catch (err) {
       ssoBack(res, err);
@@ -867,33 +930,62 @@ export function createHubApp({
         if (method === "users.list") {
           res.json({ result: users.list() });
         } else if (method === "users.create") {
-          const created = users.create({ username: String(i.username ?? ""), displayName: String(i.displayName ?? ""), admin: i.admin === true });
-          hive.audit(actor, "users.create", created.user.username, created.user.admin ? "admin" : "member", { key: created.user.admin ? "role.admin" : "role.member" });
+          const hubRole = readRole(i.hubRole, i.admin === true ? "admin" : "member");
+          assertMayGrant(actor, hubRole);
+          const created = users.create({ username: String(i.username ?? ""), displayName: String(i.displayName ?? ""), hubRole });
+          hive.audit(actor, "users.create", created.user.username, created.user.hubRole, { key: `role.${created.user.hubRole}` });
           res.json({ result: created });
         } else if (method === "users.update") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+          const hubRole = i.hubRole === undefined ? undefined : readRole(i.hubRole, "member");
+          // An owner is touched by owners only; nobody hands out a role above their own.
+          if (target.hubRole === "owner") assertMayGrant(actor, "owner");
+          if (hubRole) assertMayGrant(actor, hubRole);
+          if (typeof i.admin === "boolean" && i.admin && !target.admin) assertMayGrant(actor, "admin");
           const updated = users.update(id, {
             displayName: typeof i.displayName === "string" ? i.displayName : undefined,
             admin: typeof i.admin === "boolean" ? i.admin : undefined,
+            hubRole,
             disabled: typeof i.disabled === "boolean" ? i.disabled : undefined,
           });
           const changes = [
-            updated.admin !== target.admin ? (updated.admin ? "cấp admin" : "bỏ admin") : "",
+            updated.hubRole !== target.hubRole ? `${target.hubRole} → ${updated.hubRole}` : "",
             updated.disabled !== target.disabled ? (updated.disabled ? "khoá" : "mở khoá") : "",
           ].filter(Boolean);
           // The admin page changes one thing at a time; the key names the first change.
           const key =
-            updated.admin !== target.admin
-              ? updated.admin
-                ? "audit.adminGranted"
-                : "audit.adminRevoked"
+            updated.hubRole !== target.hubRole
+              ? "audit.hubRole"
               : updated.disabled !== target.disabled
                 ? updated.disabled
                   ? "audit.disabled"
                   : "audit.enabled"
                 : "audit.renamed";
-          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key });
+          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(key === "audit.hubRole" ? { vars: { from: target.hubRole, to: updated.hubRole } } : {}) });
           res.json({ result: updated });
+        } else if (method === "users.trash" || method === "users.restore" || method === "users.purge") {
+          if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+          if (target.hubRole === "owner") assertMayGrant(actor, "owner");
+          if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
+          if (method === "users.purge") users.purge(id);
+          const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
+          const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
+          hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
+          res.json({ result: method === "users.purge" ? { id, purged: true } : updated });
+        } else if (method === "users.inviteList") {
+          res.json({ result: users.listInvites() });
+        } else if (method === "users.inviteCreate") {
+          const bound = typeof i.userId === "string" && i.userId ? users.get(i.userId) : null;
+          if (typeof i.userId === "string" && i.userId && !bound) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+          const hubRole = bound ? bound.hubRole : readRole(i.hubRole, "member");
+          assertMayGrant(actor, hubRole);
+          const made = users.createInvite({ role: hubRole, days: typeof i.days === "number" ? i.days : undefined, userId: bound?.id, createdBy: actor.account ?? actor.name });
+          hive.audit(actor, "users.inviteCreate", bound?.username ?? made.invite.id, hubRole, { key: "audit.inviteCreated", vars: { role: hubRole } });
+          res.json({ result: made });
+        } else if (method === "users.inviteRevoke") {
+          const revoked = users.revokeInvite(String(i.inviteId ?? ""));
+          hive.audit(actor, "users.inviteRevoke", revoked.id, revoked.role, { key: "audit.inviteRevoked" });
+          res.json({ result: revoked });
         } else if (method === "users.setGrants") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, unknown>, "shared" in i ? i.shared : undefined);

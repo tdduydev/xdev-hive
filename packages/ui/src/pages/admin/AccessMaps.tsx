@@ -1,12 +1,12 @@
 // Quản trị › Vai trò & quyền and Sơ đồ tổ chức (R-72l): two read-only views over data the hub already serves
 // (ROLE_PERMISSIONS in core, the accounts' grants, the systems), so neither needs an endpoint of its own.
 import { useMemo, useState, type CSSProperties } from "react";
-import { PROJECT_ROLES, type HubUser } from "@xdev-hive/core";
+import { PROJECT_ROLES, type HubRole, type HubUser } from "@xdev-hive/core";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { PERMISSION_GROUPS } from "#ui/components/GrantEditor.tsx";
 import { useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { avatarHue, initials, orgLegend, orgTree, permissionMatrix, roleCounts, type OrgRole } from "#ui/lib/users-table.ts";
+import { avatarHue, hubRoleCounts, initials, orgLegend, orgTree, permissionMatrix, roleCounts, type OrgRole } from "#ui/lib/users-table.ts";
 import { GrantsDialog } from "#ui/pages/Users.tsx";
 
 const hue = (name: string) => ({ "--hue": avatarHue(name) }) as CSSProperties;
@@ -19,13 +19,13 @@ export function RolesTab() {
   const matrix = useMemo(() => permissionMatrix(PERMISSION_GROUPS), []);
   const counts = roleCounts();
   const all = list.data ?? [];
-  const admins = all.filter((u) => u.admin).length;
-  const locked = all.filter((u) => u.disabled).length;
+  const byRole = hubRoleCounts(all);
   const hubRoles = [
-    { id: "admin", dot: "var(--accent-violet)", count: admins, label: t("adminUsers.roleAdmin"), hint: t("adminUsers.roles.adminHint") },
-    { id: "member", dot: "var(--accent-blue)", count: all.length - admins, label: t("adminUsers.roleMember"), hint: t("adminUsers.roles.memberHint") },
-    { id: "disabled", dot: "var(--accent-red)", count: locked, label: t("users.disabled"), hint: t("adminUsers.roles.disabledHint") },
-  ];
+    { id: "owner", dot: "var(--accent-amber, var(--accent-violet))" },
+    { id: "admin", dot: "var(--accent-violet)" },
+    { id: "member", dot: "var(--accent-blue)" },
+    { id: "viewer", dot: "var(--accent-green)" },
+  ].map((r) => ({ ...r, count: byRole[r.id as HubRole], label: t(`adminUsers.hubRole.${r.id as HubRole}`), hint: t(`adminUsers.roles.${r.id as HubRole}Hint`) }));
   return (
     <div data-roles-page>
       <ErrorNote error={list.error} />
