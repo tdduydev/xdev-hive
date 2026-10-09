@@ -2869,6 +2869,13 @@ export const en: Catalog = {
   },
   machines: {
     runnerTitle: "Runner settings",
+    acceptHubRuns: "Accept work from hub",
+    acceptHubRunsConfirmTitle: "Change hub intake?",
+    acceptHubRunsConfirm: "Confirm",
+    acceptHubRunsConfirmOn: "This machine will take runs queued from the web after its next heartbeat applies the change.",
+    acceptHubRunsConfirmOff: "This machine will stop taking newly queued runs from the web. Active runs will continue.",
+    acceptHubRunsTooOld: "This toggle is disabled because the app on this machine is too old to receive hub changes. Update the app.",
+    acceptHubRunsPending: "Waiting for the machine to apply this at its next heartbeat.",
     runnerMr: "Create MR/PR automatically",
     runnerMrWhen: "When to create MR/PR",
     runnerSaving: "Saving…",

@@ -3827,7 +3827,7 @@ async function main() {
       const r = await fetch(`${base}/api/rpc`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
-        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, profiles, runs } }),
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, runnerSettings: { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: acceptsRuns }, profiles, runs } }),
       });
       const body = await r.json();
       if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
@@ -3852,6 +3852,15 @@ async function main() {
     await sleep(300);
     await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-light`);
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    const intake = '[data-map-machine="ci-runner-01"] [data-hub-intake]';
+    if (mobile) {
+      const target = await tab.eval(selector => { const r = document.querySelector(selector).closest("label").getBoundingClientRect(); return { width: r.width, height: r.height }; }, intake);
+      expect(target.width >= 44 && target.height >= 44, `hub intake touch target: ${JSON.stringify(target)}`);
+    }
+    await tab.click(intake);
+    await tab.click('[data-slot="alert-dialog-action"]');
+    await until("hub intake change queued", async () => (await rpc("machines.list")).find(m => m.machine === "ci-runner-01")?.runnerChange?.settings.acceptHubRuns === true);
+    await tab.waitFor("pending hub intake status", selector => document.querySelector(selector)?.textContent.includes("chờ máy áp dụng"), '[data-map-machine="ci-runner-01"] [role="status"]');
   });
 
   await step("tool-approve-web", async () => {
@@ -3922,7 +3931,7 @@ async function main() {
 
   await step("machine-runner-settings", async () => {
     const machineName = "runner-settings";
-    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" };
+    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: false };
     let profile = { id: "claude-remote", label: "Claude remote", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
     const beat = async () => {
       const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "feed1234", projects: ["payment"], acceptsRuns: false, runnerSettings, profiles: [profile] } }) });

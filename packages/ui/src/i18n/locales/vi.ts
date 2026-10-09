@@ -2874,6 +2874,13 @@ export const vi = {
   },
   machines: {
     runnerTitle: "Cài đặt runner",
+    acceptHubRuns: "Nhận việc từ hub",
+    acceptHubRunsConfirmTitle: "Đổi nhận việc từ hub?",
+    acceptHubRunsConfirm: "Xác nhận",
+    acceptHubRunsConfirmOn: "Máy này sẽ nhận các run được xếp từ web sau khi áp dụng ở heartbeat kế tiếp.",
+    acceptHubRunsConfirmOff: "Máy này sẽ ngừng nhận run mới được xếp từ web. Run đang chạy vẫn tiếp tục.",
+    acceptHubRunsTooOld: "Toggle bị tắt vì app trên máy quá cũ để nhận thay đổi từ hub. Hãy cập nhật app.",
+    acceptHubRunsPending: "Đang chờ máy áp dụng ở heartbeat kế tiếp.",
     runnerMr: "Tự tạo MR/PR",
     runnerMrWhen: "Thời điểm tạo MR/PR",
     runnerSaving: "Đang lưu…",

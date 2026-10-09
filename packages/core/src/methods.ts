@@ -156,6 +156,7 @@ const machineRunnerSettings = z.object({
   maxParallel: z.number().int().min(1).max(8),
   mrEnabled: z.boolean(),
   mrWhen: z.enum(["after_review", "after_success"]),
+  acceptHubRuns: z.boolean().optional(),
 });
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
