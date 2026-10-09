@@ -4,6 +4,7 @@ import { historyRows } from "#core/history-store.ts";
 import type { HistoryEntry } from "#core/history.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
+import { PROJECT_COMMAND_TTL_MS, type MachineProjectCommand, type MachineProjects, type MachineRepo } from "#core/machine-projects.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
 import { GateStore } from "#core/gate-store.ts";
 import { isTerminalHuman } from "#core/terminal.ts";
@@ -872,6 +873,14 @@ const MIGRATIONS: string[] = [
     project TEXT NOT NULL, step TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY(project, step, version));
   `,
+  // ADM-machine-projects: the app's own project list with folders, and the add/remove orders a hub admin sends it.
+  `
+  ALTER TABLE machines ADD COLUMN repos TEXT;
+  CREATE TABLE machine_project_commands(
+    id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+    command TEXT NOT NULL, completed_at TEXT, ok INTEGER, error TEXT);
+  CREATE INDEX machine_project_pending ON machine_project_commands(machine_id, completed_at);
+  `,
 ];
 
 function browserSeedSql(): string {
@@ -1265,6 +1274,7 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "tasks.unassign": (i) => ({ target: i.id, detail: "bỏ gán agent", text: { key: "audit.taskUnassign" } }),
   "machines.remove": (i) => ({ target: i.id }),
   "machines.manageWorktrees": (i, o: WorktreeCommand) => ({ target: i.machineId, detail: JSON.stringify({ targets: o.targets.map(t => `${t.project}/${t.path}`), force: o.force, cleanup: o.cleanup }) }),
+  "machines.projectCommand": (i, o: MachineProjectCommand) => ({ target: i.machine, detail: JSON.stringify({ op: o.op, project: o.project, repo: o.repo, gitlabProject: o.gitlabProject, cloneUrl: o.cloneUrl }) }),
   "machines.approveTool": (i, o: ToolApproval) => ({ target: `${i.machineId}/${o.toolId}`, detail: o.hash, text: { key: "audit.toolApproved", vars: { tool: o.toolId, hash: o.hash } } }),
   "machines.setRunner": (i) => ({ target: i.machineId, detail: JSON.stringify(i.settings) }),
   "machines.setProfile": (i, o: Machine) => {
@@ -6989,6 +6999,26 @@ export class SqliteHive implements HiveBackend {
       .map(r => ({ ...JSON.parse(str(r.command)), completedAt: strOrNull(r.completed_at), results: JSON.parse(str(r.results)) }));
   }
 
+  #projectCommands(machineId: string, pending = false): MachineProjectCommand[] {
+    const rows = pending
+      ? this.db.prepare("SELECT * FROM machine_project_commands WHERE machine_id = ? AND completed_at IS NULL AND json_extract(command, '$.requestedAt') > ? ORDER BY rowid LIMIT 100").all(machineId, this.#now(-PROJECT_COMMAND_TTL_MS / 60_000))
+      : this.db.prepare("SELECT * FROM machine_project_commands WHERE machine_id = ? ORDER BY rowid DESC LIMIT 50").all(machineId);
+    return (rows as Row[]).map((r) => ({
+      ...(JSON.parse(str(r.command)) as MachineProjectCommand),
+      completedAt: strOrNull(r.completed_at),
+      ok: r.ok == null ? null : num(r.ok) === 1,
+      error: strOrNull(r.error),
+    }));
+  }
+
+  /**
+   * A machine's app config holds every project of its user, folders included, so neither reading nor changing it is a
+   * project right: a hub admin only, as a person (no agent, run or MCP credential acting with an admin token).
+   */
+  #needMachineConfigAdmin(actor: Actor): void {
+    if (!this.#mayApproveTool(actor, null)) throw new HiveError("forbidden", "Only a hub admin manages a machine's projects.", { key: "errors.hubAdminOnly" });
+  }
+
   #machineWorktrees(machineId: string, actor: Actor): MachineWorktrees {
     const r = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
     if (!r) throw new HiveError("not_found", "Machine not found.", { key: "errors.machineNotFound", vars: { machine: machineId } });
@@ -8409,7 +8439,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, repos, projectResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8453,6 +8483,11 @@ export class SqliteHive implements HiveBackend {
           for (const result of worktreeResults) db.prepare("UPDATE machine_worktree_commands SET completed_at = ?, results = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
             .run(now, JSON.stringify(result.results), result.id, actor.name);
           db.prepare("DELETE FROM machine_worktree_commands WHERE completed_at < ?").run(this.#now(-30 * 24 * 60));
+          // Kept with the hub's deleted projects too (unlike `projects` below): those are the ones the web offers to drop.
+          if (repos) db.prepare("UPDATE machines SET repos = ? WHERE id = ?").run(JSON.stringify(repos.filter((r) => sees(actor, r.project))), actor.name);
+          for (const result of projectResults) db.prepare("UPDATE machine_project_commands SET completed_at = ?, ok = ?, error = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
+            .run(now, result.ok ? 1 : 0, result.ok ? null : result.error, result.id, actor.name);
+          db.prepare("DELETE FROM machine_project_commands WHERE completed_at < ? OR json_extract(command, '$.requestedAt') < ?").run(this.#now(-30 * 24 * 60), this.#now(-30 * 24 * 60));
           if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
           // Written every beat: a machine that turned the terminal off, or went back to an app without it, is off now.
           db.prepare("UPDATE machines SET terminal_capability = ? WHERE id = ?").run(terminal ? JSON.stringify(terminal) : null, actor.name);
@@ -8569,6 +8604,7 @@ export class SqliteHive implements HiveBackend {
             agentPolicy: this.#machineAgentPolicy(actor),
             tools,
             worktreeCommands: this.#worktreeCommands(actor.name, true),
+            projectCommands: this.#projectCommands(actor.name, true),
             toolApprovals: (db.prepare("SELECT a.* FROM machine_tool_approvals a JOIN tools t ON t.id = a.tool_id WHERE a.machine_id = ? AND a.applied_at IS NULL").all(actor.name) as Row[])
               .map((a) => { const { appliedAt: _appliedAt, ...approval } = this.#toolApproval(a); return approval; })
               .filter((a) => tools.entries.some((e) => e.id === a.toolId && toolHash(e) === a.hash)),
@@ -9925,6 +9961,35 @@ export class SqliteHive implements HiveBackend {
         }
         const command: WorktreeCommand = { id: randomUUID(), targets: targets ?? [], force, cleanup: cleanup ?? null, requestedBy: actor.account ?? actor.name, requestedAt: this.#now(), completedAt: null, results: [] };
         db.prepare("INSERT INTO machine_worktree_commands(id, machine_id, command) VALUES (?, ?, ?)").run(command.id, machineId, JSON.stringify(command));
+        return command;
+      }),
+
+      "machines.projects": (_input, actor) => {
+        this.#needMachineConfigAdmin(actor);
+        const states = this.#projectStates();
+        return (db.prepare("SELECT id, machine, repos FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r): MachineProjects => ({
+          machineId: str(r.id),
+          machine: str(r.machine),
+          supported: r.repos != null,
+          repos: (r.repos == null ? [] : JSON.parse(str(r.repos)) as MachineRepo[]).map((x) => ({ ...x, state: states.get(x.project)?.state ?? null })),
+          commands: this.#projectCommands(str(r.id)),
+        }));
+      },
+      "machines.projectCommand": ({ machine, ...order }, actor) => this.#tx(() => {
+        this.#needMachineConfigAdmin(actor);
+        const row = db.prepare("SELECT id, repos FROM machines WHERE id = ?").get(this.#machineByRef(machine).id) as Row;
+        const machineId = str(row.id);
+        if (row.repos == null) throw new HiveError("bad_request", "Update the app to manage its projects from the hub.", { key: "errors.machineAppTooOld", vars: { machine: machineId } });
+        if (order.op === "add") {
+          // Only a project the hub knows and still uses: adding a deleted name would only bring its warning back.
+          if (!this.#projectNames().includes(order.project)) throw new HiveError("not_found", `No project ${order.project}.`, { key: "errors.notFound" });
+          if (this.#projectState(order.project)) throw this.#projectGone(order.project);
+        }
+        const open = this.#projectCommands(machineId, true).find((c) => c.project === order.project);
+        if (open) throw new HiveError("conflict", `A command for ${order.project} is still waiting for ${machineId}.`, { key: "errors.projectCommandOpen", vars: { project: order.project } });
+        const command: MachineProjectCommand = { id: randomUUID(), ...order, requestedBy: actor.account ?? actor.name, requestedAt: this.#now(), completedAt: null, ok: null, error: null };
+        const { completedAt: _c, ok: _o, error: _e, ...stored } = command;
+        db.prepare("INSERT INTO machine_project_commands(id, machine_id, command) VALUES (?, ?, ?)").run(command.id, machineId, JSON.stringify(stored));
         return command;
       }),
 
