@@ -26,6 +26,19 @@ export function gitAsync(repo: string, args: string[], env: Record<string, strin
   });
 }
 
+/** Async stdout-only form of git(), for commands whose output is parsed or shown as a patch. */
+export function gitOutputAsync(repo: string, args: string[], env: Record<string, string> = {}, timeoutMs = 120_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, {
+      cwd: repo, encoding: "utf8", env: { ...process.env, ...env }, timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024, windowsHide: true,
+    }, (err, stdout, stderr) => {
+      if (err) reject(Object.assign(err, { stdout, stderr }));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
 export function isGitRepo(repo: string): boolean {
   try {
     return git(repo, ["rev-parse", "--is-inside-work-tree"]) === "true";

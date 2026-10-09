@@ -117,7 +117,7 @@ function toRun(r: Row): AgentRun {
     worktree: s(r.worktree),
     branch: s(r.branch),
     baseSha: s(r.base_sha),
-    instructions: String(r.instructions),
+    instructions: String(r.instructions ?? ""),
     reviewAfter: Number(r.review_after) === 1,
     exitCode: r.exit_code == null ? null : Number(r.exit_code),
     summary: s(r.summary),
@@ -346,6 +346,27 @@ export class RunStore {
         )
         .all(filter.project ?? null, filter.limit ?? 100, projects, filter.includeDiffSummaries === false ? 0 : 1) as Row[]
     ).map(toRun);
+  }
+
+  /** IPC and runs.push need run metadata and retry instructions, never the potentially large unified patch. */
+  listForDesktop(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
+    const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
+    const rows = this.db.prepare(`
+      SELECT id, project, task_id, task_title, role, status, profile_id, preferred_profile,
+        avoid_kinds, excluded_profiles, attempt, max_attempts, parent_run_id, worktree, branch,
+        base_sha, instructions, review_after, exit_code, summary, error, commits, head_sha, created_at,
+        started_at, finished_at, start_sha, remote_sha, pushed, push_error, mr_url, mr_iid,
+        mr_state, mr_draft, mr_note, cost_usd, input_tokens, output_tokens,
+        mr_status, pipeline_status, pipeline_url, mr_checked_at, ci_fix, best_of, requested_by,
+        cache_write_tokens, cache_read_tokens, prefer_kind, allowed_agent_kinds, skills,
+        compression, agent_kind, model, effort, selection, plan, diff_review,
+        timeout_minutes, continuation, redispatch
+      FROM runs WHERE (?1 IS NULL OR project = ?1)
+        AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+        AND diff_summary_for IS NULL
+      ORDER BY created_at DESC, rowid DESC LIMIT ?2
+    `).all(filter.project ?? null, filter.limit ?? 100, projects) as Row[];
+    return rows.map(toRun);
   }
 
   queued(): AgentRun[] {

@@ -395,7 +395,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
 
 - **77. client-perf** (hỏi 9/10: "mấy app client này cần làm gì để tối ưu không, cache đồ nữa"). Người dùng trả lời 9/10: dùng TanStack Query, làm SSE ngay đợt này, cache truy vấn trong IndexedDB (xoá khi đăng xuất hoặc đổi quyền). Spec: [docs/specs/77-client-perf.md](specs/77-client-perf.md). Rà soát task theo kiến trúc 76/77: [docs/specs/76-task-triage.md](specs/76-task-triage.md). Tách:
-  - [ ] **77a. desktop-io**: log run chỉ đọc phần đuôi, bất đồng bộ; git bất đồng bộ trên các đường hay chạy; `desktop.runs` chỉ chọn cột cần.
+  - [x] **77a. desktop-io** (0.151.0): log run chỉ đọc phần đuôi, bất đồng bộ; git bất đồng bộ trên các đường hay chạy; `desktop.runs` chỉ chọn cột cần.
   - [ ] **77b. heartbeat-own-timer**: heartbeat chạy trên timer riêng, có jitter và chặn chồng nhịp; quét và dò ghi vào cache (thay BUG-heartbeat-stall).
   - [ ] **77c. hub-timeouts-quit**: mọi lệnh gọi hub có timeout; thoát app có hạn chót khi hub sập, commit WIP vẫn xong.
   - [ ] **77d. probe-dedup**: `setup.status` và dò login mỗi lúc chỉ chạy một lần, có cache, không mở login shell mỗi lần.
