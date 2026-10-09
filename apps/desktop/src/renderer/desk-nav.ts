@@ -1,7 +1,7 @@
 // The desktop app's menu and addresses on a hub (roadmap 76h, docs/specs/76-access-first.md §5 step 2): this machine's
 // work only. Everything else (Task, Tài liệu, Chat, Quản trị…) is the hub's web, one button away. Free of React so a
 // test can read it.
-import type { MessageKey } from "@xdev-hive/ui";
+import type { MessageKey } from "@xdev-hive/ui-kit/i18n";
 
 export type DeskPage = "start" | "machine" | "agents" | "runs" | "worktrees" | "setup" | "settings";
 
@@ -63,3 +63,10 @@ export function webTarget(hubUrl: string | null, hash: string): string | null {
   if (!hubUrl || !hash.startsWith("#/") || resolveDeskHash(hash)) return null;
   return `${hubUrl.replace(/\/+$/, "")}/${hash}`;
 }
+
+/**
+ * Whether the app opened without naming a place (no address, or the old Hôm nay), so a first run may open the guide.
+ * An explicit address (a browser sign-in comes back to one) keeps its destination.
+ */
+export const opensOnHome = (initialHash: string, currentHash: string): boolean =>
+  ["", "#", "#/", "#/today"].includes(initialHash) && resolveDeskHash(currentHash) === DESK_HOME;

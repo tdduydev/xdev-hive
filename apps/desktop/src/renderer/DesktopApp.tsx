@@ -2,12 +2,13 @@
 // Without a hub it is still the whole former app (LocalApp), for now: that goes when 76i embeds the hub.
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
+import { ChatSessionProvider } from "@xdev-hive/ui/components/ChatSession";
 import { PageBoundary } from "@xdev-hive/ui/components/ErrorBoundary";
-import type { Me } from "@xdev-hive/core";
+import type { HiveSystem, Me } from "@xdev-hive/core";
 import { useT, type HiveClient } from "@xdev-hive/ui";
 import { HiveContext, useProjectList, usePoll, useQuery } from "@xdev-hive/ui/hooks";
 import { ALL } from "@xdev-hive/ui/lib/scope";
-import { remainingSteps, shouldOpenStartGuide, startSteps } from "@xdev-hive/ui/lib/start";
+import { remainingSteps, startSteps } from "@xdev-hive/ui/lib/start";
 import { AppBoot, Centered } from "@xdev-hive/ui/shell/boot";
 import { AgentsPage } from "@xdev-hive/ui/pages/Agents";
 import { RunsPage } from "@xdev-hive/ui/pages/Runs";
@@ -15,13 +16,15 @@ import { SetupPage } from "@xdev-hive/ui/pages/Setup";
 import { ProjectsPage } from "@xdev-hive/ui/pages/Projects";
 import { StartPage } from "@xdev-hive/ui/pages/Start";
 import { DesktopShell } from "./DesktopShell.tsx";
-import { DESK_HOME, DESK_LABEL, DESK_SUB, resolveDeskHash, webTarget, type DeskPage } from "./desk-nav.ts";
+import { DESK_HOME, DESK_LABEL, DESK_SUB, opensOnHome, resolveDeskHash, webTarget, type DeskPage } from "./desk-nav.ts";
 import { MachinePage } from "./pages/MachinePage.tsx";
 import { WorktreesPage } from "./pages/WorktreesPage.tsx";
 
 // TEMPORARY (until 76i): the app without a hub. A chunk of its own, so the app on a hub bundles none of it, nor the
 // web's pages (Quản trị and the rest) it carries.
 const LocalApp = lazy(() => import("@xdev-hive/ui/local").then((m) => ({ default: m.LocalApp })));
+
+const NO_SYSTEMS: HiveSystem[] = [];
 
 const PAGES: Record<DeskPage, () => ReactNode> = {
   start: () => <StartPage />,
@@ -72,6 +75,8 @@ function Machine({ client, me }: { client: HiveClient; me: Me }) {
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((n) => n + 1), []);
   const projects = useProjectList(client, tick);
+  // Công cụ & setup groups this machine's projects by the hub's systems; a hub from before them has no such method.
+  const systems = useQuery(() => client.call("systems.list", {}).catch(() => []), [client, tick]).data ?? NO_SYSTEMS;
   const webUrl = useQuery(async () => (await desktop.settings()).hubUrl.replace(/\/+$/, "") || null, [desktop]).data ?? null;
   // Checked when the app opens (and after leaving Công cụ & setup), so the menu says what is missing.
   const setup = useQuery(() => desktop.setupStatus(), [desktop, page === "setup"]);
@@ -87,7 +92,7 @@ function Machine({ client, me }: { client: HiveClient; me: Me }) {
   useEffect(() => {
     if (initialStart.data === undefined || startChecked.current) return;
     startChecked.current = true;
-    if (initialStart.data && shouldOpenStartGuide(initialHash.current, window.location.hash)) window.location.hash = "/start";
+    if (initialStart.data && opensOnHome(initialHash.current, window.location.hash)) window.location.hash = "/start";
   }, [initialStart.data]);
 
   // An address that is the hub's web (a link inside a page, #/tasks…) opens there instead of here.
@@ -125,15 +130,18 @@ function Machine({ client, me }: { client: HiveClient; me: Me }) {
     setup: setup.data ? [...setup.data.machine, ...setup.data.projects.flatMap((p) => p.items)].filter((i) => i.state !== "installed").length : 0,
     runs: runs.data?.running ?? 0,
   };
-  // The machine's pages read a scope and a project list through the context; the hub's systems and scope switcher are the web's.
-  const context = useMemo(() => ({ client, me, bump, scope: ALL, setScope: () => undefined, projects, systems: [] }), [client, me, bump, projects]);
+  // The machine's pages read a scope and a project list through the context; the scope switcher is the web's.
+  const context = useMemo(() => ({ client, me, bump, scope: ALL, setScope: () => undefined, projects, systems }), [client, me, bump, projects, systems]);
 
   return (
     <HiveContext.Provider value={context}>
       <TooltipProvider>
-        <DesktopShell client={client} me={me} current={page} title={t(DESK_LABEL[page])} subtitle={t(DESK_SUB[page])} webUrl={webUrl} counts={counts}>
-          <PageBoundary page={page}>{PAGES[page]()}</PageBoundary>
-        </DesktopShell>
+        {/* The run pages reuse the leader's chat parts, which keep their drafts in this session; the chat itself is the web's. */}
+        <ChatSessionProvider>
+          <DesktopShell client={client} me={me} current={page} title={t(DESK_LABEL[page])} subtitle={t(DESK_SUB[page])} webUrl={webUrl} counts={counts}>
+            <PageBoundary page={page}>{PAGES[page]()}</PageBoundary>
+          </DesktopShell>
+        </ChatSessionProvider>
       </TooltipProvider>
     </HiveContext.Provider>
   );
