@@ -1175,7 +1175,7 @@ const MAX_INTERRUPTED_TURNS = 3;
  */
 const APP_CLOSED_ERRORS = ["The app closed while the run was going", "App đã đóng khi run đang chạy"];
 /** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
-const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
+const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.machinePlatformMismatch", "errors.secret"]);
 const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
@@ -2022,6 +2022,9 @@ export class SqliteHive implements HiveBackend {
       if (!AGENT_METHODS.has(method)) throw new HiveError("forbidden", "An agent credential cannot call this method.");
       if (caller.runCredential && (method === "tasks.claim" || method === "tasks.update") && (input as { id?: string }).id !== caller.runCredential.task)
         throw new HiveError("forbidden", "A run credential can work only on its task.");
+      // A run works one task: it neither makes tasks nor decides which OS the hub gives its own task to.
+      if (caller.runCredential && (method === "tasks.create" || (method === "tasks.update" && (input as { platforms?: unknown }).platforms !== undefined)))
+        throw new HiveError("forbidden", "A run credential cannot create tasks or change a task's platforms.");
     }
     authorize(method, caller);
     const machine = this.#machineIdentityReady ? this.db.prepare("SELECT token_id FROM machines WHERE id = ?").get(caller.name) as Row | undefined : undefined;

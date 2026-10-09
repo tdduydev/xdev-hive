@@ -540,7 +540,8 @@ export const schemas = {
   "tasks.update": z.object({
     id: taskId,
     priority: z.number().int().min(0).max(100).optional(),
-    status: z.enum(TASK_STATUSES),
+    /** Left out, the status, owner and lease stay: that is how platforms alone changes without touching a running task. */
+    status: z.enum(TASK_STATUSES).optional(),
     note: z.string().max(2000).optional(),
     platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
@@ -580,7 +581,8 @@ export const schemas = {
     /** Random per app start, to tell two live instances apart from a restart. */
     instance: z.string().regex(/^[a-f0-9]{8,64}$/),
     version: z.string().max(40).default(""),
-    platform: z.enum(["win", "windows", "linux", "mac"]).optional(),
+    /** null: an OS the hub has no routing key for (platformKey); the machine still reports. */
+    platform: z.enum(["win", "windows", "linux", "mac"]).nullable().optional(),
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
