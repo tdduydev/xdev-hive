@@ -4714,35 +4714,7 @@ async function main() {
         await tab.click(selector, text);
         await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
         const selectedHash = await tab.eval(() => location.hash);
-        // 72f follows the design's card grid: details are a modal at every width, with the URL retaining history.
-        if (route === "memory") {
-          const assertDialog = async () => {
-            await tab.waitFor("memory dialog loaded", () => document.querySelector('[role="dialog"]')?.textContent.includes("Loại"));
-            const state = await tab.eval(() => {
-              const dialog = document.querySelector('[role="dialog"]');
-              const r = dialog.getBoundingClientRect();
-              return { left: r.left, right: r.right, width: innerWidth, page: document.documentElement.scrollWidth, fits: dialog.scrollWidth <= dialog.clientWidth + 1, focused: dialog.contains(document.activeElement), backgroundHidden: !!document.querySelector('main')?.closest('[aria-hidden="true"]') };
-            });
-            expect(state.left >= 0 && state.right <= state.width + 1 && state.page <= state.width + 1 && state.fits && state.focused && state.backgroundHidden, `memory modal: ${JSON.stringify(state)}`);
-          };
-          await assertDialog();
-          await tab.shot("mobile-memory-detail");
-          await tab.reload();
-          await assertDialog();
-          await tab.eval(() => history.back());
-          await tab.waitFor("Back closes memory", hash => location.hash === hash && !document.querySelector('[role="dialog"]'), listHash);
-          await tab.eval(() => history.forward());
-          await tab.waitFor("Forward restores memory address", hash => location.hash === hash, selectedHash);
-          await assertDialog();
-          for (const width of [767, 768, 390]) {
-            tab.win.setContentSize(width, 844);
-            await tab.waitFor("memory viewport resized", width => innerWidth === width, width);
-            await assertDialog();
-          }
-          await tab.key("Escape");
-          await tab.waitFor("Escape closes memory and clears selection", () => !document.querySelector('[role="dialog"]') && !new URLSearchParams(location.hash.split("?")[1]).has("memory"));
-          return;
-        }
+        // Memory (72j) is a popup from the tablet width up and a page of its own on a phone, like the other panes here.
         const assertPane = async (detail) => {
           // The address changes before React and the reloaded list queries settle.
           await tab.waitFor("pane visibility settled", (selector, detail) =>
