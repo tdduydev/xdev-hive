@@ -268,6 +268,7 @@ class Tab {
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
   "terminal-entry": [],
   "terminal-io": ["terminal-entry"],
+  "terminal-page": ["terminal-entry"],
   "leader-plan": ["lead-sees-members"],
   "auto-dispatch": ["login-token"],
   "merge-queue": ["login-token"],
@@ -5061,6 +5062,42 @@ async function main() {
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");
+  });
+
+  await step("terminal-page", async () => {
+    const tab = current = tabs.terminal;
+    await tab.go("terminal");
+    await tab.waitFor("terminal page", () => document.querySelector("[data-terminal-page]"));
+    await tab.click('[data-testid="terminal-page-new"]');
+    await tab.waitFor("terminal page form", () => !!document.querySelector('[data-terminal-page] [data-testid="terminal-machine"]'));
+    expect(await tab.eval(() => !document.querySelector('[data-terminal-page] [data-testid="terminal-session-attach"]') && document.documentElement.scrollWidth <= innerWidth + 1), "terminal page overflows or lists sessions twice");
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await tab.shot(`terminal-page-${theme}`);
+    }
+    // A session opened from the page runs in the page's own frame, never in the dialog the other entries use.
+    await fetch(`${terminal.base}/__terminal/opt-in`, { method: "POST" });
+    await tab.select('[data-terminal-page] [data-testid="terminal-machine"]', "runner.terminal-fixture@terminal-machine");
+    await tab.select('[data-terminal-page] [data-testid="terminal-project"]', "demo");
+    await tab.click('[data-terminal-page] input[type="checkbox"]');
+    await tab.click('[data-terminal-page] [data-testid="terminal-step-up"]'); await tab.type(terminal.password);
+    await tab.click('[data-terminal-page] [data-testid="terminal-confirm-open"]');
+    await tab.waitFor("page terminal active", () => document.querySelector('[data-terminal-page] [data-testid="terminal-status"]')?.textContent.includes("Đã kết nối"));
+    // The list reloads when the screen connects, not on its 5s poll: well under one poll it already says connected.
+    const listedAt = Date.now() + 2500;
+    while (!(await tab.eval(() => [...document.querySelectorAll('[data-testid="terminal-page-session"]')].some((b) => b.textContent.includes("Đã kết nối"))))) {
+      if (Date.now() > listedAt) throw new Error("session list still not connected 2.5s after the screen connected");
+      await sleep(100);
+    }
+    expect(await tab.eval(() => !document.querySelector('[data-testid="terminal-dialog"], [data-testid="terminal-create-dialog"]') && !!document.querySelector('[data-terminal-page] [data-testid="terminal-screen"]') && document.documentElement.scrollWidth <= innerWidth + 1), "page session opened outside the page frame");
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await tab.shot("terminal-page-active");
+    await tab.click('[data-terminal-page] [data-testid="terminal-stop"]');
+    await tab.waitFor("page session ended", () => document.querySelector('[data-terminal-page] [data-testid="terminal-stop"]').disabled);
+    await tab.click('[data-terminal-page] [data-testid="terminal-detach"]');
+    await tab.waitFor("page frame idle", () => document.querySelector('[data-terminal-page] [data-testid="terminal-idle"]'));
   });
 
   await step("close-unmerged-task", async () => {
