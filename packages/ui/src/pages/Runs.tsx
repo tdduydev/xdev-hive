@@ -359,7 +359,7 @@ function RunCard({ row, on, machine, onPick }: { row: Row; on: boolean; machine:
         <span className="text-sm/5 font-semibold text-pretty">{r.taskTitle}</span>
       </span>
       <span className="flex flex-col gap-1.5">
-        <span className="flex text-xs/4 text-fg-secondary"><span className="flex-1">{waitingReason(r) ? t("runs.waiting") : r.activity ?? runLabel("agentRole", r.role)}</span><span className="text-fg-muted">{runDuration(r)}</span></span>
+        <span className="flex text-xs/4 text-fg-secondary"><span className="runs-ellipsis flex-1">{waitingReason(r) ? t("runs.waiting") : r.activity ?? jobOf(row, t)}</span><span className="shrink-0 pl-2 text-fg-muted">{elapsed(r, t)}</span></span>
         <span className="runs-track" aria-hidden="true" data-still={r.status === "queued"}><span /></span>
       </span>
     </button>
