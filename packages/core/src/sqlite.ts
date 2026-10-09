@@ -63,6 +63,9 @@ import {
   authorize,
   chatPlanSchema,
   type ChatPlan,
+  DESTRUCTIVE_METHODS,
+  isAgentCaller,
+  isMethod,
   parseInput,
   type HiveBackend,
   type Method,
@@ -2039,6 +2042,8 @@ export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
+  /** How the hub runs each of its own destructive RPCs once a person approves it (DESTRUCTIVE_HUB_RPCS). */
+  readonly #approvedActions = new Map<string, (input: Record<string, unknown>, approver: Actor) => Promise<unknown>>();
   readonly #machineIdentityReady: boolean;
   /** Staged migration fixtures still create tasks before platform routing is installed. */
   readonly #taskPlatformsReady: boolean;
@@ -2106,9 +2111,66 @@ export class SqliteHive implements HiveBackend {
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
     this.#assertProjectOpen(method, parsed as ParsedInput<Method>);
+    // After the checks: only a call the agent was allowed to make becomes a proposal, so none can flood the queue.
+    if ((DESTRUCTIVE_METHODS as readonly Method[]).includes(method) && isAgentCaller(actor))
+      throw this.holdForApproval(method, parsed as Record<string, unknown>, actor, this.#destructiveProject(method, parsed as ParsedInput<Method>));
     const output = this.#hideArchived(method, parsed as ParsedInput<Method>, this.#filter(method, await handler(parsed, actor), actor));
     this.#report(method, parsed, output, actor);
     return output;
+  }
+
+  /**
+   * Keeps a destructive call of an agent as an operation proposal instead of running it (DESTRUCTIVE_METHODS) and
+   * returns the pending_approval error to throw. The hub calls it for its own RPCs (DESTRUCTIVE_HUB_RPCS) too.
+   */
+  holdForApproval(method: string, input: Record<string, unknown>, actor: Actor, project: string | null = null): HiveError {
+    const content = JSON.stringify({ method, project, input }, null, 2);
+    assertNoSecret(content, "Proposed operation");
+    const docKey = `${project ? `project/${project}` : "org"}/${CLI_ACTION_SLUG_PREFIX}${randomUUID().replace(/-/g, "")}`;
+    const reason = `${actor.agent ?? actor.name}: ${method}`.slice(0, 500);
+    const id = num(this.db.prepare(
+      `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, on_behalf, created_at)
+       VALUES (?, 0, ?, ?, ?, ?, ?, ?)`,
+    ).run(docKey, content, reason, actor.name, sourceJson(actor.source), actor.onBehalf ?? null, this.#now()).lastInsertRowid);
+    const proposal = this.#getProposal(id);
+    this.audit(actor, "proposals.create", docKey, `đề xuất #${id} · ${method}`, { key: "audit.proposal", vars: { id } });
+    try {
+      this.#opts.onEvent({ type: "proposal.created", project, proposal });
+    } catch {
+      // a listener must never fail the call
+    }
+    return new HiveError(
+      "pending_approval",
+      `đã gửi đề xuất #${id}, chờ duyệt. ${method} needs a person to approve proposal #${id} on the hub's Proposals page; nothing was done yet, do not retry.`,
+      { key: "errors.pendingApproval", vars: { id, method } },
+    );
+  }
+
+  /** How the hub runs one of its own RPCs (DESTRUCTIVE_HUB_RPCS) when a person approves its proposal. */
+  onApprovedAction(method: string, run: (input: Record<string, unknown>, approver: Actor) => Promise<unknown>): void {
+    this.#approvedActions.set(method, run);
+  }
+
+  /**
+   * Which project a held call is for, so that project's reviewers see it. A whole project's fate (archive, delete) and
+   * the hub's own lists are the hub's: an archived project's proposals are hidden, and a deleted one's go with it.
+   */
+  #destructiveProject(method: Method, i: ParsedInput<Method>): string | null {
+    const row = (sql: string, id: unknown) => strOrNull((this.db.prepare(sql).get(id as never) as Row | undefined)?.project);
+    const real = (p: string | null) => (p && this.#projectNames().includes(p) ? p : null);
+    switch (method) {
+      case "docs.remove":
+      case "docs.assetRemove":
+        return real(parseDocKey((i as { key: string }).key).project ?? null);
+      case "memory.remove":
+        return real(row("SELECT project FROM memory WHERE id = ?", (i as { id: number }).id));
+      case "artifacts.remove":
+        return real(row("SELECT project FROM artifacts WHERE id = ?", (i as { id: number }).id));
+      case "chat.delete":
+        return real(row("SELECT project FROM chat_threads WHERE id = ?", (i as { threadId: number }).threadId));
+      default:
+        return null;
+    }
   }
 
   /** The owner pinned with the machine's token, or null while no token is pinned (spec 69: a heartbeat never changes it). */
@@ -3054,8 +3116,10 @@ export class SqliteHive implements HiveBackend {
 
   /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
   audit(actor: Actor, action: string, target: string, detail = "", text?: ErrorText): void {
-    // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column.
-    const agent = isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
+    // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column. A call a person
+    // approved has the agent that proposed it there, beside the approver in the actor column.
+    const agent = actor.approvedProposal ? actor.approvedProposal.author : isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
+    if (actor.approvedProposal) detail = `${detail ? `${detail} · ` : ""}#${actor.approvedProposal.id} ${actor.approvedProposal.author}`;
     // Source-less writes also seed historical schemas in migration tests, before the source column exists.
     this.db
       .prepare(`INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars, agent, on_behalf, run${actor.source ? ", source" : ""}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${actor.source ? ", ?" : ""})`)
@@ -7929,13 +7993,19 @@ export class SqliteHive implements HiveBackend {
       "proposals.approve": async ({ id }, actor) => {
         const pending = this.#getProposal(id);
         if (isCliActionProposalKey(pending.docKey)) {
-          const action = JSON.parse(pending.content) as { method: Method; input: Record<string, unknown> };
+          const action = JSON.parse(pending.content) as { method: string; input: Record<string, unknown> };
+          // Checked before the proposal is marked: an operation nobody can run stays pending instead of failing.
+          const external = isMethod(action.method) ? undefined : this.#approvedActions.get(action.method);
+          if (!isMethod(action.method) && !external) throw new HiveError("bad_request", `This hub cannot run ${action.method}.`);
           this.#tx(() => {
             if (this.#getProposal(id).status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already decided.`);
             db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run(actor.name, this.#now(), id);
           });
+          // The approver's rights run it; the audit line also names the agent that asked (Actor.approvedProposal).
+          const approver: Actor = { ...actor, approvedProposal: { id, author: pending.author } };
           try {
-            await this.call(action.method, action.input as never, actor);
+            if (external) await external(action.input, approver);
+            else await this.call(action.method as Method, action.input as never, approver);
             db.prepare("UPDATE proposals SET status = 'approved' WHERE id = ? AND status = 'executing'").run(id);
           } catch (error) {
             db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE id = ?").run(String((error as Error).message ?? error).slice(0, 500), id);
