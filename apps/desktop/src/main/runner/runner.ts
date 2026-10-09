@@ -4,7 +4,7 @@ import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
 import { researchSchema, type GateHeartbeatReply, type ResearchJob, type MachineSystem } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
-import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
+import { pruneRunLogs, readLegacyRunLogTail, readRunLogTail, redactedMarker } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
 import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
 import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
@@ -29,10 +29,11 @@ import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { execFileCli, spawnCli } from "#desktop/main/spawn-cli.ts";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { stat as statAsync } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -102,7 +103,7 @@ import {
   type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { git, gitAsync, gitErrorText, isGitRepo } from "#desktop/main/git.ts";
+import { gitAsync, gitErrorText, gitOutputAsync, isGitRepoAsync } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
@@ -149,15 +150,17 @@ import { pickWithReason, takesRole, waitingReason, type ProfileLoad, type RunNee
 import { ACTIVE, RunStore } from "./store.ts";
 import {
   branchFor,
-  branchState,
+  branchStateAsync,
   candidateName,
-  commitAll,
+  commitAllAsync,
   branchPatch,
-  ensureWorktree,
+  branchPatchAsync,
+  ensureWorktreeAsync,
   hasBranch,
+  hasBranchAsync,
   remoteStart,
-  removeWorktree,
-  resetTo,
+  removeWorktreeAsync,
+  resetToAsync,
   type Worktree,
 } from "./worktree.ts";
 
@@ -300,12 +303,21 @@ export interface RunnerOptions {
   sync?: (project: DesktopProject) => Promise<SyncReport>;
 }
 
-function appendRedactedRunLog(file: string, text: string): void {
-  appendFileSync(file, redactLines(stripHidden(text)));
+const appendedLogRedactors = new Map<string, SecretRedactor>();
+export function appendRedactedRunLog(file: string, text: string): void {
+  const fresh = !existsSync(file);
+  let redactor = appendedLogRedactors.get(file);
+  if (!redactor) { redactor = new SecretRedactor(); appendedLogRedactors.set(file, redactor); }
+  appendFileSync(file, redactor.write(stripHidden(text)));
+  if (fresh) writeFileSync(redactedMarker(file), "");
 }
 
 /** The sink sees only complete, redacted lines, including the final unterminated line. */
 export function redactedRunLog(file: string): Writable {
+  if (!existsSync(file)) {
+    appendFileSync(file, "");
+    writeFileSync(redactedMarker(file), "");
+  }
   const sink = createWriteStream(file, { flags: "a" });
   const redactor = new SecretRedactor();
   const decoder = new StringDecoder("utf8");
@@ -429,13 +441,7 @@ function latestCandidates(group: AgentRun[]): AgentRun[] {
   return [...by.values()].sort((a, b) => a.bestOf!.n - b.bestOf!.n);
 }
 
-function tryGit(cwd: string, args: string[]): string | null {
-  try {
-    return git(cwd, args);
-  } catch {
-    return null;
-  }
-}
+const tryGitAsync = (cwd: string, args: string[]): Promise<string | null> => gitOutputAsync(cwd, args).catch(() => null);
 
 
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : String(err);
@@ -481,6 +487,7 @@ export class Runner {
   #worktreeBusy = new Set<string>();
   #worktreeMaintenance = 0;
   #runLogsPrunedAt = 0;
+  #logCache = new Map<string, { size: number; mtimeMs: number; text: string }>();
   #worktreeCommandQueue: Promise<void> = Promise.resolve();
   #worktreeCommandsActive = 0;
   #worktreeCleanupJob: Promise<void> | null = null;
@@ -845,7 +852,7 @@ export class Runner {
         plan: extra.plan ?? null,
         reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
         // Ordinary dispatch keeps main's fresh-start behavior after a merged branch was cleaned up.
-        branch: !extra.redispatch ? remoteRun?.branch ?? (previous?.branch && hasBranch(project.repo, previous.branch) ? previous.branch : null) : null,
+        branch: !extra.redispatch ? remoteRun?.branch ?? (previous?.branch && await hasBranchAsync(project.repo, previous.branch) ? previous.branch : null) : null,
         redispatch: extra.redispatch ?? null,
         baseSha: extra.redispatch ? extra.redispatch.baseSha : remoteRun?.baseSha ?? previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
@@ -862,12 +869,12 @@ export class Runner {
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
   async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null, plan: RunPlan | null = null): Promise<AgentRun> {
-    if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
+    if (!(await isGitRepoAsync(project.repo))) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
-    let tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    let tip = await tryGitAsync(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
     const remote = project.git?.remote ?? "origin";
     let taskRemoteSha: string | null = null;
-    if (git(project.repo, ["remote"]).split("\n").includes(remote)) {
+    if ((await gitOutputAsync(project.repo, ["remote"])).split("\n").includes(remote)) {
       const fetched = await fetchTaskBranch(project.repo, branch, remote);
       taskRemoteSha = fetched.sha;
       if (fetched.sha) {
@@ -885,8 +892,8 @@ export class Runner {
       const vars = { remote: start.remote!, tries: this.#opts.fetchRetryMs.length + 1, reason: start.error };
       throw new HiveError("unavailable", tr("errors.fetchFailed", vars), { key: "errors.fetchFailed", vars });
     }
-    const from = tip ?? git(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
-    const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", tip])) : from;
+    const from = tip ?? await gitOutputAsync(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
+    const baseSha = tip ? (previous?.baseSha ?? await gitOutputAsync(project.repo, ["merge-base", "HEAD", tip])) : from;
     const group = `B-${randomBytes(3).toString("hex")}`;
     const now = this.#iso();
     const runs = Array.from({ length: count }, (_, i) =>
@@ -1019,7 +1026,7 @@ export class Runner {
   }
 
   list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
-    return this.store.list({ ...filter, includeDiffSummaries: false }).map((r) => {
+    return this.store.listForDesktop(filter).map((r) => {
       // Run lists cross IPC often; the full snapshot is fetched only by diff(id).
       delete r.diffPatch;
       if (r.status === "queued") return { ...r, error: this.#waiting.get(r.id) ?? r.error };
@@ -1054,6 +1061,30 @@ export class Runner {
     return (size > maxBytes ? `${tr("runNote.logClipped")}\n` : "") + tail.toString("utf8");
   }
 
+  /** Renderer and hub polling use only the suffix; the cache avoids reopening an unchanged log. */
+  async logRecent(id: string, maxBytes = 200_000): Promise<string> {
+    const file = this.#logPath(id);
+    const key = `${id}:${maxBytes}`;
+    try {
+      const stat = await statAsync(file);
+      const cached = this.#logCache.get(key);
+      if (cached?.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.text;
+      const result = await statAsync(redactedMarker(file)).then(
+        () => readRunLogTail(file, maxBytes),
+        (err: NodeJS.ErrnoException) => {
+          if (err.code === "ENOENT") return readLegacyRunLogTail(file, maxBytes);
+          throw err;
+        },
+      );
+      this.#logCache.set(key, result);
+      if (this.#logCache.size > 128) this.#logCache.delete(this.#logCache.keys().next().value!);
+      return result.text;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") { this.#logCache.delete(key); return ""; }
+      throw err;
+    }
+  }
+
   /** What the run changed, as a unified diff from its base ("" when nothing, or its worktree and branch are gone). */
   diff(id: string): string {
     const run = this.store.get(id);
@@ -1065,8 +1096,17 @@ export class Runner {
     return repo && hasBranch(repo, run.branch!) ? branchPatch(repo, run.baseSha, `refs/heads/${run.branch}`) : "";
   }
 
+  async diffAsync(id: string): Promise<string> {
+    const run = this.store.get(id);
+    if (run?.diffPatch != null) return run.diffPatch;
+    if (!run?.baseSha) return "";
+    if (run.worktree && existsSync(run.worktree)) return branchPatchAsync(run.worktree, run.baseSha);
+    const repo = run.branch ? this.#host.projects().find((p) => p.name === run.project)?.repo : undefined;
+    return repo && await hasBranchAsync(repo, run.branch!) ? branchPatchAsync(repo, run.baseSha, `refs/heads/${run.branch}`) : "";
+  }
+
   /** The patch the hub gets with a run: when the run ended (once), and while it runs at most once a minute. */
-  #patchFor(r: AgentRun): string | undefined {
+  async #patchFor(r: AgentRun): Promise<string | undefined> {
     const done = r.status !== "queued" && r.status !== "running";
     const last = this.#patched.get(r.id);
     const key = `${r.status}:${r.commits}`;
@@ -1074,7 +1114,7 @@ export class Runner {
     if (r.status === "queued") return undefined;
     let text: string;
     try {
-      text = redactLines(stripHidden(this.diff(r.id)));
+      text = redactLines(stripHidden(await this.diffAsync(r.id)));
     } catch {
       return undefined;
     }
@@ -1098,12 +1138,12 @@ export class Runner {
     return this.#keep(run, tr("bestOf.byHand", { user: this.#opts.user }), null);
   }
 
-  removeWorktree(id: string): AgentRun {
+  async removeWorktree(id: string): Promise<AgentRun> {
     const run = this.store.get(id);
     if (!run?.worktree) throw new HiveError("not_found", "Run không có worktree.", { key: "errors.runNoWorktree" });
     if (this.store.activeForTask(run.project, run.taskId)) throw new HiveError("conflict", "Task đang có run hoạt động.", { key: "errors.taskActiveRun" });
     const project = this.#project(run.project);
-    if (existsSync(run.worktree)) removeWorktree(project.repo, run.worktree);
+    if (existsSync(run.worktree)) await removeWorktreeAsync(project.repo, run.worktree);
     return run;
   }
 
@@ -1708,17 +1748,24 @@ export class Runner {
       let patches = 0;
       for (const r of recent) {
         if (r.diffSummaryFor) continue;
-        const log = this.#logTail(r.id);
+        const done = r.status !== "queued" && r.status !== "running";
+        const metadataKey = createHash("sha256").update(JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits,
+          mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null,
+          r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError, r.summary, r.error, r.finishedAt,
+          r.costUsd, r.plan, r.instructions])).digest("hex");
+        // Once a finished snapshot reached the hub, later polls (including after restart) need no log I/O.
+        if (done && (this.#pushed.get(r.id) === metadataKey || this.store.pushedMetadataKey(r.id) === metadataKey)) continue;
+        const log = await this.#logTail(r.id);
         // A few patches per push keep the request small; the others go with the next ones.
-        const patch = patches < 3 ? this.#patchFor(r) : undefined;
+        const patch = patches < 3 ? await this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null, r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError]);
+        const key = done ? metadataKey : JSON.stringify([metadataKey, log.length, log.slice(-200)]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
       if (!changed.length) return 0;
       const clip = (s: string | null, n: number) => (s === null ? null : s.length > n ? `${s.slice(0, n - 1)}…` : s);
-      await this.#host.backend().call(
+      try { await this.#host.backend().call(
         "runs.push",
         {
           machine: this.#host.machine(),
@@ -1765,8 +1812,17 @@ export class Runner {
           })),
         },
         this.#runnerActor(),
-      );
-      for (const c of changed) this.#pushed.set(c.run.id, c.key);
+      ); } catch (err) {
+        for (const c of changed) if (c.patch !== undefined) this.#patched.delete(c.run.id);
+        throw err;
+      }
+      for (const c of changed) {
+        const done = c.run.status !== "queued" && c.run.status !== "running";
+        // A finished run still owes a patch if this batch exhausted the patch quota.
+        if (done && this.#patched.get(c.run.id)?.key !== `${c.run.status}:${c.run.commits}`) continue;
+        this.#pushed.set(c.run.id, c.key);
+        if (done) this.store.markPushed(c.run.id, c.key);
+      }
       return changed.length;
     } finally {
       this.#pushing = false;
@@ -1809,8 +1865,8 @@ export class Runner {
   }
 
   /** The last lines of a run's log for the hub: no colour codes or hidden characters, secret-looking lines replaced. */
-  #logTail(id: string, lines = 200, bytes = 48_000): string {
-    const text = this.log(id, bytes)
+  async #logTail(id: string, lines = 200, bytes = 48_000): Promise<string> {
+    const text = (await this.logRecent(id, bytes))
       .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
       .split("\n");
     return redactLines(stripHidden(text.slice(-lines).join("\n"))).slice(-58_000);
@@ -2180,13 +2236,13 @@ export class Runner {
       this.#pickNotes.delete(run.id);
       const resuming = !!run.branch && !run.branch.endsWith(`+${run.id}`);
       const remote = project.git?.remote ?? "origin";
-      const hasRemote = git(project.repo, ["remote"]).split("\n").includes(remote);
+      const hasRemote = (await gitOutputAsync(project.repo, ["remote"])).split("\n").includes(remote);
       let taskRemote: Awaited<ReturnType<typeof fetchTaskBranch>> | null = null;
       if (run.role !== "research" && run.bestOf?.n !== 0 && hasRemote) {
         try { taskRemote = await fetchTaskBranch(project.repo, branch, remote); }
         catch (err) { await this.#waitForRemote(run, profile, remote, gitErrorText(err)); return; }
       }
-      const fresh = run.role !== "research" && !candidate && !taskRemote?.ref && !hasBranch(project.repo, branch) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote }) : null;
+      const fresh = run.role !== "research" && !candidate && !taskRemote?.ref && !(await hasBranchAsync(project.repo, branch)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote }) : null;
       if (resuming && fresh && !fresh.ref) throw new HiveError("conflict", `Cannot retrieve branch ${branch}. Commit WIP and push it on the previous machine first.`, { key: "errors.redispatchUnavailable", vars: { branch } });
       // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
       // that old, the run goes back to the queue and tries again at the next tick, then fails.
@@ -2196,7 +2252,7 @@ export class Runner {
       }
       run = this.store.update(run.id, { remoteSha: taskRemote?.sha ?? null });
       const startNote = fresh?.note ?? queuedNote;
-      wt = ensureWorktree(
+      wt = await ensureWorktreeAsync(
         project.repo,
         path.join(root, project.name, name),
         run.taskId,
@@ -2214,13 +2270,13 @@ export class Runner {
         catch (err) { wt = null; throw err; }
       }
       if (run.redispatch?.headSha) await gitAsync(wt.path, ["merge-base", "--is-ancestor", run.redispatch.headSha, "HEAD"]);
-      run = this.store.update(run.id, { startSha: git(wt.path, ["rev-parse", "HEAD"]), remoteSha: taskRemote?.sha ?? null, pushed: false, pushError: null });
+      run = this.store.update(run.id, { startSha: await gitOutputAsync(wt.path, ["rev-parse", "HEAD"]), remoteSha: taskRemote?.sha ?? null, pushed: false, pushError: null });
       // A branch fetched on another machine starts at its WIP tip, but the diff still starts at the old base.
       if (resuming && run.baseSha) {
-        if (!tryGit(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`])) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
+        if (!(await tryGitAsync(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`]))) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
         wt.baseSha = run.baseSha;
       } else if (resuming) {
-        wt.baseSha = git(project.repo, ["merge-base", project.targetBranch ?? "HEAD", wt.branch]);
+        wt.baseSha = await gitOutputAsync(project.repo, ["merge-base", project.targetBranch ?? "HEAD", wt.branch]);
       }
       const backend = this.#host.backend();
       const actor = this.#actor(profile);
@@ -2457,7 +2513,7 @@ export class Runner {
               runId: run.id,
               worktree: wt.path,
               writable: runDir ? [runDir] : [],
-              gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+              gitDir: await gitOutputAsync(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
               env: {
                 ...agentEnv,
                 ...hubMcpEnv(hub, this.#mcpRun(profile, run), profile.kind, cmd.env?.OPENCODE_CONFIG_CONTENT),
@@ -3002,7 +3058,7 @@ export class Runner {
       if (status === "succeeded" && !text) { status = "failed"; error = tr("runNote.planEmpty"); }
       let done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
       if (wt && run.branch?.startsWith("ai/")) {
-        const state = branchState(wt.path, wt.baseSha);
+        const state = await branchStateAsync(wt.path, wt.baseSha);
         done = this.store.update(run.id, state);
         if (state.headSha) {
           const project = this.#project(run.project);
@@ -3022,13 +3078,13 @@ export class Runner {
     // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
     if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
-      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, [...wt.copied, ...(wt.context ?? [])], wt.toolDirs);
+      const c = await commitAllAsync(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, [...wt.copied, ...(wt.context ?? [])], wt.toolDirs);
       if (c.error) {
         error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
         // Its work is in the worktree, not on the branch: an MR or review would show nothing, so it did not succeed.
         if (status === "succeeded") status = "failed";
       }
-      ({ commits, headSha } = branchState(wt.path, wt.baseSha));
+      ({ commits, headSha } = await branchStateAsync(wt.path, wt.baseSha));
     }
 
     const continuation = outcome.kind === "exit" && outcome.timedOut
@@ -3043,7 +3099,7 @@ export class Runner {
     }
     if (wt && run.role === "implement" && ["succeeded", "failed", "cancelled"].includes(status) && this.#opts.diffReview !== false) {
       try {
-        const patch = redactLines(stripHidden(this.diff(done.id)));
+        const patch = redactLines(stripHidden(await this.diffAsync(done.id)));
         this.store.update(done.id, { diffPatch: patch });
         // Local runs and projects with routing disabled still use the hub's configured light row.
         const selection = run.selection?.diffReview ?? diffReviewSelection(await this.#host.backend().call("modelRouter.get", {}, this.#runnerActor()).catch(() => undefined));
@@ -3205,8 +3261,8 @@ export class Runner {
     const project = this.#project(chosen.project);
     const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
     const from = chosen.branch ?? branchFor(candidateName(chosen.taskId, b.n));
-    const wt = ensureWorktree(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
-    resetTo(wt.path, wt.branch, `refs/heads/${from}`);
+    const wt = await ensureWorktreeAsync(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
+    await resetToAsync(wt.path, wt.branch, `refs/heads/${from}`);
     // After the reset: `git clean` takes the context with everything else untracked, and a review may follow here.
     await this.#writeContext(this.#host.backend(), this.#runnerActor(), chosen.project, wt);
     this.store.setPick(b.group, b.n, reason);
@@ -3215,7 +3271,7 @@ export class Runner {
     for (const c of this.store.group(b.group)) {
       if (!c.worktree || c.bestOf!.n === 0) continue;
       try {
-        if (existsSync(c.worktree)) removeWorktree(project.repo, c.worktree, true);
+        if (existsSync(c.worktree)) await removeWorktreeAsync(project.repo, c.worktree, true);
       } catch (err) {
         notes.push((err as Error).message);
       }
@@ -3224,7 +3280,7 @@ export class Runner {
     let kept = this.store.update(chosen.id, {
       branch: wt.branch,
       worktree: wt.path,
-      ...branchState(wt.path, wt.baseSha),
+      ...await branchStateAsync(wt.path, wt.baseSha),
       ...(notes.length ? { error: notes.join(" · ") } : {}),
     });
     if (kept.headSha) {
