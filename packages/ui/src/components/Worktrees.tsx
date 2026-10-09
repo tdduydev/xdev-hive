@@ -25,7 +25,7 @@ export function WorktreeManager({ machine }: { machine?: Machine }) {
 const size = (bytes: number | null) => bytes === null ? "—" : bytes < 1024 ** 2 ? `${Math.round(bytes / 1024)} KiB` : bytes < 1024 ** 3 ? `${(bytes / 1024 ** 2).toFixed(1)} MiB` : `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
 const CONTROL = "min-h-11 md:min-h-7";
 
-function WorktreePanel({ machine }: { machine?: Machine }) {
+export function WorktreePanel({ machine }: { machine?: Machine }) {
   const { client } = useHive();
   const t = useT();
   const action = useAction();

@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HiveApp, I18nProvider, type HiveClient } from "@xdev-hive/ui";
+import { I18nProvider, type HiveClient } from "@xdev-hive/ui";
 import "@xdev-hive/ui/globals.css";
+import { DesktopApp } from "./DesktopApp.tsx";
 
 declare global {
   interface Window {
@@ -24,7 +25,7 @@ const setMainLocale = (locale: string) => void window.hive.desktop?.setLocale(lo
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider onChange={setMainLocale}>
-      <HiveApp client={window.hive} />
+      <DesktopApp client={window.hive} />
     </I18nProvider>
   </StrictMode>,
 );

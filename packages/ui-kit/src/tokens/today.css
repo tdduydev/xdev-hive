@@ -1,6 +1,6 @@
 /* Hôm nay (72c): values the design writes inline that no semantic token carries yet. Dark values are the design's. */
 :root,[data-theme]{
---text-faint:#716C7C;--accent-amber:#B7791F;
+--text-faint:#6B6677;--accent-amber:#B7791F;
 --today-row-selected-bg:rgba(123,97,255,.14);--today-row-selected-ring:inset 0 0 0 1px rgba(123,97,255,.45);
 --today-banner-bg:rgba(123,97,255,.1);--today-banner-ring:inset 0 0 0 1px rgba(123,97,255,.35);--today-banner-glow:0 0 24px rgba(123,97,255,.5);
 --today-kv-gap:rgba(35,28,55,.06);--today-rule:rgba(35,28,55,.06);--today-chip-hover:var(--glass-bg);

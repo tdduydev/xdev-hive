@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { machineStats } from "./machine-stats.ts";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { trustedRendererUrl } from "#desktop/main/ipc-trust.ts";
@@ -1327,6 +1328,7 @@ function registerIpc(): void {
   });
   handle("hive:me", me);
   handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
+  handle("desktop:machineStats", () => machineStats(path.dirname(configPath())));
   handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
   handle("desktop:updateStatus", () => ({ ...updater.status(), ...idleUpdate?.status() }));
   handle("desktop:installUpdate", () => installAndRestart());

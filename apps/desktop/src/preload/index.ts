@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("hive", {
   me: () => invoke("hive:me"),
   desktop: {
     appInfo: () => invoke("desktop:appInfo"),
+    machineStats: () => invoke("desktop:machineStats"),
     hubStatus: () => invoke("desktop:hubStatus"),
     hubRetry: () => invoke("desktop:hubRetry"),
     updateStatus: () => invoke("desktop:updateStatus"),
