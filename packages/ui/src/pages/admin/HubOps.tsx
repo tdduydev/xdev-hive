@@ -1,18 +1,21 @@
 // Trang Hub and Context agent (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how
 // it is doing (a backup on request), and what a project's agents get from Hive (the AGENTS.md a sync writes).
 import { useEffect, useState, type ReactNode } from "react";
-import { readSyncOutcome, type CommandStatus, type MachineCommand } from "@xdev-hive/core";
+import { readSyncOutcome, type BackupEntry, type CommandStatus, type MachineCommand } from "@xdev-hive/core";
 import { cn } from "cn";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@xdev-hive/ui/components/ui/dialog";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
-import { ErrorNote } from "#ui/components/common.tsx";
-import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { fileSize } from "#ui/lib/chat.ts";
 import { contextProjects } from "#ui/lib/permission-controls.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
-import { AdminCards, AdminStats, type AdminCard, type AdminTone } from "./cosmic.tsx";
+import { AdminCards, AdminStats, AdminTable, type AdminCard, type AdminRow, type AdminTone } from "./cosmic.tsx";
 
 type Tone = "ok" | "warn" | "run" | "neutral";
 const STATE: Record<Tone, string> = {
@@ -177,7 +180,163 @@ export function OpsHub() {
         />
       ) : null}
       {h ? <AdminCards cards={cards} /> : null}
+      {h?.backup && client.backups ? <BackupsSection tick={tick} /> : null}
     </div>
+  );
+}
+
+/** Why a snapshot was made, in words; a deletion's names the project it kept. */
+function reasonLabel(b: BackupEntry, t: ReturnType<typeof useT>): string {
+  if (!b.reason) return t("backups.reason.unknown");
+  if (b.reason.startsWith("delete:")) return t("backups.reason.delete", { project: b.reason.slice(7) });
+  return t(`backups.reason.${b.reason as "start" | "scheduled" | "manual"}`);
+}
+
+/**
+ * The snapshots in HIVE_BACKUP_DIR (ADM-backup-restore): the pin policy spelled out above them, since a pin is what
+ * keeps a deletion's snapshot from rotating away; pin, unpin, download, and a project copied back out of one.
+ */
+function BackupsSection({ tick }: { tick: number }) {
+  const { client } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const [reload, setReload] = useState(0);
+  const list = useQuery(() => client.backups!.list(), [client, tick, reload]);
+  const action = useAction();
+  const [restoring, setRestoring] = useState<string | null>(null);
+  const l = list.data;
+  const pin = (b: BackupEntry) =>
+    void action.run(async () => {
+      await (b.pinned ? client.backups!.unpin(b.name) : client.backups!.pin(b.name));
+      toast(t(b.pinned ? "backups.unpinnedDone" : "backups.pinnedDone", { name: b.name }));
+      setReload((n) => n + 1);
+    });
+  const rows: AdminRow[] = (l?.backups ?? []).map((b) => ({
+    key: b.name,
+    sort: [b.name, reasonLabel(b, t), b.bytes, b.pinned ? 1 : 0],
+    search: `${b.name} ${b.reason ?? ""}`,
+    cells: [
+      { text: b.name, mono: true, strong: true, sub: formatTime(b.createdAt) },
+      { text: reasonLabel(b, t), tone: b.reason?.startsWith("delete:") ? "warn" : undefined },
+      { text: fileSize(b.bytes) },
+      {
+        text: b.pinned ? (b.expiresAt ? t("backups.pinnedUntil", { time: formatTime(b.expiresAt) }) : t("backups.pinnedForever")) : "—",
+        sub: b.pinned && b.pinnedBy ? t("backups.pinnedBy", { who: b.pinnedBy }) : undefined,
+        tone: b.pinned ? "ok" : undefined,
+      },
+    ],
+    extra: (
+      <>
+        <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => pin(b)} data-backup-pin={b.name}>
+          {b.pinned ? t("backups.unpin") : t("backups.pin")}
+        </Button>
+        <Button size="sm" variant="ghost" asChild>
+          <a href={client.backups!.href(b.name)} download={b.name} data-backup-download={b.name}>
+            {t("backups.download")}
+          </a>
+        </Button>
+        <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => setRestoring(b.name)} data-backup-restore={b.name}>
+          {t("backups.restore")}
+        </Button>
+      </>
+    ),
+  }));
+  const over = l ? l.pinMaxBytes > 0 && l.pinnedBytes > l.pinMaxBytes : false;
+  return (
+    <section className="flex min-w-0 flex-col gap-2" data-backups>
+      <h2 className="cx-ops-h">{t("backups.title")}</h2>
+      {l ? (
+        <p className="cx-ops-hint m-0" data-backup-policy>
+          {[
+            t("backups.rotation", { keep: l.keep }),
+            l.pinDays > 0 ? t("backups.pinFor", { days: l.pinDays }) : t("backups.pinForever"),
+            l.pinMaxBytes > 0 ? t("backups.pinCap", { used: fileSize(l.pinnedBytes), max: fileSize(l.pinMaxBytes) }) : t("backups.pinNoCap", { used: fileSize(l.pinnedBytes) }),
+          ].join(" ")}
+        </p>
+      ) : null}
+      {over && l ? <Notice tone="warn" title={t("backups.overCap", { max: fileSize(l.pinMaxBytes) })} /> : null}
+      <ErrorNote error={list.error ?? action.error} />
+      <AdminTable
+        cols={[t("backups.columns.name"), t("backups.columns.reason"), t("backups.columns.size"), t("backups.columns.pin")]}
+        grid="minmax(240px,2fr) minmax(140px,1.2fr) 90px minmax(150px,1.2fr)"
+        minWidth={900}
+        rows={rows}
+        empty={t("backups.none")}
+      />
+      {restoring ? (
+        <RestoreProjectDialog
+          name={restoring}
+          onClose={() => setRestoring(null)}
+          onDone={() => {
+            setRestoring(null);
+            setReload((n) => n + 1);
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+/** A project out of one snapshot: picked from the ones it holds, its name typed again, as deleting one asks. */
+function RestoreProjectDialog({ name, onClose, onDone }: { name: string; onClose: () => void; onDone: () => void }) {
+  const { client, bump } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const projects = useQuery(() => client.backups!.projects(name), [client, name]);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const action = useAction();
+  const list = projects.data ?? [];
+  // The first one the hub has no data of: the only kind a restore takes.
+  const project = picked ?? list.find((p) => !p.live)?.project ?? list[0]?.project ?? null;
+  const chosen = list.find((p) => p.project === project) ?? null;
+  const restore = () =>
+    void action.run(async () => {
+      const r = await client.backups!.restoreProject(name, project!, typed);
+      toast(t("backups.restored", { project: r.project, rows: Object.values(r.rows).reduce((a, b) => a + b, 0), backup: r.backup }));
+      bump();
+      onDone();
+    });
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("backups.restoreTitle", { name })}</DialogTitle>
+          <DialogDescription>{t("backups.restoreHint")}</DialogDescription>
+        </DialogHeader>
+        <ErrorNote error={projects.error ?? action.error} />
+        {projects.data && !list.length ? <p className="m-0 text-[13px] text-fg-muted">{t("backups.restoreNone")}</p> : null}
+        {list.length ? (
+          <>
+            <Label htmlFor="restore-project-pick">{t("backups.restorePick")}</Label>
+            <NativeSelect
+              id="restore-project-pick"
+              className="font-mono"
+              data-backup-restore-pick
+              value={project ?? ""}
+              onChange={(e) => (setPicked(e.target.value), setTyped(""))}
+            >
+              {list.map((p) => (
+                <NativeSelectOption key={p.project} value={p.project}>
+                  {p.live ? `${p.project} · ${t("backups.restoreLive")}` : p.project}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            {chosen ? <span className="text-xs text-fg-muted">{t("backups.restoreCounts", { tasks: chosen.tasks, docs: chosen.docs, memory: chosen.memory, runs: chosen.runs })}</span> : null}
+            <Label htmlFor="restore-project-name">{t("backups.restoreConfirmLabel", { project: project ?? "" })}</Label>
+            <Input id="restore-project-name" data-backup-restore-name className="font-mono" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
+          </>
+        ) : null}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={action.busy}>
+            {t("common.cancel")}
+          </Button>
+          <Button data-backup-restore-confirm disabled={action.busy || !chosen || chosen.live || typed !== project} onClick={restore}>
+            {t("backups.restoreGo")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
