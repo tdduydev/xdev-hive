@@ -363,7 +363,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "today-web": ["lead-sees-members"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
-  "machines-design": ["lead-sees-members"],
+  "machines-design": ["login-token", "lead-sees-members"],
   "agent-assign": ["lead-sees-members"],
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
@@ -4108,11 +4108,17 @@ async function main() {
       d.setHours(h, m, 0, 0);
       return d.toISOString();
     };
+    const systemSamples = {
+      "mac-mini-hn": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "Mac mini M4 Pro · 14 nhân · arm64", uptime: "Bật 6 ngày", cpu: { percent: 72, detail: "14 nhân · tải 10.1" }, ram: { percent: 81, detail: "48 / 64 GB" }, disk: { percent: 58, detail: "Còn 420 GB / 1 TB" } },
+      "mbp-linh": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "MacBook Pro M3 Max · 16 nhân · arm64", uptime: "Bật 2 ngày", cpu: { percent: 34, detail: "16 nhân · tải 5.4" }, ram: { percent: 62, detail: "22.3 / 36 GB" }, disk: { percent: 91, detail: "Còn 90 GB / 1 TB" } },
+      "ci-runner-01": { os: "ubuntu", osName: "Ubuntu 24.04.1 LTS", hardware: "AMD EPYC 7B13 · 8 vCPU · x86_64", uptime: "Bật 41 ngày", cpu: { percent: 6, detail: "8 vCPU · tải 0.5" }, ram: { percent: 23, detail: "7.4 / 32 GB" }, disk: { percent: 37, detail: "Còn 126 GB / 200 GB" } },
+      "pc-quang": { os: "windows", osName: "Windows 11 Pro 24H2", hardware: "Intel Core i7-13700 · 16 nhân · x64 · WSL2", uptime: "Bật 9 giờ", cpu: { percent: 48, detail: "16 nhân · tải 7.7" }, ram: { percent: 77, detail: "24.6 / 32 GB" }, disk: { percent: 64, detail: "Còn 180 GB / 500 GB" } },
+    };
     const beat = async (machine, acceptsRuns, projects, profiles, runs = []) => {
       const r = await fetch(`${base}/api/rpc`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
-        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, runnerSettings: { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: acceptsRuns }, profiles, runs } }),
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, runnerSettings: { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: acceptsRuns }, profiles, runs, system: systemSamples[machine], ...(machine === "ci-runner-01" ? { setup: { checkedAt: new Date().toISOString(), report: { machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing", detail: "Codex CLI missing", action: "Install" }, { id: "shim", label: "hive-mcp", state: "missing", detail: "shim missing", action: "Install" }], projects: [] } } } : {}) } }),
       });
       const body = await r.json();
       if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
@@ -4128,9 +4134,12 @@ async function main() {
     await beat("pc-quang", true, ["payment"], [plan("codex-pro", "codex", 38, 29, "17:30", 3, 1), plan("claude-pro", "claude", 55, 41, "16:50", 2, 1), plan("gemini-adv", "gemini", 12, 9, "18:40", 5, 0)]);
     const tab = (current = tabs.lan);
     await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
-    await tab.go("machines?e2e=machine-system");
+    await tab.go("machines");
     await tab.waitFor("the four machine cards", () => document.querySelectorAll("[data-map-machine]").length >= 4 && document.querySelector('[data-map-profile="mac-mini-hn/claude-max-1"]'));
     expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "machine cards overflow the viewport");
+    await tab.waitFor("system snapshot and missing setup from heartbeat", () => document.querySelector('[data-map-machine="mac-mini-hn"]')?.textContent.includes("macOS 26.0 Tahoe") && document.querySelector('[data-machine-setup="ci-runner-01"]')?.textContent.includes("Codex CLI"));
+    const reported = (await rpc("machines.list")).find(m => m.machine === "mac-mini-hn");
+    expect(reported.system.cpu.percent === 72, "system snapshot did not survive heartbeat");
     // Hide the shell around the cards so the shot lines up with the design's content area.
     await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-dark`);
     await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
@@ -4146,6 +4155,16 @@ async function main() {
     await tab.click('[data-slot="alert-dialog-action"]');
     await until("hub intake change queued", async () => (await rpc("machines.list")).find(m => m.machine === "ci-runner-01")?.runnerChange?.settings.acceptHubRuns === true);
     await tab.waitFor("pending hub intake status", selector => document.querySelector(selector)?.textContent.includes("chờ máy áp dụng"), '[data-map-machine="ci-runner-01"] [role="status"]');
+    await tab.click('[data-machine-setup="ci-runner-01"] button');
+    await tab.waitFor("reader help keeps installation behind hub admin", () => document.querySelector('[role="dialog"]')?.textContent.includes("Cần quản trị hub"));
+    expect(await tab.eval(() => !Array.from(document.querySelectorAll('[role="dialog"] button')).some(b => b.textContent.includes("Yêu cầu cài"))), "reader received an install button");
+    await tab.key("Escape");
+    const manager = current = tabs.admin;
+    await manager.go("machines");
+    await manager.waitFor("missing setup banner for admin", () => !!document.querySelector('[data-machine-setup="ci-runner-01"]'));
+    await manager.click('[data-machine-setup="ci-runner-01"] button');
+    await manager.click('[role="dialog"] button', "Yêu cầu cài");
+    await until("install queued from machine card", async () => (await rpc("admin.machines")).find(m => m.machine === "ci-runner-01")?.commands.some(c => c.itemId === "cli:codex" && c.status === "pending"));
   });
 
   await step("tool-approve-web", async () => {

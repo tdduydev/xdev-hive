@@ -318,3 +318,26 @@ it("migrates existing machines and pending profile changes without losing them",
     } finally { after.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+it("persists the latest system snapshot, retaining it when older apps omit it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-system-"));
+  const file = join(dir, "hub.sqlite");
+  let hive = new SqliteHive(file, { migrateTo: migrationIndex("ADD COLUMN system") });
+  try {
+    await beat(hive, mbp, "aaaaaaaa");
+    hive.close();
+    hive = new SqliteHive(file);
+    assert.equal((await hive.call("machines.list", {}, viewer))[0]!.system, undefined);
+    const system = { os: "macos" as const, osName: "macOS 26.0", hardware: "Mac mini", uptimeSeconds: 600, cpu: { percent: 24, detail: "", cores: 14, load: 2.4 } };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system }, mbp);
+    assert.deepEqual((await hive.call("machines.list", {}, viewer))[0]!.system, system);
+    const next = { ...system, cpu: { ...system.cpu, percent: 99 } };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system: next }, mbp);
+    await beat(hive, mbp, "aaaaaaaa");
+    hive.close(); hive = new SqliteHive(file);
+    assert.deepEqual((await hive.call("machines.list", {}, viewer))[0]!.system, next);
+    for (const bad of [{ ...next, hardware: "x".repeat(301) }, { ...next, cpu: { ...next.cpu, percent: 101 } }, { ...next, uptimeSeconds: -1 }]) {
+      await assert.rejects(() => hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system: bad }, mbp));
+    }
+  } finally { hive.close(); rmSync(dir, { recursive: true, force: true }); }
+});

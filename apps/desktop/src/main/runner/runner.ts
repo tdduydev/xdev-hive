@@ -1,7 +1,8 @@
 import { fetchTaskBranch, prepareTaskBranchMerge, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
+import { SystemSampler } from "#desktop/main/runner/system.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
+import { researchSchema, type GateHeartbeatReply, type ResearchJob, type MachineSystem } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
@@ -260,6 +261,8 @@ export interface RunnerOptions {
   tickMs?: number;
   /** Hub mode: how often to report runs and refresh shared quota cooldowns. */
   heartbeatMs?: number;
+  /** Hub mode: how often to measure CPU, RAM and disk for the machine card, apart from the heartbeat. */
+  systemMs?: number;
   /** Hub mode: how often to push runs that changed (status, current step, the end of the log) for the web. */
   pushMs?: number;
   /** Hub mode, taking runs from the hub: how often to ask for chat replies to write (0: only at heartbeats). */
@@ -488,6 +491,7 @@ export class Runner {
   #interval: NodeJS.Timeout | undefined;
   #mergeQueue = new MergeQueueRunner();
   #heartbeatTimer: NodeJS.Timeout | undefined;
+  #systemTimer: NodeJS.Timeout | undefined;
   #pushTimer: NodeJS.Timeout | undefined;
   #chatTimer: NodeJS.Timeout | undefined;
   /** Writes the web chat's replies (see chat.ts). */
@@ -540,6 +544,7 @@ export class Runner {
       now: () => new Date(),
       tickMs: 5000,
       heartbeatMs: 30_000,
+      systemMs: 30_000,
       pushMs: 5000,
       chatPollMs: 3000,
       chatProgressMs: 2000,
@@ -628,6 +633,11 @@ export class Runner {
     const beat = () => void this.beat();
     this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
     this.#heartbeatTimer.unref();
+    // Measured on its own timer so a slow statfs or OS command never delays the heartbeat (same as R-77b).
+    const measure = () => { if (this.#host.mode() === "hub") void this.sampleSystem(); };
+    this.#systemTimer = setInterval(measure, this.#opts.systemMs);
+    this.#systemTimer.unref();
+    measure();
     this.#worktreeTimer = setInterval(() => {
       if (this.#host.mode() === "local") void this.cleanWorktrees().catch(() => undefined);
     }, 60_000);
@@ -707,6 +717,7 @@ export class Runner {
     this.#updateDrain = true;
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
+    clearInterval(this.#systemTimer);
     clearInterval(this.#worktreeTimer);
     clearInterval(this.#pushTimer);
     clearInterval(this.#chatTimer);
@@ -1168,6 +1179,13 @@ export class Runner {
     this.store.resetStats(profileId, this.#opts.now().toISOString());
   }
 
+  #systemSampler = new SystemSampler();
+
+  /** Takes a fresh CPU/RAM/disk sample for the next heartbeat. */
+  sampleSystem(): Promise<MachineSystem | undefined> {
+    return this.#systemSampler.refresh(this.#worktreeRoot());
+  }
+
   #worktreeRoot(): string {
     return this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
   }
@@ -1367,6 +1385,7 @@ export class Runner {
           machine: this.#host.machine(),
           instance: this.#instance,
           version: this.#opts.version,
+          system: this.#systemSampler.latest,
           runs,
           costs,
           deliveredMessages,

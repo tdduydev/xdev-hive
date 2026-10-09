@@ -860,6 +860,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX artifacts_sha ON artifacts(sha256);
   CREATE INDEX artifacts_file ON artifacts(project, task_id, name, version);
   `,
+  `ALTER TABLE machines ADD COLUMN system TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -6860,6 +6861,7 @@ export class SqliteHive implements HiveBackend {
       runnerChange: r.runner_change == null ? null : JSON.parse(str(r.runner_change)) as RunnerChange,
       owner: strOrNull(r.owner),
       profileChanges: this.#profileChanges(str(r.id)),
+      ...(r.system == null ? {} : { system: JSON.parse(str(r.system)) as Machine["system"] }),
     };
   }
 
@@ -8294,7 +8296,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8327,6 +8329,7 @@ export class SqliteHive implements HiveBackend {
                prev_instance = excluded.prev_instance, version = excluded.version, runs = excluded.runs,
                last_seen = excluded.last_seen, duplicate_at = excluded.duplicate_at`,
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt, actor.tokenId ?? null, actor.account ?? null);
+          if (system) db.prepare("UPDATE machines SET system = ? WHERE id = ?").run(JSON.stringify(system), actor.name);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
           if (worktrees) db.prepare("UPDATE machines SET worktrees = ? WHERE id = ?").run(JSON.stringify(worktrees), actor.name);
