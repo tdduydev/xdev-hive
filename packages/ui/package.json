@@ -8,7 +8,13 @@
     "./globals.css": "./src/globals.css",
     "./components/*": "./src/components/*.tsx",
     "./lib/*": "./src/lib/*.ts",
-    "./i18n": "./src/i18n/translate.ts"
+    "./i18n": "./src/i18n/translate.ts",
+    "./pages/*": "./src/pages/*.tsx",
+    "./shell/*": "./src/shell/*.tsx",
+    "./hooks": "./src/hooks.ts",
+    "./local": "./src/LocalApp.tsx",
+    "./assets/*": "./src/assets/*",
+    "./shell/frame": "./src/shell/frame.ts"
   },
   "imports": {
     "#ui/*": "./src/*"

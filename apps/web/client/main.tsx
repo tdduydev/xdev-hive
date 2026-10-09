@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HiveApp, HubSetup, hubSetupState, I18nProvider, InviteAccept, inviteTokenFromHash, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
+import { createHttpClient, HubSetup, hubSetupState, I18nProvider, InviteAccept, inviteTokenFromHash, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
+import { WebApp } from "./WebApp.tsx";
 import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
@@ -149,7 +150,7 @@ function Root() {
           </button>
         </div>
       ) : null}
-      <HiveApp
+      <WebApp
         client={client}
         onSignOut={() => {
           const wasCookie = session.kind === "cookie";
