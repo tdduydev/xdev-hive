@@ -142,7 +142,9 @@ import type {
   MemoryFile,
   MemoryReview,
   MemorySearchInfo,
+  BackupProject,
   ProjectDeleted,
+  ProjectRestored,
   ProjectState,
   ProjectSummary,
   ProjectSyncState,
@@ -1972,9 +1974,10 @@ export interface SqliteHiveOptions {
   /**
    * A snapshot of the whole hub, as the Hub page's "Backup ngay" makes one (roadmap 47): projects.delete takes one
    * before it deletes anything, and gives up when it cannot. Without this, deleting a project is refused — a deletion
-   * nobody can undo is not worth taking on trust.
+   * nobody can undo is not worth taking on trust. `project`: the one about to go, so the hub can pin that snapshot
+   * out of the rotation (ADM-backup-restore).
    */
-  backup?: (() => Promise<{ file: string }>) | null;
+  backup?: ((why: { project: string }) => Promise<{ file: string }>) | null;
   /** HIVE_GATE_JOBS=1 (spec 69h1 §9). Off: no gate job is created, approved or taken; reading and stopping still work. */
   gateJobs?: boolean;
 }
@@ -4327,6 +4330,219 @@ export class SqliteHive implements HiveBackend {
     // The headstone, last: the name does not come back to life because a machine still reports the repo.
     this.#setProjectState(project, "deleted", by);
     return { rows, files };
+  }
+
+  // ── a deleted project back from a snapshot (ADM-backup-restore) ────────────
+
+  #projectRowsIn(project: string, tables = this.#projectTables()): string[] {
+    return tables.filter((t) => this.db.prepare(`SELECT 1 FROM "${t}" WHERE project = ? LIMIT 1`).get(project));
+  }
+
+  /** The projects a hub snapshot holds, with what it has of each, and whether the live hub has rows under that name. */
+  backupProjects(file: string): BackupProject[] {
+    const src = new DatabaseSync(file, { readOnly: true });
+    try {
+      const tables = this.#projectTables();
+      const found = new Map<string, BackupProject>();
+      for (const [table, field] of [["tasks", "tasks"], ["docs", "docs"], ["memory", "memory"], ["run_records", "runs"]] as const) {
+        if (!src.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
+        for (const r of src.prepare(`SELECT project, COUNT(*) AS n FROM ${table} GROUP BY project`).all() as Row[]) {
+          const project = r.project;
+          // sys:<name> holds a system's own pages (and hub docs none), which projects.delete never takes.
+          if (typeof project !== "string" || !PROJECT_NAME.test(project)) continue;
+          const entry = found.get(project) ?? { project, tasks: 0, docs: 0, memory: 0, runs: 0, live: this.#projectRowsIn(project, tables).length > 0 };
+          entry[field] = num(r.n);
+          found.set(project, entry);
+        }
+      }
+      return [...found.values()].sort((a, b) => a.project.localeCompare(b.project));
+    } finally {
+      src.close();
+    }
+  }
+
+  /**
+   * Copies a project back out of a hub snapshot (opened read-only) in one transaction: the rows projects.delete takes,
+   * then the lists and settings that named it, then the headstone comes off. Refused while the live hub has any row of
+   * the project, since a restore never merges. `files` reads a stored doc file from the backup folder, to put back in
+   * the store the deletion took it out of.
+   */
+  async restoreProject(file: string, project: string, actor: Actor, files?: (sha: string) => Uint8Array | null): Promise<ProjectRestored> {
+    if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Not a project name: ${project}.`);
+    const backup = path.basename(file);
+    const src = new DatabaseSync(file, { readOnly: true });
+    let restored: { rows: Record<string, number>; stored: string[] };
+    try {
+      restored = this.#tx(() => {
+        const r = this.#restoreProject(src, project);
+        const total = Object.values(r.rows).reduce((a, b) => a + b, 0);
+        this.audit(actor, "backups.restoreProject", project, `${total} dòng · backup ${backup}`, { key: "audit.projectRestoredBackup", vars: { rows: total, backup } });
+        return r;
+      });
+    } finally {
+      src.close();
+    }
+    // After the commit, like the deletion's file removal: the store is not part of the transaction. A file not found
+    // costs a page its image, which is no reason to undo the rows.
+    let put = 0;
+    let missing = 0;
+    const store = this.#opts.blobs;
+    if (store) {
+      for (const sha of restored.stored) {
+        const bytes = files?.(sha) ?? null;
+        if (!bytes || createHash("sha256").update(bytes).digest("hex") !== sha) {
+          missing++;
+          continue;
+        }
+        try {
+          await store.put(sha, bytes, "application/octet-stream");
+          put++;
+        } catch {
+          missing++;
+        }
+      }
+    }
+    return { project, backup, rows: restored.rows, files: { restored: put, missing } };
+  }
+
+  #restoreProject(src: DatabaseSync, project: string): { rows: Record<string, number>; stored: string[] } {
+    const db = this.db;
+    const busy = this.#projectRowsIn(project);
+    if (busy.length) {
+      throw new HiveError("conflict", `Project ${project} has data in ${busy.join(", ")}: a restore never merges.`, {
+        key: "errors.restoreHasData",
+        vars: { project, tables: busy.join(", ") },
+      });
+    }
+    // Rows go in table by table, so a child may land before its parent: the foreign keys are checked at COMMIT.
+    db.exec("PRAGMA defer_foreign_keys = ON");
+    const srcTables = new Set((src.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as Row[]).map((r) => str(r.name)));
+    const columns = (conn: DatabaseSync, table: string) => (conn.prepare(`PRAGMA table_info("${table}")`).all() as Row[]).map((c) => str(c.name));
+    const both = (table: string) => srcTables.has(table) && this.#hasTable(table);
+
+    // Table → conditions on the snapshot (?1: the project), the mirror of what #deleteProject deletes. An older
+    // snapshot may lack a table or a column a later migration added: those are left to the live schema's defaults.
+    const base = new Map<string, string[]>();
+    const add = (table: string, cond: string) => {
+      if (both(table)) base.set(table, [...(base.get(table) ?? []), cond]);
+    };
+    for (const table of this.#projectTables()) if (srcTables.has(table) && columns(src, table).includes("project")) add(table, "project = ?1");
+    const docKeys = "(SELECT key FROM docs WHERE project = ?1)";
+    const taskIds = "(SELECT id FROM tasks WHERE project = ?1)";
+    for (const [table, column] of [["doc_versions", "key"], ["proposals", "doc_key"], ["doc_assets", "doc_key"], ["doc_assists", "doc_key"]] as const) add(table, `${column} IN ${docKeys}`);
+    add("task_deps", `task_id IN ${taskIds} OR depends_on IN ${taskIds}`);
+    add("task_classify_runs", `task_id IN ${taskIds}`);
+    add("run_group_items", "group_id IN (SELECT id FROM run_groups WHERE project = ?1)");
+    add("merge_batch_items", "batch_id IN (SELECT id FROM merge_batches WHERE project = ?1)");
+    add("settings", "key = 'mergeQueue:' || ?1");
+
+    // Rows the deletion took by ON DELETE CASCADE (a thread's messages, a memory's vector): no project column says
+    // whose they are, only the foreign key to a parent that is being copied back.
+    const foreignKeys = (table: string) => {
+      const groups = new Map<number, { parent: string; from: string[]; to: string[] }>();
+      for (const fk of src.prepare(`PRAGMA foreign_key_list("${table}")`).all() as Row[]) {
+        const g = groups.get(num(fk.id)) ?? { parent: str(fk.table), from: [], to: [] };
+        g.from.push(str(fk.from));
+        g.to.push(fk.to == null ? "" : str(fk.to));
+        groups.set(num(fk.id), g);
+      }
+      return [...groups.values()].filter((g) => !g.to.includes(""));
+    };
+    const memo = new Map<string, string[]>();
+    const conditions = (table: string, path: string[]): string[] => {
+      const known = memo.get(table);
+      if (known) return known;
+      const out = [...(base.get(table) ?? [])];
+      for (const fk of foreignKeys(table)) {
+        if (fk.parent === table || path.includes(fk.parent) || !both(fk.parent)) continue;
+        const parent = conditions(fk.parent, [...path, table]);
+        if (!parent.length) continue;
+        const cols = (list: string[]) => `(${list.map((c) => `"${c}"`).join(", ")})`;
+        out.push(`${cols(fk.from)} IN (SELECT ${fk.to.map((c) => `"${c}"`).join(", ")} FROM "${fk.parent}" WHERE ${parent.map((c) => `(${c})`).join(" OR ")})`);
+      }
+      memo.set(table, out);
+      return out;
+    };
+    // The project's own tables first: task_deps below checks that both of its tasks are there.
+    const order = [...base.keys(), ...[...srcTables].filter((t) => !base.has(t) && this.#hasTable(t))];
+
+    const rows: Record<string, number> = {};
+    const count = (table: string, n = 1) => {
+      if (n) rows[table] = (rows[table] ?? 0) + n;
+    };
+    const taskThere = db.prepare("SELECT 1 FROM tasks WHERE id = ?");
+    for (const table of order) {
+      const conds = conditions(table, []);
+      if (!conds.length) continue;
+      const live = new Set(columns(db, table));
+      const cols = columns(src, table).filter((c) => live.has(c));
+      const list = cols.map((c) => `"${c}"`).join(", ");
+      const insert = db.prepare(`INSERT INTO "${table}" (${list}) VALUES (${cols.map(() => "?").join(", ")})`);
+      const select = src.prepare(`SELECT ${list} FROM "${table}" WHERE ${conds.map((c) => `(${c})`).join(" OR ")}`);
+      // Exact integers: an id past 2^53 must not come back as a different one.
+      select.setReadBigInts(true);
+      let n = 0;
+      for (const r of select.all(project) as Row[]) {
+        // A dependency on a task of another project that is gone since: the deletion dropped it both ways round.
+        if (table === "task_deps" && !(taskThere.get(r.task_id as string) && taskThere.get(r.depends_on as string))) continue;
+        try {
+          insert.run(...(cols.map((c) => r[c]) as never[]));
+        } catch (err) {
+          // Most likely an id the live hub gave to a new row after the deletion: copying it over would merge two rows.
+          throw new HiveError("conflict", `Cannot restore ${project}: ${table} ${(err as Error).message}`, { key: "errors.restoreConflict", vars: { project, table } });
+        }
+        n++;
+      }
+      count(table, n);
+    }
+
+    // Lists that only name the project: back where the snapshot had it, on the rows the live hub still has.
+    for (const [table, key] of [["machines", "id"], ["systems", "name"], ["hub_webhooks", "id"]] as const) {
+      if (!both(table)) continue;
+      for (const r of src.prepare(`SELECT ${key} AS k, projects FROM ${table}`).all() as Row[]) {
+        if (!(JSON.parse(str(r.projects ?? "[]")) as string[]).includes(project)) continue;
+        const now = db.prepare(`SELECT projects FROM ${table} WHERE ${key} = ?`).get(r.k as string) as Row | undefined;
+        const list = now ? (JSON.parse(str(now.projects ?? "[]")) as string[]) : null;
+        if (!list || list.includes(project)) continue;
+        db.prepare(`UPDATE ${table} SET projects = ? WHERE ${key} = ?`).run(JSON.stringify(table === "systems" ? [...list, project].sort() : [...list, project]), r.k as string);
+        count(`${table}.projects`);
+      }
+    }
+    const setting = (conn: DatabaseSync, key: string): any => {
+      const row = conn.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Row | undefined;
+      return row ? JSON.parse(str(row.value)) : undefined;
+    };
+    const save = (key: string, value: unknown) => {
+      db.prepare("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, JSON.stringify(value));
+      count(`settings.${key}`);
+    };
+    for (const key of ["policy", "agentPolicy", "sdlcPolicy"]) {
+      const was = setting(src, key)?.projects?.[project];
+      const now = setting(db, key);
+      // Only into a record the live hub has: a missing one is the defaults, which one project entry would not be.
+      if (was === undefined || !now?.projects || project in now.projects) continue;
+      now.projects[project] = was;
+      save(key, now);
+    }
+    const budgets = (setting(src, "budgets") ?? []) as Budget[];
+    const liveBudgets = (setting(db, "budgets") ?? []) as Budget[];
+    const ids = new Set(liveBudgets.map(budgetId));
+    const back = budgets.filter((b) => b.scope.kind === "project" && b.scope.project === project && !ids.has(budgetId(b)));
+    if (back.length) save("budgets", [...liveBudgets, ...back]);
+
+    db.prepare("DELETE FROM project_states WHERE project = ?").run(project);
+    const stored = BLOB_TABLES.filter((t) => this.#hasTable(t)).flatMap((t) =>
+      (
+        db
+          .prepare(
+            t === "doc_assets"
+              ? "SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL AND doc_key IN (SELECT key FROM docs WHERE project = ?)"
+              : "SELECT DISTINCT sha256 FROM artifacts WHERE stored IS NOT NULL AND sha256 IS NOT NULL AND project = ?",
+          )
+          .all(project) as Row[]
+      ).map((r) => str(r.sha256)),
+    );
+    return { rows, stored: [...new Set(stored)] };
   }
 
   #budgets(): Budget[] {
@@ -10538,7 +10754,7 @@ export class SqliteHive implements HiveBackend {
         if (!backup) throw new HiveError("conflict", "Backups are off: set HIVE_BACKUP_DIR.", { key: "errors.backupOff" });
         // Nothing goes until the whole hub is in a snapshot: it is the only way back from here. A backup that fails
         // throws out of the call, before a single row is touched.
-        const snapshot = await backup();
+        const snapshot = await backup({ project });
         const { rows, files } = this.#tx(() => this.#deleteProject(project, actor.name));
         // Outside the transaction: the file store is not part of it. A file left behind costs disk, a missing one costs
         // a page, so a failure here is only counted — the rows are already gone either way.
