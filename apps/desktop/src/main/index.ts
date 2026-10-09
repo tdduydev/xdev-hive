@@ -1331,7 +1331,7 @@ function registerIpc(): void {
   });
 
   handle("desktop:profiles", async () => {
-    await Promise.race([firstLoginCheck, new Promise((r) => setTimeout(r, 5_000))]);
+    await Promise.race([firstLoginCheck, new Promise((r) => setTimeout(r, 15_000))]);
     return runner.profileStatuses();
   });
   handle("desktop:saveProfile", saveProfile);
