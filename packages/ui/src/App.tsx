@@ -437,7 +437,8 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
         groups={groups}
         extraPages={extraPages}
         current={current === "read" ? "docs" : current}
-        title={t(label(current))}
+        // The sidebar names the web's runs entry by its job; the page itself keeps the design's title "Lượt chạy" (72e).
+        title={t(current === "runs" ? PAGES.runs.label : label(current))}
         scopeName={scope.kind === "system" || scope.kind === "project" ? scopeTitle(scope, systems) : null}
         subtitle={subtitle}
         webUrl={webUrl}

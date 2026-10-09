@@ -32,7 +32,7 @@ import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { fixInstructions, handoffSections, isLive, latestReviews, mrLabel, requestErrorText, runDuration, runGroup, runLabel, runOutcome, waitingReason } from "#ui/lib/runs.ts";
 import { logHeader, parseLog, parsePatch, runSteps, type DiffFile, type LogLevel } from "#ui/lib/runlog.ts";
-import { activeIntl } from "#ui/i18n/translate.ts";
+import { activeIntl, translate } from "#ui/i18n/translate.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -71,8 +71,19 @@ const CHIP = {
   neutral: "bg-neutral-soft text-neutral",
 } as const;
 
-type Filter = "focus" | "all" | "live" | "waiting" | "bad" | "done";
-const FILTERS: Filter[] = ["focus", "all", "live", "waiting", "bad", "done"];
+type Filter = "focus" | "all" | "live" | "queued" | "waiting" | "bad" | "done";
+/** The design's chips first (Tất cả, Đang chạy, Lỗi, Chờ máy, Xong), then the two the page had before. */
+const FILTERS: Filter[] = ["all", "live", "bad", "queued", "done", "focus", "waiting"];
+/**
+ * The chip a run counts under, as the design counts them: running and queued apart, and a run someone stopped is in
+ * Tất cả only (it did not fail). Unknown statuses from a newer machine still read as Lỗi.
+ */
+function chipOf(status: string): Filter | null {
+  if (status === "running") return "live";
+  if (status === "queued") return "queued";
+  if (status === "cancelled") return null;
+  return runGroup(status);
+}
 
 export function RunsPage() {
   const { client, me, scope } = useHive();
@@ -90,7 +101,7 @@ export function RunsPage() {
     const slash = linkedRun?.lastIndexOf("/") ?? -1;
     return teamRuns && slash > 0 ? client.call("runs.get", { machineId: linkedRun!.slice(0, slash), runId: linkedRun!.slice(slash + 1) }) : null;
   }, [client, teamRuns, linkedRun]);
-  const [filter, setFilter] = useState<Filter>(teamRuns ? "focus" : "all");
+  const [filter, setFilter] = useState<Filter>("all");
   const [taskFilter, setTaskFilter] = useState("");
   const [machineFilter, setMachineFilter] = useState("");
   const [query, setQuery] = useState("");
@@ -153,9 +164,10 @@ export function RunsPage() {
   const latest = latestReviews((hub.data ?? []) as RunRecord[]);
   const loaded = !local.loading && !hub.loading;
   const counts = useMemo(() => {
-    const n: Record<Filter, number> = { focus: 0, all: all.length, live: 0, waiting: 0, bad: 0, done: 0 };
+    const n: Record<Filter, number> = { focus: 0, all: all.length, live: 0, queued: 0, waiting: 0, bad: 0, done: 0 };
     for (const r of all) {
-      n[runGroup(r.run.status)]++;
+      const chip = chipOf(r.run.status);
+      if (chip) n[chip]++;
       if (waitingReason(r.run)) n.waiting++;
       if (isLive(r.run) || waitingReason(r.run)) n.focus++;
     }
@@ -172,13 +184,14 @@ export function RunsPage() {
       if (needle && ![r.run.taskId, r.run.taskTitle, r.run.profileId, r.src === "hub" ? r.run.machine : machine].join(" ").toLowerCase().includes(needle)) return false;
       if (filter === "focus") return isLive(r.run) || Boolean(waitingReason(r.run));
       if (filter === "waiting") return Boolean(waitingReason(r.run));
-      return filter === "all" || runGroup(r.run.status) === filter;
+      return filter === "all" || chipOf(r.run.status) === filter;
     });
     return { here: keep(rows.here), other: keep(rows.other), recent: keep(rows.recent) };
   }, [rows, filter, taskFilter, machineFilter, groupFilter, groups.data, machine, query]);
   const shown = [...kept.here, ...kept.other, ...kept.recent];
   // A filter narrows the list, never what a link or a click may open: #run=… still finds a run the filter leaves out.
-  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? (filter === "all" ? all[0] : null) ?? null);
+  // Nothing opens on its own: the page reads as the design's full table until a run is picked (72e).
+  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? null;
 
   let index = 0;
   useChatPageContext(current ? { id: rowId(current), href: `#/runs?run=${encodeURIComponent(current.src === "hub" ? `${current.run.machineId}/${current.run.runId}` : current.run.id)}`, project: current.run.project } : null);
@@ -224,7 +237,7 @@ export function RunsPage() {
         {hubMode ? <div className="mb-3 max-h-[40dvh] overflow-y-auto"><MergeQueue project={service} /></div> : null}
         <div className="runs-filters">
           <span className="mr-2 text-[15px]/[22px] font-semibold">{t("runs.history")}</span>
-          {(["focus", "all", "live", "bad", "waiting", "done"] as Filter[]).map(tagOf)}
+          {FILTERS.map(tagOf)}
           <span className="flex-1" />
           <Input className="runs-search h-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("runs.search")} aria-label={t("runs.search")} />
         </div>
@@ -298,12 +311,32 @@ const mrOf = (r: Row): string => {
   const iid = r.src === "hub" ? r.run.mr?.iid ?? null : r.run.mrIid;
   return mrLabel({ mrUrl: url, iid }).replace(/^MR /, "").replace(/^PR /, "");
 };
+/** The token the machine signed in with, which names whose machine it is ("MBP · Linh"): machineId is runner.x@<token name>. */
+const ownerOf = (r: Row): string | null => (r.src === "hub" ? r.run.machineId.split("@")[1] ?? null : null);
+/** The design's VIỆC column: "Review chéo", "Sửa CI · lần 1/3", "Thực hiện · lần 2", a best-of candidate's place. */
+function jobOf(row: Row, t: TFunction): string {
+  const r = row.run;
+  if (row.src === "local" && row.run.ciFix) return t("runs.job.ciFix", { n: row.run.ciFix.n, max: row.run.ciFix.max });
+  const role = r.role === "implement" ? t("runs.job.implement") : r.role.startsWith("review") ? t("runs.job.review") : runLabel("agentRole", r.role);
+  const extra = row.src === "local" ? bestOfText(row.run, t) : r.attempt && r.attempt > 1 ? t("runs.job.attempt", { n: r.attempt }) : null;
+  return [role, extra].filter(Boolean).join(" · ");
+}
+/** "6 ph", "1 giờ 12", and for a run still waiting "chờ 9 ph" from when it was asked for. */
+function elapsed(r: AgentRun | RunRecord, t: TFunction, now = Date.now()): string {
+  const from = r.status === "queued" ? r.createdAt : r.startedAt;
+  if (!from) return "—";
+  const s = Math.max(0, Math.round(((r.finishedAt ? new Date(r.finishedAt).getTime() : now) - new Date(from).getTime()) / 1000));
+  const m = Math.floor(s / 60);
+  const text = s < 60 ? t("runs.dur.sec", { n: s }) : m < 60 ? t("runs.dur.min", { n: m }) : t("runs.dur.hour", { h: Math.floor(m / 60), m: String(m % 60).padStart(2, "0") });
+  return r.status === "queued" ? t("runs.dur.wait", { time: text }) : text;
+}
 /** Design tones: a running review shows as "Review chéo" in violet, the rest by status. */
 function toneOf(r: AgentRun | RunRecord): string {
   if (r.status === "running" && r.role.startsWith("review")) return "review";
   return { running: "running", queued: "queued", succeeded: "success", failed: "danger", rate_limited: "warning" }[r.status] ?? "neutral";
 }
-const statusText = (r: AgentRun | RunRecord) => (r.status === "running" && r.role.startsWith("review") ? runLabel("agentRole", r.role) : runLabel("runStatus", r.status));
+/** The design's pill words: "Review chéo" for a review on its way, "Chờ máy" for a run no agent took yet. */
+const statusText = (r: AgentRun | RunRecord) => (r.status === "running" && r.role.startsWith("review") ? translate("runs.job.review") : r.status === "queued" ? translate("runs.filter.queued") : runLabel("runStatus", r.status));
 
 /** A live run as a card: who runs it, which task, and an indeterminate track (the list has no step count to show). */
 function RunCard({ row, on, machine, onPick }: { row: Row; on: boolean; machine: string | null; onPick: () => void }) {
@@ -347,6 +380,7 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
         aria-current={on ? "true" : undefined}
         data-run-index={index}
         data-run-status={r.status}
+        data-run-id={rowId(row)}
         data-best={row.src === "local" && row.run.bestOf ? (row.run.bestOf.n === 0 ? "judge" : row.run.bestOf.pick === row.run.bestOf.n ? "kept" : "candidate") : undefined}
         data-tone={toneOf(r)}
         onClick={onPick}
@@ -357,19 +391,19 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
           <span className="runs-mono shrink-0 text-[11.5px]/none font-semibold text-fg-muted">{r.taskId}</span>
           <span className="runs-ellipsis text-[13.5px]/[19px] font-semibold">{r.taskTitle}</span>
         </span>
-        <span data-run-service={r.project} className="runs-ellipsis text-xs/4 text-fg-secondary max-md:col-span-2" title={[runOutcome(r), bestOfText(row.run as AgentRun, t)].filter(Boolean).join(" · ")}>
-          {[runLabel("agentRole", r.role), row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
+        <span data-run-service={r.project} className="runs-ellipsis text-[13px]/[18px] text-fg-secondary max-md:col-span-2" title={runOutcome(r)}>
+          {jobOf(row, t)}
           <span className="sr-only"> {t("systemOverview.service")}: {r.project}</span>
         </span>
         <span className="flex min-w-0 items-center gap-2">
-          <span className="runs-planet size-5" style={{ ["--planet" as string]: planetOf(row) }} aria-hidden="true" />
+          <span className="runs-planet size-4" style={{ ["--planet" as string]: planetOf(row) }} aria-hidden="true" />
           <span className="flex min-w-0 flex-col">
             <span className="runs-ellipsis text-[12.5px]/4 font-semibold">{r.profileId ?? t("board.waitingProfile")}</span>
-            <span className="runs-ellipsis text-[11px]/[15px] font-medium text-fg-muted">{where ?? "—"}</span>
+            <span className="runs-ellipsis text-[11px]/[15px] font-medium text-fg-muted">{[where, ownerOf(row)].filter(Boolean).join(" · ") || "—"}</span>
           </span>
         </span>
         <span className="runs-mr" data-none={mr === "—"}>{mr}</span>
-        <span className="text-xs/4 text-fg-secondary">{runDuration(r) || "—"}</span>
+        <span className="text-[13px]/[18px] text-fg-secondary">{elapsed(r, t)}</span>
         <span className="runs-mono text-right text-xs/none font-medium text-fg-muted">{hhmm(r.startedAt ?? r.createdAt)}</span>
       </button>
     </li>
