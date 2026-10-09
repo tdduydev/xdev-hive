@@ -502,9 +502,13 @@ const initDeps = (): InitDeps => ({
   remote: (dir) => (isRepoRoot(dir) ? remoteUrl(dir) : null),
 });
 
-/** Remembers the root and the members seen, so the sync clones only what is new to this machine. */
-function rememberSystem(system: HiveSystem, root: string): void {
-  const seen = [...new Set([...(config.systemRoots[system.name]?.seen ?? []), ...(system.source?.members.map((m) => m.project) ?? [])])].sort();
+/**
+ * Remembers the root and the members seen, so the sync clones only what is new to this machine. A member whose clone
+ * failed is not seen yet: the next sync tries it again.
+ */
+function rememberSystem(system: HiveSystem, root: string, failed: string[] = []): void {
+  const members = (system.source?.members.map((m) => m.project) ?? []).filter((p) => !failed.includes(p));
+  const seen = [...new Set([...(config.systemRoots[system.name]?.seen ?? []), ...members])].sort();
   persist({ ...config, systemRoots: { ...config.systemRoots, [system.name]: { root, seen } } });
 }
 
@@ -515,7 +519,7 @@ async function systemInit(input: { system?: unknown; root?: unknown; protocol?: 
   if (!String(input?.root ?? "").trim()) throw new HiveError("bad_request", "Chọn thư mục gốc của group.", { key: "errors.systemNoRoot" });
   mkdirSync(root, { recursive: true });
   const results = await initSystem(system, root, input?.protocol === "https" ? "https" : "ssh", clonesUnder(root, system.source), initDeps());
-  rememberSystem(system, root);
+  rememberSystem(system, root, results.filter((r) => !r.ok).map((r) => r.key));
   return { results, settings: settings() };
 }
 
