@@ -2412,6 +2412,11 @@ export const vi = {
     chain: "Chuỗi run của task", noRuns: "Task chưa có run nào.", parent: "Tiếp từ {run}",
   },
   runs: {
+    lead: "Run của các máy trong nhóm báo lên hub. Log đã ẩn secret.",
+    liveNow: "Đang diễn ra · {count}",
+    history: "Lịch sử",
+    search: "Lọc task, gói, máy…",
+    col: { status: "Trạng thái", task: "Task", job: "Việc", agent: "Agent · máy", mr: "MR", time: "Thời gian", start: "Bắt đầu" },
     steerLabel: "Nhắn agent",
     steerSend: "Gửi chỉ dẫn",
     steerSending: "Đang gửi…",

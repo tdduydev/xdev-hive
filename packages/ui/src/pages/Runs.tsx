@@ -22,7 +22,11 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { ArtifactContext, ArtifactRows, ArtifactText, useArtifacts } from "#ui/components/Artifacts.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { Chip, FilterChips, ListPane, type ChipKind } from "#ui/components/panes.tsx";
+import { Chip, type ChipKind } from "#ui/components/panes.tsx";
+import { Tag } from "@xdev-hive/ui/components/ui/primitives";
+import { Input } from "@xdev-hive/ui/components/ui/input";
+import { cosmicAssets } from "#ui/assets/cosmic.ts";
+import "./Runs.css";
 import { errorMessage, formatCount, formatTime, formatUsd, useAction, useCan, useHashParam, useHive, useQuery } from "#ui/hooks.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
@@ -66,14 +70,6 @@ const CHIP = {
   warning: "bg-warning-soft text-warning",
   neutral: "bg-neutral-soft text-neutral",
 } as const;
-const MARK: Record<string, [string, string]> = {
-  running: ["●", "text-running"],
-  queued: ["◌", "text-fg-muted"],
-  succeeded: ["✓", "text-success"],
-  failed: ["✗", "text-danger"],
-  rate_limited: ["!", "text-warning"],
-  cancelled: ["–", "text-fg-muted"],
-};
 
 type Filter = "focus" | "all" | "live" | "waiting" | "bad" | "done";
 const FILTERS: Filter[] = ["focus", "all", "live", "waiting", "bad", "done"];
@@ -97,6 +93,7 @@ export function RunsPage() {
   const [filter, setFilter] = useState<Filter>(teamRuns ? "focus" : "all");
   const [taskFilter, setTaskFilter] = useState("");
   const [machineFilter, setMachineFilter] = useState("");
+  const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [linkedGroup, clearLinkedGroup] = useHashParam("group");
   useEffect(() => {
@@ -167,88 +164,120 @@ export function RunsPage() {
   const kept = useMemo(() => {
     const group = (groups.data ?? []).find((g) => String(g.id) === groupFilter);
     const ids = group ? new Set(group.items.map((i) => i.run?.runId).filter(Boolean)) : null;
+    const needle = query.trim().toLowerCase();
     const keep = (list: Row[]) => list.filter((r) => {
       if (taskFilter && r.run.taskId !== taskFilter) return false;
       if (machineFilter && (r.src === "hub" ? r.run.machineId : machine) !== machineFilter) return false;
       if (groupFilter && (!ids || !ids.has(rowId(r)))) return false;
+      if (needle && ![r.run.taskId, r.run.taskTitle, r.run.profileId, r.src === "hub" ? r.run.machine : machine].join(" ").toLowerCase().includes(needle)) return false;
       if (filter === "focus") return isLive(r.run) || Boolean(waitingReason(r.run));
       if (filter === "waiting") return Boolean(waitingReason(r.run));
       return filter === "all" || runGroup(r.run.status) === filter;
     });
     return { here: keep(rows.here), other: keep(rows.other), recent: keep(rows.recent) };
-  }, [rows, filter, taskFilter, machineFilter, groupFilter, groups.data, machine]);
+  }, [rows, filter, taskFilter, machineFilter, groupFilter, groups.data, machine, query]);
   const shown = [...kept.here, ...kept.other, ...kept.recent];
   // A filter narrows the list, never what a link or a click may open: #run=… still finds a run the filter leaves out.
-  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? (filter === "all" ? all[0] : null) ?? null);
+  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? null;
 
   let index = 0;
   useChatPageContext(current ? { id: rowId(current), href: `#/runs?run=${encodeURIComponent(current.src === "hub" ? `${current.run.machineId}/${current.run.runId}` : current.run.id)}`, project: current.run.project } : null);
-  const group = (label: string | null, list: Row[]) =>
-    list.length ? (
-      <>
-        {label ? <div className="px-2 pt-2.5 pb-1 text-[11px]/4 font-semibold text-fg-muted">{label}</div> : null}
-        <ul role="list" aria-label={label ?? t("nav.runs")} className="m-0 flex list-none flex-col gap-px p-0">{list.map((r) => (
-          <RunRow key={r.key} row={r} index={index++} on={r.key === current?.key} machine={machine} onPick={() => pick(r.key)} />
-        ))}</ul>
-      </>
-    ) : null;
+  const liveRows = shown.filter((r) => isLive(r.run));
+  const detail = current ? (
+    current.src === "local" ? (
+      <LocalDetail key={current.key} run={current.run} machine={machine ?? "—"} gitlabReady={Boolean((settings.data?.gitlab.url && settings.data.gitlab.hasToken) || settings.data?.github?.hasToken)} group={local.data ?? []} onChanged={local.reload} />
+    ) : (
+      <HubDetail key={current.key} run={current.run} latestReview={latest.has(current.key)} onChanged={hub.reload} />
+    )
+  ) : null;
+  const tagOf = (id: Filter) => (
+    <Tag key={id} role="button" tabIndex={0} active={filter === id} aria-pressed={filter === id} onClick={() => setFilter(id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFilter(id); } }} className="cursor-pointer outline-none focus-visible:focus-ring">
+      {t(`runs.filter.${id}`)} · {counts[id]}
+    </Tag>
+  );
 
-  return (
-    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
-      <ListPane
-        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
-        label={t("nav.runs")}
-        head={
-          <>
-            <ServiceFilter scope={scope} value={service} onChange={setService} />
-            {hubMode ? <div className="max-h-[40dvh] overflow-y-auto"><MergeQueue project={service} /></div> : null}
-            <div className="max-md:[&_button]:min-h-11 max-md:[&_button]:text-xs"><FilterChips value={filter} options={FILTERS.map((id) => ({ id, label: t(`runs.filter.${id}`), count: counts[id] }))} onChange={setFilter} /></div>
-            {teamRuns ? <details data-run-filters>
-              <summary className="min-h-11 cursor-pointer content-center rounded-sm text-xs font-medium text-fg-secondary outline-none focus-visible:focus-ring md:min-h-8">{t("runs.moreFilters")}{[groupFilter, taskFilter, machineFilter].filter(Boolean).length ? ` (${[groupFilter, taskFilter, machineFilter].filter(Boolean).length})` : ""}</summary>
-              <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-3 md:grid-cols-1">
-              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
-              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.taskFilter")} value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allTasks")}</NativeSelectOption>{[...new Map(all.map((r) => [r.run.taskId, r.run.taskTitle])).entries()].map(([id, title]) => <NativeSelectOption key={id} value={id}>{id} · {title}</NativeSelectOption>)}</NativeSelect>
-              <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.machineFilter")} value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allMachines")}</NativeSelectOption>{[...new Map((hub.data ?? []).map((r) => [r.machineId, r.machine])).entries()].map(([id, name]) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}</NativeSelect>
-            </div></details> : null}
-            {groupFilter ? <a className="text-xs text-fg-link underline underline-offset-2" href={`#/runs?tab=batches&group=${encodeURIComponent(groupFilter)}`}>{t("runs.manageGroup")}</a> : null}
-            {profile ? (
-              <button
-                type="button"
-                data-profile-filter={profile}
-                title={t("runs.profileFilterClear")}
-                onClick={() => setProfile(null)}
-                className="flex h-[22px] w-fit cursor-pointer items-center gap-1 rounded-full border border-line-selected bg-selected px-2 text-[11px]/none font-medium text-selected-fg outline-none focus-visible:focus-ring"
-              >
-                {t("runs.profileFilter", { profile })}
-                <X className="size-3" aria-hidden="true" />
-              </button>
-            ) : null}
-            <ErrorNote error={local.error ?? hub.error ?? linked.error} />
-          </>
-        }
-      >
-        {group(desktop ? t("runs.here", { count: kept.here.length }) : null, kept.here)}
-        {group(teamRuns ? t("runs.otherMachines") : null, kept.other)}
-        {group(t("runs.recent"), kept.recent)}
-        {loaded && !shown.length ? (
-          <div className="px-3 py-8 text-center text-[13px] text-fg-muted">{all.length || profile ? t("runs.noneFilter") : teamRuns ? t("runs.none") : t("runs.noneHere")}</div>
-        ) : null}
-      </ListPane>
-      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
-        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
-        {current ? (
-          current.src === "local" ? (
-            <LocalDetail key={current.key} run={current.run} machine={machine ?? "—"} gitlabReady={Boolean((settings.data?.gitlab.url && settings.data.gitlab.hasToken) || settings.data?.github?.hasToken)} group={local.data ?? []} onChanged={local.reload} />
-          ) : (
-            <HubDetail key={current.key} run={current.run} latestReview={latest.has(current.key)} onChanged={hub.reload} />
-          )
-        ) : (
-          <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{loaded ? t("runs.pick") : null}</div>
-        )}
+  // Phone: the detail takes the page, as before. Desktop: the page stays and the detail is the design's right-hand drawer.
+  if (mobileDetail.showingDetail) {
+    return (
+      <div className="mobile-master-detail flex h-full min-h-0 w-full flex-col bg-surface">
+        <MobileBack onClick={() => pick(null)} />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">{detail ?? <div className="grid flex-1 place-items-center p-6 text-[13px] text-fg-muted">{loaded ? t("runs.pick") : null}</div>}</div>
       </div>
+    );
+  }
+  return (
+    <div className="mobile-master-detail flex h-full min-h-0 w-full">
+      <section className="runs-page" aria-label={t("nav.runs")}>
+        <p className="runs-sub">{t("runs.lead")}</p>
+        <div className="mb-3 flex flex-col gap-2">
+          <ServiceFilter scope={scope} value={service} onChange={setService} />
+          <ErrorNote error={local.error ?? hub.error ?? linked.error} />
+        </div>
+        {liveRows.length ? (
+          <>
+            <div className="runs-live-title"><span className="runs-live-dot" aria-hidden="true" />{t("runs.liveNow", { count: liveRows.length })}</div>
+            <div className="runs-live-grid" data-runs-live>
+              {liveRows.map((r) => <RunCard key={r.key} row={r} on={r.key === current?.key} machine={machine} onPick={() => pick(r.key)} />)}
+            </div>
+          </>
+        ) : null}
+        {hubMode ? <div className="mb-3 max-h-[40dvh] overflow-y-auto"><MergeQueue project={service} /></div> : null}
+        <div className="runs-filters">
+          <span className="mr-2 text-[15px]/[22px] font-semibold">{t("runs.history")}</span>
+          {(["focus", "all", "live", "bad", "waiting", "done"] as Filter[]).map(tagOf)}
+          <span className="flex-1" />
+          <Input className="runs-search h-9" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("runs.search")} aria-label={t("runs.search")} />
+        </div>
+        {teamRuns ? <details data-run-filters className="runs-more">
+          <summary className="min-h-11 cursor-pointer content-center rounded-sm text-xs font-medium text-fg-secondary outline-none focus-visible:focus-ring md:min-h-8">{t("runs.moreFilters")}{[groupFilter, taskFilter, machineFilter].filter(Boolean).length ? ` (${[groupFilter, taskFilter, machineFilter].filter(Boolean).length})` : ""}</summary>
+          <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-3">
+            <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.groupFilter")} value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allGroups")}</NativeSelectOption>{(groups.data ?? []).map((g) => <NativeSelectOption key={g.id} value={String(g.id)}>{g.title || `#${g.id}`}</NativeSelectOption>)}</NativeSelect>
+            <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.taskFilter")} value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allTasks")}</NativeSelectOption>{[...new Map(all.map((r) => [r.run.taskId, r.run.taskTitle])).entries()].map(([id, title]) => <NativeSelectOption key={id} value={id}>{id} · {title}</NativeSelectOption>)}</NativeSelect>
+            <NativeSelect wrapperClassName="w-full min-w-0" className="w-full max-md:h-11 max-md:text-base" aria-label={t("runs.machineFilter")} value={machineFilter} onChange={(e) => setMachineFilter(e.target.value)}><NativeSelectOption value="">{t("runs.allMachines")}</NativeSelectOption>{[...new Map((hub.data ?? []).map((r) => [r.machineId, r.machine])).entries()].map(([id, name]) => <NativeSelectOption key={id} value={id}>{name}</NativeSelectOption>)}</NativeSelect>
+          </div></details> : null}
+        {groupFilter ? <a className="mb-3 block text-xs text-fg-link underline underline-offset-2" href={`#/runs?tab=batches&group=${encodeURIComponent(groupFilter)}`}>{t("runs.manageGroup")}</a> : null}
+        {profile ? (
+          <button
+            type="button"
+            data-profile-filter={profile}
+            title={t("runs.profileFilterClear")}
+            onClick={() => setProfile(null)}
+            className="mb-3 flex h-[22px] w-fit cursor-pointer items-center gap-1 rounded-full border border-line-selected bg-selected px-2 text-[11px]/none font-medium text-selected-fg outline-none focus-visible:focus-ring"
+          >
+            {t("runs.profileFilter", { profile })}
+            <X className="size-3" aria-hidden="true" />
+          </button>
+        ) : null}
+        <div className="runs-table">
+          <div>
+            <div className="runs-grid runs-head" aria-hidden="true">
+              <span>{t("runs.col.status")}</span><span>{t("runs.col.task")}</span><span>{t("runs.col.job")}</span><span>{t("runs.col.agent")}</span><span>{t("runs.col.mr")}</span><span>{t("runs.col.time")}</span><span className="text-right">{t("runs.col.start")}</span>
+            </div>
+            <ul role="list" aria-label={t("nav.runs")} className="m-0 list-none p-0">
+              {shown.map((r) => <RunRow key={r.key} row={r} index={index++} on={r.key === current?.key} machine={machine} onPick={() => pick(r.key)} />)}
+            </ul>
+            {loaded && !shown.length ? (
+              <div className="runs-empty">{all.length || profile ? t("runs.noneFilter") : teamRuns ? t("runs.none") : t("runs.noneHere")}</div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+      {current && !mobileDetail.mobile ? (
+        <>
+          <div className="runs-scrim" onClick={() => pick(null)} aria-hidden="true" />
+          <aside className="runs-drawer" role="dialog" aria-label={current.run.taskTitle} onKeyDown={(e) => { if (e.key === "Escape") pick(null); }}>
+            <div className="runs-drawer-bar">
+              <span className="runs-planet size-9" style={{ ["--planet" as string]: planetOf(current) }} aria-hidden="true" />
+              <button type="button" className="runs-drawer-close" aria-label={t("common.close")} onClick={() => pick(null)}><X className="size-4" aria-hidden="true" /></button>
+            </div>
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">{detail}</div>
+          </aside>
+        </>
+      ) : null}
     </div>
   );
 }
+
 
 /** "bản 2/3 · được giữ", "giám khảo": a best-of-n run's place in its group. */
 function bestOfText(run: AgentRun, t: TFunction): string | null {
@@ -259,16 +288,59 @@ function bestOfText(run: AgentRun, t: TFunction): string | null {
   return `${t("board.candidateOf", { n: b.n, of: b.of })}${kept}`;
 }
 
-/** One run in the list: the task's title, what came of it in words, then the plan; the ids stay the faintest line. */
+const kindOf = (r: Row): string | null => (r.src === "hub" ? r.run.kind : r.run.agentKind) ?? null;
+/** The planet image stands for the agent's CLI: claude violet, codex green, gemini blue (the design's avatars). */
+const planetOf = (r: Row): string => `url("${{ codex: cosmicAssets.planetGreen, gemini: cosmicAssets.planetBlue }[kindOf(r) ?? ""] ?? cosmicAssets.planetViolet}")`;
+const hhmm = (iso: string | null): string => (iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "—");
+const mrOf = (r: Row): string => {
+  const url = r.run.mrUrl;
+  if (!url) return "—";
+  const iid = r.src === "hub" ? r.run.mr?.iid ?? null : r.run.mrIid;
+  return mrLabel({ mrUrl: url, iid }).replace(/^MR /, "").replace(/^PR /, "");
+};
+/** Design tones: a running review shows as "Review chéo" in violet, the rest by status. */
+function toneOf(r: AgentRun | RunRecord): string {
+  if (r.status === "running" && r.role.startsWith("review")) return "review";
+  return { running: "running", queued: "queued", succeeded: "success", failed: "danger", rate_limited: "warning" }[r.status] ?? "neutral";
+}
+const statusText = (r: AgentRun | RunRecord) => (r.status === "running" && r.role.startsWith("review") ? runLabel("agentRole", r.role) : runLabel("runStatus", r.status));
+
+/** A live run as a card: who runs it, which task, and an indeterminate track (the list has no step count to show). */
+function RunCard({ row, on, machine, onPick }: { row: Row; on: boolean; machine: string | null; onPick: () => void }) {
+  const t = useT();
+  const r = row.run;
+  const tone = toneOf(r);
+  const where = row.src === "hub" ? row.run.machine : machine;
+  return (
+    <button type="button" className="runs-card" data-tone={tone} data-run-card={r.status} aria-current={on ? "true" : undefined} onClick={onPick}>
+      <span className="flex items-center gap-2.5">
+        <span className="runs-planet size-[30px]" style={{ ["--planet" as string]: planetOf(row) }} aria-hidden="true" />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-[13px]/[18px] font-semibold">{r.profileId ?? t("board.waitingProfile")}</span>
+          <span className="runs-ellipsis text-xs/4 text-fg-muted">{where ?? "—"}</span>
+        </span>
+        <span className="runs-pill text-[11px]/none font-semibold"><i />{statusText(r)}</span>
+      </span>
+      <span className="flex flex-col gap-[3px]">
+        <span className="runs-mono text-[11.5px]/none font-semibold text-fg-muted">{r.taskId}</span>
+        <span className="text-sm/5 font-semibold text-pretty">{r.taskTitle}</span>
+      </span>
+      <span className="flex flex-col gap-1.5">
+        <span className="flex text-xs/4 text-fg-secondary"><span className="flex-1">{waitingReason(r) ? t("runs.waiting") : r.activity ?? runLabel("agentRole", r.role)}</span><span className="text-fg-muted">{runDuration(r)}</span></span>
+        <span className="runs-track" aria-hidden="true" data-still={r.status === "queued"}><span /></span>
+      </span>
+    </button>
+  );
+}
+
+/** One run in the table: status, task, the job, agent · machine, MR, how long, when it started. */
 function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; on: boolean; machine: string | null; onPick: () => void }) {
   const t = useT();
   const r = row.run;
-  const [mark, markCls] = MARK[r.status] ?? ["•", "text-fg-muted"];
-  const live = isLive(r);
-  const waiting = waitingReason(r);
+  const mr = mrOf(row);
   const where = row.src === "hub" ? row.run.machine : machine;
   return (
-    <li className="flex flex-col">
+    <li>
       <button
         type="button"
         data-pane-item
@@ -276,35 +348,29 @@ function RunRow({ row, index, on, machine, onPick }: { row: Row; index: number; 
         data-run-index={index}
         data-run-status={r.status}
         data-best={row.src === "local" && row.run.bestOf ? (row.run.bestOf.n === 0 ? "judge" : row.run.bestOf.pick === row.run.bestOf.n ? "kept" : "candidate") : undefined}
+        data-tone={toneOf(r)}
         onClick={onPick}
-        className={cn(
-          "flex shrink-0 cursor-pointer flex-col gap-[3px] rounded-sm px-2.5 py-2 text-left outline-none focus-visible:focus-ring max-md:min-h-11",
-          on ? "bg-surface shadow-e1" : "hover:bg-hover",
-        )}
+        className="runs-grid runs-row"
       >
-        <span className="flex w-full min-w-0 items-center gap-1.5">
-          <span className={cn("shrink-0 text-[11px]/none", markCls)} aria-hidden="true">
-            {mark}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{r.taskTitle}</span>
-          {waiting ? <Chip kind="warning" small>{t("runs.waiting")}</Chip> : null}
-          <span className="shrink-0 text-[11px]/none text-fg-muted tabular-nums">{live ? runDuration(r) : formatTime(rowTime(row))}</span>
+        <span className="runs-pill"><i />{statusText(r)}</span>
+        <span className="flex min-w-0 items-baseline gap-2.5 max-md:col-span-2">
+          <span className="runs-mono shrink-0 text-[11.5px]/none font-semibold text-fg-muted">{r.taskId}</span>
+          <span className="runs-ellipsis text-[13.5px]/[19px] font-semibold">{r.taskTitle}</span>
         </span>
-        <span data-run-service={r.project} className="text-xs text-fg-secondary wrap-anywhere">{t("systemOverview.service")}: <span className="font-mono">{r.project}</span></span>
-        <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{runOutcome(r)}</span>
-        <ModelRunChip run={r} focusable={false} />
-        <span className="truncate text-xs/[17px] text-fg-muted md:text-[11px]/[14px]">
-          {[r.profileId, runLabel("agentRole", r.role), row.src === "hub" && where ? where : null, row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
-          <span className="font-mono text-fg-muted">
-            {" · "}
-            {rowId(row)} · {r.taskId}
+        <span data-run-service={r.project} className="runs-ellipsis text-xs/4 text-fg-secondary max-md:col-span-2" title={[runOutcome(r), bestOfText(row.run as AgentRun, t)].filter(Boolean).join(" · ")}>
+          {[runLabel("agentRole", r.role), row.src === "local" ? bestOfText(row.run, t) : null].filter(Boolean).join(" · ")}
+          <span className="sr-only"> {t("systemOverview.service")}: {r.project}</span>
+        </span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="runs-planet size-5" style={{ ["--planet" as string]: planetOf(row) }} aria-hidden="true" />
+          <span className="flex min-w-0 flex-col">
+            <span className="runs-ellipsis text-[12.5px]/4 font-semibold">{r.profileId ?? t("board.waitingProfile")}</span>
+            <span className="runs-ellipsis text-[11px]/[15px] font-medium text-fg-muted">{where ?? "—"}</span>
           </span>
         </span>
-        {r.status === "running" ? (
-          <span className="relative mt-0.5 h-[3px] overflow-hidden rounded-full bg-sunken" aria-hidden="true">
-            <span className="absolute inset-y-0 left-0 w-2/5 animate-[xd-indeterminate_1.6s_var(--ease-standard)_infinite] rounded-full bg-brand-gradient-h motion-reduce:animate-none" />
-          </span>
-        ) : null}
+        <span className="runs-mr" data-none={mr === "—"}>{mr}</span>
+        <span className="text-xs/4 text-fg-secondary">{runDuration(r) || "—"}</span>
+        <span className="runs-mono text-right text-xs/none font-medium text-fg-muted">{hhmm(r.startedAt ?? r.createdAt)}</span>
       </button>
     </li>
   );

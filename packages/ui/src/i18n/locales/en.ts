@@ -2407,6 +2407,11 @@ export const en: Catalog = {
     chain: "Task run chain", noRuns: "This task has no runs yet.", parent: "Continues from {run}",
   },
   runs: {
+    lead: "Runs reported to the hub by your team's machines. Logs have secrets removed.",
+    liveNow: "In progress · {count}",
+    history: "History",
+    search: "Filter task, package, machine…",
+    col: { status: "Status", task: "Task", job: "Job", agent: "Agent · machine", mr: "MR", time: "Duration", start: "Started" },
     steerLabel: "Message agent",
     steerSend: "Send instructions",
     steerSending: "Sending…",
