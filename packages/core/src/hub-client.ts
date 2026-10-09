@@ -165,8 +165,9 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}` },
     body: JSON.stringify({ project, readOnly }),
   });
-  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { message?: string } } | null;
-  if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
+  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { message?: string; key?: string; vars?: unknown } } | null;
+  // The key and vars travel too: the MCP tells an archived or deleted project apart from any other refusal by them.
+  if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
   return body.result.token;
 }
 

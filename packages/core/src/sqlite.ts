@@ -4081,6 +4081,20 @@ export class SqliteHive implements HiveBackend {
   }
 
   /**
+   * The error for a credential bound to an archived or deleted project, or null while it is in use. Its scope is that
+   * one project, so without this every list it reads is filtered down to nothing and the hub looks empty (incident
+   * 2026-10-09). Who and when are in the message: the person fixing .mcp.json needs to know whom to ask.
+   */
+  closedProject(project: string): HiveError | null {
+    const row = this.db.prepare(`SELECT state, at, "by" FROM project_states WHERE project = ?`).get(project) as Row | undefined;
+    if (!row) return null;
+    const deleted = str(row.state) === "deleted";
+    const vars = { project, by: str(row.by), at: str(row.at) };
+    return new HiveError("conflict", `Project ${project} was ${deleted ? "deleted" : "archived"} by ${vars.by} at ${vars.at}.`,
+      { key: deleted ? "errors.projectDeleted" : "errors.projectArchived", vars });
+  }
+
+  /**
    * Refuses a write to an archived or deleted project. Reads stay open on purpose: a hub admin has to be able to look
    * through what is in the archive before restoring it or deciding to delete it.
    */

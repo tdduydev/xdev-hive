@@ -332,6 +332,8 @@ export function createHubApp({
       const full = user ? users.access(user) : undefined;
       const project = who.mcp.project;
       if (project && full && !grantPermissions(full.projects[project]).has("view")) return null;
+      // authenticate answers with why the project is gone; the terminal upgrade refuses agent credentials anyway.
+      res.locals.mcpProject = project;
       const access = project
         ? { projects: { [project]: full?.projects[project] ?? "member" }, shared: full ? { permissions: [...sharedPermissions(full)] } : "member" } as Actor["access"]
         : full;
@@ -397,6 +399,12 @@ export function createHubApp({
           res.status(403).json({ error: { code: "forbidden", message: "Agent credentials are limited to agent calls." } });
           return;
         }
+        // A credential issued before its project was archived or deleted: a clear error rather than empty lists.
+        const closed = typeof res.locals.mcpProject === "string" ? hive.closedProject(res.locals.mcpProject) : null;
+        if (closed) {
+          sendError(res, closed);
+          return;
+        }
         res.locals.actor = actor;
         next();
         return;
@@ -458,6 +466,8 @@ export function createHubApp({
       if ((project !== null && (typeof project !== "string" || !PROJECT_NAME.test(project))) || typeof readOnly !== "boolean")
         throw new HiveError("bad_request", "Invalid MCP credential request.");
       if (project && !sees(actor, project)) throw new HiveError("forbidden", "No access to this project.");
+      const closed = project ? hive.closedProject(project) : null;
+      if (closed) throw closed;
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
       res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly) } });
     } catch (err) { sendError(res, err); }
