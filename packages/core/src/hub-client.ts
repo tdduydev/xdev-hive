@@ -35,7 +35,7 @@ export async function requestDeviceToken(
       name: input.machine.replace(/[^\w.-]/g, "-").slice(0, 60) || "desktop",
     }),
   });
-  const body = (await res.json().catch(() => null)) as
+  const body = (await hubBody(res, hub)) as
     | { result?: { token: string; user: NonNullable<Me["user"]> }; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
     | null;
   if (!res.ok || !body?.result) {
@@ -51,18 +51,42 @@ export async function requestDeviceToken(
 export class HubBackend implements HiveBackend {
   readonly url: string;
   readonly #token: string;
+  readonly #shutdown = new AbortController();
+  #quitQueue: ((id: string, method: string, input: unknown, actor: Actor) => void) | null = null;
 
   constructor(url: string, token: string) {
     this.url = url.replace(/\/+$/, "");
     this.#token = token;
   }
 
+  /** End all pending and future hub calls by the quit deadline; local bookkeeping can continue. */
+  stopForQuit(): void {
+    setTimeout(() => this.#shutdown.abort(), 10_000);
+  }
+
+  setQuitQueue(queue: (id: string, method: string, input: unknown, actor: Actor) => void): void {
+    this.#quitQueue = queue;
+  }
+
+  async replayReport(id: string, method: "tasks.update" | "runs.report", input: MethodInput<typeof method>, actor: Actor): Promise<unknown> {
+    const capability = await reach(this.url, `${this.url}/api/me`, {
+      signal: this.#shutdown.signal,
+      headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": actor.name },
+    });
+    if (!capability.ok) throw new HiveError(CODES[capability.status] ?? "unavailable", `Hub responded ${capability.status}`);
+    if (capability.headers.get("x-hive-report-idempotency") !== "1") {
+      throw new HiveError("unavailable", "The hub cannot safely replay a report yet.");
+    }
+    return this.#call(method, input, actor, id);
+  }
+
   /** Who the hub thinks we are (name and role come from the token). */
   async me(label: string): Promise<Me> {
     const res = await reach(this.url, `${this.url}/api/me`, {
+      signal: this.#shutdown.signal,
       headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": label },
     });
-    const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
+    const body = (await hubBody(res, this.url)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
     if (!res.ok || !body?.result) {
       throw new HiveError((body?.error?.code as HiveErrorCode) ?? CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
     }
@@ -70,26 +94,41 @@ export class HubBackend implements HiveBackend {
   }
 
   async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
-    const res = await reach(this.url, `${this.url}/api/rpc`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${this.#token}`,
-        "x-hive-agent": actor.name,
-        ...(actor.source ? { "x-hive-source": sourceHeader(actor.source) } : {}),
-        // The hub keeps it on the audit row of every write the agent makes (roadmap 27c).
-        ...(actor.run ? { "x-hive-run": actor.run } : {}),
-      },
-      body: JSON.stringify({ method, input }),
-    });
-    const body = (await res.json().catch(() => null)) as
-      | { result?: MethodOutput[M]; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
-      | null;
-    if (!res.ok || !body || body.error) {
-      const code = (body?.error?.code as HiveErrorCode | undefined) ?? CODES[res.status] ?? "bad_request";
-      throw new HiveError(code, body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
+    return this.#call(method, input, actor);
+  }
+
+  async #call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor, replayId?: string): Promise<MethodOutput[M]> {
+    const report = method === "tasks.update" || method === "runs.report";
+    const id = replayId ?? (report ? crypto.randomUUID() : undefined);
+    try {
+      const res = await reach(this.url, `${this.url}/api/rpc`, {
+        signal: this.#shutdown.signal,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${this.#token}`,
+          "x-hive-agent": actor.name,
+          ...(actor.source ? { "x-hive-source": sourceHeader(actor.source) } : {}),
+          // The hub keeps it on the audit row of every write the agent makes (roadmap 27c).
+          ...(actor.run ? { "x-hive-run": actor.run } : {}),
+          ...(id ? { "x-hive-idempotency": id } : {}),
+        },
+        body: JSON.stringify({ method, input }),
+      }, method === "artifacts.put" || method === "docs.assetPut" ? 45_000 : 15_000);
+      const body = (await hubBody(res, this.url)) as
+        | { result?: MethodOutput[M]; error?: { code?: string; message?: string; key?: string; vars?: unknown } }
+        | null;
+      if (!res.ok || !body || body.error) {
+        const code = (body?.error?.code as HiveErrorCode | undefined) ?? CODES[res.status] ?? "bad_request";
+        throw new HiveError(code, body?.error?.message ?? `Hub responded ${res.status}`, textOf(body?.error));
+      }
+      return body.result as MethodOutput[M];
+    } catch (err) {
+      if (report && id && this.#shutdown.signal.aborted && err instanceof HiveError && err.code === "unavailable") {
+        this.#quitQueue?.(id, method, input, actor);
+      }
+      throw err;
     }
-    return body.result as MethodOutput[M];
   }
 }
 
@@ -105,7 +144,7 @@ export async function issueRunCredential(
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}`, "x-hive-agent": `runner.${machine}` },
     body: JSON.stringify({ ...input, machine }),
   });
-  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { code?: string; message?: string } } | null;
+  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { code?: string; message?: string } } | null;
   if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
   return body.result.token;
 }
@@ -126,7 +165,7 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}` },
     body: JSON.stringify({ project, readOnly }),
   });
-  const body = (await res.json().catch(() => null)) as { result?: { token?: string }; error?: { message?: string } } | null;
+  const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { message?: string } } | null;
   if (!res.ok || !body?.result?.token) throw new HiveError(CODES[res.status] ?? "bad_request", body?.error?.message ?? `Hub responded ${res.status}`);
   return body.result.token;
 }
@@ -135,12 +174,24 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
  * fetch, with a hub that cannot be reached (refused, DNS, offline, TLS) as HiveError "unavailable": the desktop
  * shows it as a lost connection and keeps drafts to send later, instead of as a failed request.
  */
-async function reach(hub: string, url: string, init: RequestInit): Promise<Response> {
+async function reach(hub: string, url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
   try {
-    return await fetch(url, init);
+    return await fetch(url, { ...init, signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(timeoutMs)]) });
   } catch (err) {
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     const reason = cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
     throw new HiveError("unavailable", `Cannot reach the hub ${hub}: ${reason}`, { key: "errors.hubUnreachable", vars: { reason } });
+  }
+}
+
+async function hubBody(res: Response, hub: string): Promise<unknown> {
+  try {
+    return await res.json();
+  } catch (err) {
+    // A timeout can arrive after headers, while the response body is still stalled.
+    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+      throw new HiveError("unavailable", `Cannot reach the hub ${hub}: ${err.message}`, { key: "errors.hubUnreachable", vars: { reason: err.message } });
+    }
+    return null;
   }
 }

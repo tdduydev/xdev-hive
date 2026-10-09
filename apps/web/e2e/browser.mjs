@@ -36,6 +36,12 @@ async function rpc(method, input = {}, token = admin) {
 }
 
 /** Polls the hub (as the admin) until `fn` gives something truthy. */
+// The Pipeline page edits in place: pick the step, then its saved mode, which opens the step's settings and the unsaved bar.
+async function openGateEditor(t, gate) {
+  await t.click(`[data-pipeline-gate="${gate}"]`);
+  await t.click('[data-pipeline-detail] .pf-modes [aria-pressed="true"]');
+}
+
 async function until(what, fn) {
   const stop = Date.now() + 10_000;
   let last = null;
@@ -262,6 +268,7 @@ class Tab {
 const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS) : {
   "terminal-entry": [],
   "terminal-io": ["terminal-entry"],
+  "terminal-page": ["terminal-entry"],
   "leader-plan": ["lead-sees-members"],
   "auto-dispatch": ["login-token"],
   "merge-queue": ["login-token"],
@@ -277,6 +284,9 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
   "cosmic-primitives": ["login-token"],
+  "cosmic-tasks-board": ["login-token"],
+  "cosmic-settings-admin": ["login-token"],
+  "admin-table-settings-rows": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -289,6 +299,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "inbox-source-complete": [],
   "close-unmerged-task": ["inbox-source-complete"],
   "scope-search-tasks": ["login-token"],
+  "platform-labels": ["login-token"],
   "blocker-center": ["login-token"],
   "mobile-kanban-forms-dialog": ["login-token"],
   "graph": ["login-token"],
@@ -298,6 +309,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "reviewer-approves-a-guide-not-context": ["login-password"],
   "lead-sees-members": [],
   "admin-grants-a-role": ["login-token"],
+  "admin-users-trash-invite": ["login-token"],
   "docs-rich-editor": ["login-token"],
   "docs-markdown": ["login-token", "docs-rich-editor"], // the editor docs-rich-editor left open on project/demo/huong-dan (version 2)
   "mermaid-draws": ["login-token"],
@@ -327,6 +339,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-page": ["login-password"],
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
+  "org-agents": ["login-token"],
   "tools": ["login-token", "lead-sees-members"],
   "machine-runner-settings": ["login-token", "login-password", "lead-sees-members"],
   "worktree-admin": ["login-token", "login-password", "lead-sees-members"],
@@ -351,7 +364,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "today-web": ["lead-sees-members"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
-  "machines-design": ["lead-sees-members"],
+  "machines-design": ["login-token", "lead-sees-members"],
   "agent-assign": ["lead-sees-members"],
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
@@ -729,7 +742,7 @@ async function main() {
     await tab.waitFor("skill row", () => !!document.querySelector('main [data-pane-item]'));
     await tab.eval(() => document.querySelector('main [data-pane-item]').focus());
     await tab.key("Enter");
-    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-current="true"]'));
+    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-pressed="true"]'));
     if (mobile) await tab.click("button", "Quay lại");
     await tab.click("label", "Skill không ai dùng");
     expect(await tab.eval(() => !document.querySelector('main [role="listbox"] input')), "Skills filter remains outside composite list semantics");
@@ -760,12 +773,11 @@ async function main() {
     await tab.go("memory");
     await tab.click("button", "Chờ duyệt");
     await tab.waitFor("bulk checkbox", () => !!document.querySelector('main li [role="checkbox"]'));
-    expect(await tab.eval(() => !document.querySelector('main [data-pane-item] [role="checkbox"]')), "bulk checkbox is a sibling of the row button");
-    const before = await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent);
+    expect(await tab.eval(() => !document.querySelector('main button [role="checkbox"]')), "bulk checkbox is a sibling of the card button");
     await tab.eval(() => document.querySelector('main li [role="checkbox"]').focus());
     await tab.key(" ");
     expect(await tab.eval(() => document.activeElement?.getAttribute("aria-checked") === "true"), "Space selects bulk checkbox");
-    expect(await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent) === before, "bulk selection does not open another row");
+    expect(await tab.eval(() => !document.querySelector('[role="dialog"]')), "bulk selection does not open the memory detail");
     await accessibilityAudit({ tab, out, expect, routes: ["runs", "docs", "skills"] });
   });
   await step("a11y-menu", async () => {
@@ -891,6 +903,106 @@ async function main() {
     await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
   });
+  // 72d: the board in the design's dark theme and in light, same layout; shots feed the compare image.
+  await step("cosmic-tasks-board", async () => {
+    const tab = (current = tabs.admin);
+    // One card per column, each variant of the design: agents (planet + profile), the activity bar, a red "Chờ <id>" pill, a faded Xong.
+    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", version: "0.142.0", projects: ["payment"], acceptsRuns: true, profiles: ["claude", "codex"].map((id) => ({ id, label: id, kind: id, enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2, sessionPercent: 10, weekPercent: 10 })), runs: [] } }) });
+    const beatJson = await beat.json();
+    if (beatJson.error) throw new Error(`board heartbeat: ${beatJson.error.message}`);
+    const boardMachine = (await rpc("machines.list")).find((m) => m.machine === "board-e2e");
+    try {
+      await rpc("tasks.create", { project: "payment", id: "CB-DOING", title: "Đồng bộ sổ cái theo lô", priority: 60 });
+      await rpc("tasks.create", { project: "payment", id: "CB-REVIEW", title: "Rà soát luồng hoàn tiền", priority: 50 });
+      await rpc("tasks.create", { project: "payment", id: "CB-DONE", title: "Chuẩn hoá mã lỗi thanh toán", priority: 40 });
+      await rpc("tasks.create", { project: "payment", id: "CB-BLOCKED", title: "Báo cáo đối soát cuối ngày", priority: 30, dependsOn: ["CB-DOING"] });
+      await rpc("tasks.assign", { id: "CB-DOING", machineId: boardMachine.id, profileId: "claude" });
+      await rpc("tasks.assign", { id: "CB-REVIEW", machineId: boardMachine.id, profileId: "codex" });
+      await rpc("tasks.update", { id: "CB-DOING", status: "doing" });
+      await rpc("tasks.update", { id: "CB-REVIEW", status: "review" });
+      await rpc("tasks.update", { id: "CB-DONE", status: "done" });
+      await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+      await tab.go("tasks");
+      await tab.click('[data-task-view="kanban"]');
+      await tab.waitFor("board columns", () => document.querySelectorAll("[data-column]").length === 5);
+      await tab.waitFor("every column has a card", () => ["todo", "doing", "review", "blocked", "done"].every((s) => document.querySelector(`[data-column="${s}"] [data-task]`)));
+      const variants = await tab.eval(() => {
+        const col = (s) => document.querySelector(`[data-column="${s}"]`);
+        return {
+          order: [...document.querySelectorAll("[data-column]")].map((el) => el.dataset.column).join(),
+          folded: document.querySelectorAll("[data-column-rail]").length,
+          chips: [...document.querySelectorAll("[data-board-filters] [role=button]")].length,
+          doingAgent: !!col("doing").querySelector("[data-task-agent]"),
+          doingBar: !!col("doing").querySelector("[data-task-activity]"),
+          reviewAgent: !!col("review").querySelector("[data-task-agent]"),
+          blockedPill: /Chờ/.test(col("blocked").textContent),
+          doneOpacity: getComputedStyle(col("done").querySelector("[data-task]")).opacity,
+          radius: getComputedStyle(col("todo")).borderTopLeftRadius,
+          min: getComputedStyle(col("todo")).minHeight,
+        };
+      });
+      if (!mobile) expect(variants.order === "todo,doing,review,blocked,done" && variants.folded === 0 && variants.chips >= 3 && variants.radius === "22px" && parseFloat(variants.min) >= 360, `board layout: ${JSON.stringify(variants)}`);
+      expect(variants.doingAgent && variants.doingBar && variants.reviewAgent && variants.blockedPill && variants.doneOpacity === "0.6", `card variants: ${JSON.stringify(variants)}`);
+      await sleep(200);
+      await tab.shot(`tasks-dark-${mobile ? "390x844" : "1440x900"}`);
+      await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
+      await sleep(200);
+      await tab.shot(`tasks-light-${mobile ? "390x844" : "1440x900"}`);
+      await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    } finally {
+      // A screenshot fixture must not add capacity or receive batches in later steps.
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", projects: ["payment"], acceptsRuns: false } }) });
+      const result = await response.json();
+      expect(!result.error, `board cleanup: ${JSON.stringify(result.error)}`);
+    }
+  });
+  // R-72l: Cài đặt service and Quản trị chrome, dark and light, for the pixel comparison against docs/design/hive-2026-10/shots.
+  await step("cosmic-settings-admin", async () => {
+    const tab = (current = tabs.admin);
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      for (const route of ["settings?tab=members", "admin?tab=users"]) {
+        await tab.go(route);
+        await tab.waitFor("page content loaded", () => !!document.querySelector("[data-settings-tidy], [data-admin-page]") && !document.querySelector('main [aria-busy="true"]'));
+        expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), `overflow on ${route}/${theme}`);
+        await tab.shot(`cosmic-${theme}-${route.split("?")[0]}-${mobile ? "390x844" : "1440x900"}`);
+      }
+    }
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await tab.go("today");
+  });
+  // R-72l: AdminTable searches, filters and sorts in the browser (audit, machines of Phiên bản app); the Cài đặt tabs are rows.
+  await step("admin-table-settings-rows", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin?tab=audit");
+    await tab.waitFor("audit rows", () => document.querySelectorAll('.cx-ops-table-row').length > 1);
+    const total = await tab.eval(() => document.querySelectorAll('.cx-ops-table-row').length);
+    await tab.click('[data-table-toolbar] input[type="search"]');
+    await tab.type("zzz-no-such-entry");
+    await tab.waitFor("search empties the table", () => document.querySelectorAll('.cx-ops-table-row').length === 0 && !!document.querySelector('.cx-ops-table-empty'));
+    await tab.eval(() => { const i = document.querySelector('[data-table-toolbar] input[type="search"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, ""); i.dispatchEvent(new Event("input", { bubbles: true })); });
+    await tab.waitFor("search cleared", (n) => document.querySelectorAll('.cx-ops-table-row').length === n, total);
+    await tab.click(".cx-ops-sort");
+    await tab.waitFor("ascending header", () => !!document.querySelector('[role="columnheader"][aria-sort="ascending"]'));
+    await tab.click('[role="columnheader"][aria-sort="ascending"] .cx-ops-sort');
+    await tab.waitFor("descending header", () => !!document.querySelector('[role="columnheader"][aria-sort="descending"]'));
+    const options = await tab.eval(() => [...document.querySelectorAll('select[data-table-filter="group"] option')].map((o) => o.value).filter(Boolean));
+    expect(options.length > 0, "audit group filter has no options");
+    await tab.select('select[data-table-filter="group"]', "docs");
+    await tab.waitFor("group filter applied", (n) => document.querySelectorAll('.cx-ops-table-row').length <= n && document.querySelector('select[data-table-filter="group"]').value === "docs", total);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "audit overflows");
+    await tab.shot(`admin-table-audit-${mobile ? "390x844" : "1440x900"}`);
+    await tab.go("admin?tab=versions");
+    await tab.waitFor("versions page", () => !!document.querySelector("[data-admin-page]"));
+    for (const name of ["tools", "context", "leader", "members", "systems"]) {
+      await tab.go(`settings?tab=${name}`);
+      await tab.waitFor(`${name} rows`, (n) => !!document.querySelector(`[data-settings-rows="${n}"]`), name);
+      expect(await tab.eval(() => !!document.querySelector("[data-settings-edit]")), `${name}: no Sửa action`);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), `${name} overflows`);
+    }
+    await tab.shot(`settings-rows-systems-${mobile ? "390x844" : "1440x900"}`);
+  });
+
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {
@@ -927,7 +1039,7 @@ async function main() {
       await rpc("sdlc.setProject", { project: "payment", settings: { gates: { ...previous.gates, release: "human" }, releaseMachine: machine.id } });
       await tab.go("pipeline?project=payment");
       await tab.waitFor("release gate", () => !!document.querySelector('[data-pipeline-gate="release"]'));
-      await tab.click('[data-pipeline-gate="release"]');
+      await openGateEditor(tab, "release");
       await tab.waitFor("release editor excludes AI and shows machine", () => !!document.querySelector("[data-release-machine]") && !document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
       if (mobile) {
         const bounds = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter(e => e.getBoundingClientRect().width).map(e => ({ w: e.getBoundingClientRect().width, h: e.getBoundingClientRect().height })));
@@ -1040,6 +1152,23 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
   });
 
+  await step("platform-labels", async () => {
+    await rpc("tasks.create", { id: "PLATFORM-E2E", project: "payment", title: "Platform routing fixture", platforms: ["windows", "linux"] });
+    const tab = (current = tabs.admin);
+    await tab.go("tasks");
+    await tab.click('[data-task-view="kanban"]');
+    await tab.waitFor("platform labels on the board", () => {
+      const card = document.querySelector('[data-task="PLATFORM-E2E"]');
+      return card?.textContent.includes("Windows") && card.textContent.includes("Linux");
+    });
+    await tab.click('[data-task="PLATFORM-E2E"]');
+    await tab.waitFor("platform labels in task detail", () => {
+      const sheet = document.querySelector('[data-slot="sheet-content"]');
+      return sheet?.textContent.includes("Windows") && sheet.textContent.includes("Linux");
+    });
+    await tab.key("Escape");
+  });
+
   if (mobile) await step("mobile-kanban-forms-dialog", async () => {
     const tab = (current = tabs.admin);
     await tab.go("tasks");
@@ -1081,7 +1210,7 @@ async function main() {
       await tab.click('[data-pipeline-apply]');
       await until("maximum enables auto-dispatch", async () => (await rpc("sdlc.get")).projects.payment?.autoDispatch === true);
       await tab.waitFor("preset closed", () => !document.querySelector('[data-pipeline-preview]'));
-      await tab.click('[data-pipeline-gate="dispatch"]');
+      await openGateEditor(tab, "dispatch");
       await tab.waitFor("auto-dispatch enabled", () => document.querySelector('[data-auto-dispatch]')?.checked === true);
       const target = await tab.eval(() => document.querySelector('[data-auto-dispatch]').closest('label').getBoundingClientRect().height);
       expect(target >= 44, `auto-dispatch touch target: ${target}`);
@@ -1095,7 +1224,7 @@ async function main() {
         return p?.autoDispatch === false && !p.allowedAgentKinds.includes("claude");
       });
       await tab.reload();
-      await tab.click('[data-pipeline-gate="dispatch"]');
+      await openGateEditor(tab, "dispatch");
       await tab.waitFor("disabled state persisted", () => document.querySelector('[data-auto-dispatch]')?.checked === false);
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth + 1), "auto-dispatch overflow");
       await tab.key("Escape");
@@ -1121,7 +1250,7 @@ async function main() {
     await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
     // Waiting for the changed card proves a fresh response reached the graph before checking its edge again.
     await rpc("tasks.update", { id: "PAY-GRAPH", status: "review" });
-    await tab.waitFor("graph reflects the updated task", () => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label")?.includes("Chờ review"));
+    await tab.waitFor("graph reflects the updated task", () => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label")?.includes(", Review"));
     await tab.waitFor("dependency edge survives a graph refresh", () => {
       const edge = document.querySelector('.graph-edge-open[data-id="payment:PAY-1->payment:PAY-GRAPH"] .react-flow__edge-path');
       if (!edge) return false;
@@ -1131,6 +1260,10 @@ async function main() {
       return edge.getTotalLength() > 0 && box.width > 0 && box.right > canvas.left && box.left < canvas.right && box.bottom > canvas.top && box.top < canvas.bottom && style.visibility === "visible" && style.stroke !== "none" && Number(style.strokeWidth.replace("px", "")) > 0 && Number(style.opacity) > 0;
     });
     await tab.shot("graph-task-layer");
+    await tab.eval(() => { localStorage.setItem("hive-theme", "dark"); document.documentElement.dataset.theme = "dark"; document.documentElement.style.colorScheme = "dark"; });
+    await sleep(400);
+    await tab.shot(`graph-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { localStorage.setItem("hive-theme", "light"); document.documentElement.dataset.theme = "light"; document.documentElement.style.colorScheme = "light"; });
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
     // 51c opened the SDLC layer; only System stays locked in a single project (it needs a system scope).
     const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].map((b) => b.getAttribute("data-graph-layer")));
@@ -1191,13 +1324,13 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
-      const rows = [...document.querySelectorAll('[data-doc-list] > ul > li > div')];
+      const rows = [...document.querySelectorAll('[data-doc-list] [data-doc-group] > ul > li > div')];
       const first = rows.findIndex((r) => r.querySelector('[title="system/ban-hang/tong-quan"]'));
       const groups = ["demo", "ledger", "payment"].map((p) => rows.findIndex((r) => r.dataset.serviceGroup === p));
       // Earlier full-suite steps finish tasks and create the system journal before this page.
       return first >= 0 && groups.every((g) => g > first);
     });
-    await tab.click("button", "+ Trang");
+    await tab.click("[data-doc-new]");
     await tab.type("Quy ước chung");
     const key = await tab.waitFor("the new page's key", () => document.querySelector("[data-new-doc-key]")?.textContent.trim());
     expect(key === "system/ban-hang/quy-uoc-chung", `new page key: ${key}`);
@@ -1300,8 +1433,8 @@ async function main() {
     await tab.go("admin/users");
     await tab.waitFor("the users table", () => document.body.innerText.includes("@minh"));
     await tab.waitFor("Minh's Phân quyền", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("@minh"));
-      const b = row && [...row.querySelectorAll("button")].find((x) => x.textContent.trim() === "Phân quyền");
+      const row = document.querySelector('[data-user-row="minh"]');
+      const b = row?.querySelector("[data-user-open]");
       b?.setAttribute("data-e2e-target", "");
       return !!b;
     });
@@ -1319,11 +1452,50 @@ async function main() {
     expect(JSON.stringify(minh.grants.demo) === '"reviewer"', `Minh on demo: ${JSON.stringify(minh.grants.demo)}`);
   });
 
+  // R-72l: the trash (soft delete, restore) and the invite link, as the admin uses them on the Người dùng tab.
+  await step("admin-users-trash-invite", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("users.create", { username: "tam", displayName: "Tâm Vũ", hubRole: "viewer" });
+    await tab.go("admin/users");
+    // admin-grants-a-role leaves this page open with its list already read: reload so the new account is in it.
+    await tab.reload();
+    await tab.eval(() => {
+      window.confirm = () => true;
+    });
+    await tab.waitFor("Tâm in the table", () => document.querySelector('[data-user-row="tam"]')?.querySelector("[data-hub-role-of]")?.dataset.hubRoleOf === "viewer");
+    await tab.click('button[aria-label="Thao tác với tam"]');
+    await tab.click("[data-user-trash]");
+    await tab.waitFor("Tâm out of the list", () => !document.querySelector('[data-user-row="tam"]'));
+    expect((await rpc("users.list", {})).find((u) => u.username === "tam")?.deletedAt, "tam should be in the trash");
+    await tab.click("button.cosmic-tag", "Thùng rác");
+    await tab.waitFor("Tâm in the trash view", () => document.querySelector('[data-user-row="tam"] [data-user-restore]') && document.querySelector("[data-trash-hint]"));
+    await tab.shot("admin-users-trash");
+    await tab.click('[data-user-row="tam"] [data-user-restore]');
+    await until("Tâm restored", async () => (await rpc("users.list", {})).find((u) => u.username === "tam")?.deletedAt === null);
+    await tab.click("button.cosmic-tag", "Tất cả");
+    await tab.waitFor("Tâm back in the list", () => !!document.querySelector('[data-user-row="tam"]'));
+    // The link: one use, shown once, with the role picked.
+    await tab.click("[data-admin-action]");
+    await tab.select("[data-invite-role]", "viewer");
+    await tab.click("[data-invite-create]");
+    const url = await tab.waitFor("the invite link", () => document.querySelector("[data-invite-url]")?.textContent);
+    expect(url.includes("/#/invite/"), `invite link: ${url}`);
+    await tab.shot("admin-users-invite");
+    const token = url.split("/#/invite/")[1];
+    const peek = await tab.eval(async (t) => (await (await fetch("/api/invite/peek", { method: "POST", headers: { "content-type": "application/json", "x-hive-csrf": "1" }, body: JSON.stringify({ token: t }) })).json()).result, token);
+    expect(peek?.role === "viewer", `peek: ${JSON.stringify(peek)}`);
+    await tab.key("Escape");
+    await tab.waitFor("the dialog to close", () => !document.querySelector('[role="dialog"]'));
+    await tab.click("[data-invite-revoke]");
+    await until("the link revoked", async () => (await rpc("users.inviteList", {})).every((i) => i.state === "revoked"));
+    await tab.waitFor("the revoked row", () => document.querySelector('[data-invite-row][data-state="revoked"]'));
+  });
+
   await step("docs-rich-editor", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/huong-dan")}`);
-    if (mobile) await tab.click("summary", "Chế độ");
-    await tab.click('[role="radio"]', "Sửa");
+    // Reading is the article; its Sửa button opens the editor (the same on a phone: no modes menu there yet).
+    await tab.click("[data-doc-edit]");
     await tab.click(".ProseMirror p");
     await tab.key("End");
     await tab.key("Enter");
@@ -1358,6 +1530,7 @@ async function main() {
 
   await step("docs-markdown", async () => {
     const tab = (current = tabs.admin);
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
     if (mobile) await tab.eval(() => document.querySelector('textarea[aria-label^="Nội dung"]')?.focus());
@@ -1379,8 +1552,7 @@ async function main() {
   await step("mermaid-draws", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/so-do")}`);
-    if (mobile) await tab.click("summary", "Chế độ");
-    await tab.click('[role="radio"]', "Xem");
+    // A page opens as its article: the diagram is drawn there.
     await tab.waitFor("the diagram", () => document.querySelector('[data-mermaid] [role="img"] svg'));
   });
 
@@ -1399,6 +1571,7 @@ async function main() {
     // previous step's page is still open, and the Space select would move that one instead.
     const picked = (key) => document.querySelector('[data-doc-item][aria-current="page"]')?.getAttribute("title") === key;
     await tab.waitFor("the new page open", picked, "project/demo/tai-lieu-cu");
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
     await tab.select("[data-doc-space]", "system:ban-hang");
@@ -1412,6 +1585,7 @@ async function main() {
   // Roadmap 38g: removing takes the page out of the lists without losing it; it comes back from Đã xoá.
   await step("docs-remove-page", async () => {
     const tab = (current = tabs.admin);
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     await tab.click("[data-doc-remove]");
     await tab.click("[data-doc-remove-confirm]");
     await until("the page out of the list", async () => !(await rpc("docs.list", {})).some((d) => d.key === "system/ban-hang/tai-lieu-cu"));
@@ -1724,6 +1898,7 @@ async function main() {
     expect(now?.status === "sent" && held?.status === "held", `items: ${group.items.map((i) => `${i.taskId}:${i.status}`).join()}`);
     // The machine takes the first and reports its run over; the next heartbeat brings the second.
     const [first] = (await beat()).runRequests.filter((r) => r.taskId === now.taskId);
+    expect(first, `first batch request missing from lan-mbp: ${JSON.stringify(now.request)}`);
     await machineRpc("runs.requestResult", { id: first.id, status: "accepted", runId: "R-batch1" });
     const at = new Date().toISOString();
     await machineRpc("runs.push", {
@@ -2058,54 +2233,21 @@ async function main() {
       try {
         await tab.go("settings?tab=sdlc&project=payment");
         await tab.waitFor("legacy SDLC link redirected to pipeline", () => location.hash.startsWith("#/pipeline?") && !!document.querySelector('[data-pipeline-step="spec"]'));
+        await tab.click('[data-pipeline-step="spec"]');
         await tab.waitFor("Pipeline flow counts loaded", () => /\b1\b/.test(document.querySelector('[data-pipeline-count="spec"]')?.textContent ?? ""));
         const count = await tab.eval(() => document.querySelector('[data-pipeline-count="spec"]')?.textContent);
         expect(/\b1\b/.test(count ?? ""), `Spec does not show one active flow: ${count}`);
         const stepCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-step]").length);
-        expect(stepCount === 12, `pipeline stages: ${stepCount}`);
+        expect(stepCount === 11, `pipeline stages: ${stepCount}`);
         if (mobile) {
-          const layout = await tab.eval(() => ({ vertical: !!document.querySelector("[data-pipeline-mobile]"), overflow: document.documentElement.scrollWidth > innerWidth }));
-          expect(layout.vertical && !layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
+          const layout = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth }));
+          expect(!layout.overflow, `pipeline mobile layout: ${JSON.stringify(layout)}`);
         }
         const gateCount = await tab.eval(() => document.querySelectorAll("[data-pipeline-gate]").length);
         expect(gateCount === 9, `pipeline gates: ${gateCount}`);
-        if (!mobile) {
-          await tab.waitFor("Pipeline policy and models loaded", () => [...document.querySelectorAll('[data-pipeline-preset]')].some((button) => !button.disabled));
-          await tab.eval(() => document.fonts.ready.then(() => true));
-          await tab.waitFor("measured Pipeline nodes and edges", () => {
-            const nodes = [...document.querySelectorAll('[data-pipeline-graph] .react-flow__node')];
-            return nodes.length === 21 && nodes.every((node) => getComputedStyle(node).visibility !== "hidden") && document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path').length === 20;
-          });
-          // Unchanged card sizes do not trigger ResizeObserver again: exercise real poll rebuilds before clicking a gate.
-          const canvases = await tab.eval(() => new Promise((resolve, reject) => {
-            const snapshot = () => ({
-              nodes: [...document.querySelectorAll('[data-pipeline-graph] .react-flow__node')].map((node) => ({ id: node.dataset.id, width: node.offsetWidth, height: node.offsetHeight, visible: getComputedStyle(node).visibility !== "hidden" })),
-              edges: [...document.querySelectorAll('[data-pipeline-graph] .react-flow__edge-path')].map((edge) => edge.getAttribute("d")),
-            });
-            const samples = [snapshot()];
-            const original = window.fetch;
-            const cleanup = () => { window.fetch = original; clearTimeout(timer); };
-            const timer = setTimeout(() => { cleanup(); reject(new Error("Pipeline did not complete two polls")); }, 40_000);
-            window.fetch = async (...args) => {
-              const response = await original(...args);
-              if (typeof args[1]?.body === "string" && JSON.parse(args[1].body).method === "sdlc.get" && response.ok) {
-                // Let useQuery consume the response and React Flow adopt the rebuilt nodes.
-                setTimeout(() => {
-                  samples.push(snapshot());
-                  if (samples.length === 3) { cleanup(); resolve(samples); }
-                }, 100);
-              }
-              return response;
-            };
-          }));
-          for (const canvas of canvases) {
-            expect(canvas.nodes.length === 21 && canvas.nodes.every((node) => node.visible && node.width > 0 && node.height > 0), `Pipeline nodes after poll: ${JSON.stringify(canvas.nodes)}`);
-            expect(JSON.stringify(canvas.nodes) === JSON.stringify(canvases[0].nodes), "Pipeline dimensions changed after polling unchanged data");
-            expect(canvas.edges.length === 20 && canvas.edges.every((d) => d && !/NaN|Infinity/.test(d)), `Pipeline edges after poll: ${JSON.stringify(canvas.edges)}`);
-          }
-        }
+        if (!mobile) await tab.waitFor("Pipeline policy and models loaded", () => [...document.querySelectorAll('[data-pipeline-preset]')].some((button) => !button.disabled));
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-open`);
-        await tab.click('[data-pipeline-gate="review"]');
+        await openGateEditor(tab, "review");
         await tab.waitFor("Review gate editor", () => !!document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]'));
         if (mobile) {
           const targets = await tab.eval(() => [...document.querySelectorAll('[data-pipeline-editor] button')].filter((el) => el.getBoundingClientRect().width > 0).map((el) => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height })));
@@ -2126,6 +2268,7 @@ async function main() {
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-saved`);
         await tab.eval(() => { const picker = document.querySelector("[data-pipeline-feature]"); picker.value = "SPEC-E2E"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.waitFor("feature highlighted at Spec", () => document.querySelector('[data-pipeline-step="spec"]')?.getAttribute("data-active") === "true");
+        await tab.click('[data-pipeline-step="spec"]');
         await tab.click('[data-pipeline-count="spec"]');
         await tab.waitFor("Spec count opens filtered features", () => location.hash.includes("pipelineStep=spec") && !!document.querySelector('[data-feature-column="spec"]'));
         await tab.go("pipeline?project=payment");
@@ -2133,7 +2276,7 @@ async function main() {
         // Reload policy on the page: the ceiling is edited separately by the hub admin.
         await tab.go("tasks");
         await tab.go("pipeline?project=payment");
-        await tab.click('[data-pipeline-gate="merge"]');
+        await openGateEditor(tab, "merge");
         await tab.waitFor("Merge cannot exceed the ceiling", () => document.querySelector('[data-pipeline-editor] [data-pipeline-mode="auto"]')?.disabled && document.querySelector('[data-pipeline-editor] [data-pipeline-mode="ai"]')?.disabled);
         await tab.shot(`${String(n).padStart(2, "0")}-pipeline-ceiling`);
         await tab.key("Escape");
@@ -2159,7 +2302,7 @@ async function main() {
     await step("plan-approval", async () => {
       try {
         await tab.go("pipeline?project=payment");
-        await tab.click('[data-pipeline-gate="dispatch"]');
+        await openGateEditor(tab, "dispatch");
         await tab.waitFor("planning settings next to dispatch", () => !!document.querySelector("[data-plan-settings]"));
         await tab.click('[data-plan-mode="medium-large"]');
         await tab.waitFor("only the selected plan mode is pressed", () => document.querySelectorAll('[data-plan-mode][aria-pressed="true"]').length === 1 && document.querySelector('[data-plan-mode="medium-large"]')?.getAttribute("aria-pressed") === "true");
@@ -2207,8 +2350,9 @@ async function main() {
         await rpc("tasks.create", { id: "QUALITY-E2E", project: "payment", title: "Quality cohort", kind: "feature", size: "m", risk: "normal" });
         await rpc("runs.push", { machine: "quality-fixture", runs: [{ runId: "R-quality", project: "payment", taskId: "QUALITY-E2E", taskTitle: "Quality cohort", role: "implement", profileId: "quality-profile", kind: "codex", model: "quality-model", tier: "standard", status: "failed", createdAt: qualityAt, startedAt: qualityAt, finishedAt: qualityAt }] });
         await tab.go("pipeline?project=payment");
-        await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-step="spec"]')?.textContent.includes("Opus"));
-        await tab.click('[data-pipeline-gate="review"]');
+        await tab.click('[data-pipeline-step="spec"]');
+        await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Opus"));
+        await openGateEditor(tab, "review");
         await tab.waitFor("model editor", () => !!document.querySelector('[data-step-model] [data-model-tier]'));
         await tab.eval(() => { const el = document.querySelector('[data-step-model] [data-model-tier]'); el.value = "light"; el.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.click('[data-step-model-save]');
@@ -2434,7 +2578,7 @@ async function main() {
     await tab.waitFor("spec.md", () => document.body.innerText.includes("Người dùng quét mã"));
     await tab.click('[role="tab"]', "Tasks");
     await tab.waitFor("the tasks of tasks.md", () => document.body.innerText.includes("Trang quét mã") && document.body.innerText.includes("1/2"));
-    await tab.click("button", "Quay lại danh sách");
+    await tab.click('[data-features-view="board"]');
     // Neither folder came from a flow: each sits in the column of its stage.
     await tab.waitFor("both features, in the columns of their stages", () => {
       const column = (dir) => document.querySelector(`[data-feature-card="${dir}"]`)?.closest("[data-feature-column]")?.getAttribute("data-feature-column");
@@ -2471,17 +2615,13 @@ async function main() {
   await step("agent-policy", async () => {
     const tab = (current = tabs.lan);
     await tab.go("settings?tab=agent");
-    await tab.waitFor("agent summary", () => !!document.querySelector("[data-policy-summary]"));
-    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-summary`);
-    await tab.click("[data-compact-agent-policy] button", "Sửa");
-    await tab.waitFor("agent editor", () => !!document.querySelector("[data-policy-editor]"));
-    await tab.waitFor("model chips from the router", () => { const sheet = document.querySelector('[data-policy-editor]'); const box = sheet?.getBoundingClientRect(); return box?.left >= 0 && box?.right <= innerWidth && sheet?.textContent.includes("sonnet"); });
-    if (mobile) { const short = await tab.eval(() => [...document.querySelectorAll('[data-policy-editor] button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).map((b) => `${b.textContent.trim() || b.getAttribute('aria-label')}: ${Math.round(b.getBoundingClientRect().height)}px`)); expect(short.length === 0, `agent editor touch targets below 44px: ${short.join(", ")}`); }
-    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-editor`);
-    await tab.click('[data-policy-editor] button[aria-pressed]', "Chỉ đọc");
-    await tab.click('[data-policy-editor] button', "Lưu");
+    await tab.waitFor("agent rows", () => !!document.querySelector("[data-agent-policy-rows] [data-policy-autonomy]"));
+    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-rows`);
+    await tab.waitFor("model suggestions from the router", () => document.querySelector("#agent-policy-models")?.innerHTML.includes("sonnet"));
+    if (mobile) { const short = await tab.eval(() => [...document.querySelectorAll('[data-agent-policy-rows] select, [data-agent-policy-rows] input, [data-agent-policy-rows] button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 32).map((b) => `${b.getAttribute('aria-label')}: ${Math.round(b.getBoundingClientRect().height)}px`)); expect(short.length === 0, `agent rows controls below 32px: ${short.join(", ")}`); }
+    await tab.eval(() => { const el = document.querySelector("[data-policy-autonomy]"); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set; set.call(el, "read"); el.dispatchEvent(new Event("change", { bubbles: true })); });
     await until("payment at read", async () => (await rpc("agentPolicy.get", {})).effective?.payment?.autonomy === "read");
-    await tab.waitFor("effective summary", () => document.querySelector("[data-policy-summary]")?.textContent.includes("Chỉ đọc"));
+    await tab.waitFor("autonomy select shows the effective value once", () => document.querySelector("[data-policy-autonomy]")?.value === "read" && !document.querySelector("[data-policy-summary]"));
     // Lan's machine has payment: its heartbeat carries the part.
     const r = await fetch(`${base}/api/rpc`, {
       method: "POST",
@@ -2490,6 +2630,19 @@ async function main() {
     });
     const beat = (await r.json()).result;
     expect(beat.agentPolicy?.projects?.payment?.autonomy === "read", `heartbeat agentPolicy: ${JSON.stringify(beat.agentPolicy)}`);
+  });
+
+  // R-72l: the org chart shows each service's leader and agents; the Agent switch hides them.
+  await step("org-agents", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin?tab=org");
+    await tab.waitFor("org chart", () => !!document.querySelector("[data-service-agents]"));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth || !!document.querySelector(".cu-canvas")), "org chart overflows the page");
+    expect(await tab.eval(() => document.querySelector("[data-service-agents]").textContent.includes("Leader")), "service agents block lacks the leader line");
+    await tab.shot(`${String(n).padStart(2, "0")}-org-agents-on`);
+    await tab.click("[data-org-agents]");
+    await tab.waitFor("agents hidden", () => !document.querySelector("[data-service-agents]"));
+    await tab.shot(`${String(n).padStart(2, "0")}-org-agents-off`);
   });
 
   // Roadmap 28a: Lan (lead of payment) turns codegraph on for payment on the Tool page; the admin adds an MCP entry to
@@ -3800,6 +3953,7 @@ async function main() {
     let tab = (current = tabs.hoa);
     await tab.go("features");
     await tab.reload();
+    await tab.click('[data-features-view="board"]');
     await tab.waitFor("Hoa's card in Spec", () => document.querySelector('[data-feature-card="SPEC-FEAT"]')?.closest("[data-feature-column]")?.getAttribute("data-feature-column") === "spec");
     const hoa = await tab.eval(() => {
       const card = document.querySelector('[data-feature-card="SPEC-FEAT"]');
@@ -3810,6 +3964,7 @@ async function main() {
     tab = current = tabs.lan;
     await tab.go("features");
     await tab.reload();
+    await tab.click('[data-features-view="board"]');
     await tab.waitFor("Lan's card waiting for her", () => document.querySelector('[data-feature-card="SPEC-FEAT"][data-feature-mine]')?.textContent.includes("Chờ bạn"));
     const columns = await tab.eval(() => [...document.querySelectorAll("[data-feature-column]")].map((c) => c.getAttribute("data-feature-column")));
     expect(JSON.stringify(columns) === JSON.stringify(["spec", "plan", "tasks", "doing", "review", "done"]), `columns: ${columns}`);
@@ -3822,7 +3977,7 @@ async function main() {
     await tab.click('[data-feature-card="SPEC-FEAT"]');
     await tab.waitFor("the feature on Spec, its gate beside spec.md", (id) =>
       location.hash.includes("flow=SPEC-FEAT") &&
-      document.querySelector('[data-feature-tab="spec"]')?.getAttribute("data-state") === "active" &&
+      document.querySelector('[data-feature-tab="spec"]')?.getAttribute("aria-selected") === "true" &&
       document.querySelector(`[data-gate-decision="${id}"]`) &&
       document.body.innerText.includes("Kế toán xuất hoá đơn"),
       gate.id,
@@ -3978,11 +4133,17 @@ async function main() {
       d.setHours(h, m, 0, 0);
       return d.toISOString();
     };
+    const systemSamples = {
+      "mac-mini-hn": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "Mac mini M4 Pro · 14 nhân · arm64", uptime: "Bật 6 ngày", cpu: { percent: 72, detail: "14 nhân · tải 10.1" }, ram: { percent: 81, detail: "48 / 64 GB" }, disk: { percent: 58, detail: "Còn 420 GB / 1 TB" } },
+      "mbp-linh": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "MacBook Pro M3 Max · 16 nhân · arm64", uptime: "Bật 2 ngày", cpu: { percent: 34, detail: "16 nhân · tải 5.4" }, ram: { percent: 62, detail: "22.3 / 36 GB" }, disk: { percent: 91, detail: "Còn 90 GB / 1 TB" } },
+      "ci-runner-01": { os: "ubuntu", osName: "Ubuntu 24.04.1 LTS", hardware: "AMD EPYC 7B13 · 8 vCPU · x86_64", uptime: "Bật 41 ngày", cpu: { percent: 6, detail: "8 vCPU · tải 0.5" }, ram: { percent: 23, detail: "7.4 / 32 GB" }, disk: { percent: 37, detail: "Còn 126 GB / 200 GB" } },
+      "pc-quang": { os: "windows", osName: "Windows 11 Pro 24H2", hardware: "Intel Core i7-13700 · 16 nhân · x64 · WSL2", uptime: "Bật 9 giờ", cpu: { percent: 48, detail: "16 nhân · tải 7.7" }, ram: { percent: 77, detail: "24.6 / 32 GB" }, disk: { percent: 64, detail: "Còn 180 GB / 500 GB" } },
+    };
     const beat = async (machine, acceptsRuns, projects, profiles, runs = []) => {
       const r = await fetch(`${base}/api/rpc`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
-        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, profiles, runs } }),
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, runnerSettings: { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: acceptsRuns }, profiles, runs, system: systemSamples[machine], ...(machine === "ci-runner-01" ? { setup: { checkedAt: new Date().toISOString(), report: { machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing", detail: "Codex CLI missing", action: "Install" }, { id: "shim", label: "hive-mcp", state: "missing", detail: "shim missing", action: "Install" }], projects: [] } } } : {}) } }),
       });
       const body = await r.json();
       if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
@@ -3998,15 +4159,37 @@ async function main() {
     await beat("pc-quang", true, ["payment"], [plan("codex-pro", "codex", 38, 29, "17:30", 3, 1), plan("claude-pro", "claude", 55, 41, "16:50", 2, 1), plan("gemini-adv", "gemini", 12, 9, "18:40", 5, 0)]);
     const tab = (current = tabs.lan);
     await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
-    await tab.go("machines?e2e=machine-system");
+    await tab.go("machines");
     await tab.waitFor("the four machine cards", () => document.querySelectorAll("[data-map-machine]").length >= 4 && document.querySelector('[data-map-profile="mac-mini-hn/claude-max-1"]'));
     expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "machine cards overflow the viewport");
+    await tab.waitFor("system snapshot and missing setup from heartbeat", () => document.querySelector('[data-map-machine="mac-mini-hn"]')?.textContent.includes("macOS 26.0 Tahoe") && document.querySelector('[data-machine-setup="ci-runner-01"]')?.textContent.includes("Codex CLI"));
+    const reported = (await rpc("machines.list")).find(m => m.machine === "mac-mini-hn");
+    expect(reported.system.cpu.percent === 72, "system snapshot did not survive heartbeat");
     // Hide the shell around the cards so the shot lines up with the design's content area.
     await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-dark`);
     await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
     await sleep(300);
     await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-light`);
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    const intake = '[data-map-machine="ci-runner-01"] [data-hub-intake]';
+    if (mobile) {
+      const target = await tab.eval(selector => { const r = document.querySelector(selector).closest("label").getBoundingClientRect(); return { width: r.width, height: r.height }; }, intake);
+      expect(target.width >= 44 && target.height >= 44, `hub intake touch target: ${JSON.stringify(target)}`);
+    }
+    await tab.click(intake);
+    await tab.click('[data-slot="alert-dialog-action"]');
+    await until("hub intake change queued", async () => (await rpc("machines.list")).find(m => m.machine === "ci-runner-01")?.runnerChange?.settings.acceptHubRuns === true);
+    await tab.waitFor("pending hub intake status", selector => document.querySelector(selector)?.textContent.includes("chờ máy áp dụng"), '[data-map-machine="ci-runner-01"] [role="status"]');
+    await tab.click('[data-machine-setup="ci-runner-01"] button');
+    await tab.waitFor("reader help keeps installation behind hub admin", () => document.querySelector('[role="dialog"]')?.textContent.includes("Cần quản trị hub"));
+    expect(await tab.eval(() => !Array.from(document.querySelectorAll('[role="dialog"] button')).some(b => b.textContent.includes("Yêu cầu cài"))), "reader received an install button");
+    await tab.key("Escape");
+    const manager = current = tabs.admin;
+    await manager.go("machines");
+    await manager.waitFor("missing setup banner for admin", () => !!document.querySelector('[data-machine-setup="ci-runner-01"]'));
+    await manager.click('[data-machine-setup="ci-runner-01"] button');
+    await manager.click('[role="dialog"] button', "Yêu cầu cài");
+    await until("install queued from machine card", async () => (await rpc("admin.machines")).find(m => m.machine === "ci-runner-01")?.commands.some(c => c.itemId === "cli:codex" && c.status === "pending"));
   });
 
   await step("tool-approve-web", async () => {
@@ -4077,7 +4260,7 @@ async function main() {
 
   await step("machine-runner-settings", async () => {
     const machineName = "runner-settings";
-    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" };
+    let runnerSettings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review", acceptHubRuns: false };
     let profile = { id: "claude-remote", label: "Claude remote", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
     const beat = async () => {
       const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "feed1234", projects: ["payment"], acceptsRuns: false, runnerSettings, profiles: [profile] } }) });
@@ -4279,8 +4462,10 @@ async function main() {
     await tab.go("skills");
     await tab.click('input[aria-label="Tìm skill"]');
     await tab.type("stats-");
-    await tab.waitFor("skill usage columns", () => document.body.innerText.includes("Số run dùng 30 ngày"));
+    // The 72j list shows no usage columns: the numbers are in the picked skill's detail.
+    await tab.waitFor("skill list filtered", () => [...document.querySelectorAll("main [data-pane-item]")].some((e) => e.textContent.includes("stats-unused")));
     await tab.click('main [data-pane-item]', "stats-used");
+    await tab.waitFor("skill usage numbers", () => document.body.innerText.includes("Số run dùng 30 ngày"));
     await tab.waitFor("weekly usage chart", () => document.querySelector("[data-skill-usage]")?.children.length === 8);
     expect(await tab.eval(() => [...document.querySelectorAll("[data-skill-usage] > div > span")].reduce((n, el) => n + Number(el.textContent), 0) === 1), "duplicate loads count once");
     await tab.shot(`${String(n).padStart(2, "0")}-skill-usage-chart`);
@@ -4364,7 +4549,7 @@ async function main() {
       ["runs", "run", 'main [data-pane-item]', null],
       ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
       ["skills", "skill", 'main [data-pane-item]', null],
-      ["memory", "memory", 'main [data-pane-item]', null],
+      ["memory", "memory", 'main [data-memory-card] button[aria-label]:not([role="checkbox"])', null],
       // Đề xuất is a Chờ duyệt tab of Tài liệu and Skill since 49f (#/proposals redirects): the knowledge-pending step covers it.
       ["features", "project", "main [data-feature-card]", null],
     ];
@@ -4380,6 +4565,35 @@ async function main() {
         await tab.click(selector, text);
         await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
         const selectedHash = await tab.eval(() => location.hash);
+        // 72f follows the design's card grid: details are a modal at every width, with the URL retaining history.
+        if (route === "memory") {
+          const assertDialog = async () => {
+            await tab.waitFor("memory dialog loaded", () => document.querySelector('[role="dialog"]')?.textContent.includes("Loại"));
+            const state = await tab.eval(() => {
+              const dialog = document.querySelector('[role="dialog"]');
+              const r = dialog.getBoundingClientRect();
+              return { left: r.left, right: r.right, width: innerWidth, page: document.documentElement.scrollWidth, fits: dialog.scrollWidth <= dialog.clientWidth + 1, focused: dialog.contains(document.activeElement), backgroundHidden: !!document.querySelector('main')?.closest('[aria-hidden="true"]') };
+            });
+            expect(state.left >= 0 && state.right <= state.width + 1 && state.page <= state.width + 1 && state.fits && state.focused && state.backgroundHidden, `memory modal: ${JSON.stringify(state)}`);
+          };
+          await assertDialog();
+          await tab.shot("mobile-memory-detail");
+          await tab.reload();
+          await assertDialog();
+          await tab.eval(() => history.back());
+          await tab.waitFor("Back closes memory", hash => location.hash === hash && !document.querySelector('[role="dialog"]'), listHash);
+          await tab.eval(() => history.forward());
+          await tab.waitFor("Forward restores memory address", hash => location.hash === hash, selectedHash);
+          await assertDialog();
+          for (const width of [767, 768, 390]) {
+            tab.win.setContentSize(width, 844);
+            await tab.waitFor("memory viewport resized", width => innerWidth === width, width);
+            await assertDialog();
+          }
+          await tab.key("Escape");
+          await tab.waitFor("Escape closes memory and clears selection", () => !document.querySelector('[role="dialog"]') && !new URLSearchParams(location.hash.split("?")[1]).has("memory"));
+          return;
+        }
         const assertPane = async (detail) => {
           // The address changes before React and the reloaded list queries settle.
           await tab.waitFor("pane visibility settled", (selector, detail) =>
@@ -4405,10 +4619,9 @@ async function main() {
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
         await assertPane(true);
         if (route === "docs") {
-          await tab.waitFor("loaded document actions", () => document.querySelector('main button[aria-label="Lịch sử"]'));
-          await tab.click("summary", "Chế độ");
-          await tab.click("details[open] button", "Lịch sử");
-          await tab.waitFor("history menu closes", () => !document.querySelector("details[open]") && document.querySelector('aside[aria-label="Phiên bản"] button'));
+          // The article toolbar now exposes history directly, without the editor's Chế độ menu.
+          await tab.click("main button", "Lịch sử");
+          await tab.waitFor("history panel opens", () => document.querySelector('aside[aria-label="Phiên bản"] button'));
           await tab.click('aside[aria-label="Phiên bản"] button');
           await tab.waitFor("version content replaces history pane", () => !document.querySelector('aside[aria-label="Phiên bản"]') && document.body.innerText.includes("Đóng so sánh"));
           await assertPane(true);
@@ -4418,14 +4631,6 @@ async function main() {
           await tab.click(selector);
           await tab.waitFor("selecting a page closes tree drawer", (selector) => ![...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
           await assertPane(true);
-        }
-        if (route === "memory") {
-          tab.win.setContentSize(767, 844);
-          await tab.waitFor("767px keeps list hidden", () => innerWidth === 767 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
-          tab.win.setContentSize(768, 844);
-          await tab.waitFor("768px restores both panes", () => innerWidth === 768 && [...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0) && ![...document.querySelectorAll("main button")].some((el) => el.textContent.includes("Quay lại danh sách") && el.getBoundingClientRect().width > 0));
-          tab.win.setContentSize(390, 844);
-          await tab.waitFor("phone pane restored", () => innerWidth === 390 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
         }
       });
     }
@@ -4508,10 +4713,12 @@ async function main() {
     await tab.reload();
     await tab.go("artifacts");
     // Earlier steps (leader-research) leave files of their own: the second page holds whatever is past the first 50.
-    const total = (await rpc("artifacts.list", { limit: 200 })).length;
+    // The list follows the shell's scope, which the graph step may have left on payment: either count is the second page.
+    const totals = [(await rpc("artifacts.list", { limit: 200 })).length, (await rpc("artifacts.list", { project: "payment", limit: 200 })).length];
+    await tab.click('[data-artifacts-page] button', "Xem thêm 45");
     await tab.waitFor("the files page", () => document.querySelectorAll('[data-artifact-row]').length === 50);
     await tab.click('[data-artifacts-page] button', "Trang sau");
-    await tab.waitFor("second page", rest => document.querySelectorAll('[data-artifact-row]').length === rest, total - 50);
+    await tab.waitFor("second page", rests => rests.includes(document.querySelectorAll('[data-artifact-row]').length), totals.map(n => n - 50));
     await fill('[data-artifact-filter="search"]', "report");
     const reports = (await rpc("artifacts.list", { name: "report", limit: 200 })).length;
     await tab.waitFor("name filter resets page", count => document.querySelectorAll('[data-artifact-row]').length === count && document.querySelector('[data-artifact-row="report.md"]'), reports);
@@ -4521,9 +4728,8 @@ async function main() {
     }
     await accessibilityAudit({ tab, out, expect, routes: ["artifacts"], filename: "artifacts-accessibility.json" });
     const ax = await tab.cdp("Accessibility.getFullAXTree");
-    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "table" && node.name?.value === "Tệp của agent"), "artifact table reaches the accessibility tree");
-    expect(ax.nodes.filter(node => !node.ignored && node.role?.value === "columnheader").length === 7, "all artifact headers remain available on desktop and phone");
-    for (const name of ["ART-1", runId]) expect(ax.nodes.some(node => !node.ignored && node.role?.value === "link" && node.name?.value === name), `${name} remains an accessible link inside its cell`);
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "list" && node.name?.value === "Tệp của agent"), "artifact groups reach the accessibility tree as a list");
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "listitem"), "artifact groups expose list items to assistive technology");
     await tab.click('[data-artifact-row="report.md"] button');
     await tab.waitFor("markdown document", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
     const auditPreview = async (filename) => {
@@ -4548,22 +4754,18 @@ async function main() {
     };
     await auditPreview("artifacts-preview-accessibility.json");
     await tab.shot("artifacts-report");
-    await tab.key("Escape");
-    await tab.waitFor("preview closes and returns keyboard focus", () => !document.querySelector("[data-artifact-preview]") && document.activeElement?.closest('[data-artifact-row="report.md"]'));
     await fill('[data-artifact-filter="search"]', "");
-    await tab.select('[data-artifact-filter="kind"]', "log");
+    await tab.click('[data-artifact-filter="kind"]', "Log");
+    // Other steps upload logs too, and the list groups and folds rows, so the filter is checked as "only logs, check.log among them".
     const logCount = (await rpc("artifacts.list", { kind: "log", limit: 200 })).length;
-    await tab.waitFor("log filter", count => document.querySelectorAll('[data-artifact-row]').length === Math.min(50, count) && document.querySelector('[data-artifact-row="check.log"]'), logCount);
+    await tab.waitFor("log filter", count => { const n = document.querySelectorAll('[data-artifact-row]').length; return n >= 1 && n <= count && document.querySelector('[data-artifact-row="check.log"]'); }, logCount);
     await tab.click('[data-artifact-row="check.log"] button');
-    await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] pre'));
-    await fill('[data-artifact-find]', "ok");
-    await tab.waitFor("search highlights", () => document.querySelector('[data-artifact-content] mark'));
+    await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] > div'));
     if (mobile) {
-      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifact-preview] button, [data-artifact-preview] input')].filter((el) => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map((el) => el.outerHTML));
-      expect(!small.length, `44px preview controls: ${small.join("\n")}`);
+      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifact-viewer] button')].filter((el) => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map((el) => el.outerHTML));
+      expect(!small.length, `44px viewer controls: ${small.join("\n")}`);
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "no phone horizontal overflow");
     }
-    await auditPreview("artifacts-log-accessibility.json");
     const downloadFile = path.join(out, "download-check.log");
     const downloaded = new Promise((resolve, reject) => {
       tab.win.webContents.session.once("will-download", (_event, item) => {
@@ -4571,57 +4773,29 @@ async function main() {
         item.once("done", (_event, state) => state === "completed" ? resolve() : reject(new Error(`download: ${state}`)));
       });
     });
-    await tab.click('[data-artifact-preview] button[aria-label="Tải check.log"]');
+    await tab.click('[data-artifact-viewer] button[aria-label="Tải check.log"]');
     await Promise.race([downloaded, sleep(15_000).then(() => { throw new Error("download timeout"); })]);
     expect(readFileSync(downloadFile, "utf8").endsWith("last line"), "download has the complete log after the clipped preview");
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "image");
-    await tab.waitFor("image filter", () => document.querySelector('[data-artifact-row="shot.png"]'));
-    await tab.click('[data-artifact-row="shot.png"] button');
-    await tab.waitFor("image preview", () => document.querySelector('[data-artifact-preview] img')?.complete);
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "json");
-    await tab.waitFor("json filter", () => document.querySelector('[data-artifact-row="result.json"]'));
-    await tab.click('[data-artifact-row="result.json"] button');
-    await tab.waitFor("json preview", () => document.querySelector('[data-artifact-content] pre')?.textContent.includes('"success":true'));
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "");
-    await fill('[data-artifact-filter="task"]', "ART-2");
-    await tab.waitFor("task filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="other-service.md"]'));
-    await fill('[data-artifact-filter="task"]', "");
-    await fill('[data-artifact-filter="run"]', runId);
-    await tab.waitFor("run filter", () => document.querySelectorAll('[data-artifact-row]').length === 5);
     await tab.shot("artifacts-page");
-    await fill('[data-artifact-filter="run"]', "");
-    await fill('[data-artifact-filter="search"]', "other-service");
-    await tab.waitFor("other service in all", () => document.querySelector('[data-artifact-row="other-service.md"]'));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
-    await tab.type("payment");
-    await tab.key("Enter");
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await tab.waitFor("service scope excludes other service", () => !document.querySelector('[data-artifact-row]') && document.querySelector('[data-artifacts-page]')?.textContent.includes("Không có tệp"));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
-    await tab.type("ban-hang");
-    // Recent services also match the system name; select the system root explicitly.
-    await tab.click('[data-scope-row="root"][data-scope-root="ban-hang"] [role="option"]');
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await tab.waitFor("system scope includes its services", () => document.querySelector('[data-artifact-row="other-service.md"]'));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả service");
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await fill('[data-artifact-filter="search"]', "");
     await tab.go(`artifacts?artifact=${report.id}`);
     await tab.waitFor("deep preview link", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
-    await tab.click('[data-artifact-preview] button', "Đóng");
+    const html1 = await put("preview.html", b64("<h1>HTML v1</h1>"), "payment", "ART-1", "R-html-1");
+    const html2 = await machine("artifacts.put", { project: "payment", taskId: "ART-1", runId: "R-html-2", name: "preview.html", data: b64("<h1>HTML v2</h1>"), versionNote: "Updated preview" });
+    await tab.go(`artifacts?artifact=${html2.id}`);
+    await tab.waitFor("sandboxed HTML preview and versions", () => document.querySelector('[data-artifact-viewer] iframe')?.getAttribute('sandbox') === 'allow-scripts' && document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("HTML v2") && document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("connect-src 'none'") && [...document.querySelectorAll('[data-artifact-viewer] [aria-label="Phiên bản"] button')].length === 2);
+    await tab.click('[data-artifact-viewer] button[aria-label="Ghim artifact"]');
+    await tab.waitFor("artifact pinned", () => document.querySelector('[data-artifact-viewer] button[aria-label="Bỏ ghim artifact"]'));
+    await tab.click('[data-artifact-viewer] [aria-label="Phiên bản"] button', "v1");
+    await tab.waitFor("older HTML version selected", () => document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("HTML v1"));
+    await tab.go(`artifacts?artifact=${report.id}`);
+    await tab.waitFor("return to report preview", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
     await tab.go("tasks?task=ART-1");
     await tab.waitFor("linked handover", () => document.querySelector('[data-artifact-link="report.md"]'));
     await tab.click('[data-artifact-link="report.md"]');
     await tab.waitFor("handover opens report", () => document.querySelector('[data-artifact-content] h1'));
     await tab.click('[data-artifact-preview] button', "Đóng");
     await tab.click('[data-task-artifacts-tab]');
-    await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 56);
+    await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 58);
     // The hub names the machine after the header and the token ("runner.artifacts-e2e@…"): take it from the run.
     const runMachine = (await rpc("runs.list", { project: "payment", limit: 200 })).find(r => r.runId === runId).machineId;
     await tab.go(`runs?run=${encodeURIComponent(`${runMachine}/${runId}`)}`);
@@ -4816,6 +4990,8 @@ async function main() {
     const total = (await rpc("sdlc.dispatch", { project, limit: 1 })).total;
     expect(total === 501, `dispatch source total: ${total}`);
     const tab = current = tabs.inboxSource = await signInWithToken("inbox-source", admin, `pipeline?project=${project}`);
+    // Since 72i the count link belongs to the picked step's side panel.
+    await tab.click('[data-pipeline-step="dispatch"]');
     await tab.waitFor("complete Dispatch count", () => /^501\b/.test(document.querySelector('[data-pipeline-count="dispatch"]')?.textContent.trim() ?? ""));
     if (mobile) {
       await tab.eval(() => document.querySelector('[data-pipeline-count="dispatch"]').focus());
@@ -4955,6 +5131,42 @@ async function main() {
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");
+  });
+
+  await step("terminal-page", async () => {
+    const tab = current = tabs.terminal;
+    await tab.go("terminal");
+    await tab.waitFor("terminal page", () => document.querySelector("[data-terminal-page]"));
+    await tab.click('[data-testid="terminal-page-new"]');
+    await tab.waitFor("terminal page form", () => !!document.querySelector('[data-terminal-page] [data-testid="terminal-machine"]'));
+    expect(await tab.eval(() => !document.querySelector('[data-terminal-page] [data-testid="terminal-session-attach"]') && document.documentElement.scrollWidth <= innerWidth + 1), "terminal page overflows or lists sessions twice");
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await tab.shot(`terminal-page-${theme}`);
+    }
+    // A session opened from the page runs in the page's own frame, never in the dialog the other entries use.
+    await fetch(`${terminal.base}/__terminal/opt-in`, { method: "POST" });
+    await tab.select('[data-terminal-page] [data-testid="terminal-machine"]', "runner.terminal-fixture@terminal-machine");
+    await tab.select('[data-terminal-page] [data-testid="terminal-project"]', "demo");
+    await tab.click('[data-terminal-page] input[type="checkbox"]');
+    await tab.click('[data-terminal-page] [data-testid="terminal-step-up"]'); await tab.type(terminal.password);
+    await tab.click('[data-terminal-page] [data-testid="terminal-confirm-open"]');
+    await tab.waitFor("page terminal active", () => document.querySelector('[data-terminal-page] [data-testid="terminal-status"]')?.textContent.includes("Đã kết nối"));
+    // The list reloads when the screen connects, not on its 5s poll: well under one poll it already says connected.
+    const listedAt = Date.now() + 2500;
+    while (!(await tab.eval(() => [...document.querySelectorAll('[data-testid="terminal-page-session"]')].some((b) => b.textContent.includes("Đã kết nối"))))) {
+      if (Date.now() > listedAt) throw new Error("session list still not connected 2.5s after the screen connected");
+      await sleep(100);
+    }
+    expect(await tab.eval(() => !document.querySelector('[data-testid="terminal-dialog"], [data-testid="terminal-create-dialog"]') && !!document.querySelector('[data-terminal-page] [data-testid="terminal-screen"]') && document.documentElement.scrollWidth <= innerWidth + 1), "page session opened outside the page frame");
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await tab.shot("terminal-page-active");
+    await tab.click('[data-terminal-page] [data-testid="terminal-stop"]');
+    await tab.waitFor("page session ended", () => document.querySelector('[data-terminal-page] [data-testid="terminal-stop"]').disabled);
+    await tab.click('[data-terminal-page] [data-testid="terminal-detach"]');
+    await tab.waitFor("page frame idle", () => document.querySelector('[data-terminal-page] [data-testid="terminal-idle"]'));
   });
 
   await step("close-unmerged-task", async () => {

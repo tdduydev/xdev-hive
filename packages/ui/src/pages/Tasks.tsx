@@ -33,6 +33,7 @@ import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui
 import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
 import { AgentBoard } from "#ui/components/AgentBoard.tsx";
 import { agentLabel, agentLanes, filterAgent } from "#ui/lib/assignment.ts";
+import { Tag } from "@xdev-hive/ui/components/ui/primitives";
 import { TaskKanban } from "#ui/components/TaskKanban.tsx";
 import { formatTime, hashParam, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -147,6 +148,8 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
   }, [linkedProject, projects, scoped, setScope]);
   const key = scopeKey(scope);
   const [service, setService] = useServiceFilter(scope);
+  // The design lists every service of the scope once there are two or more; a project scope has one and needs no filter.
+  const serviceChips = scope.kind === "project" ? [""] : ["", ...[...new Set(scope.kind === "system" ? scope.projects : projects)].sort()];
   const [own, setViewState] = useState<View>(readView);
   const [linkedStatus] = useHashParam("status");
   const chosen = fixed ?? (linkedStatus ? "list" : own);
@@ -238,7 +241,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
       <div className="flex flex-wrap items-center gap-2">
-        <ServiceFilter scope={scope} value={service} onChange={setService} />
+        {view === "kanban" ? null : <ServiceFilter scope={scope} value={service} onChange={setService} />}
         {view === "list" ? (
           <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label={t("tasks.status")}>
             <NativeSelectOption value="">{t("tasks.anyStatus")}</NativeSelectOption>
@@ -277,7 +280,27 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
         ) : null}
       </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
-      {next.data && list.data?.some((task) => task.status !== "done") ? (
+      {view === "kanban" ? (
+        <div data-board-filters className="flex flex-wrap items-center gap-2">
+          {serviceChips.length > 2 ? serviceChips.map((p) => (
+            <Tag key={p} role="button" tabIndex={0} data-service-chip={p || undefined} active={service === p} className="cursor-pointer outline-none focus-visible:focus-ring max-md:min-h-11"
+              onClick={() => setService(p)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setService(p); } }}>
+              {p || t("systemOverview.allServices")}
+            </Tag>
+          )) : null}
+          <span className="flex-1" />
+          {next.data?.length ? (
+            <>
+              <span className="text-xs/[18px] font-medium text-fg-muted">{t("tasks.nextReady")}</span>
+              {next.data.map((task) => (
+                <span key={task.id} title={task.title} className="inline-flex h-[26px] items-center rounded-full bg-[var(--pill-violet-bg)] px-2.5 font-mono text-xs/none font-semibold text-[var(--pill-violet-fg)] shadow-[inset_0_0_0_1px_var(--pill-violet-ring)]">{task.id}</span>
+              ))}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {view !== "kanban" && next.data && list.data?.some((task) => task.status !== "done") ? (
         <Notice tone="info">
           {next.data.length ? (
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -522,6 +545,7 @@ function TaskRow({
               <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
             </span>
             {task.agent ? <span className="text-xs text-info wrap-anywhere">{agentLabel(task.agent, t("assignment.any"))}</span> : null}
+            {task.platforms.length ? <span className="text-xs text-muted-foreground">{task.platforms.map((p) => t(`tasks.platform.${p}`)).join(" · ")}</span> : null}
             {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
           </button>
         </div>
@@ -612,6 +636,7 @@ function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; r
         <SheetDescription asChild>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>
+            {task.platforms.map((p) => <Badge key={p} tone="neutral">{t(`tasks.platform.${p}`)}</Badge>)}
             <span className="text-xs">{t("tasks.updatedAt", { time: formatTime(task.updatedAt) })}</span>
           </div>
         </SheetDescription>
@@ -803,7 +828,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const { client } = useHive();
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
-  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project) && (!task.platforms.length || (!!m.platform && task.platforms.includes(m.platform))));
   const [machineId, setMachineId] = useState(task.agent?.machineId ?? "");
   const machine = fit.find((m) => m.id === machineId) ?? null;
   const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");

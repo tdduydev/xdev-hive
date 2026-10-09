@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-changes.ts";
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it, mock } from "node:test";
-import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, HubBackend, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { QuitLifecycle } from "#desktop/main/quit.ts";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
@@ -42,6 +43,10 @@ const admin: Actor = { name: "duy", role: "admin" };
 const credentialRequests: Array<{ method: string; input: { run: string; minutes?: number; readOnly?: boolean } }> = [];
 // Hub-mode fixtures exercise the credential exchange without reaching a real service.
 mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  if (String(url).startsWith("https://runner-stall.test/")) return new Promise<Response>((_, reject) => {
+    if (init.signal?.aborted) return reject(init.signal.reason);
+    init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+  });
   assert.ok(String(url).endsWith("/api/run-credentials"), `Unexpected fixture request: ${url}`);
   const input = JSON.parse(String(init.body));
   credentialRequests.push({ method: init.method!, input });
@@ -494,7 +499,10 @@ describe("plan usage", () => {
     await logins.refresh();
     assert.equal(logins.usage("claude-1")?.session?.percent, 3);
     signedIn = false;
+    // Within 45 s a plain refresh keeps the last check (R-77d); a sign-out is seen by a forced one, as index.ts does.
     await logins.refresh();
+    assert.equal(logins.usage("claude-1")?.session?.percent, 3);
+    await logins.refresh(undefined, true);
     assert.equal(logins.usage("claude-1"), undefined);
   });
 });
@@ -1610,8 +1618,15 @@ describe("Runner", () => {
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await until(() => a.runner.log(run.id).includes("thinking"));
     assert.equal((await a.runner.heartbeat())?.duplicate, false);
+    assert.equal((await a.hive.call("machines.list", {}, admin))[0]!.system, undefined, "the heartbeat does not wait for a first sample");
+    await a.runner.sampleSystem();
+    await a.runner.heartbeat();
     const [m] = await a.hive.call("machines.list", {}, admin);
     assert.equal(m!.id, "runner.duy-mbp@duy-macbook");
+    assert.ok(m!.system?.osName && m!.system.hardware, "the runner sends host identity through heartbeat");
+    assert.ok(m!.system.ram!.totalBytes! > 0);
+    assert.ok(m!.system.disk!.totalBytes! > 0);
+    assert.ok(m!.system.uptimeSeconds! >= 0);
     assert.deepEqual(m!.runs.map((r) => [r.taskId, r.status, r.profileId]), [["T-1", "running", "claude-1"]]);
 
     a.runner.cancel(run.id);
@@ -2577,7 +2592,8 @@ describe("live log", () => {
     const { runner } = await setup([profile("claude-a", "claude", 1, "sleep"), profile("codex-b", "codex", 2, "sleep")], {}, "local");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     void runner.tick();
-    await until(() => runner.list()[0]?.activity !== undefined);
+    // Allow fake CLI startup on a busy host before checking the events it emits.
+    await until(() => runner.list()[0]?.activity !== undefined, 60_000);
     assert.equal(runner.list()[0]!.activity, "Bash: npm test", "from Claude Code's events");
     assert.match(unstamp(runner.log(run.id)), /▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nthinking…/);
     runner.cancel(run.id);
@@ -2587,7 +2603,7 @@ describe("live log", () => {
     const other = await setup([profile("codex-b", "codex", 1, "sleep")], {}, "local");
     const codex = await other.runner.enqueue({ project: "demo", taskId: "T-1" });
     void other.runner.tick();
-    await until(() => other.runner.list()[0]?.activity !== undefined);
+    await until(() => other.runner.list()[0]?.activity !== undefined, 60_000);
     assert.equal(other.runner.list()[0]!.activity, "thinking…", "another CLI: the last line it printed");
     other.runner.cancel(codex.id);
     await other.runner.settle();
@@ -2624,6 +2640,42 @@ describe("runs on the hub", () => {
     assert.doesNotMatch(full.log ?? "", /glpat-/, "the token never left the machine");
     assert.doesNotMatch(runner.log(run.id), /glpat-/, "this machine's log also redacts credentials");
     assert.equal(await runner.pushRuns(), 0, "nothing changed since");
+  });
+
+  it("does not reopen a finished run's log after the hub has received it, even after restart", async () => {
+    const s = await setup([profile("claude-a", "claude", 1, "ok")], {}, "hub");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    assert.ok(s.runner.store.pushedMetadataKey(run.id));
+    rmSync(path.join(s.dataDir, "runs", `${run.id}.log`));
+    assert.equal(await s.runner.pushRuns(), 0);
+    const restarted = new Runner({
+      backend: () => s.hive, profiles: () => [], projects: () => [{ name: "demo", repo: s.repo }],
+      mode: () => "hub", machine: () => "duy-mbp", env: () => ({}),
+      settings: () => ({ maxParallel: 1, maxAttempts: 1, worktreeRoot: null, acceptHubRuns: false, gateRunner: false }),
+    }, { dataDir: s.dataDir, user: "duy", chatPollMs: 0 });
+    try { assert.equal(await restarted.pushRuns(), 0); }
+    finally { await restarted.stop(); restarted.store.db.close(); }
+  });
+
+  it("revisits finished runs whose patches missed the first push quota", async () => {
+    const s = await setup([], {}, "hub");
+    for (let i = 0; i < 4; i++) {
+      const run = s.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Task", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+      s.runner.store.update(run.id, { status: "succeeded", finishedAt: new Date().toISOString() });
+    }
+    assert.equal(await s.runner.pushRuns(), 4);
+    assert.equal(await s.runner.pushRuns(), 1, "the fourth run still owes its patch");
+    assert.equal(await s.runner.pushRuns(), 0);
+  });
+
+  it("runs a project configured as a subdirectory of a Git repository", async () => {
+    const s = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", {
+      projects: (repo) => { const nested = path.join(repo, "src"); mkdirSync(nested, { recursive: true }); return [{ name: "demo", repo: nested }]; },
+    });
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    assert.equal(s.runner.store.get(run.id)?.status, "succeeded", s.runner.store.get(run.id)?.error ?? "");
   });
 
   it("pushes a running agent's current step, and nothing in local mode", async () => {
@@ -4118,6 +4170,72 @@ describe("redispatch branch choice", () => {
     assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "new WIP\n");
   });
 
+  for (const collision of ["matching file", "different file", "different mode", "dangling symlink", "matching symlink", "different symlink", "file vs symlink", "directory", "parent file"] as const) it(`fast-forwards past untracked ${collision}`, async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const origin = tmp("collision-origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(s.repo, "remote", "add", "origin", origin);
+    git(s.repo, "checkout", "-qb", "ai/T-1");
+    git(s.repo, "push", "-q", "origin", "ai/T-1");
+    git(s.repo, "checkout", "main");
+    const wt = path.join(s.dataDir, "worktrees", "demo", "T-1");
+    mkdirSync(path.dirname(wt), { recursive: true });
+    git(s.repo, "worktree", "add", "-q", wt, "ai/T-1");
+    const collidingName = collision === "parent file" ? "collision" : "collision.txt";
+    const incomingName = collision === "parent file" ? "collision/remote.txt" : "collision.txt";
+    const collidingPath = path.join(wt, collidingName);
+    let localContent = "local\n";
+    if (collision === "matching file" || collision === "different mode") localContent = "remote\n";
+    if (collision === "file vs symlink") localContent = "remote-target";
+    if (collision === "dangling symlink") symlinkSync("missing-target", collidingPath);
+    else if (collision === "matching symlink") symlinkSync("remote-target", collidingPath);
+    else if (collision === "different symlink") symlinkSync("local-target", collidingPath);
+    else if (collision === "directory") {
+      mkdirSync(collidingPath);
+      writeFileSync(path.join(collidingPath, "local.txt"), "local\n");
+    } else {
+      writeFileSync(collidingPath, localContent);
+      if (collision === "different mode") chmodSync(collidingPath, 0o644);
+    }
+    const source = tmp("collision-source");
+    git(source, "clone", "-q", origin, ".");
+    git(source, "config", "user.email", "t@example.com"); git(source, "config", "user.name", "Test");
+    git(source, "checkout", "-q", "ai/T-1");
+    if (collision === "parent file") mkdirSync(path.join(source, "collision"));
+    if (["matching symlink", "different symlink", "file vs symlink"].includes(collision)) symlinkSync("remote-target", path.join(source, incomingName));
+    else writeFileSync(path.join(source, incomingName), "remote\n");
+    if (collision === "different mode") chmodSync(path.join(source, incomingName), 0o755);
+    git(source, "add", "."); git(source, "commit", "-qm", "incoming file");
+    git(source, "push", "-q", "origin", "ai/T-1");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    if (["matching symlink", "different symlink", "file vs symlink"].includes(collision)) {
+      assert.ok(lstatSync(path.join(wt, incomingName)).isSymbolicLink());
+      assert.equal(readlinkSync(path.join(wt, incomingName)), "remote-target");
+    } else assert.equal(readFileSync(path.join(wt, incomingName), "utf8"), "remote\n");
+    if (collision === "different mode") assert.ok(lstatSync(path.join(wt, incomingName)).mode & 0o111);
+    const backups = readdirSync(wt).filter(f => f.startsWith(`${collidingName}.pre-merge-`));
+    const matching = collision === "matching file" || collision === "matching symlink";
+    assert.equal(backups.length, matching ? 0 : 1);
+    if (!matching) {
+      const backup = path.join(wt, backups[0]!);
+      if (["dangling symlink", "different symlink"].includes(collision)) {
+        assert.ok(lstatSync(backup).isSymbolicLink());
+        assert.equal(readlinkSync(backup), collision === "dangling symlink" ? "missing-target" : "local-target");
+      } else if (collision === "directory") {
+        assert.ok(lstatSync(backup).isDirectory());
+        assert.equal(readFileSync(path.join(backup, "local.txt"), "utf8"), "local\n");
+      } else {
+        assert.equal(readFileSync(backup, "utf8"), localContent);
+        if (collision === "different mode") assert.equal(lstatSync(backup).mode & 0o111, 0);
+      }
+      assert.ok((done.continuation ?? "").includes(`${collidingName}.pre-merge-`));
+      assert.equal(git(wt, "ls-files", backups[0]!), "");
+    }
+  });
+
   it("fails clearly when the requested old branch cannot be retrieved", async () => {
     const s = await setup([profile("codex", "codex", 1, "ok")]);
     const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" }, {
@@ -4263,7 +4381,7 @@ it("applies remote settings on a live runner before acknowledging the next heart
   const settings = { maxParallel: 2, acceptHubRuns: false };
   let config = { runner: settings, gitlab: { mr: { enabled: false, when: "after_review" as "after_review" | "after_success" } }, agents };
   const s = await setup(agents, settings, "hub", {
-    report: () => ({ runnerSettings: { maxParallel: settings.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when },
+    report: () => ({ runnerSettings: { maxParallel: settings.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when, acceptHubRuns: settings.acceptHubRuns },
       profiles: agents.map(p => ({ id: p.id, label: p.label, kind: p.kind, enabled: p.enabled, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: p.priority, stopAtSession: p.stopAtSession, stopAtWeek: p.stopAtWeek })) }),
     onHub: update => {
       if (update.runnerChange) { config = applyRunnerChange(config, update.runnerChange); Object.assign(settings, config.runner); }
@@ -4273,10 +4391,11 @@ it("applies remote settings on a live runner before acknowledging the next heart
   try {
     await s.runner.heartbeat();
     const machine = (await s.hive.call("machines.list", {}, admin))[0]!;
-    await s.hive.call("machines.setRunner", { machineId: machine.id, settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success" } }, admin);
+    await s.hive.call("machines.setRunner", { machineId: machine.id, settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success", acceptHubRuns: true } }, admin);
     await s.hive.call("machines.setProfile", { machineId: machine.id, profileId: "remote", stopAtSession: 50, stopAtWeek: 40 }, admin);
     await s.runner.heartbeat();
     assert.equal(settings.maxParallel, 1);
+    assert.equal(settings.acceptHubRuns, true);
     assert.equal(config.gitlab.mr.enabled, true);
     assert.equal(config.gitlab.mr.when, "after_success");
     assert.equal(usageStop(agents[0]!, { session: { percent: 50, resets: null }, week: null, others: [], checkedAt: new Date().toISOString() }), "session");
@@ -4352,6 +4471,38 @@ describe("branch-on-remote", () => {
       assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), done.headSha);
       if (mode === "sleep") assert.equal(git(origin, "show", "ai/T-1:exit-work.txt"), "unfinished work");
     }
+  });
+
+  it("aborts sequential stalled hub calls after committing local WIP", async () => {
+    const stalledHub = new HubBackend("https://runner-stall.test", "fixture");
+    let quitting = false;
+    let requested!: () => void;
+    const requestedPromise = new Promise<void>((resolve) => { requested = resolve; });
+    const { runner } = await setup([profile("a", "claude", 10, "sleep")], { maxAttempts: 1 }, "hub", {
+      wrap: (backend) => ({ call: (method, input, actor) => {
+        if (quitting && method === "tasks.list") {
+          requested();
+          return stalledHub.call(method, input, actor).catch(() => stalledHub.call(method, input, actor));
+        }
+        return backend.call(method, input, actor);
+      } }),
+    });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => runner.log(run.id).includes("thinking"), 60_000);
+    const worktree = runner.store.get(run.id)!.worktree!;
+    writeFileSync(path.join(worktree, "quit-work.txt"), "unfinished work\n");
+    quitting = true;
+    const started = Date.now();
+    const quit = new QuitLifecycle();
+    stalledHub.stopForQuit();
+    await quit.start(() => runner.stop(), () => undefined, (error) => { throw error; });
+    await requestedPromise;
+    assert.ok(Date.now() - started < 24_000, `quit took ${Date.now() - started} ms`);
+    assert.equal(quit.ready, true);
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "cancelled");
+    assert.equal(done.commits, 1);
+    assert.equal(git(worktree, "show", `${done.headSha}:quit-work.txt`), "unfinished work");
   });
 
   it("pushes committed work after success and fetches a newer remote tip before continuing", async () => {

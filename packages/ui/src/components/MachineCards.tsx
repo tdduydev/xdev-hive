@@ -22,10 +22,12 @@ const numColor = (p: number) => (p >= 90 ? "var(--num-danger)" : p >= 75 ? "var(
 export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
   const t = useT();
   const os = OS_TAG[s.os];
+  const bytes = (n: number) => `${Number((n / (n >= 1e12 ? 1e12 : 1e9)).toFixed(1))} ${n >= 1e12 ? "TB" : "GB"}`;
+  const uptime = s.uptimeSeconds == null ? s.uptime : t(s.uptimeSeconds >= 86400 ? "agentMap.uptimeDays" : s.uptimeSeconds >= 3600 ? "agentMap.uptimeHours" : "agentMap.uptimeMinutes", { count: Math.floor(s.uptimeSeconds / (s.uptimeSeconds >= 86400 ? 86400 : s.uptimeSeconds >= 3600 ? 3600 : 60)) });
   const rows = [
-    { label: t("agentMap.cpu"), ...s.cpu },
-    { label: t("agentMap.ram"), ...s.ram },
-    { label: t("agentMap.disk"), ...s.disk },
+    { label: t("agentMap.cpu"), ...s.cpu, detail: s.cpu?.cores == null ? s.cpu?.detail : t(s.cpu.load == null ? "agentMap.cpuCores" : "agentMap.cpuLoad", { count: s.cpu.cores, load: s.cpu.load?.toFixed(1) ?? "" }) },
+    { label: t("agentMap.ram"), ...s.ram, detail: s.ram?.usedBytes == null || s.ram.totalBytes == null ? s.ram?.detail : `${Number((s.ram.usedBytes / (s.ram.totalBytes >= 1e12 ? 1e12 : 1e9)).toFixed(1))} / ${bytes(s.ram.totalBytes)}` },
+    { label: t("agentMap.disk"), ...s.disk, detail: s.disk?.freeBytes == null || s.disk.totalBytes == null ? s.disk?.detail : t("agentMap.diskFree", { free: bytes(s.disk.freeBytes), total: bytes(s.disk.totalBytes) }) },
   ].filter((r): r is { label: string; percent: number; detail: string } => r.percent !== undefined);
   return (
     <div className="flex flex-col gap-3 rounded-[16px] bg-sunken p-[14px] shadow-[var(--ring-glass)]">
@@ -33,9 +35,9 @@ export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
         <span className="inline-flex h-[22px] items-center rounded-[6px] px-2 text-[10.5px]/none font-bold tracking-[.3px] whitespace-nowrap" style={{ background: os.bg, color: os.fg }}>{os.label}</span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-[13px]/[18px] font-semibold">{s.osName}</span>
-          <span className="truncate text-[12px]/[18px] font-medium text-fg-muted">{s.hardware}</span>
+          <span title={s.hardware} className="truncate text-[12px]/[18px] font-medium text-fg-muted">{s.hardware}</span>
         </span>
-        {s.uptime ? <span className="text-[11px]/4 font-semibold whitespace-nowrap text-[color:var(--text-faint)]">{s.uptime}</span> : null}
+        {uptime ? <span className="text-[11px]/4 font-semibold whitespace-nowrap text-[color:var(--text-faint)]">{uptime}</span> : null}
       </div>
       {rows.length ? (
         <div className="grid grid-cols-3 gap-2.5">
@@ -46,7 +48,7 @@ export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
                 <span className="text-[14px]/none font-bold" style={{ color: numColor(r.percent) }}>{r.percent}%</span>
               </div>
               <div className="h-[5px] overflow-hidden rounded-full bg-[var(--track)]"><div className="h-full rounded-full" style={{ width: `${r.percent}%`, background: level(r.percent) }} /></div>
-              <span className="truncate text-[11px]/[15px] font-medium text-fg-muted">{r.detail}</span>
+              <span title={r.detail} className="text-[12px]/[16px] font-medium text-fg-muted md:truncate md:text-[11px]/[15px]">{r.detail}</span>
             </div>
           ))}
         </div>

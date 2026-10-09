@@ -307,6 +307,8 @@ export interface MemoryReview {
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_PLATFORMS = ["windows", "linux", "mac"] as const;
+export type TaskPlatform = (typeof TASK_PLATFORMS)[number];
 
 /**
  * The agent a task is *for* (roadmap 50), apart from `owner`, which says who took it: the hub queues the run itself as
@@ -335,6 +337,8 @@ export interface Task {
   id: string;
   project: string;
   title: string;
+  /** Empty means any machine OS. */
+  platforms: TaskPlatform[];
   kind: TaskKind | null;
   size: TaskSize | null;
   risk: TaskRisk | null;
@@ -1398,6 +1402,8 @@ export interface MachineRunnerSettings {
   maxParallel: number;
   mrEnabled: boolean;
   mrWhen: "after_review" | "after_success";
+  /** Absent on older desktop apps, which still accept the other runner settings. */
+  acceptHubRuns?: boolean;
 }
 export interface RunnerChange {
   settings: Partial<MachineRunnerSettings>;
@@ -1406,17 +1412,17 @@ export interface RunnerChange {
 }
 
 /**
- * What a machine says about itself for the machine card (spec 72g). No app reports it yet, so the card shows the
- * block only when it is there and never fills in numbers of its own.
+ * What a machine last reported for its system card (spec 72g). Missing measurements stay absent.
  */
 export interface MachineSystem {
   os: "macos" | "ubuntu" | "windows" | "linux";
   osName: string;
   hardware: string;
   uptime?: string;
-  cpu?: { percent: number; detail: string };
-  ram?: { percent: number; detail: string };
-  disk?: { percent: number; detail: string };
+  uptimeSeconds?: number;
+  cpu?: { percent: number; detail: string; cores?: number; load?: number };
+  ram?: { percent: number; detail: string; usedBytes?: number; totalBytes?: number };
+  disk?: { percent: number; detail: string; freeBytes?: number; totalBytes?: number };
 }
 
 /** A desktop runner as the hub last heard from it. */
@@ -1424,6 +1430,8 @@ export interface Machine {
   /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
   id: string;
   machine: string;
+  /** null for a runner that has not reported an OS yet. */
+  platform?: TaskPlatform | null;
   version: string;
   lastSeen: string;
   /** Heard from in the last 2 minutes. */

@@ -1,7 +1,7 @@
 // Pages that came from the Web Admin, in the one web shell (roadmap 35b): they draw no padding of their own, and the
 // overview reads a time range that used to sit in the admin top bar.
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { cn } from "cn";
+import { SegmentedTabs } from "@xdev-hive/ui/components/ui/primitives";
 import { useT } from "#ui/i18n/index.tsx";
 import { OpsOverview } from "./Ops.tsx";
 
@@ -36,22 +36,7 @@ export function OverviewWithRange() {
       // Not remembered.
     }
   };
-  const picker = (
-    <div role="radiogroup" aria-label={t("ops.rangeLabel")} className="flex w-fit gap-0.5 rounded-[7px] bg-sunken p-0.5">
-      {(["d1", "d7", "d30"] as const).map((r) => (
-        <button
-          key={r}
-          type="button"
-          role="radio"
-          aria-checked={range === r}
-          onClick={() => pick(r)}
-          className={cn("h-[26px] cursor-pointer rounded-[5px] px-2.5 font-mono text-xs/none outline-none focus-visible:focus-ring", range === r ? "bg-surface font-semibold text-fg-strong shadow-e1" : "text-fg-secondary")}
-        >
-          {t(`ops.range.${r}`)}
-        </button>
-      ))}
-    </div>
-  );
+  const picker = <SegmentedTabs label={t("ops.rangeLabel")} items={(["d1", "d7", "d30"] as const).map((r) => ({ value: r, label: t(`ops.range.${r}`) }))} value={range} onChange={(r) => pick(r as AdminRange)} />;
   return (
     <RangeContext.Provider value={{ range }}>
       <OpsPage>

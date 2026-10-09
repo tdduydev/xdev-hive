@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TerminalProvider } from "#ui/components/RemoteTerminal.tsx";
-import { BookOpen, Bot, Boxes, Brain, FolderGit2, GitPullRequestArrow, Inbox, LayoutGrid, ListChecks, MessagesSquare, Play, Sparkles, SquareKanban, SquareTerminal } from "lucide-react";
+import { BookOpen, Bot, Boxes, Brain, FolderGit2, GitPullRequestArrow, Inbox, LayoutGrid, ListChecks, MessagesSquare, Play, Sparkles, SquareKanban, SquareTerminal, Terminal } from "lucide-react";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
 import { withSystemGrants, type Me } from "@xdev-hive/core";
 import type { HiveClient } from "./client.ts";
@@ -25,6 +25,7 @@ import { TaskWorkPage } from "./pages/Tasks.tsx";
 import { TodayInboxPage as TodayPage } from "./pages/Today.tsx";
 import { DocReaderPage } from "./pages/DocReader.tsx";
 import { StartPage } from "#ui/pages/Start.tsx";
+import { TerminalPage } from "#ui/pages/Terminal.tsx";
 import { remainingSteps, shouldOpenStartGuide, startSteps } from "#ui/lib/start.ts";
 
 /** The pages of this machine on its own; the web and the app on a hub have registries of their own. */
@@ -44,11 +45,14 @@ type PageId =
   | "agents"
   | "setup"
   | "projects"
-  | "systems";
+  | "systems"
+  | "terminal";
 type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
   start: { label: "start.title", sub: "start.sub", icon: ListChecks, render: () => <StartPage /> },
+  // Not in the sidebar: reached from ⌘K and the machine/run terminal links, as on the web.
+  terminal: { label: "terminal.page", sub: "terminal.pageSub", icon: Terminal, render: () => <TerminalPage /> },
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessagesSquare, render: () => <ChatPage /> },
@@ -80,7 +84,7 @@ const LOCAL_GROUPS: Array<{ label: MessageKey | null; ids: PageId[] }> = [
 /** On this machine ⌘1–6 are its first six entries. */
 const LOCAL_SHORTCUTS: Partial<Record<PageId, string>> = { today: "1", tasks: "2", runs: "3", docs: "4", agents: "5", setup: "6" };
 /** Not in the sidebar, still in the command palette. */
-const PALETTE_ONLY: PageId[] = ["start", "overview"];
+const PALETTE_ONLY: PageId[] = ["start", "terminal", "overview"];
 
 type Route = { kind: "client"; id: PageId };
 const HOME: Route = { kind: "client", id: "today" };
@@ -148,6 +152,7 @@ function Shell({ client, me, onSignOut }: { client: HiveClient; me: Me; onSignOu
     const ids = new Set<PageId>(["start", "today", "overview", "docs", "read", "specs", "skills", "proposals", "memory", "tasks", "systems", "agents", "setup", "projects", "runs"]);
     // An app before 48 has no bridge for its own leader chat.
     if (client.desktop?.chatMachine) ids.add("chat");
+    if (client.terminal) ids.add("terminal");
     return ids;
   }, [client]);
 

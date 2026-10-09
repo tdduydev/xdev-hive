@@ -85,11 +85,12 @@ export type MachineTab = "map" | "quota" | "fleet" | "queue" | "costs";
 /** Máy & agent: the agent map for everyone who sees a project; the fleet, queue and costs read every machine, so admin. */
 export const machineTabs = (me: Me): MachineTab[] => (isHubAdmin(me) ? ["map", "quota", "fleet", "queue", "costs"] : ["map", "quota"]);
 
-export type AdminTab = "ops" | "users" | "policy" | "tools" | "budgets" | "alerts" | "audit" | "webhooks" | "versions" | "hub";
+export type AdminTab = "ops" | "users" | "roles" | "org" | "policy" | "tools" | "budgets" | "alerts" | "audit" | "webhooks" | "versions" | "hub";
 /** Quản trị: one entry, a tab per job of the hub admin. */
 export function adminTabs(caps: WebCaps): AdminTab[] {
   const tabs: AdminTab[] = ["ops"];
-  if (caps.users) tabs.push("users");
+  // Roles and the org chart read the accounts' grants, so they exist where the account list does.
+  if (caps.users) tabs.push("users", "roles", "org");
   tabs.push("policy", "tools", "budgets");
   if (caps.alerts) tabs.push("alerts");
   tabs.push("audit");
