@@ -4632,6 +4632,8 @@ async function main() {
     for (const locale of ["en", "vi"]) {
       await tab.eval(value => localStorage.setItem("xdev-hive.locale", value), locale); await tab.reload();
       await tab.go("machines");
+      // The machine's terminal entry lives in its manage sheet since the machine cards were redesigned.
+      await tab.click("[data-map-manage]");
       await tab.click('[data-testid="terminal-open-machine"]');
       await tab.waitFor(`terminal form ${locale}`, () => !!document.querySelector('[data-testid="terminal-create-dialog"]'));
       expect(await tab.eval((label) => document.querySelector('[data-testid="terminal-create-dialog"]').textContent.includes(label), locale === "vi" ? "Quyền tài khoản máy" : "Machine account privileges"), "terminal scope missing in locale");
@@ -4743,7 +4745,7 @@ async function main() {
     await tab.waitFor("detached UI", () => !document.querySelector('[data-testid="terminal-dialog"]'));
     expect((await diagnostics()).resizes.some(r => r.cols >= 20 && r.rows >= 5), "terminal never resized PTY");
     await fetch(`${terminal.base}/__terminal/opt-out`, { method: "POST" });
-    await tab.go("machines"); await tab.click('[data-testid="terminal-open-machine"]');
+    await tab.go("machines"); await tab.click("[data-map-manage]"); await tab.click('[data-testid="terminal-open-machine"]');
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");

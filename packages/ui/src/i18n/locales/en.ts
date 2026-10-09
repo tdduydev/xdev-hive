@@ -94,6 +94,7 @@ export const en: Catalog = {
     createHint: "Creating a task saves work in the project. Choose an agent and assign it from Tasks.",
   },
   terminal: {
+    more: "More", less: "Less", tryHint: "Try: ls · git status · npm test · claude · help · clear", keysHint: "↑ previous command · Ctrl+L clear screen", idle: "No session",
     sessions: "Open sessions", newOpen: "+ New session", noSessions: "No sessions in this project.", pick: "Pick a session on the left or open a new one.", page: "Terminal", pageSub: "Remote shell on an agent machine", noProject: "No project to open a terminal in.",
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Up arrow", down: "Down arrow", left: "Left arrow", right: "Right arrow", interrupt: "Ctrl-C: interrupt" },
     osUserName: "OS user: {user}",

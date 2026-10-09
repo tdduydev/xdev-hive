@@ -3,7 +3,7 @@ import { isTerminalFinal, type TerminalSession } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { TerminalForm } from "#ui/components/RemoteTerminal.tsx";
-import TerminalScreen from "#ui/components/TerminalScreen.tsx";
+import TerminalScreen, { TerminalHintBar } from "#ui/components/TerminalScreen.tsx";
 import { useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { scopeProject } from "#ui/lib/scope.ts";
@@ -55,7 +55,14 @@ export function TerminalPage() {
     </div>
     <div className="flex h-[calc(100vh-210px)] min-h-[480px] min-w-0 flex-[999_1_560px] flex-col max-md:h-[calc(100dvh-160px)] max-md:min-h-[360px]">
       {attachment ? <TerminalScreen key={attachment.session.id} api={api} attachment={attachment} onDetach={() => { setAttachment(null); sessions.reload(); }} />
-        : <div className="flex flex-1 items-center justify-center rounded-[20px] bg-[var(--code-bg)] p-6 text-center text-[13px]/5 text-[var(--text-muted)] shadow-[var(--ring-glass-strong)]">{t("terminal.pick")}</div>}
+        : <div data-testid="terminal-idle" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[var(--code-bg)] shadow-[var(--ring-glass-strong)]">
+          <div className="flex shrink-0 flex-wrap items-center gap-[10px] bg-[var(--surface-1)] py-[10px] pr-3 pl-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
+            <p className="inline-flex items-center gap-1.5 text-[12px]/none font-semibold text-[var(--text-muted)]"><span aria-hidden="true" className="size-[7px] rounded-full bg-[var(--text-muted)]" />{t("terminal.idle")}</p>
+            <span className="min-w-40 flex-1 truncate font-mono text-[12px]/none font-medium text-[var(--text-secondary)]">{project}</span>
+          </div>
+          <div className="flex flex-1 items-center justify-center p-6 text-center text-[13px]/5 text-[var(--text-muted)]">{t("terminal.pick")}</div>
+          <TerminalHintBar />
+        </div>}
     </div>
   </div>;
 }
