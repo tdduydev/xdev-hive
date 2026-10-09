@@ -4,15 +4,15 @@ import { useMemo, useState, type ReactNode } from "react";
 import { compareVersions, INSTALL_WHEN, type AppRollout, type MachineUpdate } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { SegmentedTabs, Toggle } from "@xdev-hive/ui/components/ui/primitives";
-import { DataTable, type Column } from "#ui/components/DataTable.tsx";
 import { Empty, ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
-import { AdminCards, AdminStats, type AdminCard } from "./cosmic.tsx";
+import { AdminCards, AdminStats, AdminTable, type AdminCard, type AdminRow, type AdminTone } from "./cosmic.tsx";
 
+const TONE: Record<ChipKind, AdminTone> = { success: "ok", running: "run", info: "info", danger: "bad", warning: "warn", neutral: "neutral" };
 const COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 
 function Pills<T extends string | number>({ label, value, options, onPick, disabled }: { label: string; value: T; options: Array<[T, ReactNode]>; onPick: (v: T) => void; disabled?: boolean }) {
@@ -68,14 +68,23 @@ export function OpsVersions() {
     if (m.state === "failed") return { label: t("ops.versions.state.failed"), kind: "danger" };
     return { label: target ? t("ops.versions.state.idle") : t("ops.versions.state.none"), kind: "neutral" };
   };
-  const columns: Array<Column<MachineUpdate>> = [
-    { key: "machine", label: t("ops.versions.col.machine"), width: "minmax(180px,1fr)", mono: true, strong: true, render: (m) => m.machine, sortValue: (m) => m.machine },
-    { key: "current", label: t("ops.versions.col.current"), width: "110px", mono: true, render: (m) => m.current, sortValue: (m) => m.current },
-    { key: "target", label: t("ops.versions.col.target"), width: "110px", mono: true, render: () => target ?? "—" },
-    { key: "state", label: t("ops.versions.col.state"), width: "160px", render: (m) => <div className="flex min-w-0 flex-col gap-1"><Chip kind={stateOf(m).kind}>{stateOf(m).label}</Chip>{m.error ? <span className="whitespace-normal break-words text-xs/4 text-danger" role="status">{m.error}</span> : null}</div>, title: (m) => m.error ?? undefined },
-    { key: "seen", label: t("ops.versions.col.seen"), width: "130px", align: "right", render: (m) => formatTime(m.updatedAt), sortValue: (m) => m.updatedAt },
-  ];
-
+  const rows: AdminRow[] = machines.map((m) => {
+    const st = stateOf(m);
+    return {
+      key: m.machineId,
+      cells: [
+        { text: m.machine, mono: true, strong: true },
+        { text: m.current, mono: true },
+        { text: target ?? "—", mono: true },
+        { text: st.label, tone: TONE[st.kind], sub: m.error ?? undefined, title: m.error ?? undefined },
+        { text: formatTime(m.updatedAt), mono: true },
+      ],
+      sort: [m.machine, m.current, target ?? "", st.label, m.updatedAt],
+      search: `${m.machine} ${m.current} ${st.label} ${m.error ?? ""}`,
+      tags: { state: st.kind, current: m.current },
+    };
+  });
+  const versionOptions = counts.map(([v]) => ({ value: v, label: v }));
   if (!client.releases) return null;
   const cards: AdminCard[] = releases.map((r) => ({
     key: r.version,
@@ -174,7 +183,20 @@ export function OpsVersions() {
           </div>
         </section>
       ) : null}
-      {machines.length ? <div className="cx-ops-data"><DataTable responsive rows={machines} columns={columns} rowKey={(m) => m.machineId} noun={t("ops.versions.noun")} searchText={(m) => `${m.machine} ${m.current}`} maxHeight="52vh" /></div> : null}
+      {machines.length ? (
+        <AdminTable
+          cols={[t("ops.versions.col.machine"), t("ops.versions.col.current"), t("ops.versions.col.target"), t("ops.versions.col.state"), t("ops.versions.col.seen")]}
+          grid="minmax(180px,1fr) 110px 110px minmax(160px,1fr) 150px"
+          minWidth={760}
+          rows={rows}
+          searchable
+          noun={t("ops.versions.noun")}
+          filters={[
+            { key: "current", label: t("ops.versions.col.current"), options: versionOptions },
+            { key: "state", label: t("ops.versions.col.state"), options: (["success", "running", "info", "danger", "neutral"] as const).filter((k) => machines.some((m) => stateOf(m).kind === k)).map((k) => ({ value: k, label: t(`ops.versions.stateKind.${k}`) })) },
+          ]}
+        />
+      ) : null}
       <h2 className="cx-ops-h">{t("ops.versions.releases")}</h2>
       {data.data && !releases.length ? <Empty>{t("ops.versions.noReleases")}</Empty> : null}
       <AdminCards cards={cards} />

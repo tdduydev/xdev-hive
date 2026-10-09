@@ -278,6 +278,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-components": ["login-token"],
   "cosmic-primitives": ["login-token"],
   "cosmic-settings-admin": ["login-token"],
+  "admin-table-settings-rows": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -769,6 +770,38 @@ async function main() {
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
     await tab.go("today");
   });
+  // R-72l: AdminTable searches, filters and sorts in the browser (audit, machines of Phiên bản app); the Cài đặt tabs are rows.
+  await step("admin-table-settings-rows", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin?tab=audit");
+    await tab.waitFor("audit rows", () => document.querySelectorAll('.cx-ops-table-row').length > 1);
+    const total = await tab.eval(() => document.querySelectorAll('.cx-ops-table-row').length);
+    await tab.click('[data-table-toolbar] input[type="search"]');
+    await tab.type("zzz-no-such-entry");
+    await tab.waitFor("search empties the table", () => document.querySelectorAll('.cx-ops-table-row').length === 0 && !!document.querySelector('.cx-ops-table-empty'));
+    await tab.eval(() => { const i = document.querySelector('[data-table-toolbar] input[type="search"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set; set.call(i, ""); i.dispatchEvent(new Event("input", { bubbles: true })); });
+    await tab.waitFor("search cleared", (n) => document.querySelectorAll('.cx-ops-table-row').length === n, total);
+    await tab.click(".cx-ops-sort");
+    await tab.waitFor("ascending header", () => !!document.querySelector('[role="columnheader"][aria-sort="ascending"]'));
+    await tab.click('[role="columnheader"][aria-sort="ascending"] .cx-ops-sort');
+    await tab.waitFor("descending header", () => !!document.querySelector('[role="columnheader"][aria-sort="descending"]'));
+    const options = await tab.eval(() => [...document.querySelectorAll('select[data-table-filter="group"] option')].map((o) => o.value).filter(Boolean));
+    expect(options.length > 0, "audit group filter has no options");
+    await tab.select('select[data-table-filter="group"]', "docs");
+    await tab.waitFor("group filter applied", (n) => document.querySelectorAll('.cx-ops-table-row').length <= n && document.querySelector('select[data-table-filter="group"]').value === "docs", total);
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "audit overflows");
+    await tab.shot(`admin-table-audit-${mobile ? "390x844" : "1440x900"}`);
+    await tab.go("admin?tab=versions");
+    await tab.waitFor("versions page", () => !!document.querySelector("[data-admin-page]"));
+    for (const name of ["tools", "context", "leader", "members", "systems"]) {
+      await tab.go(`settings?tab=${name}`);
+      await tab.waitFor(`${name} rows`, (n) => !!document.querySelector(`[data-settings-rows="${n}"]`), name);
+      expect(await tab.eval(() => !!document.querySelector("[data-settings-edit]")), `${name}: no Sửa action`);
+      expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), `${name} overflows`);
+    }
+    await tab.shot(`settings-rows-systems-${mobile ? "390x844" : "1440x900"}`);
+  });
+
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {

@@ -46,7 +46,7 @@ export async function tableCardsChecks({ tab, rpc, step, expect }) {
       });
       expect(layout.page <= layout.width + 1 && layout.content <= layout.pane + 1, `${route} overflows: ${JSON.stringify(layout)}`);
       expect(!layout.badRows, `${route}: clipped or overflowing cards: ${JSON.stringify(layout)}`);
-      if (["tasks", "batches", "tokens", "audit"].includes(route)) {
+      if (["tasks", "batches", "tokens"].includes(route)) {
         expect(layout.rows > 0 && layout.labels > 0, `${route}: no labelled cards: ${JSON.stringify(layout)}`);
       }
       if (route === "tasks") {
@@ -54,8 +54,9 @@ export async function tableCardsChecks({ tab, rpc, step, expect }) {
         expect(task?.includes("Phụ thuộc") && task?.includes("Cập nhật"), `Task metadata missing: ${task}`);
       }
       if (route === "audit") {
-        await tab.select('select[aria-label="Sắp xếp"]', "at");
-        await tab.waitFor("mobile sorting", () => document.querySelector('select[aria-label="Sắp xếp"]')?.value);
+        // AdminTable: no card layout, the table scrolls in its own frame; sorting is a header button.
+        await tab.click(".cx-ops-sort");
+        await tab.waitFor("mobile sorting", () => document.querySelector('[role="columnheader"][aria-sort="ascending"]'));
       }
     });
   }
