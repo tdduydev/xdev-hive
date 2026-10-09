@@ -14,7 +14,9 @@ export async function allInboxSources(client: Pick<HiveClient, "call">, filter: 
     }
   }
   const [tasks, runs] = await Promise.all([read("tasks"), includeRuns ? read("runs") : Promise.resolve({ runs: [] })]);
-  return { tasks: tasks.tasks, runs: runs.runs };
+  // Review tasks bring their newest run (for Merge MR); a waiting run can be the same record.
+  const byId = new Map([...tasks.runs, ...runs.runs].map((r) => [`${r.machineId}/${r.runId}`, r]));
+  return { tasks: tasks.tasks, runs: [...byId.values()] };
 }
 
 /** The dispatch link reads precisely the source used for the pipeline's total. */

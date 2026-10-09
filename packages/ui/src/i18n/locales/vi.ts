@@ -845,6 +845,7 @@ export const vi = {
       changes: "Yêu cầu sửa",
       noLongerReview: "Task không còn ở trạng thái chờ review.",
       changesRequested: "Đã yêu cầu sửa {id}",
+      merge: "Merge MR",
       mergeConfirm: "Gửi yêu cầu merge {mr} trên máy chạy?",
       mergeRequested: "Đã gửi yêu cầu merge MR",
       title: "{id} · {title}",

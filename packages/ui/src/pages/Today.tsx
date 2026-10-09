@@ -751,7 +751,7 @@ function Detail({
       const canMove = allow(task.project, "codeReview");
       actions = [
         ...(canMove && hubRun?.mrUrl && (!hubRun.mr?.status || hubRun.mr.status === "opened") && !hubRun.mr?.draft && hubRun.mr?.pipeline !== "failed" && hubRun.merge?.status !== "pending" ? [{
-          label: t("runs.merge"), kind: "primary" as const, run: act(async () => {
+          label: t("inbox.review.merge"), kind: "primary" as const, run: act(async () => {
             if (!window.confirm(t("inbox.review.mergeConfirm", { mr: hubRun.mrUrl! }))) return null;
             await client.call("runs.merge", { machineId: hubRun.machineId, runId: hubRun.runId });
             return t("inbox.review.mergeRequested");
@@ -763,7 +763,7 @@ function Detail({
           return t("inbox.review.changesRequested", { id: task.id });
         }) }] : []),
         ...(mrUrl ? [{ label: t("inbox.review.openMr"), kind: "secondary" as const, run: open(mrUrl) }] : []),
-        { label: t("inbox.review.openTask"), kind: r?.mrUrl ? "secondary" : "primary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
+        { label: t("inbox.review.openTask"), kind: mrUrl ? "secondary" : "primary", run: go(`#/tasks?task=${encodeURIComponent(task.id)}`) },
         ...(canMove
           ? [
               {

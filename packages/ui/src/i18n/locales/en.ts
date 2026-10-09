@@ -841,6 +841,7 @@ export const en: Catalog = {
       changes: "Request changes",
       noLongerReview: "This task is no longer awaiting review.",
       changesRequested: "Requested changes for {id}",
+      merge: "Merge MR",
       mergeConfirm: "Request merging {mr} on its runner?",
       mergeRequested: "MR merge requested",
       title: "{id} · {title}",
