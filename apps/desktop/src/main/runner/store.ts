@@ -10,6 +10,7 @@ import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS worktree_command_receipts(id TEXT PRIMARY KEY, results TEXT NOT NULL, acked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS pending_hub_reports(id TEXT PRIMARY KEY, method TEXT NOT NULL, input TEXT NOT NULL, actor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_cleanup_log(id INTEGER PRIMARY KEY, entry TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS tool_approval_receipts(
@@ -188,6 +189,20 @@ export class RunStore {
     this.db.exec(SCHEMA);
     const have = new Set((this.db.prepare("PRAGMA table_info(runs)").all() as Row[]).map((c) => String(c.name)));
     for (const [name, ddl] of ADDED_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${ddl}`);
+  }
+
+  queueHubReport(id: string, method: string, input: unknown, actor: unknown): void {
+    this.db.prepare("INSERT OR IGNORE INTO pending_hub_reports VALUES (?, ?, ?, ?)").run(id, method, JSON.stringify(input), JSON.stringify(actor));
+  }
+
+  pendingHubReports(): Array<{ id: string; method: string; input: unknown; actor: unknown }> {
+    return (this.db.prepare("SELECT * FROM pending_hub_reports ORDER BY rowid").all() as Row[]).map((r) => ({
+      id: String(r.id), method: String(r.method), input: JSON.parse(String(r.input)), actor: JSON.parse(String(r.actor)),
+    }));
+  }
+
+  ackHubReport(id: string): void {
+    this.db.prepare("DELETE FROM pending_hub_reports WHERE id = ?").run(id);
   }
 
   worktreeResult(id: string): WorktreeCommand["results"] | null {

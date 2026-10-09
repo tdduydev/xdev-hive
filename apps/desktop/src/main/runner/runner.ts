@@ -43,6 +43,7 @@ import {
   ARTIFACT_DIR,
   effectivePolicy,
   HiveError,
+  HubBackend,
   issueRunCredential,
   revokeRunCredential,
   MAX_CANDIDATES,
@@ -349,6 +350,12 @@ function stopLive(live: Live): void {
   if (live.container) spawn(live.container.docker, ["kill", live.container.name], { env: live.container.env, stdio: "ignore", windowsHide: true }).on("error", () => undefined);
 }
 
+export function backgroundDelay(interval: number, failures: number, random = Math.random): number {
+  if (!failures) return interval;
+  const base = Math.min(60_000, Math.max(1_000, interval / 2) * 2 ** Math.min(failures - 1, 8));
+  return Math.round(base * (0.75 + random() * 0.5));
+}
+
 type Outcome =
   | {
       kind: "exit";
@@ -438,6 +445,8 @@ function tryGit(cwd: string, args: string[]): string | null {
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : String(err);
 
 export class Runner {
+  #stopped = false;
+  #flushingReports = false;
   readonly store: RunStore;
   readonly #host: RunnerHost;
   /** CLIs being upgraded (roadmap 33): their profiles take no new run until it is done. */
@@ -618,32 +627,60 @@ export class Runner {
   }
 
   start(): void {
+    this.#stopped = false;
+    if (this.#host.backend() instanceof HubBackend) {
+      const hub = this.#host.backend() as HubBackend;
+      hub.setQuitQueue((id, method, input, actor) => this.store.queueHubReport(id, method, input, actor));
+      void this.flushHubReports().catch(() => undefined);
+    }
     // A group whose running candidate was lost with the app would otherwise wait forever.
     const stalled = new Map(this.store.active().filter((r) => r.status === "running" && r.bestOf).map((r) => [r.bestOf!.group, r.id]));
     this.store.failInterrupted(this.#iso());
     for (const id of stalled.values()) this.#track(this.#bestOfNext(this.store.get(id)!).catch(() => undefined));
     this.#interval = setInterval(() => void this.tick(), this.#opts.tickMs);
     this.#interval.unref();
-    // A hub that is down shows up on every other call too; the heartbeat just tries again next time.
-    const beat = () => void this.beat();
-    this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
-    this.#heartbeatTimer.unref();
+    this.#scheduleBackground(this.#opts.heartbeatMs, async () => {
+      await this.beat();
+      if (this.#hubState.ok === false) throw new Error("Heartbeat failed");
+    }, (timer) => { this.#heartbeatTimer = timer; });
     this.#worktreeTimer = setInterval(() => {
       if (this.#host.mode() === "local") void this.cleanWorktrees().catch(() => undefined);
     }, 60_000);
     this.#worktreeTimer.unref();
-    this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
-    this.#pushTimer.unref();
+    this.#scheduleBackground(this.#opts.pushMs, () => this.pushRuns(), (timer) => { this.#pushTimer = timer; });
     if (this.#opts.chatPollMs > 0) {
-      this.#chatTimer = setInterval(() => void this.pollChats().catch(() => undefined), this.#opts.chatPollMs);
-      this.#chatTimer.unref();
+      this.#scheduleBackground(this.#opts.chatPollMs, () => this.pollChats(), (timer) => { this.#chatTimer = timer; });
     }
     if (this.#opts.assistPollMs > 0) {
-      this.#assistTimer = setInterval(() => void this.pollAssists().catch(() => undefined), this.#opts.assistPollMs);
-      this.#assistTimer.unref();
+      this.#scheduleBackground(this.#opts.assistPollMs, () => this.pollAssists(), (timer) => { this.#assistTimer = timer; });
     }
-    beat();
     void this.tick();
+  }
+
+  #scheduleBackground(interval: number, task: () => Promise<unknown>, remember: (timer: NodeJS.Timeout) => void): void {
+    let failures = 0;
+    const run = async () => {
+      try { await task(); failures = 0; }
+      catch { failures++; }
+      if (this.#stopped) return;
+      const timer = setTimeout(run, backgroundDelay(interval, failures));
+      timer.unref();
+      remember(timer);
+    };
+    void run();
+  }
+
+  async flushHubReports(): Promise<void> {
+    const backend = this.#host.backend();
+    if (!(backend instanceof HubBackend) || this.#flushingReports) return;
+    this.#flushingReports = true;
+    try {
+      for (const report of this.store.pendingHubReports()) {
+        if (report.method !== "tasks.update" && report.method !== "runs.report") continue;
+        await backend.replayReport(report.id, report.method, report.input as never, report.actor as Actor);
+        this.store.ackHubReport(report.id);
+      }
+    } finally { this.#flushingReports = false; }
   }
 
   /** How the last heartbeat went (hub mode): the interface shows a lost connection from it. */
@@ -658,6 +695,7 @@ export class Runner {
     try {
       await this.heartbeat();
       this.#hubState = { ok: true, checkedAt: at, lastOkAt: at, code: null, error: null };
+      void this.flushHubReports().catch(() => undefined);
     } catch (err) {
       const { code, message } = toErrorPayload(err);
       this.#hubState = { ...this.#hubState, ok: false, checkedAt: at, code, error: message.slice(0, 300) };
@@ -703,6 +741,7 @@ export class Runner {
 
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
   async stop(): Promise<void> {
+    this.#stopped = true;
     this.#mergeQueue.stop();
     this.#updateDrain = true;
     clearInterval(this.#interval);

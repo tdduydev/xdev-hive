@@ -2726,7 +2726,7 @@ async function main() {
     await tab.type("payment");
     await tab.key("Enter");
     await tab.key("Escape");
-    if (mobile) await tab.click('button[aria-label="Đóng menu"]');
+    if (mobile) await tab.key("Escape");
     await tab.click("[data-ask-leader]");
     await sleep(450);
     await tab.waitFor("new chat in payment scope", () => document.querySelector('[data-leader-panel] #chat-project')?.value === "payment");

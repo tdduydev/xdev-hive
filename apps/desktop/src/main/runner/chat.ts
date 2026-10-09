@@ -119,7 +119,7 @@ interface FetchedFile {
 
 /** The hub's file, read with the reply's token. */
 async function fetchBytes(url: string, token: string): Promise<Uint8Array> {
-  const signal = AbortSignal.timeout(10_000);
+  const signal = AbortSignal.timeout(45_000);
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal });
   if (!res.ok) throw new Error(`The hub answered ${res.status} for ${url}.`);
   return new Uint8Array(await res.arrayBuffer());

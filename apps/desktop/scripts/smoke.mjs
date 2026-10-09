@@ -138,7 +138,7 @@ async function shoot(name, page, delay, extra = {}) {
   // Async spawn: the mock GitLab in this process must keep answering while the app runs.
   // The throwaway dir as cwd, as a packaged app has none in the repo: what the app starts without a cwd of its own
   // (a CLI's --version) writes there, not into apps/desktop.
-  const child = spawn(electron, [...(process.env.HIVE_TEST_NO_SANDBOX === "1" ? ["--no-sandbox"] : []), ...(process.platform === "linux" && process.env.ELECTRON_OZONE_PLATFORM_HINT === "x11" ? ["--ozone-platform=x11", "--disable-gpu"] : []), appDir], {
+  const child = spawn(electron, [...(process.platform === "linux" && process.env.ELECTRON_OZONE_PLATFORM_HINT === "x11" ? ["--ozone-platform=x11", "--disable-gpu"] : []), appDir], {
     cwd: work,
     stdio: "inherit",
     env: {

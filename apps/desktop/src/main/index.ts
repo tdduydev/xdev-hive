@@ -81,6 +81,7 @@ import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
+import { pendingProposalCount } from "#desktop/main/tray-count.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
@@ -192,6 +193,10 @@ function reload(): void {
     mainLog.write(`config: could not pin the machine name: ${toErrorPayload(err).message}`);
   }
   backend = resolveBackend(config);
+  if (backend instanceof HubBackend && runner) {
+    backend.setQuitQueue((id, method, input, who) => runner.store.queueHubReport(id, method, input, who));
+    void runner.flushHubReports().catch(() => undefined);
+  }
   // This machine's own chat (local mode, roadmap 48): the database takes it as the machine its threads run on.
   if (backend instanceof SqliteHive) backend.setChatMachine(() => runner?.localChatMachine() ?? null);
 }
@@ -1128,7 +1133,7 @@ async function chatUpload(project: unknown, name: unknown, bytes: unknown): Prom
 async function readChatFile(id: number): Promise<{ name: string; type: string; bytes: Uint8Array } | null> {
   const hub = hubAccess();
   if (hub) {
-    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name }, signal: AbortSignal.timeout(10_000) });
+    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name }, signal: AbortSignal.timeout(45_000) });
     if (!res.ok) return null;
     return { name: servedName(res.headers.get("content-disposition")) ?? `file-${id}`, type: res.headers.get("content-type") ?? "application/octet-stream", bytes: new Uint8Array(await res.arrayBuffer()) };
   }
@@ -1655,7 +1660,7 @@ async function refreshTray(): Promise<void> {
   if (!tray || trayRefreshPending) return;
   trayRefreshPending = true;
   try {
-    const { count: pending } = await backend.call("proposals.count", { status: "pending" }, actor());
+    const pending = await pendingProposalCount(backend, actor());
     tray.setTitle(pending ? ` ${pending}` : "");
     tray.setToolTip(pending ? `xDev Hive: ${tr("desktop.pendingProposals", { count: pending })}` : "xDev Hive");
     if (pending > lastPending && Notification.isSupported()) {
@@ -1818,13 +1823,16 @@ if (!app.requestSingleInstanceLock()) {
         await updater.install({ relaunch, hidden: relaunch }).catch(() => undefined);
       }, () => {
         // Chromium can hang in native shutdown even after the runner has finished. Only bypass Electron after
-        // bookkeeping and the update helper have settled; never impose a deadline on committing agent work.
+        // bookkeeping and the update helper have settled. The separate 15s deadline covers stuck cleanup.
         setTimeout(() => {
           mainLog.write("quit fallback: Electron did not exit within 5s after cleanup");
           (process as NodeJS.Process & { reallyExit(code: number): never }).reallyExit(0);
         }, 5000);
         app.quit();
-      }, (err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`));
+      }, (err) => mainLog.write(`runner stop failed: ${toErrorPayload(err).message}`), () => {
+        mainLog.write("quit deadline: forcing app exit after 15s");
+        app.exit(0);
+      });
   });
   app.on("will-quit", () => mainLog.write("will-quit"));
   app.on("quit", (_e, code) => {
