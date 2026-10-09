@@ -403,7 +403,8 @@ function Head({ run, machine, actions, below }: { run: AgentRun | RunRecord; mac
         <span className="runs-mono ml-auto text-[11px]/4 text-fg-muted">{id}</span>
       </div>
       <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong"><span className="runs-mono mr-2 text-[12px] font-semibold text-fg-muted">{run.taskId}</span>{run.taskTitle}</h2>
+        <span className="runs-mono text-[12px] font-semibold text-fg-muted">{run.taskId}</span>
+        <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong">{run.taskTitle}</h2>
         <span className="break-words text-xs/4 text-fg-muted">
           {[runLabel("agentRole", run.role), run.profileId ?? t("board.waitingProfile"), machine, run.project, run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
         </span>
