@@ -51,6 +51,11 @@ export interface Actor {
    * cookie). A remote terminal opens for this alone (spec 69), not for any bearer, whatever its role.
    */
   humanSession?: string;
+  /**
+   * Set only by core while it runs an approved operation proposal: the audit line of that call then names the agent
+   * that asked for it beside the person who approved it.
+   */
+  approvedProposal?: { id: number; author: string };
 }
 
 export interface DocSummary {

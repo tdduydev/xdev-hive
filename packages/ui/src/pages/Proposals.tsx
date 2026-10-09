@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { isCliActionProposalKey, type Proposal } from "@xdev-hive/core";
+import { isCliActionProposalKey, isDestructive, type Proposal } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -206,7 +206,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
                 </Notice>
               ) : null}
               <ErrorNote error={current.error} />
-              {operation ? <><Notice tone="warn">{t("proposals.operationApproval")}</Notice><pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs text-foreground">{p.content}</pre></> : current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
+              {operation ? <>{method && isDestructive(method) ? <Notice tone="error" data-destructive-operation>{t("proposals.destructiveApproval", { method })}</Notice> : null}<Notice tone="warn">{t("proposals.operationApproval")}</Notice><pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs text-foreground">{p.content}</pre></> : current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
           {contextOnly ? <p className="m-0 text-xs text-fg-muted">{t("proposals.needsContext")}</p> : null}
