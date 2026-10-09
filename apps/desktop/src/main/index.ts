@@ -357,12 +357,60 @@ async function importGitlab(input: {
       if (!PROJECT_NAME.test(key)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -", { key: "errors.badProjectKey" });
       if (config.projects.some((x) => x.name === key)) throw new HiveError("conflict", `Đã có dự án ${key}.`, { key: "errors.projectExists", vars: { project: key } });
     },
-    clone: gitClone(client, config.gitlab.token),
+    clone: gitClone(client.host, { user: "oauth2", token: config.gitlab.token }),
     remote: (dir) => isRepoRoot(dir) ? remoteUrl(dir) : null,
     add: (p) => {
       addProject({ name: p.name, repo: p.repo, targetBranch: p.targetBranch });
       updateProject(p.name, { gitlabProject: p.gitlabProject ?? null });
     },
+  });
+  return { results, settings: settings() };
+}
+
+/** The machine's GitHub, for the import (roadmap 74b): its URL and token must be set on this page first. */
+function githubImportClient(): GitHubClient {
+  if (!config.github.url || !config.github.token) throw new HiveError("bad_request", "Chưa có GitHub token.", { key: "errors.githubNoToken" });
+  return new GitHubClient(config.github.url, config.github.token, gitlabFetch);
+}
+
+function githubOwnerName(input: unknown): string {
+  const owner = String(input ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (!/^[\w.-]+$/.test(owner)) throw new HiveError("bad_request", "An organization or user name, like my-company.", { key: "errors.githubOwner" });
+  return owner;
+}
+
+async function githubOwner(input: { owner: string; baseDir: string }): Promise<GitLabImportCandidate[]> {
+  const owner = githubOwnerName(input?.owner);
+  const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
+  const repos = await githubImportClient().ownerRepos(owner);
+  const local = findGitRepos(baseDir, 3).map((dir) => ({ dir, remote: remoteUrl(dir) }));
+  return planImport(repos, baseDir, config.projects, owner, local, "githubRepo");
+}
+
+async function importGithub(input: {
+  items: Array<{ key: string; pathWithNamespace: string; dir: string }>;
+  protocol: "ssh" | "https";
+  owner: string;
+}): Promise<{ results: GitLabImportResult[]; settings: DesktopSettings }> {
+  const client = githubImportClient();
+  // The clone URLs come from GitHub again, not from the page.
+  const repos = new Map((await client.ownerRepos(githubOwnerName(input.owner))).map((r) => [r.pathWithNamespace, r]));
+  const items = (input.items ?? []).flatMap((i) => {
+    const repo = repos.get(i.pathWithNamespace);
+    return repo ? [{ key: i.key, pathWithNamespace: i.pathWithNamespace, dir: path.resolve(expandHome(i.dir)), url: input.protocol === "https" ? repo.httpUrl : repo.sshUrl, sshUrl: repo.sshUrl, httpUrl: repo.httpUrl, targetBranch: repo.defaultBranch }] : [];
+  });
+  const results = await importRepos(items, {
+    check: (key) => {
+      if (!PROJECT_NAME.test(key)) throw new HiveError("bad_request", "Project key: chữ thường, số, . _ -", { key: "errors.badProjectKey" });
+      if (config.projects.some((x) => x.name === key)) throw new HiveError("conflict", `Đã có dự án ${key}.`, { key: "errors.projectExists", vars: { project: key } });
+    },
+    clone: gitClone(client.host, { user: "x-access-token", token: config.github.token }),
+    remote: (dir) => isRepoRoot(dir) ? remoteUrl(dir) : null,
+    add: (p) => {
+      addProject({ name: p.name, repo: p.repo, targetBranch: p.targetBranch });
+      updateProject(p.name, { githubRepo: p.githubRepo ?? null });
+    },
+    field: "githubRepo",
   });
   return { results, settings: settings() };
 }
@@ -1290,6 +1338,8 @@ function registerIpc(): void {
   handle("desktop:addProjects", addProjects);
   handle("desktop:gitlabGroup", gitlabGroup);
   handle("desktop:importGitlab", importGitlab);
+  handle("desktop:githubOwner", githubOwner);
+  handle("desktop:importGithub", importGithub);
   handle("desktop:removeProject", (name: string) =>
     persist({
       ...config,
