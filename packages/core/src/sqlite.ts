@@ -6816,7 +6816,9 @@ export class SqliteHive implements HiveBackend {
   }
 
   #mayApproveTool(actor: Actor, owner: string | null): boolean {
-    return actor.role !== "agent" && !isAgentActor(actor) &&
+    // A viewer's token reads only: it never approves a tool or manages worktrees, even for its machine's owner.
+    // (A person's web session has no token, and its role says nothing of the project grant.)
+    return actor.role !== "agent" && !(actor.role === "viewer" && actor.tokenId) && !isAgentActor(actor) &&
       ((actor.role === "admin" && !actor.access) || (!!actor.account && actor.account === owner));
   }
 
