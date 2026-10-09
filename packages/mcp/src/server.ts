@@ -34,6 +34,8 @@ import { z } from "zod";
 export interface HiveMcpOptions {
   /** Used when a tool call omits `project` (e.g. from HIVE_PROJECT). */
   defaultProject?: string;
+  /** A CLI opened on a whole system (HIVE_SYSTEM, GROUP-cli): no default project, the error names the system instead. */
+  system?: string;
   /**
    * The token writes a reply in the hub-wide chat (roadmap 37): there is no default project, so every tool that needs
    * one asks for it, and the reads that can answer for the whole hub do when none is given.
@@ -118,6 +120,12 @@ propose_resume_agents and propose_policy without project mean the whole hub, whi
 run_list, run_count, run_requests, cost_summary and alert_list without project answer for the whole hub; the other reads need one.
 Group what you propose by project, and leave merges, stopping agents and policy changes for the person to decide.`;
 
+// GROUP-cli: one session over every repo of a system, so no tool can assume which project a write belongs to.
+const systemInstructions = (system: string) => `
+This session is system ${system} with several repos, not one project: there is no default project. Pass project on every task_*, memory_write
+and doc_* call, the key of the repo the work is in (AGENTS.md in the working folder lists each repo with its key and folder).
+memory_write with system: "${system}" records what every service of the system needs (an API contract, how the services call each other).`;
+
 const project = z.string().optional().describe('Hive project key (see "Hive project key" in AGENTS.md)');
 const reason = z.string().min(1).max(500).describe("One line for the person confirming it: why");
 
@@ -144,7 +152,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     ? READ_ONLY_INSTRUCTIONS
     : leader
       ? "Read Hive through its read tools. Before answering, search memory for context. Record decisions in your reply; changes are proposals for the sender to approve." + LEADER_INSTRUCTIONS + LEADER_READ_INSTRUCTIONS + (hubScope ? LEADER_HUB_INSTRUCTIONS : "")
-      : INSTRUCTIONS + (cliLeader ? CLI_LEADER_INSTRUCTIONS : "");
+      : INSTRUCTIONS + (cliLeader ? CLI_LEADER_INSTRUCTIONS : "") + (opts.system ? systemInstructions(opts.system) : "");
   const server = new McpServer({ name: "xdev-hive", version: "0.1.0" }, { instructions });
 
   // Roadmap 28f: every answer is JSON without indentation. Only an agent reads these, and the spaces are tokens it pays for.
@@ -167,7 +175,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       throw new Error(
         hubScope
           ? "project is required: this chat is the whole hub and has no default project. Name one (project_list lists them)."
-          : "project is required (pass the Hive project key from AGENTS.md)",
+          : opts.system
+            ? `project is required: this session is system ${opts.system}, not one project. Pass the project key of the repo you work in (AGENTS.md lists them).`
+            : "project is required (pass the Hive project key from AGENTS.md)",
       );
     }
     return value;

@@ -17,6 +17,7 @@ import { useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/scope.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { canSetUpGroups, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
+import { OpenSystemCli } from "#ui/components/OpenCli.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 /** `policy`: a lead's policy rows at the end; Cài đặt dự án has them on a tab of their own (roadmap 49b). */
@@ -39,6 +40,8 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
   const outsideShown = outside.filter((p) => nameMatches(p, query));
   // Setting a system's group up on this machine (GROUP-init-sync): the desktop app only.
   const groups = canSetUpGroups(client.desktop);
+  // GROUP-cli: a CLI over every repo of a system, from its card (desktop app only).
+  const profiles = useQuery(async () => (client.desktop ? await client.desktop.profiles() : []), [client]);
   const [groupOpen, setGroupOpen] = useState<string | null>(null);
 
   return (
@@ -134,6 +137,11 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
             {groups && groupOpen === s.name ? (
               <CardContent>
                 <SystemGroupPanel system={s} />
+              </CardContent>
+            ) : null}
+            {client.desktop ? (
+              <CardContent>
+                <OpenSystemCli profiles={profiles.data ?? []} system={s.name} />
               </CardContent>
             ) : null}
             {/* The group's tree (his › backend › svc-core) when the system has a source (GROUP-init-sync). */}

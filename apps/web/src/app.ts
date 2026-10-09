@@ -313,6 +313,12 @@ export function createHubApp({
     if (users.byUsername(actor.account)?.hubRole !== "owner") throw new HiveError("forbidden", "Chỉ chủ hub mới cấp hoặc sửa vai trò chủ hub.", { key: "errors.ownerOnly" });
   };
 
+  /** The projects of a system, for an MCP credential scoped to it; none when it is gone. */
+  const systemProjects = (name: string): string[] => {
+    const row = hive.db.prepare("SELECT projects FROM systems WHERE name = ?").get(name) as { projects?: string } | undefined;
+    return row?.projects ? (JSON.parse(row.projects) as string[]) : [];
+  };
+
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     const source = readSourceHeader(req.get("x-hive-source"));
@@ -343,9 +349,16 @@ export function createHubApp({
       if (project && full && !grantPermissions(full.projects[project]).has("view")) return null;
       // authenticate answers with why the project is gone; the terminal upgrade refuses agent credentials anyway.
       res.locals.mcpProject = project;
+      const shared = full ? { permissions: [...sharedPermissions(full)] } : "member";
+      // A CLI opened on a whole system (GROUP-cli): the system's projects as they are now, each with the account's own
+      // grant, so a project added to the system later is reached and one the account does not see never is.
+      const members = who.mcp.system ? systemProjects(who.mcp.system).filter((p) => !full || grantPermissions(full.projects[p]).has("view")) : null;
+      if (members && !members.length) return null;
       const access = project
-        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared: full ? { permissions: [...sharedPermissions(full)] } : "member" } as Actor["access"]
-        : full;
+        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared } as Actor["access"]
+        : members
+          ? { projects: Object.fromEntries(members.map((p) => [p, full?.projects[p] ?? "member"])), shared } as Actor["access"]
+          : full;
       if (user) res.locals.user = user;
       return {
         name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
@@ -471,14 +484,17 @@ export function createHubApp({
       const actor = actorOf(res);
       if (actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
         throw new HiveError("forbidden", "A machine credential is required.");
-      const { project = null, readOnly } = req.body ?? {};
-      if ((project !== null && (typeof project !== "string" || !PROJECT_NAME.test(project))) || typeof readOnly !== "boolean")
+      const { project = null, system = null, readOnly } = req.body ?? {};
+      const key = (v: unknown) => v === null || (typeof v === "string" && PROJECT_NAME.test(v));
+      if (!key(project) || !key(system) || (project && system) || typeof readOnly !== "boolean")
         throw new HiveError("bad_request", "Invalid MCP credential request.");
       if (project && !sees(actor, project)) throw new HiveError("forbidden", "No access to this project.");
+      // A system's credential needs one project of it the token sees; it reaches no more than the token does.
+      if (system && !systemProjects(system).some((p) => sees(actor, p))) throw new HiveError("forbidden", "No access to this system.");
       const closed = project ? hive.closedProject(project) : null;
       if (closed) throw closed;
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
-      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly) } });
+      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly, system) } });
     } catch (err) { sendError(res, err); }
   });
 
