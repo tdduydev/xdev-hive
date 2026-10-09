@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HiveApp, I18nProvider, Login, signIn, signInProviders, signOut, useT, type MessageKey } from "@xdev-hive/ui";
+import { createHttpClient, HiveApp, I18nProvider, InviteAccept, inviteTokenFromHash, Login, signIn, signInProviders, signOut, useT, type MessageKey } from "@xdev-hive/ui";
 import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
@@ -98,7 +98,29 @@ function Root() {
     return null;
   }, [session]);
 
+  const [inviteToken, setInviteToken] = useState(() => inviteTokenFromHash(window.location.hash));
+  useEffect(() => {
+    const on = () => setInviteToken(inviteTokenFromHash(window.location.hash));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+
   if (session.kind === "checking") return null;
+  // A sign-up link works for someone not signed in; a browser already signed in goes on to the app as before.
+  if (!client && inviteToken) {
+    return (
+      <InviteAccept
+        token={inviteToken}
+        onDone={() => {
+          window.location.hash = "#/";
+          setSession({ kind: "cookie" });
+        }}
+        onBack={() => {
+          window.location.hash = "#/";
+        }}
+      />
+    );
+  }
   if (!client) {
     return (
       <Login

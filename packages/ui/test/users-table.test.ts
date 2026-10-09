@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { HiveSystem, HubUser } from "@xdev-hive/core";
-import { allSelected, bulkTargets, filterCounts, filterUsers, initials, orgLegend, orgTree, paginate, permissionMatrix, roleCounts, sortUsers, userStatus } from "#ui/lib/users-table.ts";
+import { allSelected, bulkTargets, daysToPurge, hubRoleCounts, filterCounts, filterUsers, initials, orgLegend, orgTree, paginate, permissionMatrix, roleCounts, sortUsers, userStatus } from "#ui/lib/users-table.ts";
 
-const user = (id: string, over: Partial<HubUser> = {}): HubUser => ({ id, username: id, displayName: id.toUpperCase(), admin: false, disabled: false, mustChangePassword: false, createdAt: "", lastLoginAt: null, grants: {}, shared: null, sso: false, ...over });
+const user = (id: string, over: Partial<HubUser> = {}): HubUser => ({ id, username: id, displayName: id.toUpperCase(), admin: false, hubRole: "member", disabled: false, mustChangePassword: false, createdAt: "", lastLoginAt: null, deletedAt: null, purgeAt: null, invited: false, grants: {}, shared: null, sso: false, ...over });
 const users = [
   user("an", { displayName: "An Nguyễn", admin: true, lastLoginAt: "2026-10-02T00:00:00Z" }),
   user("binh", { displayName: "Bình Trần", grants: { pay: "lead", web: "viewer" }, sso: true, lastLoginAt: "2026-10-05T00:00:00Z" }),
@@ -45,6 +45,24 @@ describe("users table helpers (R-72l)", () => {
     assert.deepEqual(bulkTargets(users, new Set(["an", "chi"]), "an").map((u) => u.id), ["chi"]);
     assert.equal(allSelected(users, new Set(users.map((u) => u.id))), true);
     assert.equal(allSelected([], new Set()), false);
+  });
+
+  it("keeps the trash apart: other filters leave it out, bulk skips it, and the status says so", () => {
+    const all = [...users, user("eo", { displayName: "Eo", disabled: true, hubRole: "viewer", deletedAt: "2026-10-01T00:00:00Z", purgeAt: "2026-10-31T00:00:00Z" }), user("fu", { invited: true, mustChangePassword: true, hubRole: "owner", admin: true })];
+    assert.deepEqual(filterUsers(all, "", "trash").map((u) => u.id), ["eo"]);
+    assert.equal(filterUsers(all, "", "all").some((u) => u.id === "eo"), false);
+    assert.equal(filterUsers(all, "", "disabled").some((u) => u.id === "eo"), false);
+    assert.equal(userStatus(all[4]!), "trash");
+    assert.equal(userStatus(all[5]!), "invited");
+    assert.deepEqual(bulkTargets(all, new Set(["eo", "chi"]), undefined).map((u) => u.id), ["chi"]);
+    assert.equal(daysToPurge(all[4]!, Date.parse("2026-10-09T00:00:00Z")), 22);
+    assert.equal(daysToPurge(all[0]!), 0);
+  });
+
+  it("counts hub roles without the trash and sorts owner first", () => {
+    const all = [user("a", { hubRole: "viewer" }), user("b", { hubRole: "owner", admin: true }), user("c", { hubRole: "viewer", deletedAt: "2026-10-01T00:00:00Z" }), user("d")];
+    assert.deepEqual(hubRoleCounts(all), { owner: 1, admin: 0, member: 1, viewer: 1 });
+    assert.deepEqual(sortUsers(all, "role", "asc").map((u) => u.id), ["b", "d", "a", "c"]);
   });
 
   it("derives the permission matrix from the roles", () => {
