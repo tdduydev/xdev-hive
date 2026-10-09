@@ -95,13 +95,9 @@ describe("chat replies on the hub", () => {
     const grant = request.grant as string;
 
     // Lan manages app and has no site; Hoa's machine only contributes to app: the leader contributes to app, nothing more.
-    const tasks = await rpc(grant, "tasks.list", {}, "claude-1.hoa-mbp");
-    assert.deepEqual(tasks.body.result.map((t: { id: string }) => t.id), ["app-1"], "site is Hoa's, not Lan's");
-    assert.equal((await rpc(grant, "tasks.update", { id: "app-1", status: "doing" }, "claude-1.hoa-mbp")).status, 200, "contribute on app");
-    const create = await rpc(grant, "tasks.create", { id: "app-2", project: "app", title: "New" }, "claude-1.hoa-mbp");
-    assert.equal(create.status, 403, "manage needs both: Hoa's machine only contributes to app");
-    const hidden = await rpc(grant, "docs.get", { key: "project/site/agents" }, "claude-1.hoa-mbp");
-    assert.equal(hidden.body.error?.code, "not_found");
+    for (const method of ["tasks.list", "tasks.update", "tasks.create", "docs.get"]) {
+      assert.equal((await rpc(grant, method, {}, "claude-1.hoa-mbp")).status, 403, method);
+    }
 
     // The same token works over MCP, where the agent's calls go.
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${grant}`, "x-hive-agent": "claude-1.hoa-mbp" } } });
@@ -109,6 +105,7 @@ describe("chat replies on the hub", () => {
     await client.connect(transport);
     const doc = await client.callTool({ name: "doc_get", arguments: { key: "project/app/agents" } });
     assert.notEqual(doc.isError, true);
+    assert.equal((await client.callTool({ name: "doc_get", arguments: { key: "project/site/agents" } })).isError, true);
     // What it may not do itself, it proposes; Lan confirms it in the chat and it runs with Lan's rights.
     const tools = (await client.listTools()).tools.map((t) => t.name);
     assert.ok(tools.includes("propose_task") && tools.includes("propose_run") && tools.includes("propose_task_status"), tools.join());
@@ -117,13 +114,13 @@ describe("chat replies on the hub", () => {
     assert.notEqual(proposed.isError, true, JSON.stringify(proposed.content));
     const actionId = JSON.parse((proposed.content as Array<{ text: string }>)[0]!.text).id as number;
     await client.close();
+    const overRpc = await rpc(grant, "chat.propose", { action: { kind: "task.create", id: "app-3", title: "Another task" }, reason: "Asked for in the chat" }, "claude-1.hoa-mbp");
+    assert.equal(overRpc.status, 200, JSON.stringify(overRpc.body));
+    assert.equal(overRpc.body.result?.kind, "task.create");
     assert.equal((await rpc(machineToken, "chat.propose", { action: { kind: "task.create", id: "app-3", title: "x" }, reason: "r" })).body.error?.key, "errors.chatProposeOnly", "not with the machine's own token");
     const decided = await lan("chat.decide", { actionId, accept: true });
     assert.deepEqual([decided.body.result?.status, decided.body.result?.result], ["done", { taskId: "app-2" }], JSON.stringify(decided.body));
-
-    // The update is recorded under the leader's name.
-    const updated = (await lan("tasks.list", { project: "app" })).body.result.find((t: { id: string }) => t.id === "app-1");
-    assert.match(updated.owner ?? "", /claude-1\.hoa-mbp@chat-lan/);
+    assert.equal((await lan("chat.decide", { actionId: overRpc.body.result.id, accept: false })).body.result?.status, "dismissed");
 
     const done = await rpc(machineToken, "chat.finish", { replyId: request.replyId, status: "done", text: "Moved app-1 to doing." });
     assert.equal(done.status, 200, JSON.stringify(done.body));
@@ -188,13 +185,18 @@ describe("chat replies on the hub", () => {
     const [request] = (await heartbeat()).body.result.chatRequests;
     const grant = request.grant as string;
 
-    const proposed = await rpc(grant, "chat.propose", { action: { kind: "run.cancel", machine: "hoa-mbp", runId: "R-web01" }, reason: "Asked in the chat" }, "claude-1.hoa-mbp");
-    assert.equal(proposed.status, 200, JSON.stringify(proposed.body));
-    assert.deepEqual(proposed.body.result.input, { machineId: "runner.hoa-mbp@hoa-mbp", runId: "R-web01" });
+    assert.equal((await rpc(grant, "chat.propose", {}, "claude-1.hoa-mbp")).status, 400, "RPC reaches schema validation");
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${grant}`, "x-hive-agent": "claude-1.hoa-mbp" } } });
+    const client = new Client({ name: "test", version: "0" });
+    await client.connect(transport);
+    const proposed = await client.callTool({ name: "propose_cancel_run", arguments: { machine: "hoa-mbp", runId: "R-web01", reason: "Asked in the chat" } });
+    assert.notEqual(proposed.isError, true, JSON.stringify(proposed.content));
+    const actionId = JSON.parse((proposed.content as Array<{ text: string }>)[0]!.text).id as number;
+    await client.close();
     const run = () => lan("runs.get", { machineId: "runner.hoa-mbp@hoa-mbp", runId: "R-web01" });
     assert.equal((await run()).body.result.cancelRequestedBy, null, "nothing until confirmed");
 
-    const decided = await lan("chat.decide", { actionId: proposed.body.result.id, accept: true });
+    const decided = await lan("chat.decide", { actionId: actionId, accept: true });
     assert.equal(decided.body.result?.status, "done", JSON.stringify(decided.body));
     assert.equal((await run()).body.result.cancelRequestedBy, "lan");
     await rpc(machineToken, "chat.finish", { replyId: request.replyId, status: "done", text: "Proposed to cancel R-web01." });

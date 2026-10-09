@@ -35,6 +35,7 @@ import {
   type Actor,
   type Grant,
   type Me,
+  type Method,
   type Role,
   type WebhookInput,
   type ChatRequest,
@@ -156,7 +157,26 @@ const actorOf = (res: Response) => res.locals.actor as Actor;
 const grantLabel = (g: Grant) => (grantRole(g) === "custom" ? [...grantPermissions(g)].join("+") : String(grantRole(g)));
 const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 
-/** Hub admins: an admin account, or an admin token of no account (the bootstrap / pre-account tokens). */
+/**
+ * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants), "own" (a person on their
+ * own things, each handler checks the rest). A name not here is refused. Spec 76 P0-4.
+ */
+const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
+  "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
+  "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
+  "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
+  "alerts.list": "hubAdmin", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
+  "automation.list": "hubAdmin", "automation.history": "hubAdmin", "automation.save": "hubAdmin", "automation.dryRun": "hubAdmin", "automation.retry": "hubAdmin",
+  "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
+  "users.list": "hubAdmin", "users.create": "hubAdmin", "users.update": "hubAdmin", "users.setGrants": "hubAdmin", "users.resetPassword": "hubAdmin",
+};
+
+// The leader proposes with its reply token; progress and finish use the paired machine's token in chat.ts.
+const CHAT_RPC = new Set<Method>(["chat.propose"]);
+
+/** Changes whose handler writes no audit line of its own. */
+const WEB_RPC_AUDITED = new Set(["releases.notes", "alerts.ack", "webhooks.test", "automation.save"]);
+
 function requireHubAdmin(res: Response): void {
   const actor = actorOf(res);
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
@@ -276,7 +296,7 @@ export function createHubApp({
             name: label ? `${label}@${grant.name}` : grant.name,
             role: grant.role,
             ...(grant.access ? { access: grant.access } : {}),
-            source,
+            source: { ...source, via: "mcp" },
             chatReply: grant.replyId,
             ...trail(grant.name),
           }
@@ -316,15 +336,20 @@ export function createHubApp({
       };
     }
     const name = label ? `${label}@${who.name}` : who.name;
+    const tokenSource = source.via === "desktop" ? { ...source, via: "api" as const } : source;
+    // The desktop window names itself `desktop`, while machine reports use `runner.<machine>`.
+    // Both are trusted only with a bearer paired to a registered machine.
+    const machineSource = (actor: Actor): Actor => source.via === "desktop" &&
+      (hive.isMachineActor(name, actor) || hive.isPairedDesktopToken(actor)) ? { ...actor, source } : actor;
     // A token of no account (CI, the CLI's) stands for itself.
-    if (!who.ownerId) return { name, role: who.role, tokenId: who.id, source, ...trail(who.name) };
+    if (!who.ownerId) return machineSource({ name, role: who.role, tokenId: who.id, source: tokenSource, ...trail(who.name) });
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
     const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
     // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
-    return { name, role, tokenId: who.id, access: users.access(user), source, ...trail(user.username), account: user.username };
+    return machineSource({ name, role, tokenId: who.id, access: users.access(user), source: tokenSource, ...trail(user.username), account: user.username });
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */
@@ -336,6 +361,12 @@ export function createHubApp({
         const actor = tokenActor(req, res, bearer[1]!);
         if (!actor) {
           res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token.", key: "errors.invalidToken" } });
+          return;
+        }
+        // The reply's token also fetches the message's files (the runner reads them before it writes).
+        const chatFile = actor.chatReply !== undefined && req.method === "GET" && req.path.startsWith("/api/chat/files/");
+        if (actor.chatReply !== undefined && !chatFile && !["/mcp", "/api/me", "/api/rpc"].includes(req.path)) {
+          res.status(403).json({ error: { code: "forbidden", message: "Chat credentials are limited to leader calls." } });
           return;
         }
         if ((actor.runCredential || actor.mcpCredential) && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
@@ -694,8 +725,24 @@ export function createHubApp({
       const i = (input ?? {}) as Record<string, unknown>;
       const actor = actorOf(res);
       const user = userOf(res);
+      if (actor.chatReply !== undefined && (!isMethod(method) || !CHAT_RPC.has(method)))
+        throw new HiveError("forbidden", "A chat credential can call leader methods only.");
       // Web-only RPCs (tokens, releases, account settings) do not pass through SqliteHive.call.
-      if ((actor.runCredential || actor.mcpCredential) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // A chat reply's token is an agent's too: it must not reach tokens.create or any other web-only RPC (spec 76, P0-1).
+      if ((actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // Every web-only RPC has a level here; one not listed is refused rather than falling through (spec 76, P0-4).
+      if (!isMethod(method)) {
+        const level = typeof method === "string" ? WEB_RPC[method] ?? (method.startsWith("terminal.") ? "own" : undefined) : undefined;
+        if (!level) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
+        if (level === "hubAdmin") requireHubAdmin(res);
+        if (level === "hubAdmin" && WEB_RPC_AUDITED.has(method as string)) {
+          const send = res.json.bind(res);
+          res.json = ((body: unknown) => {
+            if (res.statusCode < 400 && !(body && typeof body === "object" && "error" in body)) hive.audit(actor, method as string, String(i.id ?? i.version ?? i.name ?? "—"));
+            return send(body);
+          }) as typeof res.json;
+        }
+      }
 
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
@@ -708,10 +755,11 @@ export function createHubApp({
         return;
       }
       if (method === "tokens.create") {
+        if (actor.role === "agent" || actor.role === "viewer") throw new HiveError("forbidden", "Only a person can create tokens.");
         const role = (i.role as Role | undefined) ?? "agent";
         const hubAdmin = actor.role === "admin" && !actor.access;
         // An account's grants do not let a read-only credential mint a credential with write access.
-        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : actor.role === "viewer" ? ["viewer"] : ["viewer", "agent"];
+        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : ["viewer", "agent"];
         if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
         if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
