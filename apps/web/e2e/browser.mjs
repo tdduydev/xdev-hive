@@ -4517,7 +4517,7 @@ async function main() {
             const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
               if (theme !== "dark") return false;
               const summary = failureSummary.toLowerCase().replaceAll(" ", "");
-              return (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff")) || (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#18a0fb")) || (summary.includes("foregroundcolor:#9580ff") && summary.includes("backgroundcolor:#38343f"));
+              return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
             };
             return { theme, violations: violations.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length) };
           }, theme));

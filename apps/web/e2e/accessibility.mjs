@@ -13,11 +13,11 @@ export async function runContrast({ tab, expect }) {
   await tab.win.webContents.executeJavaScript(axe.source);
   const violations = await tab.eval(async () => {
     const { violations } = await window.axe.run(document.querySelector("main"), { runOnly: { type: "rule", values: ["color-contrast"] } });
-    // The dark design's approved accent pairs are intentionally below AA; all other pairs remain violations.
+    // White on the dark cosmic primary (#7B61FF) is 4.2:1, the owner's chosen colour and the only accepted contrast exception.
     const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
       if (document.documentElement.dataset.theme !== "dark") return false;
       const summary = failureSummary.toLowerCase().replaceAll(" ", "");
-      return (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff")) || (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#18a0fb")) || (summary.includes("foregroundcolor:#9580ff") && summary.includes("backgroundcolor:#38343f"));
+      return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
     };
     return violations.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length);
   });
@@ -45,7 +45,7 @@ export async function accessibilityAudit({ tab, out, expect, routes = pages, fil
           const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
             if (theme !== "dark") return false;
             const summary = failureSummary.toLowerCase().replaceAll(" ", "");
-            return (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff")) || (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#18a0fb")) || (summary.includes("foregroundcolor:#9580ff") && summary.includes("backgroundcolor:#38343f"));
+            return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
           };
           const summarize = issues => issues.map(({ id, impact, nodes }) => ({
             id, impact, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })),
@@ -114,7 +114,7 @@ export async function keyboardMenu({ tab, mobile, expect, out }) {
           const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
             if (theme !== "dark") return false;
             const summary = failureSummary.toLowerCase().replaceAll(" ", "");
-            return (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff")) || (summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#18a0fb")) || (summary.includes("foregroundcolor:#9580ff") && summary.includes("backgroundcolor:#38343f"));
+            return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
           };
           const summarize = issues => issues.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length);
           return { theme, violations: summarize(violations), incomplete: summarize(incomplete) };
