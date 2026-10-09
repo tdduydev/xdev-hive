@@ -20,6 +20,7 @@ import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
+import { isAgentActor } from "./source.ts";
 import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
 import { MAX_ROLE_INSTRUCTIONS, MAX_ROLE_STEPS, MIN_ROLE_STEPS, ROLE_STEPS } from "./roles.ts";
 import type { SkillSummary } from "./skills.ts";
@@ -1809,6 +1810,56 @@ export function authorize(method: Method, actor: Actor): void {
   if (ROLE_RANK[actor.role] < ROLE_RANK[needed]) {
     throw new HiveError("forbidden", `${method} requires role "${needed}", you are "${actor.role}".`, { key: "errors.roleTooLow" });
   }
+}
+
+/**
+ * Calls an agent never makes on its own (incident 2026-10-05: an agent on a machine's admin token deleted three
+ * projects within a second). From an agent they become an operation proposal a person approves on the Proposals
+ * page, which then runs exactly that input with the approver's rights. Role is no guard here: the agent had "admin".
+ */
+export const DESTRUCTIVE_METHODS = [
+  "projects.delete", "projects.archive", "systems.remove", "machines.remove", "tools.remove",
+  "docs.remove", "docs.assetRemove", "memory.remove", "artifacts.remove", "chat.delete",
+] as const satisfies readonly Method[];
+
+/**
+ * Methods named like a deletion that stay direct, each with why. A test puts every method whose name says
+ * delete/remove/purge/restore in this list or in DESTRUCTIVE_METHODS, so a new one cannot slip past unclassified.
+ */
+export const DESTRUCTIVE_EXEMPT: Readonly<Partial<Record<Method, string>>> = {
+  "docs.restore": "Brings removed pages back; nothing is lost.",
+  "docs.removed": "Reads the list of removed pages.",
+  "projects.restore": "Undoes an archive; nothing is lost.",
+};
+
+/**
+ * The hub's own RPCs (apps/web, outside the method table) that destroy accounts, credentials or stored data. They get
+ * the same treatment; the hub registers how to run each one once approved (SqliteHive.onApprovedAction). A backup
+ * restore has no RPC at all: it runs only from the server's shell (apps/web/src/cli.ts).
+ */
+export const DESTRUCTIVE_HUB_RPCS = ["tokens.revoke", "users.trash", "users.purge", "users.inviteRevoke", "webhooks.remove", "hub.cleanup"] as const;
+export type DestructiveHubRpc = (typeof DESTRUCTIVE_HUB_RPCS)[number];
+
+/** Hub RPCs named like a deletion that stay direct; the hub's test holds every such name to one of the two lists. */
+export const DESTRUCTIVE_HUB_EXEMPT: Readonly<Record<string, string>> = {
+  "users.restore": "Takes an account out of the trash; nothing is lost.",
+};
+
+/** A name that reads like it destroys something: what the classification tests look for. */
+export const DESTRUCTIVE_NAME = /delete|remove|purge|restore|revoke/i;
+
+export function isDestructive(method: string): boolean {
+  return (DESTRUCTIVE_METHODS as readonly string[]).includes(method) || (DESTRUCTIVE_HUB_RPCS as readonly string[]).includes(method);
+}
+
+/**
+ * Anything but a person at the hub's page or the desktop window: an agent token, an MCP, run or chat credential, or a
+ * call an agent labelled (x-hive-agent) that did not come from a window. A bare token with no label stays a person's,
+ * as the server shell, CI and tests call; an agent's client always sends its label (hub-client, the MCP server).
+ */
+export function isAgentCaller(actor: Actor): boolean {
+  if (actor.humanSession && !actor.mcpCredential && !actor.runCredential && actor.chatReply === undefined) return false;
+  return actor.role === "agent" || !!actor.mcpCredential || !!actor.runCredential || actor.chatReply !== undefined || isAgentActor(actor);
 }
 
 export function parseInput<M extends Method>(method: M, raw: unknown): ParsedInput<M> {

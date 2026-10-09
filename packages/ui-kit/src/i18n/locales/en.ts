@@ -1665,6 +1665,7 @@ export const en: Catalog = {
     basedOn: "#{id} · based on v{version}",
     operation: "Operation #{id}",
     operationApproval: "Approval runs this operation with your rights. Check the method and input below.",
+    destructiveApproval: "{method} deletes or removes data and may not be undoable. An agent called it; the hub held it for a person to approve.",
     showOperation: "Show operation",
     hideOperation: "Hide operation",
     decided: {
@@ -4132,6 +4133,7 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     proposalStale: "{key} is now at v{current}; the proposal was based on v{base}. Read the doc again and re-propose.",
     proposalSame: "The proposed content is identical to the current version.",
     proposalDecided: "Proposal #{id} has already been decided.",
+    pendingApproval: "Proposal #{id} sent, waiting for approval: {method} has not run yet.",
     taskExists: "Task {id} already exists.",
     noFreeMachine: "No machine with {project}'s repo is free now.",
     mapNotReady: "Run group #{id} has no parts waiting to run.",

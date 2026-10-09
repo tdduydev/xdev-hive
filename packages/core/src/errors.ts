@@ -1,5 +1,8 @@
-/** unavailable: the hub could not be reached at all (network, DNS, hub down); set by the client, never sent by a hub. */
-export type HiveErrorCode = "bad_request" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "unavailable";
+/**
+ * unavailable: the hub could not be reached at all (network, DNS, hub down); set by the client, never sent by a hub.
+ * pending_approval: nothing ran; the call waits as a proposal for a person (vars.id), see DESTRUCTIVE_METHODS.
+ */
+export type HiveErrorCode = "bad_request" | "unauthorized" | "forbidden" | "not_found" | "conflict" | "unavailable" | "pending_approval";
 
 /**
  * A message key of the UI catalogue ("errors.…", see packages/ui/src/i18n) with its placeholders.
@@ -34,6 +37,8 @@ export const HTTP_STATUS: Record<HiveErrorCode, number> = {
   not_found: 404,
   conflict: 409,
   unavailable: 503,
+  // Accepted, not done: still an error body, so every client stops as it would on a refusal instead of reading a result.
+  pending_approval: 202,
 };
 
 export interface ErrorPayload extends Partial<ErrorText> {
