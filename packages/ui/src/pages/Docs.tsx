@@ -800,7 +800,7 @@ export function DocsPage() {
           <ErrorNote error={restore.error} />
         </div>
       </div>
-      {mobileDetail.showingDetail ? <div className="flex basis-full items-center"><MobileBack onClick={() => pick(null)} /><Button variant="ghost" className="min-h-10" onClick={() => setTreeOpen(true)}>{t("docs.list")}</Button></div> : null}
+      {mobileDetail.showingDetail ? <div className="flex basis-full flex-wrap items-center"><MobileBack onClick={() => pick(null)} /><Button variant="ghost" className="min-h-10" onClick={() => setTreeOpen(true)}>{t("docs.list")}</Button></div> : null}
       {active ? (
         <DocView
           key={active}

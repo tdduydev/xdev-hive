@@ -17,6 +17,7 @@ import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { AcceptanceEvidence } from "#ui/components/AcceptanceEvidence.tsx";
 import { MOVING } from "#ui/components/FlowCard.tsx";
 import { PaneEmpty } from "#ui/components/panes.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import {
@@ -220,7 +221,8 @@ function Board({ items, loaded, error, shared, manyProjects, newProject, newWork
               {newButton}
             </>
           ) : current ? (
-            <div className="ft-grid">
+            <div className="ft-grid" data-detail={selected ? "" : undefined}>
+              {selected ? <div className="basis-full md:hidden"><MobileBack onClick={() => { window.location.hash = "#/features"; }} /></div> : null}
               <nav className="ft-list" aria-label={t("features.board")}>
                 {shown.map((x) => (
                   <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={x.key === current.key} />

@@ -911,43 +911,50 @@ async function main() {
     const beatJson = await beat.json();
     if (beatJson.error) throw new Error(`board heartbeat: ${beatJson.error.message}`);
     const boardMachine = (await rpc("machines.list")).find((m) => m.machine === "board-e2e");
-    await rpc("tasks.create", { project: "payment", id: "CB-DOING", title: "Đồng bộ sổ cái theo lô", priority: 60 });
-    await rpc("tasks.create", { project: "payment", id: "CB-REVIEW", title: "Rà soát luồng hoàn tiền", priority: 50 });
-    await rpc("tasks.create", { project: "payment", id: "CB-DONE", title: "Chuẩn hoá mã lỗi thanh toán", priority: 40 });
-    await rpc("tasks.create", { project: "payment", id: "CB-BLOCKED", title: "Báo cáo đối soát cuối ngày", priority: 30, dependsOn: ["CB-DOING"] });
-    await rpc("tasks.assign", { id: "CB-DOING", machineId: boardMachine.id, profileId: "claude" });
-    await rpc("tasks.assign", { id: "CB-REVIEW", machineId: boardMachine.id, profileId: "codex" });
-    await rpc("tasks.update", { id: "CB-DOING", status: "doing" });
-    await rpc("tasks.update", { id: "CB-REVIEW", status: "review" });
-    await rpc("tasks.update", { id: "CB-DONE", status: "done" });
-    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
-    await tab.go("tasks");
-    await tab.click('[data-task-view="kanban"]');
-    await tab.waitFor("board columns", () => document.querySelectorAll("[data-column]").length === 5);
-    await tab.waitFor("every column has a card", () => ["todo", "doing", "review", "blocked", "done"].every((s) => document.querySelector(`[data-column="${s}"] [data-task]`)));
-    const variants = await tab.eval(() => {
-      const col = (s) => document.querySelector(`[data-column="${s}"]`);
-      return {
-        order: [...document.querySelectorAll("[data-column]")].map((el) => el.dataset.column).join(),
-        folded: document.querySelectorAll("[data-column-rail]").length,
-        chips: [...document.querySelectorAll("[data-board-filters] [role=button]")].length,
-        doingAgent: !!col("doing").querySelector("[data-task-agent]"),
-        doingBar: !!col("doing").querySelector("[data-task-activity]"),
-        reviewAgent: !!col("review").querySelector("[data-task-agent]"),
-        blockedPill: /Chờ/.test(col("blocked").textContent),
-        doneOpacity: getComputedStyle(col("done").querySelector("[data-task]")).opacity,
-        radius: getComputedStyle(col("todo")).borderTopLeftRadius,
-        min: getComputedStyle(col("todo")).minHeight,
-      };
-    });
-    if (!mobile) expect(variants.order === "todo,doing,review,blocked,done" && variants.folded === 0 && variants.chips >= 3 && variants.radius === "22px" && parseFloat(variants.min) >= 360, `board layout: ${JSON.stringify(variants)}`);
-    expect(variants.doingAgent && variants.doingBar && variants.reviewAgent && variants.blockedPill && variants.doneOpacity === "0.6", `card variants: ${JSON.stringify(variants)}`);
-    await sleep(200);
-    await tab.shot(`tasks-dark-${mobile ? "390x844" : "1440x900"}`);
-    await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
-    await sleep(200);
-    await tab.shot(`tasks-light-${mobile ? "390x844" : "1440x900"}`);
-    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    try {
+      await rpc("tasks.create", { project: "payment", id: "CB-DOING", title: "Đồng bộ sổ cái theo lô", priority: 60 });
+      await rpc("tasks.create", { project: "payment", id: "CB-REVIEW", title: "Rà soát luồng hoàn tiền", priority: 50 });
+      await rpc("tasks.create", { project: "payment", id: "CB-DONE", title: "Chuẩn hoá mã lỗi thanh toán", priority: 40 });
+      await rpc("tasks.create", { project: "payment", id: "CB-BLOCKED", title: "Báo cáo đối soát cuối ngày", priority: 30, dependsOn: ["CB-DOING"] });
+      await rpc("tasks.assign", { id: "CB-DOING", machineId: boardMachine.id, profileId: "claude" });
+      await rpc("tasks.assign", { id: "CB-REVIEW", machineId: boardMachine.id, profileId: "codex" });
+      await rpc("tasks.update", { id: "CB-DOING", status: "doing" });
+      await rpc("tasks.update", { id: "CB-REVIEW", status: "review" });
+      await rpc("tasks.update", { id: "CB-DONE", status: "done" });
+      await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+      await tab.go("tasks");
+      await tab.click('[data-task-view="kanban"]');
+      await tab.waitFor("board columns", () => document.querySelectorAll("[data-column]").length === 5);
+      await tab.waitFor("every column has a card", () => ["todo", "doing", "review", "blocked", "done"].every((s) => document.querySelector(`[data-column="${s}"] [data-task]`)));
+      const variants = await tab.eval(() => {
+        const col = (s) => document.querySelector(`[data-column="${s}"]`);
+        return {
+          order: [...document.querySelectorAll("[data-column]")].map((el) => el.dataset.column).join(),
+          folded: document.querySelectorAll("[data-column-rail]").length,
+          chips: [...document.querySelectorAll("[data-board-filters] [role=button]")].length,
+          doingAgent: !!col("doing").querySelector("[data-task-agent]"),
+          doingBar: !!col("doing").querySelector("[data-task-activity]"),
+          reviewAgent: !!col("review").querySelector("[data-task-agent]"),
+          blockedPill: /Chờ/.test(col("blocked").textContent),
+          doneOpacity: getComputedStyle(col("done").querySelector("[data-task]")).opacity,
+          radius: getComputedStyle(col("todo")).borderTopLeftRadius,
+          min: getComputedStyle(col("todo")).minHeight,
+        };
+      });
+      if (!mobile) expect(variants.order === "todo,doing,review,blocked,done" && variants.folded === 0 && variants.chips >= 3 && variants.radius === "22px" && parseFloat(variants.min) >= 360, `board layout: ${JSON.stringify(variants)}`);
+      expect(variants.doingAgent && variants.doingBar && variants.reviewAgent && variants.blockedPill && variants.doneOpacity === "0.6", `card variants: ${JSON.stringify(variants)}`);
+      await sleep(200);
+      await tab.shot(`tasks-dark-${mobile ? "390x844" : "1440x900"}`);
+      await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
+      await sleep(200);
+      await tab.shot(`tasks-light-${mobile ? "390x844" : "1440x900"}`);
+      await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    } finally {
+      // A screenshot fixture must not add capacity or receive batches in later steps.
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", projects: ["payment"], acceptsRuns: false } }) });
+      const result = await response.json();
+      expect(!result.error, `board cleanup: ${JSON.stringify(result.error)}`);
+    }
   });
   // R-72l: Cài đặt service and Quản trị chrome, dark and light, for the pixel comparison against docs/design/hive-2026-10/shots.
   await step("cosmic-settings-admin", async () => {
@@ -1891,6 +1898,7 @@ async function main() {
     expect(now?.status === "sent" && held?.status === "held", `items: ${group.items.map((i) => `${i.taskId}:${i.status}`).join()}`);
     // The machine takes the first and reports its run over; the next heartbeat brings the second.
     const [first] = (await beat()).runRequests.filter((r) => r.taskId === now.taskId);
+    expect(first, `first batch request missing from lan-mbp: ${JSON.stringify(now.request)}`);
     await machineRpc("runs.requestResult", { id: first.id, status: "accepted", runId: "R-batch1" });
     const at = new Date().toISOString();
     await machineRpc("runs.push", {
@@ -4541,7 +4549,7 @@ async function main() {
       ["runs", "run", 'main [data-pane-item]', null],
       ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
       ["skills", "skill", 'main [data-pane-item]', null],
-      ["memory", "memory", 'main [data-pane-item]', null],
+      ["memory", "memory", 'main [data-memory-card] button[aria-label]:not([role="checkbox"])', null],
       // Đề xuất is a Chờ duyệt tab of Tài liệu and Skill since 49f (#/proposals redirects): the knowledge-pending step covers it.
       ["features", "project", "main [data-feature-card]", null],
     ];
@@ -4557,6 +4565,35 @@ async function main() {
         await tab.click(selector, text);
         await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
         const selectedHash = await tab.eval(() => location.hash);
+        // 72f follows the design's card grid: details are a modal at every width, with the URL retaining history.
+        if (route === "memory") {
+          const assertDialog = async () => {
+            await tab.waitFor("memory dialog loaded", () => document.querySelector('[role="dialog"]')?.textContent.includes("Loại"));
+            const state = await tab.eval(() => {
+              const dialog = document.querySelector('[role="dialog"]');
+              const r = dialog.getBoundingClientRect();
+              return { left: r.left, right: r.right, width: innerWidth, page: document.documentElement.scrollWidth, fits: dialog.scrollWidth <= dialog.clientWidth + 1, focused: dialog.contains(document.activeElement), backgroundHidden: !!document.querySelector('main')?.closest('[aria-hidden="true"]') };
+            });
+            expect(state.left >= 0 && state.right <= state.width + 1 && state.page <= state.width + 1 && state.fits && state.focused && state.backgroundHidden, `memory modal: ${JSON.stringify(state)}`);
+          };
+          await assertDialog();
+          await tab.shot("mobile-memory-detail");
+          await tab.reload();
+          await assertDialog();
+          await tab.eval(() => history.back());
+          await tab.waitFor("Back closes memory", hash => location.hash === hash && !document.querySelector('[role="dialog"]'), listHash);
+          await tab.eval(() => history.forward());
+          await tab.waitFor("Forward restores memory address", hash => location.hash === hash, selectedHash);
+          await assertDialog();
+          for (const width of [767, 768, 390]) {
+            tab.win.setContentSize(width, 844);
+            await tab.waitFor("memory viewport resized", width => innerWidth === width, width);
+            await assertDialog();
+          }
+          await tab.key("Escape");
+          await tab.waitFor("Escape closes memory and clears selection", () => !document.querySelector('[role="dialog"]') && !new URLSearchParams(location.hash.split("?")[1]).has("memory"));
+          return;
+        }
         const assertPane = async (detail) => {
           // The address changes before React and the reloaded list queries settle.
           await tab.waitFor("pane visibility settled", (selector, detail) =>
@@ -4582,10 +4619,9 @@ async function main() {
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
         await assertPane(true);
         if (route === "docs") {
-          await tab.waitFor("loaded document actions", () => document.querySelector('main button[aria-label="Lịch sử"]'));
-          await tab.click("summary", "Chế độ");
-          await tab.click("details[open] button", "Lịch sử");
-          await tab.waitFor("history menu closes", () => !document.querySelector("details[open]") && document.querySelector('aside[aria-label="Phiên bản"] button'));
+          // The article toolbar now exposes history directly, without the editor's Chế độ menu.
+          await tab.click("main button", "Lịch sử");
+          await tab.waitFor("history panel opens", () => document.querySelector('aside[aria-label="Phiên bản"] button'));
           await tab.click('aside[aria-label="Phiên bản"] button');
           await tab.waitFor("version content replaces history pane", () => !document.querySelector('aside[aria-label="Phiên bản"]') && document.body.innerText.includes("Đóng so sánh"));
           await assertPane(true);
@@ -4595,14 +4631,6 @@ async function main() {
           await tab.click(selector);
           await tab.waitFor("selecting a page closes tree drawer", (selector) => ![...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
           await assertPane(true);
-        }
-        if (route === "memory") {
-          tab.win.setContentSize(767, 844);
-          await tab.waitFor("767px keeps list hidden", () => innerWidth === 767 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
-          tab.win.setContentSize(768, 844);
-          await tab.waitFor("768px restores both panes", () => innerWidth === 768 && [...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0) && ![...document.querySelectorAll("main button")].some((el) => el.textContent.includes("Quay lại danh sách") && el.getBoundingClientRect().width > 0));
-          tab.win.setContentSize(390, 844);
-          await tab.waitFor("phone pane restored", () => innerWidth === 390 && ![...document.querySelectorAll('main [data-pane-item]')].some((el) => el.getBoundingClientRect().width > 0));
         }
       });
     }
