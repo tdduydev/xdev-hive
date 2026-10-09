@@ -3571,6 +3571,28 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     outsideHint: "These services show only in the sidebar. Add one to a system to see it with the other services.",
     openTasks: { one: "{count} open task", other: "{count} open tasks" },
     addTo: "Add to system",
+    health: {
+      reachable: "Reachable",
+      reachableOn: "Reachable on {machines}",
+      unreachable: "Not reachable on {machines}",
+      noMachine: "No machine has it",
+      unchecked: "Not checked yet",
+      hintAccess: "Request read access to the repo for the machine's Git account, or remove the service from the system if the repo is gone.",
+      hintNotFound: "There is no repo at the remote address: fix the remote on the machine, or remove the service from the system.",
+      hintNetwork: "The machine cannot reach the Git server (network, VPN, proxy). Press Check again in the app once it is online.",
+      hintError: "Git reported an error. See each machine's details, then press Check again in the app.",
+      hintNoMachine: "Nobody has cloned this repo: add it on a machine (app › Services), or remove the service from the system.",
+      hintUnchecked: "The machines with the repo have not reported yet: an older app, or one just started.",
+      machine: "{machine}: {status} at {time}",
+      status: {
+        ok: "reachable",
+        no_access: "access refused",
+        no_access_or_missing: "no access, or the repo does not exist",
+        not_found: "no repo there",
+        network: "network error",
+        error: "git error",
+      },
+    },
   },
   /** The Projects table of the Projects & systems page (roadmap 47): archive, restore, delete for good. */
   projectAdmin: {

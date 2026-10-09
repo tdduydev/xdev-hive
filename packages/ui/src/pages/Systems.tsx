@@ -3,7 +3,7 @@ import { ProjectOnboarding } from "#ui/components/ProjectOnboarding.tsx";
 // the pages show the tasks, runs, merge requests and chat of every project in the system.
 import { useMemo, useState } from "react";
 import { Boxes, FolderGit2, Search } from "lucide-react";
-import { PROJECT_NAME, type HiveSystem, type ProjectSummary } from "@xdev-hive/core";
+import { PROJECT_NAME, type HiveSystem, type ProjectSummary, type RepoAccessStatus, type SystemMemberHealth, type SystemMemberMachine } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -13,15 +13,21 @@ import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
 import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/scope.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 /** `policy`: a lead's policy rows at the end; Cài đặt dự án has them on a tab of their own (roadmap 49b). */
 export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
-  const { systems, setScope, me, projects } = useHive();
+  const { client, systems, setScope, me, projects } = useHive();
   const t = useT();
+  // Only a hub hears machines; a hub from before the method answers nothing, and the members show as they used to.
+  const health = useQuery(
+    async () => (me.mode === "hub" ? await client.call("systems.repoHealth", {}).catch(() => []) : []),
+    [client, me.mode, systems],
+  );
+  const healthOf = useMemo(() => new Map((health.data ?? []).map((h) => [h.project, h])), [health.data]);
   const allow = useCan();
   // The system being edited, "" for a new one.
   const [editing, setEditing] = useState<string | null>(null);
@@ -107,13 +113,23 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
                 ) : null}
               </CardAction>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-1.5">
-              {s.projects.map((p) => (
-                <Badge key={p} tone="neutral" className="font-mono">
-                  {p}
-                </Badge>
-              ))}
-            </CardContent>
+            {s.projects.some((p) => healthOf.has(p)) ? (
+              <CardContent>
+                <ul className="flex flex-col divide-y">
+                  {s.projects.map((p) => (
+                    <MemberHealth key={p} project={p} health={healthOf.get(p)} />
+                  ))}
+                </ul>
+              </CardContent>
+            ) : (
+              <CardContent className="flex flex-wrap gap-1.5">
+                {s.projects.map((p) => (
+                  <Badge key={p} tone="neutral" className="font-mono">
+                    {p}
+                  </Badge>
+                ))}
+              </CardContent>
+            )}
           </Card>
         ),
       )}
@@ -128,6 +144,59 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
         </>
       ) : null}
     </Page>
+  );
+}
+
+/** The fix to suggest for a member nobody reaches: access first, since that one needs a person to act on it. */
+function healthHint(h: SystemMemberHealth): MessageKey {
+  const statuses = new Set(h.machines.map((m) => m.status));
+  if (h.state === "no_machine") return "systems.health.hintNoMachine";
+  if (h.state === "unchecked") return "systems.health.hintUnchecked";
+  if (statuses.has("no_access") || statuses.has("no_access_or_missing")) return "systems.health.hintAccess";
+  if (statuses.has("not_found")) return "systems.health.hintNotFound";
+  if (statuses.has("network")) return "systems.health.hintNetwork";
+  return "systems.health.hintError";
+}
+
+/**
+ * One member of a system and whether its repo answers: reachable on some machine, not reachable on the ones that
+ * checked (with why, and what to do), or on no machine at all (incident 2026-10-09: nobody knew until a clone failed).
+ */
+function MemberHealth({ project, health }: { project: string; health: SystemMemberHealth | undefined }) {
+  const t = useT();
+  const checked = (health?.machines ?? []).filter((m): m is SystemMemberMachine & { status: RepoAccessStatus } => m.status !== null);
+  const reached = checked.filter((m) => m.status === "ok");
+  const failed = checked.filter((m) => m.status !== "ok");
+  const names = (ms: typeof checked) => ms.map((m) => m.machine).join(", ");
+  const badge = !health
+    ? null
+    : health.state === "reachable"
+      ? { tone: "ok", text: failed.length ? t("systems.health.reachableOn", { machines: names(reached) }) : t("systems.health.reachable") }
+      : health.state === "unreachable"
+        ? { tone: "danger", text: t("systems.health.unreachable", { machines: names(failed) }) }
+        : health.state === "no_machine"
+          ? { tone: "warn", text: t("systems.health.noMachine") }
+          : { tone: "neutral", text: t("systems.health.unchecked") };
+  return (
+    <li data-system-member={project} data-repo-state={health?.state ?? "unknown"} className="flex flex-col gap-1 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <FolderGit2 className="size-4 text-muted-foreground" aria-hidden />
+        <span className="font-mono text-sm">{project}</span>
+        {badge ? <Badge tone={badge.tone}>{badge.text}</Badge> : null}
+      </div>
+      {health && health.state !== "reachable" ? <p className="text-xs text-muted-foreground">{t(healthHint(health))}</p> : null}
+      {/* Each failing machine's reason, so its owner knows the fix is theirs; a reachable member needs no more. */}
+      {failed.length ? (
+        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          {failed.map((m) => (
+            <li key={m.machineId} data-repo-machine={m.machine} data-repo-status={m.status} title={m.detail ?? undefined}>
+              {t("systems.health.machine", { machine: m.machine, status: t(`systems.health.status.${m.status}`), time: formatTime(m.checkedAt ?? "") })}
+              {m.detail ? <span className="ml-1 font-mono break-all">— {m.detail}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 
