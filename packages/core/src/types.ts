@@ -176,7 +176,18 @@ export interface HubInfo {
   deployLog?: DeployLogInfo;
   db: { path: string; bytes: number; walBytes: number; counts: Record<"docs" | "memory" | "tasks" | "runs" | "machines" | "users", number> };
   /** null: HIVE_BACKUP_DIR is not set. */
-  backup: { dir: string; hours: number; keep: number; last: string | null; count: number } | null;
+  backup: {
+    dir: string;
+    hours: number;
+    keep: number;
+    last: string | null;
+    count: number;
+    /** The pin policy (ADM-backup-restore, see BackupList) and the snapshots it protects now. */
+    pinDays: number;
+    pinMaxBytes: number;
+    pinned: number;
+    pinnedBytes: number;
+  } | null;
   search: { mode: "keyword" | "hybrid"; model: string | null; url: string | null; indexed: number; total: number; lastError: string | null };
   /** Doc files (roadmap 23c): in the database, or in a store (SeaweedFS) with `inDb` still to move there. */
   files: { store: string | null; where: string | null; count: number; bytes: number; inDb: number; lastError: string | null };
@@ -724,6 +735,60 @@ export interface ProjectDeleted {
   /** Table → rows deleted, tables that had none left out. */
   rows: Record<string, number>;
   files: { removed: number; failed: number };
+}
+
+/**
+ * Why a hub snapshot was made (ADM-backup-restore): at start, on the schedule, on request ("Backup ngay" or the CLI),
+ * or right before projects.delete took a project away. null: a snapshot from before the reason was written down.
+ */
+export type BackupReason = "start" | "scheduled" | "manual" | `delete:${string}`;
+
+/** One snapshot in HIVE_BACKUP_DIR (backups.list). */
+export interface BackupEntry {
+  name: string;
+  createdAt: string;
+  bytes: number;
+  reason: BackupReason | null;
+  /** Pinned snapshots are left out of the HIVE_BACKUP_KEEP rotation until `expiresAt`. */
+  pinned: boolean;
+  pinnedAt: string | null;
+  pinnedBy: string | null;
+  /** When the pin stops protecting it (HIVE_BACKUP_PIN_DAYS after pinnedAt); null: pinned for good, or not pinned. */
+  expiresAt: string | null;
+}
+
+/** The backup folder and its policy, as the Hub page shows it. */
+export interface BackupList {
+  dir: string;
+  /** Unpinned snapshots kept by the rotation. */
+  keep: number;
+  /** Days a pin protects a snapshot; 0 = until someone unpins it. */
+  pinDays: number;
+  /** Most bytes the pinned snapshots may take before another pin by hand is refused; 0 = no cap. */
+  pinMaxBytes: number;
+  pinnedBytes: number;
+  backups: BackupEntry[];
+}
+
+/** A project a snapshot holds (backups.projects), and whether the live hub has data under that name now. */
+export interface BackupProject {
+  project: string;
+  tasks: number;
+  docs: number;
+  memory: number;
+  runs: number;
+  /** The live hub has rows of it: restoring is refused, since a restore never merges. */
+  live: boolean;
+}
+
+/** What backups.restoreProject copied back from a snapshot. */
+export interface ProjectRestored {
+  project: string;
+  backup: string;
+  /** Table → rows copied back, tables that had none left out. */
+  rows: Record<string, number>;
+  /** Doc files the rows keep in the store: put back from the backup folder, or not found there. */
+  files: { restored: number; missing: number };
 }
 
 /**
