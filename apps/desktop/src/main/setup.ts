@@ -247,6 +247,7 @@ export class Setup {
   readonly #latest = new Map<string, { at: number; version: string | null }>();
   #statusPending: Promise<SetupReport> | null = null;
   #statusCached: { at: number; report: SetupReport } | null = null;
+  #statusGeneration = 0;
 
   constructor(host: SetupHost) {
     this.#host = host;
@@ -255,7 +256,11 @@ export class Setup {
   }
 
   /** Call when projects or the hub tool catalog changes outside an install. */
-  invalidateStatus(): void { this.#statusCached = null; }
+  invalidateStatus(): void {
+    this.#statusGeneration++;
+    this.#statusCached = null;
+    this.#statusPending = null;
+  }
 
   /** What installAgents needs to name this machine's shim and pick the launch form of each config. */
   #agentOpts(dryRun = false) {
@@ -265,11 +270,12 @@ export class Setup {
   async status(): Promise<SetupReport> {
     if (this.#statusPending) return this.#statusPending;
     if (this.#statusCached && Date.now() - this.#statusCached.at < 45_000) return this.#statusCached.report;
+    const generation = this.#statusGeneration;
     const pending = this.#readStatus();
     this.#statusPending = pending;
     try {
       const report = await pending;
-      this.#statusCached = { at: Date.now(), report };
+      if (generation === this.#statusGeneration) this.#statusCached = { at: Date.now(), report };
       return report;
     } finally {
       if (this.#statusPending === pending) this.#statusPending = null;
@@ -302,7 +308,7 @@ export class Setup {
   }
 
   async install(id: string): Promise<SetupInstallResult> {
-    this.#statusCached = null;
+    this.invalidateStatus();
     const pathEnv = await this.#host.pathEnv(true);
     const env = { ...this.#host.env(), PATH: pathEnv };
     let output: string;
@@ -353,7 +359,7 @@ export class Setup {
       else if (part === "speckit") output = await this.#speckitRepoInstall(project, await this.#findSpecify(pathEnv), env);
       else throw notFound(id);
     }
-    this.#statusCached = null;
+    this.invalidateStatus();
     return { item: await this.item(id), output };
   }
 
