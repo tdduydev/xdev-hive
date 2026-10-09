@@ -472,6 +472,22 @@ export interface ProfileCheck {
   output: string;
 }
 
+/** The machine's own numbers for "Máy này" (roadmap 76h); null where the platform has none. */
+export interface MachineStats {
+  hostname: string;
+  cpuCount: number;
+  cpuModel: string | null;
+  /** The 1-minute load per core (1 = every core busy); null on Windows, which has no load average. */
+  load: number | null;
+  memTotal: number;
+  memFree: number;
+  /** The disk the app's data folder is on. */
+  diskPath: string;
+  diskTotal: number | null;
+  diskFree: number | null;
+  uptime: number;
+}
+
 /** The app's own update (roadmap 22i): what the hub offered and how far it got. */
 export interface AppUpdateStatus {
   state: "idle" | "downloading" | "ready" | "installing" | "failed";
@@ -502,6 +518,8 @@ export interface HubConnection {
 export interface DesktopBridge {
   /** The app's own version and the OS it runs on (sidebar footer, status bar, macOS window chrome). */
   appInfo(): Promise<{ version: string; platform: string }>;
+  /** Load, memory and disk of this machine (Máy này); an app before 76h has none. */
+  machineStats?(): Promise<MachineStats>;
   /** The hub connection as the last heartbeat found it; hubRetry sends a heartbeat now. */
   hubStatus(): Promise<HubConnection>;
   hubRetry(): Promise<HubConnection>;
