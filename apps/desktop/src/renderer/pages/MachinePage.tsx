@@ -5,15 +5,16 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Badge, ErrorNote, Page, PageHeader, StatusDot } from "@xdev-hive/ui-kit/components/common";
 import { useT } from "@xdev-hive/ui";
+import { activeIntl } from "@xdev-hive/ui-kit/i18n";
 import { useHive, usePoll, useQuery } from "@xdev-hive/ui/hooks";
 import { useStartStatus } from "@xdev-hive/ui/pages/Start";
-import { formatBytes, loadPercent, percentOf, uptimeParts } from "../machine-format.ts";
+import { formatBytes, loadFigure, loadPercent, overloaded, percentOf, platformName, uptimeParts } from "../machine-format.ts";
 
 /** A labelled figure with an optional bar: the bar is decoration, the text carries the value. */
-function Meter({ label, value, detail, percent }: { label: string; value: string; detail?: string; percent: number | null }) {
-  const high = percent !== null && percent >= 85;
+function Meter({ label, value, detail, percent, warn = false }: { label: string; value: string; detail?: string; percent: number | null; warn?: boolean }) {
+  const high = warn || (percent !== null && percent >= 85);
   return (
-    <div className="flex flex-col gap-1.5" data-meter={label}>
+    <div className="flex flex-col gap-1.5" data-meter={label} data-meter-warn={high || undefined}>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-sm text-fg-secondary">{label}</span>
         <span className="font-mono text-sm text-fg-strong">{value}</span>
@@ -103,9 +104,10 @@ export function MachinePage() {
               <>
                 <Meter
                   label={t("desk.machine.cpu")}
-                  value={s.load === null ? "—" : `${loadPercent(s.load)}%`}
-                  detail={s.load === null ? t("desk.machine.cpuNone") : `${t("desk.machine.cores", { count: s.cpuCount })}${s.cpuModel ? ` · ${s.cpuModel}` : ""}`}
+                  value={s.load === null ? "—" : t("desk.machine.load", { load: loadFigure(s.load, s.cpuCount, activeIntl()), count: s.cpuCount })}
+                  detail={s.load === null ? t("desk.machine.cpuNone") : overloaded(s.load) ? t("desk.machine.overloaded") : s.cpuModel ?? undefined}
                   percent={loadPercent(s.load)}
+                  warn={overloaded(s.load)}
                 />
                 <Meter label={t("desk.machine.ram")} value={t("desk.machine.used", { used: formatBytes(mem), total: formatBytes(s.memTotal) })} percent={percentOf(mem, s.memTotal)} />
                 <Meter
@@ -126,7 +128,7 @@ export function MachinePage() {
           <CardHeader><CardTitle>{t("desk.machine.app")}</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Row label={t("desk.machine.version")}>{info.data ? `v${info.data.version}` : "—"}</Row>
-            <Row label={t("desk.machine.platform")}>{info.data?.platform ?? "—"}</Row>
+            <Row label={t("desk.machine.platform")}>{info.data ? platformName(info.data.platform, info.data.osVersion) : "—"}</Row>
             <div className="flex flex-wrap items-center gap-3" data-update-state={up?.state ?? "unknown"}>
               <span className="text-sm text-fg-secondary">{t("desk.machine.update")}</span>
               {up?.state === "downloading" && up.version ? <Badge tone="info">{t("desk.machine.updateDownloading", { version: up.version, percent: up.percent ?? 0 })}</Badge> : null}
