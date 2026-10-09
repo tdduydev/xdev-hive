@@ -5,7 +5,7 @@ import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
+import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection, type RunStepPrompt, stepPromptBlock } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -51,6 +51,8 @@ export interface PromptContext {
   rules?: WorktreeRule[] | null;
   /** Hub mode: files the agent leaves in ARTIFACT_DIR go to the hub when the run ends (roadmap 41c). */
   artifacts?: boolean;
+  /** What the project's manager wrote for the SDLC step this run is in (roadmap 72i); null outside a flow. */
+  stepPrompt?: RunStepPrompt | null;
 }
 
 export interface JudgeCandidate {
@@ -188,6 +190,9 @@ export function buildPrompt(c: PromptContext): string {
     );
   }
   if (c.ciFix) lines.push("", ...ciFixLines(c.ciFix));
+  // After the protocol and before the admin's words: it adds to the step, and the run's own instructions still win.
+  const step = c.judge ? null : stepPromptBlock(c.stepPrompt);
+  if (step && "lines" in step) lines.push("", ...step.lines);
   if (c.instructions.trim()) lines.push("", "Extra instructions from the admin:", c.instructions.trim());
   if (!c.judge) lines.push("", STEER_PROMPT);
   return lines.join("\n");

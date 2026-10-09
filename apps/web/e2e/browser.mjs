@@ -322,10 +322,11 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "map-reduce": ["lead-sees-members"],
   "roles": ["lead-sees-members"],
   "sdlc-gates": ["login-token", "lead-sees-members"],
-  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline"], // its nested steps run inside it and set up the plan approval its gate pass waits on
+  "sdlc-flow": ["lead-sees-members", "sdlc-gates", "pipeline", "plan-approval", "models-in-pipeline", "pipeline-prompt"], // its nested steps run inside it and set up the plan approval its gate pass waits on
   "pipeline": ["sdlc-flow"], // nested in sdlc-flow
   "plan-approval": ["sdlc-flow"], // nested in sdlc-flow
   "models-in-pipeline": ["sdlc-flow"], // nested in sdlc-flow
+  "pipeline-prompt": ["sdlc-flow"], // nested in sdlc-flow
   "merge-from-web": ["login-password"],
   "diff-review-hunks": ["login-token", "merge-from-web"], // merge-from-web leaves the page and run state it builds on
   "runs-review": ["login-token"],
@@ -2047,6 +2048,8 @@ async function main() {
         await tab.waitFor("model per step", () => document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Sonnet") || document.querySelector('[data-pipeline-detail="spec"]')?.textContent.includes("Opus"));
         await openGateEditor(tab, "review");
         await tab.waitFor("model editor", () => !!document.querySelector('[data-step-model] [data-model-tier]'));
+        // Cỡ task and Theo hub are the same cosmic select as the page's others, not the browser's.
+        expect(await tab.eval(() => document.querySelectorAll('[data-step-model] [data-slot="native-select-wrapper"].pf-select').length >= 2), "task size and tier are cosmic selects");
         await tab.eval(() => { const el = document.querySelector('[data-step-model] [data-model-tier]'); el.value = "light"; el.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.click('[data-step-model-save]');
         await until("review cell saved", async () => (await rpc("modelRouter.get", {})).projects.payment?.cells.review?.m === "light");
@@ -2110,6 +2113,57 @@ async function main() {
         current = tab;
         await tab.go("tasks?task=SPEC-E2E");
         await tab.waitFor("flow after model settings", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
+      }
+    });
+    // Roadmap 72i: the Prompt tab of a gate's panel. A lead writes a step's prompt in versions, reads an older one, and a
+    // run of that step is told it; a reviewer (no contextEdit) reads but cannot save.
+    await step("pipeline-prompt", async () => {
+      const as = async (who, method, input) => {
+        const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people[who].token}` }, body: JSON.stringify({ method, input }) });
+        return r.json();
+      };
+      const first = "Đọc spec.md của tính năng trước, ghi câu hỏi còn mở ở cuối.";
+      const second = " Không viết code.";
+      try {
+        await tab.go("pipeline?project=payment");
+        await tab.click('[data-pipeline-step="spec"]');
+        await tab.click('[data-gate-tab="prompt"]');
+        await tab.waitFor("the prompt tab", () => !!document.querySelector('[data-step-prompt="spec"] [data-step-prompt-text]') && document.querySelector('[data-step-prompt-unsaved]')?.getAttribute("data-step-prompt-unsaved") === "0");
+        await tab.click("[data-step-prompt-text]");
+        await tab.type("Nháp sẽ bị huỷ.");
+        await tab.waitFor("one change not saved", () => document.querySelector("[data-step-prompt-unsaved]")?.getAttribute("data-step-prompt-unsaved") === "1");
+        await tab.click("[data-step-prompt-cancel]");
+        await tab.waitFor("the draft dropped", () => document.querySelector("[data-step-prompt-text]").value === "" && document.querySelector("[data-step-prompt-unsaved]").getAttribute("data-step-prompt-unsaved") === "0");
+        await tab.click("[data-step-prompt-text]");
+        await tab.type(first);
+        await tab.click("[data-step-prompt-save]");
+        await until("version 1 saved", async () => (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec")?.version === 1);
+        await tab.waitFor("saved, nothing unsaved", () => document.querySelector("[data-step-prompt-unsaved]")?.getAttribute("data-step-prompt-unsaved") === "0" && document.querySelector("[data-step-prompt-version]")?.textContent.includes("1"));
+        await tab.click("[data-step-prompt-text]");
+        await tab.type(second);
+        await tab.click("[data-step-prompt-save]");
+        await until("version 2 saved", async () => (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec")?.version === 2);
+        await tab.waitFor("both versions listed", () => document.querySelectorAll("[data-prompt-version]").length === 2);
+        await tab.click('[data-prompt-version-view="1"]');
+        await tab.waitFor("the first version's text", () => document.querySelector("[data-prompt-version-text] pre")?.textContent === "Đọc spec.md của tính năng trước, ghi câu hỏi còn mở ở cuối.");
+        if (mobile) {
+          const fit = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, targets: [...document.querySelectorAll("[data-step-prompt] button")].map((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height })) }));
+          expect(!fit.overflow && fit.targets.every((r) => r.w >= 44 && r.h >= 44), `prompt tab mobile: ${JSON.stringify(fit)}`);
+        }
+        await tab.shot(`${String(n).padStart(2, "0")}-prompt-tab`);
+        // The run of that step is told it; another step and a task outside the flow are not.
+        const told = await rpc("sdlc.runPrompt", { project: "payment", taskId: "SPEC-E2E", role: "implement" });
+        expect(told?.step === "spec" && told.version === 2 && told.text === first + second, `run prompt: ${JSON.stringify(told)}`);
+        expect((await rpc("sdlc.runPrompt", { project: "payment", taskId: "QUALITY-E2E", role: "implement" })) === null, "a task outside a flow gets none");
+        const reviewer = await as("hoa", "sdlc.prompts", { project: "payment" });
+        expect(reviewer.result?.find((p) => p.step === "spec")?.version === 2, "a reviewer reads it");
+        const refused = await as("hoa", "sdlc.setPrompt", { project: "payment", step: "spec", text: "x", baseVersion: 2 });
+        expect(refused.error, "a reviewer cannot save it");
+      } finally {
+        const now = (await rpc("sdlc.prompts", { project: "payment" })).find((p) => p.step === "spec");
+        if (now?.text) await rpc("sdlc.setPrompt", { project: "payment", step: "spec", text: "", baseVersion: now.version });
+        await tab.go("tasks?task=SPEC-E2E");
+        await tab.waitFor("flow after prompt", () => !!document.querySelector('[data-flow="SPEC-E2E"]'));
       }
     });
     await tab.click('[data-flow="SPEC-E2E"] [data-gate-pass]');

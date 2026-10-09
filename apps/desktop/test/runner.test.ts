@@ -2692,6 +2692,37 @@ describe("cross-review on another vendor", () => {
     assert.equal(pickProfile([load(claude), load(codex, { running: 1 })], { ...review, strictKinds: false }, now)!.profile.id, "claude-a", "an implement run does not wait");
   });
 
+  it("adds the step prompt after the protocol and before the admin's words, and never one that looks like a secret (roadmap 72i)", () => {
+    const base = { project: "demo", taskId: "T-1", title: "x", note: null, role: "implement" as const, instructions: "From the admin.", worktree: "/w", branch: "ai/T-1", baseSha: "abcdef0123", attempt: 1, previous: null, skills: [], rules: [] };
+    const text = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 4, text: "Write tests first." } });
+    assert.match(text, /for the dispatch step \(version 4\)/);
+    assert.ok(text.indexOf("Write tests first.") > text.indexOf("task_update") && text.indexOf("Write tests first.") < text.indexOf("Extra instructions from the admin"));
+    assert.doesNotMatch(buildPrompt(base), /project's manager for the/);
+    const leaked = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 4, text: `token ghp_${"c".repeat(36)}` } });
+    assert.doesNotMatch(leaked, /ghp_c|manager for the/);
+    const long = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 1, text: "z".repeat(5000) } });
+    assert.ok(long.length < 5000, "clipped to the step prompt's cap");
+  });
+
+  it("gives a flow task's run the prompt of its step, and goes on without it when the hub cannot say (roadmap 72i)", async () => {
+    const withPrompt = async (wrap?: (b: HiveBackend) => HiveBackend) => {
+      const a = await setup([profile("claude-a", "claude", 10, "ok")], {}, "hub", wrap ? { wrap } : {});
+      await a.hive.call("sdlc.setPrompt", { project: "demo", step: "dispatch", text: "Prefer small commits.", baseVersion: 0 }, admin);
+      a.hive.db.prepare("INSERT INTO sdlc_flow_tasks(task_id, flow_task, project, stage, created_by, updated_at) VALUES ('T-1', 'F-1', 'demo', 'build', 'duy', '2026-10-01T00:00:00.000Z')").run();
+      const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
+      await a.runner.settle();
+      return { a, run };
+    };
+    const ok = await withPrompt();
+    assert.equal(ok.a.runner.store.get(ok.run.id)!.status, "succeeded");
+    assert.match(ok.a.calls()[0]!.prompt, /Prefer small commits\./);
+    assert.match(ok.a.runner.log(ok.run.id), /# step prompt: dispatch v1/);
+    const oldHub = await withPrompt((b) => ({ call: (m, i, actor) => (m === "sdlc.runPrompt" ? Promise.reject(new Error("unknown method")) : b.call(m, i, actor)) }));
+    assert.equal(oldHub.a.runner.store.get(oldHub.run.id)!.status, "succeeded");
+    assert.doesNotMatch(oldHub.a.calls()[0]!.prompt, /Prefer small commits/);
+    assert.match(oldHub.a.runner.log(oldHub.run.id), /# step prompt not read: unknown method/);
+  });
+
   it("tells a reviewer to leave the task alone", () => {
     const text = buildPrompt({ project: "demo", taskId: "T-1", title: "x", note: null, role: "review", instructions: "", worktree: "/w", branch: "ai/T-1", baseSha: "abc", attempt: 1, previous: null });
     assert.match(text, /Do not call task_claim or task_update/);
