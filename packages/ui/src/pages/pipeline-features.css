@@ -89,6 +89,7 @@ a.ft-row:hover { box-shadow: var(--ring-glass-strong); }
 .ft-col > h3 span { font-weight: 400; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .ft-col .ft-card { background: var(--surface-1); box-shadow: var(--ring-glass); }
 .pf-select { display: inline-flex; }
+.pf-select-fill { display: flex; width: 100%; }
 .pf-select [data-slot="native-select"] { height: 36px; border: 0; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 13px/1 var(--font-sans); }
 .pf-editor { display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 18px; background: var(--violet-tint-soft); box-shadow: var(--ring-violet-faint); }
 .pf-cfg { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -111,5 +112,15 @@ a.ft-row:hover { box-shadow: var(--ring-glass-strong); }
   .ft-filters input, .ft-filters .pf-tagbtn .cosmic-tag { min-height: 44px; }
   .pf-tab, .pf-tagbtn .cosmic-tag, .ft-tools button { min-height: 44px; }
   .pf-main, .ft-main { padding: 18px; }
-  .pf-mode, .pf-step { min-height: 44px; }
+  .pf-mode, .pf-step, .pf-select [data-slot="native-select"] { min-height: 44px; }
 }
+
+/* The Prompt tab of a gate's panel (72i): a mono textarea, its counter, and the versions below. */
+.pf-prompt { display: flex; flex-direction: column; gap: 12px; }
+.pf-prompt-text { min-height: 180px; border: 0; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 12.5px/20px 'SF Mono', ui-monospace, Menlo, monospace; }
+.pf-prompt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pf-prompt-old { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--surface-sunken); box-shadow: var(--ring-glass); }
+.pf-prompt-old pre { margin: 0; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); font: 500 12px/20px 'SF Mono', ui-monospace, Menlo, monospace; }
+.pf-prompt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pf-subtabs { display: flex; gap: 2px; box-shadow: var(--hairline); overflow-x: auto; }
+@media (max-width: 767px) { .pf-prompt button { min-height: 44px; min-width: 44px; } .pf-prompt-text { font-size: 16px; } }

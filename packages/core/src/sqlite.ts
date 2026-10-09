@@ -71,6 +71,7 @@ import {
 } from "./methods.ts";
 import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
+import { type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
 import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
@@ -840,6 +841,13 @@ const MIGRATIONS: string[] = [
    ALTER TABLE machines ADD COLUMN runner_change TEXT;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
+  // The prompt of each SDLC step per project (72i), one row per saved version: the latest is the one runs get, the
+  // earlier ones are the history. A cleared prompt is a version with empty text, so who cleared it is on record.
+  `
+  CREATE TABLE sdlc_step_prompts(
+    project TEXT NOT NULL, step TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(project, step, version));
+  `,
 ];
 
 function browserSeedSql(): string {
@@ -1276,6 +1284,10 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const summary = gateSummary(i.settings.gates);
     return { target: i.project, detail: summary, text: { key: "audit.sdlcProject", vars: { summary } } };
   },
+  "sdlc.setPrompt": (i: { project: string; step: string; text: string }, o: StepPrompt) => ({
+    target: `${i.project}/${i.step}`,
+    detail: i.text.trim() ? `prompt bước ${i.step}: phiên bản ${o.version}` : `xoá prompt bước ${i.step}`,
+  }),
   "agentPolicy.set": (i: { project: string | null; policy: Partial<AgentPolicy> | null }) => {
     const target = i.project ?? "hub";
     if (!i.policy) return { target, detail: "bỏ chính sách agent", text: { key: "audit.agentPolicyCleared" } };
@@ -1476,6 +1488,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "chat.rename": "thread",
   "chat.configure": "thread",
   "sdlc.setProject": "project",
+  "sdlc.setPrompt": "project",
   "tools.setProject": "project",
   "agentPolicy.set": "project",
   "modelRouter.set": "project",
@@ -2504,6 +2517,13 @@ export class SqliteHive implements HiveBackend {
       case "sdlc.flowTasks":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
+      case "sdlc.prompts":
+      case "sdlc.promptHistory":
+      case "sdlc.runPrompt":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      // The text is read by every run of the step, as a doc agents read is.
+      case "sdlc.setPrompt":
+        return this.#need(actor, i.project, "contextEdit", `Project ${i.project}`);
       // A flow makes its task and queues its runs.
       case "specs.runStep":
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
@@ -5297,6 +5317,37 @@ export class SqliteHive implements HiveBackend {
   }
 
   // ── flows through the gates (roadmap 34b) ─────────────────────────────────
+
+  /** The latest version of each step's prompt; a step never written is version 0 with no text. */
+  #stepPrompts(project: string): StepPrompt[] {
+    const rows = this.db
+      .prepare("SELECT p.step, p.version, p.text, p.created_by, p.created_at FROM sdlc_step_prompts p WHERE p.project = ? AND p.version = (SELECT MAX(version) FROM sdlc_step_prompts WHERE project = p.project AND step = p.step)")
+      .all(project) as Row[];
+    const byStep = new Map(rows.map((r) => [str(r.step), r]));
+    return SDLC_GATES.map((step): StepPrompt => {
+      const r = byStep.get(step);
+      return r ? { step, text: str(r.text), version: num(r.version), updatedBy: str(r.created_by), updatedAt: str(r.created_at) } : { step, text: "", version: 0, updatedBy: null, updatedAt: null };
+    });
+  }
+
+  /**
+   * The step a run of the task is in: a flow's Spec Kit run (or the check of its gate) is that gate's step; a flow task's
+   * first run builds it (dispatch), a later one fixes it, its review is the review. Outside a flow there is no step: the
+   * gates apply to the engine's flows only (spec 34).
+   */
+  #runStep(project: string, taskId: string, role: AgentRole): SdlcGate | null {
+    const flow = this.#flowRow(taskId);
+    if (flow && str(flow.project) === project) {
+      const step = str(flow.step) as FlowStep;
+      return step in STEP_GATE ? STEP_GATE[step as keyof typeof STEP_GATE] : null;
+    }
+    const ft = this.#flowTaskRow(taskId);
+    if (!ft || str(ft.project) !== project) return null;
+    if (role === "review") return "review";
+    if (role !== "implement") return null;
+    const stage = str(ft.stage);
+    return stage === "fix" || stage === "fixnext" ? "fix" : stage === "build" || stage === "queued" ? "dispatch" : null;
+  }
 
   #flowRow(taskId: string): Row | null {
     return (this.db.prepare("SELECT * FROM sdlc_flows WHERE task_id = ?").get(taskId) as Row | undefined) ?? null;
@@ -9993,6 +10044,31 @@ export class SqliteHive implements HiveBackend {
         return this.#sdlcView();
       },
 
+      "sdlc.prompts": ({ project }) => this.#stepPrompts(project),
+      "sdlc.promptHistory": ({ project, step, limit }) =>
+        (db.prepare("SELECT version, text, created_by, created_at FROM sdlc_step_prompts WHERE project = ? AND step = ? ORDER BY version DESC LIMIT ?").all(project, step, limit) as Row[]).map(
+          (r): StepPromptVersion => ({ version: num(r.version), text: str(r.text), by: str(r.created_by), at: str(r.created_at) }),
+        ),
+      "sdlc.setPrompt": ({ project, step, text, baseVersion }, actor) =>
+        this.#tx(() => {
+          const body = text.trim();
+          // What every run of the step is told: no hidden characters, no credentials (as docs agents read).
+          assertNoHidden(body, "Prompt");
+          assertNoSecret(body, "Prompt");
+          const now = this.#stepPrompts(project).find((p) => p.step === step)!;
+          // The text is the same: no new version, so the history is only real changes.
+          if (now.version === baseVersion && now.text === body) return now;
+          if (now.version !== baseVersion) {
+            throw new HiveError("conflict", `The ${step} prompt is at version ${now.version}, not ${baseVersion}: read it again.`, { key: "errors.promptVersionConflict", vars: { step, version: now.version } });
+          }
+          db.prepare("INSERT INTO sdlc_step_prompts(project, step, version, text, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(project, step, now.version + 1, body, actor.name, this.#now());
+          return this.#stepPrompts(project).find((p) => p.step === step)!;
+        }),
+      "sdlc.runPrompt": ({ project, taskId, role }) => {
+        const step = this.#runStep(project, taskId, role);
+        const p = step ? this.#stepPrompts(project).find((x) => x.step === step) : null;
+        return p && p.text ? ({ step: p.step, version: p.version, text: p.text } satisfies RunStepPrompt) : null;
+      },
       "sdlc.gates": ({ project, projects, taskId, status, limit, beforeId, since }) =>
         (
           db

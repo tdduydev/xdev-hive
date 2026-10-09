@@ -1,6 +1,6 @@
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
+import { researchSchema, stepPromptBlock, type GateHeartbeatReply, type ResearchJob, type RunStepPrompt } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
@@ -2056,6 +2056,22 @@ export class Runner {
   }
 
   /**
+   * The prompt the project's manager wrote for the SDLC step this run is in (roadmap 72i). A hub without it, or one that
+   * fails, costs the run nothing: it goes on without, and the log says so.
+   */
+  async #stepPrompt(backend: HiveBackend, actor: Actor, run: AgentRun): Promise<{ prompt: RunStepPrompt | null; note: string | null }> {
+    if (run.role === "research" || run.bestOf?.n === 0) return { prompt: null, note: null };
+    try {
+      const prompt = await backend.call("sdlc.runPrompt", { project: run.project, taskId: run.taskId, role: run.role }, actor);
+      const block = stepPromptBlock(prompt);
+      if (block && "skipped" in block) return { prompt: null, note: `step prompt not used: ${block.skipped}` };
+      return { prompt, note: prompt ? `step prompt: ${prompt.step} v${prompt.version}` : null };
+    } catch (err) {
+      return { prompt: null, note: `step prompt not read: ${(err as Error).message}` };
+    }
+  }
+
+  /**
    * Puts the project's Hive context in the worktree before the agent starts (roadmap 38a), so every role reads the
    * current AGENTS.md, rules and skills even when the target branch has none of them. The files are the app's, not
    * the branch's: `wt.context` keeps them out of the run's commit. A hub that fails or is slow is not worth losing
@@ -2175,6 +2191,7 @@ export class Runner {
       // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
       // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
       const context = await this.#writeContext(backend, actor, run.project, wt);
+      const step = await this.#stepPrompt(backend, actor, run);
       // Old code a task has to read (roadmap 38h): other checkouts of this machine, read-only for the run.
       const references = resolveReferences(run.role === "research" ? (JSON.parse(run.instructions) as ResearchJob).projects.filter(p => p !== run.project) : project.references, this.#host.projects());
       const referenceLine = describeReferences(references);
@@ -2220,7 +2237,7 @@ export class Runner {
         } }), { mode: 0o600 });
       }
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
-      const hookLines: string[] = [];
+      const hookLines: string[] = step.note ? [step.note] : [];
       let hooks: ClaudeHookRun | null = null;
       let codexRtk: CodexRtkRun | null = null;
       if (tools.hooks?.length && run.role !== "research" && run.plan?.phase !== "plan") {
@@ -2274,6 +2291,7 @@ export class Runner {
         rules: context.rules,
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
         artifacts: this.#host.mode() === "hub",
+        stepPrompt: step.prompt,
       });
       writeSteer(wt.path, run.id, []);
       if (profile.kind === "opencode") {
