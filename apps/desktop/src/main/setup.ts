@@ -36,7 +36,7 @@ import {
 import { addToUserPath, pathHasDir, type UserPath } from "./winpath.ts";
 import { tr } from "./i18n.ts";
 import { geminiLaunch } from "#desktop/main/runner/gemini-launch.ts";
-import { resolveBin } from "./runner/command.ts";
+import { cliLaunch, resolveBin } from "#desktop/main/spawn-cli.ts";
 import { VIBE_VERSION } from "#desktop/main/runner/vibe.ts";
 import { supportsAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
@@ -210,8 +210,16 @@ const noNpm = () => tr("setupItem.noNpm");
 
 export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
   new Promise((resolve) => {
-    const launch = geminiLaunch(bin, args, env);
-    execFile(launch.bin, launch.args, { cwd, env: launch.env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    let launch: ReturnType<typeof cliLaunch> & { env: NodeJS.ProcessEnv };
+    try {
+      const node = geminiLaunch(bin, args, env);
+      launch = { ...cliLaunch(node.bin, node.args), env: node.env };
+    } catch (err) {
+      resolve({ ok: false, output: (err as Error).message });
+      return;
+    }
+    const { windowsVerbatimArguments } = launch;
+    execFile(launch.bin, launch.args, { cwd, env: launch.env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, windowsHide: true, windowsVerbatimArguments }, (err, stdout, stderr) => {
       const output = `${stdout}${stderr}`.trim();
       resolve({ ok: !err, output: output || (err ? err.message : "") });
     });

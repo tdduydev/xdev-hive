@@ -3,7 +3,7 @@
 import { geminiLogin } from "#desktop/main/runner/gemini.ts";
 import { opencodeEnv, opencodeLogin, OPENCODE_XDG } from "#desktop/main/runner/opencode.ts";
 import { kiloLogin, KILO_XDG_DIRS } from "#desktop/main/runner/kilo.ts";
-import { execFile } from "node:child_process";
+import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import os from "node:os";
 import path from "node:path";
 import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
@@ -107,7 +107,7 @@ export type RunCli = (bin: string, args: string[], env: NodeJS.ProcessEnv) => Pr
 /** Out of any repo: the checks must not pick up a project's settings. */
 const runCli: RunCli = (bin, args, env) =>
   new Promise((resolve) => {
-    execFile(bin, args, { env, cwd: os.tmpdir(), timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
+    execFileCli(bin, args, { env, cwd: os.tmpdir(), timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : null) : 0;
       resolve({ code, output: `${stdout}${stderr}` });
     });

@@ -27,6 +27,7 @@ import { installAntigravityMcp, SHIM_NAME } from "#desktop/main/installer.ts";
 import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFileCli, spawnCli } from "#desktop/main/spawn-cli.ts";
 import { randomBytes } from "node:crypto";
 import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
@@ -124,6 +125,7 @@ import {
   parsePick,
   policyBlocks,
   policyLine,
+  promptOnStdin,
   ranOn,
   routeProfile,
   withoutFlags,
@@ -919,7 +921,7 @@ export class Runner {
     let check = this.#steerSupport.get(bin);
     if (!check) {
       check = new Promise<boolean>((resolve) => {
-        execFile(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && /--input-format/.test(stdout) && /stream-json/.test(stdout));
         });
       });
@@ -934,7 +936,7 @@ export class Runner {
     if (!check) {
       check = new Promise<boolean>((resolve) => {
         const probe = gemini ? geminiLaunch(bin, ["--help"], env) : { bin, args: ["exec", "resume", "--help"], env };
-        execFile(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && (gemini ? /--resume/.test(stdout) && /stream-json/.test(stdout) : /resume/.test(stdout) && /SESSION_ID/i.test(stdout)));
         });
       });
@@ -2513,11 +2515,13 @@ export class Runner {
             let agyFailure: string | null = null;
             let modelRejected = false;
             const launch = !box && profile.kind === "gemini" ? geminiLaunch(bin, cmd.args, env) : { bin, args: box ? box.args : cmd.args, env };
-            const child = spawn(launch.bin, launch.args, {
+            // Per launch, not on cmd: the resume branches below rebuild args from initialArgs, which keep the prompt.
+            const sent = !box && process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.bin) ? promptOnStdin(profile.kind, launch.args, cmd.stdin) : { args: launch.args, stdin: cmd.stdin };
+            const child = spawnCli(launch.bin, sent.args, {
               cwd: wt.path,
               env: launch.env,
               detached: process.platform !== "win32",
-              stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+              stdio: [sent.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
               windowsHide: true,
             });
             const live: Live = { child, log, deadline, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
@@ -2535,7 +2539,7 @@ export class Runner {
                 child.stdin.write(claudeUserMessage(text), (err) => err ? reject(err) : resolve());
               });
               child.stdin?.write(cmd.stdin!);
-            } else if (cmd.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(cmd.stdin); }
+            } else if (sent.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(sent.stdin); }
 
             const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
             const lastLine = (text: string) => {
@@ -2772,7 +2776,7 @@ export class Runner {
       const hostEnv = Object.fromEntries(Object.entries(this.#host.env()).filter(([k]) => !k.startsWith("ELECTRON_")));
       const classifyEnv = { ...hostEnv, ...expandEnv(run.diffSummaryFor ? routed.env : profile.env) };
       for (let modelRetry = 0; ; modelRetry++) {
-        const child = spawn(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+        const child = spawnCli(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
         const live: Live = { child, deadline: Date.now() + CLASSIFY_TIMEOUT_MS, cancelled: false, timedOut: false };
         this.#live.set(run.id, live);
         let output = "";
