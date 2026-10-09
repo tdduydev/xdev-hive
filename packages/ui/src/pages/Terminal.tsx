@@ -30,8 +30,8 @@ export function TerminalPage() {
     if (isTerminalFinal(s.state)) { setForm(null); setAttachment({ session: s, ticket: null }); } else { setAttachment(null); setForm({ session: s }); }
   };
   const current = attachment?.session.id;
-  return <div data-terminal-page className="flex flex-wrap items-start gap-4 p-6 max-md:p-4">
-    <div className="flex max-w-full flex-[1_1_250px] flex-col gap-[10px]">
+  return <div data-terminal-page className="grid grid-cols-1 items-start gap-4 p-6 max-md:p-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+    <div className="flex min-w-0 flex-col gap-[10px]">
       <div className="flex flex-col gap-1 rounded-[24px] bg-[var(--surface-1)] px-2 py-3 shadow-[var(--ring-glass)]">
         <div className="flex items-center py-0.5 pr-1.5 pb-2 pl-2.5">
           <span className="flex-1 text-[11px]/4 font-semibold tracking-[.5px] uppercase text-[var(--text-muted)]">{t("terminal.sessions")}</span>
@@ -53,7 +53,7 @@ export function TerminalPage() {
         <Button size="sm" variant="ghost" className="self-start" onClick={() => setForm(null)}>{t("common.cancel")}</Button>
       </div> : null}
     </div>
-    <div className="flex h-[calc(100vh-210px)] min-h-[480px] min-w-0 flex-[999_1_560px] flex-col max-md:h-[calc(100dvh-160px)] max-md:min-h-[360px]">
+    <div className="flex h-[calc(100dvh-120px)] min-h-[480px] min-w-0 flex-col max-lg:h-[calc(100dvh-160px)] max-lg:min-h-[420px]">
       {attachment ? <TerminalScreen key={attachment.session.id} api={api} attachment={attachment} onDetach={() => { setAttachment(null); sessions.reload(); }} />
         : <div data-testid="terminal-idle" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[var(--code-bg)] shadow-[var(--ring-glass-strong)]">
           <div className="flex shrink-0 flex-wrap items-center gap-[10px] bg-[var(--surface-1)] py-[10px] pr-3 pl-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">

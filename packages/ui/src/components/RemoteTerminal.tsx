@@ -64,6 +64,8 @@ export function TerminalProvider({ children }: { children: ReactNode }) {
   const busy = useRef(false);
   useEffect(() => {
     const fromLink = () => {
+      // The terminal page hosts sessions in its own frame; the dialog is only for entries on other pages.
+      if (location.hash.startsWith("#/terminal") && !busy.current) { setTarget(null); setAttachment(null); return; }
       const params = new URLSearchParams(location.hash.split("?")[1]);
       if (params.get("terminal") !== "1") return;
       setTarget({ machineId: params.get("terminalMachine") ?? undefined, project: params.get("terminalProject") ?? undefined, checkoutRef: params.get("terminalCheckout") ?? undefined, runActive: params.get("terminalRunActive") === "1" });
