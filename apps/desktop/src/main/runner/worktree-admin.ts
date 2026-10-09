@@ -6,8 +6,8 @@ import { HiveError, type DesktopProject, type Task, type WorktreeEntry } from "@
 import { AGENT_CONFIG_FILES, AGENT_CLI_DIRS, renderedPaths } from "#desktop/main/runner/worktree.ts";
 
 // Git's successful stderr can contain platform diagnostics; it is never part of a ref or status record.
-function gitAsync(repo: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => execFile("git", args, { cwd: repo, encoding: "utf8", timeout: 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+function gitAsync(repo: string, args: string[], timeout = 60_000): Promise<string> {
+  return new Promise((resolve, reject) => execFile("git", args, { cwd: repo, encoding: "utf8", timeout, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } }, (err, stdout, stderr) => {
     if (err) reject(Object.assign(err, { stderr }));
     else resolve(stdout.trim());
   }));
@@ -82,9 +82,13 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
   const ref = remote ?? await gitAsync(project.repo, ["rev-parse", "--verify", `refs/heads/${target}^{commit}`]).catch(() => null);
   const targetRef = mergeRef === undefined ? ref : mergeRef;
   const merged = targetRef ? await landed(project.repo, head, targetRef) : null;
+  // A tracking ref can be stale after a failed push; ask the configured remote for this exact branch head.
+  const pushRemote = project.git?.remote ?? "origin";
+  const pushed = await gitAsync(project.repo, ["ls-remote", "--heads", pushRemote, `refs/heads/${item.branch}`], 10_000)
+    .then(output => output.split("\n").some(line => line.split("\t")[0] === head && line.endsWith(`refs/heads/${item.branch}`)), () => null);
   return {
     ...item, project: project.name, head, fingerprint: hash(JSON.stringify([dir, item.branch, head, status, modifiedMs])),
-    bytes, modifiedAt: new Date(modifiedMs).toISOString(), dirty: !!status, merged, active,
+    bytes, modifiedAt: new Date(modifiedMs).toISOString(), dirty: !!status, merged, pushed, active,
     taskStatus: task?.status ?? null, taskUpdatedAt: task?.updatedAt ?? null,
     error: bytes === null ? "worktrees.measureFailed" : null,
   };
@@ -110,6 +114,7 @@ export async function deleteWorktree(project: DesktopProject, root: string, expe
   if (!item) throw new HiveError("conflict", "Worktree changed.", { key: "errors.worktreeChanged" });
   const fresh = await inspectWorktree(project, item, undefined, false);
   if (fresh.fingerprint !== expected.fingerprint) throw new HiveError("conflict", "Worktree changed.", { key: "errors.worktreeChanged" });
+  if (fresh.pushed !== true) throw new HiveError("conflict", "Branch is not confirmed on the remote.", { key: "errors.worktreeNotPushed" });
   if (!force && (fresh.dirty || fresh.merged !== true)) throw new HiveError("conflict", "Confirmation required.", { key: "errors.worktreeConfirm" });
   if (isActive()) throw new HiveError("conflict", "Task has an active run.", { key: "errors.worktreeActive" });
   // Git refuses locked worktrees and submodules. Never remove a folder with rm or delete the branch.
