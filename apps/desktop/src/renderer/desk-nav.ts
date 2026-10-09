@@ -1,6 +1,7 @@
 // The desktop app's menu and addresses on a hub (roadmap 76h, docs/specs/76-access-first.md §5 step 2): this machine's
 // work only. Everything else (Task, Tài liệu, Chat, Quản trị…) is the hub's web, one button away. Free of React so a
 // test can read it.
+import type { AgentProfileStatus, AgentRun, SetupReport, WorktreeReport } from "@xdev-hive/core";
 import type { MessageKey } from "@xdev-hive/ui-kit/i18n";
 
 export type DeskPage = "start" | "machine" | "agents" | "runs" | "worktrees" | "setup" | "settings";
@@ -70,3 +71,42 @@ export function webTarget(hubUrl: string | null, hash: string): string | null {
  */
 export const opensOnHome = (initialHash: string, currentHash: string): boolean =>
   ["", "#", "#/", "#/today"].includes(initialHash) && resolveDeskHash(currentHash) === DESK_HOME;
+
+export type DeskSearchGroup = "runs" | "worktrees" | "agents" | "tools";
+export interface DeskSearchRow {
+  group: DeskSearchGroup;
+  id: string;
+  label: string;
+  hint?: string;
+  hash: string;
+}
+
+/**
+ * What ⌘K searches in the app: the things this machine has. The web's palette searches tasks and docs, which the app
+ * no longer shows (its Task and Tài liệu open on the web).
+ */
+export function deskSearchRows(input: {
+  runs?: AgentRun[] | null;
+  worktrees?: WorktreeReport | null;
+  agents?: AgentProfileStatus[] | null;
+  setup?: SetupReport | null;
+}): DeskSearchRow[] {
+  const rows: DeskSearchRow[] = [];
+  for (const run of input.runs ?? []) {
+    rows.push({ group: "runs", id: `run:${run.id}`, label: `${run.taskId} · ${run.project}`, hint: run.status, hash: `#/runs?run=${encodeURIComponent(run.id)}` });
+  }
+  for (const w of input.worktrees?.entries ?? []) {
+    rows.push({ group: "worktrees", id: `worktree:${w.path}`, label: `${w.taskId || w.branch} · ${w.project}`, hint: w.branch, hash: "#/worktrees" });
+  }
+  for (const p of input.agents ?? []) {
+    rows.push({ group: "agents", id: `agent:${p.id}`, label: p.label, hint: p.kind, hash: "#/agents" });
+  }
+  const setup = input.setup;
+  if (setup) {
+    for (const item of setup.machine) rows.push({ group: "tools", id: `tool:${item.id}`, label: item.label, hint: item.detail, hash: "#/setup" });
+    for (const p of setup.projects) {
+      for (const item of p.items) rows.push({ group: "tools", id: `tool:${p.project}:${item.id}`, label: item.label, hint: p.project, hash: "#/setup" });
+    }
+  }
+  return rows;
+}
