@@ -1046,15 +1046,15 @@ function ResearchCard({ action: a, manage, onChanged }: { action: ChatAction; ma
       <ul className="list-inside list-disc">{input.questions.map((q, i) => <li key={i}>{q}</li>)}</ul>
       {id ? <p role="status" aria-live="polite">{research ? t(`chat.researchStatus.${research.status}`) : t("artifacts.loading")}</p> : null}
       {research?.artifactId ? <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" className="min-h-11 md:min-h-0" aria-expanded={preview} onClick={() => setPreview(v => !v)}>{t("chat.researchReport")} · report.md</Button>
-        <a className={cn(LINK, "inline-flex min-h-11 items-center md:min-h-0")} href={`#/artifacts?artifact=${research.artifactId}`}>{t("artifacts.title")}</a>
+        <Button size="sm" variant="outline" className="research-touch-target" aria-expanded={preview} onClick={() => setPreview(v => !v)}>{t("chat.researchReport")} · report.md</Button>
+        <a className={cn(LINK, "research-touch-target inline-flex items-center")} href={`#/artifacts?artifact=${research.artifactId}`}>{t("artifacts.title")}</a>
       </div> : null}
       {preview && file.loading ? <p role="status">{t("artifacts.loading")}</p> : null}
       {preview && file.data ? <ArtifactPreview artifact={file.data} onClose={() => setPreview(false)} /> : null}
       {research?.sources.length ? <div><div className="font-medium">{t("chat.researchSources")}</div><ul className="list-inside list-disc">{research.sources.map((s, i) => <li key={i}>{s}</li>)}</ul></div> : null}
-      {research?.proposalId ? <a className={cn(LINK, "inline-flex min-h-11 items-center md:min-h-0")} href={`#/proposals?proposal=${research.proposalId}`}>{t("chat.researchDraft")} · {research.docKey}</a> : null}
-      {research ? <a className={cn(LINK, "inline-flex min-h-11 items-center md:min-h-0")} href={`#/runs?run=${encodeURIComponent(`${research.machineId}/${research.runId}`)}`}>{t("nav.runs")} · {research.runId}</a> : null}
-      {research?.status === "done" && research.recommendations.trim() && manage ? <Button size="sm" className="min-h-11 md:min-h-0" disabled={act.busy || sent} onClick={convert}>{t("chat.researchConvert")}</Button> : null}
+      {research?.proposalId ? <a className={cn(LINK, "research-touch-target inline-flex items-center")} href={`#/proposals?proposal=${research.proposalId}`}>{t("chat.researchDraft")} · {research.docKey}</a> : null}
+      {research ? <a className={cn(LINK, "research-touch-target inline-flex items-center")} href={`#/runs?run=${encodeURIComponent(`${research.machineId}/${research.runId}`)}`}>{t("nav.runs")} · {research.runId}</a> : null}
+      {research?.status === "done" && research.recommendations.trim() && manage ? <Button size="sm" className="research-touch-target" disabled={act.busy || sent} onClick={convert}>{t("chat.researchConvert")}</Button> : null}
       {sent ? <p role="status">{t("chat.researchConverted")}</p> : null}
       {drafted ? <p role="status">{t("chat.busy")}</p> : null}
       <ErrorNote error={query.error ?? file.error ?? act.error ?? research?.error} />
