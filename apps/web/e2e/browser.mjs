@@ -355,6 +355,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
   "memory-variants": ["login-token"],
+  "knowledge-compare": ["login-token", "artifacts-page"],
   "artifacts": ["lead-sees-members"],
   "run-steer": ["login-password", "lead-sees-members"],
   "codex-leader-chat": ["login-token"],
@@ -1108,8 +1109,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -4081,8 +4082,9 @@ async function main() {
     await tab.go("skills");
     await tab.click('input[aria-label="Tìm skill"]');
     await tab.type("stats-");
-    await tab.waitFor("skill usage columns", () => document.body.innerText.includes("Số run dùng 30 ngày"));
+    await tab.waitFor("skill list filtered", () => [...document.querySelectorAll("main [data-pane-item]")].some((e) => e.textContent.includes("stats-unused")));
     await tab.click('main [data-pane-item]', "stats-used");
+    await tab.waitFor("skill usage numbers", () => document.body.innerText.includes("Số run dùng 30 ngày"));
     await tab.waitFor("weekly usage chart", () => document.querySelector("[data-skill-usage]")?.children.length === 8);
     expect(await tab.eval(() => [...document.querySelectorAll("[data-skill-usage] > div > span")].reduce((n, el) => n + Number(el.textContent), 0) === 1), "duplicate loads count once");
     await tab.shot(`${String(n).padStart(2, "0")}-skill-usage-chart`);
@@ -4386,7 +4388,7 @@ async function main() {
     try { await accessibilityAudit({ tab, out, expect, routes: ["artifacts"], filename: "artifacts-accessibility.json" }); }
     catch (e) { if (!/^axe WCAG: artifacts\/dark: color-contrast \(\d+\); see \S+$/.test(e.message)) throw e; }
     const ax = await tab.cdp("Accessibility.getFullAXTree");
-    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "table" && node.name?.value === "Tệp của agent"), "artifact library reaches the accessibility tree");
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "table" && node.name?.value === "Artifact"), "artifact library reaches the accessibility tree");
     await tab.click('[data-artifact-row="report.md"] button');
     await tab.waitFor("markdown document", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
     const auditPreview = async (filename) => {
@@ -4503,6 +4505,86 @@ async function main() {
     await tab.waitFor("review opens report", () => document.querySelector('[data-artifact-content] h1'));
     await tab.shot("artifacts-review");
     await tab.click('[data-artifact-preview] button', "Đóng");
+  });
+
+  // R-72j: Memory, Skill and Artifact with the template's data (docs/design/hive-2026-10/shots), in both themes, for the
+  // *-compare images beside the template. Memory: a system of web/desktop/core so its seven cards are the only ones in view.
+  await step("knowledge-compare", async () => {
+    const tab = (current = tabs.admin);
+    const as = async (agent, method, input, token = admin) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": agent }, body: JSON.stringify({ method, input }) });
+      const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
+    };
+    await rpc("systems.save", { name: "xdev-hive", projects: ["web", "desktop", "core"] });
+    await rpc("users.setGrants", { id: people.minh.id, grants: { payment: "member", demo: "member", web: "member" } });
+    const write = (input, token) => rpc("memory.write", { kind: "convention", ...input }, token);
+    // Written oldest first: the page lists the newest first, as the template orders them.
+    const system = await write({ system: "xdev-hive", content: "GitLab group fpt-xdev cần token có scope api để tạo MR." });
+    const stale = await write({ project: "core", kind: "gotcha", content: "Hub cũ (trước 0.120) không có method machines.setupMissing." });
+    const old = await write({ shared: true, content: "Import dùng đường dẫn tương đối ../ giữa các package." });
+    const next = await write({ shared: true, content: "Import cùng thư mục bằng ./tên.ts; thư mục khác dùng alias #ui/*, #core/*.", supersedes: old.id });
+    // Entries may only contradict one of the same owner: the other side is written shared, then moved out of view below.
+    const other = await write({ shared: true, kind: "decision", content: "Release cắt nhánh release/* rồi mới tạo tag." });
+    const conflict = await write({ shared: true, kind: "decision", content: "Release tạo tag thẳng trên main, không dùng nhánh release/*.", contradicts: other.id });
+    const cited = await write({ project: "desktop", kind: "gotcha", content: "Runner đọc quota từ ~/.claude/usage.json; trường resetAt có từ CLI 2.1.280.", files: ["src/main/runner/quota.ts", "src/main/runner/profiles.ts"] });
+    const pending = await write({ project: "web", kind: "gotcha", content: "Test e2e của web cần HIVE_MEMORY_STALE_DAYS=1 để kiểm mục cũ." }, people.minh.token);
+    const files = (quota) => ({ project: "desktop", files: [{ path: "src/main/runner/quota.ts", sha: quota.repeat(40) }, { path: "src/main/runner/profiles.ts", sha: "e".repeat(40) }] });
+    await as("runner.knowledge-compare", "memory.checkFiles", files("d"));
+    await as("runner.knowledge-compare", "memory.checkFiles", files("f"));
+    // Authors, uses and ages as the template shows them; the hub only sets these from real agents over time.
+    const ago = (days) => new Date(Date.now() - days * 86_400_000).toISOString();
+    const rows = [
+      [pending.id, "codex-pro", 0, ago(1 / 24), null],
+      [cited.id, "claude-max", 9, ago(20), ago(2)],
+      [conflict.id, "claude-max", 3, ago(10), ago(1)],
+      [next.id, "Linh", 42, ago(60), ago(1)],
+      [old.id, "An", 0, ago(92), null],
+      [stale.id, "codex-pro", 0, ago(94), null],
+      [system.id, "gemini-adv", 17, ago(30), ago(3)],
+    ];
+    execFileSync("node", ["-e", 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(process.argv[1]); const up = db.prepare("UPDATE memory SET author = ?, use_count = ?, created_at = ?, last_used_at = ? WHERE id = ?"); for (const [id, author, uses, at, used] of JSON.parse(process.argv[2])) up.run(author, uses, at, used, id); db.prepare("UPDATE memory SET project = ? WHERE id = ?").run("payment", Number(process.argv[3])); db.close();', process.env.HIVE_E2E_DB, JSON.stringify(rows), String(other.id)]);
+
+    const skill = (name, description, body) => `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}`;
+    const e2eWeb = "Chạy và sửa test e2e của hub web. Dùng khi đổi trang hoặc RPC.";
+    const steps = "1. npm run build -w apps/web\n2. node apps/web/e2e/run.mjs --grep <trang>\n3. Lỗi a11y: sửa trong component, không tắt rule\n4. Ghi kết quả vào ghi chú task";
+    await rpc("docs.save", { key: "org/skills/e2e-web", content: skill("e2e-web", "Chạy test e2e của web.", steps), baseVersion: 0 });
+    await rpc("docs.save", { key: "project/web/skills/e2e-web", content: skill("e2e-web", e2eWeb, steps), baseVersion: 0 });
+    await rpc("docs.save", { key: "org/skills/release-notes", content: skill("release-notes", "Viết ghi chú phát hành từ các MR đã merge kể từ tag trước.", "1. git log"), baseVersion: 0 });
+    await rpc("docs.save", { key: "org/skills/db-migration", content: skill("db-migration", "Thêm migration SQLite cho hub; luôn có bước lùi và test.", "1. Viết migration"), baseVersion: 0 });
+    await rpc("docs.save", { key: "project/web/skills/speckit-tasks", content: skill("speckit-tasks", "Chia plan.md thành tasks.md theo luồng tính năng.", "1. Đọc plan.md"), baseVersion: 0 });
+    await rpc("proposals.create", { docKey: "project/web/skills/e2e-web", baseVersion: 1, content: skill("e2e-web", e2eWeb, steps + "\n5. Chụp ảnh"), reason: "Thêm bước chụp ảnh" });
+    for (const reason of ["Thêm bước lùi", "Thêm test"]) await rpc("proposals.create", { docKey: "org/skills/db-migration", baseVersion: 1, content: skill("db-migration", "Thêm migration SQLite cho hub; luôn có bước lùi và test.", `1. Viết migration\n2. ${reason}`), reason });
+
+    const original = await tab.eval(() => ({ theme: document.documentElement.dataset.theme, scope: localStorage.getItem("xdev-hive.scope") }));
+    const size = mobile ? "390" : "1440";
+    const shoot = async (page, scope, ready, route = page) => {
+      await tab.eval((v) => localStorage.setItem("xdev-hive.scope", v), scope);
+      await tab.go(route);
+      await tab.reload();
+      await tab.waitFor(`${page} with the template's data`, ready);
+      for (const theme of ["dark", "light"]) {
+        await tab.eval((v) => { document.documentElement.dataset.theme = v; }, theme);
+        await sleep(200);
+        await tab.shot(`${page}-${size}-${theme}`);
+      }
+    };
+    try {
+      await shoot("memory", "@system:xdev-hive", () => document.querySelectorAll("[data-memory-card]").length === 7 && document.body.innerText.includes("Chỉ mục cũ · 1"));
+      const chips = await tab.eval(() => [...document.querySelectorAll("[data-memory-page] button[aria-pressed]")].map((b) => b.textContent.trim()));
+      expect(JSON.stringify(chips) === JSON.stringify(["Tất cả · 7", "Chờ duyệt · 1", "Cần xem lại · 1", "Mâu thuẫn · 1", "Chỉ mục cũ · 1"]), `memory chips: ${chips}`);
+      expect(!(await tab.eval(() => !!document.querySelector("[data-page-tab]"))), "Memory has no tabs");
+      // The template shows web's own e2e-web open.
+      await shoot("skills", "web", () => document.querySelectorAll("main [data-skill-proposals]").length === 2 && (innerWidth < 768 || document.querySelector('main [data-pane-item][aria-pressed="true"]')?.textContent.includes("thay skill chung")), `skills?skill=${encodeURIComponent("project/web/skills/e2e-web")}`);
+      expect(!(await tab.eval(() => !!document.querySelector("[data-page-tab]"))), "Skill has no tabs");
+      const shared = await tab.eval(() => [...document.querySelectorAll("main [data-pane-item]")].map((b) => b.innerText.replace(/\s+/g, " ")));
+      expect(shared.some((t) => t.includes("Bản chung của e2e-web") && t.includes("Chung · không dùng ở service này")), `shadowed team skill: ${shared}`);
+      expect(shared.some((t) => t.includes("Riêng web · thay skill chung")), `overriding skill: ${shared}`);
+      await tab.click('main [data-skill-proposals="org/skills/db-migration"]');
+      await tab.waitFor("the skill's proposals", () => document.querySelectorAll("[data-proposal-card]").length === 2 && document.body.innerText.includes("Thêm bước lùi"));
+      await shoot("artifacts", "", () => !!document.querySelector("[data-artifact-row]") && document.body.innerText.includes("Ảnh, bằng chứng và tệp từ các run."));
+    } finally {
+      await tab.eval((o) => { if (o.scope === null) localStorage.removeItem("xdev-hive.scope"); else localStorage.setItem("xdev-hive.scope", o.scope); if (o.theme) document.documentElement.dataset.theme = o.theme; }, original);
+    }
   });
 
   await step("artifacts", async () => {

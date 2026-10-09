@@ -67,8 +67,10 @@ export function SkillsPage() {
     if (current) created.current = null;
     if (!list.data || selected === NEW || current || (selected && selected === created.current)) return;
     if (mobileDetail.mobile) return;
+    // A ?skill= link is picked by the effect above in the same pass; the first skill would replace it.
+    if (wanted && skills.some((s) => s.key === wanted)) return;
     setSelected(skills[0]?.key ?? null);
-  }, [list.data, selected, current, skills]);
+  }, [list.data, selected, current, skills, wanted]);
   const reload = () => setTick((n) => n + 1);
 
   const [unused, setUnused] = useState(false);
@@ -83,6 +85,7 @@ export function SkillsPage() {
     </Button>
   ) : null;
   const showing = mobileDetail.mobile ? mobileDetail.value : selected;
+  const orphans = proposals.filter((p) => !shown.some((s) => s.key === p.docKey));
 
   return (
     <div className="flex flex-wrap items-start gap-4 px-7 py-4" data-skills-page>
@@ -101,36 +104,48 @@ export function SkillsPage() {
           {t("skills.unused")}
         </label>
         {project ? <p className="m-0 px-2 pt-1 pb-2 text-[var(--text-muted)] [font:var(--design-caption)]">{t("skills.effectiveFor", { project })}</p> : null}
-        {proposals.length ? (
+        {/* Proposals on skills the list does not show (a new skill proposed, or one the filters hide) have no pill to open them by. */}
+        {orphans.length ? (
           <a className="mx-1 mb-1 rounded-[8px] bg-[var(--status-warning-bg)] px-2 py-1.5 text-[var(--status-warning-fg)] no-underline [font:var(--design-caption)] hover:underline" href="#/skills?tab=pending">
-            {t("skills.pendingNotice", { count: proposals.length })} {t("skills.openProposals")}
+            {t("skills.pendingNotice", { count: orphans.length })} {t("skills.openProposals")}
           </a>
         ) : null}
         {shown.map((s) => {
           const waiting = proposals.filter((p) => p.docKey === s.key).length;
           const on = s.key === showing;
-          const tag = [s.project ? t("skills.privateTo", { project: s.project }) : t("common.sharedTeam"), s.overrides ? t("skills.overrides") : s.overridden ? t("skills.overridden") : null].filter(Boolean).join(" · ");
+          // Template: "Chung", "Riêng web · thay skill chung" in violet, and the shadowed team skill faded with its own line.
+          const tag = [s.project ? t("skills.privateTo", { project: s.project }) : t("skills.shared"), s.overrides ? t("skills.overrides") : s.overridden ? t("skills.overridden") : null].filter(Boolean).join(" · ");
           return (
-            <button
-              key={s.key}
-              type="button"
-              aria-pressed={on}
-              data-pane-item
-              onClick={() => pick(s.key)}
-              className={cn(
-                "flex cursor-pointer flex-col gap-1 rounded-[16px] border-0 px-[14px] py-3 text-left font-[inherit] text-[var(--text-strong)] hover:bg-[var(--glass-bg)]",
-                on ? "bg-[var(--tint-violet-soft)] shadow-[var(--ring-violet)]" : "bg-transparent shadow-none",
-                s.overridden && "opacity-45",
-              )}
-            >
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="flex-1 text-[13px]/[18px] font-semibold [font-family:var(--font-code-design)]">{s.name}</span>
-                {waiting ? <span className="inline-flex h-5 items-center rounded-full bg-[var(--tint-violet)] px-2 text-[var(--violet-soft)] [font:var(--design-micro)]">{t("skills.proposalCount", { count: waiting })}</span> : null}
-              </span>
-              <span className="text-pretty text-[var(--text-secondary)] [font:var(--design-caption)]">{s.description || t("skills.noDescription")}</span>
-              <span className={cn("[font:var(--design-micro)]", s.overridden ? "text-[var(--text-faint)]" : s.project ? "text-[var(--violet-soft)]" : "text-[var(--text-muted)]")}>{tag}</span>
-              <span className="text-[var(--text-muted)] [font:var(--design-micro)]">{t("skills.runs30d")}: {s.usage?.runs30d ?? "—"}</span>
-            </button>
+            <div key={s.key} className="relative">
+              <button
+                type="button"
+                aria-pressed={on}
+                data-pane-item
+                onClick={() => pick(s.key)}
+                className={cn(
+                  "flex w-full cursor-pointer flex-col gap-1 rounded-[16px] border-0 px-[14px] py-3 text-left font-[inherit] text-[var(--text-strong)] hover:bg-[var(--glass-bg)]",
+                  on ? "bg-[var(--tint-violet-soft)] shadow-[var(--ring-violet)]" : "bg-transparent shadow-none",
+                  s.overridden && "opacity-45",
+                )}
+              >
+                <span className={cn("text-[13px]/[18px] font-semibold [overflow-wrap:anywhere] [font-family:var(--font-code-design)]", waiting && "pr-20")}>{s.name}</span>
+                <span className="text-pretty text-[var(--text-secondary)] [font:var(--design-caption)]">
+                  {s.overridden ? t("skills.sharedOf", { name: s.name }) : s.description || t("skills.noDescription")}
+                </span>
+                <span className={cn("[font:var(--design-micro)]", s.overridden ? "text-[var(--text-faint)]" : s.project ? "text-[var(--violet-soft)]" : "text-[var(--text-muted)]")}>{tag}</span>
+              </button>
+              {/* A link beside the button, not inside it: it opens the skill's proposals, where the old "Chờ duyệt" tab was. */}
+              {waiting ? (
+                <a
+                  href={`#/skills?tab=pending&doc=${encodeURIComponent(s.key)}`}
+                  data-skill-proposals={s.key}
+                  aria-label={t("skills.openProposalsOf", { count: waiting, name: s.name })}
+                  className="absolute top-3 right-[14px] inline-flex h-5 items-center rounded-full bg-[var(--tint-violet)] px-2 text-[var(--violet-soft)] no-underline [font:var(--design-micro)] hover:underline focus-visible:focus-ring max-md:before:absolute max-md:before:-inset-3"
+                >
+                  {t("skills.proposalCount", { count: waiting })}
+                </a>
+              ) : null}
+            </div>
           );
         })}
         {empty ? <PaneEmpty action={empty === "none" ? firstSkill : null}>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
@@ -287,7 +302,7 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
         <div className="flex flex-col gap-1.5 rounded-[12px] bg-[var(--status-warning-bg)] p-3">
           <span className="text-xs font-semibold text-[var(--status-warning-fg)]">{t("skills.pendingTitle")}</span>
           {proposals.map((p) => (
-            <a key={p.id} href="#/skills?tab=pending" className="text-xs text-[var(--status-warning-fg)] [overflow-wrap:anywhere] hover:underline">
+            <a key={p.id} href={`#/skills?tab=pending&doc=${encodeURIComponent(p.docKey)}`} className="text-xs text-[var(--status-warning-fg)] [overflow-wrap:anywhere] hover:underline">
               #{p.id} · {p.reason} · {p.author} · {formatTime(p.createdAt)}
             </a>
           ))}
