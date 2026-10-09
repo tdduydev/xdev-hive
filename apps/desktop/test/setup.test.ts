@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
@@ -450,6 +450,29 @@ describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
     assert.ok(calls(m.bin).some((c) => c.startsWith("npm install -g @anthropic-ai/claude-code@latest")), calls(m.bin).join("\n"));
     assert.deepEqual(held, ["claude:true", "claude:false"]);
     assert.equal(r.item.id, "cli:claude");
+  });
+
+  it("upgrades a system npm CLI into the user's prefix when the global tree needs root", async () => {
+    const m = machine({
+      platform: "linux",
+      realpath: () => "/usr/lib/node_modules/@openai/codex/bin/codex.js",
+      writable: (dir) => dir !== "/usr/lib/node_modules",
+    });
+    fakeBin(m.bin, "codex", 'echo "codex-cli 0.157.1"');
+    await m.setup.install("cli:codex");
+    assert.ok(calls(m.bin).includes(`npm install -g @openai/codex@latest --prefix ${path.join(m.home, ".local")} telemetry=`), calls(m.bin).join("\n"));
+  });
+
+  it("keeps an existing user npm prefix when upgrading", async () => {
+    const m = machine({ platform: "linux", writable: () => false });
+    const prefix = path.join(m.home, ".local");
+    const pkg = path.join(prefix, "lib/node_modules/@openai/codex/bin");
+    mkdirSync(pkg, { recursive: true });
+    fakeBin(pkg, "codex", 'echo "codex-cli 0.157.1"');
+    symlinkSync(path.join(pkg, "codex"), path.join(m.bin, "codex"));
+    await m.setup.install("cli:codex");
+    assert.ok(calls(m.bin).includes(`npm install -g @openai/codex@latest --prefix ${prefix} telemetry=`), calls(m.bin).join("\n"));
+    assert.ok(!calls(m.bin).some((c) => c.startsWith("npm prefix")));
   });
 
   it("asks the registry for the newest version once in a while, not at every check", async () => {

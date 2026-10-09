@@ -514,9 +514,13 @@ export class Setup {
     if (busy) throw new HiveError("conflict", tr("setupItem.cliBusy", { label: cli.label, count: busy }), { key: "setupItem.cliBusy", vars: { label: cli.label, count: busy } });
     const bin = upgrade.bin === own ? own : resolveBin(upgrade.bin, pathEnv);
     if (!bin) throw new HiveError("bad_request", upgrade.bin === "npm" ? noNpm() : tr("setupItem.upgradeUnknown", { label: cli.label, pkg: cli.pkg }), { key: upgrade.bin === "npm" ? "setupItem.noNpm" : "setupItem.upgradeUnknown", vars: { label: cli.label, pkg: cli.pkg } });
-    const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
     this.#host.holdCli?.(cli.kind, true);
     try {
+      // Existing system-wide CLIs need the same writable destination as first-time installs.
+      if (upgrade.method === "npm" && !upgrade.args.includes("--prefix")) {
+        upgrade.args.push(...await this.#npmPrefixArgs(bin, env));
+      }
+      const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
       const r = await this.#run(bin, upgrade.args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
