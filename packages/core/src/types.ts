@@ -1398,6 +1398,8 @@ export interface MachineRunnerSettings {
   maxParallel: number;
   mrEnabled: boolean;
   mrWhen: "after_review" | "after_success";
+  /** Absent on older desktop apps, which still accept the other runner settings. */
+  acceptHubRuns?: boolean;
 }
 export interface RunnerChange {
   settings: Partial<MachineRunnerSettings>;

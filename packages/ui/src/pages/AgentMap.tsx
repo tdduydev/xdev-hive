@@ -9,6 +9,7 @@ import { cn } from "cn";
 import { expandPackage, toolCommands } from "@xdev-hive/core";
 import type { Machine, QuotaCooldown, ReportedProfile, RunGroup, RunRecord, RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@xdev-hive/ui/components/ui/alert-dialog";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
 import { Badge } from "@xdev-hive/ui/components/ui/badge";
@@ -20,7 +21,7 @@ import { Chip } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { usageAsOf } from "#ui/lib/agents.ts";
-import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
+import { encodeTargets, hubIntakeControl, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
 import { shortAgo } from "#ui/lib/inbox.ts";
 import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 
@@ -206,7 +207,7 @@ function MachineColumn({
         <span className="flex items-center gap-2">
           {/* Not in the design: the owner's manage sheet sits beside the toggle so the header keeps the design's widths. */}
           <MachineManagement machine={m} onChanged={onChanged} />
-        <Toggle checked={accepting} readOnly aria-readonly="true" aria-label={t("agentMap.acceptTitle")} onChange={() => {}} onClick={(e) => e.preventDefault()} />
+          {mayManage(me, m) ? <HubIntakeToggle machine={m} onChanged={onChanged} /> : <Toggle checked={accepting} readOnly aria-readonly="true" aria-label={t("agentMap.acceptTitle")} onChange={() => {}} onClick={(e) => e.preventDefault()} />}
         </span>
       </div>
 
@@ -295,6 +296,41 @@ function MachineColumn({
       {!mayManage(me, m) ? <MachineTools machine={m} /> : null}
     </section>
   );
+}
+
+function HubIntakeToggle({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [requested, setRequested] = useState<boolean | null>(null);
+  const { supported, value, waiting } = hubIntakeControl(m);
+  const request = async () => {
+    if (requested === null) return;
+    await client.call("machines.setRunner", { machineId: m.id, settings: { acceptHubRuns: requested } });
+    setRequested(null);
+    onChanged();
+  };
+  return <div className="flex flex-col items-end gap-1">
+    <label className="flex min-h-11 min-w-11 items-center justify-center gap-2 text-xs md:min-h-7 md:min-w-7" title={!supported ? t("machines.acceptHubRunsTooOld") : undefined}>
+      <span className="sr-only">{t("machines.acceptHubRuns")}</span>
+      <Switch data-hub-intake checked={value} disabled={!supported || action.busy} aria-label={t("machines.acceptHubRuns")} onCheckedChange={(next) => setRequested(next)} />
+    </label>
+    {!supported ? <span className="max-w-40 text-right text-[11px]/[15px] text-fg-muted">{t("machines.acceptHubRunsTooOld")}</span> : null}
+    {waiting ? <span role="status" className="text-right text-[11px]/[15px] text-warning">{t("machines.acceptHubRunsPending")}</span> : null}
+    <AlertDialog open={requested !== null} onOpenChange={(open) => { if (!open) setRequested(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("machines.acceptHubRunsConfirmTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t(requested ? "machines.acceptHubRunsConfirmOn" : "machines.acceptHubRunsConfirmOff")}</AlertDialogDescription>
+          <ErrorNote error={action.error} />
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={action.busy}>{t("common.cancel")}</AlertDialogCancel>
+          <AlertDialogAction disabled={action.busy} onClick={(e) => { e.preventDefault(); void action.run(request); }}>{t("machines.acceptHubRunsConfirm")}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>;
 }
 
 function MachineManagement({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
