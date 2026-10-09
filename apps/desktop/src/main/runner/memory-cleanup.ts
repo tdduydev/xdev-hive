@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawnCli } from "#desktop/main/spawn-cli.ts";
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -86,7 +86,7 @@ export class MemoryCleanupWorker {
         "--no-session-persistence", "--append-system-prompt", MEMORY_CLEANUP_BRIEF];
       const stream = new ClaudeStream(cwd);
       const decoder = new StringDecoder("utf8");
-      const child = spawn(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnCli(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       this.#stop = () => { error = "stopped"; killTree(child); };
       child.stdin.on("error", () => undefined);
       child.stdin.end(`Review memory for project ${job.project}. Read all pages through memory_list; return the JSON array of proposals.`);

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -695,7 +696,7 @@ async function checkProfile(id: string): Promise<ProfileCheck> {
   const bin = resolveBin(expandHome(profile.bin), env.PATH ?? "");
   if (!bin) return { ok: false, path: null, output: `${tr("desktop.cliNotFound", { bin: profile.bin })}\n${env.PATH}` };
   const version = await new Promise<{ ok: boolean; output: string }>((resolve) => {
-    execFile(bin, ["--version"], { env: { ...env, ...expandEnv(profile.env) }, timeout: 15_000 }, (err, stdout, stderr) => {
+    execFileCli(bin, ["--version"], { env: { ...env, ...expandEnv(profile.env) }, timeout: 15_000 }, (err, stdout, stderr) => {
       resolve({ ok: !err, output: `${stdout}${stderr}`.trim() || (err ? err.message : "") });
     });
   });

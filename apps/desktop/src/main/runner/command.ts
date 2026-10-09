@@ -2,7 +2,6 @@ import { opencodeEnv, opencodePermissions, opencodeUserConfig } from "#desktop/m
 import { kiloRunEnv } from "#desktop/main/runner/kilo.ts";
 import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 // Builds the command line and prompt for one run.
-import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
@@ -895,6 +894,20 @@ export function policyLine(pol: AgentPolicy, fit: PolicyFit): string {
   return `# policy ${policySummary(pol)} → model ${fit.model ?? "—"} · autonomy ${fit.autonomy}${hive} · network ${network} · mcp ${mcp}`;
 }
 
+/**
+ * An npm-installed CLI on Windows runs through cmd.exe, which cannot carry a line break and stops at 8191 characters:
+ * the prompt then goes on stdin, where Claude (`-p` without a value) and Codex (`exec -`) read it. Other kinds keep
+ * their args, and cliLaunch reports what cmd.exe cannot pass.
+ */
+export function promptOnStdin(kind: AgentKind, args: string[], stdin: string | null): { args: string[]; stdin: string | null } {
+  if (stdin !== null) return { args, stdin };
+  const at = args.findIndex((a) => /[\r\n]/.test(a) || a.length > 2000);
+  if (at < 0) return { args, stdin };
+  if (kind === "claude" && ["-p", "--print"].includes(args[at - 1]!)) return { args: args.toSpliced(at, 1), stdin: args[at]! };
+  if (kind === "codex" && args[0] === "exec") return { args: args.with(at, "-"), stdin: args[at]! };
+  return { args, stdin };
+}
+
 /** The MCP server names a Codex config.toml declares (`[mcp_servers.<name>]` and its sub-tables). */
 export function codexMcpNames(toml: string): string[] {
   const names = [...toml.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([\w-]+))(?:\.[^\]]*)?\]/gm)].map((m) => m[1] ?? m[2]!);
@@ -909,27 +922,8 @@ export function expandEnv(env: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expandHome(v)]));
 }
 
-/** Finds an executable like `which`. Returns null when missing. */
-export function resolveBin(bin: string, pathEnv: string): string | null {
-  const isFile = (p: string) => {
-    try {
-      if (!statSync(p).isFile()) return false;
-      if (process.platform !== "win32") accessSync(p, constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  if (bin.includes("/") || bin.includes("\\")) return isFile(bin) ? bin : null;
-  const exts = process.platform === "win32" ? bin === "gemini" ? [".exe", ".cmd", ".bat", ""] : ["", ".cmd", ".exe", ".bat"] : [""];
-  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
-    for (const ext of exts) {
-      const candidate = path.join(dir, bin + ext);
-      if (isFile(candidate)) return candidate;
-    }
-  }
-  return null;
-}
+// Callers across the runner import it from here; it lives beside cliLaunch, which handles what it finds on Windows.
+export { resolveBin } from "#desktop/main/spawn-cli.ts";
 
 /** Shown in the run log. The prompt is shortened; env is never logged. */
 export function describeCommand(cmd: BuiltCommand): string {
