@@ -593,7 +593,7 @@ async function main() {
     await tab.waitFor("skill row", () => !!document.querySelector('main [data-pane-item]'));
     await tab.eval(() => document.querySelector('main [data-pane-item]').focus());
     await tab.key("Enter");
-    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-current="true"]'));
+    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-pressed="true"]'));
     if (mobile) await tab.click("button", "Quay lại");
     await tab.click("label", "Skill không ai dùng");
     expect(await tab.eval(() => !document.querySelector('main [role="listbox"] input')), "Skills filter remains outside composite list semantics");
@@ -624,12 +624,11 @@ async function main() {
     await tab.go("memory");
     await tab.click("button", "Chờ duyệt");
     await tab.waitFor("bulk checkbox", () => !!document.querySelector('main li [role="checkbox"]'));
-    expect(await tab.eval(() => !document.querySelector('main [data-pane-item] [role="checkbox"]')), "bulk checkbox is a sibling of the row button");
-    const before = await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent);
+    expect(await tab.eval(() => !document.querySelector('main button [role="checkbox"]')), "bulk checkbox is a sibling of the card button");
     await tab.eval(() => document.querySelector('main li [role="checkbox"]').focus());
     await tab.key(" ");
     expect(await tab.eval(() => document.activeElement?.getAttribute("aria-checked") === "true"), "Space selects bulk checkbox");
-    expect(await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent) === before, "bulk selection does not open another row");
+    expect(await tab.eval(() => !document.querySelector('[role="dialog"]')), "bulk selection does not open the memory detail");
     await accessibilityAudit({ tab, out, expect, routes: ["runs", "docs", "skills"] });
   });
   await step("a11y-menu", async () => {
