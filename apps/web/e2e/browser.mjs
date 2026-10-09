@@ -1178,8 +1178,8 @@ async function main() {
     await tab.go("admin/users");
     await tab.waitFor("the users table", () => document.body.innerText.includes("@minh"));
     await tab.waitFor("Minh's Phân quyền", () => {
-      const row = [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("@minh"));
-      const b = row && [...row.querySelectorAll("button")].find((x) => x.textContent.trim() === "Phân quyền");
+      const row = document.querySelector('[data-user-row="minh"]');
+      const b = row?.querySelector("[data-user-open]");
       b?.setAttribute("data-e2e-target", "");
       return !!b;
     });

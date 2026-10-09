@@ -25,6 +25,7 @@ import { DocsPage } from "#ui/pages/Docs.tsx";
 import { SkillsPage } from "#ui/pages/Skills.tsx";
 import { ProposalsPage } from "#ui/pages/Proposals.tsx";
 import { PolicyTab } from "./Admin.tsx";
+import { AgentRows, PolicyRows } from "./SettingsRows.tsx";
 import { CompactAgentPolicy } from "./admin/CompactAgentPolicy.tsx";
 import { BudgetsCard } from "./admin/Budgets.tsx";
 import { OpsAlerts } from "./admin/Alerts.tsx";
@@ -42,6 +43,7 @@ import { RunsPage } from "./Runs.tsx";
 import { SystemsPage } from "./Systems.tsx";
 import { ToolsPage } from "./Tools.tsx";
 import { UsersPage } from "./Users.tsx";
+import { OrgTab, RolesTab } from "./admin/AccessMaps.tsx";
 import { WebhooksTab } from "./Webhooks.tsx";
 import { DashboardComponentsFixture } from "./DashboardComponentsFixture.tsx";
 
@@ -56,8 +58,9 @@ export function SettingsPage() {
   if (!tab) return null;
   const leaderProjects = projects.filter((p) => canEditChatSettings(me, p));
   const body: Record<SettingsTab, () => ReactNode> = {
-    policy: () => <div className="max-w-2xl rounded-xl border border-line-default bg-card p-4"><p className="mb-3 text-sm text-fg-secondary">{t("settingsTidy.summary.policy")}</p><a href="#/pipeline" className="inline-flex min-h-11 items-center text-fg-link underline">{t("settingsTidy.openProcess")}</a></div>,
-    agent: () => <><CompactAgentPolicy /><details className="mt-4 max-w-2xl"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={projects.filter((p) => canEditChatSettings(me, p))} /></details></>,
+    policy: () => <PolicyRows />,
+    // The editor sheet and its summary stay (e2e and the ceiling logic live there); the rows above it show the effective values.
+    agent: () => <AgentRows editor={<CompactAgentPolicy />} classify={<details className="mt-4 max-w-2xl" data-classify-details><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={leaderProjects} /></details>} />,
     tools: () => <ToolsPage />,
     context: () => (
       <OpsPage>
@@ -128,7 +131,7 @@ export function AdminPage() {
 // Group order is an inference: the design's `adminNav` sits in the truncated part of the template, so only the three-group shape is known.
 const ADMIN_GROUPS: { id: "run" | "access" | "system"; items: AdminTab[] }[] = [
   { id: "run", items: ["ops", "budgets", "alerts"] },
-  { id: "access", items: ["users", "policy", "tools"] },
+  { id: "access", items: ["users", "roles", "org", "policy", "tools"] },
   { id: "system", items: ["audit", "webhooks", "versions", "hub"] },
 ];
 
@@ -139,10 +142,14 @@ function AdminTabs() {
   const tabs = adminTabs(webCaps(client));
   const tab = pickTab(tabs, wanted) ?? "ops";
   const poll = usePoll(30_000);
+  // The head's action button belongs to the admin page, the dialog it opens to the Users tab: the flag lives where both can reach it.
+  const [inviteOpen, setInviteOpen] = useState(false);
   const ops = (page: ReactNode) => <OpsPage>{page}</OpsPage>;
   const body: Record<AdminTab, () => ReactNode> = {
     ops: () => <OverviewWithRange />,
-    users: () => <UsersPage />,
+    users: () => <UsersPage inviteOpen={inviteOpen} onInviteClose={() => setInviteOpen(false)} />,
+    roles: () => <RolesTab />,
+    org: () => <OrgTab />,
     policy: () => ops(<><PolicyTab /><CompactAgentPolicy hubOnly /><SdlcGatesCard hubOnly /></>),
     tools: () => <ToolsPage />,
     budgets: () => ops(<BudgetsCard tick={poll} />),
@@ -163,7 +170,7 @@ function AdminTabs() {
           </div>
         ))}
       </nav>
-      <div className="cx-admin-head"><div><h2>{t(`sections.admin.${tab}`)}</h2><p>{t(`sections.adminDesc.${tab}`)}</p></div></div>
+      <div className="cx-admin-head"><div><h2>{t(`sections.admin.${tab}`)}</h2><p>{t(`sections.adminDesc.${tab}`)}</p></div>{tab === "users" ? <Button variant="solid" size="md" data-admin-action onClick={() => setInviteOpen(true)}>{t("adminUsers.invite")}</Button> : null}</div>
       {body[tab]()}
     </div>
   );
