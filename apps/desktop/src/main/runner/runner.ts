@@ -96,6 +96,7 @@ import {
   type RunRequest,
   type RunRequestError,
   type SetupReport,
+  type RepoAccessReport,
   type TeamPolicy,
   type RunnerSettings,
   type RunStatus,
@@ -192,7 +193,7 @@ export interface RunnerHost {
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
-  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; repoHealth?: RepoAccessReport[]; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */

@@ -91,6 +91,8 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
           onClick={() => {
             setReport(null);
             status.reload();
+            // Repo access too, in the background: the hub's Systems page hears it at the next heartbeat.
+            void desktop.recheckRepos?.().catch(() => undefined);
           }}
         >
           <RefreshCw className={status.loading ? "animate-spin" : undefined} />
