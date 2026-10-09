@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-changes.ts";
@@ -4116,6 +4116,72 @@ describe("redispatch branch choice", () => {
     assert.equal(done.status, "succeeded", done.error ?? "");
     assert.equal(done.baseSha, base);
     assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "new WIP\n");
+  });
+
+  for (const collision of ["matching file", "different file", "different mode", "dangling symlink", "matching symlink", "different symlink", "file vs symlink", "directory", "parent file"] as const) it(`fast-forwards past untracked ${collision}`, async () => {
+    const s = await setup([profile("codex", "codex", 1, "ok")]);
+    const origin = tmp("collision-origin");
+    git(origin, "init", "-q", "--bare", "-b", "main");
+    git(s.repo, "remote", "add", "origin", origin);
+    git(s.repo, "checkout", "-qb", "ai/T-1");
+    git(s.repo, "push", "-q", "origin", "ai/T-1");
+    git(s.repo, "checkout", "main");
+    const wt = path.join(s.dataDir, "worktrees", "demo", "T-1");
+    mkdirSync(path.dirname(wt), { recursive: true });
+    git(s.repo, "worktree", "add", "-q", wt, "ai/T-1");
+    const collidingName = collision === "parent file" ? "collision" : "collision.txt";
+    const incomingName = collision === "parent file" ? "collision/remote.txt" : "collision.txt";
+    const collidingPath = path.join(wt, collidingName);
+    let localContent = "local\n";
+    if (collision === "matching file" || collision === "different mode") localContent = "remote\n";
+    if (collision === "file vs symlink") localContent = "remote-target";
+    if (collision === "dangling symlink") symlinkSync("missing-target", collidingPath);
+    else if (collision === "matching symlink") symlinkSync("remote-target", collidingPath);
+    else if (collision === "different symlink") symlinkSync("local-target", collidingPath);
+    else if (collision === "directory") {
+      mkdirSync(collidingPath);
+      writeFileSync(path.join(collidingPath, "local.txt"), "local\n");
+    } else {
+      writeFileSync(collidingPath, localContent);
+      if (collision === "different mode") chmodSync(collidingPath, 0o644);
+    }
+    const source = tmp("collision-source");
+    git(source, "clone", "-q", origin, ".");
+    git(source, "config", "user.email", "t@example.com"); git(source, "config", "user.name", "Test");
+    git(source, "checkout", "-q", "ai/T-1");
+    if (collision === "parent file") mkdirSync(path.join(source, "collision"));
+    if (["matching symlink", "different symlink", "file vs symlink"].includes(collision)) symlinkSync("remote-target", path.join(source, incomingName));
+    else writeFileSync(path.join(source, incomingName), "remote\n");
+    if (collision === "different mode") chmodSync(path.join(source, incomingName), 0o755);
+    git(source, "add", "."); git(source, "commit", "-qm", "incoming file");
+    git(source, "push", "-q", "origin", "ai/T-1");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    const done = s.runner.store.get(run.id)!;
+    assert.equal(done.status, "succeeded", done.error ?? "");
+    if (["matching symlink", "different symlink", "file vs symlink"].includes(collision)) {
+      assert.ok(lstatSync(path.join(wt, incomingName)).isSymbolicLink());
+      assert.equal(readlinkSync(path.join(wt, incomingName)), "remote-target");
+    } else assert.equal(readFileSync(path.join(wt, incomingName), "utf8"), "remote\n");
+    if (collision === "different mode") assert.ok(lstatSync(path.join(wt, incomingName)).mode & 0o111);
+    const backups = readdirSync(wt).filter(f => f.startsWith(`${collidingName}.pre-merge-`));
+    const matching = collision === "matching file" || collision === "matching symlink";
+    assert.equal(backups.length, matching ? 0 : 1);
+    if (!matching) {
+      const backup = path.join(wt, backups[0]!);
+      if (["dangling symlink", "different symlink"].includes(collision)) {
+        assert.ok(lstatSync(backup).isSymbolicLink());
+        assert.equal(readlinkSync(backup), collision === "dangling symlink" ? "missing-target" : "local-target");
+      } else if (collision === "directory") {
+        assert.ok(lstatSync(backup).isDirectory());
+        assert.equal(readFileSync(path.join(backup, "local.txt"), "utf8"), "local\n");
+      } else {
+        assert.equal(readFileSync(backup, "utf8"), localContent);
+        if (collision === "different mode") assert.equal(lstatSync(backup).mode & 0o111, 0);
+      }
+      assert.ok((done.continuation ?? "").includes(`${collidingName}.pre-merge-`));
+      assert.equal(git(wt, "ls-files", backups[0]!), "");
+    }
   });
 
   it("fails clearly when the requested old branch cannot be retrieved", async () => {
