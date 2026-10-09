@@ -531,6 +531,13 @@ export interface DesktopBridge {
     results: GitLabImportResult[];
     settings: DesktopSettings;
   }>;
+  /** The repositories of a GitHub organization or user, in the GitLab import's shape (roadmap 74b). */
+  githubOwner(input: { owner: string; baseDir: string }): Promise<GitLabImportCandidate[]>;
+  /** As importGitlab, for GitHub: the projects get their owner/repo as githubRepo. */
+  importGithub(input: { items: Array<{ key: string; pathWithNamespace: string; dir: string }>; protocol: "ssh" | "https"; owner: string }): Promise<{
+    results: GitLabImportResult[];
+    settings: DesktopSettings;
+  }>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;

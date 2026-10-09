@@ -175,6 +175,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
             }}
           />
           {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" ? <GitLabCard settings={settings.data} onSaved={settings.reload} /> : null}
+          {settings.data.github.url && settings.data.github.hasToken ? <GitLabImportCard forge="github" settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : null}
         </>
       ) : null}
       {/*
