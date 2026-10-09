@@ -383,6 +383,17 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **75c. setup-page** (0.150.0; e2e/ảnh màn hình chưa chụp, Electron không chạy được trên máy làm): trang cài đặt trên web (mã, admin, địa chỉ, lưu tệp, embeddings, SSO, backup, tuỳ chọn), vi/en.
   - [x] **75d. root-compose** (0.150.0; chưa thử `docker compose up` thật): `compose.yaml` ở gốc repo, profile `embed`, `https`, `tunnel`; README phần cài đặt.
 
+- **76. access-first** (hỏi 9/10: "tách web, app ra hai phần riêng không làm chung vì bị rối… tập trung vào bộ phân quyền trước, mình sẽ bắt đầu cấp account cho các phòng ban dùng MCP, và người dùng sẽ đọc và duyệt tài liệu"). Người dùng đã duyệt spec ngày 9/10: một người thuộc được nhiều phòng ban, token MCP hạn 30/90 ngày, chế độ cục bộ của app chạy hub nhúng. Spec: [docs/specs/76-access-first.md](specs/76-access-first.md). Prompt thiết kế lại UI: [docs/design/76-redesign-prompt.md](design/76-redesign-prompt.md). Tách:
+  - [ ] **76a. access-fixes**: vá 4 lỗi P0 (token trả lời chat gọi được mọi RPC; viewer duyệt được tool; token của admin không bị grants giới hạn; RPC của web nằm ngoài bảng quyền), mỗi lỗi có test.
+  - [ ] **76b. one-authorize**: kiểm quyền một chỗ cho mọi method, gộp các bảng vai, test ma trận actor × method, giao diện khớp với hub.
+  - [ ] **76c. teams**: phòng ban, trưởng phòng, quyền lấy vai cao nhất, link mời theo phòng (cần R-72l-users vào main).
+  - [ ] **76d. mcp-tokens**: token MCP cá nhân (dự án, chỉ đọc hoặc đề xuất, hạn 30/90 ngày), trang *Kết nối MCP* có lệnh mẫu cho Claude Code và Codex, admin thu hồi được.
+  - [ ] **76e. doc-review**: hộp *Chờ bạn duyệt*, nút Yêu cầu sửa và Rút, Reviewer duyệt được skill và AGENTS.md, người duyệt theo đường dẫn, nhật ký duyệt.
+  - [ ] **76f. admin-area**: nhóm Quản trị trên web (thay 73e).
+  - [ ] **76g. ui-kit**: tách `packages/ui-kit` (tokens, primitive, i18n runtime), sau khi lô giao diện 72 vào main.
+  - [ ] **76h. two-shells**: `WebApp` và `DesktopApp` riêng, trang của máy chuyển về `apps/desktop`, trang web chuyển về `apps/web/client` (thay 73d).
+  - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
