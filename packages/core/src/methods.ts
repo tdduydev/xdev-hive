@@ -37,6 +37,7 @@ import {
   PROPOSAL_STATUSES,
   SELF_APPROVALS,
   TASK_STATUSES,
+  TASK_PLATFORMS,
   type Actor,
   type AgentsPaused,
   type AgentsStop,
@@ -243,6 +244,7 @@ export const chatPlanSchema = z.object({
     acceptance: z.string().trim().min(1).max(1500),
     dependsOn: z.array(taskId).max(20).default([]),
     taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   })).min(1).max(50),
   batches: z.array(z.object({ title: z.string().trim().min(1).max(200), taskIds: z.array(taskId).min(1).max(50) })).min(1).max(50),
 });
@@ -262,8 +264,9 @@ const chatAction = z.discriminatedUnion("kind", [
     taskKind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
-  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() }),
   /** Corrects what a task is (roadmap 54b): at least one of the three. */
   z.object({ kind: z.literal("task.classify"), project: project.optional(), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
@@ -524,6 +527,7 @@ export const schemas = {
     kind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).default([]),
   }),
   /** Replaces what the task depends on (tasks of the same project, no cycles). */
   "tasks.setDeps": z.object({ id: taskId, dependsOn: z.array(taskId).max(20) }),
@@ -538,6 +542,7 @@ export const schemas = {
     priority: z.number().int().min(0).max(100).optional(),
     status: z.enum(TASK_STATUSES),
     note: z.string().max(2000).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
   /** Says what a task is (roadmap 54b), by hand: what is given replaces the hub's rules and its classify run. */
   "tasks.classify": z
@@ -575,6 +580,7 @@ export const schemas = {
     /** Random per app start, to tell two live instances apart from a restart. */
     instance: z.string().regex(/^[a-f0-9]{8,64}$/),
     version: z.string().max(40).default(""),
+    platform: z.enum(["win", "windows", "linux", "mac"]).optional(),
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),

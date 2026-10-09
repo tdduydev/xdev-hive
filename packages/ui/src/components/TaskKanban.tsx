@@ -192,6 +192,7 @@ function KanbanCard({
         {showProject ? <OwnerBadge owner={task.project} className="ml-auto max-w-[60%] truncate" /> : null}
       </div>
       <span className="text-[13px]/[18px] font-medium text-pretty text-fg-strong [overflow-wrap:anywhere]">{task.title}</span>
+      {task.platforms.length ? <div className="flex flex-wrap gap-1">{task.platforms.map((p) => <span key={p} className="rounded-sm bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{t(`tasks.platform.${p}`)}</span>)}</div> : null}
       {task.agent ? <span data-task-agent className="rounded-sm bg-info-soft px-2 py-1 text-xs text-info wrap-anywhere">{agentLabel(task.agent, t("assignment.any"))}</span> : null}
       {task.note ? <span className="line-clamp-2 text-xs text-fg-secondary [overflow-wrap:anywhere]">{task.note}</span> : null}
       {deps.length || waiting || isNext || owner ? (
