@@ -1177,6 +1177,8 @@ const APP_CLOSED_ERRORS = ["The app closed while the run was going", "App đã �
 /** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
 const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.machinePlatformMismatch", "errors.secret"]);
 const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
+// A group is pinned to its machine; an assigned task can wait for that machine's next OS report.
+const agentFails = (key: string | undefined) => key !== "errors.machinePlatformMismatch" && groupFails(key);
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
@@ -2674,7 +2676,9 @@ export class SqliteHive implements HiveBackend {
       case "tasks.update": {
         const task = this.#getTask(i.id);
         if (!task) return;
-        this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
+        if (method === "tasks.update" && i.platforms !== undefined) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
+        if (method === "tasks.claim" || i.platforms === undefined || i.status !== undefined || i.note !== undefined || i.priority !== undefined)
+          this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
         // Done is a reviewer's call: an agent sends its work to review, a person with codeReview takes it from there.
         if (method === "tasks.update" && i.status === "done" && task.status !== "done") {
           this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
@@ -4944,7 +4948,7 @@ export class SqliteHive implements HiveBackend {
       const free = m && !this.#cannotPushTask(m.id, task.project, task.id) ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m, agent.profileId) : 0;
       const why = this.#agentWait(task, m, free);
       if (why) {
-        if (groupFails(why.key)) this.#holdAgent(task.id, why);
+        if (agentFails(why.key)) this.#holdAgent(task.id, why);
         continue;
       }
       // Whoever gave the agent the task: its runs count for them, in the budgets and in the log (as a group's do).
@@ -4969,7 +4973,7 @@ export class SqliteHive implements HiveBackend {
         waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
-        if (groupFails(err.key)) {
+        if (agentFails(err.key)) {
           this.#holdAgent(task.id, { message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
         }
       }
@@ -7993,9 +7997,10 @@ export class SqliteHive implements HiveBackend {
           const task = this.#getTask(id);
           if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
           const now = this.#now();
+          const workChange = status !== undefined || note !== undefined || priority !== undefined;
           const heldByOther =
             task.owner !== null && task.owner !== actor.name && task.leaseUntil !== null && task.leaseUntil > now;
-          if (heldByOther && actor.role !== "admin") {
+          if (heldByOther && actor.role !== "admin" && workChange) {
             throw new HiveError("forbidden", `Task ${id} is held by ${task.owner} until ${task.leaseUntil}.`, {
               key: "errors.taskHeld",
               vars: { id, owner: task.owner ?? "", until: task.leaseUntil ?? "" },
@@ -8007,15 +8012,16 @@ export class SqliteHive implements HiveBackend {
             if (platforms.length) db.prepare(`UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'pending'
               AND machine_id IN (SELECT id FROM machines WHERE platform IS NULL OR platform NOT IN (SELECT value FROM json_each(?)))`).run(now, id, required);
           }
+          const nextStatus = status ?? task.status;
           const doing = status === "doing";
           // A status change with no note leaves the note (and its history) alone: the audit log already has the move.
           const kept = note === undefined ? null : SqliteHive.#cleanNote(note);
           db.prepare(
             "UPDATE tasks SET status = ?, owner = ?, lease_until = ?, note = COALESCE(?, note), updated_at = ? WHERE id = ?",
           ).run(
-            status,
-            doing ? actor.name : null,
-            doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
+            nextStatus,
+            status === undefined ? task.owner : doing ? actor.name : null,
+            status === undefined ? task.leaseUntil : doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
             kept,
             now,
             id,
@@ -8023,7 +8029,7 @@ export class SqliteHive implements HiveBackend {
           if (priority !== undefined) db.prepare("UPDATE tasks SET priority = ? WHERE id = ?").run(priority, id);
           if (note !== undefined) this.#applyTaskRule(id);
           // An empty note clears the task's note as it always did, but is no handover to keep.
-          if (kept !== null && kept.trim()) this.#keepNote(id, kept, status, actor, now);
+          if (kept !== null && kept.trim()) this.#keepNote(id, kept, nextStatus, actor, now);
           if (status === "done" && task.status !== "done") this.#journalTask(id);
           return this.#getTask(id)!;
         }),

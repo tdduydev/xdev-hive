@@ -12,6 +12,7 @@ import {
   MAX_CANDIDATES,
   MEMORY_KINDS,
   PAUSED_HUB,
+  may,
   sees,
   skillDocKey,
   TASK_STATUSES,
@@ -121,6 +122,9 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
   const writes = !(opts.readOnly ?? actor.role === "viewer");
   // A chat leader works on no task of its own: no claim or status change, proposals instead.
   const leader = writes && actor.chatReply !== undefined;
+  // Agent credentials can work a task, but only a human with taskManage may define its routing.
+  const taskManage = writes && !leader && !actor.runCredential && !actor.mcpCredential &&
+    (actor.access ? Object.keys(actor.access.projects).some((p) => may(actor, p, "taskManage")) : may(actor, opts.defaultProject ?? "", "taskManage"));
   const hubScope = opts.hubScope === true && actor.chatReply !== undefined;
   // The web derives hubScope from the authenticated reply's thread, opened only by a hub admin.
   // Broaden only these reads; proposals and every mutation retain the machine's intersected grants.
@@ -767,7 +771,7 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     );
   }
 
-  if (writes && !leader) {
+  if (taskManage) {
     server.registerTool(
       "task_create",
       {
@@ -785,10 +789,10 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       {
         title: "Update a task",
         description:
-          'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks.',
-        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES), note: z.string().optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() },
+          'Move a task to another status. Use "review" when done, with a note: done / not done / how to verify / risks. A task manager may change platforms alone.',
+        inputSchema: { id: z.string(), status: z.enum(TASK_STATUSES).optional(), note: z.string().optional(), ...(taskManage ? { platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() } : {}) },
       },
-      async ({ id, status, note, platforms }) => run("tasks.update", { id, status, note, platforms }),
+      async ({ id, status, note, platforms }) => run("tasks.update", { id, status, note, ...(taskManage ? { platforms } : {}) }),
     );
   }
 
