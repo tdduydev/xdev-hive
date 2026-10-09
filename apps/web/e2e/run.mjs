@@ -91,7 +91,7 @@ async function runOnce(out) {
   const terminal = !only || only.split(",").some(step => step.startsWith("terminal-")) ? await terminalFixture() : null;
   const resultFile = path.join(out, "result.json");
   rmSync(resultFile, { force: true });
-  const browser = spawn(electron, [path.join(import.meta.dirname, "browser.mjs")], {
+  const browser = spawn(electron, ["--no-sandbox", path.join(import.meta.dirname, "browser.mjs")], {
     stdio: "inherit",
     env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_BACKUP_DIR: backups, HIVE_E2E_ONLY: only ?? "", HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded, terminal }), ELECTRON_ENABLE_LOGGING: "" },
   });
