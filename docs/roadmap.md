@@ -369,6 +369,9 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
   - [ ] **73b. platform-routing**: task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
   - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
+  - [ ] **73d. app-runner-console**: app chế độ hub chỉ còn việc của máy (trạng thái, gói agent và quota, run trên máy, worktree, công cụ, cài đặt máy); việc khác mở web. Chế độ cục bộ giữ nguyên.
+  - [ ] **73e. admin-area**: gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền.
+  - [ ] **73f. release-split**: thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.
 
 - **74. github-org-import** (hỏi 9/10: "hive app đã hỗ trợ clone repo vào thư mục và chọn thư mục để đồng bộ gitlab groups và github chưa?"; GitLab có từ 19a/38e, GitHub chưa có). Tách:
   - [ ] **74a. github-repo-list**: `GitHubClient` liệt kê repo của org (`/orgs/{org}/repos`), user (`/users/{user}/repos`) hay của chính token (`/user/repos`), phân trang theo header `Link`; mỗi repo có `full_name`, `clone_url`, `ssh_url`, `default_branch`, `archived`. github.com và GHES.
