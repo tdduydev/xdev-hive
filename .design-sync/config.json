@@ -1,0 +1,193 @@
+{
+  "projectId": "1e924b4d-4f9a-46c3-a668-f31ba8de1201",
+  "shape": "package",
+  "pkg": "@xdev-hive/ui",
+  "globalName": "XdevHive",
+  "buildCmd": "node .design-sync/build.mjs",
+  "srcDir": "../../packages/ui/src",
+  "tsconfig": "../entry/tsconfig.json",
+  "cssEntry": "hive.css",
+  "extraFonts": [
+    "font-aliases.css"
+  ],
+  "provider": {
+    "component": "HiveTheme",
+    "props": {
+      "theme": "dark"
+    }
+  },
+  "docsDir": "../docs",
+  "docsMap": {
+    "AlertDescription": "../docs/_groups/feedback.md",
+    "AlertDialogAction": "../docs/_groups/overlays.md",
+    "AlertDialogCancel": "../docs/_groups/overlays.md",
+    "AlertDialogContent": "../docs/_groups/overlays.md",
+    "AlertDialogDescription": "../docs/_groups/overlays.md",
+    "AlertDialogFooter": "../docs/_groups/overlays.md",
+    "AlertDialogHeader": "../docs/_groups/overlays.md",
+    "AlertDialogMedia": "../docs/_groups/overlays.md",
+    "AlertDialogOverlay": "../docs/_groups/overlays.md",
+    "AlertDialogPortal": "../docs/_groups/overlays.md",
+    "AlertDialogTitle": "../docs/_groups/overlays.md",
+    "AlertDialogTrigger": "../docs/_groups/overlays.md",
+    "AlertTitle": "../docs/_groups/feedback.md",
+    "CardAction": "../docs/_groups/data-display.md",
+    "CardContent": "../docs/_groups/data-display.md",
+    "CardDescription": "../docs/_groups/data-display.md",
+    "CardFooter": "../docs/_groups/data-display.md",
+    "CardHeader": "../docs/_groups/data-display.md",
+    "CardTitle": "../docs/_groups/data-display.md",
+    "CollapsibleContent": "../docs/_groups/layout.md",
+    "CollapsibleTrigger": "../docs/_groups/layout.md",
+    "DialogClose": "../docs/_groups/overlays.md",
+    "DialogContent": "../docs/_groups/overlays.md",
+    "DialogDescription": "../docs/_groups/overlays.md",
+    "DialogFooter": "../docs/_groups/overlays.md",
+    "DialogHeader": "../docs/_groups/overlays.md",
+    "DialogOverlay": "../docs/_groups/overlays.md",
+    "DialogPortal": "../docs/_groups/overlays.md",
+    "DialogTitle": "../docs/_groups/overlays.md",
+    "DialogTrigger": "../docs/_groups/overlays.md",
+    "DropdownMenuCheckboxItem": "../docs/_groups/overlays.md",
+    "DropdownMenuContent": "../docs/_groups/overlays.md",
+    "DropdownMenuGroup": "../docs/_groups/overlays.md",
+    "DropdownMenuItem": "../docs/_groups/overlays.md",
+    "DropdownMenuLabel": "../docs/_groups/overlays.md",
+    "DropdownMenuPortal": "../docs/_groups/overlays.md",
+    "DropdownMenuRadioGroup": "../docs/_groups/overlays.md",
+    "DropdownMenuRadioItem": "../docs/_groups/overlays.md",
+    "DropdownMenuSeparator": "../docs/_groups/overlays.md",
+    "DropdownMenuShortcut": "../docs/_groups/overlays.md",
+    "DropdownMenuSub": "../docs/_groups/overlays.md",
+    "DropdownMenuSubContent": "../docs/_groups/overlays.md",
+    "DropdownMenuSubTrigger": "../docs/_groups/overlays.md",
+    "DropdownMenuTrigger": "../docs/_groups/overlays.md",
+    "NativeSelectOptGroup": "../docs/_groups/forms.md",
+    "NativeSelectOption": "../docs/_groups/forms.md",
+    "PopoverAnchor": "../docs/_groups/overlays.md",
+    "PopoverContent": "../docs/_groups/overlays.md",
+    "PopoverDescription": "../docs/_groups/overlays.md",
+    "PopoverHeader": "../docs/_groups/overlays.md",
+    "PopoverTitle": "../docs/_groups/overlays.md",
+    "PopoverTrigger": "../docs/_groups/overlays.md",
+    "ResponsiveCellLabel": "../docs/_groups/data-display.md",
+    "ResponsiveGridRow": "../docs/_groups/data-display.md",
+    "ResponsiveTableFrame": "../docs/_groups/data-display.md",
+    "ResponsiveTableRow": "../docs/_groups/data-display.md",
+    "ScrollBar": "../docs/_groups/layout.md",
+    "SelectContent": "../docs/_groups/forms.md",
+    "SelectGroup": "../docs/_groups/forms.md",
+    "SelectItem": "../docs/_groups/forms.md",
+    "SelectLabel": "../docs/_groups/forms.md",
+    "SelectScrollDownButton": "../docs/_groups/forms.md",
+    "SelectScrollUpButton": "../docs/_groups/forms.md",
+    "SelectSeparator": "../docs/_groups/forms.md",
+    "SelectTrigger": "../docs/_groups/forms.md",
+    "SelectValue": "../docs/_groups/forms.md",
+    "SheetClose": "../docs/_groups/overlays.md",
+    "SheetContent": "../docs/_groups/overlays.md",
+    "SheetDescription": "../docs/_groups/overlays.md",
+    "SheetFooter": "../docs/_groups/overlays.md",
+    "SheetHeader": "../docs/_groups/overlays.md",
+    "SheetTitle": "../docs/_groups/overlays.md",
+    "SheetTrigger": "../docs/_groups/overlays.md",
+    "SidebarContent": "../docs/_groups/navigation.md",
+    "SidebarFooter": "../docs/_groups/navigation.md",
+    "SidebarGroup": "../docs/_groups/navigation.md",
+    "SidebarGroupAction": "../docs/_groups/navigation.md",
+    "SidebarGroupContent": "../docs/_groups/navigation.md",
+    "SidebarGroupLabel": "../docs/_groups/navigation.md",
+    "SidebarHeader": "../docs/_groups/navigation.md",
+    "SidebarInput": "../docs/_groups/navigation.md",
+    "SidebarInset": "../docs/_groups/navigation.md",
+    "SidebarMenu": "../docs/_groups/navigation.md",
+    "SidebarMenuAction": "../docs/_groups/navigation.md",
+    "SidebarMenuBadge": "../docs/_groups/navigation.md",
+    "SidebarMenuButton": "../docs/_groups/navigation.md",
+    "SidebarMenuItem": "../docs/_groups/navigation.md",
+    "SidebarMenuSkeleton": "../docs/_groups/navigation.md",
+    "SidebarMenuSub": "../docs/_groups/navigation.md",
+    "SidebarMenuSubButton": "../docs/_groups/navigation.md",
+    "SidebarMenuSubItem": "../docs/_groups/navigation.md",
+    "SidebarProvider": "../docs/_groups/navigation.md",
+    "SidebarRail": "../docs/_groups/navigation.md",
+    "SidebarSeparator": "../docs/_groups/navigation.md",
+    "SidebarTrigger": "../docs/_groups/navigation.md",
+    "TableBody": "../docs/_groups/data-display.md",
+    "TableCaption": "../docs/_groups/data-display.md",
+    "TableCell": "../docs/_groups/data-display.md",
+    "TableFooter": "../docs/_groups/data-display.md",
+    "TableHead": "../docs/_groups/data-display.md",
+    "TableHeader": "../docs/_groups/data-display.md",
+    "TableRow": "../docs/_groups/data-display.md",
+    "TabsContent": "../docs/_groups/navigation.md",
+    "TabsList": "../docs/_groups/navigation.md",
+    "TabsTrigger": "../docs/_groups/navigation.md",
+    "ToggleGroupItem": "../docs/_groups/actions.md",
+    "TooltipContent": "../docs/_groups/overlays.md",
+    "TooltipProvider": "../docs/_groups/overlays.md",
+    "TooltipTrigger": "../docs/_groups/overlays.md"
+  },
+  "overrides": {
+    "Dialog": {
+      "cardMode": "single",
+      "viewport": "900x640"
+    },
+    "DataTable": {
+      "cardMode": "column"
+    },
+    "Select": {
+      "cardMode": "single",
+      "viewport": "900x640"
+    },
+    "AlertDialog": {
+      "cardMode": "single",
+      "viewport": "900x560"
+    },
+    "Sheet": {
+      "cardMode": "single",
+      "viewport": "900x640"
+    },
+    "DropdownMenu": {
+      "cardMode": "single",
+      "viewport": "900x460"
+    },
+    "Popover": {
+      "cardMode": "single",
+      "viewport": "900x420"
+    },
+    "Tooltip": {
+      "cardMode": "single",
+      "viewport": "760x240"
+    },
+    "Sidebar": {
+      "cardMode": "single",
+      "viewport": "900x660"
+    },
+    "Table": {
+      "cardMode": "column"
+    },
+    "ResponsiveTable": {
+      "cardMode": "column"
+    },
+    "Toggle": {
+      "cardMode": "column"
+    },
+    "ToggleGroup": {
+      "cardMode": "column"
+    },
+    "StatTile": {
+      "cardMode": "column"
+    },
+    "Tabs": {
+      "cardMode": "column"
+    },
+    "Page": {
+      "cardMode": "column"
+    },
+    "PageHeader": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

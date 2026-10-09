@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "types": [],
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "../..",
+    "outDir": "../dist/types",
+    "paths": {
+      "@xdev-hive/ui/i18n": ["../../packages/ui/src/i18n/translate.ts"],
+      "@xdev-hive/ui/*": ["../../packages/ui/src/*"],
+      "#ui/*": ["../../packages/ui/src/*"]
+    }
+  },
+  "files": ["./index.ts"]
+}

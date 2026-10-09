@@ -1,0 +1,6 @@
+/* Tailwind input for the design-sync stylesheet: the app's own globals.css (tokens, cosmic.css, fonts, @source of
+   packages/ui/src), plus the authored previews so the utilities they use exist in the shipped CSS. */
+@import "../../packages/ui/src/globals.css";
+
+@source "./";
+@source "../previews";
