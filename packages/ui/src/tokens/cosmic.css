@@ -30,8 +30,8 @@
 --button-glass-bg:rgba(24,23,28,.55);--button-glass-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(255,255,255,.14),inset 0 -7px 14px rgba(0,0,0,.28),0 7px 20px -4px rgba(0,0,0,.55);--button-text-shadow:0 1px 2px rgba(0,0,0,.55);
 --surface-1:#1D1C20;--surface-2:#242325;--surface-3:#29292B;--surface-4:#343236;--surface-sunken:#171619;
 --bg-canvas:#0E0E11;--text-strong:#FFFFFF;--text-primary:#FFFFFF;--text-secondary:#BDBDC0;--text-muted:#A9A9A9;
---action-primary-bg:#7558FF;--action-primary-hover:#6A4FF0;--action-primary-active:#6952DB;--action-blue-bg:#18A0FB;--action-blue-fg:#FFFFFF;
---text-brand:#A895FF;--text-link:#A895FF;--text-link-hover:#FFFFFF;
+--action-primary-bg:#7B61FF;--action-primary-hover:#8D77FF;--action-primary-active:#6952DB;--action-blue-bg:#18A0FB;--action-blue-fg:#FFFFFF;
+--text-brand:#9580FF;--text-link:#9580FF;--text-link-hover:#FFFFFF;
 --glass-bg:rgba(255,255,255,.08);--glass-hover:rgba(255,255,255,.14);--border-subtle:rgba(255,255,255,.08);--border-default:rgba(255,255,255,.16);--border-strong:rgba(255,255,255,.24);--border-control:#77727F;
 --state-selected-bg:#38343F;--state-selected-fg:#FFFFFF;--state-selected-border:#9580FF;--focus-color:#9580FF;
 --status-success-fg:#2EC47C;--status-success-bg:#183529;--status-info-fg:#18A0FB;--status-info-bg:#172F40;--status-running-fg:#18A0FB;--status-running-bg:#172F40;

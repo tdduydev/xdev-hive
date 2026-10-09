@@ -16,11 +16,13 @@ import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { DetailDialog } from "#ui/components/DetailDialog.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
+import { MemoryCleanupProposals } from "#ui/components/MemoryCleanup.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
+import { shortAgo } from "#ui/lib/inbox.ts";
 import { emptyState } from "#ui/lib/empty.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
@@ -34,9 +36,10 @@ type Filter = "all" | "pending" | "conflict" | "review" | "stale";
 const FILTERS: Array<[Filter, (m: Memory) => boolean]> = [
   ["all", () => true],
   ["pending", (m) => m.status === "pending"],
-  ["conflict", (m) => m.conflictsWith.length > 0],
   ["review", (m) => m.review !== null],
-  ["stale", (m) => m.stale],
+  ["conflict", (m) => m.conflictsWith.length > 0],
+  // A replaced entry is done with: nothing to keep or remove, so not counted as stale.
+  ["stale", (m) => m.stale && m.supersededBy === null],
 ];
 
 /**
@@ -63,10 +66,11 @@ function loadMemory(client: HiveClient, scope: Scope, query: string) {
 /** The chip an entry shows: what needs doing first, or nothing when it is simply in use. */
 function stateOf(m: Memory, t: TFunction): { label: string; kind: ChipKind } | null {
   if (m.conflictsWith.length) return { label: t("memory.filter.conflict"), kind: "danger" };
-  if (m.status === "pending") return { label: t("memory.filter.pending"), kind: "warning" };
+  // Template colours: violet waiting for a person, amber for what may have drifted, red for a conflict.
+  if (m.status === "pending") return { label: t("memory.filter.pending"), kind: "info" };
   if (m.review) return { label: t("memory.filter.review"), kind: "warning" };
   if (m.supersededBy !== null) return { label: t("memory.replaced"), kind: "neutral" };
-  if (m.stale) return { label: t("memory.filter.stale"), kind: "neutral" };
+  if (m.stale) return { label: t("memory.staleTag"), kind: "warning" };
   return null;
 }
 
@@ -93,13 +97,14 @@ function labelsOf(m: Memory, t: TFunction): Array<{ text: string; tone: LabelTon
   return out;
 }
 
-export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
+/** `pendingFirst`: opened from a "waiting for approval" link (the old tab's address), so on the "Chờ duyệt" chip. */
+export function MemoryPage({ pendingFirst = false }: { pendingFirst?: boolean }) {
   const { client, scope, projects, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
-  const [filter, setFilter] = useState<Filter>(pendingOnly ? "pending" : "all");
+  const [filter, setFilter] = useState<Filter>(pendingFirst ? "pending" : "all");
   // null: nothing open; NEW: the "write memory" form; an id: that entry's detail. A popup from the tablet width up, as the grid has no
   // side pane; on a phone a page of its own, kept in the address (?memory=) so Back returns to the list.
   const [popup, setPopup] = useState<number | null>(null);
@@ -140,8 +145,8 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
     </Button>
   ) : null;
 
-  // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
-  const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
+  // Pending entries of projects the person manages (as approving one by one), picked in bulk on the "Chờ duyệt" chip only.
+  const selectable = filter !== "pending" ? [] : shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
   const chosen = selectable.filter((m) => picked.has(m.id));
   const label = (m: Memory) => `#${m.id}`;
   const finish = (text: string, trouble: boolean) => {
@@ -177,6 +182,12 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
     if (m.status === "pending") return manage ? { text: t("memory.approve"), run: () => void quick.run(async () => { await client.call("memory.approve", { id: m.id }); toast(t("memory.approvedToast", { id: m.id })); list.reload(); }) } : null;
     if (m.stale || m.review) return manage ? { text: m.review ? t("memory.stillTrue") : t("memory.keep"), run: () => void quick.run(async () => { await client.call("memory.keep", { id: m.id }); toast(t("memory.keptToast", { id: m.id })); list.reload(); }) } : null;
     return null;
+  };
+
+  // "1 giờ trước" on a card (template); the detail keeps the exact time.
+  const ago = (iso: string) => {
+    const when = shortAgo(iso, Date.now(), t);
+    return when === t("inbox.ago.now") ? when : t("inbox.agoLong", { when });
   };
 
   const detailTitle = selected === NEW ? t("memory.newTitle") : current ? t("memory.detailTitle", { id: current.id }) : t("nav.memory");
@@ -218,7 +229,7 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
         >
           <Input controlSize="sm" className="w-56 max-w-full" placeholder={t("memory.searchPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t("memory.searchLabel")} />
         </form>
-        {(pendingOnly ? FILTERS.filter(([id]) => id === "pending") : FILTERS).map(([id, test]) => (
+        {FILTERS.map(([id, test]) => (
           <button key={id} type="button" className="cursor-pointer border-0 bg-transparent p-0" aria-pressed={filter === id} onClick={() => setFilter(id)}>
             <Tag active={filter === id}>{`${t(`memory.filter.${id}`)} · ${rows.filter(test).length}`}</Tag>
           </button>
@@ -235,6 +246,8 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
           {search.data.lastError ? t("memory.searchEmbedError", { error: search.data.lastError }) : t("memory.searchHybrid", { model: search.data.model ?? "", indexed: search.data.indexed, total: search.data.total })}
         </p>
       ) : null}
+      {/* What the "Chờ duyệt" tab held besides the entries: the cleanup run's merge and removal suggestions. */}
+      {filter === "pending" ? <MemoryCleanupProposals className="mb-4" /> : null}
       <BulkBar selectable={selectable.length} picked={chosen.length} busy={bulk.busy} onPickAll={() => setPicked(new Set(selectable.map((m) => m.id)))} onClear={() => setPicked(new Set())} onApprove={approveAll} onReject={rejectAll} />
       <ErrorNote error={list.error} />
       <ErrorNote error={bulk.error ?? quick.error} />
@@ -243,8 +256,8 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
           {shown.map((m) => {
             const files = m.files;
             const act = cardAction(m);
-            const pickable = m.status === "pending" && allow(m.project, "memoryApprove");
-            const used = m.useCount ? t("memory.cardUsed", { count: m.useCount }) : formatTime(m.createdAt);
+            const pickable = filter === "pending" && m.status === "pending" && allow(m.project, "memoryApprove");
+            const used = m.useCount ? t("memory.cardUsed", { count: m.useCount }) : ago(m.createdAt);
             return (
               <li
                 key={m.id}
@@ -303,7 +316,7 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
                 ) : null}
                 <div className="mt-auto flex items-center gap-2">
                   <span className="flex-1 text-[var(--text-muted)] [font:var(--design-caption)]">
-                    {m.supersededBy !== null ? `${m.author} · ${formatTime(m.createdAt)}` : m.stale ? t("memory.cardUnusedDays", { days: Math.max(0, Math.floor((Date.now() - Date.parse(m.lastUsedAt ?? m.createdAt)) / 86_400_000)) }) : `${m.author} · ${used}`}
+                    {m.supersededBy !== null ? `${m.author} · ${ago(m.createdAt)}` : m.stale ? t("memory.cardUnusedDays", { days: Math.max(0, Math.floor((Date.now() - Date.parse(m.lastUsedAt ?? m.createdAt)) / 86_400_000)) }) : `${m.author} · ${used}`}
                   </span>
                   {act ? (
                     <Button variant="glass" size="sm" disabled={quick.busy} onClick={(e) => { e.stopPropagation(); act.run(); }}>
