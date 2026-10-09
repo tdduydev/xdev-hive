@@ -4,6 +4,8 @@ import {
   type DesktopBridge,
   type HiveErrorCode,
   type Grant,
+  type HubInvite,
+  type HubRole,
   type HubUser,
   type Me,
   type Method,
@@ -59,8 +61,18 @@ export interface HiveClient {
   /** Hub only, for hub admins: accounts and their per-project grants. */
   users?: {
     list(): Promise<HubUser[]>;
-    create(input: { username: string; displayName?: string; admin?: boolean }): Promise<{ user: HubUser; password: string }>;
-    update(id: string, patch: { displayName?: string; admin?: boolean; disabled?: boolean }): Promise<HubUser>;
+    create(input: { username: string; displayName?: string; admin?: boolean; hubRole?: HubRole }): Promise<{ user: HubUser; password: string }>;
+    update(id: string, patch: { displayName?: string; admin?: boolean; hubRole?: HubRole; disabled?: boolean }): Promise<HubUser>;
+    /** Thùng rác (R-72l): trash disables and signs the account out, restore brings it back, purge deletes it for good (trash only). */
+    trash(id: string): Promise<HubUser>;
+    restore(id: string): Promise<HubUser>;
+    purge(id: string): Promise<void>;
+    /** Sign-up links: one use, they expire. The secret comes back once, in `token`. */
+    invites: {
+      list(): Promise<HubInvite[]>;
+      create(input: { hubRole: HubRole; days?: number; userId?: string }): Promise<{ invite: HubInvite; token: string }>;
+      revoke(inviteId: string): Promise<HubInvite>;
+    };
     /** shared: the Chung grant (null: from projects); left out, it stays as it is. */
     setGrants(id: string, grants: Record<string, Grant>, shared?: Grant | null): Promise<HubUser>;
     resetPassword(id: string): Promise<string>;
@@ -140,6 +152,16 @@ async function hubResult<T>(res: Response): Promise<{ status: number; result: T 
   return { status: res.status, result: json.result as T };
 }
 
+/** A sign-up link's page: what the link gives, or the hub's refusal when it is used up, expired or revoked. */
+export async function peekInvite(token: string, baseUrl = ""): Promise<{ role: HubRole; username: string | null; expiresAt: string }> {
+  return (await hubRequest<{ role: HubRole; username: string | null; expiresAt: string }>(baseUrl, "/api/invite/peek", { token })).result;
+}
+
+/** Uses a sign-up link: the hub makes the account (or sets the invited one's password) and signs the browser in. */
+export async function acceptInvite(input: { token: string; username?: string; displayName?: string; password: string }, baseUrl = ""): Promise<Me> {
+  return (await hubRequest<Me>(baseUrl, "/api/invite/accept", input)).result;
+}
+
 /** Username + password sign-in: the hub sets an HttpOnly session cookie. */
 export async function signIn(username: string, password: string, baseUrl = ""): Promise<Me> {
   return (await hubRequest<Me>(baseUrl, "/api/login", { username, password })).result;
@@ -214,6 +236,16 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
       setGrants: (id, grants, shared) => rpc<HubUser>("users.setGrants", { id, grants, ...(shared === undefined ? {} : { shared }) }),
       resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
+      trash: (id) => rpc<HubUser>("users.trash", { id }),
+      restore: (id) => rpc<HubUser>("users.restore", { id }),
+      purge: async (id) => {
+        await rpc("users.purge", { id });
+      },
+      invites: {
+        list: () => rpc<HubInvite[]>("users.inviteList"),
+        create: (input) => rpc<{ invite: HubInvite; token: string }>("users.inviteCreate", input),
+        revoke: (inviteId) => rpc<HubInvite>("users.inviteRevoke", { inviteId }),
+      },
     },
     members: {
       list: (project) => rpc<ProjectMember[]>("members.list", { project }),

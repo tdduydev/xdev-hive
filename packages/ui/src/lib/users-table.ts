@@ -1,18 +1,20 @@
 // Pure helpers behind Quản trị › Người dùng, Vai trò & quyền and Sơ đồ tổ chức (R-72l): the lists are filtered, sorted and
 // paged in the browser because the hub returns every account in one call, so none of it needs a new endpoint.
-import { grantRole, PROJECT_ROLES, ROLE_PERMISSIONS, type ChatDefaults, type HiveSystem, type Machine, type HubUser, type Permission, type ProjectRole } from "@xdev-hive/core";
+import { grantRole, HUB_ROLES, PROJECT_ROLES, ROLE_PERMISSIONS, type ChatDefaults, type HiveSystem, type HubRole, type Machine, type HubUser, type Permission, type ProjectRole } from "@xdev-hive/core";
 
-export type UserFilter = "all" | "admin" | "active" | "disabled" | "mustChange" | "sso";
-export const USER_FILTERS: UserFilter[] = ["all", "admin", "active", "disabled", "mustChange", "sso"];
+export type UserFilter = "all" | "admin" | "active" | "disabled" | "mustChange" | "sso" | "trash";
+export const USER_FILTERS: UserFilter[] = ["all", "admin", "active", "disabled", "mustChange", "sso", "trash"];
 export type UserSort = "name" | "role" | "access" | "sso" | "last" | "status";
 export type SortDir = "asc" | "desc";
 export const USER_PAGE_SIZE = 8;
 
-/** disabled beats must-change beats active: the one state a row shows. */
-export const userStatus = (u: HubUser): "disabled" | "mustChange" | "active" => (u.disabled ? "disabled" : u.mustChangePassword ? "mustChange" : "active");
+/** trashed beats disabled beats invited beats must-change beats active: the one state a row shows. */
+export const userStatus = (u: HubUser): "trash" | "disabled" | "invited" | "mustChange" | "active" =>
+  u.deletedAt ? "trash" : u.disabled ? "disabled" : u.invited ? "invited" : u.mustChangePassword ? "mustChange" : "active";
 
+/** The trash is its own view: every other filter, "all" included, leaves trashed accounts out. */
 const matchesFilter = (u: HubUser, f: UserFilter): boolean =>
-  f === "all" ? true : f === "admin" ? u.admin : f === "sso" ? u.sso : userStatus(u) === f;
+  f === "trash" ? !!u.deletedAt : !u.deletedAt && (f === "all" ? true : f === "admin" ? u.admin : f === "sso" ? u.sso : userStatus(u) === f);
 
 /** Name, username or display name contain the query (no accents folded: names are matched as typed, case aside). */
 export function filterUsers(users: HubUser[], query: string, filter: UserFilter): HubUser[] {
@@ -23,11 +25,13 @@ export function filterUsers(users: HubUser[], query: string, filter: UserFilter)
 export const filterCounts = (users: HubUser[]): Record<UserFilter, number> =>
   Object.fromEntries(USER_FILTERS.map((f) => [f, users.filter((u) => matchesFilter(u, f)).length])) as Record<UserFilter, number>;
 
-const STATUS_ORDER = { active: 0, mustChange: 1, disabled: 2 } as const;
+const STATUS_ORDER = { active: 0, invited: 1, mustChange: 2, disabled: 3, trash: 4 } as const;
+/** owner first, viewer last, in HUB_ROLES order. */
+const ROLE_RANK = (u: HubUser) => HUB_ROLES.indexOf(u.hubRole);
 const key = (u: HubUser, by: UserSort): string | number => {
   switch (by) {
     case "name": return u.displayName.toLowerCase();
-    case "role": return u.admin ? 0 : 1;
+    case "role": return ROLE_RANK(u);
     case "access": return u.admin ? Number.MAX_SAFE_INTEGER : Object.keys(u.grants).length;
     case "sso": return u.sso ? 0 : 1;
     case "last": return u.lastLoginAt ? Date.parse(u.lastLoginAt) : 0;
@@ -74,7 +78,17 @@ export function avatarHue(name: string): number {
 
 /** Ids a bulk action may touch: never the signed-in admin (the hub refuses to lock oneself out, so skip rather than fail half-way). */
 export const bulkTargets = (users: HubUser[], selected: ReadonlySet<string>, selfId: string | undefined): HubUser[] =>
-  users.filter((u) => selected.has(u.id) && u.id !== selfId);
+  users.filter((u) => selected.has(u.id) && u.id !== selfId && !u.deletedAt);
+
+/** How many accounts have each hub role (trashed ones do not count), for the Vai trò tab. */
+export const hubRoleCounts = (users: HubUser[]): Record<HubRole, number> => {
+  const out = { owner: 0, admin: 0, member: 0, viewer: 0 } as Record<HubRole, number>;
+  for (const u of users) if (!u.deletedAt) out[u.hubRole] += 1;
+  return out;
+};
+
+/** Whole days left before the hub deletes a trashed account (at least 1 while it is still there). */
+export const daysToPurge = (u: HubUser, now = Date.now()): number => (u.purgeAt ? Math.max(1, Math.ceil((Date.parse(u.purgeAt) - now) / 86_400_000)) : 0);
 
 /** The select-all box covers the rows on the page; a mixed page reads as "not all". */
 export const allSelected = (rows: HubUser[], selected: ReadonlySet<string>): boolean => rows.length > 0 && rows.every((u) => selected.has(u.id));
@@ -95,7 +109,7 @@ export interface OrgSystem { name: string; services: OrgService[] }
 export function serviceRoles(users: HubUser[], project: string): OrgService {
   const by = new Map<OrgRole, HubUser[]>();
   for (const u of users) {
-    if (u.admin || u.disabled) continue;
+    if (u.admin || u.disabled || u.deletedAt) continue;
     const role = grantRole(u.grants[project]);
     if (role) by.set(role, [...(by.get(role) ?? []), u]);
   }

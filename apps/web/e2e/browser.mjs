@@ -307,6 +307,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "reviewer-approves-a-guide-not-context": ["login-password"],
   "lead-sees-members": [],
   "admin-grants-a-role": ["login-token"],
+  "admin-users-trash-invite": ["login-token"],
   "docs-rich-editor": ["login-token"],
   "docs-markdown": ["login-token", "docs-rich-editor"], // the editor docs-rich-editor left open on project/demo/huong-dan (version 2)
   "mermaid-draws": ["login-token"],
@@ -1424,6 +1425,45 @@ async function main() {
       return user?.grants.demo === "reviewer" && user;
     });
     expect(JSON.stringify(minh.grants.demo) === '"reviewer"', `Minh on demo: ${JSON.stringify(minh.grants.demo)}`);
+  });
+
+  // R-72l: the trash (soft delete, restore) and the invite link, as the admin uses them on the Người dùng tab.
+  await step("admin-users-trash-invite", async () => {
+    const tab = (current = tabs.admin);
+    await rpc("users.create", { username: "tam", displayName: "Tâm Vũ", hubRole: "viewer" });
+    await tab.go("admin/users");
+    // admin-grants-a-role leaves this page open with its list already read: reload so the new account is in it.
+    await tab.reload();
+    await tab.eval(() => {
+      window.confirm = () => true;
+    });
+    await tab.waitFor("Tâm in the table", () => document.querySelector('[data-user-row="tam"]')?.querySelector("[data-hub-role-of]")?.dataset.hubRoleOf === "viewer");
+    await tab.click('button[aria-label="Thao tác với tam"]');
+    await tab.click("[data-user-trash]");
+    await tab.waitFor("Tâm out of the list", () => !document.querySelector('[data-user-row="tam"]'));
+    expect((await rpc("users.list", {})).find((u) => u.username === "tam")?.deletedAt, "tam should be in the trash");
+    await tab.click("button.cosmic-tag", "Thùng rác");
+    await tab.waitFor("Tâm in the trash view", () => document.querySelector('[data-user-row="tam"] [data-user-restore]') && document.querySelector("[data-trash-hint]"));
+    await tab.shot("admin-users-trash");
+    await tab.click('[data-user-row="tam"] [data-user-restore]');
+    await until("Tâm restored", async () => (await rpc("users.list", {})).find((u) => u.username === "tam")?.deletedAt === null);
+    await tab.click("button.cosmic-tag", "Tất cả");
+    await tab.waitFor("Tâm back in the list", () => !!document.querySelector('[data-user-row="tam"]'));
+    // The link: one use, shown once, with the role picked.
+    await tab.click("[data-admin-action]");
+    await tab.select("[data-invite-role]", "viewer");
+    await tab.click("[data-invite-create]");
+    const url = await tab.waitFor("the invite link", () => document.querySelector("[data-invite-url]")?.textContent);
+    expect(url.includes("/#/invite/"), `invite link: ${url}`);
+    await tab.shot("admin-users-invite");
+    const token = url.split("/#/invite/")[1];
+    const peek = await tab.eval(async (t) => (await (await fetch("/api/invite/peek", { method: "POST", headers: { "content-type": "application/json", "x-hive-csrf": "1" }, body: JSON.stringify({ token: t }) })).json()).result, token);
+    expect(peek?.role === "viewer", `peek: ${JSON.stringify(peek)}`);
+    await tab.key("Escape");
+    await tab.waitFor("the dialog to close", () => !document.querySelector('[role="dialog"]'));
+    await tab.click("[data-invite-revoke]");
+    await until("the link revoked", async () => (await rpc("users.inviteList", {})).every((i) => i.state === "revoked"));
+    await tab.waitFor("the revoked row", () => document.querySelector('[data-invite-row][data-state="revoked"]'));
   });
 
   await step("docs-rich-editor", async () => {

@@ -16,6 +16,7 @@ export type * from "./bridge.ts";
 export * from "./embed.ts";
 export * from "./errors.ts";
 export * from "./hidden.ts";
+export * from "./hub-roles.ts";
 export * from "./keys.ts";
 export * from "./mapreduce.ts";
 export * from "./roles.ts";
