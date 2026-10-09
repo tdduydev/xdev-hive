@@ -51,3 +51,10 @@
 --page-background:radial-gradient(1px 1px at 22px 34px,var(--star-1),transparent 60%),radial-gradient(1px 1px at 140px 90px,var(--star-2),transparent 60%),radial-gradient(1px 1px at 210px 180px,var(--star-3),transparent 60%),radial-gradient(1px 1px at 80px 220px,var(--star-4),transparent 60%),radial-gradient(1.5px 1.5px at 260px 40px,var(--star-5),transparent 60%),var(--page-gradient);
 }
 [data-theme="dark"]{--surface-violet:#38343F;--star-1:rgba(255,255,255,.45);--star-2:rgba(255,255,255,.3);--star-3:rgba(255,255,255,.35);--star-4:rgba(255,255,255,.22);--star-5:rgba(255,255,255,.28)}
+/* 72i: values the design templates use for Pipeline and Features that no earlier token carried. */
+:root,[data-theme]{
+--text-faint:#6F6A78;--accent-violet-soft:#6547E5;--ds-body-sm:500 14px/22px var(--font-sans);--ds-caption:500 12px/18px var(--font-sans);--ds-micro:600 11px/16px var(--font-sans);
+--violet-tint:rgba(123,97,255,.14);--violet-tint-soft:rgba(123,97,255,.1);--ring-violet:inset 0 0 0 1px rgba(123,97,255,.5);--ring-violet-soft:inset 0 0 0 1px rgba(123,97,255,.45);--ring-violet-faint:inset 0 0 0 1px rgba(123,97,255,.35);
+--divider:rgba(35,28,55,.06);--hairline:inset 0 -1px 0 rgba(35,28,55,.06);--hairline-top:inset 0 1px 0 rgba(35,28,55,.06);--hairline-faint:inset 0 -1px 0 rgba(35,28,55,.04);--shadow-sticky:0px 8px 24px 0px rgba(35,28,55,.18);--surface-sticky:rgba(255,255,255,.94);--track-off:var(--glass-bg);--stage-done:#137A48;
+}
+[data-theme="dark"]{--divider:rgba(255,255,255,.06);--hairline:inset 0 -1px 0 rgba(255,255,255,.06);--hairline-top:inset 0 1px 0 rgba(255,255,255,.06);--hairline-faint:inset 0 -1px 0 rgba(255,255,255,.04);--shadow-sticky:0px 8px 24px 0px rgba(0,0,0,.5);--surface-sticky:rgba(36,35,37,.94);--text-faint:rgba(255,255,255,.43);--accent-violet-soft:#9580FF;--stage-done:#8BE3B6}
