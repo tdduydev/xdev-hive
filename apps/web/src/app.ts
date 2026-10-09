@@ -1,7 +1,7 @@
 import type { Automation } from "./automation.ts";
 import { hubLog } from "#web/deploy-log.ts";
 import { createHash, type Hash } from "node:crypto";
-import { createWriteStream, rmSync } from "node:fs";
+import { createReadStream, createWriteStream, rmSync, statSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -167,6 +167,7 @@ const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
   "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
   "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
   "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
+  "backups.list": "hubAdmin", "backups.pin": "hubAdmin", "backups.unpin": "hubAdmin", "backups.projects": "hubAdmin", "backups.restoreProject": "hubAdmin",
   "alerts.list": "hubAdmin", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
   "automation.list": "hubAdmin", "automation.history": "hubAdmin", "automation.save": "hubAdmin", "automation.dryRun": "hubAdmin", "automation.retry": "hubAdmin",
   "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
@@ -886,10 +887,30 @@ export function createHubApp({
           hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
           res.json({ result: r });
         } else {
-          const r = await hub.backup();
+          const r = await hub.backup("manual", actor.name);
           hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
           res.json({ result: { file: path.basename(r.file), removed: r.removed.length, files: r.files?.copied ?? null } });
         }
+        return;
+      }
+
+      // Snapshots (ADM-backup-restore): hub admins only, and only names of the backup folder's own snapshots.
+      if (typeof method === "string" && method.startsWith("backups.")) {
+        requireHubAdmin(res);
+        if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
+        const name = String(i.name ?? "");
+        if (method === "backups.list") res.json({ result: hub.backups() });
+        else if (method === "backups.pin" || method === "backups.unpin") {
+          const entry = hub.pin(name, method === "backups.pin", actor.name);
+          hive.audit(actor, method, entry.name, entry.expiresAt ?? "", { key: method === "backups.pin" ? "audit.backupPinned" : "audit.backupUnpinned" });
+          res.json({ result: entry });
+        } else if (method === "backups.projects") res.json({ result: hub.projects(name) });
+        else if (method === "backups.restoreProject") {
+          const project = String(i.project ?? "");
+          // Typed by hand on the page, as for projects.delete: a restore writes hundreds of rows into the live hub.
+          if (i.confirm !== project) throw new HiveError("bad_request", `Confirm with the project's name: ${project}.`, { key: "errors.projectConfirm", vars: { project } });
+          res.json({ result: await hub.restoreProject(name, project, actor) });
+        } else throw new HiveError("bad_request", `Unknown method ${method}`);
         return;
       }
 
@@ -1234,6 +1255,26 @@ export function createHubApp({
       found.body.pipe(res);
     });
   }
+
+  // A snapshot to take away (ADM-backup-restore): streamed, since a hub's database runs to gigabytes. Hub admins only.
+  app.get("/api/backups/:name", auth, (req, res) => {
+    try {
+      requireHubAdmin(res);
+      if (!hub) throw new HiveError("not_found", "Backups are off.", { key: "errors.backupOff" });
+      const file = hub.file(String(req.params.name ?? ""));
+      res.set({
+        "content-type": "application/vnd.sqlite3",
+        "content-length": String(statSync(file).size),
+        "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-store",
+      });
+      hive.audit(actorOf(res), "backups.download", path.basename(file));
+      createReadStream(file).on("error", (err) => res.destroy(err)).pipe(res);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
 
   // Chat attachments (roadmap 17g): the bytes go over plain HTTP, not JSON-RPC. A file is uploaded first, then sent
   // with chat.send; whoever sees the project's chats reads it (people by their session, machines by their token).
