@@ -536,9 +536,15 @@ new RunStore(path.join(work, "runs.db")).insert(
 
 // Roadmap 39f: Board is the Task page now and Tool a part of Dự án & công cụ, so those two shots load the address
 // each page had before and check where it landed. HIVE_SMOKE_VIEW keeps the Task page on the board whatever view the
-// machine's localStorage remembers.
+// machine's localStorage remembers. The board shot also waits for the T-001 run queued above to hand the task to
+// review: the shot ends the app at once, and a run that finished just before it would keep T-001 claimed, which
+// the today and runs-list shots below rely on not being the case.
 for (const [name, page, delay, extra] of [
-  ["board", "board", 6000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"][aria-current="page"] && [data-task-view="kanban"][aria-checked="true"]' }],
+  ["board", "board", 6000, {
+    HIVE_SMOKE_VIEW: "kanban",
+    HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"][aria-current="page"] && [data-task-view="kanban"][aria-checked="true"]',
+    HIVE_SMOKE_ASSERT: '[...document.querySelectorAll(\'[data-column="review"] [role="button"]\')].some((card) => card.textContent.includes("T-001"))',
+  }],
   ["runs", "runs", 3000],
   ["setup", "setup", 4000],
   // Same wait as the setup shot above: the address lands there, and its checks take a moment.
@@ -732,16 +738,17 @@ await shoot("today", "today", 4000);
 await shoot("board-run", "board", 3000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
 // The Board at the two widths it has to work at (roadmap 39g). At 1100 there is no room for five columns, so Xong
-// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 the three columns
-// with work in them are open, Bị chặn too (T-003 waits for T-002), and only the empty Xong stays a rail.
+// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 all five columns
+// are open, the empty Xong too (72d, docs/design/hive-2026-10 tasks-1440): an empty column no longer folds.
 await shoot("board-1100", "board", 5000, {
   HIVE_SMOKE_SIZE: "1100x800",
   HIVE_SMOKE_EXPECT: '[data-board-fit="narrow"] && [data-column-rail="done"] && [data-column-rail="blocked"] && [data-profile-chip]',
 });
 await shoot("board-1440", "board", 5000, {
   HIVE_SMOKE_SIZE: "1440x820",
-  HIVE_SMOKE_EXPECT: '[data-board-fit="wide"] && [data-column-rail="done"]',
-  HIVE_SMOKE_ABSENT: '[data-column-rail="blocked"]',
+  HIVE_SMOKE_EXPECT:
+    '[data-board-fit="wide"] && [data-column="todo"] && [data-column="doing"] && [data-column="review"] && [data-column="blocked"] && [data-column="done"]',
+  HIVE_SMOKE_ABSENT: "[data-column-rail]",
 });
 
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
@@ -797,9 +804,10 @@ await shoot("runs-log", "runs", 3000, {
 }
 
 // The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa opens the Tiptap editor.
+// Sửa is the reading header's button now (72f); the mode switch only shows once the page is being edited.
 const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
 await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
-await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
+await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: "[data-doc-edit]", HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
 // Waits for the sync's own report: the sync takes about a second, and the DB check below must come after it.
 await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]', HIVE_SMOKE_EXPECT: '[data-project-result="demo"]' });
