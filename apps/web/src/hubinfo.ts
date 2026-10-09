@@ -3,9 +3,21 @@ import type { DeployLog } from "#web/deploy-log.ts";
 // hub admins, and a backup made on request.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { HiveError, type HubCleanup, type HubInfo } from "@xdev-hive/core";
+import { HiveError, type Actor, type BackupEntry, type BackupList, type BackupProject, type BackupReason, type HubCleanup, type HubInfo, type ProjectRestored } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
-import { backupDatabase, backupFiles, type BackupResult, type FilesBackupResult } from "./backup.ts";
+import {
+  backedUpFile,
+  backupDatabase,
+  backupFiles,
+  backupPath,
+  DEFAULT_PIN_DAYS,
+  DEFAULT_PIN_MAX_MB,
+  listBackups,
+  setPinned,
+  type BackupResult,
+  type FilesBackupResult,
+  type PinPolicy,
+} from "./backup.ts";
 import type { UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
 
@@ -14,7 +26,8 @@ export interface HubInfoOptions {
   deployLog?: DeployLog;
   dbPath: string;
   users?: UserStore;
-  backup?: { dir: string; hours: number; keep: number } | null;
+  /** HIVE_BACKUP_*; a policy left out is the default one. */
+  backup?: ({ dir: string; hours: number; keep: number } & Partial<PinPolicy>) | null;
   releases?: ReleaseStore;
   embedUrl?: string | null;
   sso?: { name: string; issuer: string } | null;
@@ -77,7 +90,9 @@ export class HubInfoSource {
         walBytes: size(`${o.dbPath}-wal`),
         counts: { docs: count("docs"), memory: count("memory"), tasks: count("tasks"), runs: count("run_records"), machines: count("machines"), users: o.users ? o.users.list().length : 0 },
       },
-      backup: o.backup ? { dir: o.backup.dir, hours: o.backup.hours, keep: o.backup.keep, last, count: snapshots } : null,
+      backup: o.backup
+        ? { dir: o.backup.dir, hours: o.backup.hours, keep: o.backup.keep, last, count: snapshots, ...(({ pinDays, pinMaxBytes, pinnedBytes, backups }) => ({ pinDays, pinMaxBytes, pinnedBytes, pinned: backups.filter((b) => b.pinned).length }))(this.backups()) }
+        : null,
       search: { mode: search.mode, model: search.model, url: o.embedUrl ?? null, indexed: search.indexed, total: search.total, lastError: search.lastError },
       files: o.hive.filesInfo(),
       storage: { releases: o.releases?.storage() ?? null, artifacts: (({ count, bytes, days }) => ({ count, bytes, days }))(o.hive.artifactsInfo()), runLogDays: o.hive.artifactsInfo().runLogDays },
@@ -98,11 +113,48 @@ export class HubInfoSource {
     return { releases, artifacts, db: { before, after: dbBytes() } };
   }
 
-  /** "Backup ngay": a snapshot now, the oldest beyond the kept number removed, and the doc files in the store. */
-  async backup(): Promise<BackupResult & { files: FilesBackupResult | null }> {
+  #settings() {
     const b = this.#o.backup;
     if (!b) throw new HiveError("bad_request", "Backups are off: set HIVE_BACKUP_DIR.", { key: "errors.backupOff" });
-    const r = backupDatabase(this.#o.hive.db, { dir: b.dir, keep: b.keep, now: this.#o.now });
+    const policy: PinPolicy = { pinDays: b.pinDays ?? DEFAULT_PIN_DAYS, pinMaxBytes: b.pinMaxBytes ?? DEFAULT_PIN_MAX_MB * 1_048_576 };
+    return { ...b, policy };
+  }
+
+  /**
+   * "Backup ngay" (reason manual) or the one projects.delete makes first: a snapshot now, the oldest unpinned ones
+   * beyond the kept number removed, and the doc files in the store. Both are pinned: somebody wanted that moment kept.
+   */
+  async backup(reason: BackupReason = "manual", by?: string): Promise<BackupResult & { files: FilesBackupResult | null }> {
+    const b = this.#settings();
+    const r = backupDatabase(this.#o.hive.db, { dir: b.dir, keep: b.keep, now: this.#o.now, reason, pin: reason !== "start" && reason !== "scheduled", pinDays: b.policy.pinDays, by });
     return { ...r, files: this.#o.hive.filesInfo().store ? await backupFiles(this.#o.hive, b.dir) : null };
+  }
+
+  /** backups.list: every snapshot with its reason and pin, and the policy. */
+  backups(): BackupList {
+    const b = this.#settings();
+    return listBackups(b.dir, b.keep, b.policy, this.#o.now());
+  }
+
+  /** backups.pin / backups.unpin. */
+  pin(name: string, pinned: boolean, by: string): BackupEntry {
+    const b = this.#settings();
+    return setPinned(b.dir, name, pinned, { by, now: this.#o.now(), policy: b.policy });
+  }
+
+  /** The file of a snapshot, for its download; not_found for anything that is not one. */
+  file(name: string): string {
+    return backupPath(this.#settings().dir, name);
+  }
+
+  /** backups.projects: the projects a snapshot holds, to pick one to restore. */
+  projects(name: string): BackupProject[] {
+    return this.#o.hive.backupProjects(this.file(name));
+  }
+
+  /** backups.restoreProject: the project's rows out of the snapshot, its stored files out of the backup folder. */
+  restoreProject(name: string, project: string, actor: Actor): Promise<ProjectRestored> {
+    const dir = this.#settings().dir;
+    return this.#o.hive.restoreProject(this.file(name), project, actor, (sha) => backedUpFile(dir, sha));
   }
 }
