@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { Actor, AutoReleaseRecord, DesktopProject, HiveBackend, ReleaseStep } from "@xdev-hive/core";
 import { killTree } from "#desktop/main/runner/kill.ts";
-import { changedSinceAppRelease } from "#desktop/scripts/release-scope.mjs";
+import { changedSinceAppReleaseAsync } from "#desktop/scripts/release-scope.mjs";
 
 const exec = promisify(execFile);
 export interface ReleaseHost {
@@ -16,6 +16,11 @@ export interface ReleaseHost {
   allowed(project?: string): boolean;
 }
 export interface ReleaseResult { success: boolean; step: ReleaseStep; warning: boolean }
+
+export async function releaseScopeForBatch(batchProject: string, project: DesktopProject, checkout: string): Promise<"app" | "hub"> {
+  if (batchProject !== project.name) return "app";
+  return (await changedSinceAppReleaseAsync(checkout)).app ? "app" : "hub";
+}
 
 /** Project commands own version/roadmap preparation and release notes (59h); secrets stay in this process. */
 export async function executeRelease(job: AutoReleaseRecord, project: DesktopProject, run: (argv: string[], env: NodeJS.ProcessEnv) => Promise<void>, rollout: () => Promise<void>, progress: (step: ReleaseStep) => Promise<void> = async () => {}, scope: "app" | "hub" = "app"): Promise<ReleaseResult> {
@@ -95,7 +100,7 @@ export class AutoReleaseWorker {
       project = { ...project, repo: checkout };
       const git = (...args: string[]) => gitAt(checkout, ...args);
       if (this.#stopped || await git("status", "--porcelain") || await git("rev-parse", "HEAD") !== job.batch.sha || await git("branch", "--show-current") !== targetBranch) throw new Error("Checkout changed since green batch");
-      const scope = job.project === "xdev-hive" && !changedSinceAppRelease(checkout).app ? "hub" : "app";
+      const scope = await releaseScopeForBatch(job.project, project, checkout);
       result = await executeRelease(job, project, (argv, env) => this.#command(argv, project, env, key), async () => { await this.host.backend().call("autoRelease.rollout", { project: job.project, batchId: job.batchId }, this.host.actor()); }, async step => { await this.host.backend().call("autoRelease.progress", { project: job.project, batchId: job.batchId, step }, this.host.actor()); }, scope);
     } catch { /* Only the failed stage goes to the hub; local output may contain secrets. */ }
     const receipt = { project: job.project, batchId: job.batchId, ...result };
