@@ -1,8 +1,8 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createHttpClient, HubSetup, hubSetupState, I18nProvider, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
-import "@xdev-hive/ui/globals.css";
 import { WebApp } from "./WebApp.tsx";
+import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
 // (CI, recovery) is kept in localStorage as before.
