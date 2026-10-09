@@ -499,7 +499,10 @@ describe("plan usage", () => {
     await logins.refresh();
     assert.equal(logins.usage("claude-1")?.session?.percent, 3);
     signedIn = false;
+    // Within 45 s a plain refresh keeps the last check (R-77d); a sign-out is seen by a forced one, as index.ts does.
     await logins.refresh();
+    assert.equal(logins.usage("claude-1")?.session?.percent, 3);
+    await logins.refresh(undefined, true);
     assert.equal(logins.usage("claude-1"), undefined);
   });
 });
