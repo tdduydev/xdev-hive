@@ -93,7 +93,7 @@ async function runOnce(out) {
   rmSync(resultFile, { force: true });
   const browser = spawn(electron, [path.join(import.meta.dirname, "browser.mjs")], {
     stdio: "inherit",
-    env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_ONLY: only ?? "", HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded, terminal }), ELECTRON_ENABLE_LOGGING: "" },
+    env: { ...process.env, HIVE_E2E_BASE: base, HIVE_E2E_OUT: out, HIVE_E2E_DB: path.join(work, "hub.db"), HIVE_E2E_ONLY: only ?? "", HIVE_E2E_SEED: JSON.stringify({ admin, ...seeded, terminal }), ELECTRON_ENABLE_LOGGING: "" },
   });
   // Chromium can hang while tearing down windows on macOS after every check has finished.
   // Only a completed result may shorten teardown; a stuck test still fails at the overall timeout.
