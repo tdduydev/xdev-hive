@@ -3679,14 +3679,14 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("today?section=inbox");
-    // Lan leads payment: what she decides comes first, then the agents waiting on her, then what to review.
-    const groups = await tab.waitFor("Hôm nay grouped for a lead", () => {
+    // 72c: the design's three groups: what to approve (the gate, the leader's proposal), then what to fix (the asking run).
+    const groups = await tab.waitFor("Hôm nay grouped as the design", () => {
       const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
-      return document.querySelector("[data-inbox-role]")?.getAttribute("data-inbox-role") === "lead" && list.includes("agent") && list.includes("decide") && list;
+      return list.includes("fix") && list.includes("approve") && list;
     });
-    expect(groups[0] === "decide" && groups.indexOf("agent") < (groups.includes("review") ? groups.indexOf("review") : Infinity), `groups: ${groups.join()}`);
-    const askedKey = await tab.waitFor("the asking run in Agent đang chờ bạn", () =>
-      document.querySelector('[data-inbox-group="agent"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(groups[0] === "approve" && groups.indexOf("fix") > 0, `groups: ${groups.join()}`);
+    const askedKey = await tab.waitFor("the asking run in Cần xử lý", () =>
+      document.querySelector('[data-inbox-group="fix"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
     expect(await tab.eval(() => !document.querySelector("[data-system-card]")), "Today must focus on inbox without system overview");
     expect(await tab.eval(() => (document.querySelector("[data-today-shortcuts]")?.getBoundingClientRect().height > 0) === (innerWidth >= 768)), "keyboard hints follow viewport");
     await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
@@ -3700,9 +3700,10 @@ async function main() {
       const actions = document.querySelector("[data-today-actions]");
       const content = actions?.previousElementSibling;
       if (!content) return false;
+      // The design's card spaces its blocks 20px apart.
       const gap = actions.getBoundingClientRect().top - content.getBoundingClientRect().bottom;
-      return gap >= 0 && gap <= 16 && actions.parentElement.parentElement.classList.contains("overflow-y-auto");
-    }), "Today actions must immediately follow content in its scroll area");
+      return gap >= 0 && gap <= 24 && !!actions.closest("[data-today-detail]");
+    }), "Today actions must immediately follow content in the detail card");
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
     await tab.click("button", "Duyệt, sang bước sau");
     await until("the spec gate passed from Hôm nay", async () => {

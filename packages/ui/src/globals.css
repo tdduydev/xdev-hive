@@ -19,6 +19,7 @@
 @import "./tokens/shell.css";
 @import "./tokens/motion.css";
 @import "./tokens/cosmic.css";
+@import "./tokens/today.css";
 @import "./components/ui/cosmic.css";
 @import "./components/ResponsiveTable.css";
 @import "./mobile.css";

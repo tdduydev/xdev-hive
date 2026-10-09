@@ -893,6 +893,22 @@ export const vi = {
       approved: "Đã cài {label} theo yêu cầu",
       declined: "Đã từ chối yêu cầu cài {label}",
     },
+    // Hôm nay theo thiết kế cosmic (72c).
+    page: {
+      sub: "Việc cần bạn hôm nay: duyệt, sửa và quyết định — mỗi mục có đủ ngữ cảnh để làm ngay.",
+      tabOpen: "Đang chờ",
+      tabDone: "Đã xong",
+      keys: "J / K để chọn",
+      empty: "Không còn gì chờ bạn.",
+      noteTitle: "Ghi chú gửi kèm",
+      foot: "↵ chạy nút đầu · E đánh dấu đã xem",
+      startLeft: "Máy này còn {count} bước để nhận việc",
+      startOpen: "Mở Bắt đầu",
+      oldest: "Cũ nhất: {when}",
+      thisDevice: "Trên máy này",
+      startLater: "Để sau",
+      group: { approve: "Cần duyệt", fix: "Cần xử lý", machine: "Máy" },
+    },
   },
   crash: {
     title: "Trang này gặp lỗi",
