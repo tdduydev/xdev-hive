@@ -4306,6 +4306,8 @@ async function main() {
 
     const tab = (current = tabs.admin);
     await tab.go("memory");
+    // admin/memory is the same page: bulk-approve-memory leaves it on the "Chờ duyệt" chip, which hides most variants.
+    await tab.click("main button", "Tất cả");
     const card = (id) => `[data-memory-card="${id}"]`;
     const cardText = (id) => tab.eval((sel) => document.querySelector(sel)?.innerText ?? "", card(id));
     await tab.waitFor("variant cards", (ids) => ids.every((id) => document.querySelector(`[data-memory-card="${id}"]`)), [pending, plain, base1, conflict, old, next, cited, stale].map((m) => m.id));
