@@ -4,6 +4,7 @@
 //   npm run release -w @xdev-hive/desktop -- --dry   (build and list the files, publish nothing)
 //   npm run release -w @xdev-hive/desktop -- --hub-only   (skip GitHub: upload the built files to the hub again)
 //   npm run release -w @xdev-hive/desktop -- --whatsnew <file>   (use edited release notes)
+//   npm run release -w @xdev-hive/desktop -- --force-app   (build app even for hub-only changes)
 // Needs: a clean checkout of origin/main, `gh` signed in with push access. macOS builds are ad-hoc
 // signed (no Developer ID yet); Windows installers are unsigned.
 // The builds also go to the hub, which hands them to machines as updates (roadmap 22i; admins pick the version on
@@ -13,10 +14,11 @@
 // Either may sit in ~/.config/xdev-hive/release.env (KEY=VALUE, chmod 600) instead of the shell.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { importOverSsh, readReleaseEnv, uploadToHub } from "#desktop/scripts/hub-upload.mjs";
 import { generateWhatsNew, readWhatsNewOverride } from "#desktop/scripts/whatsnew.mjs";
+import { changedSinceAppRelease } from "#desktop/scripts/release-scope.mjs";
 
 const desktop = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(desktop, "..", "..");
@@ -24,6 +26,33 @@ const release = path.join(desktop, "release");
 const dry = process.argv.includes("--dry");
 const hubOnly = process.argv.includes("--hub-only");
 const linuxOnly = process.argv.includes("--linux-only");
+const forceApp = process.argv.includes("--force-app");
+const scope = changedSinceAppRelease(repoRoot);
+for (const k of Object.keys(readReleaseEnv())) console.log(`${k} from ~/.config/xdev-hive/release.env`);
+if (!hubOnly && !scope.app && !forceApp) {
+  if (scope.files.length === 0) {
+    console.log(`No changes since ${scope.baseline}; nothing to release.`);
+    process.exit(0);
+  }
+  const raw = process.env.HIVE_HUB_DEPLOY_ARGV;
+  const argv = raw ? JSON.parse(raw) : null;
+  if (!Array.isArray(argv) || !argv.length || !argv.every(value => typeof value === "string" && value.length)) {
+    throw new Error("Hub-only changes: set HIVE_HUB_DEPLOY_ARGV to a JSON argv array for the hub deploy command.");
+  }
+  if (!dry) {
+    const git = (...args) => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
+    if (git("status", "--porcelain")) throw new Error("Working tree is not clean.");
+    execFileSync("git", ["fetch", "-q", "origin", "main"], { cwd: repoRoot, stdio: "inherit" });
+    if (git("rev-parse", "HEAD") !== git("rev-parse", "origin/main")) throw new Error("HEAD is not origin/main.");
+  }
+  const note = `# Phát hành hub\n\nTừ app tag ${scope.baseline} đến ${execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot, encoding: "utf8" }).trim()}: chỉ triển khai hub. Không tạo bản app hoặc rollout app.\n\n${scope.files.map(file => `- ${file}`).join("\n")}\n`;
+  mkdirSync(release, { recursive: true });
+  const noteFile = path.join(release, "HUB-DEPLOY-NOTES.md");
+  writeFileSync(noteFile, note);
+  console.log(`Hub-only changes since ${scope.baseline}: deploying hub; app release and rollout skipped. Notes: ${noteFile}`);
+  if (!dry) execFileSync(argv[0], argv.slice(1), { stdio: "inherit", cwd: repoRoot, env: { ...process.env, HIVE_RELEASE_SCOPE: "hub", HIVE_RELEASE_NOTES_FILE: noteFile } });
+  process.exit(0);
+}
 // Fail before deleting output: macOS signing and native PTY builds require the appropriate host.
 if (!hubOnly && (linuxOnly ? process.platform !== "linux" || !["x64", "arm64"].includes(process.arch) : process.platform !== "darwin")) {
   throw new Error("Use --linux-only on Linux (native x64/arm64); all-platform releases require macOS.");
@@ -32,7 +61,7 @@ if (!hubOnly && (linuxOnly ? process.platform !== "linux" || !["x64", "arm64"].i
 const whatsNewOverride = readWhatsNewOverride(process.argv.slice(2), readFileSync);
 const { version } = JSON.parse(readFileSync(path.join(desktop, "package.json"), "utf8"));
 const tag = `v${version}`;
-for (const k of Object.keys(readReleaseEnv())) console.log(`${k} from ~/.config/xdev-hive/release.env`);
+console.log(`App release ${forceApp ? "forced" : `required by ${scope.appFiles.length} shared/runtime file(s)`} since ${scope.baseline ?? "initial release"}.`);
 
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", cwd: desktop, ...opts });
 const out = (cmd, args) => execFileSync(cmd, args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -102,7 +131,7 @@ async function toHub(notes, notesFile) {
 }
 
 const whatsNew = whatsNewDraft;
-const notes = linuxOnly ? `## Linux ${process.arch}
+const notes = linuxOnly ? `## Phạm vi phát hành\n\nApp desktop và hub; ${forceApp ? "ép phát hành app" : "runtime app thay đổi"}.\n\n## Linux ${process.arch}
 
 Bản này chỉ phát hành cho Linux ${process.arch}; không có build macOS, Windows hoặc kiến trúc Linux khác.
 
@@ -113,7 +142,7 @@ Cài theo người dùng, không cần sudo hoặc FUSE: tải \`install-linux.s
 Kiểm tra file bằng \`SHA256SUMS.txt\`.
 
 ${whatsNew}
-` : `## Tải về
+` : `## Phạm vi phát hành\n\nApp desktop và hub; ${forceApp ? "ép phát hành app" : "runtime app thay đổi"}.\n\n## Tải về
 
 | Máy | File |
 |---|---|
