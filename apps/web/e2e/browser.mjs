@@ -742,7 +742,7 @@ async function main() {
     await tab.waitFor("skill row", () => !!document.querySelector('main [data-pane-item]'));
     await tab.eval(() => document.querySelector('main [data-pane-item]').focus());
     await tab.key("Enter");
-    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-current="true"]'));
+    await tab.waitFor("skill selected", () => !!document.querySelector('main [data-pane-item][aria-pressed="true"]'));
     if (mobile) await tab.click("button", "Quay lại");
     await tab.click("label", "Skill không ai dùng");
     expect(await tab.eval(() => !document.querySelector('main [role="listbox"] input')), "Skills filter remains outside composite list semantics");
@@ -773,12 +773,11 @@ async function main() {
     await tab.go("memory");
     await tab.click("button", "Chờ duyệt");
     await tab.waitFor("bulk checkbox", () => !!document.querySelector('main li [role="checkbox"]'));
-    expect(await tab.eval(() => !document.querySelector('main [data-pane-item] [role="checkbox"]')), "bulk checkbox is a sibling of the row button");
-    const before = await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent);
+    expect(await tab.eval(() => !document.querySelector('main button [role="checkbox"]')), "bulk checkbox is a sibling of the card button");
     await tab.eval(() => document.querySelector('main li [role="checkbox"]').focus());
     await tab.key(" ");
     expect(await tab.eval(() => document.activeElement?.getAttribute("aria-checked") === "true"), "Space selects bulk checkbox");
-    expect(await tab.eval(() => document.querySelector('main [data-pane-item][aria-current]')?.textContent) === before, "bulk selection does not open another row");
+    expect(await tab.eval(() => !document.querySelector('[role="dialog"]')), "bulk selection does not open the memory detail");
     await accessibilityAudit({ tab, out, expect, routes: ["runs", "docs", "skills"] });
   });
   await step("a11y-menu", async () => {
@@ -1244,7 +1243,7 @@ async function main() {
     await tab.waitFor("task nodes and dependency edge", () => document.querySelector('[data-graph-task="PAY-1"]') && document.querySelector('[data-graph-task="PAY-GRAPH"]') && document.querySelector(".graph-edge-open .react-flow__edge-path"));
     // Waiting for the changed card proves a fresh response reached the graph before checking its edge again.
     await rpc("tasks.update", { id: "PAY-GRAPH", status: "review" });
-    await tab.waitFor("graph reflects the updated task", () => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label")?.includes("Chờ review"));
+    await tab.waitFor("graph reflects the updated task", () => document.querySelector('[data-graph-task="PAY-GRAPH"]')?.getAttribute("aria-label")?.includes(", Review"));
     await tab.waitFor("dependency edge survives a graph refresh", () => {
       const edge = document.querySelector('.graph-edge-open[data-id="payment:PAY-1->payment:PAY-GRAPH"] .react-flow__edge-path');
       if (!edge) return false;
@@ -4455,8 +4454,10 @@ async function main() {
     await tab.go("skills");
     await tab.click('input[aria-label="Tìm skill"]');
     await tab.type("stats-");
-    await tab.waitFor("skill usage columns", () => document.body.innerText.includes("Số run dùng 30 ngày"));
+    // The 72j list shows no usage columns: the numbers are in the picked skill's detail.
+    await tab.waitFor("skill list filtered", () => [...document.querySelectorAll("main [data-pane-item]")].some((e) => e.textContent.includes("stats-unused")));
     await tab.click('main [data-pane-item]', "stats-used");
+    await tab.waitFor("skill usage numbers", () => document.body.innerText.includes("Số run dùng 30 ngày"));
     await tab.waitFor("weekly usage chart", () => document.querySelector("[data-skill-usage]")?.children.length === 8);
     expect(await tab.eval(() => [...document.querySelectorAll("[data-skill-usage] > div > span")].reduce((n, el) => n + Number(el.textContent), 0) === 1), "duplicate loads count once");
     await tab.shot(`${String(n).padStart(2, "0")}-skill-usage-chart`);
@@ -4684,11 +4685,12 @@ async function main() {
     await tab.reload();
     await tab.go("artifacts");
     // Earlier steps (leader-research) leave files of their own: the second page holds whatever is past the first 50.
-    const total = (await rpc("artifacts.list", { limit: 200 })).length;
+    // The list follows the shell's scope, which the graph step may have left on payment: either count is the second page.
+    const totals = [(await rpc("artifacts.list", { limit: 200 })).length, (await rpc("artifacts.list", { project: "payment", limit: 200 })).length];
     await tab.click('[data-artifacts-page] button', "Xem thêm 45");
     await tab.waitFor("the files page", () => document.querySelectorAll('[data-artifact-row]').length === 50);
     await tab.click('[data-artifacts-page] button', "Trang sau");
-    await tab.waitFor("second page", rest => document.querySelectorAll('[data-artifact-row]').length === rest, total - 50);
+    await tab.waitFor("second page", rests => rests.includes(document.querySelectorAll('[data-artifact-row]').length), totals.map(n => n - 50));
     await fill('[data-artifact-filter="search"]', "report");
     const reports = (await rpc("artifacts.list", { name: "report", limit: 200 })).length;
     await tab.waitFor("name filter resets page", count => document.querySelectorAll('[data-artifact-row]').length === count && document.querySelector('[data-artifact-row="report.md"]'), reports);
@@ -4960,6 +4962,8 @@ async function main() {
     const total = (await rpc("sdlc.dispatch", { project, limit: 1 })).total;
     expect(total === 501, `dispatch source total: ${total}`);
     const tab = current = tabs.inboxSource = await signInWithToken("inbox-source", admin, `pipeline?project=${project}`);
+    // Since 72i the count link belongs to the picked step's side panel.
+    await tab.click('[data-pipeline-step="dispatch"]');
     await tab.waitFor("complete Dispatch count", () => /^501\b/.test(document.querySelector('[data-pipeline-count="dispatch"]')?.textContent.trim() ?? ""));
     if (mobile) {
       await tab.eval(() => document.querySelector('[data-pipeline-count="dispatch"]').focus());
