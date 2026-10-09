@@ -6818,7 +6818,7 @@ export class SqliteHive implements HiveBackend {
   #mayApproveTool(actor: Actor, owner: string | null): boolean {
     // A viewer's token reads only: it never approves a tool or manages worktrees, even for its machine's owner.
     // (A person's web session has no token, and its role says nothing of the project grant.)
-    return actor.role !== "agent" && !(actor.role === "viewer" && actor.tokenId) && !isAgentActor(actor) &&
+    return actor.role !== "agent" && !(actor.role === "viewer" && actor.tokenId) && !actor.runCredential && !actor.mcpCredential && actor.chatReply === undefined && !isAgentActor(actor) &&
       ((actor.role === "admin" && !actor.access) || (!!actor.account && actor.account === owner));
   }
 
@@ -9753,7 +9753,7 @@ export class SqliteHive implements HiveBackend {
           const hubAdmin = actor.role === "admin" && !actor.access;
           // Not an agent on the owner's token: a run should not turn subscriptions on for itself.
           const owner = !isAgentActor(actor) && actor.account !== undefined && actor.account === m.owner;
-          if (actor.role === "agent" || isAgentActor(actor) || (!hubAdmin && !owner)) {
+          if (actor.role === "agent" || actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined || isAgentActor(actor) || (!hubAdmin && !owner)) {
             throw new HiveError("forbidden", `Only a hub admin or the owner of ${m.machine} changes its profiles.`, { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
           }
           const p = m.profiles.find((x) => x.id === profileId);

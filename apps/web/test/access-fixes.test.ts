@@ -36,7 +36,7 @@ it("P0-1: a chat reply's token cannot call the web-only RPCs or mint an ownerles
     const before = tokens.count();
     assert.equal((await rpc("hivechat_test", "tokens.create", { name: "evil", role: "admin" })).status, 403);
     assert.equal(tokens.count(), before);
-    for (const method of ["tokens.list", "hub.info", "users.list", "releases.list", "webhooks.list"]) {
+    for (const method of ["tokens.list", "hub.info", "users.list", "releases.list", "webhooks.list", "budgets.set", "tasks.create", "agents.stop", "projects.retire", "machines.worktrees", "machines.tools"]) {
       assert.equal((await rpc("hivechat_test", method)).status, 403, method);
     }
   } finally { hive.close(); }
@@ -53,6 +53,7 @@ it("P0-2: a viewer credential of a machine's owner cannot approve tools or manag
     const tools = (c: string, h: Record<string, string> = {}) => rpc(c, "machines.tools", { machineId: "m1" }, h);
     assert.equal((await tools(member)).body.result.canApprove, true);
     assert.equal((await tools(viewer)).body.result.canApprove, false);
+    assert.equal((await tools(member, { "x-hive-agent": "runner", "x-hive-source": JSON.stringify({ via: "desktop" }) })).body.result.canApprove, false, "client headers cannot turn an agent into a person");
     assert.equal((await rpc(viewer, "machines.worktrees", { machineId: "m1" })).status, 403);
   } finally { hive.close(); }
 });
@@ -62,6 +63,7 @@ it("P0-3: a member or agent token of an admin account is cut to its role, not un
   try {
     const admin = users.create({ username: "duy", admin: true }).user;
     await hive.call("tasks.create", { id: "app-1", project: "app", title: "t" }, { name: "duy", role: "admin" });
+    await hive.call("tasks.create", { id: "zzz-1", project: "zzz", title: "unrelated" }, { name: "duy", role: "admin" });
     const viewer = tokens.create("duy-view", "viewer", admin.id).token;
     const agent = tokens.create("duy-agent", "agent", admin.id).token;
     // Hub-wide settings stay with a hub admin: a token of one, whatever its role, is not that.
@@ -70,6 +72,8 @@ it("P0-3: a member or agent token of an admin account is cut to its role, not un
       assert.equal((await rpc(credential, "members.list", { project: "app" })).status, 403, `${name} token of an admin manages members`);
       assert.equal((await rpc(credential, "hub.info")).status, 403, name);
     }
+    for (const id of ["app-1", "zzz-1"]) assert.equal((await rpc(agent, "tasks.update", { id, status: "done" })).status, 403, id);
+    assert.equal((await rpc(agent, "tokens.create", { name: "child", role: "agent" })).status, 403);
     // Still works inside its role: an agent token still reads projects.
     assert.equal((await rpc(agent, "projects.list", {})).status, 200);
   } finally { hive.close(); }
@@ -90,5 +94,9 @@ it("P0-4: web-only RPCs are default-deny, hub-admin gated, and changes are audit
     assert.equal(auditOf("users.create"), 1);
     assert.equal((await rpc(root, "tokens.create", { name: "ci", role: "agent" })).status, 200);
     assert.equal(auditOf("tokens.create"), 1);
+    assert.equal((await rpc(root, "alerts.ack", { id: -1 })).status, 400);
+    assert.equal(auditOf("alerts.ack"), 0);
+    assert.equal((await rpc(root, "releases.notes", {})).status, 400);
+    assert.equal(auditOf("releases.notes"), 0);
   } finally { hive.close(); }
 });
