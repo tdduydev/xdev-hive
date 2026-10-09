@@ -480,7 +480,23 @@ Cấu hình ở *Service & công cụ* → **GitHub pull request** (hỏi ngày 
 
 ## Hub cho team
 
-### Docker (khuyên dùng)
+### Một lệnh, cấu hình trên trang cài đặt
+
+```bash
+git clone <repo> xdev-hive && cd xdev-hive
+docker compose up -d
+docker compose logs hub     # mã cài đặt
+```
+
+Mở `http://<máy>:7788`: hub chưa có tài khoản thì trang đầu tiên là *Cài đặt hub* (mã cài đặt, tài khoản admin, tên miền / tên trong LAN, lưu file, tìm memory theo nghĩa, SSO, backup, tuỳ chọn). Lưu xong hub ghi cấu hình vào volume (`/data/settings.json`, quyền 0600) rồi tự chạy lại; trang chuyển sang đăng nhập.
+
+- Biến `HIVE_*` đặt trong môi trường hoặc `.env` cạnh [`compose.yaml`](compose.yaml) luôn thắng giá trị trên trang, và ô đó hiện là *Do biến môi trường đặt*.
+- HTTPS là profile: `HIVE_HOSTNAME=hive.example.com docker compose --profile https up -d` (Caddy, cần DNS và cổng 80/443) hoặc `TUNNEL_TOKEN=… docker compose --profile tunnel up -d` (Cloudflare Tunnel, Public Hostname trỏ về `http://hub:7788`). Khi đó tích *Hub nằm sau proxy HTTPS*.
+- Ollama cho tìm theo nghĩa: `--profile embed`, URL embeddings `http://ollama:11434/v1`.
+- Đổi cấu hình sau khi cài: sửa `/data/settings.json` (hoặc đặt biến môi trường) rồi `docker compose restart hub`.
+- Sai mã 10 lần thì hub đổi mã mới và in lại vào log.
+
+### Docker với `deploy/` (cách cũ, hive.example.com đang dùng)
 
 ```bash
 HIVE_HOSTNAME=hive.example.com docker compose -f deploy/compose.yaml up -d --build
