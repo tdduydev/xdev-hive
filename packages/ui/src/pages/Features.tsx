@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SPEC_FILES, specNextStep, type RunRecord, type SdlcGateRecord, type SpecFile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Tag } from "@xdev-hive/ui/components/ui/primitives";
 import "./pipeline-features.css";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
@@ -41,6 +42,7 @@ import {
   type FeatureTab,
 } from "#ui/lib/features.ts";
 import { runLabel, runOutcome } from "#ui/lib/runs.ts";
+import { fold } from "#ui/lib/text.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { flowStep, taskStep, allPipelineFlows } from "#ui/lib/pipeline.ts";
 import { useToast } from "#ui/shell/toast.tsx";
@@ -91,7 +93,7 @@ export function FeaturesPage() {
 
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  return <Board items={items.filter((item) => (!linkColumn || item.column === linkColumn) && (!linkStep || (item.flow?.step !== "dispatch" && item.flow && flowStep(item.flow) === linkStep) || item.tasks.some((task) => taskStep(task) === linkStep)))} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} selected={current} notFound={linked && !current && !!data.data} onChanged={data.reload} />;
+  return <Board items={items.filter((item) => (!linkColumn || item.column === linkColumn) && (!linkStep || (item.flow?.step !== "dispatch" && item.flow && flowStep(item.flow) === linkStep) || item.tasks.some((task) => taskStep(task) === linkStep)))} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} initialBoard={!!linkStep || !!linkColumn} selected={current} notFound={linked && !current && !!data.data} onChanged={data.reload} />;
 }
 
 /** Whether any gate of the card waits for this person. */
@@ -104,20 +106,45 @@ function useMine() {
 const STAGE_OF: Record<FeatureColumn, number> = { spec: 1, plan: 2, tasks: 3, doing: 4, review: 4, done: 5 };
 const STAGE_NAME = ["specify", "plan", "tasks", "implement", "done"] as const;
 
-function Board({ items, loaded, error, shared, manyProjects, newProject, newWork, selected, notFound, onChanged }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null; newWork: string | null; selected: FeatureItem | null; notFound: boolean; onChanged: () => void }) {
+function Board({ items, loaded, error, shared, manyProjects, newProject, newWork, initialBoard, selected, notFound, onChanged }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null; newWork: string | null; initialBoard: boolean; selected: FeatureItem | null; notFound: boolean; onChanged: () => void }) {
   const t = useT();
   const mine = useMine();
+  const [q, setQ] = useState("");
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [mode, setMode] = useState<"list" | "board">(initialBoard ? "board" : "list");
   const [creating, setCreating] = useState(!!newWork);
   // The board stays mounted when + Mới opens another feature: its new key opens the form again.
   useEffect(() => {
     if (newWork) setCreating(true);
   }, [newWork]);
-  const current = selected ?? items[0] ?? null;
+  // A card of the board opens its feature, which only the two-column view shows: the mode follows the address.
+  useEffect(() => {
+    if (selected) setMode("list");
+  }, [selected?.key]);
+  const needle = fold(q.trim());
+  const mineCount = items.filter(mine).length;
+  const shown = items.filter((x) => (!needle || fold(`${x.title} ${x.project} ${x.flow?.taskId ?? ""} ${x.spec?.dir ?? ""} ${x.spec?.branch ?? ""}`).includes(needle)) && (!onlyMine || mine(x)));
+  const inColumn = (c: FeatureColumn) => shown.filter((x) => x.column === c);
+  // On a phone one column at a time: the first with something waiting for you, else the first with anything.
+  const [picked, setPicked] = useState<FeatureColumn | null>(null);
+  const active = picked ?? FEATURE_COLUMNS.find((c) => inColumn(c).some(mine)) ?? FEATURE_COLUMNS.find((c) => inColumn(c).length) ?? "spec";
+  const board = mode === "board" && !selected;
+  const current = selected ?? shown[0] ?? null;
+  const pickMode = (next: "list" | "board") => {
+    setMode(next);
+    // Leaving a feature for the board: the address drops its link, or the feature would pull the view back.
+    if (next === "board" && selected) window.location.hash = "#/features";
+  };
   const form = creating && newProject ? (
     <div className="max-w-[760px]" data-feature-new={newProject}>
       {/* Keyed by the opening, so a second + Mới starts from an empty draft rather than the previous one's. */}
       <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
     </div>
+  ) : null;
+  const newButton = newProject ? (
+    <Button size="sm" variant="glass" className="self-start" onClick={() => setCreating((v) => !v)}>
+      {creating ? t("specs.import.close") : t("specs.run.new")}
+    </Button>
   ) : null;
   const empty = shared ? (
     <PaneEmpty>{t("specs.sharedScope")}</PaneEmpty>
@@ -137,24 +164,79 @@ function Board({ items, loaded, error, shared, manyProjects, newProject, newWork
   ) : notFound ? (
     <PaneEmpty>{t("specs.notFound")}</PaneEmpty>
   ) : null;
+  const filters = (
+    <div className="ft-filters">
+      <Input controlSize="sm" className="ft-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("features.search")} aria-label={t("features.search")} data-features-search />
+      <button type="button" className="pf-tagbtn" aria-pressed={onlyMine} title={t("features.onlyMineHint")} onClick={() => setOnlyMine((v) => !v)} data-features-mine>
+        <Tag active={onlyMine}>{t("features.onlyMine")} · {mineCount}</Tag>
+      </button>
+      <span className="pf-spacer" />
+      {(["list", "board"] as const).map((m) => (
+        <button key={m} type="button" className="pf-tagbtn" aria-pressed={board ? m === "board" : m === "list"} onClick={() => pickMode(m)} data-features-view={m}>
+          <Tag active={board ? m === "board" : m === "list"}>{t(`features.view.${m}`)}</Tag>
+        </button>
+      ))}
+    </div>
+  );
   return (
     <div className="w-full" data-features-board data-feature-title={current?.title}>
       {form}
       <ErrorNote error={error} />
-      {empty ?? (loaded && current ? (
-        <div className="ft-grid">
-          <nav className="ft-list" aria-label={t("features.board")}>
-            {items.map((x) => (
-              <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={x.key === current.key} />
-            ))}
-            {newProject ? (
-              <Button size="sm" variant="glass" className="mt-1 self-start" onClick={() => setCreating((v) => !v)}>
-                {creating ? t("specs.import.close") : t("specs.run.new")}
-              </Button>
-            ) : null}
-          </nav>
-          <FeatureView key={current.key} item={current} manyProjects={manyProjects} onChanged={onChanged} />
-        </div>
+      {empty ?? (loaded ? (
+        <>
+          {filters}
+          {board ? (
+            <>
+              {shown.length ? (
+                <>
+                  <div role="tablist" aria-label={t("features.board")} className="ft-coltabs">
+                    {FEATURE_COLUMNS.map((c) => (
+                      <button key={c} type="button" role="tab" id={`feature-tab-${c}`} aria-selected={active === c} aria-controls={`feature-column-${c}`} onClick={() => setPicked(c)} className="pf-tab">
+                        {t(`features.column.${c}`)} · {inColumn(c).length}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ft-cols">
+                    {FEATURE_COLUMNS.map((c) => {
+                      const cards = inColumn(c);
+                      return (
+                        <section key={c} id={`feature-column-${c}`} aria-label={t("features.columnTitle", { column: t(`features.column.${c}`), count: cards.length })} data-feature-column={c} className="ft-col" data-hidden={active !== c ? "" : undefined}>
+                          <h3>
+                            {t(`features.column.${c}`)}
+                            <span>{cards.length}</span>
+                          </h3>
+                          {cards.map((x) => (
+                            <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={false} />
+                          ))}
+                          {!cards.length ? <p className="pf-empty m-0 px-1 py-2">{t("features.columnEmpty")}</p> : null}
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <PaneEmpty>{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</PaneEmpty>
+              )}
+              {newButton}
+            </>
+          ) : current ? (
+            <div className="ft-grid">
+              <nav className="ft-list" aria-label={t("features.board")}>
+                {shown.map((x) => (
+                  <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={x.key === current.key} />
+                ))}
+                {!shown.length ? <p className="pf-empty m-0 px-2 py-2">{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</p> : null}
+                {newButton}
+              </nav>
+              <FeatureView key={current.key} item={current} manyProjects={manyProjects} onChanged={onChanged} />
+            </div>
+          ) : (
+            <>
+              <PaneEmpty>{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</PaneEmpty>
+              {newButton}
+            </>
+          )}
+        </>
       ) : null)}
     </div>
   );
@@ -168,7 +250,7 @@ function FeatureCard({ item: x, mine, manyProjects, current }: { item: FeatureIt
     <a href={featureHref(x)} data-feature-card={x.flow?.taskId ?? x.spec?.dir} data-feature-mine={mine ? "" : undefined} aria-current={current} className="ft-card outline-none focus-visible:focus-ring">
       <span className="ft-card-top">
         <b>{x.title}</b>
-        <span>{manyProjects ? x.project : x.flow?.taskId ?? x.spec?.dir}</span>
+        <span>{manyProjects ? x.project : x.flow?.taskId ?? x.spec?.dir}{!x.flow && x.spec?.branch ? ` · ${x.spec.branch}` : ""}</span>
       </span>
       <span className="ft-bar" aria-hidden="true">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -177,6 +259,7 @@ function FeatureCard({ item: x, mine, manyProjects, current }: { item: FeatureIt
       </span>
       <span className="ft-stage" data-tone={stage === 5 ? "done" : waiting ? "gate" : undefined} title={waiting ? t(mine ? "features.waitingYou" : "features.waitingOther") : undefined}>
         {t(`specs.stage.${STAGE_NAME[stage - 1]!}`)}
+        {waiting ? ` · ${t(mine ? "features.waitingYou" : "features.waitingOther")}` : ""}
       </span>
     </a>
   );

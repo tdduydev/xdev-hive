@@ -47,7 +47,6 @@
 .pf-item small { font: var(--ds-caption); color: var(--text-faint); }
 .pf-empty { font: var(--ds-body-sm); color: var(--text-muted); }
 .pf-pickers { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; font: var(--ds-caption); color: var(--text-muted); }
-.pf-pickers select { height: 34px; border: 0; border-radius: var(--radius-control); padding: 0 10px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 13px/1 var(--font-sans); }
 
 .ft-grid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
 .ft-list { flex: 1 1 280px; max-width: 100%; display: flex; flex-direction: column; gap: 6px; padding: 12px 8px; border-radius: var(--radius-card); background: var(--surface-1); box-shadow: var(--ring-glass); }
@@ -81,7 +80,35 @@ a.ft-row:hover { box-shadow: var(--ring-glass-strong); }
 .ft-row-text > :first-child { font: 500 13.5px/20px var(--font-sans); color: var(--text-strong); text-wrap: pretty; overflow-wrap: anywhere; }
 .ft-row-text > :nth-child(2) { font: var(--ds-caption); color: var(--text-muted); overflow-wrap: anywhere; }
 .ft-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ft-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.ft-search { width: 260px; max-width: 100%; }
+.ft-coltabs { display: none; }
+.ft-cols { display: grid; grid-template-columns: repeat(6, minmax(150px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+.ft-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 160px; padding: 8px; border-radius: var(--radius-card); background: var(--surface-sunken); box-shadow: var(--ring-glass); }
+.ft-col > h3 { display: flex; align-items: center; gap: 6px; margin: 0; padding: 2px 6px 6px; font: 600 12px/1 var(--font-sans); color: var(--text-strong); }
+.ft-col > h3 span { font-weight: 400; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ft-col .ft-card { background: var(--surface-1); box-shadow: var(--ring-glass); }
+.pf-select { display: inline-flex; }
+.pf-select [data-slot="native-select"] { height: 36px; border: 0; border-radius: 12px; background: var(--surface-sunken); box-shadow: var(--ring-glass); color: var(--text-strong); font: 500 13px/1 var(--font-sans); }
+.pf-editor { display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 18px; background: var(--violet-tint-soft); box-shadow: var(--ring-violet-faint); }
+.pf-cfg { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.pf-cfg-label { font: 600 13px/18px var(--font-sans); color: var(--text-strong); min-width: 140px; }
+.pf-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.pf-stepper [data-slot="input"] { width: 72px; text-align: center; }
+.pf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pf-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-chip); background: var(--surface-3); box-shadow: var(--ring-glass); color: var(--text-secondary); font: 600 12.5px/1 var(--font-sans); cursor: pointer; }
+.pf-chip[data-on="true"] { background: var(--violet-tint); box-shadow: var(--ring-violet); color: var(--text-strong); }
+.pf-unsaved { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); font: var(--ds-body-sm); color: var(--text-strong); }
 @media (max-width: 767px) {
+  .pf-editor button, .pf-editor [data-slot="input"], .pf-chip { min-height: 44px; }
+  .pf-editor button { min-width: 44px; }
+  .pf-chip input { min-height: 0; }
+  .ft-search { width: 100%; }
+  .ft-coltabs { display: flex; gap: 2px; margin-bottom: 10px; overflow-x: auto; box-shadow: var(--hairline); }
+  .ft-cols { display: block; overflow: visible; }
+  .ft-col[data-hidden] { display: none; }
+  .ft-col > h3 { display: none; }
+  .ft-filters input, .ft-filters .pf-tagbtn .cosmic-tag { min-height: 44px; }
   .pf-tab, .pf-tagbtn .cosmic-tag, .ft-tools button { min-height: 44px; }
   .pf-main, .ft-main { padding: 18px; }
   .pf-mode, .pf-step { min-height: 44px; }
