@@ -7,7 +7,8 @@ import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-ch
 import { RunStore } from "#desktop/main/runner/store.ts";
 import { writeSteer } from "#desktop/main/runner/steer.ts";
 import { after, describe, it, mock } from "node:test";
-import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, ARTIFACT_DIR, HiveError, HubBackend, toolHash, type Actor, type AgentProfile, type HiveBackend, type DesktopProject, type RunnerSettings, type ToolEntry } from "@xdev-hive/core";
+import { QuitLifecycle } from "#desktop/main/quit.ts";
 import { CODEGRAPH_MCP, CODEGRAPH_RUN_MCP, SHIM_NAME, SUPERPOWERS_PLUGIN, mcpLaunch, shimBinDir } from "#desktop/main/installer.ts";
 import { collectArtifacts } from "#desktop/main/runner/artifacts.ts";
 import { prepareCodegraph } from "#desktop/main/runner/codegraph.ts";
@@ -42,6 +43,10 @@ const admin: Actor = { name: "duy", role: "admin" };
 const credentialRequests: Array<{ method: string; input: { run: string; minutes?: number; readOnly?: boolean } }> = [];
 // Hub-mode fixtures exercise the credential exchange without reaching a real service.
 mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+  if (String(url).startsWith("https://runner-stall.test/")) return new Promise<Response>((_, reject) => {
+    if (init.signal?.aborted) return reject(init.signal.reason);
+    init.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+  });
   assert.ok(String(url).endsWith("/api/run-credentials"), `Unexpected fixture request: ${url}`);
   const input = JSON.parse(String(init.body));
   credentialRequests.push({ method: init.method!, input });
@@ -4463,6 +4468,38 @@ describe("branch-on-remote", () => {
       assert.equal(git(origin, "rev-parse", "refs/heads/ai/T-1"), done.headSha);
       if (mode === "sleep") assert.equal(git(origin, "show", "ai/T-1:exit-work.txt"), "unfinished work");
     }
+  });
+
+  it("aborts sequential stalled hub calls after committing local WIP", async () => {
+    const stalledHub = new HubBackend("https://runner-stall.test", "fixture");
+    let quitting = false;
+    let requested!: () => void;
+    const requestedPromise = new Promise<void>((resolve) => { requested = resolve; });
+    const { runner } = await setup([profile("a", "claude", 10, "sleep")], { maxAttempts: 1 }, "hub", {
+      wrap: (backend) => ({ call: (method, input, actor) => {
+        if (quitting && method === "tasks.list") {
+          requested();
+          return stalledHub.call(method, input, actor).catch(() => stalledHub.call(method, input, actor));
+        }
+        return backend.call(method, input, actor);
+      } }),
+    });
+    const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
+    await until(() => runner.log(run.id).includes("thinking"), 60_000);
+    const worktree = runner.store.get(run.id)!.worktree!;
+    writeFileSync(path.join(worktree, "quit-work.txt"), "unfinished work\n");
+    quitting = true;
+    const started = Date.now();
+    const quit = new QuitLifecycle();
+    stalledHub.stopForQuit();
+    await quit.start(() => runner.stop(), () => undefined, (error) => { throw error; });
+    await requestedPromise;
+    assert.ok(Date.now() - started < 24_000, `quit took ${Date.now() - started} ms`);
+    assert.equal(quit.ready, true);
+    const done = runner.store.get(run.id)!;
+    assert.equal(done.status, "cancelled");
+    assert.equal(done.commits, 1);
+    assert.equal(git(worktree, "show", `${done.headSha}:quit-work.txt`), "unfinished work");
   });
 
   it("pushes committed work after success and fetches a newer remote tip before continuing", async () => {

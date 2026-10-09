@@ -66,7 +66,7 @@ export function useAttachments(project: string, draftKey?: string) {
       let file = p.file;
       if (p.source) {
         // Sent file ids cannot be attached twice. Read with current permissions and create a new upload.
-        const response = await fetch(upload.href(p.source.id), { credentials: "same-origin" });
+        const response = await fetch(upload.href(p.source.id), { credentials: "same-origin", signal: AbortSignal.timeout(45_000) });
         if (!response.ok) throw new Error(t("chat.fileUnavailable", { name: p.source.name }));
         file = new File([await response.blob()], p.source.name, { type: p.source.type });
       }

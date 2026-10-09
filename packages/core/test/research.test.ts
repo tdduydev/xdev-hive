@@ -47,6 +47,8 @@ describe("research from chat", () => {
       assert.equal(done.docKey, `project/app/research/research-${id}`);
       assert.equal(await hive.call("docs.get", { key: done.docKey }, manager), null, "approval required before publishing");
       const drafts = await hive.call("proposals.list", {}, manager);
+      assert.deepEqual(await hive.call("proposals.count", { status: "pending" }, manager), { count: drafts.length });
+      assert.deepEqual(await hive.call("proposals.count", { status: "pending" }, outsider), { count: 0 });
       const draft = drafts.find(p => p.id === done.proposalId)!;
       assert.equal(draft.status, "pending");
       assert.equal(draft.baseVersion, 0);

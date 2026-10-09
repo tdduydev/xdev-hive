@@ -7535,6 +7535,20 @@ export class SqliteHive implements HiveBackend {
             .all(status ?? null, docKey ?? null) as Row[]
         ).map(toProposal),
 
+      "proposals.count": ({ status }, actor) => {
+        const hidden = new Set(this.#projectStates().keys());
+        const rows = db.prepare("SELECT doc_key FROM proposals WHERE (? IS NULL OR status = ?)").all(status ?? null, status ?? null) as Row[];
+        let count = 0;
+        for (const row of rows) {
+          const key = str(row.doc_key);
+          const owner = SqliteHive.#docOwner(key);
+          if ((actor.access && !sees(actor, owner)) || (owner && hidden.has(owner))) continue;
+          const research = db.prepare("SELECT * FROM research_runs WHERE doc_key = ?").get(key) as Row | undefined;
+          if (!research || this.#researchVisible(research, actor)) count++;
+        }
+        return { count };
+      },
+
       "proposals.create": (input, actor) => {
         if ("action" in input) {
           const { method, project, input: raw } = input.action;
