@@ -1,7 +1,7 @@
 // Memory (docs/design/2026-09-redesign, xDev Hive Client): what agents learned, as a list with filter chips (pending,
 // conflicts, needs review, stale) and the selected entry with what can be done to it. Search goes to the hub
 // (words, or words and meaning when the hub has embeddings).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import { MEMORY_KINDS, stripHidden, systemOf, systemOwner, type Memory, type MemoryKind } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
@@ -23,6 +23,7 @@ import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
 import { emptyState } from "#ui/lib/empty.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 
 /** Value of the "Chung" option in the owner select (project keys are never empty). */
 const SHARED_OPTION = "";
@@ -99,8 +100,9 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const [submitted, setSubmitted] = useState("");
   const [filter, setFilter] = useState<Filter>(pendingOnly ? "pending" : "all");
   // null: nothing open; NEW: the "write memory" form; an id: that entry's detail. A popup on every width, as the grid has no side pane.
-  const [selected, setSelected] = useState<number | null>(null);
-  const pick = setSelected;
+  const detail = useMobileDetail("memory");
+  const selected = detail.value !== null && /^-?\d+$/.test(detail.value) ? Number(detail.value) : null;
+  const pick = (id: number | null) => detail.navigate(id === null ? null : String(id));
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const toast = useToast();
   const bulk = useAction();
@@ -112,9 +114,15 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const rows = useMemo(() => list.data ?? [], [list.data]);
   const shown = rows.filter(FILTERS.find(([id]) => id === filter)![1]);
   const current = selected === null || selected === NEW ? null : (rows.find((m) => m.id === selected) ?? null);
+  const displayed = useRef<number | null>(null);
   useEffect(() => {
-    if (selected !== NEW && selected !== null && list.data && !rows.some((m) => m.id === selected)) setSelected(null);
-  }, [rows, selected, list.data]);
+    // A restored system scope first loads without its project list. Keep the deep link until that query catches up.
+    if (current || selected === null || selected === NEW) displayed.current = current?.id ?? null;
+    else if (!list.loading && displayed.current === selected) {
+      displayed.current = null;
+      detail.navigate(null, true);
+    }
+  }, [current, selected, list.loading, detail.navigate]);
 
   // New entries default to the scope: the system's own memory for a system and for a service of one (roadmap 40c), the
   // project of a repo in no system, Chung for the shared scope, the first project of all.
@@ -292,7 +300,7 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
           />
         ) : current ? (
           <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={pick} />
-        ) : null}
+        ) : <PaneEmpty>{t(list.loading ? "common.loading" : "memory.noMatch")}</PaneEmpty>}
       </DetailDialog>
     </div>
   );

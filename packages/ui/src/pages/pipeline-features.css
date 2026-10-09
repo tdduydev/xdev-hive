@@ -100,6 +100,7 @@ a.ft-row:hover { box-shadow: var(--ring-glass-strong); }
 .pf-chip[data-on="true"] { background: var(--violet-tint); box-shadow: var(--ring-violet); color: var(--text-strong); }
 .pf-unsaved { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--divider); font: var(--ds-body-sm); color: var(--text-strong); }
 @media (max-width: 767px) {
+  .ft-grid[data-detail] .ft-list, .ft-grid:not([data-detail]) .ft-main { display: none; }
   .pf-editor button, .pf-editor [data-slot="input"], .pf-chip { min-height: 44px; }
   .pf-editor button { min-width: 44px; }
   .pf-chip input { min-height: 0; }

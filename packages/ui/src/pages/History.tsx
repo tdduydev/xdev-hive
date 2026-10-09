@@ -60,7 +60,7 @@ export function HistoryPage() {
         <span aria-hidden className="size-2 rounded-full" style={{ background: `var(--accent-${DOT[entry.kind]})`, boxShadow: `0 0 8px var(--accent-${DOT[entry.kind]})` }} />
         <span className="min-w-0 text-[length:13px] leading-5 text-fg-strong">
           <span className="text-fg-secondary">{[entry.actor, t(`history.${entry.kind}`)].filter(Boolean).join(" · ")}</span>{" "}
-          <a href={entry.href} className="wrap-anywhere text-fg-strong underline-offset-2 outline-none hover:underline focus-visible:focus-ring">{entry.title || t(`history.${entry.kind}`)}</a>
+          <a href={entry.href} className="inline-flex min-h-11 items-center wrap-anywhere text-fg-strong underline-offset-2 outline-none hover:underline focus-visible:focus-ring md:inline md:min-h-0">{entry.title || t(`history.${entry.kind}`)}</a>
           {entry.taskId ? <a href={`#/tasks?${entry.project ? `project=${encodeURIComponent(entry.project)}&` : ""}task=${encodeURIComponent(entry.taskId)}`} className="ml-2 break-all text-fg-link underline outline-none focus-visible:focus-ring">{entry.taskId}</a> : null}
           {entry.status ? <span className="ml-2 text-fg-muted">{entry.status}</span> : null}
           {entry.detail ? <p className="m-0 whitespace-pre-wrap break-words text-fg-secondary">{entry.detail}</p> : null}

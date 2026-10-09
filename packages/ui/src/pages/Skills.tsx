@@ -294,7 +294,9 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
       ) : null}
       <ErrorNote error={doc.error} />
       {doc.loading ? <p className="m-0 text-[13px] text-[var(--text-muted)]">{t("common.loading")}</p> : null}
-      <SkillFields parts={parts} onChange={setParts} readOnly={!editable} nameLocked idPrefix={`skill-${skill.key}`} />
+      <div data-skill-doc className="flex flex-col gap-4">
+        <SkillFields parts={parts} onChange={setParts} readOnly={!editable} nameLocked idPrefix={`skill-${skill.key}`} />
+      </div>
       {editable && dirty ? (
         <>
           <Input placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} aria-label={t("docs.note")} />
