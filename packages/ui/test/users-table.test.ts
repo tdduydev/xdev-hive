@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { HiveSystem, HubUser } from "@xdev-hive/core";
-import { allSelected, bulkTargets, filterCounts, filterUsers, initials, orgLegend, orgTree, paginate, permissionMatrix, roleCounts, sortUsers, userStatus } from "#ui/lib/users-table.ts";
+import type { ChatDefaults, HiveSystem, HubUser, Machine } from "@xdev-hive/core";
+import { allSelected, bulkTargets, filterCounts, filterUsers, initials, orgLegend, orgTree, paginate, permissionMatrix, roleCounts, serviceAgents, sortUsers, userStatus } from "#ui/lib/users-table.ts";
 
 const user = (id: string, over: Partial<HubUser> = {}): HubUser => ({ id, username: id, displayName: id.toUpperCase(), admin: false, disabled: false, mustChangePassword: false, createdAt: "", lastLoginAt: null, grants: {}, shared: null, sso: false, ...over });
 const users = [
@@ -61,5 +61,18 @@ describe("users table helpers (R-72l)", () => {
     assert.deepEqual(pay.roles.map((r) => [r.role, r.people.map((p) => p.id)]), [["lead", ["binh"]], ["custom", ["dung"]]]);
     assert.equal(pay.count, 2);
     assert.equal(orgLegend(tree).viewer, 1);
+  });
+
+  it("serviceAgents lists enabled profiles of machines holding the repo and resolves the leader", () => {
+    const profile = (id: string, over = {}) => ({ id, label: id, kind: "claude", enabled: true, installed: true, ...over });
+    const machine = (id: string, projects: string[], profiles: unknown[], online = true) => ({ id, machine: `${id}-mac`, online, projects, profiles }) as unknown as Machine;
+    const machines = [machine("m1", ["pay"], [profile("a"), profile("off", { enabled: false }), profile("gone", { installed: false })]), machine("m2", ["web"], [profile("b", { kind: "codex" })], false)];
+    const defaults = { machineId: "m2", profileId: "b" } as ChatDefaults;
+    const pay = serviceAgents("pay", machines, defaults);
+    assert.deepEqual(pay.agents.map((a) => a.key), ["m1/a"]);
+    assert.deepEqual(pay.leader, { machine: "m2-mac", label: "b" });
+    assert.equal(serviceAgents("web", machines, null).leader, null);
+    assert.equal(serviceAgents("web", machines, { machineId: "zz", profileId: null } as ChatDefaults).leader, null);
+    assert.equal(serviceAgents("web", machines, null).agents[0]!.online, false);
   });
 });
