@@ -487,6 +487,12 @@ async function main() {
       await tab.click('.hive-mobile-nav a[href="#/tasks"]');
       await tab.waitFor("tasks selected", () => location.hash === "#/tasks" && document.querySelector('.hive-mobile-nav a[href="#/tasks"]')?.getAttribute("aria-current") === "page");
     } else {
+      const toggleVisible = await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      });
+      expect(toggleVisible, "expanded desktop sidebar has a visible collapse button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
       const width = await tab.waitFor("collapsed navigation rail", () => {
         const nav = document.querySelector('.hive-sidebar-rail');
@@ -497,6 +503,11 @@ async function main() {
       await tab.waitFor("rail navigates", () => location.hash === "#/tasks");
       await tab.reload();
       await tab.waitFor("rail preference survives reload", () => !!document.querySelector('.hive-sidebar-rail'));
+      expect(await tab.eval(() => {
+        const button = document.querySelector('.hive-sidebar-toggle');
+        const rect = button?.getBoundingClientRect();
+        return !!rect && getComputedStyle(button).display !== 'none' && rect.width > 0 && rect.height > 0;
+      }), "collapsed desktop sidebar has a visible expand button");
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
     await tab.eval(() => document.querySelector('.hive-skip-link').focus());
@@ -1108,8 +1119,8 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Nghiệm thu & phát hành", "Dự án & tính năng", "Agent đang chạy", "Tài liệu", "Memory", "Skill", "Tệp của agent", "Lịch sử", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
@@ -2751,8 +2762,10 @@ async function main() {
     await tab.waitFor('retry finished', () => document.querySelector('[data-chat-thread]').textContent.includes('Đã thử lại cùng tệp.'));
     const metrics = await tab.eval(() => {
       const input = document.querySelector('[data-chat-commands] textarea').getBoundingClientRect();
-      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize) };
+      const composer = document.querySelector('[data-chat-thread] > footer');
+      return { overflow: document.documentElement.scrollWidth > innerWidth, inputBottom: input.bottom, height: innerHeight, font: parseFloat(getComputedStyle(document.querySelector('[data-chat-commands] textarea')).fontSize), composerVisible: !!composer && getComputedStyle(composer).display !== 'none' && composer.getBoundingClientRect().height > 0 };
     });
+    expect(metrics.composerVisible, 'Chat thread footer keeps its composer visible inside the web shell');
     expect(!metrics.overflow && metrics.inputBottom <= metrics.height, `composer stays in viewport: ${JSON.stringify(metrics)}`);
     if (mobile) {
       expect(metrics.font >= 16, 'phone composer text >=16px');
