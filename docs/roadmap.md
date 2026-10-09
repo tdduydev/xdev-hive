@@ -361,8 +361,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **72. cosmic-redesign** (hỏi 8/10: "đọc thiết kế về làm giao diện"; thiết kế từ Claude Design project `e9ddc9b3…`, bản sao `docs/design/hive-2026-10/`; chọn: tối theo thiết kế + sáng suy ra, dùng nguyên asset của thiết kế, cả 20 trang một đợt). Spec: [docs/specs/72-cosmic-redesign.md](specs/72-cosmic-redesign.md). Tách:
   - [x] **72a. tokens-primitives** (0.152.0): token tối/sáng, Inter tự host, nền sao, component dùng chung (nút kính, card, tag, badge, input, toggle).
   - [x] **72b. shell** (0.152.0): sidebar 3 nhóm, bộ chọn phạm vi, thanh trên, Sáng/Tối, ngăn kéo mobile.
-  - [x] **72c. today** (0.152.0) · [ ] **72d. tasks** · [ ] **72e. runs** · [x] **72f. docs** (0.154.0) · [x] **72g. machines** · [x] **72h. chat**
-  - [ ] **72i. pipeline-features** · [ ] **72j. knowledge** (Memory, Skill, Artifact) · [x] **72k. history-graph** (0.154.0) · [x] **72l. settings-admin** (0.154.0) · [x] **72m. terminal-start** (0.154.0)
+  - [x] **72c. today** (0.152.0) · [ ] **72d. tasks** · [x] **72e. runs** (0.155.0) · [x] **72f. docs** (0.154.0) · [x] **72g. machines** · [x] **72h. chat**
+  - [x] **72i. pipeline-features** (0.155.0) · [x] **72j. knowledge** (0.155.0; Memory, Skill, Artifact) · [x] **72k. history-graph** (0.154.0) · [x] **72l. settings-admin** (0.154.0) · [x] **72m. terminal-start** (0.154.0)
   - [ ] **72n. e2e-screens**: e2e web/mobile, smoke desktop, bộ ảnh tối/sáng 1440 và 390.
 
 - **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
@@ -391,7 +391,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **76e. doc-review**: hộp *Chờ bạn duyệt*, nút Yêu cầu sửa và Rút, Reviewer duyệt được skill và AGENTS.md, người duyệt theo đường dẫn, nhật ký duyệt.
   - [ ] **76f. admin-area**: nhóm Quản trị trên web (thay 73e).
   - [x] **76g. ui-kit** (0.153.0): tách `packages/ui-kit` (tokens, primitive, i18n runtime), sau khi lô giao diện 72 vào main.
-  - [ ] **76h. two-shells**: `WebApp` và `DesktopApp` riêng, trang của máy chuyển về `apps/desktop`, trang web chuyển về `apps/web/client` (thay 73d).
+  - [x] **76h. two-shells** (0.155.0): `WebApp` và `DesktopApp` riêng, trang của máy chuyển về `apps/desktop`, trang web chuyển về `apps/web/client` (thay 73d).
   - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
 
 - **77. client-perf** (hỏi 9/10: "mấy app client này cần làm gì để tối ưu không, cache đồ nữa"). Người dùng trả lời 9/10: dùng TanStack Query, làm SSE ngay đợt này, cache truy vấn trong IndexedDB (xoá khi đăng xuất hoặc đổi quyền). Spec: [docs/specs/77-client-perf.md](specs/77-client-perf.md). Rà soát task theo kiến trúc 76/77: [docs/specs/76-task-triage.md](specs/76-task-triage.md). Tách:
