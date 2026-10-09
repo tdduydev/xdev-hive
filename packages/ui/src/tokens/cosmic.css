@@ -51,3 +51,17 @@
 --page-background:radial-gradient(1px 1px at 22px 34px,var(--star-1),transparent 60%),radial-gradient(1px 1px at 140px 90px,var(--star-2),transparent 60%),radial-gradient(1px 1px at 210px 180px,var(--star-3),transparent 60%),radial-gradient(1px 1px at 80px 220px,var(--star-4),transparent 60%),radial-gradient(1.5px 1.5px at 260px 40px,var(--star-5),transparent 60%),var(--page-gradient);
 }
 [data-theme="dark"]{--surface-violet:#38343F;--star-1:rgba(255,255,255,.45);--star-2:rgba(255,255,255,.3);--star-3:rgba(255,255,255,.35);--star-4:rgba(255,255,255,.22);--star-5:rgba(255,255,255,.28)}
+/* R-72j: measures the Memory/Skill/Artifact template uses (text-micro/body-sm/caption of the design tokens differ from the legacy --type-* ones). */
+:root,[data-theme]{
+--text-faint:rgba(33,31,40,.55);--violet-soft:#6547E5;--font-code-design:'SF Mono',ui-monospace,Menlo,monospace;
+--design-micro:600 11px/16px var(--font-sans);--design-caption:500 12px/18px var(--font-sans);--design-body-sm:500 14px/22px var(--font-sans);
+--tint-violet:rgba(123,97,255,.18);--tint-violet-soft:rgba(123,97,255,.14);--ring-violet:inset 0 0 0 1px rgba(123,97,255,.45);--ring-danger:inset 0 0 0 1px rgba(232,86,86,.3);
+--code-well:#F3F1FA;--code-well-fg:#3B2F8F;--hairline:rgba(35,28,55,.06);
+}
+[data-theme="dark"]{--text-faint:rgba(255,255,255,.43);--violet-soft:#9580FF;--code-well:#0B0B0D;--code-well-fg:#D9D6FF;--hairline:rgba(255,255,255,.06)}
+/* Small label chips of the Memory/Skill cards (template: lb.bg / lb.color). */
+:root,[data-theme]{
+--chip-violet-bg:rgba(123,97,255,.14);--chip-violet-fg:#4B30B8;--chip-red-bg:rgba(232,86,86,.12);--chip-red-fg:#B82F2F;--chip-amber-bg:rgba(245,181,68,.22);--chip-amber-fg:#855500;--chip-grey-bg:rgba(35,28,55,.07);--chip-grey-fg:#55515F;
+--mark-changed:#855500;--mark-same:#137A48;
+}
+[data-theme="dark"]{--chip-violet-bg:rgba(123,97,255,.18);--chip-violet-fg:#B8A9FF;--chip-red-bg:rgba(232,86,86,.14);--chip-red-fg:#F2A0A0;--chip-amber-bg:rgba(245,181,68,.14);--chip-amber-fg:#F5CD86;--chip-grey-bg:rgba(255,255,255,.07);--chip-grey-fg:#BDBDC0;--mark-changed:#F5CD86;--mark-same:#8BE3B6}
