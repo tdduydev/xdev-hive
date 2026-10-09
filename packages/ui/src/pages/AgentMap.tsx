@@ -292,6 +292,7 @@ function MachineColumn({
           ))}
         </div>
       ) : null}
+      <MachineSetupBanner machine={m} onChanged={onChanged} />
       {!mayManage(me, m) ? <MachineTools machine={m} /> : null}
     </section>
   );
@@ -452,4 +453,41 @@ function PriorityInput({ value, busy, label, onSave }: { value: number; busy: bo
       />
     </label>
   );
+}
+
+
+/** Readers see missing setup; install actions stay behind the existing hub-admin API. */
+export function MachineSetupBanner({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client, me, projects } = useHive();
+  const t = useT();
+  const action = useAction();
+  const isAdmin = me.role === "admin" && !me.access;
+  const [open, setOpen] = useState(false);
+  const accessible = m.projects.filter(p => projects.includes(p));
+  const missing = useQuery(async () => (await Promise.all(accessible.map(project => client.call("machines.setupMissing", { project })))).flat().filter(x => x.machineId === m.id), [client, m.id, m.lastSeen, accessible.join("|")]);
+  const details = useQuery(() => open && isAdmin ? client.call("admin.machines", {}) : Promise.resolve([]), [client, open, isAdmin, m.lastSeen]);
+  const items = [...new Map((missing.data ?? []).flatMap(x => x.items).map(i => [i.id, i])).values()];
+  const detail = details.data?.find(x => x.id === m.id);
+  const installable = [...(detail?.setup?.machine ?? []), ...(detail?.setup?.projects ?? []).flatMap(p => p.items)];
+  if (!items.length) return <ErrorNote error={missing.error} />;
+  return <div data-machine-setup={m.machine} className="flex flex-wrap items-center gap-3 rounded-[14px] bg-[var(--danger-panel-bg)] px-[14px] py-3 text-fg shadow-[var(--danger-panel-ring)]">
+    <span className="min-w-0 flex-1 text-sm">{t("agentMap.setupMissing", { items: items.map(i => i.label).join(", ") })}</span>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild><Button size="sm" variant="glass" className="min-h-11 md:min-h-8">{t("start.doNow")}</Button></SheetTrigger>
+      <SheetContent><SheetHeader><SheetTitle>{m.machine}</SheetTitle><SheetDescription>{t("agentMap.setupMissing", { items: items.map(i => i.label).join(", ") })}</SheetDescription></SheetHeader>
+        <div className="flex flex-col gap-3 px-4">
+          {!isAdmin ? <p className="text-sm">{t("agentMap.setupAdmin")}</p> : null}
+          {details.loading ? <p role="status">{t("common.loading")}</p> : null}
+          {items.map(i => {
+            const pending = detail?.commands.find(c => c.itemId === i.id && ["pending", "running"].includes(c.status));
+            return <div key={i.id} className="flex flex-col gap-2 text-sm">
+              <span className="font-semibold">{i.label}</span><span className="break-words text-fg-muted">{i.detail}</span>
+              {pending ? <span role="status">{t(`commandStatus.${pending.status}`)}</span> : installable.find(x => x.id === i.id)?.action ? <Button disabled={action.busy} onClick={() => void action.run(async () => { await client.call("admin.commandCreate", { machineId: m.id, itemId: i.id }); onChanged(); setOpen(false); })}>{t("admin.requestInstall")}</Button> : null}
+            </div>;
+          })}
+          <ErrorNote error={action.error ?? details.error} />
+        </div>
+      </SheetContent>
+    </Sheet>
+  </div>;
 }

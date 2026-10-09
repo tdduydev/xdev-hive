@@ -592,6 +592,16 @@ export const schemas = {
     version: z.string().max(40).default(""),
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
+    system: z.object({
+      os: z.enum(["macos", "ubuntu", "windows", "linux"]),
+      osName: z.string().min(1).max(200),
+      hardware: z.string().min(1).max(300),
+      uptime: z.string().max(100).optional(),
+      uptimeSeconds: z.number().finite().min(0).max(1e10).optional(),
+      cpu: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), cores: z.number().int().min(1).max(65536).optional(), load: z.number().min(0).max(1e6).optional() }).optional(),
+      ram: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), usedBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+      disk: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), freeBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+    }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
     worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
