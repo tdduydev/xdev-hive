@@ -31,6 +31,17 @@ function cpuTimes() {
 export class SystemSampler {
   #previous = cpuTimes();
   #identity?: Promise<Pick<MachineSystem, "os" | "osName" | "hardware">>;
+  #refreshing: Promise<MachineSystem | undefined> | null = null;
+  /** The last finished sample; the heartbeat sends this instead of waiting on statfs or the OS commands. */
+  latest: MachineSystem | undefined;
+
+  /** One sample at a time: a slow disk or OS command makes the next timer tick share it rather than pile up. */
+  refresh(root: string): Promise<MachineSystem | undefined> {
+    this.#refreshing ??= this.sample(root)
+      .then((s) => (this.latest = s), () => this.latest)
+      .finally(() => { this.#refreshing = null; });
+    return this.#refreshing;
+  }
 
   async #identify(): Promise<Pick<MachineSystem, "os" | "osName" | "hardware">> {
     const platform = os.platform();

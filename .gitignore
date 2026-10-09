@@ -27,3 +27,5 @@ deploy/.env
 __pycache__/
 # e2e runs that pass an output dir inside the repo leave screenshots here.
 apps/web/artifacts/
+# Screenshots e2e/smoke runs leave beside a workspace; evidence goes to .xdev-hive/artifacts instead.
+apps/*/.xdev-hive/

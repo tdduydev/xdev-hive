@@ -1606,6 +1606,9 @@ describe("Runner", () => {
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await until(() => a.runner.log(run.id).includes("thinking"));
     assert.equal((await a.runner.heartbeat())?.duplicate, false);
+    assert.equal((await a.hive.call("machines.list", {}, admin))[0]!.system, undefined, "the heartbeat does not wait for a first sample");
+    await a.runner.sampleSystem();
+    await a.runner.heartbeat();
     const [m] = await a.hive.call("machines.list", {}, admin);
     assert.equal(m!.id, "runner.duy-mbp@duy-macbook");
     assert.ok(m!.system?.osName && m!.system.hardware, "the runner sends host identity through heartbeat");
