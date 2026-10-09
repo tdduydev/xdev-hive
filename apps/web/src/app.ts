@@ -157,6 +157,23 @@ const grantLabel = (g: Grant) => (grantRole(g) === "custom" ? [...grantPermissio
 const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 
 /** Hub admins: an admin account, or an admin token of no account (the bootstrap / pre-account tokens). */
+/**
+ * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants), "own" (a person on their
+ * own things, each handler checks the rest). A name not here is refused. Spec 76 P0-4.
+ */
+const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
+  "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
+  "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
+  "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
+  "alerts.list": "hubAdmin", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
+  "automation.list": "hubAdmin", "automation.history": "hubAdmin", "automation.save": "hubAdmin", "automation.dryRun": "hubAdmin", "automation.retry": "hubAdmin",
+  "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
+  "users.list": "hubAdmin", "users.create": "hubAdmin", "users.update": "hubAdmin", "users.setGrants": "hubAdmin", "users.resetPassword": "hubAdmin",
+};
+
+/** Changes whose handler writes no audit line of its own. */
+const WEB_RPC_AUDITED = new Set(["releases.notes", "alerts.ack", "webhooks.test", "automation.save"]);
+
 function requireHubAdmin(res: Response): void {
   const actor = actorOf(res);
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
@@ -338,7 +355,9 @@ export function createHubApp({
           res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token.", key: "errors.invalidToken" } });
           return;
         }
-        if ((actor.runCredential || actor.mcpCredential) && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
+        // The reply's token also fetches the message's files (the runner reads them before it writes).
+        const chatFile = actor.chatReply !== undefined && req.method === "GET" && req.path.startsWith("/api/chat/files/");
+        if ((actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) && !chatFile && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
           res.status(403).json({ error: { code: "forbidden", message: "Agent credentials are limited to agent calls." } });
           return;
         }
@@ -695,7 +714,15 @@ export function createHubApp({
       const actor = actorOf(res);
       const user = userOf(res);
       // Web-only RPCs (tokens, releases, account settings) do not pass through SqliteHive.call.
-      if ((actor.runCredential || actor.mcpCredential) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // A chat reply's token is an agent's too: it must not reach tokens.create or any other web-only RPC (spec 76, P0-1).
+      if ((actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // Every web-only RPC has a level here; one not listed is refused rather than falling through (spec 76, P0-4).
+      if (!isMethod(method)) {
+        const level = typeof method === "string" ? WEB_RPC[method] ?? (method.startsWith("terminal.") ? "own" : undefined) : undefined;
+        if (!level) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
+        if (level === "hubAdmin") requireHubAdmin(res);
+        if (level === "hubAdmin" && WEB_RPC_AUDITED.has(method as string)) hive.audit(actor, method as string, String(i.id ?? i.version ?? i.name ?? "—"));
+      }
 
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
