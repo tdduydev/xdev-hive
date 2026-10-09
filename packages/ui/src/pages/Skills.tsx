@@ -294,7 +294,8 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
       ) : null}
       <ErrorNote error={doc.error} />
       {doc.loading ? <p className="m-0 text-[13px] text-[var(--text-muted)]">{t("common.loading")}</p> : null}
-      <div data-skill-doc className="flex flex-col gap-4">
+      {/* Marked once SKILL.md has loaded: the desktop smoke checks the skill's content is on the page, not the empty form. */}
+      <div data-skill-doc={doc.data ? "" : undefined} className="flex flex-col gap-4">
         <SkillFields parts={parts} onChange={setParts} readOnly={!editable} nameLocked idPrefix={`skill-${skill.key}`} />
       </div>
       {editable && dirty ? (
