@@ -885,6 +885,22 @@ export const en: Catalog = {
       approved: "Installed {label} as requested",
       declined: "Declined installing {label}",
     },
+    // Today in the cosmic design (72c).
+    page: {
+      sub: "What needs you today: review, fix and decide — every item carries enough context to act on right away.",
+      tabOpen: "Waiting",
+      tabDone: "Done",
+      keys: "J / K to select",
+      empty: "Nothing is waiting for you.",
+      noteTitle: "Note to send along",
+      foot: "↵ runs the first button · E marks it seen",
+      startLeft: "This machine has {count} steps left before it can take work",
+      startOpen: "Open Start",
+      oldest: "Oldest: {when}",
+      thisDevice: "On this device",
+      startLater: "Later",
+      group: { approve: "To approve", fix: "To fix", machine: "Machines" },
+    },
   },
   crash: {
     title: "This page ran into an error",
