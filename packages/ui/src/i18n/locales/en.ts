@@ -578,6 +578,7 @@ export const en: Catalog = {
       noReleases: "The hub has no build yet. The release script uploads them when HIVE_RELEASE_HUB and HIVE_RELEASE_TOKEN (an admin token) are set.",
       saved: "Rollout saved",
       notes: "Release notes",
+      stateKind: { success: "On target", running: "Downloading", info: "Ready / installing", danger: "Failed", neutral: "Not updated" },
       col: { machine: "Machine", current: "Current", target: "Target", state: "Update", seen: "Reported" },
       state: { idle: "Not downloaded", downloading: "Downloading {percent}%", ready: "Downloaded", installing: "Installing", failed: "Failed", current: "On the target", none: "—" },
       noun: "machines",
@@ -1034,6 +1035,8 @@ export const en: Catalog = {
   },
   settingsRows: {
     allowHint: "One host per entry, comma-separated.", modelsHint: "Empty means any model; names separated by commas.", mcpToolHint: "Let agents use this server.",
+    guideOwn: "Project-specific", guideTeam: "Team default", commandsHint: "Quick commands the leader accepts in chat.", autoKindHint: "On: the leader runs it without asking again.",
+    projectCount: "{count} projects", outside: "Not in any system", noProjects: "No projects.",
     project: "Project", projectHint: "Changes below apply to this project.",
     autoDispatch: "Auto-dispatch", autoDispatchHint: "Eligible tasks go to an agent without waiting for a person.",
     fixRoundsHint: "How many times an agent fixes work after a failed review or test.",
@@ -4641,6 +4644,7 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     sharedDefaultHint: "nothing set: see shared data, propose and write memory when allowed in some service",
   },
   // Quản trị operations tabs on the cosmic stats / cards / table blocks (R-72l).
+  adminTable: { empty: "Nothing here yet.", search: "Search…", all: "All", noMatch: "No rows match.", prev: "Previous", next: "Next", range: "{from}–{to} of {total}" },
   adminOps: {
     budgets: { caps: "Caps", full: "At the cap", fullNote: "new runs held until the next period", near: "Near the cap", nearNote: "70% or more used" },
     alerts: { turnOn: "Turn on", turnOff: "Turn off", openNote: "{count} not acknowledged", high: "High open now", highNote: "handle first", recentNote: "last 7 days", state: "State" },

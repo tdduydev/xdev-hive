@@ -27,6 +27,7 @@ import { ProposalsPage } from "#ui/pages/Proposals.tsx";
 import { PolicyTab } from "./Admin.tsx";
 import { AgentRows, PolicyRows } from "./SettingsRows.tsx";
 import { AgentPolicyRows } from "./AgentPolicyRows.tsx";
+import { ContextRows, LeaderRows, MemberRows, SystemRows, TabFrame, ToolRows } from "./SettingsTabRows.tsx";
 import { BudgetsCard } from "./admin/Budgets.tsx";
 import { OpsAlerts } from "./admin/Alerts.tsx";
 import { OverviewWithRange, OpsPage } from "./admin/frame.tsx";
@@ -52,10 +53,13 @@ export function SettingsPage() {
   const { client, me, projects, scope } = useHive();
   const t = useT();
   const [wanted] = useHashParam("tab");
-  const [editing, setEditing] = useState(false);
+  // The tab being edited, not a flag: a tab reached by address (not a chip) starts on its rows.
+  const [editingTab, setEditingTab] = useState<SettingsTab | null>(null);
   const tabs = settingsTabs(me, projects, webCaps(client));
   const tab = pickTab(tabs, wanted);
   if (!tab) return null;
+  const editing = editingTab === tab;
+  const setEditing = (on: boolean) => setEditingTab(on ? tab : null);
   const leaderProjects = projects.filter((p) => canEditChatSettings(me, p));
   const body: Record<SettingsTab, () => ReactNode> = {
     policy: () => <PolicyRows />,
@@ -76,11 +80,18 @@ export function SettingsPage() {
     systems: () => <SystemsPage policy={false} />,
   };
   const summary = tab !== "policy" && tab !== "agent";
+  const rows: Record<Exclude<SettingsTab, "policy" | "agent">, () => ReactNode> = {
+    tools: () => <ToolRows />,
+    context: () => <ContextRows />,
+    leader: () => <LeaderRows projects={leaderProjects} />,
+    members: () => <MemberRows />,
+    systems: () => <SystemRows />,
+  };
   // Chips on top, rows below (design lines 1135–1172); the cards that already exist stay as the editors behind "Sửa".
   return <div className="mx-auto h-full w-full max-w-7xl overflow-auto p-4 md:p-6" data-settings-tidy>
     <nav aria-label={t("sections.tabs")} className="cx-chips">{tabs.map((id) => <a key={id} href={`#/settings?tab=${id}`} data-page-tab={id} data-active={id === tab} aria-current={id === tab ? "page" : undefined} onClick={() => setEditing(false)} className="cosmic-tag" data-tone="neutral">{t(`sections.settings.${id}`)}</a>)}</nav>
     <main className="min-w-0"><h1 className="sr-only">{t(`sections.settings.${tab}`)}</h1>
-      {summary ? <div className="cx-card"><div className="cx-row"><span><strong>{t(`sections.settings.${tab}`)}</strong><small>{t(`settingsTidy.summary.${tab}`)}</small></span><Button variant="glass" size="sm" className="max-md:min-h-11" onClick={() => setEditing(true)}>{t("settingsTidy.edit")}</Button></div></div> : body[tab]()}
+      {summary && !editing ? <TabFrame tab={tab} onEdit={() => setEditing(true)}>{rows[tab]()}</TabFrame> : summary ? null : body[tab]()}
       {editing && summary ? <section className="cx-editor" data-settings-editor><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{t(`sections.settings.${tab}`)}</h2><Button variant="ghost" size="sm" className="max-md:min-h-11" onClick={() => setEditing(false)}>{t("settingsTidy.close")}</Button></div>{body[tab]()}</section> : null}
     </main>
   </div>;

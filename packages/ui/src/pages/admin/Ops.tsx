@@ -21,7 +21,7 @@ import { ACTION_LABEL, MachineCard, useHubTools } from "#ui/pages/Admin.tsx";
 import { Costs } from "#ui/pages/Machines.tsx";
 import { EventFeed, OpenAlerts } from "./Alerts.tsx";
 import { BudgetsCard } from "./Budgets.tsx";
-import { AdminStats } from "./cosmic.tsx";
+import { AdminStats, AdminTable, type AdminRow } from "./cosmic.tsx";
 
 const REFRESH_MS = 15_000;
 
@@ -584,31 +584,24 @@ export function OpsAudit() {
     ["projects", t("nav.systems")],
     ["connections", t("ops.nav.webhooks")],
   ];
-  const columns: Array<Column<AuditEntry>> = [
-    { key: "at", label: t("ops.col.at"), width: "130px", render: (e) => formatTime(e.at), sortValue: (e) => e.at },
-    { key: "actor", label: t("ops.col.actor"), width: "minmax(140px,0.8fr)", mono: true, render: (e) => e.actor, sortValue: (e) => e.actor },
-    { key: "agent", label: t("ops.col.agent"), width: "minmax(120px,0.6fr)", mono: true, render: (e) => e.agent ?? "—", sub: (e) => (e.agent && e.onBehalf ? t("ops.audit.onBehalf", { user: e.onBehalf }) : null), sortValue: (e) => e.agent ?? "" },
-    {
-      key: "run",
-      label: t("ops.col.run"),
-      width: "96px",
-      mono: true,
+  const groupLabel = (e: AuditEntry) => groups.find(([g]) => g === groupOf(e.action))?.[1] ?? "";
+  const rows: AdminRow[] = (log.data ?? []).map((e) => ({
+    key: String(e.id),
+    cells: [
+      { text: formatTime(e.at), mono: true },
+      { text: e.actor, mono: true },
+      { text: e.agent ?? "—", mono: true, sub: e.agent && e.onBehalf ? t("ops.audit.onBehalf", { user: e.onBehalf }) : null },
       // Opens the run on Lượt chạy (OpsRuns reads ?run=).
-      render: (e) =>
-        e.run ? (
-          <a className="text-primary underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(e.run)}`}>
-            {e.run}
-          </a>
-        ) : (
-          "—"
-        ),
-      sortValue: (e) => e.run ?? "",
-    },
-    { key: "action", label: t("ops.col.action"), width: "minmax(150px,0.8fr)", render: (e) => label(e.action), sortValue: (e) => e.action },
-    { key: "group", label: t("ops.group2"), width: "110px", render: (e) => groups.find(([g]) => g === groupOf(e.action))?.[1] ?? "" },
-    { key: "target", label: t("ops.col.target"), width: "minmax(140px,0.8fr)", mono: true, render: (e) => e.target, title: (e) => e.target },
-    { key: "detail", label: t("ops.col.detail"), width: "minmax(200px,1.4fr)", render: (e) => detail(e), title: (e) => detail(e) },
-  ];
+      { text: e.run ? <a className="text-primary underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(e.run)}`}>{e.run}</a> : "—", mono: true },
+      { text: label(e.action), strong: true },
+      { text: groupLabel(e) },
+      { text: e.target, mono: true, title: e.target },
+      { text: detail(e), title: detail(e) },
+    ],
+    sort: [e.at, e.actor, e.agent ?? "", e.run ?? "", label(e.action), groupLabel(e), e.target, detail(e)],
+    search: `${e.actor} ${e.agent ?? ""} ${e.onBehalf ?? ""} ${e.run ?? ""} ${label(e.action)} ${e.action} ${e.target} ${e.detail}`,
+    tags: { group: groupOf(e.action), action: e.action },
+  }));
   return (
     <div className="cx-ops-stack">
       <form
@@ -647,19 +640,19 @@ export function OpsAudit() {
         ) : null}
       </form>
       <ErrorNote error={log.error} />
-      {/* Kept as the DataTable: the audit's search, filters, sorting and paging (and its mobile cards) live there. */}
-      <div className="cx-ops-data"><DataTable responsive
-        rows={log.data ?? []}
-        columns={columns}
-        rowKey={(e) => String(e.id)}
-        noun={t("ops.noun.entries")}
+      <AdminTable
+        cols={[t("ops.col.at"), t("ops.col.actor"), t("ops.col.agent"), t("ops.col.run"), t("ops.col.action"), t("ops.group2"), t("ops.col.target"), t("ops.col.detail")]}
+        grid="130px minmax(140px,0.8fr) minmax(120px,0.6fr) 96px minmax(150px,0.8fr) 110px minmax(140px,0.8fr) minmax(200px,1.4fr)"
         minWidth={1200}
-        searchText={(e) => `${e.actor} ${e.agent ?? ""} ${e.onBehalf ?? ""} ${e.run ?? ""} ${e.action} ${e.target} ${e.detail}`}
+        rows={rows}
+        searchable
+        noun={t("ops.noun.entries")}
+        empty={t("adminTable.empty")}
         filters={[
-          { key: "group", label: t("ops.group2"), value: (e) => groupOf(e.action), options: groups.map(([value, l]) => ({ value, label: l })) },
-          { key: "action", label: t("ops.col.action"), value: (e) => e.action, options: Object.keys(ACTION_LABEL).map((a) => ({ value: a, label: label(a) })) },
+          { key: "group", label: t("ops.group2"), options: groups.map(([value, l]) => ({ value, label: l })) },
+          { key: "action", label: t("ops.col.action"), options: Object.keys(ACTION_LABEL).map((a) => ({ value: a, label: label(a) })) },
         ]}
-      /></div>
+      />
     </div>
   );
 }
