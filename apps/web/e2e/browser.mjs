@@ -3651,8 +3651,10 @@ async function main() {
     });
     await tab.key("j");
     if (!mobile) expect(await selectedKey() !== firstKey, "J selects next row");
+    if (!mobile) expect(await tab.eval(() => document.activeElement?.getAttribute("data-inbox-key") === document.querySelector('[data-inbox-key][aria-selected="true"]')?.getAttribute("data-inbox-key")), "J moves focus with selection");
     await tab.key("k");
     if (!mobile) expect(await selectedKey() === firstKey, "K selects previous row");
+    if (!mobile) expect(await tab.eval(() => document.activeElement?.getAttribute("data-inbox-key") === document.querySelector('[data-inbox-key][aria-selected="true"]')?.getAttribute("data-inbox-key")), "K returns focus to selected row");
     await tab.key("e");
     await tab.waitFor("E marks item handled", (key) => !document.querySelector(`[data-inbox-key="${key}"]`), firstKey);
     const pending = await rpc("memory.write", { project: "payment", kind: "convention", content: "Today share action fixture" }, people.minh.token);
