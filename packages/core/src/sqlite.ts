@@ -840,6 +840,11 @@ const MIGRATIONS: string[] = [
    ALTER TABLE machines ADD COLUMN runner_change TEXT;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
+  `ALTER TABLE run_records ADD COLUMN start_sha TEXT;
+   ALTER TABLE run_records ADD COLUMN remote_sha TEXT;
+   ALTER TABLE run_records ADD COLUMN pushed INTEGER;
+   ALTER TABLE run_records ADD COLUMN push_error TEXT;
+   ALTER TABLE machines ADD COLUMN git_push TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1117,6 +1122,8 @@ function toRunRecord(r: Row, withLog: boolean): RunRecord {
     parentMachineId: s(r.parent_machine_id) ?? (r.parent_run ? str(r.machine_id) : null),
     baseSha: s(r.base_sha),
     headSha: s(r.head_sha),
+    startSha: s(r.start_sha), remoteSha: s(r.remote_sha),
+    pushed: r.pushed == null ? null : num(r.pushed) === 1, pushError: s(r.push_error),
     ...(withLog ? { instructions: s(r.instructions) ?? s(r.request_instructions) } : {}),
     verdict: s(r.verdict) as Verdict | null,
     ...(withLog ? { log: str(r.log), patch: r.patch == null ? null : str(r.patch), diffReview: r.diff_review == null ? null : JSON.parse(str(r.diff_review)) } : {}),
@@ -4332,6 +4339,7 @@ export class SqliteHive implements HiveBackend {
     if (!m.projects.includes(project)) {
       throw new HiveError("bad_request", `${m.machine} has no repo for ${project}.`, { key: "errors.machineNoRepo", vars: { ...name, project } });
     }
+    if (task && this.#cannotPushTask(m.id, project, task.id)) throw new HiveError("conflict", "Machine cannot push this task branch.", { key: "errors.machineCannotPushBranch", vars: { machine: m.machine, project } });
     if (task) {
       const taskId = task.id;
       if (task.status === "done") throw new HiveError("bad_request", `Task ${taskId} is done.`, { key: "errors.taskDone", vars: { id: taskId } });
@@ -4518,11 +4526,11 @@ export class SqliteHive implements HiveBackend {
    * run now (on, installed, not known signed out, under its stop threshold, not resting, the pinned one if any), less
    * the runs it has on those profiles and the requests sent to the machine it has not answered.
    */
-  #freeMachine(project: string, profileId: string | null): string | null {
+  #freeMachine(project: string, profileId: string | null, taskId?: string): string | null {
     const waiting = this.#waitingRequests();
     let best: { id: string; machine: string; free: number } | null = null;
     for (const m of (this.db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
-      const free = this.#freePlaces(m, project, profileId, waiting);
+      const free = taskId && this.#cannotPushTask(m.id, project, taskId) ? 0 : this.#freePlaces(m, project, profileId, waiting);
       if (free > 0 && (!best || free > best.free || (free === best.free && m.machine < best.machine))) best = { id: m.id, machine: m.machine, free };
     }
     return best?.id ?? null;
@@ -4536,6 +4544,12 @@ export class SqliteHive implements HiveBackend {
         num(r.n),
       ]),
     );
+  }
+
+  #cannotPushTask(machineId: string, project: string, taskId?: string): boolean {
+    const row = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
+    if (!row?.git_push || JSON.parse(str(row.git_push))[project] !== false) return false;
+    return !!this.db.prepare(`SELECT 1 FROM run_records WHERE project = ? AND pushed = 1 AND branch LIKE 'ai/%' ${taskId ? "AND task_id = ?" : ""} LIMIT 1`).get(project, ...(taskId ? [taskId] : []));
   }
 
   /** Free places of one machine for a project's run now, by the rule above; 0 when it could not take the run at all. */
@@ -4617,7 +4631,7 @@ export class SqliteHive implements HiveBackend {
     // and plan to run it on, when the item names none of its own.
     const agent = item.machineId === null ? task.agent : null;
     const profileId = item.profileId ?? agent?.profileId ?? null;
-    const machineId = item.machineId ?? agent?.machineId ?? this.#freeMachine(g.project, profileId);
+    const machineId = item.machineId ?? agent?.machineId ?? this.#freeMachine(g.project, profileId, task.id);
     if (!machineId) return "wait";
     try {
       const instructions = [g.instructions, item.instructions].filter(Boolean).join("\n\n");
@@ -4791,7 +4805,7 @@ export class SqliteHive implements HiveBackend {
         const free = (m.maxParallel ?? 1) - m.runs.length - (waiting.get(m.id) ?? 0) - this.#unreportedRequests(m);
         if (free <= 0) return [];
         return m.profiles.filter((p) => {
-          return this.#freePlaces(m, task.project, p.id, waiting) - this.#unreportedRequests(m, p.id) > 0 && this.#autoProfileAllowed(task, p, machines);
+          return !this.#cannotPushTask(m.id, task.project, task.id) && this.#freePlaces(m, task.project, p.id, waiting) - this.#unreportedRequests(m, p.id) > 0 && this.#autoProfileAllowed(task, p, machines);
         }).map((p) => ({ m, p, free }));
       }).sort((a, b) => (a.p.priority ?? 50) - (b.p.priority ?? 50) || b.free - a.free || a.m.id.localeCompare(b.m.id) || a.p.id.localeCompare(b.p.id));
       for (const { m, p } of candidates) {
@@ -4896,7 +4910,7 @@ export class SqliteHive implements HiveBackend {
         const prior = db.prepare("SELECT profile_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined;
         const retryMachines = (db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map(row => this.#toMachine(row));
         const choices = retryMachines.flatMap(machine => machine.profiles
-          .filter(profile => profile.redispatch && this.#autoProfileAllowed(task, profile, retryMachines) && (machine.id !== source.machineId || profile.id !== prior?.profile_id) && this.#freePlaces(machine, task.project, profile.id, waiting) - this.#unreportedRequests(machine, profile.id) > 0)
+          .filter(profile => !this.#cannotPushTask(machine.id, task.project, task.id) && profile.redispatch && this.#autoProfileAllowed(task, profile, retryMachines) && (machine.id !== source.machineId || profile.id !== prior?.profile_id) && this.#freePlaces(machine, task.project, profile.id, waiting) - this.#unreportedRequests(machine, profile.id) > 0)
           .map(profile => ({ machine, profile })))
           .sort((a, b) => (a.profile.priority ?? 50) - (b.profile.priority ?? 50));
         const choice = choices.find(({ machine, profile }) => {
@@ -4915,7 +4929,7 @@ export class SqliteHive implements HiveBackend {
         if (this.#queueClassify(task, m, { name: agent.by, role: "member" })) continue;
       }
       // A machine the hub no longer has: no places to count, and #agentWait says so before it looks at them.
-      const free = m ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m, agent.profileId) : 0;
+      const free = m && !this.#cannotPushTask(m.id, task.project, task.id) ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m, agent.profileId) : 0;
       const why = this.#agentWait(task, m, free);
       if (why) {
         if (groupFails(why.key)) this.#holdAgent(task.id, why);
@@ -5187,6 +5201,7 @@ export class SqliteHive implements HiveBackend {
       throw new HiveError("bad_request", `${m.machine} has no enabled profile ${profileId}.`, { key: "errors.profileNotOnMachine", vars: { ...name, id: profileId } });
     }
     const now = this.#now();
+    if (this.#cannotPushTask(m.id, task.project, task.id)) throw new HiveError("conflict", "Machine cannot push this task branch.", { key: "errors.machineCannotPushBranch", vars: { machine: m.machine, project: task.project } });
     db.prepare(
       `UPDATE tasks SET agent_machine = ?, agent_profile = ?, agent_order = ?, agent_by = ?, agent_at = ?,
          agent_request = NULL, agent_hold = NULL, updated_at = ? WHERE id = ?`,
@@ -5843,7 +5858,7 @@ export class SqliteHive implements HiveBackend {
     const branch = strOrNull(row.branch);
     // Only task branches are resumable; refs from a machine must never become shell or git options.
     if (source.continueBranch && (!branch || !/^ai\/[A-Za-z0-9._+/-]+$/.test(branch) || branch.includes(".."))) throw new HiveError("bad_request", "No resumable task branch.", { key: "errors.redispatchBranch" });
-    return { ...source, branch: source.continueBranch ? branch : null, baseSha: source.continueBranch ? strOrNull(row.base_sha) : null };
+    return { ...source, ...(source.continueBranch && row.head_sha ? { headSha: str(row.head_sha) } : {}), branch: source.continueBranch ? branch : null, baseSha: source.continueBranch ? strOrNull(row.base_sha) : null };
   }
 
   #assertRedispatchRunner(m: Machine, profileId: string | null): void {
@@ -8169,7 +8184,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8231,6 +8246,7 @@ export class SqliteHive implements HiveBackend {
             db.prepare("UPDATE machines SET runner_change = NULL WHERE id = ?").run(actor.name);
           }
           if (!runnerSettings && maxParallel !== undefined) db.prepare("UPDATE machines SET max_parallel = ? WHERE id = ?").run(maxParallel, actor.name);
+          if (gitPush !== undefined) db.prepare("UPDATE machines SET git_push = ? WHERE id = ?").run(JSON.stringify(gitPush), actor.name);
           if (acceptsRuns !== undefined) db.prepare("UPDATE machines SET accepts_runs = ? WHERE id = ?").run(acceptsRuns ? 1 : 0, actor.name);
           // Missing on older clients and cleared on the first heartbeat after a restart.
           db.prepare("UPDATE machines SET update_draining = ? WHERE id = ?").run(updateDraining ? 1 : 0, actor.name);
@@ -8417,6 +8433,9 @@ export class SqliteHive implements HiveBackend {
               ["instructions", r.instructions === undefined ? undefined : clean(r.instructions)],
               ["base_sha", r.baseSha],
               ["head_sha", r.headSha],
+              ["start_sha", r.startSha], ["remote_sha", r.remoteSha],
+              ["pushed", r.pushed == null ? r.pushed : r.pushed ? 1 : 0],
+              ["push_error", r.pushError === undefined ? undefined : clean(r.pushError)],
               ["verdict", verdict],
             ];
             const sent = ranOn.filter(([, v]) => v !== undefined);

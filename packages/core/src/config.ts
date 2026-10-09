@@ -12,6 +12,7 @@ import type { HiveBackend } from "./methods.ts";
 import { SqliteHive } from "./sqlite.ts";
 
 export const projectSchema = z.object({
+  git: z.object({ remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin") }).optional(),
   autoRelease: z.object({
     appRollout: z.boolean().default(false),
     prepare: z.array(z.string().min(1)).min(1).max(40),

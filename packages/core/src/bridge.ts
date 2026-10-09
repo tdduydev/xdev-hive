@@ -163,6 +163,7 @@ export interface DesktopProject {
   gitlabProject?: string;
   /** owner/repo on GitHub; set, or read from a GitHub remote, the project gets pull requests instead of GitLab MRs. */
   githubRepo?: string;
+  git?: { remote: string };
   targetBranch?: string;
   /** Projects of this machine whose checkout a run of this one reads, read-only (roadmap 38h). */
   references?: string[];
@@ -320,6 +321,10 @@ export interface AgentProfileStatus extends AgentProfile {
 }
 
 export interface AgentRun {
+  startSha?: string | null;
+  remoteSha?: string | null;
+  pushed?: boolean | null;
+  pushError?: string | null;
   allowedAgentKinds?: AgentKind[] | null;
   timeoutMinutes?: number | null;
   /** Resume hint saved after a timeout, including the last activity and committed branch tip. */
@@ -428,6 +433,8 @@ export interface CiFix {
  * on another vendor compares the branches and keeps one, which moves to ai/<task> and goes on as usual.
  */
 export interface BestOf {
+  /** Task remote tip at group creation: choosing a winner must not overwrite concurrent work. */
+  taskRemoteSha?: string | null;
   /** Shared by the candidates and their judge. */
   group: string;
   /** 1..of for a candidate; 0 for the judge. */
