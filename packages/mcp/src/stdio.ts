@@ -14,7 +14,8 @@ if (config.mode === "hub" && process.env.HIVE_RUN && !process.env.HIVE_RUN_TOKEN
   throw new Error("A hub run requires its own credential.");
 // The runner's credential takes precedence over the machine credential in config.json.
 const mcpHub = config.mode === "hub" && !process.env.HIVE_RUN_TOKEN
-  ? mcpHubBackend(config.hub, process.env.HIVE_PROJECT, process.env.HIVE_READONLY === "1")
+  // HIVE_SYSTEM: a CLI opened on a whole system (GROUP-cli); its tools take project on every call.
+  ? mcpHubBackend(config.hub, process.env.HIVE_PROJECT, process.env.HIVE_READONLY === "1", process.env.HIVE_PROJECT ? undefined : process.env.HIVE_SYSTEM)
   : undefined;
 const backend = config.mode === "hub"
   ? mcpHub ?? new HubBackend(config.hub.url, process.env.HIVE_RUN_TOKEN!)
@@ -22,7 +23,7 @@ const backend = config.mode === "hub"
 // HIVE_READONLY=1: set by the runner for profiles marked read-only.
 const readOnly = process.env.HIVE_READONLY === "1";
 const actor = stdioActor(config.mode, config.machine, os.userInfo().username, process.env);
-const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly });
+const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly, ...(process.env.HIVE_PROJECT || !process.env.HIVE_SYSTEM ? {} : { system: process.env.HIVE_SYSTEM }) });
 await server.connect(new StdioServerTransport());
 console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${actor.name}`);
 // Not awaited: an unreachable hub must not hold up the agent's start. The tools explain the same thing on every call.
