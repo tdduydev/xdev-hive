@@ -74,7 +74,7 @@ function DesktopStartPage() {
   const keys = Object.keys(steps) as StartStep[];
   const doneCount = keys.filter((key) => steps[key] === "done").length;
   const pct = Math.round(doneCount / keys.length * 100);
-  const step = (key: StartStep, body: ReactNode) => {
+  const step = (key: StartStep, body: ReactNode, items: { label: string; mark?: string; ok?: boolean }[] = []) => {
     const open = opened === key || (opened === undefined && first === key);
     const state = steps[key];
     // Mark colors follow state: done green, the step to do next violet, the rest neutral glass.
@@ -87,6 +87,7 @@ function DesktopStartPage() {
         <span className="flex min-w-0 flex-col gap-[3px]">
           <h2 className={`text-[14px]/5 font-semibold ${state === "done" ? "text-[var(--text-secondary)]" : "text-[var(--text-strong)]"}`}>{t(`start.${key}`)}</h2>
           <span className="text-[13px]/5 text-[var(--text-muted)] text-pretty">{t(`start.hint.${key}`)}</span>
+          {items.length ? <span data-start-items className="mt-1.5 flex flex-wrap gap-1.5">{items.map((item) => <span key={item.label} className={`inline-flex h-6 items-center gap-1.5 rounded-lg bg-[var(--glass-bg)] px-2.5 font-mono text-[12px]/none font-medium ${item.ok ? "text-[var(--accent-green)]" : "text-[var(--text-secondary)]"}`}>{item.mark ? `${item.mark} ` : ""}{item.label}</span>)}</span> : null}
         </span>
         <span className="flex items-center gap-2">
           {state === "done" ? <span className="text-[12px]/7 font-semibold text-[var(--accent-green)]">{t("start.done")}</span> : null}
@@ -104,14 +105,14 @@ function DesktopStartPage() {
       <div className="flex items-center gap-[14px] px-[22px] py-[18px] shadow-[inset_0_-1px_0_var(--border-subtle)]"><div className="flex flex-1 flex-col gap-2"><span className="text-[15px]/[22px] font-semibold">{t("start.progress", { done: doneCount, total: keys.length })}</span><div className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)]"><div className="h-full rounded-full bg-[var(--accent-violet)] shadow-[0_0_12px_var(--accent-violet)]" style={{ width: `${pct}%` }} /></div></div></div>
     {step("connection", settings.mode === "hub" && settings.hasHubToken ? <ConnectionCard settings={settings} onSaved={connectionChanged} /> : <SignInCard guide settings={settings} changing={false} onDone={connectionChanged} onCancel={() => {}} />)}
     {step("tools", <SetupPage section="machine" onChanged={status.reload} />)}
-    {step("projects", <SetupPage section="projects" onChanged={status.reload} />)}
+    {step("projects", <SetupPage section="projects" onChanged={status.reload} />, settings.projects.map((p) => ({ label: p.name })))}
     {step("agents", <>
       {profiles.map((p) => <div key={p.id} className="flex flex-wrap items-center gap-3"><span className="mr-auto text-sm">{p.label || p.id}</span><Chip kind={!p.enabled ? "neutral" : p.login?.loggedIn || p.hasToken ? "success" : "warning"}>{t(!p.enabled ? "start.disabled" : p.login?.loggedIn || p.hasToken ? "start.done" : "start.todo")}</Chip>
         {!p.enabled ? <Button disabled={action.busy} onClick={() => void action.run(async () => { await desktop.saveProfile({ ...p, enabled: true }, p.id); refresh(); })}>{t("agents.enable")}</Button> : !p.login?.loggedIn && !p.hasToken ? <Button disabled={action.busy || !p.cliPath} onClick={() => void action.run(async () => { await desktop.openLogin(p.id); refresh(); })}>{t("agents.login")}</Button> : null}
       </div>)}
       <Button variant="outline" disabled={action.busy} onClick={() => void action.run(async () => { await desktop.recheckLogins(); refresh(); })}>{t("setup.recheck")}</Button>
       <details open={!profiles.length}><summary className="cursor-pointer text-sm focus-visible:focus-ring">{t("start.manageAgents")}</summary><AgentsPage /></details>
-    </>)}
+    </>, profiles.map((p) => { const ok = p.enabled && !!(p.login?.loggedIn || p.hasToken); return { label: p.label || p.id, mark: ok ? "✓" : "·", ok }; }))}
     {step("intake", settings.mode === "local" ? <p className="text-sm">{t("agents.recvLocal")}</p> : <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => {
       e.preventDefault();
       const maxParallel = Number(new FormData(e.currentTarget).get("parallel"));

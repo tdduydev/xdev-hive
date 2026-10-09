@@ -96,6 +96,7 @@ export const vi = {
     createHint: "Tạo task lưu công việc vào dự án. Bạn sẽ chọn agent và giao chạy từ trang Task.",
   },
   terminal: {
+    more: "Xem thêm", less: "Thu gọn", tryHint: "Thử: ls · git status · npm test · claude · help · clear", keysHint: "↑ lệnh trước · Ctrl+L xoá màn hình", idle: "Chưa có phiên",
     sessions: "Phiên đang mở", newOpen: "+ Phiên mới", noSessions: "Chưa có phiên nào trong dự án này.", pick: "Chọn một phiên bên trái hoặc mở phiên mới.", page: "Terminal", pageSub: "Shell từ xa trên máy của agent", noProject: "Chưa có dự án để mở terminal.",
     keyNames: { esc: "Escape", tab: "Tab", shiftTab: "Shift-Tab", up: "Mũi tên lên", down: "Mũi tên xuống", left: "Mũi tên trái", right: "Mũi tên phải", interrupt: "Ctrl-C: ngắt lệnh" },
     osUserName: "OS user: {user}",

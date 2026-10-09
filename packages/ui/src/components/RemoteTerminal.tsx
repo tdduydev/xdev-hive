@@ -2,6 +2,8 @@ import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState,
 import { isTerminalFinal, terminalCheckoutRef, type TerminalSession, type TerminalStepUpOperation } from "@xdev-hive/core";
 import { Terminal as TerminalIcon } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { NativeSelect } from "#ui/components/ui/native-select.tsx";
+import { Toggle } from "#ui/components/ui/primitives.tsx";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "#ui/components/ui/dialog.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { useAction, useHive, useQuery } from "#ui/hooks.ts";
@@ -12,7 +14,12 @@ import { terminalSecure, type TerminalApi, type TerminalAttachment } from "#ui/l
 const TerminalScreen = lazy(() => import("#ui/components/TerminalScreen.tsx"));
 type Target = { machineId?: string; project?: string; checkoutRef?: string; runActive?: boolean };
 const OpenTerminal = createContext<((target: Target) => void) | null>(null);
-export const terminalControl = "w-full min-w-0 max-md:!min-h-11 rounded-md border border-line-control bg-surface px-3 py-2 text-base outline-none focus-visible:focus-ring md:text-sm";
+// Sunken, 12px radius, 36px tall: the cosmic control shape; textareas only take the min height.
+export const terminalControl = "w-full min-w-0 min-h-9 max-md:!min-h-11 rounded-xl border-0 bg-sunken px-3 py-2 text-base text-fg-primary shadow-[var(--ring-glass)] outline-none focus-visible:focus-ring md:text-sm";
+/** A native select keeps the browser's picker (and its keyboard/mobile behaviour) under the cosmic skin. */
+function TerminalSelect({ className = "", ...props }: Omit<ComponentProps<"select">, "size">) {
+  return <NativeSelect wrapperClassName="w-full" className={`${terminalControl} h-9 appearance-none py-0 pr-9 disabled:opacity-60 ${className}`} {...props} />;
+}
 
 export function TerminalDialogContent({ className = "", ...props }: ComponentProps<typeof DialogContent>) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
@@ -112,6 +119,7 @@ export function TerminalForm({ api, target, busyRef, onCreated, initial, hideSes
   const [reason, setReason] = useState("");
   const [password, setPassword] = useState("");
   const [consent, setConsent] = useState(false);
+  const [more, setMore] = useState(false);
   const [selected, setSelected] = useState<TerminalSession | null>(initial ?? null);
   const action = useAction();
   const key = useRef(crypto.randomUUID());
@@ -139,16 +147,16 @@ export function TerminalForm({ api, target, busyRef, onCreated, initial, hideSes
   };
   return <form className="flex min-w-0 flex-col gap-3 text-sm" onSubmit={(e) => { e.preventDefault(); submit("password"); }} aria-busy={action.busy}>
     <fieldset disabled={action.busy} className="flex min-w-0 flex-col gap-3">
-      <label>{t("terminal.machine")}<select data-testid="terminal-machine" className={terminalControl} value={machineId} onChange={e => { setMachine(e.target.value); setSelected(null); setCheckout("repo"); }}><option value="">{t("terminal.choose")}</option>{machines.data?.map(m => <option key={m.id} value={m.id}>{m.machine}</option>)}</select></label>
-      <label>{t("terminal.project")}<select data-testid="terminal-project" className={terminalControl} value={project} onChange={e => { setProject(e.target.value); setSelected(null); setCheckout("repo"); }}><option value="">{t("terminal.choose")}</option>{availableProjects.map(p => <option key={p}>{p}</option>)}</select></label>
-      <label>{t("terminal.checkout")}<select data-testid="terminal-checkout" className={terminalControl} disabled={!!selected} value={checkoutRef} onChange={e => setCheckout(e.target.value)}><option value="repo">{t("terminal.repo")}</option>{refs.map(ref => <option key={ref}>{ref}</option>)}</select></label>
+      <label>{t("terminal.machine")}<TerminalSelect data-testid="terminal-machine" value={machineId} onChange={e => { setMachine(e.target.value); setSelected(null); setCheckout("repo"); }}><option value="">{t("terminal.choose")}</option>{machines.data?.map(m => <option key={m.id} value={m.id}>{m.machine}</option>)}</TerminalSelect></label>
+      <label>{t("terminal.project")}<TerminalSelect data-testid="terminal-project" value={project} onChange={e => { setProject(e.target.value); setSelected(null); setCheckout("repo"); }}><option value="">{t("terminal.choose")}</option>{availableProjects.map(p => <option key={p}>{p}</option>)}</TerminalSelect></label>
+      <label>{t("terminal.checkout")}<TerminalSelect data-testid="terminal-checkout" disabled={!!selected} value={checkoutRef} onChange={e => setCheckout(e.target.value)}><option value="repo">{t("terminal.repo")}</option>{refs.map(ref => <option key={ref}>{ref}</option>)}</TerminalSelect></label>
       {checkoutRef !== "repo" ? <p className="text-warning">{t("terminal.worktreeHint")}</p> : null}
       {target.runActive ? <p className="text-warning">{t("terminal.runLock")}</p> : null}
       {unavailable ? <p role="status" data-testid="terminal-unavailable">{unavailable}</p> : null}
       {!selected && capability.data?.busy ? <p role="status">{t("errors.terminal.busy")}</p> : null}
       <label>{t("terminal.reason")}<input className={terminalControl} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} /></label>
-      <p className="text-fg-secondary">{t("terminal.auditScope")}</p>
-      <label className="flex min-h-11 items-start gap-2"><input type="checkbox" className="mt-1 size-5 shrink-0" checked={consent} onChange={e => setConsent(e.target.checked)} /><span>{t("terminal.consent")}</span></label>
+      <div className="flex items-baseline gap-2 text-fg-secondary"><p className={`min-w-0 flex-1 ${more ? "" : "truncate"}`} data-testid="terminal-audit-scope">{t("terminal.auditScope")}</p><button type="button" aria-expanded={more} className="shrink-0 cursor-pointer border-0 bg-transparent p-0 text-[12px] font-semibold text-[var(--accent-violet)] max-md:min-h-11" onClick={() => setMore(!more)}>{t(more ? "terminal.less" : "terminal.more")}</button></div>
+      <Toggle checked={consent} onChange={e => setConsent(e.target.checked)}>{t("terminal.consent")}</Toggle>
       <label>{t("terminal.password")}<input data-testid="terminal-step-up" className={terminalControl} type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} /></label>
       <ErrorNote error={action.error ?? machines.error} />
       <Button data-testid="terminal-confirm-open" type="submit" disabled={blocked || !password}>{t(selected ? "terminal.transfer" : "terminal.confirmOpen")}</Button>
