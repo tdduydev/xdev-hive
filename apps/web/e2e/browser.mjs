@@ -4771,6 +4771,12 @@ async function main() {
     await tab.click('[data-terminal-page] [data-testid="terminal-step-up"]'); await tab.type(terminal.password);
     await tab.click('[data-terminal-page] [data-testid="terminal-confirm-open"]');
     await tab.waitFor("page terminal active", () => document.querySelector('[data-terminal-page] [data-testid="terminal-status"]')?.textContent.includes("Đã kết nối"));
+    // The list reloads when the screen connects, not on its 5s poll: well under one poll it already says connected.
+    const listedAt = Date.now() + 2500;
+    while (!(await tab.eval(() => [...document.querySelectorAll('[data-testid="terminal-page-session"]')].some((b) => b.textContent.includes("Đã kết nối"))))) {
+      if (Date.now() > listedAt) throw new Error("session list still not connected 2.5s after the screen connected");
+      await sleep(100);
+    }
     expect(await tab.eval(() => !document.querySelector('[data-testid="terminal-dialog"], [data-testid="terminal-create-dialog"]') && !!document.querySelector('[data-terminal-page] [data-testid="terminal-screen"]') && document.documentElement.scrollWidth <= innerWidth + 1), "page session opened outside the page frame");
     await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
     await new Promise((resolve) => setTimeout(resolve, 400));

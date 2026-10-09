@@ -54,7 +54,7 @@ export function TerminalPage() {
       </div> : null}
     </div>
     <div className="flex h-[calc(100dvh-160px)] min-h-[480px] min-w-0 flex-col max-lg:min-h-[420px]">
-      {attachment ? <TerminalScreen key={attachment.session.id} api={api} attachment={attachment} onDetach={() => { setAttachment(null); sessions.reload(); }} />
+      {attachment ? <TerminalScreen key={attachment.session.id} api={api} attachment={attachment} onDetach={() => { setAttachment(null); sessions.reload(); }} onStatus={() => sessions.reload()} />
         : <div data-testid="terminal-idle" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-[var(--code-bg)] shadow-[var(--ring-glass-strong)]">
           <div className="flex shrink-0 flex-wrap items-center gap-[10px] bg-[var(--surface-1)] py-[10px] pr-3 pl-4 shadow-[inset_0_-1px_0_var(--border-subtle)]">
             <p className="inline-flex items-center gap-1.5 text-[12px]/none font-semibold text-[var(--text-muted)]"><span aria-hidden="true" className="size-[7px] rounded-full bg-[var(--text-muted)]" />{t("terminal.idle")}</p>

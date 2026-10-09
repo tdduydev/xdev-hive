@@ -21,7 +21,7 @@ export function TerminalHintBar() {
   return <div data-testid="terminal-hints" className="flex shrink-0 flex-wrap items-center gap-x-[14px] gap-y-1 bg-[var(--surface-1)] px-4 py-2 text-[12px]/4 font-medium text-[var(--text-muted)] shadow-[inset_0_1px_0_var(--border-subtle)]"><span>{t("terminal.tryHint")}</span><span className="flex-1" /><span>{t("terminal.keysHint")}</span></div>;
 }
 
-export default function TerminalScreen({ api, attachment, onDetach }: { api: TerminalApi; attachment: TerminalAttachment; onDetach: () => void }) {
+export default function TerminalScreen({ api, attachment, onDetach, onStatus }: { api: TerminalApi; attachment: TerminalAttachment; onDetach: () => void; onStatus?: (status: Status) => void }) {
   const t = useT();
   const { me } = useHive();
   const host = useRef<HTMLDivElement>(null);
@@ -29,6 +29,10 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
   const connection = useRef<TerminalConnection | null>(null);
   const [session, setSession] = useState(attachment.session);
   const [status, setStatus] = useState<Status>(attachment.ticket ? "connecting" : attachment.session.state);
+  // The page's session list polls every 5s; telling it when the live state changes keeps "requested" from lingering next to a running screen.
+  const statusRef = useRef(onStatus);
+  statusRef.current = onStatus;
+  useEffect(() => { statusRef.current?.(status); }, [status]);
   const [gap, setGap] = useState(false);
   const [dropped, setDropped] = useState(false);
   const [ctrl, setCtrl] = useState(false);
@@ -175,11 +179,11 @@ export default function TerminalScreen({ api, attachment, onDetach }: { api: Ter
     {remaining <= 1 && !final ? <p role="status" className="text-xs text-warning">{t("terminal.expiring")}</p> : null}
     <ErrorNote error={action.error} />
     <div data-testid="terminal-screen" ref={host} className="terminal-screen min-h-0 min-w-0 flex-1 overflow-hidden bg-code-bg" />
-    <div role="group" aria-label={t("terminal.keys")} className="flex shrink-0 gap-2 overflow-x-auto pb-1">
+    <div role="group" aria-label={t("terminal.keys")} className="flex shrink-0 gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [scrollbar-color:var(--border-strong)_transparent]">
       <Button data-testid="terminal-key-ctrl" variant={ctrl ? "default" : "outline"} aria-pressed={ctrl} disabled={!writable || pasteBusy} onMouseDown={e => e.preventDefault()} onClick={() => { ctrlRef.current = !ctrl; setCtrl(!ctrl); term.current?.focus(); }}>{t(ctrl ? "terminal.ctrlOn" : "terminal.ctrl")}</Button>
       {keys.map(key => <Button key={key} data-testid={`terminal-key-${key}`} aria-label={t(`terminal.keyNames.${key}`)} variant="outline" disabled={!writable} onMouseDown={e => e.preventDefault()} onClick={() => { ctrlRef.current = false; setCtrl(false); send(keyBytes[key]); term.current?.focus(); }}>{t(`terminal.keysLabel.${key}`)}</Button>)}
     </div>
-    <div className="flex max-h-[35%] shrink-0 flex-col gap-2 overflow-y-auto">
+    <div className="flex max-h-[35%] shrink-0 flex-col gap-2 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:var(--border-strong)_transparent]">
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" data-testid="terminal-keyboard" disabled={!writable} onMouseDown={e => e.preventDefault()} onClick={() => term.current?.focus()}>{t("terminal.keyboard")}</Button>
         <Button data-testid="terminal-copy" variant="outline" onClick={() => void action.run(async () => { const selection = term.current?.getSelection() ?? ""; if (selection) { try { await navigator.clipboard.writeText(selection); } catch { setCopied(selection); } } })}>{t("terminal.copy")}</Button>
