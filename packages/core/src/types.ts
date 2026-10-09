@@ -307,6 +307,8 @@ export interface MemoryReview {
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_PLATFORMS = ["windows", "linux", "mac"] as const;
+export type TaskPlatform = (typeof TASK_PLATFORMS)[number];
 
 /**
  * The agent a task is *for* (roadmap 50), apart from `owner`, which says who took it: the hub queues the run itself as
@@ -335,6 +337,8 @@ export interface Task {
   id: string;
   project: string;
   title: string;
+  /** Empty means any machine OS. */
+  platforms: TaskPlatform[];
   kind: TaskKind | null;
   size: TaskSize | null;
   risk: TaskRisk | null;
@@ -1426,6 +1430,8 @@ export interface Machine {
   /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
   id: string;
   machine: string;
+  /** null for a runner that has not reported an OS yet. */
+  platform?: TaskPlatform | null;
   version: string;
   lastSeen: string;
   /** Heard from in the last 2 minutes. */

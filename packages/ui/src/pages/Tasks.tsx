@@ -545,6 +545,7 @@ function TaskRow({
               <span className="min-w-0 font-medium wrap-anywhere">{task.title}</span>
             </span>
             {task.agent ? <span className="text-xs text-info wrap-anywhere">{agentLabel(task.agent, t("assignment.any"))}</span> : null}
+            {task.platforms.length ? <span className="text-xs text-muted-foreground">{task.platforms.map((p) => t(`tasks.platform.${p}`)).join(" · ")}</span> : null}
             {task.note ? <span className="line-clamp-2 max-w-full text-xs text-muted-foreground wrap-anywhere">{task.note}</span> : null}
           </button>
         </div>
@@ -635,6 +636,7 @@ function TaskDetail({ task, requests, hub, onChanged, onRoles }: { task: Task; r
         <SheetDescription asChild>
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[task.status]}>{t(`taskStatus.${task.status}`)}</Badge>
+            {task.platforms.map((p) => <Badge key={p} tone="neutral">{t(`tasks.platform.${p}`)}</Badge>)}
             <span className="text-xs">{t("tasks.updatedAt", { time: formatTime(task.updatedAt) })}</span>
           </div>
         </SheetDescription>
@@ -826,7 +828,7 @@ function DispatchForm({ task, requests, onSent }: { task: Task; requests: RunReq
   const { client } = useHive();
   const t = useT();
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
-  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project));
+  const fit = (machines.data ?? []).filter((m) => takesRunsOf(m, task.project) && (!task.platforms.length || (!!m.platform && task.platforms.includes(m.platform))));
   const [machineId, setMachineId] = useState(task.agent?.machineId ?? "");
   const machine = fit.find((m) => m.id === machineId) ?? null;
   const [role, setRole] = useState<WorkRole>(task.status === "review" ? "review" : "implement");
