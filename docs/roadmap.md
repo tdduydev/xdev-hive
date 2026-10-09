@@ -370,6 +370,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **73b. platform-routing**: task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
   - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
 
+- **74. github-org-import** (hỏi 9/10: "hive app đã hỗ trợ clone repo vào thư mục và chọn thư mục để đồng bộ gitlab groups và github chưa?"; GitLab có từ 19a/38e, GitHub chưa có). Tách:
+  - [ ] **74a. github-repo-list**: `GitHubClient` liệt kê repo của org (`/orgs/{org}/repos`), user (`/users/{user}/repos`) hay của chính token (`/user/repos`), phân trang theo header `Link`; mỗi repo có `full_name`, `clone_url`, `ssh_url`, `default_branch`, `archived`. github.com và GHES.
+  - [ ] **74b. github-import**: thẻ *Nhập từ GitHub* ở *Dự án & cài đặt* như *Nhập từ group GitLab*: ô org/user, thư mục gốc (`desktop:pickFolder`), SSH/HTTPS, gợi ý project key và thư mục. `githubOrg` / `importGithub` theo mẫu `gitlabGroup` / `importGitlab`, dùng lại `planImport` / `importRepos`; clone URL lấy lại từ GitHub, không từ trang; token không vào `.git/config`; thư mục có sẵn cùng remote thì dùng luôn, khác remote thì báo; repo đã là dự án hoặc archived thì bỏ qua; dự án mới có `githubRepo` và `targetBranch` = nhánh mặc định. Test `github-import.test.ts` (mock GitHub: phân trang, org/user, clone có sẵn, xung đột remote, token không lộ), smoke thẻ import, chuỗi vi/en. Rủi ro: PAT fine-grained thiếu `Metadata: read` hoặc org chưa duyệt token thì không thấy repo private; rate limit.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
