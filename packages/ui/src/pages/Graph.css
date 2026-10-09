@@ -132,3 +132,21 @@
 
 /* Spec 72k: legend under the canvas, lines as the template draws them. */
 .graph-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0; padding: 0; list-style: none; font: var(--type-caption); color: var(--text-muted); }
+
+/* Spec 72k (dark): the canvas, cards, links and controls follow the template's glass look; light keeps the rules above. */
+[data-theme="dark"] .graph-page .react-flow { --xy-background-color: transparent; --xy-background-color-default: transparent; background: transparent; }
+[data-theme="dark"] .graph-page .react-flow__pane, [data-theme="dark"] .graph-page .react-flow__renderer { background: transparent; }
+[data-theme="dark"] .graph-page .react-flow__background { background: var(--surface-1); }
+[data-theme="dark"] .graph-page .react-flow__background pattern circle, [data-theme="dark"] .graph-page .react-flow__background pattern path { fill: rgba(255,255,255,.1); stroke: none; }
+[data-theme="dark"] .graph-task { background: var(--surface-2); }
+[data-theme="dark"] .graph-page .react-flow__edge-path { stroke: var(--border-strong); stroke-width: 1.5; }
+[data-theme="dark"] .graph-page .graph-edge-running .react-flow__edge-path { stroke: var(--status-running-fg); }
+[data-theme="dark"] .graph-page .react-flow__handle { background: var(--border-strong); border-color: var(--surface-2); }
+[data-theme="dark"] .graph-page .react-flow__controls { box-shadow: none; border-radius: 14px; overflow: hidden; }
+[data-theme="dark"] .graph-page .react-flow__controls button { background: var(--button-glass-bg); box-shadow: var(--button-glass-shadow); border: 0; color: var(--text-primary); fill: var(--text-primary); }
+[data-theme="dark"] .graph-page .react-flow__controls button:hover { background: var(--glass-hover); }
+[data-theme="dark"] .graph-page .react-flow__controls button svg { fill: currentColor; }
+[data-theme="dark"] .graph-page .react-flow__minimap { border: 0; border-radius: 14px; background: var(--surface-sunken); box-shadow: var(--ring-glass); }
+[data-theme="dark"] .graph-page .react-flow__minimap-mask { fill: rgba(14,14,17,.7); }
+[data-theme="dark"] .graph-page .react-flow__attribution { background: transparent; color: var(--text-muted); }
+[data-theme="dark"] .graph-page .react-flow__edge-textbg { fill: var(--surface-2); }
