@@ -3,7 +3,7 @@
 // would: Radix menus and the Tiptap editor react to real events, not to element.click().
 // Each step checks what the hub now holds through its RPC, not only what the page shows.
 import { app, BrowserWindow } from "electron";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, utimesSync } from "node:fs";
 import path from "node:path";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
@@ -332,7 +332,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "leader-autonomy": ["lead-sees-members"],
   "leader-tool-proposal": ["lead-sees-members"],
   "hub-page": ["login-token"],
-  "backup-late-today": [],
+  "backup-late-today": ["login-token"],
   "hub-leader-chat": ["login-token", "lead-sees-members"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
@@ -353,8 +353,11 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "codex-leader-chat": ["login-token"],
   "leader-research": ["lead-sees-members"],
   "chat-shortcuts": ["lead-sees-members"],
+  "mobile-detail-today": ["login-token", "lead-sees-members"],
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
+// This step is generated from the mobile detail routes, so the literal-name scan cannot discover it.
+order.push("mobile-detail-today");
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const unknown = only.filter((s) => !order.includes(s));
 if (unknown.length) {
@@ -2098,8 +2101,8 @@ async function main() {
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-e2e57c", project: "payment", taskId: "PAY-57C", taskTitle: "Review grouped diff", role: "implement", status: "succeeded", profileId: "claude-1", createdAt: now, finishedAt: now, patch,
       diffReview: { groups: [{ title: "Đổi quyền người dùng", explanation: "Thêm vai và cập nhật giao diện.", files: ["db.ts", "ui.ts"] }], risks: [{ path: "db.ts", hunk: 1, level: "high", kind: "deletion", explanation: "Xoá dữ liệu người dùng." }] } }] });
     await tab.go("runs?run=R-e2e57c");
-    await tab.waitFor("diff groups", () => document.body.innerText.includes("Thêm vai và cập nhật giao diện."));
     await tab.click('[data-run-tab="diff"]');
+    await tab.waitFor("diff groups", () => document.body.innerText.includes("Thêm vai và cập nhật giao diện."));
     await tab.click('nav[aria-label="Cờ rủi ro"] a', "Cao · Xoá dữ liệu · db.ts");
     // The desktop list consumes ?run= once the run is selected, so there the route is plain #/runs; the phone keeps it as its detail route.
     expect(await tab.eval(() => document.activeElement?.textContent.includes("@@ -8 +8 @@") && (location.hash === "#/runs" || location.hash.includes("R-e2e57c")) && document.body.innerText.includes("R-e2e57c")), "risk flag must focus the exact hunk without leaving the run");
@@ -2687,9 +2690,9 @@ async function main() {
     await reader.click("#password"); await reader.type(people.minh.password); await reader.key("Enter");
     await reader.waitFor("member signed in", () => !document.querySelector("#username"));
     await reader.go(`chat?thread=${sent.thread.id}`);
-    // Chat is a menu page only with chatUse (webPages): a view-only member who opens the link lands elsewhere, never on a composer.
-    await reader.waitFor("member lands outside Chat", () => !!document.querySelector("nav, aside, [data-shell-title]") && !document.querySelector('[data-chat-thread]'));
-    expect(await reader.eval(() => !document.querySelector('[data-chat-thread] textarea') && !document.querySelector('[data-chat-new]') && !document.querySelector('a[href$="/chat"]')), "member without chatUse has no Chat page, composer or new-chat control");
+    // Shared thread links permit reading; chatUse is required for the menu entry and composing.
+    await reader.waitFor("member reads shared Chat without composing", () => !!document.querySelector('[data-chat-thread]') && document.body.innerText.includes("Bạn chỉ có quyền xem cuộc chat này."));
+    expect(await reader.eval(() => !document.querySelector('[data-chat-thread] textarea') && !document.querySelector('[data-chat-new]') && !document.querySelector('a[href$="/chat"]')), "member without chatUse has no composer, new-chat control or Chat menu entry");
   });
 
   // Roadmap 62d: the shell and Chat share drafts and threads; RPC stands in for the leader.
@@ -3107,12 +3110,18 @@ async function main() {
 
   await step("backup-late-today", async () => {
     const tab = (current = tabs.admin);
+    // Earlier scenarios make fresh snapshots; age only this disposable hub's files before evaluating the rule.
+    const stale = new Date(Date.now() - 48 * 3_600_000);
+    for (const file of readdirSync(process.env.HIVE_E2E_BACKUP_DIR)) {
+      if (/^hub-.*\.db$/.test(file)) utimesSync(path.join(process.env.HIVE_E2E_BACKUP_DIR, file), stale, stale);
+    }
+    await rpc("alerts.setRule", { rule: "backup_overdue", enabled: true });
     await tab.go("today?section=inbox");
     const alert = await until("the overdue backup alert", async () => (await rpc("alerts.list", {})).open.find((a) => a.rule === "backup_overdue"));
-    await tab.waitFor("the overdue backup in Hôm nay", () => {
-      const row = document.querySelector(`[data-inbox-key="alert:${alert.id}"]`);
+    await tab.waitFor("the overdue backup in Hôm nay", (id) => {
+      const row = document.querySelector(`[data-inbox-key="alert:${id}"]`);
       return row?.innerText.includes("Backup quá hạn") && row;
-    });
+    }, alert.id);
   });
 
   // Roadmap 19c: a system's docs and memory, shared by its services. Hoa reviews in payment only: she reads the shop
@@ -3793,19 +3802,20 @@ async function main() {
     };
     await beat();
     const machine = (await rpc("machines.list")).find(m => m.machine === machineName);
-    const root = `[data-map-machine="${machineName}"]`;
+    const root = '[data-slot="sheet-content"]';
     current = tabs.hoa; await tabs.hoa.reload(); await tabs.hoa.go("machines");
     await tabs.hoa.waitFor("other member sees machine", name => document.querySelector(`[data-map-machine="${name}"]`), machineName);
     expect(await tabs.hoa.eval(name => !document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName), "non-owner cannot edit runner");
     const open = async tab => {
       current = tab; await tab.reload(); await tab.go("machines");
-      await tab.waitFor("runner controls", name => document.querySelector(`[data-map-machine="${name}"] [data-runner-controls]`), machineName);
+      await tab.click(`[data-map-manage="${machineName}"]`);
+      await tab.waitFor("runner controls", () => document.querySelector('[data-slot="sheet-content"] [data-runner-controls]'));
       await tab.click(`${root} [data-runner-controls] summary`);
     };
     await open(tabs.admin);
     const fill = async (selector, value) => { await current.click(selector); await current.shortcut("a"); await current.type(value); };
     await fill(`${root} [data-runner-parallel]`, "9");
-    expect(await current.eval(name => document.querySelector(`[data-map-machine="${name}"] [data-runner-save]`).disabled, machineName), "out-of-range runner limit blocked");
+    expect(await current.eval(name => document.querySelector(`[data-slot="sheet-content"] [data-runner-save]`).disabled, machineName), "out-of-range runner limit blocked");
     await fill(`${root} [data-runner-parallel]`, "4");
     await current.click(`${root} [data-runner-mr]`);
     await current.select(`${root} [data-runner-when]`, "after_review");
@@ -3818,7 +3828,7 @@ async function main() {
     await current.click(`${root} [data-threshold-save]`);
     await until("thresholds queued", async () => (await rpc("machines.list")).find(m => m.id === machine.id)?.profileChanges[0]?.stopAtWeek === 60);
     if (mobile) {
-      const sizes = await current.eval(name => [...document.querySelectorAll(`[data-map-machine="${name}"] [data-runner-form] input:not([type=checkbox]), [data-map-machine="${name}"] [data-runner-form] select, [data-map-machine="${name}"] [data-runner-form] button, [data-map-machine="${name}"] [data-profile-thresholds] input, [data-map-machine="${name}"] [data-profile-thresholds] button`)].map(el => ({ h: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), tag: el.tagName })), machineName);
+      const sizes = await current.eval(name => [...document.querySelectorAll(`[data-slot="sheet-content"] [data-runner-form] input:not([type=checkbox]), [data-slot="sheet-content"] [data-runner-form] select, [data-slot="sheet-content"] [data-runner-form] button, [data-slot="sheet-content"] [data-profile-thresholds] input, [data-slot="sheet-content"] [data-profile-thresholds] button`)].map(el => ({ h: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize), tag: el.tagName })), machineName);
       expect(sizes.every(v => v.h >= 44 && (v.tag === "BUTTON" || v.font >= 16)), "runner controls meet mobile size and input font rules");
       expect(await current.eval(() => document.documentElement.scrollWidth <= innerWidth), "runner settings do not overflow on mobile");
     }
@@ -3853,6 +3863,7 @@ async function main() {
     expect(await tabs.hoa.eval(name => !document.querySelector(`[data-worktrees="${name}"]`), machineName), "a project member cannot manage another person's worktrees");
     const open = async tab => {
       current = tab; await tab.reload(); await tab.go("machines");
+      await tab.click(`[data-map-manage="${machineName}"]`);
       await tab.waitFor("worktree button", name => document.querySelector(`[data-worktrees="${name}"]`), machineName);
       await tab.click(`[data-worktrees="${machineName}"]`);
       // WT-clean stays in every report; WT-dirty is gone once the first delete lands.
@@ -4077,9 +4088,10 @@ async function main() {
     for (const [route, param, selector, text] of cases) {
       await step(`mobile-detail-${route}`, async () => {
         const tab = (current = tabs.lan);
-        await tab.go(route);
+        await tab.go(route === "today" ? "today?section=inbox" : route);
         await tab.reload();
         await tab.waitFor("visible list", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
+        const listHash = await tab.eval(() => location.hash);
         await tab.shot(`mobile-${route}-list`);
         await tab.click(selector, text);
         await tab.waitFor("selection in address", (param) => new URLSearchParams(location.hash.split("?")[1]).has(param), param);
@@ -4102,7 +4114,7 @@ async function main() {
         await tab.waitFor("detail restored after reload", () => [...document.querySelectorAll("main button")].some((el) => el.getBoundingClientRect().width > 0 && (el.textContent.includes("Quay lại danh sách") || el.getAttribute("aria-label") === "Các cuộc chat")));
         await assertPane(true);
         await tab.eval(() => history.back());
-        await tab.waitFor("Back restores list", (route) => location.hash === `#/${route}`, route);
+        await tab.waitFor("Back restores list", (hash) => location.hash === hash, listHash);
         await assertPane(false);
         await tab.eval(() => history.forward());
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
@@ -4250,7 +4262,8 @@ async function main() {
     await tab.waitFor("preview closes and returns keyboard focus", () => !document.querySelector("[data-artifact-preview]") && document.activeElement?.closest('[data-artifact-row="report.md"]'));
     await fill('[data-artifact-filter="search"]', "");
     await tab.select('[data-artifact-filter="kind"]', "log");
-    await tab.waitFor("log filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="check.log"]'));
+    const logCount = (await rpc("artifacts.list", { kind: "log", limit: 200 })).length;
+    await tab.waitFor("log filter", count => document.querySelectorAll('[data-artifact-row]').length === Math.min(50, count) && document.querySelector('[data-artifact-row="check.log"]'), logCount);
     await tab.click('[data-artifact-row="check.log"] button');
     await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] pre'));
     await fill('[data-artifact-find]', "ok");
@@ -4424,6 +4437,7 @@ async function main() {
     await beat({ deliveredMessages: pending.map((m) => m.id) });
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, log: run.log + "2026-10-06T08:00:00Z\t» lan: Kiểm tra mobile, giữ màu hiện có\n" }] });
     await tab.waitFor("delivery status", () => document.querySelector("[data-run-messages]")?.textContent.includes("Đã giao cho run"));
+    await tab.click('[data-run-tab="log"]');
     await tab.waitFor("human line in log", () => document.querySelector('[role="log"]')?.textContent.includes("Người nhắn"));
     await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ ...run, status: "succeeded", finishedAt: new Date().toISOString() }] });
     await tab.go("tasks");
@@ -4535,6 +4549,7 @@ async function main() {
     for (const locale of ["en", "vi"]) {
       await tab.eval(value => localStorage.setItem("xdev-hive.locale", value), locale); await tab.reload();
       await tab.go("machines");
+      await tab.click('[data-map-manage="terminal-fixture"]');
       await tab.click('[data-testid="terminal-open-machine"]');
       await tab.waitFor(`terminal form ${locale}`, () => !!document.querySelector('[data-testid="terminal-create-dialog"]'));
       expect(await tab.eval((label) => document.querySelector('[data-testid="terminal-create-dialog"]').textContent.includes(label), locale === "vi" ? "Quyền tài khoản máy" : "Machine account privileges"), "terminal scope missing in locale");
@@ -4646,7 +4661,7 @@ async function main() {
     await tab.waitFor("detached UI", () => !document.querySelector('[data-testid="terminal-dialog"]'));
     expect((await diagnostics()).resizes.some(r => r.cols >= 20 && r.rows >= 5), "terminal never resized PTY");
     await fetch(`${terminal.base}/__terminal/opt-out`, { method: "POST" });
-    await tab.go("machines"); await tab.click('[data-testid="terminal-open-machine"]');
+    await tab.go("machines"); await tab.click('[data-map-manage="terminal-fixture"]'); await tab.click('[data-testid="terminal-open-machine"]');
     await tab.waitFor("local opt-out explanation", () => document.querySelector('[data-testid="terminal-unavailable"]')?.textContent.includes("chưa bật terminal"));
     expect(await tab.eval(() => document.querySelector('[data-testid="terminal-confirm-open"]').disabled), "local opt-out UI can create");
     await tab.key("Escape");

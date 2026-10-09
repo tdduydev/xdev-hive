@@ -1,5 +1,5 @@
 // Runs only under the isolated smoke launcher; imports the production main process and exercises its window lifecycle.
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, webContents } from "electron";
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -30,13 +30,13 @@ app.on("browser-window-created", (_event, window) => {
   });
 });
 await import(pathToFileURL(process.env.HIVE_MEMORY_PROBE_MAIN).href);
-await app.whenReady();
+async function probe() {
 // Main's asynchronous readiness work must complete before activate has IPC handlers to call.
 await pause(5000);
 
 async function sample(phase, window) {
   const metrics = app.getAppMetrics().filter((m) => m.type === "Tab");
-  const row = { phase, atSeconds: Math.round(process.uptime()), rendererCount: metrics.length, workingSetKB: metrics.reduce((sum, m) => sum + m.memory.workingSetSize, 0), calls, crashes };
+  const row = { phase, atSeconds: Math.round(process.uptime()), rendererCount: metrics.length, webContentsCount: webContents.getAllWebContents().length, workingSetKB: metrics.reduce((sum, m) => sum + m.memory.workingSetSize, 0), calls, crashes };
   if (window && !window.isDestroyed()) {
     row.heap = await bounded(window.webContents.debugger.sendCommand("Runtime.getHeapUsage"));
     row.commits = await bounded(window.webContents.executeJavaScript("window.__probeCommits"));
@@ -65,7 +65,9 @@ try {
   } else {
     for (let elapsed = 0; ; elapsed = Math.min(elapsed + 60, seconds)) {
       const row = await sample("cold-hidden");
-      check(row.rendererCount === 0 && BrowserWindow.getAllWindows().length === 0, "hidden startup retained a renderer");
+      // Linux Chromium may keep one spare renderer with no WebContents; it must not retain an app page or grow unbounded.
+      check(row.webContentsCount === 0 && BrowserWindow.getAllWindows().length === 0, "hidden startup retained an app page");
+      check(row.rendererCount <= 1 && row.workingSetKB < 128 * 1024, "hidden startup retained excess renderer memory");
       check(calls === 0, "hidden startup invoked renderer IPC");
       if (elapsed >= seconds) break;
       await pause(Math.min(60, seconds - elapsed) * 1000);
@@ -108,7 +110,8 @@ try {
     window.close();
     await pause(3000);
     const closed = await sample("closed-to-tray");
-    check(closed.rendererCount === 0 && BrowserWindow.getAllWindows().length === 0, "closing did not release the renderer");
+    check(closed.webContentsCount === 0 && BrowserWindow.getAllWindows().length === 0, "closing did not release the app page");
+    check(closed.rendererCount <= 1 && closed.workingSetKB < 128 * 1024, "closing retained excess renderer memory");
     app.emit("activate");
     await pause(5000);
     const reopened = BrowserWindow.getAllWindows()[0];
@@ -131,3 +134,10 @@ try {
   writeFileSync(process.env.HIVE_MEMORY_PROBE_RESULT, JSON.stringify(report, null, 2));
   app.exit(report.failure ? 1 : 0);
 }
+}
+// Electron emits ready after the entry module finishes evaluating; top-level await would deadlock this probe.
+void app.whenReady().then(probe).catch((error) => {
+  report.failure = String(error);
+  writeFileSync(process.env.HIVE_MEMORY_PROBE_RESULT, JSON.stringify(report, null, 2));
+  app.exit(1);
+});

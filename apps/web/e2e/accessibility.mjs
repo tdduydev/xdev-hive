@@ -5,10 +5,11 @@ import path from "node:path";
 const pages = ["today", "tasks", "runs", "artifacts", "docs", "skills", "memory", "machines?tab=fleet", "settings?tab=policy", "admin?tab=users"];
 
 export async function runContrast({ tab, expect }) {
-  // The status and the action's disabled styling must both reflect the completed poll before measuring.
+  // The disabled attribute clears before its color transition finishes; axe must measure the settled enabled style.
   await tab.waitFor("settled run action", () => {
     const action = document.querySelector("main [data-run-roles-open]");
-    return !action || !action.disabled && Number(getComputedStyle(action).opacity) === 1;
+    return !action || !action.disabled && Number(getComputedStyle(action).opacity) === 1
+      && action.getAnimations().every(animation => animation.playState === "finished" || animation.playState === "idle");
   });
   await tab.win.webContents.executeJavaScript(axe.source);
   const violations = await tab.eval(async () => {

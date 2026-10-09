@@ -103,7 +103,7 @@ export function ListItem({
           {chip}
         </span>
         {sub ? <span className="line-clamp-2 text-xs/[17px] text-fg-secondary">{sub}</span> : null}
-        {meta ? <span className="truncate font-mono text-[11px]/[14px] text-fg-muted">{meta}</span> : null}
+        {meta ? <span className={cn("truncate font-mono text-[11px]/[14px]", selected ? "text-selected-fg" : "text-fg-muted")}>{meta}</span> : null}
       </button>
     </li>
   );
