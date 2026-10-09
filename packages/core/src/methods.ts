@@ -70,6 +70,8 @@ import {
   type DocSummary,
   type DocVersion,
   type HiveSystem,
+  REPO_ACCESS_STATUSES,
+  type SystemMemberHealth,
   type RetiredProject,
   type Machine,
   type ProfileChange,
@@ -626,6 +628,18 @@ export const schemas = {
     gate: z.unknown().optional(),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
+    /**
+     * `git ls-remote` of each of those repos, checked every few hours and not at every beat: the last results, resent
+     * each beat. Absent (an older app): the hub keeps what it had. `detail` arrives without credentials; the hub
+     * redacts it again anyway.
+     */
+    repoHealth: z.array(z.object({
+      project,
+      status: z.enum(REPO_ACCESS_STATUSES),
+      checkedAt: z.iso.datetime(),
+      head: z.string().regex(/^[0-9a-f]{40,64}$/).nullable().default(null),
+      detail: z.string().max(300).nullable().default(null),
+    })).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
     gitPush: z.record(project, z.boolean()).optional(),
@@ -1232,6 +1246,8 @@ export const schemas = {
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
   "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
   "systems.remove": z.object({ name: systemName }),
+  /** Whether each member of each system has a repo some machine reaches (git ls-remote), for the Systems page. */
+  "systems.repoHealth": z.object({}),
 
   /** Every project the hub knows (roadmap 47) with what it holds and its state; a reader sees only the ones they view. */
   "projects.list": z.object({}),
@@ -1535,6 +1551,7 @@ export interface MethodOutput {
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
+  "systems.repoHealth": SystemMemberHealth[];
   "projects.list": ProjectSummary[];
   "projects.archive": ProjectSummary;
   "projects.restore": ProjectSummary;
@@ -1779,6 +1796,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",
   "systems.remove": "agent",
+  "systems.repoHealth": "viewer",
   // The list is for anyone (filtered to what they view); archiving and deleting are a hub admin's, checked in #check.
   "projects.list": "viewer",
   "projects.archive": "admin",

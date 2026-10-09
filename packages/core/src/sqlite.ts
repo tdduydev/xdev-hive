@@ -72,7 +72,7 @@ import {
 import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
-import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
+import { assertNoSecret, findSecret, redactLines, redactUrlCredentials } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
@@ -176,6 +176,9 @@ import type {
   ToolApproval,
   ToolView,
   HiveSystem,
+  RepoAccessReport,
+  SystemMemberHealth,
+  SystemMemberMachine,
   RetiredProject,
 } from "./types.ts";
 
@@ -872,6 +875,8 @@ const MIGRATIONS: string[] = [
     project TEXT NOT NULL, step TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
     PRIMARY KEY(project, step, version));
   `,
+  // ADM-member-repo-health: each repo's last git ls-remote on the machine, as JSON RepoAccessReport[].
+  `ALTER TABLE machines ADD COLUMN repo_health TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -2922,6 +2927,8 @@ export class SqliteHive implements HiveBackend {
         return (out as HiveSystem[])
           .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)) }))
           .filter((s) => s.projects.length > 0) as MethodOutput[M];
+      case "systems.repoHealth":
+        return (out as SystemMemberHealth[]).filter((h) => visible(h.project)) as MethodOutput[M];
       case "agents.paused":
       case "agents.resume":
         return this.#pausedFor(out as AgentsPaused, actor) as MethodOutput[M];
@@ -4178,6 +4185,8 @@ export class SqliteHive implements HiveBackend {
       // A system keeps its name even when every service of it was archived: its own docs and memory are still there.
       case "systems.list":
         return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown) })) as MethodOutput[M];
+      case "systems.repoHealth":
+        return (out as SystemMemberHealth[]).filter((h) => shown(h.project)) as MethodOutput[M];
       default:
         return output;
     }
@@ -8395,7 +8404,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, repoHealth, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8452,6 +8461,15 @@ export class SqliteHive implements HiveBackend {
           const allowedProjects = reportedProjects.filter((p) => sees(actor, p));
           const archivedProjects = allowedProjects.filter((p) => hidden.has(p));
           db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(allowedProjects.filter((p) => !hidden.has(p))), actor.name);
+          if (repoHealth) {
+            // Only repos the machine keeps on the hub; the detail redacted again here, since an older or tampered app
+            // may send a remote with its token in it, and every reader of the system would see it.
+            const kept = new Set(allowedProjects.filter((p) => !hidden.has(p)));
+            const health: RepoAccessReport[] = repoHealth.filter((h) => kept.has(h.project)).map((h) => ({
+              ...h, detail: h.detail === null ? null : redactLines(redactUrlCredentials(h.detail)).slice(0, 300),
+            }));
+            db.prepare("UPDATE machines SET repo_health = ? WHERE id = ?").run(JSON.stringify(health), actor.name);
+          }
           db.prepare("UPDATE machines SET gate_runner = ? WHERE id = ?").run(gateRunner ? 1 : 0, actor.name);
           // A downgraded app must lose the capability too; a previous report cannot promise it still applies patches.
           db.prepare("UPDATE machines SET runner_settings = ? WHERE id = ?").run(runnerSettings ? JSON.stringify(runnerSettings) : null, actor.name);
@@ -10491,6 +10509,26 @@ export class SqliteHive implements HiveBackend {
       "agents.paused": () => this.#paused(),
 
       "systems.list": () => (db.prepare("SELECT * FROM systems ORDER BY name").all() as Row[]).map(toSystem),
+
+      "systems.repoHealth": () => {
+        const members = [...new Set((db.prepare("SELECT projects FROM systems").all() as Row[]).flatMap((r) => JSON.parse(str(r.projects)) as string[]))].sort();
+        const machines = (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => ({
+          machine: this.#toMachine(r),
+          health: new Map((JSON.parse(str(r.repo_health ?? "[]")) as RepoAccessReport[]).map((h) => [h.project, h])),
+        }));
+        return members.map((project): SystemMemberHealth => {
+          const having = machines.filter((m) => m.machine.projects.includes(project)).map(({ machine, health }): SystemMemberMachine => {
+            const h = health.get(project);
+            return { machineId: machine.id, machine: machine.machine, online: machine.online, status: h?.status ?? null, checkedAt: h?.checkedAt ?? null, head: h?.head ?? null, detail: h?.detail ?? null };
+          });
+          // One machine that reaches it is enough to work on it; the others' failures are still listed for their owners.
+          const state = having.length === 0 ? "no_machine"
+            : having.some((m) => m.status === "ok") ? "reachable"
+            : having.some((m) => m.status !== null) ? "unreachable"
+            : "unchecked";
+          return { project, state, machines: having };
+        });
+      },
 
       "systems.save": ({ name, projects }, actor) => {
         db.prepare(

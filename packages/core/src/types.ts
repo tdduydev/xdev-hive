@@ -649,6 +649,48 @@ export interface HiveSystem {
 }
 
 /**
+ * What `git ls-remote` against a project's remote told one machine. `no_access_or_missing` is its own value because
+ * GitLab ("The project you were looking for could not be found or you don't have permission to view it") and GitHub
+ * ("Repository not found") answer a repo the account may not see exactly like one that does not exist, so as not to
+ * leak that it exists: the machine cannot tell the two apart, and calling it either would send people the wrong way.
+ * `no_access`: the credentials themselves were refused. `not_found`: git says there is no repository there at all.
+ */
+export const REPO_ACCESS_STATUSES = ["ok", "no_access", "no_access_or_missing", "not_found", "network", "error"] as const;
+export type RepoAccessStatus = (typeof REPO_ACCESS_STATUSES)[number];
+
+/** One project's check as a machine sends it at heartbeat; `detail` is git's last words with credentials taken out. */
+export interface RepoAccessReport {
+  project: string;
+  status: RepoAccessStatus;
+  checkedAt: string;
+  /** The remote's HEAD when reachable. */
+  head: string | null;
+  detail: string | null;
+}
+
+/** A member of a system as one machine that has its repo sees it; status null: an app too old to check. */
+export interface SystemMemberMachine {
+  machineId: string;
+  machine: string;
+  online: boolean;
+  status: RepoAccessStatus | null;
+  checkedAt: string | null;
+  head: string | null;
+  detail: string | null;
+}
+
+/**
+ * A system member's repo across the machines (systems.repoHealth). reachable: some machine reached it ·
+ * unreachable: every machine that checked failed · unchecked: machines have it but none checked yet ·
+ * no_machine: no machine has registered the repo, so nobody has ever cloned it.
+ */
+export interface SystemMemberHealth {
+  project: string;
+  state: "reachable" | "unreachable" | "unchecked" | "no_machine";
+  machines: SystemMemberMachine[];
+}
+
+/**
  * What a project is to the hub (roadmap 47), table `project_states`: no row means in use.
  * `archived` hides it and refuses writes, and can be undone; `deleted` is the headstone left after the data went,
  * so a machine still reporting the repo cannot bring the name back by itself.

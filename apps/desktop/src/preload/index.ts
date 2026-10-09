@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld("hive", {
     checkGitHub: () => invoke("desktop:checkGitHub"),
     createMergeRequest: (runId: string) => invoke("desktop:createMergeRequest", runId),
     setupStatus: () => invoke("desktop:setupStatus"),
+    recheckRepos: () => invoke("desktop:recheckRepos"),
     installSetup: (id: string) => invoke("desktop:installSetup", id),
     transferHub: (direction: "push" | "pull") => invoke("desktop:transferHub", direction),
     hubRequests: () => invoke("desktop:hubRequests"),
