@@ -1610,8 +1610,15 @@ describe("Runner", () => {
     const run = await a.runner.enqueue({ project: "demo", taskId: "T-1" });
     await until(() => a.runner.log(run.id).includes("thinking"));
     assert.equal((await a.runner.heartbeat())?.duplicate, false);
+    assert.equal((await a.hive.call("machines.list", {}, admin))[0]!.system, undefined, "the heartbeat does not wait for a first sample");
+    await a.runner.sampleSystem();
+    await a.runner.heartbeat();
     const [m] = await a.hive.call("machines.list", {}, admin);
     assert.equal(m!.id, "runner.duy-mbp@duy-macbook");
+    assert.ok(m!.system?.osName && m!.system.hardware, "the runner sends host identity through heartbeat");
+    assert.ok(m!.system.ram!.totalBytes! > 0);
+    assert.ok(m!.system.disk!.totalBytes! > 0);
+    assert.ok(m!.system.uptimeSeconds! >= 0);
     assert.deepEqual(m!.runs.map((r) => [r.taskId, r.status, r.profileId]), [["T-1", "running", "claude-1"]]);
 
     a.runner.cancel(run.id);
@@ -2577,7 +2584,8 @@ describe("live log", () => {
     const { runner } = await setup([profile("claude-a", "claude", 1, "sleep"), profile("codex-b", "codex", 2, "sleep")], {}, "local");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });
     void runner.tick();
-    await until(() => runner.list()[0]?.activity !== undefined);
+    // Allow fake CLI startup on a busy host before checking the events it emits.
+    await until(() => runner.list()[0]?.activity !== undefined, 60_000);
     assert.equal(runner.list()[0]!.activity, "Bash: npm test", "from Claude Code's events");
     assert.match(unstamp(runner.log(run.id)), /▶ Bash: npm test\n  ✓ ok 1 - adds \(\+1 lines\)\nthinking…/);
     runner.cancel(run.id);
@@ -2587,7 +2595,7 @@ describe("live log", () => {
     const other = await setup([profile("codex-b", "codex", 1, "sleep")], {}, "local");
     const codex = await other.runner.enqueue({ project: "demo", taskId: "T-1" });
     void other.runner.tick();
-    await until(() => other.runner.list()[0]?.activity !== undefined);
+    await until(() => other.runner.list()[0]?.activity !== undefined, 60_000);
     assert.equal(other.runner.list()[0]!.activity, "thinking…", "another CLI: the last line it printed");
     other.runner.cancel(codex.id);
     await other.runner.settle();

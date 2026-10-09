@@ -1,5 +1,5 @@
 // Bản đồ agent (roadmap 31b): machine → profile → run, as the hub last heard it, for the cards of the map.
-import type { Machine, MachineRun, MachineSystem, QuotaCooldown, ReportedProfile } from "@xdev-hive/core";
+import type { Machine, MachineRun, QuotaCooldown, ReportedProfile } from "@xdev-hive/core";
 import type { Scope } from "#ui/lib/scope.ts";
 
 /**
@@ -86,19 +86,4 @@ export function decodeTargets(text: string | null): AgentTarget[] {
     .map((part) => part.split("|"))
     .filter((p): p is [string, string] => p.length === 2 && !!p[0] && !!p[1])
     .map(([machineId, profileId]) => ({ machineId, profileId }));
-}
-
-/**
- * No app reports the system block yet (MachineSystem), so e2e shows the design's sample numbers on its fixture machines
- * to check the card's measurements. Off outside the fixture; a real machine is never given numbers.
- */
-const FIXTURE_SYSTEM: Record<string, MachineSystem> = {
-  "mac-mini-hn": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "Mac mini M4 Pro · 14 nhân · arm64", uptime: "Bật 6 ngày", cpu: { percent: 72, detail: "14 nhân · tải 10.1" }, ram: { percent: 81, detail: "48 / 64 GB" }, disk: { percent: 58, detail: "Còn 420 GB / 1 TB" } },
-  "mbp-linh": { os: "macos", osName: "macOS 26.0 Tahoe", hardware: "MacBook Pro M3 Max · 16 nhân · arm64", uptime: "Bật 2 ngày", cpu: { percent: 34, detail: "16 nhân · tải 5.4" }, ram: { percent: 62, detail: "22.3 / 36 GB" }, disk: { percent: 91, detail: "Còn 90 GB / 1 TB" } },
-  "ci-runner-01": { os: "ubuntu", osName: "Ubuntu 24.04.1 LTS", hardware: "AMD EPYC 7B13 · 8 vCPU · x86_64", uptime: "Bật 41 ngày", cpu: { percent: 6, detail: "8 vCPU · tải 0.5" }, ram: { percent: 23, detail: "7.4 / 32 GB" }, disk: { percent: 37, detail: "Còn 126 GB / 200 GB" } },
-  "pc-quang": { os: "windows", osName: "Windows 11 Pro 24H2", hardware: "Intel Core i7-13700 · 16 nhân · x64 · WSL2", uptime: "Bật 9 giờ", cpu: { percent: 48, detail: "16 nhân · tải 7.7" }, ram: { percent: 77, detail: "24.6 / 32 GB" }, disk: { percent: 64, detail: "Còn 180 GB / 500 GB" } },
-};
-
-export function withFixtureSystem(machines: Machine[], on: boolean): Machine[] {
-  return on ? machines.map((m) => ({ ...m, system: FIXTURE_SYSTEM[m.machine] ?? m.system })) : machines;
 }

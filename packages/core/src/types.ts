@@ -1408,17 +1408,17 @@ export interface RunnerChange {
 }
 
 /**
- * What a machine says about itself for the machine card (spec 72g). No app reports it yet, so the card shows the
- * block only when it is there and never fills in numbers of its own.
+ * What a machine last reported for its system card (spec 72g). Missing measurements stay absent.
  */
 export interface MachineSystem {
   os: "macos" | "ubuntu" | "windows" | "linux";
   osName: string;
   hardware: string;
   uptime?: string;
-  cpu?: { percent: number; detail: string };
-  ram?: { percent: number; detail: string };
-  disk?: { percent: number; detail: string };
+  uptimeSeconds?: number;
+  cpu?: { percent: number; detail: string; cores?: number; load?: number };
+  ram?: { percent: number; detail: string; usedBytes?: number; totalBytes?: number };
+  disk?: { percent: number; detail: string; freeBytes?: number; totalBytes?: number };
 }
 
 /** A desktop runner as the hub last heard from it. */
