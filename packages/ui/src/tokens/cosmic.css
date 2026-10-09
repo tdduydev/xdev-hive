@@ -70,3 +70,9 @@
 /* Chat page (72h). */
 :root,[data-theme]{--chat-violet-tint:rgba(123,97,255,.08);--chat-violet-line:rgba(123,97,255,.3);--chat-violet-sel:rgba(123,97,255,.14);--chat-violet-sel-line:rgba(123,97,255,.45);--chat-user-bg:rgba(123,97,255,.22);--chat-divider:rgba(35,28,55,.06)}
 [data-theme="dark"]{--text-faint:rgba(255,255,255,.43);--chat-divider:rgba(255,255,255,.06)}
+/* 72i: values the design templates use for Pipeline and Features that no earlier token carried. */
+:root,[data-theme]{--accent-violet-soft:#6547E5;--ds-body-sm:500 14px/22px var(--font-sans);--ds-caption:500 12px/18px var(--font-sans);--ds-micro:600 11px/16px var(--font-sans);
+--violet-tint:rgba(123,97,255,.14);--violet-tint-soft:rgba(123,97,255,.1);--ring-violet:inset 0 0 0 1px rgba(123,97,255,.5);--ring-violet-soft:inset 0 0 0 1px rgba(123,97,255,.45);--ring-violet-faint:inset 0 0 0 1px rgba(123,97,255,.35);
+--divider:rgba(35,28,55,.06);--hairline:inset 0 -1px 0 rgba(35,28,55,.06);--hairline-top:inset 0 1px 0 rgba(35,28,55,.06);--hairline-faint:inset 0 -1px 0 rgba(35,28,55,.04);--shadow-sticky:0px 8px 24px 0px rgba(35,28,55,.18);--surface-sticky:rgba(255,255,255,.94);--track-off:var(--glass-bg);--stage-done:#137A48;
+}
+[data-theme="dark"]{--divider:rgba(255,255,255,.06);--hairline:inset 0 -1px 0 rgba(255,255,255,.06);--hairline-top:inset 0 1px 0 rgba(255,255,255,.06);--hairline-faint:inset 0 -1px 0 rgba(255,255,255,.04);--shadow-sticky:0px 8px 24px 0px rgba(0,0,0,.5);--surface-sticky:rgba(36,35,37,.94);--accent-violet-soft:#9580FF;--stage-done:#8BE3B6}
