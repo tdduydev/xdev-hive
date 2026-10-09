@@ -4763,6 +4763,22 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 400));
       await tab.shot(`terminal-page-${theme}`);
     }
+    // A session opened from the page runs in the page's own frame, never in the dialog the other entries use.
+    await fetch(`${terminal.base}/__terminal/opt-in`, { method: "POST" });
+    await tab.select('[data-terminal-page] [data-testid="terminal-machine"]', "runner.terminal-fixture@terminal-machine");
+    await tab.select('[data-terminal-page] [data-testid="terminal-project"]', "demo");
+    await tab.click('[data-terminal-page] input[type="checkbox"]');
+    await tab.click('[data-terminal-page] [data-testid="terminal-step-up"]'); await tab.type(terminal.password);
+    await tab.click('[data-terminal-page] [data-testid="terminal-confirm-open"]');
+    await tab.waitFor("page terminal active", () => document.querySelector('[data-terminal-page] [data-testid="terminal-status"]')?.textContent.includes("Đã kết nối"));
+    expect(await tab.eval(() => !document.querySelector('[data-testid="terminal-dialog"], [data-testid="terminal-create-dialog"]') && !!document.querySelector('[data-terminal-page] [data-testid="terminal-screen"]') && document.documentElement.scrollWidth <= innerWidth + 1), "page session opened outside the page frame");
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await tab.shot("terminal-page-active");
+    await tab.click('[data-terminal-page] [data-testid="terminal-stop"]');
+    await tab.waitFor("page session ended", () => document.querySelector('[data-terminal-page] [data-testid="terminal-stop"]').disabled);
+    await tab.click('[data-terminal-page] [data-testid="terminal-detach"]');
+    await tab.waitFor("page frame idle", () => document.querySelector('[data-terminal-page] [data-testid="terminal-idle"]'));
   });
 
   await step("close-unmerged-task", async () => {
