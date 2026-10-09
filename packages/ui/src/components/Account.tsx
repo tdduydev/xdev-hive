@@ -124,12 +124,14 @@ export function AccountMenu({
   me,
   onSignOut,
   subtitle,
+  connected,
   onNavigate,
 }: {
   client: HiveClient;
   me: Me;
   onSignOut?: () => void;
   subtitle?: string;
+  connected?: boolean;
   onNavigate?: () => void;
 }) {
   const [changing, setChanging] = useState(false);
@@ -148,13 +150,14 @@ export function AccountMenu({
             aria-label={t("shell.account")}
             className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-sm p-0 text-left outline-none hover:bg-hover focus-visible:focus-ring data-[state=open]:bg-hover"
           >
-            <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-selected text-xs/none font-semibold text-fg-strong">
+            <span className="grid size-[30px] shrink-0 place-items-center rounded-full bg-selected shadow-(--ring-glass-strong) text-xs/none font-semibold text-fg-strong">
               {initials(name)}
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-[13px]/[18px] font-semibold text-fg-strong">{name}</span>
-              <span className={cn("truncate text-xs/4 text-fg-muted", subtitle && "font-mono")}>
-                {subtitle ?? `${me.mode === "hub" ? window.location.host : where} · ${role}`}
+              <span className={cn("flex items-center gap-1.5 text-xs/4 text-fg-muted", subtitle && "font-mono")}>
+                {connected !== undefined ? <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", connected ? "bg-success-solid" : "bg-warning-solid")} /> : null}
+                <span className="min-w-0 truncate">{subtitle ?? `${me.mode === "hub" ? window.location.host : where} · ${role}`}</span>
               </span>
             </span>
           </button>

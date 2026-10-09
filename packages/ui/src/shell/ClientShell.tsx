@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Download, ExternalLink, Layers3, Menu, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, UserRound, X } from "lucide-react";
+import { Download, ExternalLink, Layers3, LogOut, Menu, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, UserRound, X } from "lucide-react";
 import { cn } from "cn";
 import type { AgentRun, Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
@@ -8,6 +8,7 @@ import { HiveWordmark, XMark } from "#ui/components/Brand.tsx";
 import darkWordmark from "#ui/assets/cosmic/xdev-hive-dark.svg";
 import { ScopeSwitcher } from "#ui/components/ScopeSwitcher.tsx";
 import { scopeId } from "#ui/lib/scope.ts";
+import { Button } from "#ui/components/ui/button.tsx";
 import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
 import { ChatSessionProvider, useChatSession } from "#ui/components/ChatSession.tsx";
 import { LeaderChatPanel } from "#ui/shell/LeaderChatPanel.tsx";
@@ -254,6 +255,24 @@ function ClientFrame({
   const version = info.data?.version;
   const account = desktop && settings.data ? `${settings.data.machine}${version ? ` · v${version}` : ""}` : undefined;
 
+  const sidebarToggle = (
+    <button
+      ref={sidebarTrigger}
+      type="button"
+      onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar((s) => !s); }}
+      aria-label={t("shell.toggleSidebar")}
+      aria-expanded={sidebar}
+      aria-controls="hive-navigation"
+      title={t("shell.sidebarShortcut")}
+      className={cn(
+        "hive-sidebar-toggle grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
+        noDrag,
+      )}
+    >
+      <PanelLeft className="size-4" aria-hidden="true" />
+    </button>
+  );
+
   const nav = (
     <nav
       id="hive-navigation"
@@ -264,14 +283,15 @@ function ClientFrame({
         narrow && "h-full w-full border-r-0",
       )}
     >
-      <div className={cn("hive-sidebar-brand flex shrink-0 items-center", rail && "justify-center px-0", mac && !rail && "pl-[84px]", drag)}>
+      <div className={cn("hive-sidebar-brand flex shrink-0 items-center", rail && "justify-center px-0", mac && !rail && "hive-sidebar-brand-mac", drag)}>
         {rail ? (!mac ? <XMark size={24} /> : null) : theme === "dark" ? <img src={darkWordmark} alt="xDev Hive" className="h-[30px] w-auto" /> : <HiveWordmark height={30} />}
+        {!narrow && !rail ? <div className={cn("ml-auto flex items-center", noDrag)}><Button variant="ghost" size="icon" aria-label={t("theme.toggle")} title={t("theme.toggle")} onClick={() => toggleTheme(theme)}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</Button>{sidebarToggle}</div> : null}
         {narrow ? <button type="button" aria-label={t("shell.closeSidebar")} onClick={() => setSidebar(false)} className="ml-auto grid size-11 place-items-center rounded-sm text-fg-secondary"><X className="size-4" /></button> : null}
       </div>
       <div className={cn("hive-sidebar-scope shrink-0", noDrag)}>
         {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.chooseScope")} title={scopeName ?? t("shell.chooseScope")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><Layers3 className="size-4" aria-hidden="true" /></button> : <ScopeSwitcher />}
       </div>
-      {!rail ? <div className="workspace-new-work"><button type="button" data-new-work-open={!narrow || undefined} onClick={() => setNewTask(true)} className="workspace-new-button">{t("shell.assignAgent")}</button></div> : null}
+      {!rail ? <div className="workspace-new-work"><Button variant="solid" size="md" type="button" data-new-work-open={!narrow || undefined} onClick={() => setNewTask(true)} className="w-full">{t("shell.assignAgent")}</Button></div> : null}
       {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
       <div data-nav-list className="hive-sidebar-list flex min-h-0 flex-1 flex-col overflow-y-auto">
         {groups.map((g, gi) => (
@@ -335,16 +355,11 @@ function ClientFrame({
         </div>
       ) : null}
       <div className={cn("hive-sidebar-account flex shrink-0 items-center gap-1", rail && "flex-col", noDrag)}>
-        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} onNavigate={() => narrow && setSidebar(false)} />}
-        <button
-          type="button"
-          onClick={() => toggleTheme(theme)}
-          aria-label={t("theme.toggle")}
-          title={t("theme.toggle")}
-          className="grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring"
-        >
-          {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-        </button>
+        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} subtitle={account} connected={hubMode ? link.state === "ok" : undefined} onNavigate={() => narrow && setSidebar(false)} />}
+        {narrow || rail ? <Button variant="ghost" size="icon" className="max-md:size-11" onClick={() => toggleTheme(theme)} aria-label={t("theme.toggle")} title={t("theme.toggle")}>
+          {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+        </Button> : null}
+        {!rail && onSignOut ? <Button variant="ghost" size="icon" className="max-md:size-11" onClick={onSignOut} aria-label={t("account.signOut")} title={t("account.signOut")}><LogOut className="size-[15px]" aria-hidden="true" /></Button> : null}
       </div>
     </nav>
   );
@@ -380,21 +395,7 @@ function ClientFrame({
           {!narrow ? nav : null}
           <div className="relative flex min-w-0 flex-1 flex-col">
             <header className={cn("hive-topbar hive-main-topbar flex min-w-0 shrink-0 items-center", drag, mac && rail && "pl-4")}>
-              <button
-                ref={sidebarTrigger}
-                type="button"
-                onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar((s) => !s); }}
-                aria-label={t("shell.toggleSidebar")}
-                aria-expanded={sidebar}
-                aria-controls="hive-navigation"
-                title={t("shell.sidebarShortcut")}
-                className={cn(
-                  "hive-sidebar-toggle grid size-8 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-sm text-fg-secondary outline-none hover:bg-hover hover:text-fg-strong focus-visible:focus-ring",
-                  noDrag,
-                )}
-              >
-                <PanelLeft className="size-4" />
-              </button>
+              {narrow || rail ? sidebarToggle : null}
               <div className="hive-topbar-title flex min-w-0 flex-1 flex-col">
                 {scopeName ? <span className="truncate text-fg-muted">{scopeName}</span> : null}
                 <h1 className="truncate text-fg-strong" data-shell-title>{title}</h1>
@@ -429,17 +430,19 @@ function ClientFrame({
                   {installing ? t("shell.updateInstalling", { version: up.version }) : up.idleState === "waiting" ? t("shell.updateWaiting", { version: up.version }) : t(up.updateKind === "deb" ? "shell.updateReadyDeb" : "shell.updateReady", { version: up.version })}
                 </button>
               ) : null}
-              <button
+              <Button
+                variant="glass"
+                size="md"
                 type="button"
                 data-ask-leader
                 aria-expanded={chat.panelOpen}
                 title={t("chat.askShortcut")}
                 onClick={() => chat.setPanelOpen(true)}
-                className={cn("hive-topbar-chat flex max-md:size-11 shrink-0 items-center gap-1.5 max-md:justify-center max-md:p-0 font-semibold text-fg-primary outline-none hover:bg-hover focus-visible:focus-ring", noDrag)}
+                className={cn("hive-topbar-chat max-md:size-11 max-md:p-0", noDrag)}
               >
                 <MessageSquare className="size-4 md:hidden" aria-hidden />
                 <span className="max-md:sr-only">{t("chat.askLeader")}</span>
-              </button>
+              </Button>
               {webUrl ? (
                 <a
                   href={`${webUrl}/#/today`}
@@ -456,15 +459,17 @@ function ClientFrame({
                   <span className="max-md:sr-only">{t("shell.openWeb")}</span>
                 </a>
               ) : narrow ? (
-                <button
+                <Button
+                  variant="solid"
+                  size="icon"
                   type="button"
                   data-new-work-open
                   onClick={() => setNewTask(true)}
                   aria-label={t("shell.assignAgent")}
-                  className="grid size-11 shrink-0 place-items-center rounded-sm bg-primary text-primary-foreground outline-none focus-visible:focus-ring"
+                  className="size-11"
                 >
                   <Plus className="size-4" aria-hidden="true" />
-                </button>
+                </Button>
               ) : null}
             </header>
             {link.state === "offline" || link.state === "refused" ? (

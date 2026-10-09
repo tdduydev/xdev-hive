@@ -514,6 +514,55 @@ async function main() {
     await tab.key("Enter");
     expect(await tab.eval(() => document.activeElement?.id === "hive-main" && location.hash === "#/tasks"), "skip link must focus content without changing the route");
     await tab.go("today?section=inbox");
+    const originalTheme = await tab.eval(() => document.documentElement.dataset.theme);
+    if (originalTheme !== "dark") {
+      await tab.eval(() => { localStorage.setItem("hive-theme", "dark"); });
+      await tab.reload();
+    }
+    for (const theme of ["dark", "light"]) {
+      if (mobile) await tab.click('.hive-mobile-nav button');
+      const shell = await tab.eval(() => {
+        const nav = document.querySelector('#hive-navigation');
+        const rect = el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+        const footer = document.querySelector('.hive-status-footer');
+        return {
+          groups: nav.querySelectorAll('.hive-nav-heading').length,
+          assignment: nav.querySelector('.workspace-new-work [data-variant="solid"]')?.textContent,
+          leaderVariant: document.querySelector('[data-ask-leader]')?.dataset.variant,
+          scope: rect(nav.querySelector('[data-project-picker-trigger]')),
+          nav: rect(nav), topbar: rect(document.querySelector('.hive-main-topbar')),
+          footer: rect(footer), hub: footer.textContent.trim(),
+          targets: [...nav.querySelectorAll('button, a')].filter(el => el.getBoundingClientRect().width).map(rect),
+          overflow: document.documentElement.scrollWidth > innerWidth,
+        };
+      });
+      expect(shell.groups === 3 && shell.assignment === "Giao việc cho agent" && shell.leaderVariant === "glass", `cosmic shell components: ${JSON.stringify(shell)}`);
+      expect(!shell.overflow, "shell does not overflow the viewport");
+      if (mobile) {
+        expect(shell.targets.every(r => r.width >= 44 && r.height >= 44), `drawer touch targets: ${JSON.stringify(shell.targets)}`);
+        await tab.shot(`shell-${theme}-drawer`);
+        await tab.key("Escape");
+      } else {
+        expect(shell.nav.width === 252 && shell.topbar.height === 72 && shell.scope.height === 44, `template shell geometry: ${JSON.stringify(shell)}`);
+        expect(shell.footer.height > 0 && shell.hub.includes(new URL(base).host), "hub connection footer stays visible");
+      }
+      await tab.shot(`shell-${theme}-today`);
+      await tab.click('[data-ask-leader]');
+      await tab.waitFor("leader composer", () => !!document.querySelector('[data-leader-panel] textarea'));
+      const composer = await tab.eval(() => {
+        const el = document.querySelector('[data-leader-panel] textarea');
+        el.focus();
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return { height: r.height, bottom: r.bottom, viewport: innerHeight, hit: hit === el };
+      });
+      expect(composer.height > 0 && composer.bottom <= composer.viewport && composer.hit, `Leader Chat composer remains visible and usable: ${JSON.stringify(composer)}`);
+      await tab.shot(`shell-${theme}-leader`);
+      await tab.key("Escape");
+      if (mobile) await tab.click('.hive-mobile-nav button');
+      await tab.click('#hive-navigation button[aria-label="Đổi giao diện sáng tối"]');
+      if (mobile) await tab.key("Escape");
+    }
   });
 
   await step("responsive-shell-pages", async () => {
