@@ -13,6 +13,9 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import {
   CHAT_FILE_MAX_BYTES,
   compareVersions,
+  DESTRUCTIVE_HUB_RPCS,
+  type DestructiveHubRpc,
+  isAgentCaller,
   grantPermissions,
   grantRole,
   HiveError,
@@ -163,7 +166,7 @@ const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
  * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants), "own" (a person on their
  * own things, each handler checks the rest). A name not here is refused. Spec 76 P0-4.
  */
-const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
+export const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
   "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
   "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
   "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
@@ -181,9 +184,14 @@ const CHAT_RPC = new Set<Method>(["chat.propose"]);
 const WEB_RPC_AUDITED = new Set(["releases.notes", "alerts.ack", "webhooks.test", "automation.save"]);
 
 function requireHubAdmin(res: Response): void {
-  const actor = actorOf(res);
+  assertHubAdmin(actorOf(res));
+}
+
+function assertHubAdmin(actor: Actor): void {
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
 }
+
+const isDestructiveHubRpc = (method: unknown): method is DestructiveHubRpc => (DESTRUCTIVE_HUB_RPCS as readonly unknown[]).includes(method);
 
 /** A hub role from a request, or the fallback when it is left out; anything else is a bad_request. */
 function readRole(raw: unknown, fallback: HubRole): HubRole {
@@ -786,6 +794,76 @@ export function createHubApp({
     }
   });
 
+  /**
+   * The hub's destructive RPCs (DESTRUCTIVE_HUB_RPCS): each checks the caller, then hands back the change itself, so an
+   * agent's call is checked and held as a proposal (pending_approval) and the approver's runs the very same change.
+   */
+  const hubChanges: Record<DestructiveHubRpc, (i: Record<string, unknown>, actor: Actor, user: UserInfo | undefined) => () => Promise<unknown> | unknown> = {
+    "tokens.revoke": (i, actor, user) => {
+      if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
+      const info = tokens.get(String(i.id ?? ""));
+      if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
+      const hubAdmin = actor.role === "admin" && !actor.access;
+      if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
+      return () => {
+        tokens.revoke(info.id);
+        hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
+        return { revoked: true };
+      };
+    },
+    "users.trash": (i, actor) => userLifecycle("users.trash", i, actor),
+    "users.purge": (i, actor) => userLifecycle("users.purge", i, actor),
+    "users.inviteRevoke": (i, actor) => {
+      assertHubAdmin(actor);
+      return () => {
+        const revoked = users.revokeInvite(String(i.inviteId ?? ""));
+        hive.audit(actor, "users.inviteRevoke", revoked.id, revoked.role, { key: "audit.inviteRevoked" });
+        return revoked;
+      };
+    },
+    "webhooks.remove": (i, actor) => {
+      assertHubAdmin(actor);
+      if (!webhooks) throw new HiveError("bad_request", "Unknown method webhooks.remove");
+      return () => {
+        const target = webhooks.store.get(Number(i.id));
+        const removed = webhooks.store.remove(Number(i.id));
+        if (target && removed) hive.audit(actor, "webhooks.remove", target.name, target.kind);
+        return { removed };
+      };
+    },
+    "hub.cleanup": (_i, actor) => {
+      assertHubAdmin(actor);
+      if (!hub) throw new HiveError("bad_request", "Unknown method hub.cleanup");
+      return async () => {
+        const r = await hub.cleanup();
+        const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
+        hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
+        return r;
+      };
+    },
+  };
+  /** users.trash and users.purge; users.restore takes the same checks but loses nothing, so it stays a direct RPC. */
+  const userLifecycle = (method: "users.trash" | "users.restore" | "users.purge", i: Record<string, unknown>, actor: Actor) => {
+    assertHubAdmin(actor);
+    const id = String(i.id ?? "");
+    const target = id ? users.get(id) : null;
+    if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+    if (target.hubRole === "owner") assertMayGrant(actor, "owner");
+    if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
+    return () => {
+      if (method === "users.purge") users.purge(id);
+      const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
+      const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
+      hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
+      return method === "users.purge" ? { id, purged: true } : updated;
+    };
+  };
+  // A person approving the proposal runs the change as themselves: their own rights are checked again, not the agent's.
+  for (const method of DESTRUCTIVE_HUB_RPCS) {
+    hive.onApprovedAction(method, async (input, approver) =>
+      await hubChanges[method](input, approver, approver.account ? users.byUsername(approver.account) ?? undefined : undefined)());
+  }
+
   app.post("/api/rpc", auth, rpcJson, async (req, res) => {
     try {
       const { method, input } = (req.body ?? {}) as { method?: unknown; input?: unknown };
@@ -811,6 +889,14 @@ export function createHubApp({
         }
       }
 
+      // An agent's call (even on an admin token) waits for a person; nothing runs until one approves its proposal.
+      if (isDestructiveHubRpc(method)) {
+        const change = hubChanges[method](i, actor, user);
+        if (isAgentCaller(actor)) throw hive.holdForApproval(method, i, actor);
+        res.json({ result: await change() });
+        return;
+      }
+
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
         if (actor.role === "admin" && !actor.access) {
@@ -832,17 +918,6 @@ export function createHubApp({
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
         hive.audit(actor, "tokens.create", created.info.name, created.info.role, { key: `role.${created.info.role}` });
         res.json({ result: created });
-        return;
-      }
-      if (method === "tokens.revoke") {
-        if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
-        const info = tokens.get(String(i.id ?? ""));
-        if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
-        const hubAdmin = actor.role === "admin" && !actor.access;
-        if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
-        tokens.revoke(info.id);
-        hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
-        res.json({ result: { revoked: true } });
         return;
       }
 
@@ -876,16 +951,11 @@ export function createHubApp({
       }
 
       // Trang Hub (roadmap 22n): hub admins only.
-      if (method === "hub.info" || method === "hub.backup" || method === "hub.cleanup") {
+      if (method === "hub.info" || method === "hub.backup") {
         requireHubAdmin(res);
         if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "hub.info") res.json({ result: await hub.info() });
-        else if (method === "hub.cleanup") {
-          const r = await hub.cleanup();
-          const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
-          hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
-          res.json({ result: r });
-        } else {
+        else {
           const r = await hub.backup();
           hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
           res.json({ result: { file: path.basename(r.file), removed: r.removed.length, files: r.files?.copied ?? null } });
@@ -938,11 +1008,6 @@ export function createHubApp({
           const saved = webhooks.store.save(i as unknown as WebhookInput);
           hive.audit(actor, "webhooks.save", saved.name, `${saved.kind} · ${saved.events.join(", ")}`);
           res.json({ result: saved });
-        } else if (method === "webhooks.remove") {
-          const target = webhooks.store.get(Number(i.id));
-          const removed = webhooks.store.remove(Number(i.id));
-          if (target && removed) hive.audit(actor, "webhooks.remove", target.name, target.kind);
-          res.json({ result: { removed } });
         } else if (method === "webhooks.test") {
           res.json({ result: await webhooks.dispatcher.test(Number(i.id)) });
         } else {
@@ -1022,15 +1087,8 @@ export function createHubApp({
                 : "audit.renamed";
           hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(key === "audit.hubRole" ? { vars: { from: target.hubRole, to: updated.hubRole } } : {}) });
           res.json({ result: updated });
-        } else if (method === "users.trash" || method === "users.restore" || method === "users.purge") {
-          if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
-          if (target.hubRole === "owner") assertMayGrant(actor, "owner");
-          if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
-          if (method === "users.purge") users.purge(id);
-          const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
-          const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
-          hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
-          res.json({ result: method === "users.purge" ? { id, purged: true } : updated });
+        } else if (method === "users.restore") {
+          res.json({ result: userLifecycle(method, i, actor)() });
         } else if (method === "users.inviteList") {
           res.json({ result: users.listInvites() });
         } else if (method === "users.inviteCreate") {
@@ -1041,10 +1099,6 @@ export function createHubApp({
           const made = users.createInvite({ role: hubRole, days: typeof i.days === "number" ? i.days : undefined, userId: bound?.id, createdBy: actor.account ?? actor.name });
           hive.audit(actor, "users.inviteCreate", bound?.username ?? made.invite.id, hubRole, { key: "audit.inviteCreated", vars: { role: hubRole } });
           res.json({ result: made });
-        } else if (method === "users.inviteRevoke") {
-          const revoked = users.revokeInvite(String(i.inviteId ?? ""));
-          hive.audit(actor, "users.inviteRevoke", revoked.id, revoked.role, { key: "audit.inviteRevoked" });
-          res.json({ result: revoked });
         } else if (method === "users.setGrants") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, unknown>, "shared" in i ? i.shared : undefined);

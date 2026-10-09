@@ -1670,6 +1670,7 @@ export const vi = {
     basedOn: "#{id} · dựa trên v{version}",
     operation: "Thao tác #{id}",
     operationApproval: "Duyệt sẽ thực hiện thao tác này bằng quyền của bạn. Kiểm tra phương thức và dữ liệu bên dưới.",
+    destructiveApproval: "{method} xoá hoặc gỡ dữ liệu và có thể không lấy lại được. Một agent đã gọi nó, hub giữ lại chờ người duyệt.",
     showOperation: "Xem thao tác",
     hideOperation: "Ẩn thao tác",
     decided: {
@@ -4137,6 +4138,7 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
     proposalStale: "{key} đã lên v{current}, đề xuất dựa trên v{base}. Đọc lại tài liệu rồi đề xuất lại.",
     proposalSame: "Nội dung đề xuất giống hệt bản hiện tại.",
     proposalDecided: "Đề xuất #{id} đã được xử lý.",
+    pendingApproval: "Đã gửi đề xuất #{id}, chờ duyệt: {method} chưa được thực hiện.",
     taskExists: "Đã có task {id}.",
     noFreeMachine: "Chưa có máy nào có repo của {project} đang rảnh.",
     mapNotReady: "Đợt chạy #{id} không có danh sách phần nào đang chờ chạy.",
