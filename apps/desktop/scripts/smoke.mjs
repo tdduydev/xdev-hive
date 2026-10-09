@@ -186,7 +186,7 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
   db.close();
   const store = new RunStore(path.join(work, "runs.db"));
   const run = store.insert({ project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
-  store.update(run.id, { status: "succeeded", headSha: "c".repeat(40), branch: source.specBranch, finishedAt: new Date().toISOString() });
+  store.update(run.id, { status: "succeeded", startSha: "a".repeat(40), headSha: "c".repeat(40), pushed: true, pushError: null, branch: source.specBranch, finishedAt: new Date().toISOString() });
   store.db.close();
   for (const phone of [false, true]) {
     await shoot(phone ? "acceptance-mobile" : "acceptance-desktop", `specs?project=${project}&dir=${source.specDir}&branch=ai%2F${taskId}`, 2500, {
@@ -197,8 +197,8 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
     });
     await shoot(phone ? "run-revision-mobile" : "run-revision-desktop", `runs?run=${run.id}`, 2500, {
       ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
-      HIVE_SMOKE_EXPECT: "[data-run-head-sha]",
-      HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
+      HIVE_SMOKE_EXPECT: "[data-run-head-sha] && [data-run-push-state] && [data-run-start-sha]",
+      HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.querySelector('[data-run-push-state]')?.textContent.includes('Đã đẩy nhánh') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
     });
   }
   await gitlab.close();
