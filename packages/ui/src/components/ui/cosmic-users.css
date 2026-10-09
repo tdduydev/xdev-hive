@@ -118,3 +118,10 @@
 .cu-faces>.cu-avatar{width:32px;height:32px}
 }
 }
+.cu-agents{display:flex;flex-direction:column;gap:8px;padding:10px 14px 12px;background:color-mix(in srgb,var(--accent-violet) 6%,transparent);box-shadow:inset 0 1px 0 var(--border-subtle)}
+.cu-agents>span{display:flex;align-items:center;gap:8px}
+.cu-agents b{flex:1;font:600 10px/1 var(--font-sans);letter-spacing:.4px;text-transform:uppercase;color:var(--accent-violet)}
+.cu-planets{display:flex;gap:4px}
+.cu-planets i{width:20px;height:20px;border-radius:50%;background:center/cover no-repeat}
+.cu-planets i[data-online="false"]{opacity:.4}
+.cu-agents small{font:var(--design-caption);color:var(--text-muted)}

@@ -327,6 +327,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "spec-page": ["login-password"],
   "spec-import-and-run": ["lead-sees-members", "spec-page"], // spec-page's imported feature
   "agent-policy": ["lead-sees-members"],
+  "org-agents": ["login-token"],
   "tools": ["login-token", "lead-sees-members"],
   "machine-runner-settings": ["login-token", "login-password", "lead-sees-members"],
   "worktree-admin": ["login-token", "login-password", "lead-sees-members"],
@@ -2349,17 +2350,13 @@ async function main() {
   await step("agent-policy", async () => {
     const tab = (current = tabs.lan);
     await tab.go("settings?tab=agent");
-    await tab.waitFor("agent summary", () => !!document.querySelector("[data-policy-summary]"));
-    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-summary`);
-    await tab.click("[data-compact-agent-policy] button", "Sửa");
-    await tab.waitFor("agent editor", () => !!document.querySelector("[data-policy-editor]"));
-    await tab.waitFor("model chips from the router", () => { const sheet = document.querySelector('[data-policy-editor]'); const box = sheet?.getBoundingClientRect(); return box?.left >= 0 && box?.right <= innerWidth && sheet?.textContent.includes("sonnet"); });
-    if (mobile) { const short = await tab.eval(() => [...document.querySelectorAll('[data-policy-editor] button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 44).map((b) => `${b.textContent.trim() || b.getAttribute('aria-label')}: ${Math.round(b.getBoundingClientRect().height)}px`)); expect(short.length === 0, `agent editor touch targets below 44px: ${short.join(", ")}`); }
-    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-editor`);
-    await tab.click('[data-policy-editor] button[aria-pressed]', "Chỉ đọc");
-    await tab.click('[data-policy-editor] button', "Lưu");
+    await tab.waitFor("agent rows", () => !!document.querySelector("[data-agent-policy-rows] [data-policy-autonomy]"));
+    await tab.shot(`${String(n).padStart(2, "0")}-settings-agent-rows`);
+    await tab.waitFor("model suggestions from the router", () => document.querySelector("#agent-policy-models")?.innerHTML.includes("sonnet"));
+    if (mobile) { const short = await tab.eval(() => [...document.querySelectorAll('[data-agent-policy-rows] select, [data-agent-policy-rows] input, [data-agent-policy-rows] button')].filter((b) => b.getBoundingClientRect().width > 0 && b.getBoundingClientRect().height < 32).map((b) => `${b.getAttribute('aria-label')}: ${Math.round(b.getBoundingClientRect().height)}px`)); expect(short.length === 0, `agent rows controls below 32px: ${short.join(", ")}`); }
+    await tab.eval(() => { const el = document.querySelector("[data-policy-autonomy]"); const set = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set; set.call(el, "read"); el.dispatchEvent(new Event("change", { bubbles: true })); });
     await until("payment at read", async () => (await rpc("agentPolicy.get", {})).effective?.payment?.autonomy === "read");
-    await tab.waitFor("effective summary", () => document.querySelector("[data-policy-summary]")?.textContent.includes("Chỉ đọc"));
+    await tab.waitFor("autonomy select shows the effective value once", () => document.querySelector("[data-policy-autonomy]")?.value === "read" && !document.querySelector("[data-policy-summary]"));
     // Lan's machine has payment: its heartbeat carries the part.
     const r = await fetch(`${base}/api/rpc`, {
       method: "POST",
@@ -2368,6 +2365,19 @@ async function main() {
     });
     const beat = (await r.json()).result;
     expect(beat.agentPolicy?.projects?.payment?.autonomy === "read", `heartbeat agentPolicy: ${JSON.stringify(beat.agentPolicy)}`);
+  });
+
+  // R-72l: the org chart shows each service's leader and agents; the Agent switch hides them.
+  await step("org-agents", async () => {
+    const tab = (current = tabs.admin);
+    await tab.go("admin?tab=org");
+    await tab.waitFor("org chart", () => !!document.querySelector("[data-service-agents]"));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth || !!document.querySelector(".cu-canvas")), "org chart overflows the page");
+    expect(await tab.eval(() => document.querySelector("[data-service-agents]").textContent.includes("Leader")), "service agents block lacks the leader line");
+    await tab.shot(`${String(n).padStart(2, "0")}-org-agents-on`);
+    await tab.click("[data-org-agents]");
+    await tab.waitFor("agents hidden", () => !document.querySelector("[data-service-agents]"));
+    await tab.shot(`${String(n).padStart(2, "0")}-org-agents-off`);
   });
 
   // Roadmap 28a: Lan (lead of payment) turns codegraph on for payment on the Tool page; the admin adds an MCP entry to

@@ -26,7 +26,7 @@ import { SkillsPage } from "#ui/pages/Skills.tsx";
 import { ProposalsPage } from "#ui/pages/Proposals.tsx";
 import { PolicyTab } from "./Admin.tsx";
 import { AgentRows, PolicyRows } from "./SettingsRows.tsx";
-import { CompactAgentPolicy } from "./admin/CompactAgentPolicy.tsx";
+import { AgentPolicyRows } from "./AgentPolicyRows.tsx";
 import { BudgetsCard } from "./admin/Budgets.tsx";
 import { OpsAlerts } from "./admin/Alerts.tsx";
 import { OverviewWithRange, OpsPage } from "./admin/frame.tsx";
@@ -59,8 +59,7 @@ export function SettingsPage() {
   const leaderProjects = projects.filter((p) => canEditChatSettings(me, p));
   const body: Record<SettingsTab, () => ReactNode> = {
     policy: () => <PolicyRows />,
-    // The editor sheet and its summary stay (e2e and the ceiling logic live there); the rows above it show the effective values.
-    agent: () => <AgentRows editor={<CompactAgentPolicy />} classify={<details className="mt-4 max-w-2xl" data-classify-details><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={leaderProjects} /></details>} />,
+    agent: () => <AgentRows classify={<details className="mt-4 max-w-2xl" data-classify-details><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={leaderProjects} /></details>} />,
     tools: () => <ToolsPage />,
     context: () => (
       <OpsPage>
@@ -150,7 +149,7 @@ function AdminTabs() {
     users: () => <UsersPage inviteOpen={inviteOpen} onInviteClose={() => setInviteOpen(false)} />,
     roles: () => <RolesTab />,
     org: () => <OrgTab />,
-    policy: () => ops(<><PolicyTab /><CompactAgentPolicy hubOnly /><SdlcGatesCard hubOnly /></>),
+    policy: () => ops(<><PolicyTab /><AgentPolicyRows hubOnly /><SdlcGatesCard hubOnly /></>),
     tools: () => <ToolsPage />,
     budgets: () => ops(<BudgetsCard tick={poll} />),
     alerts: () => ops(<OpsAlerts />),

@@ -972,6 +972,7 @@ export const vi = {
     adminDesc: { roles: "Vai trò hub và ma trận quyền theo service.", org: "Ai giữ vai trò nào ở từng hệ thống và service.", ops: "Sức khoẻ hub, hàng đợi và chi phí.", users: "Người dùng, vai trò hub và quyền theo service.", policy: "Chính sách của hub áp cho mọi dự án.", tools: "Tool và phiên bản hub cho phép.", budgets: "Ngân sách và mức đã dùng.", alerts: "Quy tắc cảnh báo và nơi nhận.", audit: "Nhật ký thao tác trên hub.", webhooks: "Thông báo và webhook gửi ra ngoài.", versions: "Phiên bản app desktop đã phát hành.", hub: "Thông tin và vận hành hub." },
   },
   settingsRows: {
+    allowHint: "Mỗi host một mục, cách nhau bằng dấu phẩy.", modelsHint: "Để trống là mọi model; tên cách nhau bằng dấu phẩy.", mcpToolHint: "Cho agent dùng server này.",
     project: "Dự án", projectHint: "Các thay đổi bên dưới áp cho dự án này.",
     autoDispatch: "Tự giao việc", autoDispatchHint: "Task đủ điều kiện được giao cho agent mà không chờ người bấm.",
     fixRoundsHint: "Số lượt agent tự sửa sau khi review hoặc test không đạt.",
@@ -3342,6 +3343,7 @@ export const vi = {
       denied: "không",
     },
     org: {
+      agents: "Agent", leader: "Leader", noLeader: "chưa chọn", agentCount: "{n} agent", noAgent: "chưa có agent",
       highlight: "Làm nổi",
       hubMeta: "{users} người · {systems} hệ thống · {services} service",
       admins: "Admin hub",
