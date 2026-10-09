@@ -1,4 +1,3 @@
-import * as React from "react";
 import { cn } from "cn"
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
