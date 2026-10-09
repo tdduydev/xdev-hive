@@ -11,6 +11,7 @@ import type { UsageSample } from "./usage.ts";
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS run_push_state(id TEXT PRIMARY KEY, metadata_key TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_command_receipts(id TEXT PRIMARY KEY, results TEXT NOT NULL, acked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS project_command_receipts(id TEXT PRIMARY KEY, ok INTEGER NOT NULL, error TEXT, acked INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS pending_hub_reports(id TEXT PRIMARY KEY, method TEXT NOT NULL, input TEXT NOT NULL, actor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_cleanup_log(id INTEGER PRIMARY KEY, entry TEXT NOT NULL);
 
@@ -227,6 +228,20 @@ export class RunStore {
   }
   ackWorktreeResults(ids: string[]): void {
     for (const id of ids) this.db.prepare("UPDATE worktree_command_receipts SET acked = 1 WHERE id = ?").run(id);
+  }
+  /** Project commands (ADM-machine-projects): kept until the hub heard the result, so a lost answer is not applied twice. */
+  projectResult(id: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM project_command_receipts WHERE id = ?").get(id);
+  }
+  recordProjectResult(result: { id: string; ok: boolean; error: string | null }): void {
+    this.db.prepare("INSERT OR IGNORE INTO project_command_receipts(id, ok, error) VALUES (?, ?, ?)").run(result.id, result.ok ? 1 : 0, result.error);
+  }
+  projectResults(): Array<{ id: string; ok: boolean; error: string | null }> {
+    return (this.db.prepare("SELECT id, ok, error FROM project_command_receipts WHERE acked = 0 LIMIT 100").all() as { id: string; ok: number; error: string | null }[])
+      .map((r) => ({ id: r.id, ok: r.ok === 1, error: r.error }));
+  }
+  ackProjectResults(ids: string[]): void {
+    for (const id of ids) this.db.prepare("UPDATE project_command_receipts SET acked = 1 WHERE id = ?").run(id);
   }
   logWorktree(entry: WorktreeLog): void {
     this.db.prepare("INSERT INTO worktree_cleanup_log(entry) VALUES (?)").run(JSON.stringify(entry));
