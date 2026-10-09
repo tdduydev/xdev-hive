@@ -19,6 +19,7 @@ export async function hubChatUpload(hub: HubAccess, label: string, project: stri
   const query = `project=${encodeURIComponent(project)}&name=${encodeURIComponent(name)}`;
   const res = await fetch(`${hub.url.replace(/\/+$/, "")}/api/chat/files?${query}`, {
     method: "POST",
+    signal: AbortSignal.timeout(10_000),
     headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": label, "content-type": "application/octet-stream" },
     // A copy in an ArrayBuffer of its own: what fetch's body takes, whatever buffer the bytes came in.
     body: new Uint8Array(bytes).buffer,

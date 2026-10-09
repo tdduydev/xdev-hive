@@ -40,6 +40,16 @@ after(() => stop());
 const user = { id: 1, username: "duy", name: "Duy", role: "admin" };
 
 describe("hub client", () => {
+  it("treats a stalled response body as an unavailable hub", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => { throw new DOMException("body stalled", "AbortError"); },
+    }) as unknown as Response);
+    const hub = new HubBackend(hubUrl, "token");
+    await assert.rejects(hub.me("desktop"), (err: unknown) => err instanceof HiveError && err.code === "unavailable" && err.key === "errors.hubUnreachable");
+  });
+
   it("reports a hub it cannot reach as unavailable, with the catalogue key", async () => {
     const hub = new HubBackend(`http://127.0.0.1:${await closedPort()}`, "t".repeat(40));
     await assert.rejects(

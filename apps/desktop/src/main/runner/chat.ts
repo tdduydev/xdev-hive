@@ -119,7 +119,8 @@ interface FetchedFile {
 
 /** The hub's file, read with the reply's token. */
 async function fetchBytes(url: string, token: string): Promise<Uint8Array> {
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const signal = AbortSignal.timeout(10_000);
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal });
   if (!res.ok) throw new Error(`The hub answered ${res.status} for ${url}.`);
   return new Uint8Array(await res.arrayBuffer());
 }
@@ -451,7 +452,7 @@ export class ChatWorker {
         const code = (err as { code?: string }).code;
         // Cancelled and finished meanwhile, or no such reply: nothing left to tell.
         if (code === "conflict" || code === "not_found" || code === "forbidden") return;
-        await new Promise((r) => setTimeout(r, 2000));
+        if (attempt < 2) await new Promise((r) => setTimeout(r, Math.min(8_000, 1_000 * 2 ** attempt) * (0.75 + Math.random() * 0.5)));
       }
     }
   }
