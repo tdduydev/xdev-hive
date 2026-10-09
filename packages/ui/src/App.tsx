@@ -29,6 +29,7 @@ import {
   Sparkles,
   SquareKanban,
   SquareTerminal,
+  Terminal,
 } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
