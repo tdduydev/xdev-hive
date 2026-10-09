@@ -4259,7 +4259,7 @@ it("applies remote settings on a live runner before acknowledging the next heart
   const settings = { maxParallel: 2, acceptHubRuns: false };
   let config = { runner: settings, gitlab: { mr: { enabled: false, when: "after_review" as "after_review" | "after_success" } }, agents };
   const s = await setup(agents, settings, "hub", {
-    report: () => ({ runnerSettings: { maxParallel: settings.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when },
+    report: () => ({ runnerSettings: { maxParallel: settings.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when, acceptHubRuns: settings.acceptHubRuns },
       profiles: agents.map(p => ({ id: p.id, label: p.label, kind: p.kind, enabled: p.enabled, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: p.priority, stopAtSession: p.stopAtSession, stopAtWeek: p.stopAtWeek })) }),
     onHub: update => {
       if (update.runnerChange) { config = applyRunnerChange(config, update.runnerChange); Object.assign(settings, config.runner); }
@@ -4269,10 +4269,11 @@ it("applies remote settings on a live runner before acknowledging the next heart
   try {
     await s.runner.heartbeat();
     const machine = (await s.hive.call("machines.list", {}, admin))[0]!;
-    await s.hive.call("machines.setRunner", { machineId: machine.id, settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success" } }, admin);
+    await s.hive.call("machines.setRunner", { machineId: machine.id, settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success", acceptHubRuns: true } }, admin);
     await s.hive.call("machines.setProfile", { machineId: machine.id, profileId: "remote", stopAtSession: 50, stopAtWeek: 40 }, admin);
     await s.runner.heartbeat();
     assert.equal(settings.maxParallel, 1);
+    assert.equal(settings.acceptHubRuns, true);
     assert.equal(config.gitlab.mr.enabled, true);
     assert.equal(config.gitlab.mr.when, "after_success");
     assert.equal(usageStop(agents[0]!, { session: { percent: 50, resets: null }, week: null, others: [], checkedAt: new Date().toISOString() }), "session");
