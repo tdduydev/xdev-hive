@@ -2055,6 +2055,13 @@ export class SqliteHive implements HiveBackend {
     return !!actor.tokenId && actor.tokenId === row.token_id && (actor.account ?? null) === strOrNull(row.owner);
   }
 
+  /** The desktop window calls as `desktop@<token>`, so its name cannot match the machine's reporting id. */
+  isPairedDesktopToken(actor: Actor): boolean {
+    if (!this.#machineIdentityReady || !actor.tokenId || !actor.account || actor.role === "agent" || actor.role === "viewer" ||
+        actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) return false;
+    return !!this.db.prepare("SELECT 1 FROM machines WHERE token_id = ? AND owner = ? LIMIT 1").get(actor.tokenId, actor.account);
+  }
+
   /**
    * The desktop's password sign-in replaces its token with a new one of the same name and account: that is the owner
    * re-pairing in person, so the machines of the old token follow the new one instead of being locked out.
