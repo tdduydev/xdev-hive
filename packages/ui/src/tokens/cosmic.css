@@ -51,3 +51,15 @@
 --page-background:radial-gradient(1px 1px at 22px 34px,var(--star-1),transparent 60%),radial-gradient(1px 1px at 140px 90px,var(--star-2),transparent 60%),radial-gradient(1px 1px at 210px 180px,var(--star-3),transparent 60%),radial-gradient(1px 1px at 80px 220px,var(--star-4),transparent 60%),radial-gradient(1.5px 1.5px at 260px 40px,var(--star-5),transparent 60%),var(--page-gradient);
 }
 [data-theme="dark"]{--surface-violet:#38343F;--star-1:rgba(255,255,255,.45);--star-2:rgba(255,255,255,.3);--star-3:rgba(255,255,255,.35);--star-4:rgba(255,255,255,.22);--star-5:rgba(255,255,255,.28)}
+/* Machines page (72g): measurements of the design's machine card that the shared layer lacked. */
+:root,[data-theme]{
+--text-faint:rgba(35,28,55,.62);--track:rgba(35,28,55,.08);--glass-faint:rgba(35,28,55,.06);--accent-amber:#F5B544;
+--num-warn:var(--status-warning-fg);--num-danger:var(--status-danger-fg);
+--reset-bg:rgba(123,97,255,.18);--reset-ring:inset 0 0 0 1px rgba(123,97,255,.45);--reset-off-bg:rgba(35,28,55,.04);
+--ring-danger:inset 0 0 0 1px rgba(232,86,86,.35);--danger-panel-bg:rgba(232,86,86,.1);--danger-panel-ring:inset 0 0 0 1px rgba(232,86,86,.28);
+--os-mac-bg:rgba(35,28,55,.1);--os-mac-fg:#211F28;--os-ubuntu-bg:rgba(233,84,32,.2);--os-ubuntu-fg:#B33F12;--os-win-bg:rgba(24,160,251,.2);--os-win-fg:#086CA9;
+}
+[data-theme="dark"]{
+--text-faint:rgba(255,255,255,.43);--track:rgba(255,255,255,.07);--glass-faint:rgba(255,255,255,.06);--reset-off-bg:rgba(255,255,255,.04);
+--os-mac-bg:rgba(255,255,255,.12);--os-mac-fg:#FFFFFF;--os-ubuntu-fg:#F7A27F;--os-win-fg:#8FD0FD;
+}

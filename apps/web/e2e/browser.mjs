@@ -351,6 +351,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "today-web": ["lead-sees-members"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
+  "machines-design": ["lead-sees-members"],
   "agent-assign": ["lead-sees-members"],
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
@@ -3927,8 +3928,8 @@ async function main() {
     expect(signedOut === "signedOut", `codex-1: ${signedOut}`);
     const pickable = await tab.eval(() => document.querySelector('[data-map-profile="lan-mbp/codex-1"]')?.getAttribute("role"));
     expect(pickable !== "checkbox", "a signed-out subscription cannot be picked");
-    const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"] [data-usage-resets]')?.textContent ?? "");
-    expect(codexLine.includes("phiên làm mới Oct 5 at 4:00pm") && codexLine.includes("tuần làm mới Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
+    const codexLine = await tab.eval(() => document.querySelector('[data-map-profile="lan-mini/codex-2"]')?.textContent ?? "");
+    expect(codexLine.includes("Oct 5 at 4:00pm") && codexLine.includes("Oct 9") && codexLine.includes("cập nhật lúc"), `codex-2: ${codexLine}`);
     expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth && [...document.querySelectorAll('[data-map-machine]')].every(el => el.getBoundingClientRect().right <= innerWidth)), "machine grid overflows viewport");
     expect(await tab.eval(() => !!document.querySelector('[data-attention]') && document.querySelectorAll('[data-summary]').length === 4), "missing attention or summary");
     for (const theme of ["light", "dark"]) {
@@ -3943,6 +3944,46 @@ async function main() {
     await tab.shot(`${String(n).padStart(2, "0")}-agent-map-picked`);
     await tab.click("[data-map-batch]");
     await tab.waitFor("the Task page with the two agents", () => location.hash.startsWith("#/tasks") && document.body.innerText.includes("Đã chọn 2 agent trên Bản đồ agent"));
+  });
+
+  // Spec 72g: the machine cards with the design's sample machines and plans, shot for the side-by-side with shots/machines-1440.png.
+  await step("machines-design", async () => {
+    const at = (hhmm, weekday) => {
+      const d = new Date(Date.now() + 3 * 86400_000);
+      if (weekday !== undefined) d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7));
+      const [h, m] = hhmm.split(":").map(Number);
+      d.setHours(h, m, 0, 0);
+      return d.toISOString();
+    };
+    const beat = async (machine, acceptsRuns, projects, profiles, runs = []) => {
+      const r = await fetch(`${base}/api/rpc`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machine}` },
+        body: JSON.stringify({ method: "machines.heartbeat", input: { machine, instance: "e2e00072", version: "0.147.4", projects, acceptsRuns, maxParallel: 2, profiles, runs } }),
+      });
+      const body = await r.json();
+      if (body.error) throw new Error(`heartbeat: ${body.error.message}`);
+    };
+    const plan = (id, kind, used5, usedWk, reset5, weekday, resetsLeft) => ({ id, label: id, kind, enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, maxConcurrent: 1, sessionPercent: used5, weekPercent: usedWk, sessionResetsAt: reset5 === "—" ? null : at(reset5), weekResetsAt: at("07:00", weekday), resetsLeft });
+    await beat("mac-mini-hn", true, ["payment"], [
+      plan("claude-max-1", "claude", 100, 61, "15:40", 1, 2), plan("claude-max-2", "claude", 42, 38, "17:05", 3, 1), plan("claude-team", "claude", 18, 22, "18:30", 4, 0),
+      plan("codex-pro-1", "codex", 66, 47, "16:10", 2, 3), plan("codex-pro-2", "codex", 9, 12, "19:00", 5, 1), plan("codex-plus", "codex", 88, 79, "15:55", 1, 1),
+      plan("gemini-adv", "gemini", 34, 18, "16:45", 3, 2), plan("gemini-team", "gemini", 100, 4, "—", 6, 0), plan("gemini-ws", "gemini", 51, 33, "17:20", 4, 1), plan("claude-pro", "claude", 74, 58, "16:25", 2, 2),
+    ]);
+    await beat("mbp-linh", true, ["payment"], [plan("codex-pro", "codex", 72, 44, "16:00", 2, 1), plan("claude-max", "claude", 12, 30, "18:50", 4, 2), plan("gemini-adv", "gemini", 27, 15, "17:40", 5, 0), plan("claude-pro", "claude", 93, 81, "15:20", 1, 1)]);
+    await beat("ci-runner-01", false, ["payment"], [plan("gemini-adv", "gemini", 8, 5, "19:10", 6, 1), plan("claude-team", "claude", 21, 26, "18:15", 4, 1)]);
+    await beat("pc-quang", true, ["payment"], [plan("codex-pro", "codex", 38, 29, "17:30", 3, 1), plan("claude-pro", "claude", 55, 41, "16:50", 2, 1), plan("gemini-adv", "gemini", 12, 9, "18:40", 5, 0)]);
+    const tab = (current = tabs.lan);
+    await tab.eval(() => { sessionStorage.setItem("hive-e2e-fixtures", "1"); document.documentElement.dataset.theme = "dark"; });
+    await tab.go("machines?e2e=machine-system");
+    await tab.waitFor("the four machine cards", () => document.querySelectorAll("[data-map-machine]").length >= 4 && document.querySelector('[data-map-profile="mac-mini-hn/claude-max-1"]'));
+    expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "machine cards overflow the viewport");
+    // Hide the shell around the cards so the shot lines up with the design's content area.
+    await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-dark`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
+    await sleep(300);
+    await tab.shot(`machines-design-${mobile ? "390x844" : "1440x900"}-light`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
   });
 
   await step("tool-approve-web", async () => {
