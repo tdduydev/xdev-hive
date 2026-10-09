@@ -24,6 +24,8 @@
 --button-solid-shadow:0 8px 24px -8px rgba(123,97,255,.7);--button-blue-shadow:0 8px 24px -8px rgba(24,160,251,.7);--switch-thumb:#FFFFFF;--switch-thumb-shadow:0px 2px 4px 0px rgba(0,0,0,.32);
 --button-h-sm:34px;--button-h-md:46px;--button-h-lg:54px;
 --ease-standard:cubic-bezier(.22,1,.36,1);--duration-base:240ms;
+--board-column-bg:rgba(255,255,255,.6);--chip-bg:rgba(35,28,55,.06);--progress-track:rgba(35,28,55,.08);
+--pill-violet-bg:rgba(123,97,255,.14);--pill-violet-ring:rgba(101,71,229,.4);--pill-violet-fg:#583BCF;--pill-danger-bg:rgba(232,86,86,.12);--pill-danger-fg:#B82F2F;
 
 }
 [data-theme="dark"]{
@@ -37,6 +39,8 @@
 --status-success-fg:#2EC47C;--status-success-bg:#183529;--status-info-fg:#18A0FB;--status-info-bg:#172F40;--status-running-fg:#18A0FB;--status-running-bg:#172F40;
 --status-danger-fg:#F2A0A0;--status-danger-bg:#3A2023;--status-warning-fg:#F5CD86;--status-warning-bg:#382F1F;
 --page-gradient:linear-gradient(135deg,#1E1E20 0%,#0E0E11 32%);
+--board-column-bg:rgba(29,28,32,.6);--chip-bg:rgba(255,255,255,.06);--progress-track:rgba(255,255,255,.06);
+--pill-violet-bg:rgba(123,97,255,.16);--pill-violet-ring:rgba(123,97,255,.4);--pill-violet-fg:#9580FF;--pill-danger-bg:rgba(232,86,86,.14);--pill-danger-fg:#F08A8A;
 --glow-violet:0 0 80px rgba(123,97,255,.45);--glow-blue:0 0 80px rgba(24,160,251,.4);
 }
 @keyframes hivePulse{0%,100%{opacity:1}50%{opacity:.35}}

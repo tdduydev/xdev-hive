@@ -33,6 +33,7 @@ import { MachineSelect, PreferKindSelect, ProfileSelect, takesRunsOf } from "#ui
 import { AgentAssignment } from "#ui/components/AgentAssignment.tsx";
 import { AgentBoard } from "#ui/components/AgentBoard.tsx";
 import { agentLabel, agentLanes, filterAgent } from "#ui/lib/assignment.ts";
+import { Tag } from "@xdev-hive/ui/components/ui/primitives";
 import { TaskKanban } from "#ui/components/TaskKanban.tsx";
 import { formatTime, hashParam, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -238,7 +239,7 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
     <Page wide={view !== "list"}>
       <PageHeader title={t("tasks.title")} subtitle={t("tasks.subtitle")} />
       <div className="flex flex-wrap items-center gap-2">
-        <ServiceFilter scope={scope} value={service} onChange={setService} />
+        {view === "kanban" ? null : <ServiceFilter scope={scope} value={service} onChange={setService} />}
         {view === "list" ? (
           <NativeSelect value={status} onChange={(e) => setStatus(e.target.value as TaskStatus | "")} aria-label={t("tasks.status")}>
             <NativeSelectOption value="">{t("tasks.anyStatus")}</NativeSelectOption>
@@ -277,7 +278,27 @@ export function TasksPage({ view: fixed, switcher }: { view?: View; switcher?: R
         ) : null}
       </div>
       {scope.kind === "shared" ? <Notice tone="info">{t("tasks.sharedScope")}</Notice> : null}
-      {next.data && list.data?.some((task) => task.status !== "done") ? (
+      {view === "kanban" ? (
+        <div data-board-filters className="flex flex-wrap items-center gap-2">
+          {scope.kind === "system" ? ["", ...[...new Set(scope.projects)].sort()].map((p) => (
+            <Tag key={p} role="button" tabIndex={0} data-service-chip={p || undefined} active={service === p} className="cursor-pointer outline-none focus-visible:focus-ring max-md:min-h-11"
+              onClick={() => setService(p)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setService(p); } }}>
+              {p || t("systemOverview.allServices")}
+            </Tag>
+          )) : null}
+          <span className="flex-1" />
+          {next.data?.length ? (
+            <>
+              <span className="text-xs/[18px] font-medium text-fg-muted">{t("tasks.nextReady")}</span>
+              {next.data.map((task) => (
+                <span key={task.id} title={task.title} className="inline-flex h-[26px] items-center rounded-full bg-[var(--pill-violet-bg)] px-2.5 font-mono text-xs/none font-semibold text-[var(--pill-violet-fg)] shadow-[inset_0_0_0_1px_var(--pill-violet-ring)]">{task.id}</span>
+              ))}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {view !== "kanban" && next.data && list.data?.some((task) => task.status !== "done") ? (
         <Notice tone="info">
           {next.data.length ? (
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">

@@ -11,6 +11,8 @@ import { useT } from "#ui/i18n/index.tsx";
 
 /** A folded column: wide enough for its icon, its count and its name read downwards. */
 const RAIL_WIDTH = 40;
+/** Template column width: wider than COLUMN_MIN (which only decides when to fold), so a 1440px window scrolls sideways like the design. */
+const COLUMN_DESIGN = 230;
 
 export const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string }>, string]> = {
   todo: [Circle, "text-fg-muted"],
@@ -19,6 +21,19 @@ export const COLUMN_ICON: Record<TaskStatus, [ComponentType<{ className?: string
   blocked: [Ban, "text-danger"],
   done: [CircleCheck, "text-success"],
 };
+
+/** Status dot of a column header: template colours, glowing with the same colour. */
+export const COLUMN_DOT: Record<TaskStatus, string> = {
+  todo: "var(--text-muted)",
+  doing: "var(--accent-blue)",
+  review: "var(--accent-violet)",
+  blocked: "var(--accent-red)",
+  done: "var(--accent-green)",
+};
+
+function ColumnDot({ status }: { status: TaskStatus }) {
+  return <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ background: COLUMN_DOT[status], boxShadow: `0 0 8px ${COLUMN_DOT[status]}` }} />;
+}
 
 export function BoardColumns({
   count,
@@ -70,7 +85,7 @@ export function BoardColumns({
   const folded = mobile ? new Set<TaskStatus>() : foldedColumns(width, count, new Set(opened));
   const narrow = !fitsEveryColumn(width);
   // Narrow: the open columns share what is left, so the grid can never be wider than the board.
-  const columns = TASK_STATUSES.map((status) => (folded.has(status) ? `${RAIL_WIDTH}px` : narrow ? "minmax(0,1fr)" : `minmax(${COLUMN_MIN}px,1fr)`)).join(" ");
+  const columns = TASK_STATUSES.map((status) => (folded.has(status) ? `${RAIL_WIDTH}px` : narrow ? "minmax(0,1fr)" : `minmax(${COLUMN_DESIGN}px,1fr)`)).join(" ");
 
   return (
     <div ref={box} className={cn("min-h-full min-w-0", className)}>
@@ -87,7 +102,7 @@ export function BoardColumns({
           ))}
         </div>
       ) : null}
-      <div ref={scroller} className={cn("min-h-full gap-2.5", mobile ? "flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain pb-2" : "grid")}
+      <div ref={scroller} className={cn("min-h-full gap-3", mobile ? "flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain pb-2" : "grid items-start overflow-x-auto pb-2")}
         style={mobile ? undefined : { gridTemplateColumns: columns }} data-board-fit={mobile ? "mobile" : narrow ? "narrow" : "wide"}
         onScroll={mobile ? (e) => {
           const left = e.currentTarget.scrollLeft;
@@ -127,10 +142,10 @@ export function BoardColumns({
                 onDropTask(status, e);
               }}
               className={cn(
-                "flex min-h-40 min-w-0 flex-col gap-1.5 rounded-[10px] border border-dashed",
+                "flex min-h-[360px] min-w-0 flex-col gap-2 rounded-[22px] bg-[var(--board-column-bg)] shadow-[var(--ring-glass)] items-stretch self-start",
                 mobile && "w-[85vw] max-w-[85%] shrink-0 snap-start",
-                rail ? "p-1" : "p-2",
-                over === status ? "border-line-selected bg-selected" : "border-transparent bg-subtle",
+                rail ? "p-1" : "p-3",
+                over === status && "shadow-[inset_0_0_0_1px_var(--border-selected)]",
               )}
             >
               {rail ? (
@@ -147,24 +162,24 @@ export function BoardColumns({
                 </button>
               ) : (
                 <>
-                  <div className="flex min-w-0 items-center gap-1.5 px-1 pt-0.5 pb-1">
+                  <div className="flex min-w-0 items-center gap-2 px-1.5 pt-1 pb-2">
                     {foldable ? (
                       <button
                         type="button"
                         onClick={fold}
                         title={title}
                         aria-label={t("board.foldColumn", { status: label })}
-                        className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm outline-none hover:text-fg-strong focus-visible:focus-ring"
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-sm outline-none hover:text-fg-strong focus-visible:focus-ring"
                       >
-                        <Icon className={cn("size-3.5 shrink-0", iconCls)} />
-                        <span className="truncate text-xs/none font-semibold text-fg-strong">{label}</span>
-                        <span className="text-xs/none text-fg-muted">{n}</span>
+                        <ColumnDot status={status} />
+                        <span className="flex-1 truncate text-left text-[13px]/[18px] font-semibold text-fg-strong">{label}</span>
+                        <span className="text-[11px]/4 font-semibold text-fg-muted">{n}</span>
                       </button>
                     ) : (
-                      <span className="flex min-w-0 items-center gap-1.5" title={title}>
-                        <Icon className={cn("size-3.5 shrink-0", iconCls)} />
-                        <span className="truncate text-xs/none font-semibold text-fg-strong">{label}</span>
-                        <span className="text-xs/none text-fg-muted">{n}</span>
+                      <span className="flex min-w-0 flex-1 items-center gap-2" title={title}>
+                        <ColumnDot status={status} />
+                        <span className="flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{label}</span>
+                        <span className="text-[11px]/4 font-semibold text-fg-muted">{n}</span>
                       </span>
                     )}
                   </div>
