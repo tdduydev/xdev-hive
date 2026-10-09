@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, memberPath, parseSystemSource, systemFolders, type Actor } from "#core/index.ts";
+import { HiveError, memberPath, mergeSource, parseSystemSource, systemFolders, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -174,5 +174,17 @@ describe("system source (GROUP-init-sync)", () => {
     assert.equal(memberPath("customer-ai", "customer-ai/his/backend/svc-core"), "his/backend/svc-core");
     assert.equal(memberPath("customer-ai", "elsewhere/svc-core"), "svc-core", "outside the group: its own name");
     assert.equal(parseSystemSource("{not json"), null);
+  });
+
+  it("an import adds its repos to the source of the same group, and leaves another group's source alone", () => {
+    const base = { forge: "gitlab" as const, url: "https://gitlab.example.com", groupPath: "shop" };
+    const { state: _s, ...app } = member("app", "app");
+    const { state: _w, ...web } = member("web", "web");
+    const first = mergeSource(null, base, [app]);
+    assert.deepEqual(first?.members.map((m) => [m.project, m.state]), [["app", "active"]]);
+    const archived = { ...first!, members: [{ ...first!.members[0]!, state: "archived" as const }] };
+    assert.deepEqual(mergeSource(archived, base, [app, web])?.members.map((m) => [m.project, m.state]), [["app", "archived"], ["web", "active"]], "known members stay as they are");
+    assert.equal(mergeSource(first, { ...base, groupPath: "other" }, [web]), undefined);
+    assert.equal(mergeSource(null, base, [{ ...web, httpUrl: "https://u:p@gitlab.example.com/shop/web.git" }]), undefined, "would fail the hub: not sent");
   });
 });

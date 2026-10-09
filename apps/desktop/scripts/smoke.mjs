@@ -285,6 +285,14 @@ async function setupCardShots(prefix = "") {
       HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-setup-project]").length === 3',
     };
     await shoot(`${prefix}setup-cards-${state}`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, ...checks });
+    if (!process.env.HIVE_SMOKE_BEFORE && process.env.HIVE_SMOKE_ONLY === "setup-cards") {
+      // A system linked to its group: the cards under its subgroups, and the group's set-up with lab still to clone.
+      await shoot(`${prefix}setup-cards-${state}-group`, "setup", 3500, {
+        HIVE_SMOKE_SETUP_REPORT: fixture,
+        HIVE_SMOKE_CLICK: '[data-setup-group="hospital"]',
+        HIVE_SMOKE_EXPECT: '[data-setup-system="hospital"] [data-setup-folder="his/backend"] && [data-setup-system="hospital"] [data-system-group="hospital"] [data-group-item="lab"][data-group-state="new"] && [data-system-group="hospital"] [data-group-item="demo"][data-group-state="added"]',
+      });
+    }
     if (!process.env.HIVE_SMOKE_BEFORE) {
       await shoot(`${prefix}setup-cards-${state}-details`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_CLICK: '[data-project-checks="demo"] > summary', ...checks });
       await shoot(`${prefix}setup-cards-${state}-mobile`, "setup", 2500, {
@@ -425,7 +433,13 @@ if (process.env.HIVE_SMOKE_ONLY === "setup-guide") {
 }
 if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
   const local = new SqliteHive(path.join(work, "local.db"));
-  await local.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, admin);
+  // GROUP-init-sync: hospital mirrors a GitLab group; lab is a member this machine has no repo for yet.
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/hospital/${p}`, sshUrl: `git@gitlab.example.test:fis/hospital/${p}.git`, httpUrl: `https://gitlab.example.test/fis/hospital/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", {
+    name: "hospital",
+    projects: ["demo", "api", "lab"],
+    source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/hospital", syncedAt: null, members: [member("demo", "his/backend/demo"), member("api", "his/api"), member("lab", "his/backend/lab")] },
+  }, admin);
   local.close();
   await setupCardShots();
   await gitlab.close();
