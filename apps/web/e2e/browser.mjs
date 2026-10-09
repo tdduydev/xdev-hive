@@ -2528,7 +2528,49 @@ async function main() {
     await tab.waitFor("diff tab content", () => document.querySelector('[role="tabpanel"]')?.textContent.includes("pay.ts"));
     await tab.click('[data-run-tab="summary"]');
     await tab.shot(`${String(n).padStart(2, "0")}-runs-review-detail`);
+    // The design's nine runs (docs/design/hive-2026-10/shots/runs-1440.png), one row at least per state, for R-72e's
+    // comparison shots: runs-<width>-<theme>.png with the drawer closed, runs-open-<width>-<theme>.png with it open.
+    const ago = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const mrOf = (iid) => ({ mrUrl: `https://gitlab.example/team/payment/-/merge_requests/${iid}`, mr: { iid, status: "opened", draft: false, pipeline: null, pipelineUrl: null, checkedAt: now } });
+    const design = [
+      { runId: "R-d147a", taskId: "T-147", taskTitle: "Runner: thử gói khác khi hết quota", role: "implement", status: "running", profileId: "gemini-adv", kind: "gemini", attempt: 2, startedAt: ago(6), ...mrOf(316) },
+      { runId: "R-d150", taskId: "T-150", taskTitle: "Webhook Teams dạng Adaptive Card", role: "implement", status: "running", profileId: "codex-pro", kind: "codex", startedAt: ago(18) },
+      { runId: "R-d144", taskId: "T-144", taskTitle: "Diff tài liệu theo từ, không theo dòng", role: "review", status: "running", profileId: "claude-max-2", kind: "claude", startedAt: ago(4), ...mrOf(317) },
+      { runId: "R-d155", taskId: "T-155", taskTitle: "Xuất memory ra JSON", role: "implement", status: "queued", profileId: "codex-pro", kind: "codex", createdAt: ago(9) },
+      { runId: "R-d147b", taskId: "T-147", taskTitle: "Runner: thử gói khác khi hết quota", role: "implement", status: "failed", profileId: "claude-max-1", kind: "claude", startedAt: ago(130), finishedAt: ago(89), error: "Hết quota giữa chừng", ...mrOf(316) },
+      { runId: "R-d142", taskId: "T-142", taskTitle: "Gộp ô phạm vi theo hệ thống", role: "implement", status: "succeeded", profileId: "claude-max", kind: "claude", startedAt: ago(300), finishedAt: ago(228), ...mrOf(318) },
+      { runId: "R-d141", taskId: "T-141", taskTitle: "Memory trích dẫn file", role: "implement", status: "succeeded", profileId: "gemini-adv", kind: "gemini", startedAt: ago(350), finishedAt: ago(317), ...mrOf(312) },
+      { runId: "R-d140", taskId: "T-140", taskTitle: "Service nghỉ và Mở lại", role: "implement", status: "succeeded", profileId: "codex-pro", kind: "codex", attempt: 2, startedAt: ago(380), finishedAt: ago(368), ...mrOf(311) },
+      { runId: "R-d153", taskId: "T-153", taskTitle: "Cảnh báo quota sắp hết qua Slack", role: "implement", status: "cancelled", profileId: "claude-pro", kind: "claude", startedAt: ago(400), finishedAt: ago(397) },
+    ].map((run) => ({ project: "payment", createdAt: run.startedAt ?? run.createdAt, ...run }));
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: design });
+    // Leave the page so it mounts again with the new runs and nothing picked (the drawer closed).
+    await tab.go("tasks");
+    await tab.go("runs");
+    await tab.click("[aria-pressed]", "Tất cả");
+    await tab.waitFor("design runs listed", () => document.querySelectorAll('[data-run-status]').length >= 10 && !document.querySelector(".runs-drawer"));
+    const chips = await tab.eval(() => [...document.querySelectorAll(".runs-filters [aria-pressed]")].map((el) => el.textContent.trim()));
+    expect(["Tất cả", "Đang chạy", "Lỗi", "Chờ máy", "Xong", "Cần theo dõi", "Chờ người"].every((label, i) => chips[i]?.startsWith(label)), `history chips in the design's order: ${JSON.stringify(chips)}`);
+    expect(await tab.eval(() => document.querySelector('[data-run-status="queued"]')?.textContent.includes("chờ 9 ph")), "a queued run shows how long it waits");
+    const keepTheme = await tab.eval(() => document.documentElement.dataset.theme ?? "");
+    const themeShots = async (name) => {
+      for (const theme of ["dark", "light"]) {
+        await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await tab.shot(`${name}-${mobile ? 390 : 1440}-${theme}`);
+      }
+    };
+    // Clicking the chip scrolled the list to it; the shot starts at the top, as the design does.
+    await tab.eval(() => { for (const el of [document.querySelector(".runs-page"), document.querySelector("main")]) el?.scrollTo(0, 0); });
+    await themeShots("runs");
+    await tab.click('[data-run-id="R-d147a"]');
+    await tab.waitFor("design run opened", () => document.querySelector("main h2")?.textContent === "Runner: thử gói khác khi hết quota");
+    await themeShots("runs-open");
+    await tab.eval(value => { if (value) document.documentElement.dataset.theme = value; else delete document.documentElement.dataset.theme; }, keepTheme);
+    // Later steps count live runs (Hôm nay, the nav badge): the design's running and queued runs end here.
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: design.filter((run) => run.status === "running" || run.status === "queued").map((run) => ({ ...run, status: "cancelled", startedAt: run.startedAt ?? now, finishedAt: new Date().toISOString() })) });
     if (mobile) await tab.go("runs");
+    else await tab.click(".runs-drawer-close");
     await tab.click("[data-run-filters] summary");
     await tab.select('select[aria-label="Lọc theo máy"]', "runner.lan-mbp@lan-e2e");
     await tab.select('select[aria-label="Lọc theo task"]', "PAY-1");
