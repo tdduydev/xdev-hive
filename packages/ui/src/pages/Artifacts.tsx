@@ -102,7 +102,7 @@ export function ArtifactsPage() {
           <span className="text-[var(--text-muted)] [font:var(--design-caption)]">{t("artifacts.groupBy")}</span>
           <div className="flex gap-0.5 rounded-full bg-[var(--surface-sunken)] p-[3px] shadow-[var(--ring-glass)]">
             {groupBys.map((g) => (
-              <button key={g} type="button" aria-pressed={groupBy === g} onClick={() => setGroupBy(g)} className={cn("h-6 cursor-pointer rounded-full border-0 px-2.5 max-md:h-11 text-[11.5px]/none font-semibold", groupBy === g ? "bg-[var(--action-primary-bg)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]")}>
+              <button key={g} type="button" aria-pressed={groupBy === g} onClick={() => setGroupBy(g)} className={cn("h-6 cursor-pointer rounded-full border-0 px-2.5 max-md:h-11 text-[11.5px]/none font-semibold", groupBy === g ? "bg-[var(--action-primary-active)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]")}>
                 {t(`artifacts.group_${g}`)}
               </button>
             ))}
@@ -198,7 +198,7 @@ function ArtifactViewer({ artifact, versions, onVersion, pos, onPrev, onNext, ca
   const isHtml = artifact?.type === "text/html";
   const tool = "flex size-8 cursor-pointer items-center justify-center rounded-[10px] border-0 bg-transparent text-[var(--text-secondary)] opacity-80 hover:bg-[var(--glass-bg)] hover:opacity-100 disabled:opacity-40 max-md:size-11";
   const nav = "size-[30px] cursor-pointer rounded-[10px] border-0 bg-transparent text-[var(--text-secondary)] hover:bg-[var(--glass-bg)] disabled:opacity-30 max-md:size-11";
-  const seg = (on: boolean) => cn("cursor-pointer rounded-full border-0 text-[12px]/none font-semibold", on ? "bg-[var(--action-primary-bg)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]");
+  const seg = (on: boolean) => cn("cursor-pointer rounded-full border-0 text-[12px]/none font-semibold", on ? "bg-[var(--action-primary-active)] text-[var(--action-primary-fg)]" : "bg-transparent text-[var(--text-secondary)]");
   const well = "min-h-[560px] flex-1 max-md:min-h-[320px]";
   return <div className="flex min-w-0 flex-[999_1_520px] flex-col overflow-hidden rounded-[24px] bg-[var(--surface-1)] shadow-[var(--ring-glass-strong)]" data-artifact-viewer>
     <div className="flex flex-wrap items-center gap-2.5 py-3 pr-3.5 pl-[18px] shadow-[inset_0_-1px_0_var(--hairline)]">
