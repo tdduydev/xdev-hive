@@ -360,11 +360,16 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "codex-leader-chat": ["login-token"],
   "leader-research": ["lead-sees-members"],
   "chat-shortcuts": ["lead-sees-members"],
-  "mobile-detail-today": ["login-token", "lead-sees-members"],
+  ...Object.fromEntries(["today", "docs", "runs", "chat", "skills", "memory", "features"].map(route => [`mobile-detail-${route}`, ["login-token", "lead-sees-members"]])),
+  "mobile-detail-runs": ["login-token", "batch-run"],
+  "mobile-detail-features": ["login-token", "features-page"],
+  ...Object.fromEntries(["tasks", "batches", "machines", "queue", "costs", "alerts", "audit", "users", "tokens", "webhooks", "versions", "hub", "breakpoint"].map(route => [`table-cards-${route}`, ["login-token"]])),
+  "table-cards-batches": ["login-token", "batch-run"],
 };
 const order = [...readFileSync(import.meta.filename, "utf8").matchAll(/^\s*(?:if \(mobile\) )?await step\("([^"]+)"/gm)].map((m) => m[1]);
 // This step is generated from the mobile detail routes, so the literal-name scan cannot discover it.
-order.push("mobile-detail-today");
+order.push(...["today", "docs", "runs", "chat", "skills", "memory", "features"].map(route => `mobile-detail-${route}`));
+order.push(...["tasks", "batches", "machines", "queue", "costs", "alerts", "audit", "users", "tokens", "webhooks", "versions", "hub", "breakpoint"].map(route => `table-cards-${route}`));
 const only = (process.env.HIVE_E2E_ONLY ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 const unknown = only.filter((s) => !order.includes(s));
 if (unknown.length) {
@@ -2955,7 +2960,7 @@ async function main() {
     await tab.type("payment");
     await tab.key("Enter");
     await tab.key("Escape");
-    if (mobile) await tab.key("Escape");
+    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.click("[data-ask-leader]");
     await sleep(450);
     await tab.waitFor("new chat in payment scope", () => document.querySelector('[data-leader-panel] #chat-project')?.value === "payment");
@@ -4368,6 +4373,7 @@ async function main() {
         const tab = (current = tabs.lan);
         await tab.go(route === "today" ? "today?section=inbox" : route);
         await tab.reload();
+        if (route === "runs") await tab.click("main button", "Tất cả");
         await tab.waitFor("visible list", (selector) => [...document.querySelectorAll(selector)].some((el) => el.getBoundingClientRect().width > 0), selector);
         const listHash = await tab.eval(() => location.hash);
         await tab.shot(`mobile-${route}-list`);
@@ -4393,6 +4399,7 @@ async function main() {
         await assertPane(true);
         await tab.eval(() => history.back());
         await tab.waitFor("Back restores list", (hash) => location.hash === hash, listHash);
+        if (route === "runs") await tab.click("main button", "Tất cả");
         await assertPane(false);
         await tab.eval(() => history.forward());
         await tab.waitFor("Forward restores detail", (hash) => location.hash === hash, selectedHash);
