@@ -1,6 +1,7 @@
 import { redactLines, stripHidden } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText } from "#desktop/main/git.ts";
-import { lstatSync, renameSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { lstatSync, readlinkSync, renameSync } from "node:fs";
 import path from "node:path";
 
 const env = { GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o ConnectTimeout=15" };
@@ -32,7 +33,7 @@ export async function fetchTaskBranch(repo: string, branch: string, remote = "or
 export function prepareTaskBranchMerge(worktree: string, ref: string): string[] {
   // A divergent branch must fail without moving any local files.
   git(worktree, ["merge-base", "--is-ancestor", "HEAD", ref]);
-  const incoming = git(worktree, ["ls-tree", "-r", "--name-only", "-z", ref]).split("\0").filter(Boolean);
+  const incoming = git(worktree, ["ls-tree", "-r", "-z", ref]).split("\0").filter(Boolean);
   const tracked = new Set(git(worktree, ["ls-files", "-z"]).split("\0").filter(Boolean));
   const moved: string[] = [];
   const preserve = (source: string): void => {
@@ -42,7 +43,12 @@ export function prepareTaskBranchMerge(worktree: string, ref: string): string[] 
     renameSync(source, backup);
     moved.push(path.relative(worktree, backup));
   };
-  for (const file of incoming) {
+  for (const entry of incoming) {
+    const match = /^(\d{6}) (?:blob|commit) ([a-f0-9]+)\t(.*)$/s.exec(entry);
+    if (!match) throw new Error(`Unexpected git ls-tree entry: ${entry}`);
+    const mode = match[1]!;
+    const hash = match[2]!;
+    const file = match[3]!;
     if (tracked.has(file)) continue;
     const parts = file.split("/");
     let parent = "";
@@ -61,8 +67,12 @@ export function prepareTaskBranchMerge(worktree: string, ref: string): string[] 
     const source = path.join(worktree, file);
     const local = lstatSync(source, { throwIfNoEntry: false });
     if (!local) continue;
-    if (local.isFile() && git(worktree, ["hash-object", "--", file]) === git(worktree, ["rev-parse", `${ref}:${file}`])) {
-      // Staging matching bytes lets Git adopt the file in the fast-forward.
+    const matchingFile = local.isFile() && (local.mode & 0o111 ? "100755" : "100644") === mode
+      && git(worktree, ["hash-object", "--", file]) === hash;
+    const matchingLink = local.isSymbolicLink() && mode === "120000"
+      && execFileSync("git", ["hash-object", "--stdin"], { cwd: worktree, input: readlinkSync(source), encoding: "utf8" }).trim() === hash;
+    if (matchingFile || matchingLink) {
+      // Git checks both blob and mode before adopting an untracked path in a fast-forward.
       git(worktree, ["add", "-f", "--", file]);
       continue;
     }
