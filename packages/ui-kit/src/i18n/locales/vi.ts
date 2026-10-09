@@ -3550,6 +3550,29 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
     outsideHint: "Các service này chỉ hiện ở thanh bên. Thêm vào một hệ thống để thấy chung với các service khác.",
     openTasks: "{count} task đang mở",
     addTo: "Thêm vào hệ thống",
+    /** Repo của từng service có máy nào truy cập được không (git ls-remote mỗi 6 giờ, hoặc khi bấm Kiểm tra lại trên app). */
+    health: {
+      reachable: "Truy cập được",
+      reachableOn: "Truy cập được trên {machines}",
+      unreachable: "Không truy cập được trên {machines}",
+      noMachine: "Chưa máy nào có repo",
+      unchecked: "Chưa kiểm tra",
+      hintAccess: "Xin quyền đọc repo cho tài khoản Git của máy, hoặc bỏ service khỏi hệ thống nếu repo không còn.",
+      hintNotFound: "Không có repo ở địa chỉ remote: sửa remote trên máy, hoặc bỏ service khỏi hệ thống.",
+      hintNetwork: "Máy không kết nối được máy chủ Git (mạng, VPN, proxy). Bấm Kiểm tra lại trên app khi có mạng.",
+      hintError: "Git báo lỗi. Xem chi tiết từng máy rồi bấm Kiểm tra lại trên app.",
+      hintNoMachine: "Chưa ai clone repo này: thêm repo trên một máy (app › Service), hoặc bỏ service khỏi hệ thống.",
+      hintUnchecked: "Máy có repo chưa gửi kết quả: app cũ, hoặc vừa mở.",
+      machine: "{machine}: {status} lúc {time}",
+      status: {
+        ok: "truy cập được",
+        no_access: "bị từ chối quyền",
+        no_access_or_missing: "không có quyền, hoặc repo không tồn tại",
+        not_found: "không có repo",
+        network: "lỗi mạng",
+        error: "lỗi git",
+      },
+    },
   },
   /** Bảng Service của trang Service & hệ thống (roadmap 47): lưu trữ, khôi phục, xoá hẳn. */
   projectAdmin: {

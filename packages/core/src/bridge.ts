@@ -628,6 +628,8 @@ export interface DesktopBridge {
 
   /** What is installed on this machine and in each project repo. */
   setupStatus(): Promise<SetupReport>;
+  /** `git ls-remote` of every project now, for the hub's Systems page; an app before it has none. */
+  recheckRepos?(): Promise<void>;
   /** Installs one SetupItem (by id) and re-checks it. */
   installSetup(id: string): Promise<SetupInstallResult>;
   /** push: this machine's local database → hub · pull: hub → local database. Needs the hub URL and token. */

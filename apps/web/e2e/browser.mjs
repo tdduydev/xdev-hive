@@ -357,6 +357,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "hub-leader-chat": ["login-token", "lead-sees-members"],
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
+  "system-member-health": ["login-token"],
   "project-archive-delete": ["login-token"],
   "scope-system-first": ["login-token"],
   "overview-by-system": ["login-token"],
@@ -3709,6 +3710,38 @@ async function main() {
     await tab.waitFor("crm no longer outside", () => !document.querySelector('[data-outside-project="crm"]') && !document.querySelector("[data-systems-outside]"));
     // Leave shop as the other steps expect it.
     await rpc("systems.save", { name: "shop", projects: ["payment", "demo"] });
+  });
+
+  // ADM-member-repo-health (incident 2026-10-09): each member of a system says whether a machine reaches its repo.
+  // A machine reaches his-api, gets GitLab's "not found or no permission" for his-portal, and no machine has his-lab.
+  await step("system-member-health", async () => {
+    for (const p of ["his-api", "his-portal", "his-lab"]) await rpc("tasks.create", { id: `${p.toUpperCase()}-1`, project: p, title: `Việc của ${p}` });
+    await rpc("systems.save", { name: "his", projects: ["his-api", "his-portal", "his-lab"] });
+    const at = new Date().toISOString();
+    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.his-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: {
+      machine: "his-e2e", instance: "4e500001", version: "0.155.0", projects: ["his-api", "his-portal"],
+      repoHealth: [
+        { project: "his-api", status: "ok", checkedAt: at, head: "a".repeat(40) },
+        { project: "his-portal", status: "no_access_or_missing", checkedAt: at, detail: "remote: The project you were looking for could not be found or you don't have permission to view it." },
+      ],
+    } }) }).then((r) => r.json());
+    expect(!beat.error, `heartbeat: ${JSON.stringify(beat.error)}`);
+    const tab = (current = tabs.admin);
+    await tab.reload();
+    await tab.go("systems");
+    const member = (p) => `[data-system="his"] [data-system-member="${p}"]`;
+    await tab.waitFor("his-api reachable", (sel) => document.querySelector(sel)?.getAttribute("data-repo-state") === "reachable", member("his-api"));
+    await tab.waitFor("his-portal not reachable on his-e2e, with what to do", (sel) => {
+      const row = document.querySelector(sel);
+      return row?.getAttribute("data-repo-state") === "unreachable" && row.innerText.includes("Không truy cập được trên his-e2e") && row.innerText.includes("Xin quyền đọc repo")
+        && !!row.querySelector('[data-repo-machine="his-e2e"][data-repo-status="no_access_or_missing"]');
+    }, member("his-portal"));
+    await tab.waitFor("his-lab on no machine", (sel) => {
+      const row = document.querySelector(sel);
+      return row?.getAttribute("data-repo-state") === "no_machine" && row.innerText.includes("Chưa máy nào có repo");
+    }, member("his-lab"));
+    await tab.shot(`${String(n).padStart(2, "0")}-system-member-health`);
+    await rpc("systems.remove", { name: "his" });
   });
 
   // Roadmap 47: a throwaway project is archived (it leaves every list and refuses writes), then deleted for good

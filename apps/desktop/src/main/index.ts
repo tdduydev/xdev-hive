@@ -77,7 +77,8 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
-import { findGitRepos, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
+import { findGitRepos, git, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
+import { checkRepoAccess, forgeEnv, RepoHealthMonitor } from "#desktop/main/repo-health.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
@@ -152,6 +153,22 @@ let mrWatcher: MrWatcher;
 let setup: Setup;
 /** Last setup check, sent to the hub with every heartbeat. */
 let setupCache: { checkedAt: string; report: SetupReport } | null = null;
+/**
+ * Whether each project's remote answers (git ls-remote), sent with every heartbeat. Hub mode only: nobody else reads
+ * it, and a local app has no reason to touch the network for it.
+ */
+const repoHealth = new RepoHealthMonitor({
+  targets: () => (config.mode === "hub" ? config.projects.map((p) => ({ project: p.name, repo: p.repo, remote: p.git?.remote ?? "origin" })) : []),
+  check: (target) => {
+    let url: string | null = null;
+    try { url = git(target.repo, ["remote", "get-url", target.remote]); } catch { /* ls-remote says what is wrong. */ }
+    const env = url ? forgeEnv(url, [
+      { url: config.gitlab.url, token: config.gitlab.token, user: "oauth2" },
+      { url: config.github.url, token: config.github.token, user: "x-access-token" },
+    ]) : {};
+    return checkRepoAccess({ ...target, env });
+  },
+});
 /** What the hub sent on the last heartbeat (hub mode only). */
 let hubState: HubUpdate | null = null;
 const notifiedCommands = new Set<number>();
@@ -1371,6 +1388,8 @@ function registerIpc(): void {
   handle("desktop:installAgents", (name: string) => installAgents(project(name).repo, name, { shim: shimPath() }));
   handle("desktop:installShim", () => installShim({ electronPath: process.execPath, entry: mcpEntry() }, agentPath()));
   handle("desktop:setupStatus", refreshSetup);
+  // The Setup page's "Kiểm tra lại": every repo now, not when the 6-hour interval comes round.
+  handle("desktop:recheckRepos", () => repoHealth.refresh(true));
   handle("desktop:installSetup", async (id: unknown) => {
     const result = await setup.install(String(id));
     await refreshSetup().catch(() => undefined);
@@ -1958,7 +1977,7 @@ if (!app.requestSingleInstanceLock()) {
         terminalHolds: (project, checkout) => resourceLocks.holder(project, checkout) === "terminal" || (checkout === "repo" && !!gateExecutor?.holds(project)),
         env: agentEnv,
         // platform, arch and update are read by the hub itself (app updates, roadmap 22i); core ignores them.
-        report: () => ({ setup: setupCache ?? undefined, profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when, acceptHubRuns: config.runner.acceptHubRuns }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability(), gate: gateExecutor?.capability() }),
+        report: () => ({ setup: setupCache ?? undefined, repoHealth: repoHealth.latest(), profiles: reportedProfiles(), runnerSettings: { maxParallel: config.runner.maxParallel, mrEnabled: config.gitlab.mr.enabled, mrWhen: config.gitlab.mr.when, acceptHubRuns: config.runner.acceptHubRuns }, platform: platformKey(process.platform), arch: process.arch, updateKind: updater.updateKind, update: updater.report(), terminal: remoteTerminal?.capability(), gate: gateExecutor?.capability() }),
         login: (id) => logins.get(id),
         usage: (id) => logins.usage(id),
         hub: () => (config.mode === "hub" && config.hub.url && config.hub.token ? { url: config.hub.url, token: config.hub.token } : null),
@@ -2059,6 +2078,13 @@ if (!app.requestSingleInstanceLock()) {
     // The hub's admin view shows each machine's setup: check at start, then every 10 minutes.
     void pathReady.then(() => refreshSetup()).catch(() => undefined);
     setInterval(() => void refreshSetup().catch(() => undefined), 10 * 60_000).unref();
+    // Repo access: each project once its last check is 6 hours old; the tick only looks, so it is cheap. Not in the
+    // smoke run, which has no network to ask.
+    const repos = () => void repoHealth.refresh().catch(() => undefined);
+    if (!smokeShot) {
+      void pathReady.then(repos);
+      setInterval(repos, 10 * 60_000).unref();
+    }
     // Memory that cites files: compare them with each project's branch shortly after start, then every 30 minutes.
     const citations = () => void checkAllCitations().catch(() => undefined);
     setTimeout(citations, 60_000).unref();
