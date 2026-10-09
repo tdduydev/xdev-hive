@@ -1,9 +1,7 @@
-import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/components/ResponsiveTable.tsx";
-import { useMemo, useState } from "react";
-import { Copy, MoreHorizontal, Plus, UserPlus } from "lucide-react";
+import { useMemo, useState, type CSSProperties } from "react";
+import { ChevronRight, Copy, MoreHorizontal, Plus, UserPlus } from "lucide-react";
 import { PROJECT_NAME, type Grant, type HubUser } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@xdev-hive/ui/components/ui/dialog";
 import {
@@ -14,11 +12,25 @@ import {
   DropdownMenuTrigger,
 } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
-import { Badge, Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
-import { GrantBadge, GrantEditor, RoleLegend } from "#ui/components/GrantEditor.tsx";
+import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { GrantEditor, grantLabel, RoleLegend } from "#ui/components/GrantEditor.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import {
+  allSelected,
+  avatarHue,
+  bulkTargets,
+  filterCounts,
+  filterUsers,
+  initials,
+  paginate,
+  sortUsers,
+  USER_FILTERS,
+  userStatus,
+  type SortDir,
+  type UserFilter,
+  type UserSort,
+} from "#ui/lib/users-table.ts";
 
 
 
@@ -44,7 +56,9 @@ function Handover({ shown, onClose }: { shown: { username: string; password: str
   );
 }
 
-export function UsersPage() {
+const GRANT_CHIPS = 3;
+
+export function UsersPage({ inviteOpen, onInviteClose }: { inviteOpen: boolean; onInviteClose: () => void }) {
   const { client, me, projects } = useHive();
   const t = useT();
   const users = client.users!;
@@ -55,6 +69,20 @@ export function UsersPage() {
   const [admin, setAdmin] = useState(false);
   const [shown, setShown] = useState<{ username: string; password: string; reset: boolean } | null>(null);
   const [editing, setEditing] = useState<HubUser | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<UserFilter>("all");
+  const [sort, setSort] = useState<{ by: UserSort; dir: SortDir }>({ by: "name", dir: "asc" });
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const selfId = me.user?.id;
+
+  const all = list.data ?? [];
+  const counts = useMemo(() => filterCounts(all), [all]);
+  const sorted = useMemo(() => sortUsers(filterUsers(all, query, filter), sort.by, sort.dir), [all, query, filter, sort]);
+  const paged = paginate(sorted, page);
+  // A selection outlives paging and filtering, but not an account that is gone from the hub.
+  const picked = all.filter((u) => selected.has(u.id));
+  const targets = bulkTargets(all, selected, selfId);
 
   const update = (u: HubUser, patch: { admin?: boolean; disabled?: boolean }, confirm?: string) => {
     if (confirm && !window.confirm(confirm)) return;
@@ -63,17 +91,243 @@ export function UsersPage() {
       list.reload();
     });
   };
+  // One update per person, as the hub has no bulk call; the signed-in admin is skipped so it cannot lock itself out half-way.
+  const bulk = (patch: { admin?: boolean; disabled?: boolean }, confirm?: string) => {
+    const todo = targets.filter((u) => ("admin" in patch ? u.admin !== patch.admin : u.disabled !== patch.disabled));
+    if (!todo.length || (confirm && !window.confirm(confirm.replace("{n}", String(todo.length))))) return;
+    void action.run(async () => {
+      await Promise.all(todo.map((u) => users.update(u.id, patch)));
+      setSelected(new Set());
+      list.reload();
+    });
+  };
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  const everyone = allSelected(paged.rows, selected);
+  const toggleAll = () =>
+    setSelected((s) => {
+      const next = new Set(s);
+      for (const u of paged.rows) everyone ? next.delete(u.id) : next.add(u.id);
+      return next;
+    });
+  const sortBy = (by: UserSort) => {
+    setSort((s) => (s.by === by ? { by, dir: s.dir === "asc" ? "desc" : "asc" } : { by, dir: "asc" }));
+    setPage(1);
+  };
+  const cols: { id: UserSort; label: string }[] = [
+    { id: "name", label: t("adminUsers.colName") },
+    { id: "role", label: t("adminUsers.colRole") },
+    { id: "access", label: t("adminUsers.colAccess") },
+    { id: "sso", label: t("adminUsers.colSso") },
+    { id: "last", label: t("adminUsers.colLast") },
+    { id: "status", label: t("adminUsers.colStatus") },
+  ];
 
   return (
-    <Page>
-      <PageHeader
-        title={t("nav.users")}
-        subtitle={t("users.subtitle")}
-      />
-      <Card className="py-4">
-        <CardContent className="px-4">
+    <div className="flex min-w-0 flex-col" data-users-page>
+      <ErrorNote error={action.error} />
+      {shown ? (
+        <div className="mb-3">
+          <Handover shown={shown} onClose={() => setShown(null)} />
+        </div>
+      ) : null}
+      <ErrorNote error={list.error} />
+      <div className="cu-toolbar">
+        <div className="cu-search">
+          <Input
+            controlSize="sm"
+            type="search"
+            data-users-search
+            placeholder={t("adminUsers.search")}
+            aria-label={t("adminUsers.search")}
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <div className="contents" role="group" aria-label={t("adminUsers.filters")}>
+          {USER_FILTERS.map((f) => (
+            <button
+              key={f}
+              type="button"
+              className="cosmic-tag"
+              data-tone="neutral"
+              data-active={filter === f}
+              aria-pressed={filter === f}
+              onClick={() => {
+                setFilter(f);
+                setPage(1);
+              }}
+            >
+              {t(`adminUsers.filter.${f}`)} · {counts[f]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {picked.length ? (
+        <div className="cu-sel" data-users-selection>
+          <span>{t("adminUsers.selected", { n: picked.length })}</span>
+          {picked.some((u) => u.id === selfId) ? <small className="text-xs text-fg-muted">{t("adminUsers.selfSkipped")}</small> : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="glass" size="sm" disabled={!targets.length || action.busy}>
+                {t("adminUsers.bulkRole")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => bulk({ admin: true }, t("adminUsers.confirmBulkGrant", { n: "{n}" }))}>{t("adminUsers.bulkGrantAdmin")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => bulk({ admin: false }, t("adminUsers.confirmBulkRevoke", { n: "{n}" }))}>{t("adminUsers.bulkRevokeAdmin")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {targets.length && targets.every((u) => u.disabled) ? (
+            <Button variant="glass" size="sm" disabled={action.busy} onClick={() => bulk({ disabled: false })}>
+              {t("adminUsers.bulkEnable")}
+            </Button>
+          ) : (
+            <Button variant="glass" size="sm" disabled={!targets.length || action.busy} onClick={() => bulk({ disabled: true }, t("adminUsers.confirmBulkDisable", { n: "{n}" }))}>
+              {t("adminUsers.bulkDisable")}
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
+            {t("adminUsers.clearSel")}
+          </Button>
+        </div>
+      ) : null}
+      <div className="cu-panel" data-users-table>
+        <div className="cu-table">
+          <div className="cu-grid cu-head">
+            <button type="button" className="cu-check" role="checkbox" aria-checked={everyone} aria-label={t("adminUsers.selectAll")} onClick={toggleAll}>
+              <span>{everyone ? "✓" : ""}</span>
+            </button>
+            {cols.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                aria-label={t("adminUsers.sortBy", { col: c.label })}
+                aria-sort={sort.by === c.id ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+                onClick={() => sortBy(c.id)}
+              >
+                {c.label}
+                <span aria-hidden className="text-[10px]">{sort.by === c.id ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
+              </button>
+            ))}
+            <span />
+          </div>
+          {paged.rows.map((u) => {
+            const self = selfId === u.id;
+            const grants = Object.entries(u.grants);
+            const on = selected.has(u.id);
+            const status = userStatus(u);
+            return (
+              <div key={u.id} className="cu-grid cu-row" data-user-row={u.username} data-selected={on} data-disabled={u.disabled}>
+                <button type="button" className="cu-check" role="checkbox" aria-checked={on} aria-label={t("adminUsers.selectRow", { username: u.username })} onClick={() => toggle(u.id)}>
+                  <span>{on ? "✓" : ""}</span>
+                </button>
+                <button type="button" className="cu-person" disabled={u.admin} onClick={() => setEditing(u)}>
+                  <span className="cu-avatar" style={{ "--hue": avatarHue(u.username) } as CSSProperties}>{initials(u.displayName)}</span>
+                  <span>
+                    <strong>
+                      {u.displayName}
+                      {self ? <span className="font-normal text-fg-muted"> {t("users.you")}</span> : null}
+                    </strong>
+                    <small className="font-mono">@{u.username}</small>
+                  </span>
+                </button>
+                <span className="cu-role" data-admin={u.admin}>{u.admin ? t("adminUsers.roleAdmin") : t("adminUsers.roleMember")}</span>
+                <span className="cu-chips">
+                  {u.admin ? (
+                    <span className="cu-chip">{t("users.adminAll")}</span>
+                  ) : grants.length ? (
+                    <>
+                      {grants.slice(0, GRANT_CHIPS).map(([p, g]) => (
+                        <span key={p} className="cu-chip">
+                          <b>{p}</b>
+                          {grantLabel(t, g)}
+                        </span>
+                      ))}
+                      {grants.length > GRANT_CHIPS ? <span className="cu-more">{t("adminUsers.more", { n: grants.length - GRANT_CHIPS })}</span> : null}
+                    </>
+                  ) : (
+                    <span className="cu-more">{t("users.sharedOnly")}</span>
+                  )}
+                </span>
+                <span className="cu-cell">{u.sso ? t("adminUsers.ssoYes") : t("adminUsers.ssoNo")}</span>
+                <span className="cu-cell">{u.lastLoginAt ? formatTime(u.lastLoginAt) : t("adminUsers.never")}</span>
+                <span className="cu-status" data-status={status}>{t(status === "active" ? "users.active" : status === "mustChange" ? "users.mustChange" : "users.disabled")}</span>
+                <span className="flex items-center justify-end">
+                  {u.admin ? null : (
+                    <button type="button" className="cu-open" data-user-open aria-label={t("adminUsers.edit", { username: u.username })} onClick={() => setEditing(u)}>
+                      <ChevronRight className="size-4" />
+                    </button>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button type="button" className="cu-open" aria-label={t("users.actionsFor", { username: u.username })}>
+                        <MoreHorizontal className="size-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={self}
+                        onSelect={() =>
+                          update(u, { admin: !u.admin }, u.admin ? t("users.confirmRevokeAdmin", { username: u.username }) : t("users.confirmGrantAdmin", { username: u.username }))
+                        }
+                      >
+                        {u.admin ? t("users.revokeAdmin") : t("users.grantAdmin")}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => {
+                          if (!window.confirm(t("users.confirmReset", { username: u.username }))) return;
+                          void action.run(async () => {
+                            const password = await users.resetPassword(u.id);
+                            setShown({ username: u.username, password, reset: true });
+                            list.reload();
+                          });
+                        }}
+                      >
+                        {t("users.resetPassword")}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={self}
+                        variant={u.disabled ? "default" : "destructive"}
+                        onSelect={() => update(u, { disabled: !u.disabled }, u.disabled ? undefined : t("users.confirmDisable", { username: u.username }))}
+                      >
+                        {u.disabled ? t("users.enable") : t("users.disable")}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </span>
+              </div>
+            );
+          })}
+          {list.data && !paged.rows.length ? <div className="cu-empty">{all.length ? t("adminUsers.empty") : t("users.none")}</div> : null}
+          <div className="cu-foot">
+            <span>{t("adminUsers.range", { from: paged.from, to: paged.to, total: paged.total })}</span>
+            <Button variant="ghost" size="sm" disabled={paged.page <= 1} onClick={() => setPage(paged.page - 1)}>
+              {t("adminUsers.prev")}
+            </Button>
+            <span>{t("adminUsers.page", { page: paged.page, pages: paged.pages })}</span>
+            <Button variant="ghost" size="sm" disabled={paged.page >= paged.pages} onClick={() => setPage(paged.page + 1)}>
+              {t("adminUsers.next")}
+            </Button>
+          </div>
+        </div>
+      </div>
+      <Dialog open={inviteOpen} onOpenChange={(open) => !open && onInviteClose()}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("adminUsers.createTitle")}</DialogTitle>
+            <DialogDescription>{t("adminUsers.createHint")}</DialogDescription>
+          </DialogHeader>
           <form
-            className="flex flex-wrap items-center gap-2"
+            className="flex flex-col gap-3"
             onSubmit={(e) => {
               e.preventDefault();
               void action.run(async () => {
@@ -83,12 +337,13 @@ export function UsersPage() {
                 setDisplayName("");
                 setAdmin(false);
                 list.reload();
+                onInviteClose();
                 if (!res.user.admin) setEditing(res.user);
               });
             }}
           >
             <Input
-              className="min-w-40 flex-1 font-mono"
+              className="font-mono"
               placeholder={t("users.usernamePlaceholder")}
               autoCapitalize="none"
               spellCheck={false}
@@ -96,140 +351,24 @@ export function UsersPage() {
               onChange={(e) => setUsername(e.target.value.toLowerCase())}
               aria-label={t("login.username")}
             />
-            <Input className="min-w-40 flex-1" placeholder={t("users.displayNamePlaceholder")} value={displayName} onChange={(e) => setDisplayName(e.target.value)} aria-label={t("users.displayName")} />
-            <label className="flex items-center gap-2 text-sm">
+            <Input placeholder={t("users.displayNamePlaceholder")} value={displayName} onChange={(e) => setDisplayName(e.target.value)} aria-label={t("users.displayName")} />
+            <label className="flex min-h-11 items-center gap-2 text-sm">
               <Checkbox checked={admin} onCheckedChange={(v) => setAdmin(v === true)} />
               Admin
             </label>
-            <Button type="submit" disabled={!username.trim() || action.busy}>
-              <UserPlus />
-              {t("users.create")}
-            </Button>
+            <ErrorNote error={action.error} />
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={onInviteClose}>
+                {t("common.cancel")}
+              </Button>
+              <Button type="submit" variant="solid" disabled={!username.trim() || action.busy}>
+                <UserPlus />
+                {t("users.create")}
+              </Button>
+            </DialogFooter>
           </form>
-        </CardContent>
-      </Card>
-      <ErrorNote error={action.error} />
-      {shown ? <Handover shown={shown} onClose={() => setShown(null)} /> : null}
-      <ErrorNote error={list.error} />
-      {list.data?.length === 0 ? <Empty>{t("users.none")}</Empty> : null}
-      {list.data?.length ? (
-        <div className="overflow-x-auto rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("users.colAccount")}</TableHead>
-                <TableHead>{t("users.colAccess")}</TableHead>
-                <TableHead>{t("users.colStatus")}</TableHead>
-                <TableHead>{t("users.colLastLogin")}</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {list.data.map((u) => {
-                const self = me.user?.id === u.id;
-                const grants = Object.entries(u.grants);
-                return (
-                  <TableRow key={u.id} className={u.disabled ? "opacity-60" : undefined}>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {u.displayName}
-                          {self ? <span className="text-muted-foreground"> {t("users.you")}</span> : null}
-                        </span>
-                        <span className="font-mono text-xs text-muted-foreground">@{u.username}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-md whitespace-normal">
-                      {u.admin ? (
-                        <Badge tone="accent">{t("users.adminAll")}</Badge>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {u.shared ? <GrantBadge grant={u.shared} label={t("members.shared")} /> : null}
-                          {grants.map(([p, g]) => (
-                            <GrantBadge key={p} grant={g} label={p} />
-                          ))}
-                          {grants.length ? null : <span className="text-xs text-muted-foreground">{t("users.sharedOnly")}</span>}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {u.disabled ? (
-                        <Badge tone="danger">{t("users.disabled")}</Badge>
-                      ) : u.mustChangePassword ? (
-                        <Badge tone="warn">{t("users.mustChange")}</Badge>
-                      ) : (
-                        <Badge tone="ok">{t("users.active")}</Badge>
-                      )}
-                      {u.sso ? (
-                        <Badge tone="info" className="ml-1">
-                          {t("users.sso")}
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">{formatTime(u.lastLoginAt)}</TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      {u.admin ? null : (
-                        <Button size="sm" variant="outline" onClick={() => setEditing(u)}>
-                          {t("users.grants")}
-                        </Button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="icon" variant="ghost" className="ml-1 size-8" aria-label={t("users.actionsFor", { username: u.username })}>
-                            <MoreHorizontal />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            disabled={self}
-                            onSelect={() =>
-                              update(
-                                u,
-                                { admin: !u.admin },
-                                u.admin
-                                  ? t("users.confirmRevokeAdmin", { username: u.username })
-                                  : t("users.confirmGrantAdmin", { username: u.username }),
-                              )
-                            }
-                          >
-                            {u.admin ? t("users.revokeAdmin") : t("users.grantAdmin")}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              if (!window.confirm(t("users.confirmReset", { username: u.username }))) return;
-                              void action.run(async () => {
-                                const password = await users.resetPassword(u.id);
-                                setShown({ username: u.username, password, reset: true });
-                                list.reload();
-                              });
-                            }}
-                          >
-                            {t("users.resetPassword")}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            disabled={self}
-                            variant={u.disabled ? "default" : "destructive"}
-                            onSelect={() =>
-                              update(
-                                u,
-                                { disabled: !u.disabled },
-                                u.disabled ? undefined : t("users.confirmDisable", { username: u.username }),
-                              )
-                            }
-                          >
-                            {u.disabled ? t("users.enable") : t("users.disable")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      ) : null}
+        </DialogContent>
+      </Dialog>
       {editing ? (
         <GrantsDialog
           user={editing}
@@ -241,11 +380,11 @@ export function UsersPage() {
           }}
         />
       ) : null}
-    </Page>
+    </div>
   );
 }
 
-function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; projects: string[]; onClose: () => void; onSaved: () => void }) {
+export function GrantsDialog({ user, projects, onClose, onSaved }: { user: HubUser; projects: string[]; onClose: () => void; onSaved: () => void }) {
   const { client } = useHive();
   const t = useT();
   const [grants, setGrants] = useState<Record<string, Grant>>(user.grants);

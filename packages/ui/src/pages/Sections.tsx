@@ -25,6 +25,7 @@ import { DocsPage } from "#ui/pages/Docs.tsx";
 import { SkillsPage } from "#ui/pages/Skills.tsx";
 import { ProposalsPage } from "#ui/pages/Proposals.tsx";
 import { PolicyTab } from "./Admin.tsx";
+import { AgentRows, PolicyRows } from "./SettingsRows.tsx";
 import { CompactAgentPolicy } from "./admin/CompactAgentPolicy.tsx";
 import { BudgetsCard } from "./admin/Budgets.tsx";
 import { OpsAlerts } from "./admin/Alerts.tsx";
@@ -42,6 +43,7 @@ import { RunsPage } from "./Runs.tsx";
 import { SystemsPage } from "./Systems.tsx";
 import { ToolsPage } from "./Tools.tsx";
 import { UsersPage } from "./Users.tsx";
+import { OrgTab, RolesTab } from "./admin/AccessMaps.tsx";
 import { WebhooksTab } from "./Webhooks.tsx";
 import { DashboardComponentsFixture } from "./DashboardComponentsFixture.tsx";
 
@@ -56,8 +58,9 @@ export function SettingsPage() {
   if (!tab) return null;
   const leaderProjects = projects.filter((p) => canEditChatSettings(me, p));
   const body: Record<SettingsTab, () => ReactNode> = {
-    policy: () => <div className="max-w-2xl rounded-xl border border-line-default bg-card p-4"><p className="mb-3 text-sm text-fg-secondary">{t("settingsTidy.summary.policy")}</p><a href="#/pipeline" className="inline-flex min-h-11 items-center text-fg-link underline">{t("settingsTidy.openProcess")}</a></div>,
-    agent: () => <><CompactAgentPolicy /><details className="mt-4 max-w-2xl"><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={projects.filter((p) => canEditChatSettings(me, p))} /></details></>,
+    policy: () => <PolicyRows />,
+    // The editor sheet and its summary stay (e2e and the ceiling logic live there); the rows above it show the effective values.
+    agent: () => <AgentRows editor={<CompactAgentPolicy />} classify={<details className="mt-4 max-w-2xl" data-classify-details><summary className="flex min-h-11 cursor-pointer items-center text-sm text-fg-link">{t("taskClass.settingsTitle")}</summary><ClassifySettingsCard projects={leaderProjects} /></details>} />,
     tools: () => <ToolsPage />,
     context: () => (
       <OpsPage>
@@ -73,11 +76,13 @@ export function SettingsPage() {
     members: () => <MembersPage />,
     systems: () => <SystemsPage policy={false} />,
   };
-  return <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-4 p-4 md:flex-row md:p-6" data-settings-tidy>
-    <nav aria-label={t("sections.tabs")} className="md:w-52 md:shrink-0"><div className="flex flex-col gap-1">{tabs.map((id) => <a key={id} href={`#/settings?tab=${id}`} data-page-tab={id} aria-current={id === tab ? "page" : undefined} onClick={() => setEditing(false)} className={`flex min-h-11 items-center rounded-lg px-3 text-sm no-underline ${id === tab ? "bg-primary/10 font-semibold text-fg-strong" : "text-fg-secondary hover:bg-muted"}`}>{t(`sections.settings.${id}`)}</a>)}</div></nav>
-    <main className="min-w-0 flex-1"><h1 className="mb-3 text-xl font-semibold">{t(`sections.settings.${tab}`)}</h1>
-      {tab === "policy" || tab === "agent" ? body[tab]() : <div className="max-w-2xl rounded-xl border border-line-default bg-card p-4"><p className="mb-3 text-sm leading-relaxed text-fg-secondary">{t(`settingsTidy.summary.${tab}`)}</p><Button variant="outline" className="max-md:min-h-11" onClick={() => setEditing(true)}>{t("settingsTidy.edit")}</Button></div>}
-      {editing && tab !== "policy" && tab !== "agent" ? <section className="mt-4 max-w-2xl rounded-xl border border-line-default bg-card p-4" data-settings-editor><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{t(`sections.settings.${tab}`)}</h2><Button variant="outline" className="max-md:min-h-11" onClick={() => setEditing(false)}>{t("settingsTidy.close")}</Button></div>{body[tab]()}</section> : null}
+  const summary = tab !== "policy" && tab !== "agent";
+  // Chips on top, rows below (design lines 1135–1172); the cards that already exist stay as the editors behind "Sửa".
+  return <div className="mx-auto h-full w-full max-w-7xl overflow-auto p-4 md:p-6" data-settings-tidy>
+    <nav aria-label={t("sections.tabs")} className="cx-chips">{tabs.map((id) => <a key={id} href={`#/settings?tab=${id}`} data-page-tab={id} data-active={id === tab} aria-current={id === tab ? "page" : undefined} onClick={() => setEditing(false)} className="cosmic-tag" data-tone="neutral">{t(`sections.settings.${id}`)}</a>)}</nav>
+    <main className="min-w-0"><h1 className="sr-only">{t(`sections.settings.${tab}`)}</h1>
+      {summary ? <div className="cx-card"><div className="cx-row"><span><strong>{t(`sections.settings.${tab}`)}</strong><small>{t(`settingsTidy.summary.${tab}`)}</small></span><Button variant="glass" size="sm" className="max-md:min-h-11" onClick={() => setEditing(true)}>{t("settingsTidy.edit")}</Button></div></div> : body[tab]()}
+      {editing && summary ? <section className="cx-editor" data-settings-editor><div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-semibold">{t(`sections.settings.${tab}`)}</h2><Button variant="ghost" size="sm" className="max-md:min-h-11" onClick={() => setEditing(false)}>{t("settingsTidy.close")}</Button></div>{body[tab]()}</section> : null}
     </main>
   </div>;
 }
@@ -123,6 +128,13 @@ export function AdminPage() {
   return fixture ? <DashboardComponentsFixture /> : <AdminTabs />;
 }
 
+// Group order is an inference: the design's `adminNav` sits in the truncated part of the template, so only the three-group shape is known.
+const ADMIN_GROUPS: { id: "run" | "access" | "system"; items: AdminTab[] }[] = [
+  { id: "run", items: ["ops", "budgets", "alerts"] },
+  { id: "access", items: ["users", "roles", "org", "policy", "tools"] },
+  { id: "system", items: ["audit", "webhooks", "versions", "hub"] },
+];
+
 function AdminTabs() {
   const { client } = useHive();
   const t = useT();
@@ -130,10 +142,14 @@ function AdminTabs() {
   const tabs = adminTabs(webCaps(client));
   const tab = pickTab(tabs, wanted) ?? "ops";
   const poll = usePoll(30_000);
+  // The head's action button belongs to the admin page, the dialog it opens to the Users tab: the flag lives where both can reach it.
+  const [inviteOpen, setInviteOpen] = useState(false);
   const ops = (page: ReactNode) => <OpsPage>{page}</OpsPage>;
   const body: Record<AdminTab, () => ReactNode> = {
     ops: () => <OverviewWithRange />,
-    users: () => <UsersPage />,
+    users: () => <UsersPage inviteOpen={inviteOpen} onInviteClose={() => setInviteOpen(false)} />,
+    roles: () => <RolesTab />,
+    org: () => <OrgTab />,
     policy: () => ops(<><PolicyTab /><CompactAgentPolicy hubOnly /><SdlcGatesCard hubOnly /></>),
     tools: () => <ToolsPage />,
     budgets: () => ops(<BudgetsCard tick={poll} />),
@@ -143,10 +159,20 @@ function AdminTabs() {
     versions: () => ops(<OpsVersions />),
     hub: () => ops(<OpsHub />),
   };
+  const groups = ADMIN_GROUPS.map((g) => ({ ...g, items: g.items.filter((id) => tabs.includes(id)) })).filter((g) => g.items.length);
   return (
-    <PageTabs page="admin" tabs={tabs} current={tab} label={t("sections.tabs")} name={(id) => t(`sections.admin.${id}`)}>
+    <div className="mx-auto h-full w-full max-w-7xl overflow-auto p-4 md:p-6" data-admin-page>
+      <nav aria-label={t("sections.tabs")} className="cx-admin-nav">
+        {groups.map((g) => (
+          <div key={g.id} className="cx-admin-group">
+            <span>{t(`sections.adminGroup.${g.id}`)}</span>
+            <div>{g.items.map((id) => <a key={id} href={`#/admin?tab=${id}`} data-page-tab={id} aria-current={id === tab ? "page" : undefined} className="cx-admin-tab">{t(`sections.admin.${id}`)}</a>)}</div>
+          </div>
+        ))}
+      </nav>
+      <div className="cx-admin-head"><div><h2>{t(`sections.admin.${tab}`)}</h2><p>{t(`sections.adminDesc.${tab}`)}</p></div>{tab === "users" ? <Button variant="solid" size="md" data-admin-action onClick={() => setInviteOpen(true)}>{t("adminUsers.invite")}</Button> : null}</div>
       {body[tab]()}
-    </PageTabs>
+    </div>
   );
 }
 
