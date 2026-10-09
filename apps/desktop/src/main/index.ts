@@ -77,8 +77,10 @@ import {
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
+import { parseRemoteUrl } from "./gitlab/remote.ts";
 import { findGitRepos, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
+import { applyProjectCommand, type ProjectCommandDeps } from "#desktop/main/machine-projects.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
 import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
@@ -433,6 +435,42 @@ function addProject(p: DesktopProject): DesktopSettings {
   if (config.projects.some((x) => x.name === name)) throw new HiveError("conflict", `Đã có dự án ${name}.`, { key: "errors.projectExists", vars: { project: name } });
   return persist({ ...config, projects: [...config.projects, { name, repo, targetBranch }] });
 }
+
+function removeProject(name: string): DesktopSettings {
+  return persist({
+    ...config,
+    // A project that goes also goes from the others' reference repos (roadmap 38h), so no run looks for it.
+    projects: config.projects
+      .filter((p) => p.name !== name)
+      .map((p) => (p.references?.includes(name) ? { ...p, references: p.references.filter((r) => r !== name) } : p))
+      .map((p) => (p.references?.length === 0 ? { ...p, references: undefined } : p)),
+  });
+}
+
+/**
+ * A clone a hub admin asked for: over HTTPS to this machine's GitLab or GitHub it carries that token as a header (never
+ * in the URL, which the hub stores and shows); any other host goes without one, so its SSH keys or nothing.
+ */
+function hubOrderedClone(url: string, dir: string): Promise<void> {
+  const host = parseRemoteUrl(url)?.host ?? "";
+  const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } };
+  if (config.gitlab.token && host === hostOf(config.gitlab.url)) return gitClone(host, { user: "oauth2", token: config.gitlab.token })(url, dir);
+  if (config.github.token && host === hostOf(config.github.url)) return gitClone(host, { user: "x-access-token", token: config.github.token })(url, dir);
+  return gitClone("", { user: "", token: "" })(url, dir);
+}
+
+const projectCommandDeps: ProjectCommandDeps = {
+  projects: () => config.projects,
+  add: (p) => {
+    addProject({ name: p.name, repo: p.repo });
+    if (p.gitlabProject) updateProject(p.name, { gitlabProject: p.gitlabProject });
+  },
+  remove: (name) => void removeProject(name),
+  isRepo: (dir) => isRepoRoot(dir) && isGitRepo(dir),
+  remote: (dir) => remoteUrl(dir),
+  clone: hubOrderedClone,
+  busy: (name) => runner.store.active().some((r) => r.project === name),
+};
 
 /** What the folder someone picked holds (roadmap 38d): itself a repository, or the repositories under it. */
 function scanRepos(dir: unknown): RepoScan {
@@ -1350,16 +1388,7 @@ function registerIpc(): void {
   handle("desktop:importGitlab", importGitlab);
   handle("desktop:githubOwner", githubOwner);
   handle("desktop:importGithub", importGithub);
-  handle("desktop:removeProject", (name: string) =>
-    persist({
-      ...config,
-      // A project that goes also goes from the others' reference repos (roadmap 38h), so no run looks for it.
-      projects: config.projects
-        .filter((p) => p.name !== name)
-        .map((p) => (p.references?.includes(name) ? { ...p, references: p.references.filter((r) => r !== name) } : p))
-        .map((p) => (p.references?.length === 0 ? { ...p, references: undefined } : p)),
-    }),
-  );
+  handle("desktop:removeProject", (name: string) => removeProject(name));
   handle("desktop:pickFolder", async () => {
     // Screenshots only: no one can answer a file dialog, so the folder the shot wants comes from the environment.
     if (smokeShot && process.env.HIVE_SMOKE_PICK_FOLDER) return process.env.HIVE_SMOKE_PICK_FOLDER;
@@ -1965,6 +1994,12 @@ if (!app.requestSingleInstanceLock()) {
         token: (id) => config.agentTokens[id],
         gitlab: () => config.gitlab.url || null,
         toolTrust: () => config.toolTrust,
+        applyProjectCommand: async (command) => {
+          const result = await applyProjectCommand(command, projectCommandDeps);
+          // The repo path is the machine's own; the clone URL never carries credentials (both ends refuse one).
+          mainLog.write(`project command ${command.op} ${command.project} by ${command.requestedBy}: ${result.ok ? "ok" : `failed: ${result.error}`}`);
+          return result;
+        },
         applyWorktreeCleanup: (worktreeCleanup) => persist({ ...config, runner: { ...config.runner, worktreeCleanup } }),
         applyToolTrust: (toolTrust) => {
           persist({ ...config, toolTrust });

@@ -9,6 +9,7 @@ import { mapMachines } from "#ui/lib/agentmap.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { Skeleton } from "#ui/components/ui/skeleton.tsx";
 import { AgentMap } from "#ui/pages/AgentMap.tsx";
+import { MachineProjectsPanel } from "#ui/components/MachineProjects.tsx";
 
 /** How often the map asks the hub again while it is on screen (machines report every 30 s, runs as they go). */
 const MAP_REFRESH_MS = 5000;
@@ -27,7 +28,7 @@ function usePageVisible(): boolean {
 const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 
 export function MachinesPage() {
-  const { client, scope } = useHive();
+  const { client, scope, me } = useHive();
   const t = useT();
   // Every few seconds while the page is in view: the map shows what agents do now.
   const visible = usePageVisible();
@@ -69,6 +70,8 @@ export function MachinesPage() {
         ) : null}
       </section>
 
+      {/* A machine's config holds every project of its user, folders included: hub admins only, as the hub enforces. */}
+      {me.role === "admin" && !me.access && me.mode === "hub" ? <MachineProjectsPanel poll={poll} /> : null}
     </Page>
   );
 }
