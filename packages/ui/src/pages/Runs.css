@@ -45,6 +45,10 @@
 .runs-drawer{position:fixed;top:88px;right:12px;bottom:12px;z-index:41;display:flex;flex-direction:column;width:min(560px,calc(100vw - 24px));border-radius:24px;background:var(--surface-1);box-shadow:var(--ring-glass-strong),var(--shadow-e3);overflow:hidden}
 .runs-drawer-bar{display:flex;align-items:center;gap:12px;padding:14px 16px 0 22px}
 .runs-drawer-close{display:flex;align-items:center;justify-content:center;width:34px;height:34px;margin-left:auto;border:0;border-radius:12px;background:var(--glass-bg);box-shadow:var(--ring-glass);color:var(--text-secondary);cursor:pointer}
+/* With the drawer open the table has half the width: keep status, task, job and start. */
+.runs-page[data-drawer="true"] .runs-table>div{min-width:0}
+.runs-page[data-drawer="true"] .runs-grid{grid-template-columns:110px minmax(0,1fr) minmax(90px,.6fr) 56px}
+.runs-page[data-drawer="true"] .runs-grid>:nth-child(n+4):not(:last-child){display:none}
 @media(max-width:767px){
 .runs-page,.runs-page[data-drawer="true"]{padding:16px}
 .runs-live-grid{grid-template-columns:minmax(0,1fr)}

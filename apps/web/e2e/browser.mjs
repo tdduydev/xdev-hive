@@ -2247,6 +2247,14 @@ async function main() {
     await tab.click('[data-run-tab="summary"]');
     await tab.shot(`${String(n).padStart(2, "0")}-runs-review-detail`);
     if (mobile) await tab.go("runs");
+    // The page in both themes with every run listed (R-72e design comparison: runs-<width>-<theme>.png).
+    await tab.click("[aria-pressed]", "Tất cả");
+    const keepTheme = await tab.eval(() => document.documentElement.dataset.theme ?? "");
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      await tab.shot(`runs-${mobile ? 390 : 1440}-${theme}`);
+    }
+    await tab.eval(value => { if (value) document.documentElement.dataset.theme = value; else delete document.documentElement.dataset.theme; }, keepTheme);
     await tab.click("[data-run-filters] summary");
     await tab.select('select[aria-label="Lọc theo máy"]', "runner.lan-mbp@lan-e2e");
     await tab.select('select[aria-label="Lọc theo task"]', "PAY-1");
