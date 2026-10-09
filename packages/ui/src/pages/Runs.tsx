@@ -178,7 +178,7 @@ export function RunsPage() {
   }, [rows, filter, taskFilter, machineFilter, groupFilter, groups.data, machine, query]);
   const shown = [...kept.here, ...kept.other, ...kept.recent];
   // A filter narrows the list, never what a link or a click may open: #run=… still finds a run the filter leaves out.
-  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? null;
+  const current = all.find((r) => r.key === (mobileDetail.mobile ? mobileDetail.value : selected) || (mobileDetail.mobile && rowId(r) === mobileDetail.value)) ?? (mobileDetail.mobile ? null : shown[0] ?? (filter === "all" ? all[0] : null) ?? null);
 
   let index = 0;
   useChatPageContext(current ? { id: rowId(current), href: `#/runs?run=${encodeURIComponent(current.src === "hub" ? `${current.run.machineId}/${current.run.runId}` : current.run.id)}`, project: current.run.project } : null);
@@ -207,7 +207,7 @@ export function RunsPage() {
   }
   return (
     <div className="mobile-master-detail flex h-full min-h-0 w-full">
-      <section className="runs-page" aria-label={t("nav.runs")}>
+      <section className="runs-page" data-drawer={current && !mobileDetail.mobile ? "true" : undefined} aria-label={t("nav.runs")}>
         <p className="runs-sub">{t("runs.lead")}</p>
         <div className="mb-3 flex flex-col gap-2">
           <ServiceFilter scope={scope} value={service} onChange={setService} />
@@ -382,39 +382,39 @@ function stateLabel(run: { status: string; startedAt: string | null; finishedAt:
   return time ? t("runs.stateTime", { state, time }) : state;
 }
 
-/** Header of a run's detail: state, title, plan · role · branch, and the buttons. What it did is in the tabs below. */
-function Head({ run, machine, actions }: { run: AgentRun | RunRecord; machine: string; actions: ReactNode }) {
+/** Header of a run's detail (the design's drawer): state · time, task · title, job · plan · machine, a summary line, and the buttons the state calls for. */
+function Head({ run, machine, actions, below }: { run: AgentRun | RunRecord; machine: string; actions: ReactNode; below?: ReactNode }) {
   const t = useT();
   const id = "id" in run ? run.id : run.runId;
-  const kind = STATE[run.status] ?? "neutral";
   const waiting = waitingReason(run);
+  const tone = toneOf(run);
+  const time = runDuration(run);
   return (
-    <div className="flex shrink-0 flex-col gap-2.5 border-b border-line-subtle px-5 pt-3.5 pb-3">
-      <div className="flex items-start gap-3 max-md:flex-col">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-md:w-full" data-run-heading>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={cn("inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap", CHIP[kind])}>
-              <span aria-hidden="true">{stateLabel(run, t)}</span>
-              {/* Elapsed time changes on each poll; announce only the meaningful state transition. */}
-              <span data-run-state role="status" aria-atomic="true" className="sr-only">{t("runs.stateAnnouncement", { task: run.taskTitle, state: runLabel("runStatus", run.status) })}</span>
-            </span>
-            <ModelRunChip run={run} />
-            {waiting ? <Chip kind="warning">{t("runs.waiting")}</Chip> : null}
-            <span className="text-xs/none text-fg-muted">
-              {[run.profileId ?? t("board.waitingProfile"), runLabel("agentRole", run.role), run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
-            </span>
-          </div>
-          <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong">{run.taskTitle}</h2>
-          <span className="break-words font-mono text-[11px]/4 text-fg-muted">
-            {id} · {run.project} · {run.taskId} · {machine}
-          </span>
-          {run.headSha ? <span className="break-all font-mono text-xs text-fg-secondary" data-run-head-sha>{t("runs.codeRevision", { sha: run.headSha })}</span> : null}
-        </div>
-        <div className="flex flex-wrap justify-end gap-1.5 max-md:w-full max-md:justify-start max-md:gap-2">
-          {actions}
-          <RunRoles run={run} />
-        </div>
+    <div className="flex shrink-0 flex-col gap-3 border-b border-line-subtle px-5 pt-3 pb-4" data-run-heading>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="runs-pill" data-tone={tone}>
+          <i aria-hidden="true" />
+          <span aria-hidden="true">{time ? t("runs.stateTime", { state: statusText(run), time }) : statusText(run)}</span>
+          {/* Elapsed time changes on each poll; announce only the meaningful state transition. */}
+          <span data-run-state role="status" aria-atomic="true" className="sr-only">{t("runs.stateAnnouncement", { task: run.taskTitle, state: runLabel("runStatus", run.status) })}</span>
+        </span>
+        <ModelRunChip run={run} />
+        {waiting ? <Chip kind="warning">{t("runs.waiting")}</Chip> : null}
+        <span className="runs-mono ml-auto text-[11px]/4 text-fg-muted">{id}</span>
       </div>
+      <div className="flex min-w-0 flex-col gap-1">
+        <h2 className="m-0 font-display text-[17px]/6 font-semibold text-fg-strong"><span className="runs-mono mr-2 text-[12px] font-semibold text-fg-muted">{run.taskId}</span>{run.taskTitle}</h2>
+        <span className="break-words text-xs/4 text-fg-muted">
+          {[runLabel("agentRole", run.role), run.profileId ?? t("board.waitingProfile"), machine, run.project, run.branch ? t("runs.worktree", { branch: run.branch }) : null].filter(Boolean).join(" · ")}
+        </span>
+        {run.headSha ? <span className="break-all font-mono text-xs text-fg-secondary" data-run-head-sha>{t("runs.codeRevision", { sha: run.headSha })}</span> : null}
+      </div>
+      {run.summary ? <p className="m-0 line-clamp-3 text-[13px]/5 text-fg-secondary">{run.summary}</p> : null}
+      <div className="flex flex-wrap items-center gap-1.5 max-md:gap-2">
+        {actions}
+        <RunRoles run={run} />
+      </div>
+      {below}
     </div>
   );
 }
@@ -966,6 +966,9 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   const full = useQuery(() => client.call("runs.get", { machineId: run.machineId, runId: run.runId }), [client, run.machineId, run.runId, tick]);
   const files = useArtifacts(run.project, undefined, run.runId, run.machineId, run.updatedAt);
   const manage = allow(run.project, "runDispatch");
+  // A queued run still waiting for its machine is a pending request: cancelling that is "Huỷ yêu cầu".
+  const requests = useQuery(() => (run.status === "queued" ? client.call("runs.requests", { project: run.project, taskId: run.taskId, pendingOnly: true, limit: 20 }) : Promise.resolve([])), [client, run.project, run.taskId, run.status, tick]);
+  const pendingRequest = (requests.data ?? []).find((r) => r.machineId === run.machineId && r.status === "pending") ?? null;
   const patchFiles = useMemo(() => (full.data?.patch ? parsePatch(full.data.patch) : []), [full.data?.patch]);
   // An old run the hub cleaned up (roadmap 41b): the log and the diff are gone, what it concluded is not.
   const pruned = run.logPrunedAt ? t("runs.logPruned", { time: formatTime(run.logPrunedAt) }) : null;
@@ -990,6 +993,11 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
           {t("runs.cancel")}
         </Button>
       ) : null}
+      {pendingRequest && manage ? (
+        <Button size="sm" variant="danger-outline" disabled={action.busy} onClick={() => void action.run(async () => { await client.call("runs.cancelRequest", { id: pendingRequest.id }); onChanged(); })}>
+          {t("runs.cancelPending")}
+        </Button>
+      ) : null}
       {live && !manage ? <span className="text-xs/7 text-fg-muted">{t("runs.onlyView", { machine: run.machine })}</span> : null}
       {!live && run.mrUrl ? (
         <Button size="sm" asChild>
@@ -1003,7 +1011,6 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
 
   const notes = (
     <>
-      <RunRedispatch key={`${run.machineId}/${run.runId}`} run={run} onSent={onChanged} />
       {verdict === "approve" || verdict === "changes" ? <NoteLine tone={verdict === "approve" ? "info" : "danger"}>{t(`runs.verdict.${verdict}`)}</NoteLine> : null}
       {run.activity ? <NoteLine tone="info">{t("board.activity", { activity: run.activity })}</NoteLine> : null}
       {run.branch || run.costUsd !== null ? (
@@ -1026,7 +1033,7 @@ export function HubDetail({ run, latestReview, onChanged }: { run: RunRecord; la
   return (
     <ArtifactContext.Provider value={files.data ?? []}>
     <div className="flex min-h-0 flex-1 flex-col">
-      <Head run={run} machine={run.machine} actions={actions} />
+      <Head run={run} machine={run.machine} actions={actions} below={<RunRedispatch key={`${run.machineId}/${run.runId}`} split run={run} onSent={onChanged} />} />
       {/* What it changed, as its machine sent it; a hub older than 22l has no patches (no tab). */}
       <RunPanes
         artifacts={files.data?.length || files.error || files.loading ? <ArtifactRows files={files.data ?? []} error={files.error} loading={files.loading} onChanged={files.reload} context={run.runId} /> : null}

@@ -2400,6 +2400,7 @@ export const en: Catalog = {
     removed: "{name} removed",
   },
   redispatch: {
+    swapProfile: "Change plan",
     title: "Redispatch", send: "Redispatch run", hint: "Redispatch {run} for task {task}; choose another machine or subscription.",
     continueBranch: "Continue on the existing branch", branchHint: "Keep the work on {branch}. When switching machines, commit WIP and push the branch on the previous machine first; the new machine must be able to retrieve it.",
     freshHint: "The new run starts from the service's target branch on a separate branch.",
@@ -2477,6 +2478,7 @@ export const en: Catalog = {
     rerun: "Run again",
     rerunDone: "Queued {task} again",
     cancelLocal: "Stop run",
+    cancelPending: "Cancel request",
     cancelLocalDone: "Asked {id} to stop",
     onlyView: "View only: the run is on {machine}",
     tokens: "Tokens: {input} fresh in · {write} cache write · {read} cache read · {output} out · {share} of input from the cache",
