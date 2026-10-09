@@ -38,6 +38,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   const settings = useQuery(() => desktop.settings(), [desktop]);
   const [report, setReport] = useState<SetupReport | null>(null);
   const batch = useAction();
+  const removal = useAction();
   const [rowBusy, setRowBusy] = useState(false);
   const busy = batch.busy || rowBusy;
   const [progress, setProgress] = useState<string | null>(null);
@@ -58,6 +59,10 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   }, []);
   const checkedAt = useMemo(() => (status.data ? new Date().toISOString() : null), [status.data]);
   const requests = useQuery(() => desktop.hubRequests(), [desktop, tick]);
+  // A repo kept here for a project the hub archived or deleted (incident 2026-10-09): its agents' MCP gets nothing
+  // from Hive, and nothing on this machine said why. Rechecked with the setup report, not on the 15 s tick.
+  const hubProjects = useQuery(async () => (me.mode === "hub" ? client.call("projects.list", {}).catch(() => []) : []), [client, me.mode, status.data]);
+  const gone = useMemo(() => new Map((hubProjects.data ?? []).filter((p) => p.state !== null).map((p) => [p.project, p])), [hubProjects.data]);
   const full = report ?? status.data;
   const shown = full && section ? { machine: section === "machine" ? full.machine : [], projects: section === "projects" ? full.projects : [] } : full;
   useEffect(() => { if (full) onChanged?.(); }, [full]);
@@ -124,6 +129,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
           {missing ? <Button data-install-all disabled={busy || !setupOrder(shown).some((i) => i.action)} onClick={() => installAll()}>{t("setup.installMissing")}</Button> : null}
           <div role="status" aria-live="polite">{progress || (remaining !== null ? t(remaining ? "setup.manualRemaining" : "setup.batchDone", { count: remaining }) : null)}</div>
           <ErrorNote error={batch.error} />
+          <ErrorNote error={removal.error} />
           {section !== "projects" ? <Group title={t("setup.tools")} sub={[settings.data?.machine, os].filter(Boolean).join(" · ")}>
             <SetupList items={shown.machine.filter(needsSetup)} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
             {shown.machine.some((i) => !needsSetup(i)) ? <details className="p-4" data-ready-tools>
@@ -143,6 +149,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
               {group.projects.map((p) => {
                 const count = p.items.filter(needsSetup).length;
                 const branch = settings.data?.projects.find((project) => project.name === p.project)?.targetBranch ?? "main";
+                const closed = gone.get(p.project);
                 return <Card key={p.project} data-setup-project={p.project}>
                   <CardContent className="pt-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -150,6 +157,33 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                       <Chip kind={count ? "warning" : "success"}>{t(count ? "setup.projectMissing" : "setup.projectReady", { count })}</Chip>
                       {count ? <Button size="sm" variant="outline" data-install-project={p.project} disabled={busy || !p.items.some((i) => needsSetup(i) && i.action)} onClick={() => installAll([p.project])}>{t("setup.installAll")}</Button> : null}
                     </div>
+                    {closed ? (
+                      <Notice tone="warn" className="mt-2" data-project-gone={p.project}>
+                        {t(closed.state === "deleted" ? "setup.projectGoneDeleted" : "setup.projectGoneArchived", {
+                          project: p.project, by: closed.stateBy ?? "", at: closed.stateAt ? formatTime(closed.stateAt) : "",
+                        })}
+                        <div className="mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-remove-gone={p.project}
+                            disabled={busy || removal.busy}
+                            onClick={() => {
+                              if (!window.confirm(t("projects.confirmRemove", { project: p.project }))) return;
+                              void removal.run(async () => {
+                                await desktop.removeProject(p.project);
+                                settings.reload();
+                                setReport(null);
+                                status.reload();
+                                onChanged?.();
+                              });
+                            }}
+                          >
+                            {t("setup.removeFromMachine")}
+                          </Button>
+                        </div>
+                      </Notice>
+                    ) : null}
                     <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{p.repo.replace(/^.*[\\/]([^\\/]+[\\/][^\\/]+)$/, "…/$1")}{branch ? ` · ${branch}` : ""}</p>
                     <details data-project-checks={p.project}>
                       <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.viewItems")}</summary>
