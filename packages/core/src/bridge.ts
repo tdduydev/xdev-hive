@@ -8,6 +8,7 @@ import type { ModelSelection } from "./model-router.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, ProfileResume, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
+import type { SystemSource } from "./system-source.ts";
 import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
@@ -194,10 +195,71 @@ export interface RepoCandidate {
 export interface RepoScan {
   root: string;
   isGit: boolean;
-  /** Empty when the folder is a repository itself, or when nothing was found under it. */
+  /** The repositories under it, also when it is one itself (a group's folder with `git init`); empty when none. */
   repos: RepoCandidate[];
   /** The system the repositories would go into: the folder's name, made to fit a system name. */
   system: string;
+}
+
+/** One member of a system as setting its group up on this machine treats it (GROUP-init-sync). */
+export interface SystemInitItem {
+  project: string;
+  pathWithNamespace: string | null;
+  /** Where the repo is or will be; null when there is nothing to clone. */
+  dir: string | null;
+  /**
+   * added: a project of this app already · folder: a clone of it is there, to register · new: to clone · conflict: the
+   * folder holds another repo or another project · gone: archived or no longer in the group · unknown: added to the
+   * system by hand, the hub has no URL for it.
+   */
+  state: "added" | "folder" | "new" | "conflict" | "gone" | "unknown";
+  /** The project that already has the folder, for a conflict. */
+  owner: string | null;
+}
+
+export interface SystemPlan {
+  system: string;
+  /** The root asked for, else the one this machine set the group up in, else where its members already are. */
+  root: string;
+  items: SystemInitItem[];
+  /** https when this machine has a token for the forge (no SSH key needed), else ssh. */
+  protocol: "ssh" | "https";
+  /** This machine has a token for the source's forge, so it can sync and clone over https. */
+  forgeReady: boolean;
+}
+
+/** A hand-made system matched to a forge group: what saving the source would change (shown before it is saved). */
+export interface SystemLinkPlan {
+  source: SystemSource;
+  projects: string[];
+  /** Projects of the system matched to a repo of the group. */
+  matched: string[];
+  /** Repos of the group no project matched: new members, with the key each would get. */
+  added: string[];
+  /** Projects of the system with no repo in the group: they stay in it, without a source. */
+  unmatched: string[];
+}
+
+export interface SystemSyncReport {
+  system: string;
+  at: string;
+  /** Repos new to the group, now projects of the system. */
+  added: string[];
+  /** Members archived or gone from the group since the last sync (their folders stay). */
+  gone: string[];
+  back: string[];
+  /** Members this machine cloned or registered in this round. */
+  cloned: string[];
+  failed: Array<{ project: string; error: string }>;
+  /** The source was saved to the hub (false: nothing changed, or the save was refused: see error). */
+  saved: boolean;
+  error: string | null;
+}
+
+/** A system whose group this machine set up: its root, and the last sync. */
+export interface SystemOnMachine {
+  root: string;
+  lastSync: SystemSyncReport | null;
 }
 
 export interface RepoImportResult {
@@ -565,6 +627,17 @@ export interface DesktopBridge {
     results: GitLabImportResult[];
     settings: DesktopSettings;
   }>;
+  /** What setting a system's group up under a root would do (GROUP-init-sync); older apps have none of these. */
+  systemPlan?(input: { system: string; root?: string }): Promise<SystemPlan>;
+  /** Clones what the plan offers into the group's tree, registers each repo, and remembers the root for the sync. */
+  systemInit?(input: { system: string; root: string; protocol: "ssh" | "https" }): Promise<{ results: GitLabImportResult[]; settings: DesktopSettings }>;
+  /** Matches a system without a source to a forge group with this machine's token; the page saves it. */
+  systemLink?(input: { system: string; forge: "gitlab" | "github"; group: string }): Promise<SystemLinkPlan>;
+  /** Compares the system with its group now: new repos join, gone ones are marked, this machine clones its new members. */
+  systemSync?(system: string): Promise<SystemSyncReport>;
+  systemsOnMachine?(): Promise<Record<string, SystemOnMachine>>;
+  /** Stops syncing the system on this machine; its folders and projects stay. */
+  systemForget?(system: string): Promise<void>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;
