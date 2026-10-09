@@ -1222,7 +1222,7 @@ async function main() {
       await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
-    await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@hoa"));
+    await tab.waitFor("Hoa signed in", () => !document.querySelector("#username") && document.body.innerText.includes("Hoa Trần"));
     // A member's menu has no project settings or hub administration (Máy & agent, the team's machines, stays).
     const nav = await tab.eval(() => document.querySelector("nav")?.innerText ?? "");
     for (const label of ["Cài đặt service", "Quản trị", "Đội máy", "Hàng đợi", "Nhật ký"]) expect(!nav.includes(label), `${label} in Hoa's menu:\n${nav}`);
@@ -2945,7 +2945,7 @@ async function main() {
       await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && !!document.querySelector('button[aria-label="Ẩn hoặc hiện thanh bên"]'));
       await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     }
-    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("@lan"));
+    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && document.body.innerText.includes("Lan Nguyễn"));
     await tab.go("today?section=inbox");
     await tab.click("[data-project-picker-trigger]");
     await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
@@ -3267,6 +3267,7 @@ async function main() {
       const targets = await tab.eval(() => [...document.querySelectorAll('#chat-project, #chat-machine, #chat-plan, #chat-new-model, #chat-new-effort')].map((el) => ({ height: el.getBoundingClientRect().height, font: parseFloat(getComputedStyle(el).fontSize) })));
       expect(targets.every((el) => el.height >= 44 && el.font >= 16), JSON.stringify(targets));
     }
+    if (mobile) await tab.click(`button[aria-label="Các cuộc chat"]`);
     await tab.click("button", "Hướng dẫn leader");
     await tab.select("#guide-project", "*");
     await tab.waitFor("shared guide and separate hub autonomy", () => document.body.innerText.includes("Leader toàn hub dùng skill hive-leader chung") && document.body.innerText.includes("Cài đặt này độc lập với từng service"));
@@ -3281,6 +3282,8 @@ async function main() {
     await until("hub commands saved", async () => (await rpc("chat.defaults", { project: "*" })).commands.length === 2);
     expect(JSON.stringify(await rpc("chat.defaults", { project: "payment" })) === JSON.stringify(beforePayment), "hub settings did not change payment's defaults, commands or autonomy");
     await tab.key("Escape");
+    // On a phone the list and the open chat take turns: going back to the list for the guide closed the draft.
+    if (mobile) await tab.click("[data-chat-new]");
     await tab.click('textarea[aria-label="Tin nhắn"]');
     await tab.type("Điều phối toàn hub 37b");
     await tab.click("button", "Bắt đầu");
@@ -3295,7 +3298,7 @@ async function main() {
     await machineRpc("chat.finish", { replyId: reply.id, status: "done", text: "Đề xuất theo service và máy." });
     await tab.waitFor("all service and hub proposal labels", () => ["payment", "demo", "*"].every((p) => document.querySelector(`[data-action-project="${p}"]`)));
     const labels = await tab.eval(() => [...document.querySelectorAll("[data-action-project]")].map((el) => el.textContent));
-    expect(labels.includes("cho service payment") && labels.includes("cho service demo") && labels.includes("Cả hub"), JSON.stringify(labels));
+    expect(labels.includes("payment") && labels.includes("demo") && labels.includes("Cả hub"), JSON.stringify(labels));
     await tab.shot("hub-leader-proposals");
     await tab.click("button", "Xác nhận tất cả");
     await until("hub proposals confirmed together", async () => (await rpc("chat.get", { threadId: sent.id })).messages.at(-1).actions.every((a) => a.status === "done"));
@@ -3308,6 +3311,7 @@ async function main() {
     await lead.go("chat");
     await lead.click("[data-chat-new]");
     expect(await lead.eval(() => !document.querySelector('#chat-project option[value="*"]')), "a project lead has no whole-hub choice");
+    if (mobile) await lead.click(`button[aria-label="Các cuộc chat"]`);
     await lead.click("button", "Hướng dẫn leader");
     expect(await lead.eval(() => !document.querySelector('#guide-project option[value="*"]')), "a project lead has no whole-hub settings");
     await lead.key("Escape");
@@ -3465,18 +3469,18 @@ async function main() {
       const text = document.body.innerText;
       return text.includes("Việc của kho-api") && text.includes("Việc của kho-web") && !text.includes("Việc của kho-le") && !text.includes("Việc đầu tiên của payment");
     });
-    await tab.waitFor("the system in the title", () => document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › "));
+    await tab.waitFor("the system in the title", () => document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho"));
     await tab.shot(`${String(n).padStart(2, "0")}-scope-system`);
     // A service reads as system › service in the menu and the title.
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[data-scope-toggle="kho"]');
     await tab.click('[role="option"]', "kho-api");
-    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho › kho-api › "));
+    await tab.waitFor("kho › kho-api", () => document.querySelector("[data-project-picker-trigger]")?.textContent.includes("kho › kho-api") && document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho › kho-api"));
     await tab.waitFor("only kho-api's task", () => document.body.innerText.includes("Việc của kho-api") && !document.body.innerText.includes("Việc của kho-web"));
     // The lone repo: its own scope, named by itself.
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "kho-le");
-    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector("[data-shell-title]")?.textContent.startsWith("kho-le › "));
+    await tab.waitFor("only kho-le's task", () => document.body.innerText.includes("Việc của kho-le") && !document.body.innerText.includes("Việc của kho-api") && document.querySelector(".hive-topbar-title")?.textContent.startsWith("kho-le"));
     await tab.click("[data-project-picker-trigger]");
     await tab.click('[role="option"]', "Tất cả service");
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
