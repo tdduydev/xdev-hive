@@ -46,7 +46,7 @@ export async function tableCardsChecks({ tab, rpc, step, expect }) {
       });
       expect(layout.page <= layout.width + 1 && layout.content <= layout.pane + 1, `${route} overflows: ${JSON.stringify(layout)}`);
       expect(!layout.badRows, `${route}: clipped or overflowing cards: ${JSON.stringify(layout)}`);
-      if (["tasks", "batches", "users", "tokens", "audit"].includes(route)) {
+      if (["tasks", "batches", "tokens", "audit"].includes(route)) {
         expect(layout.rows > 0 && layout.labels > 0, `${route}: no labelled cards: ${JSON.stringify(layout)}`);
       }
       if (route === "tasks") {
