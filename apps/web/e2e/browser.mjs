@@ -277,6 +277,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
   "cosmic-primitives": ["login-token"],
+  "cosmic-settings-admin": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -752,6 +753,21 @@ async function main() {
     expect(!contrast.length, `light cosmic contrast: ${JSON.stringify(contrast)}`);
     await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+  });
+  // R-72l: Cài đặt service and Quản trị chrome, dark and light, for the pixel comparison against docs/design/hive-2026-10/shots.
+  await step("cosmic-settings-admin", async () => {
+    const tab = (current = tabs.admin);
+    for (const theme of ["dark", "light"]) {
+      await tab.eval(value => { document.documentElement.dataset.theme = value; }, theme);
+      for (const route of ["settings?tab=members", "admin?tab=users"]) {
+        await tab.go(route);
+        await tab.waitFor("page content loaded", () => !!document.querySelector("[data-settings-tidy], [data-admin-page]") && !document.querySelector('main [aria-busy="true"]'));
+        expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), `overflow on ${route}/${theme}`);
+        await tab.shot(`cosmic-${theme}-${route.split("?")[0]}-${mobile ? "390x844" : "1440x900"}`);
+      }
+    }
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await tab.go("today");
   });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);

@@ -963,6 +963,8 @@ export const en: Catalog = {
     settings: { policy: "Process", agent: "Agent", tools: "Tools", context: "Agent context", leader: "Leader", members: "Members", systems: "Systems" },
     machines: { quota: "Quota", map: "Agent map", fleet: "Fleet", queue: "Queue", costs: "Costs" },
     admin: { ops: "Operations overview", users: "Users & access", policy: "Policy", tools: "Tools", budgets: "Budgets", alerts: "Alerts", audit: "Audit log", webhooks: "Notifications & webhooks", versions: "App versions", hub: "Hub" },
+    adminGroup: { run: "Operations", access: "Access", system: "System" },
+    adminDesc: { ops: "Hub health, queue and costs.", users: "People, hub roles and per-service permissions.", policy: "Hub policy that applies to every project.", tools: "Tools and versions the hub allows.", budgets: "Budgets and what was spent.", alerts: "Alert rules and recipients.", audit: "Log of actions on the hub.", webhooks: "Notifications and outgoing webhooks.", versions: "Released desktop app versions.", hub: "Hub information and operations." },
   },
   settingsTidy: {
     edit: "Edit", close: "Close", openProcess: "Open Process page", addModel: "Add another model", learnMore: "Learn more",

@@ -968,6 +968,8 @@ export const vi = {
     settings: { policy: "Quy trình", agent: "Agent", tools: "Tool", context: "Context agent", leader: "Leader", members: "Thành viên", systems: "Hệ thống" },
     machines: { quota: "Quota", map: "Bản đồ agent", fleet: "Đội máy", queue: "Hàng đợi", costs: "Chi phí" },
     admin: { ops: "Tổng quan vận hành", users: "Người dùng & quyền", policy: "Chính sách", tools: "Tool", budgets: "Ngân sách", alerts: "Cảnh báo", audit: "Nhật ký", webhooks: "Thông báo & webhook", versions: "Phiên bản app", hub: "Hub" },
+    adminGroup: { run: "Vận hành", access: "Truy cập", system: "Hệ thống" },
+    adminDesc: { ops: "Sức khoẻ hub, hàng đợi và chi phí.", users: "Người dùng, vai trò hub và quyền theo service.", policy: "Chính sách của hub áp cho mọi dự án.", tools: "Tool và phiên bản hub cho phép.", budgets: "Ngân sách và mức đã dùng.", alerts: "Quy tắc cảnh báo và nơi nhận.", audit: "Nhật ký thao tác trên hub.", webhooks: "Thông báo và webhook gửi ra ngoài.", versions: "Phiên bản app desktop đã phát hành.", hub: "Thông tin và vận hành hub." },
   },
   settingsTidy: {
     edit: "Sửa", close: "Đóng", openProcess: "Mở trang Quy trình", addModel: "Thêm model khác", learnMore: "Tìm hiểu thêm",
