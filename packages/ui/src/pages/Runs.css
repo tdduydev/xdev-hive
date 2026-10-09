@@ -1,6 +1,8 @@
 /* Lượt chạy (72e): measurements are the design's inline styles (xDev Hive.dc.html, "Lượt chạy" block), colors are tokens. */
 /* Not in @layer components: the bundle puts that layer before Tailwind's base reset (`*{padding:0}`), which would then win. */
 .runs-page{display:flex;min-width:0;flex:1;flex-direction:column;overflow-y:auto;padding:24px 28px 40px}
+/* The page scrolls; a block never shrinks to fit (the merge queue and the table were squeezed to a sliver). */
+.runs-page>*{flex-shrink:0}
 .runs-sub{margin:0 0 20px;font:var(--type-body-sm);color:var(--text-secondary)}
 .runs-live-title{display:flex;align-items:center;gap:10px;margin-bottom:12px;font:600 15px/22px var(--font-sans)}
 .runs-live-dot{width:8px;height:8px;border-radius:50%;background:var(--accent-blue);box-shadow:0 0 10px var(--accent-blue);animation:hivePulse 1.6s ease-in-out infinite}
