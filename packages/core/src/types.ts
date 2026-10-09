@@ -1400,6 +1400,20 @@ export interface RunnerChange {
   requestedAt: string;
 }
 
+/**
+ * What a machine says about itself for the machine card (spec 72g). No app reports it yet, so the card shows the
+ * block only when it is there and never fills in numbers of its own.
+ */
+export interface MachineSystem {
+  os: "macos" | "ubuntu" | "windows" | "linux";
+  osName: string;
+  hardware: string;
+  uptime?: string;
+  cpu?: { percent: number; detail: string };
+  ram?: { percent: number; detail: string };
+  disk?: { percent: number; detail: string };
+}
+
 /** A desktop runner as the hub last heard from it. */
 export interface Machine {
   /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
@@ -1427,6 +1441,7 @@ export interface Machine {
   owner: string | null;
   /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */
   profileChanges: ProfileChange[];
+  system?: MachineSystem;
 }
 
 /**
