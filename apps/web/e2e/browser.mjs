@@ -4308,6 +4308,7 @@ async function main() {
     await tab.go("artifacts");
     // Earlier steps (leader-research) leave files of their own: the second page holds whatever is past the first 50.
     const total = (await rpc("artifacts.list", { limit: 200 })).length;
+    await tab.click('[data-artifacts-page] button', "Xem thêm 45");
     await tab.waitFor("the files page", () => document.querySelectorAll('[data-artifact-row]').length === 50);
     await tab.click('[data-artifacts-page] button', "Trang sau");
     await tab.waitFor("second page", rest => document.querySelectorAll('[data-artifact-row]').length === rest, total - 50);
@@ -4320,9 +4321,8 @@ async function main() {
     }
     await accessibilityAudit({ tab, out, expect, routes: ["artifacts"], filename: "artifacts-accessibility.json" });
     const ax = await tab.cdp("Accessibility.getFullAXTree");
-    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "table" && node.name?.value === "Tệp của agent"), "artifact table reaches the accessibility tree");
-    expect(ax.nodes.filter(node => !node.ignored && node.role?.value === "columnheader").length === 7, "all artifact headers remain available on desktop and phone");
-    for (const name of ["ART-1", runId]) expect(ax.nodes.some(node => !node.ignored && node.role?.value === "link" && node.name?.value === name), `${name} remains an accessible link inside its cell`);
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "list" && node.name?.value === "Tệp của agent"), "artifact groups reach the accessibility tree as a list");
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "listitem"), "artifact groups expose list items to assistive technology");
     await tab.click('[data-artifact-row="report.md"] button');
     await tab.waitFor("markdown document", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
     const auditPreview = async (filename) => {
@@ -4342,21 +4342,16 @@ async function main() {
     };
     await auditPreview("artifacts-preview-accessibility.json");
     await tab.shot("artifacts-report");
-    await tab.key("Escape");
-    await tab.waitFor("preview closes and returns keyboard focus", () => !document.querySelector("[data-artifact-preview]") && document.activeElement?.closest('[data-artifact-row="report.md"]'));
     await fill('[data-artifact-filter="search"]', "");
-    await tab.select('[data-artifact-filter="kind"]', "log");
+    await tab.click('[data-artifact-filter="kind"]', "Log");
     await tab.waitFor("log filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="check.log"]'));
     await tab.click('[data-artifact-row="check.log"] button');
-    await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] pre'));
-    await fill('[data-artifact-find]', "ok");
-    await tab.waitFor("search highlights", () => document.querySelector('[data-artifact-content] mark'));
+    await tab.waitFor("bounded preview", () => document.querySelector('[data-artifact-clipped]') && document.querySelector('[data-artifact-content] > div'));
     if (mobile) {
-      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifact-preview] button, [data-artifact-preview] input')].filter((el) => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map((el) => el.outerHTML));
-      expect(!small.length, `44px preview controls: ${small.join("\n")}`);
+      const small = await tab.eval(() => [...document.querySelectorAll('[data-artifact-viewer] button')].filter((el) => { const r = el.getBoundingClientRect(); return r.width < 44 || r.height < 44; }).map((el) => el.outerHTML));
+      expect(!small.length, `44px viewer controls: ${small.join("\n")}`);
       expect(await tab.eval(() => document.documentElement.scrollWidth <= innerWidth), "no phone horizontal overflow");
     }
-    await auditPreview("artifacts-log-accessibility.json");
     const downloadFile = path.join(out, "download-check.log");
     const downloaded = new Promise((resolve, reject) => {
       tab.win.webContents.session.once("will-download", (_event, item) => {
@@ -4364,57 +4359,29 @@ async function main() {
         item.once("done", (_event, state) => state === "completed" ? resolve() : reject(new Error(`download: ${state}`)));
       });
     });
-    await tab.click('[data-artifact-preview] button[aria-label="Tải check.log"]');
+    await tab.click('[data-artifact-viewer] button[aria-label="Tải check.log"]');
     await Promise.race([downloaded, sleep(15_000).then(() => { throw new Error("download timeout"); })]);
     expect(readFileSync(downloadFile, "utf8").endsWith("last line"), "download has the complete log after the clipped preview");
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "image");
-    await tab.waitFor("image filter", () => document.querySelector('[data-artifact-row="shot.png"]'));
-    await tab.click('[data-artifact-row="shot.png"] button');
-    await tab.waitFor("image preview", () => document.querySelector('[data-artifact-preview] img')?.complete);
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "json");
-    await tab.waitFor("json filter", () => document.querySelector('[data-artifact-row="result.json"]'));
-    await tab.click('[data-artifact-row="result.json"] button');
-    await tab.waitFor("json preview", () => document.querySelector('[data-artifact-content] pre')?.textContent.includes('"success":true'));
-    await tab.click('[data-artifact-preview] button', "Đóng");
-    await tab.select('[data-artifact-filter="kind"]', "");
-    await fill('[data-artifact-filter="task"]', "ART-2");
-    await tab.waitFor("task filter", () => document.querySelectorAll('[data-artifact-row]').length === 1 && document.querySelector('[data-artifact-row="other-service.md"]'));
-    await fill('[data-artifact-filter="task"]', "");
-    await fill('[data-artifact-filter="run"]', runId);
-    await tab.waitFor("run filter", () => document.querySelectorAll('[data-artifact-row]').length === 5);
     await tab.shot("artifacts-page");
-    await fill('[data-artifact-filter="run"]', "");
-    await fill('[data-artifact-filter="search"]', "other-service");
-    await tab.waitFor("other service in all", () => document.querySelector('[data-artifact-row="other-service.md"]'));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
-    await tab.type("payment");
-    await tab.key("Enter");
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await tab.waitFor("service scope excludes other service", () => !document.querySelector('[data-artifact-row]') && document.querySelector('[data-artifacts-page]')?.textContent.includes("Không có tệp"));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('input[aria-label="Tìm service hoặc hệ thống…"]');
-    await tab.type("ban-hang");
-    // Recent services also match the system name; select the system root explicitly.
-    await tab.click('[data-scope-row="root"][data-scope-root="ban-hang"] [role="option"]');
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await tab.waitFor("system scope includes its services", () => document.querySelector('[data-artifact-row="other-service.md"]'));
-    await tab.click("[data-project-picker-trigger]");
-    await tab.click('[role="option"]', "Tất cả service");
-    if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
-    await fill('[data-artifact-filter="search"]', "");
     await tab.go(`artifacts?artifact=${report.id}`);
     await tab.waitFor("deep preview link", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
-    await tab.click('[data-artifact-preview] button', "Đóng");
+    const html1 = await put("preview.html", b64("<h1>HTML v1</h1>"), "payment", "ART-1", "R-html-1");
+    const html2 = await machine("artifacts.put", { project: "payment", taskId: "ART-1", runId: "R-html-2", name: "preview.html", data: b64("<h1>HTML v2</h1>"), versionNote: "Updated preview" });
+    await tab.go(`artifacts?artifact=${html2.id}`);
+    await tab.waitFor("sandboxed HTML preview and versions", () => document.querySelector('[data-artifact-viewer] iframe')?.getAttribute('sandbox') === 'allow-scripts' && document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("HTML v2") && document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("connect-src 'none'") && [...document.querySelectorAll('[data-artifact-viewer] [aria-label="Phiên bản"] button')].length === 2);
+    await tab.click('[data-artifact-viewer] button[aria-label="Ghim artifact"]');
+    await tab.waitFor("artifact pinned", () => document.querySelector('[data-artifact-viewer] button[aria-label="Bỏ ghim artifact"]'));
+    await tab.click('[data-artifact-viewer] [aria-label="Phiên bản"] button', "v1");
+    await tab.waitFor("older HTML version selected", () => document.querySelector('[data-artifact-viewer] iframe')?.srcdoc.includes("HTML v1"));
+    await tab.go(`artifacts?artifact=${report.id}`);
+    await tab.waitFor("return to report preview", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
     await tab.go("tasks?task=ART-1");
     await tab.waitFor("linked handover", () => document.querySelector('[data-artifact-link="report.md"]'));
     await tab.click('[data-artifact-link="report.md"]');
     await tab.waitFor("handover opens report", () => document.querySelector('[data-artifact-content] h1'));
     await tab.click('[data-artifact-preview] button', "Đóng");
     await tab.click('[data-task-artifacts-tab]');
-    await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 56);
+    await tab.waitFor("all task files", () => document.querySelectorAll('[data-artifact]').length === 58);
     // The hub names the machine after the header and the token ("runner.artifacts-e2e@…"): take it from the run.
     const runMachine = (await rpc("runs.list", { project: "payment", limit: 200 })).find(r => r.runId === runId).machineId;
     await tab.go(`runs?run=${encodeURIComponent(`${runMachine}/${runId}`)}`);

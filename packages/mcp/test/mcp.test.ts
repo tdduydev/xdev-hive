@@ -120,6 +120,7 @@ describe("mcp tools", () => {
     assert.deepEqual(names, [
       "artifact_get",
       "artifact_list",
+      "artifact_put",
       "cost_summary",
       "doc_asset",
       "doc_get",
