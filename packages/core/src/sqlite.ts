@@ -1984,6 +1984,8 @@ export class SqliteHive implements HiveBackend {
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
   readonly #machineIdentityReady: boolean;
+  /** Staged migration fixtures still create tasks before platform routing is installed. */
+  readonly #taskPlatformsReady: boolean;
   /** The desktop app's own machine in local mode (roadmap 48): it never heartbeats, so it is no row of `machines`. */
   #chatMachine: (() => Machine | null) | null = null;
 
@@ -2016,6 +2018,7 @@ export class SqliteHive implements HiveBackend {
     }));
     this.#migrate();
     this.#machineIdentityReady = (this.db.prepare("PRAGMA table_info(machines)").all() as Row[]).some((r) => r.name === "token_id");
+    this.#taskPlatformsReady = (this.db.prepare("PRAGMA table_info(tasks)").all() as Row[]).some((r) => r.name === "platforms");
     this.#handlers = this.#buildHandlers();
   }
 
@@ -6383,14 +6386,16 @@ export class SqliteHive implements HiveBackend {
     const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
     // Save the initial brief with creation: a task manager need not have taskWork to describe new work.
     if (input.note) assertNoHidden(input.note, "Note");
-    db.prepare("INSERT INTO tasks(id, project, title, note, platforms, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(
-      input.id,
-      input.project,
-      input.title,
-      input.note === undefined ? null : clean(input.note),
-      JSON.stringify([...new Set(input.platforms)]),
-      this.#now(),
-    );
+    const brief = input.note === undefined ? null : clean(input.note);
+    if (this.#taskPlatformsReady) {
+      db.prepare("INSERT INTO tasks(id, project, title, note, platforms, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        input.id, input.project, input.title, brief, JSON.stringify([...new Set(input.platforms)]), this.#now(),
+      );
+    } else {
+      db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        input.id, input.project, input.title, brief, this.#now(),
+      );
+    }
     // Whoever creates it may say what it is (a leader's task.create): theirs, and the rules leave it alone.
     if (input.kind || input.size || input.risk) {
       db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ? WHERE id = ?").run(
