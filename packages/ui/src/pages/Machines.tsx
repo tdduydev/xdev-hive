@@ -2,10 +2,10 @@ import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/co
 import { useEffect, useMemo, useState } from "react";
 import { cacheReadShare, type CompressionCompare, type CompressionSide, type CostSummary, type CostTotals, type RunTokens } from "@xdev-hive/core";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
-import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
-import { formatCount, formatTime, formatUsd, useHive, usePoll, useQuery } from "#ui/hooks.ts";
+import { Empty, ErrorNote, Notice, Page } from "#ui/components/common.tsx";
+import { formatCount, formatTime, formatUsd, hashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
-import { mapMachines } from "#ui/lib/agentmap.ts";
+import { mapMachines, withFixtureSystem } from "#ui/lib/agentmap.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { Skeleton } from "#ui/components/ui/skeleton.tsx";
 import { AgentMap } from "#ui/pages/AgentMap.tsx";
@@ -43,11 +43,11 @@ export function MachinesPage() {
   const groups = useQuery(() => client.call("runs.groups", { ...scopeFilter(scope), limit: 30 }).catch(() => []), deps);
 
   const reload = () => setTick((n) => n + 1);
-  const shown = useMemo(() => mapMachines(machines.data ?? [], scope), [machines.data, scope]);
+  const shown = useMemo(() => withFixtureSystem(mapMachines(machines.data ?? [], scope), hashParam("e2e") === "machine-system" && sessionStorage.getItem("hive-e2e-fixtures") === "1"), [machines.data, scope]);
 
   return (
-    <Page wide>
-      <PageHeader title={t("nav.machines")} subtitle={t("dashboardAgents.mapHint")} />
+    <Page wide className="gap-0">
+      <p className="m-0 mb-5 max-w-[760px] text-[14px]/[22px] font-medium text-fg-secondary [text-wrap:pretty]">{t("agentMap.pageHint")}</p>
 
       <section className="flex flex-col gap-3">
         <ErrorNote error={machines.error ?? runs.error ?? requests.error ?? cooldowns.error} />
