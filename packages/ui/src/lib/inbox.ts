@@ -350,3 +350,43 @@ export function shortAgo(iso: string, now: number, t: (key: "inbox.ago.now" | "i
   if (h < 24) return t("inbox.ago.h", { n: h });
   return t("inbox.ago.d", { n: Math.floor(h / 24) });
 }
+
+/** Hôm nay's three design groups (72c): what to approve, what to fix, the machine. */
+export const TODAY_GROUPS = ["approve", "fix", "machine"] as const;
+export type TodayGroup = (typeof TODAY_GROUPS)[number];
+
+export function todayGroup(item: InboxItem): TodayGroup {
+  switch (item.kind) {
+    case "machine":
+    case "request":
+      return "machine";
+    case "ci":
+    case "waitingRun":
+    case "agentHold":
+    case "conflict":
+    case "alert":
+    case "hubIssue":
+    case "releaseFailure":
+      return "fix";
+    default:
+      return "approve";
+  }
+}
+
+/** The glow dot of a row, by what the item is (the design's violet / blue / red / amber). */
+export type TodayDot = "violet" | "blue" | "red" | "amber";
+
+export function todayDot(item: InboxItem): TodayDot {
+  switch (item.kind) {
+    case "review": case "proposal": case "plan": case "gate": case "leader": return "violet";
+    case "memory": case "cleanup": return "blue";
+    case "ci": return "red";
+    case "alert": case "hubIssue": case "releaseFailure": return item.tone === "danger" ? "red" : "amber";
+    default: return "amber";
+  }
+}
+
+/** Items in the three design groups, each keeping the newest-first order they came in (as the design lists them). */
+export function groupToday(items: InboxItem[]): Array<{ group: TodayGroup; items: InboxItem[] }> {
+  return TODAY_GROUPS.map((group) => ({ group, items: items.filter((i) => todayGroup(i) === group) })).filter((g) => g.items.length);
+}

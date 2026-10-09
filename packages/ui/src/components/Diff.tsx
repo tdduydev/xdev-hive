@@ -25,10 +25,9 @@ const SIGN_CLASS: Record<Line["kind"], string> = {
   gap: "text-muted-foreground",
 };
 
-/** Line diff with unchanged runs collapsed to a few lines of context. */
-export function Diff({ before, after }: { before: string; after: string }) {
+function useDiffLines(before: string, after: string): Line[] {
   const t = useT();
-  const lines = useMemo(() => {
+  return useMemo(() => {
     const raw: Line[] = [];
     // The last line with or without a newline is the same line.
     const nl = (s: string) => (s && !s.endsWith("\n") ? `${s}\n` : s);
@@ -57,7 +56,12 @@ export function Diff({ before, after }: { before: string; after: string }) {
     }
     return out;
   }, [before, after, t]);
+}
 
+/** Line diff with unchanged runs collapsed to a few lines of context. */
+export function Diff({ before, after }: { before: string; after: string }) {
+  const t = useT();
+  const lines = useDiffLines(before, after);
   const changed = lines.some((l) => l.kind === "add" || l.kind === "del");
   if (!changed) return <Empty>{t("diff.none")}</Empty>;
 
@@ -73,5 +77,38 @@ export function Diff({ before, after }: { before: string; after: string }) {
         </div>
       ))}
     </pre>
+  );
+}
+
+const PANEL_LINE: Record<Line["kind"], string> = {
+  add: "bg-(--diff-add-bg) text-(--diff-add-fg)",
+  del: "bg-(--diff-del-bg) text-(--diff-del-fg)",
+  same: "text-(--diff-ctx-fg)",
+  gap: "text-(--diff-ctx-fg) italic",
+};
+
+/** The design's diff block (Hôm nay): a file bar with +/- counts over mono lines, 24px mark column. */
+export function DiffPanel({ before, after, file }: { before: string; after: string; file: string }) {
+  const t = useT();
+  const lines = useDiffLines(before, after);
+  const add = lines.filter((l) => l.kind === "add").length;
+  const del = lines.filter((l) => l.kind === "del").length;
+  if (!add && !del) return <Empty>{t("diff.none")}</Empty>;
+  return (
+    <div className="min-w-0 overflow-hidden rounded-[16px] bg-(--surface-sunken) shadow-[var(--ring-glass)]" aria-label={t("diff.label")} role="group">
+      <div className="flex h-9 items-center gap-2 px-3.5 font-mono text-[12px]/none font-medium text-fg-muted shadow-[inset_0_-1px_0_var(--today-rule)]">
+        <span className="min-w-0 flex-1 truncate">{file}</span>
+        <span className="text-(--accent-green)">+{add}</span>
+        <span className="text-(--accent-red)">−{del}</span>
+      </div>
+      <div className="max-h-[520px] overflow-y-auto py-2 font-mono text-[12.5px]/[21px] font-medium">
+        {lines.map((l, i) => (
+          <div key={i} className={cn("grid grid-cols-[24px_minmax(0,1fr)] px-3.5", PANEL_LINE[l.kind])}>
+            <span className="opacity-60">{l.kind === "add" ? "+" : l.kind === "del" ? "-" : ""}</span>
+            <span className="[overflow-wrap:anywhere] whitespace-pre-wrap">{l.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
