@@ -22,6 +22,7 @@ import {
   Shield,
   Sparkles,
   SquareKanban,
+  Terminal,
 } from "lucide-react";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
 import { missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
@@ -46,6 +47,7 @@ import { AdminPage, KnowledgePage, MachinesAgentsPage, RunsWorkPage, SettingsPag
 import { ProposalsPage } from "@xdev-hive/ui/pages/Proposals";
 import { StartPage } from "@xdev-hive/ui/pages/Start";
 import { TaskWorkPage } from "@xdev-hive/ui/pages/Tasks";
+import { TerminalPage } from "@xdev-hive/ui/pages/Terminal";
 import { TodayInboxPage } from "@xdev-hive/ui/pages/Today";
 import { TokensPage } from "@xdev-hive/ui/pages/Tokens";
 import { WorkspaceAcceptance } from "@xdev-hive/ui/pages/WorkspaceAcceptance";
@@ -54,6 +56,7 @@ const GraphPage = lazy(() => import("@xdev-hive/ui/pages/Graph").then((module) =
 
 type PageId =
   | "start"
+  | "terminal"
   | "today"
   | "overview"
   | "chat"
@@ -78,6 +81,8 @@ type Icon = ComponentType<{ className?: string }>;
 
 const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; render: () => ReactNode }> = {
   start: { label: "start.title", sub: "start.sub", icon: ListChecks, render: () => <StartPage /> },
+  // Not in the sidebar (the menu is the shell's): reached from ⌘K and the machine/run terminal links.
+  terminal: { label: "terminal.page", sub: "terminal.pageSub", icon: Terminal, render: () => <TerminalPage /> },
   today: { label: "nav.today", sub: "navSub.today", icon: Inbox, render: () => <TodayInboxPage /> },
   overview: { label: "nav.overview", sub: "navSub.overview", icon: LayoutGrid, render: () => <OverviewPage /> },
   chat: { label: "nav.chat", sub: "navSub.chat", icon: MessagesSquare, render: () => <ChatPage /> },
@@ -108,7 +113,7 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
 const GROUPS = WEB_MENU as Array<{ label: MessageKey | null; ids: PageId[] }>;
 const SHORTCUTS = WEB_SHORTCUTS as Partial<Record<PageId, string>>;
 /** Not in the sidebar, still in the command palette: Token moved to the account menu on the web (roadmap 49b). */
-const PALETTE_ONLY: PageId[] = ["start", "overview", "tokens"];
+const PALETTE_ONLY: PageId[] = ["start", "terminal", "overview", "tokens"];
 
 const HOME: PageId = "today";
 
@@ -170,6 +175,7 @@ function Workspace({ client, me, onSignOut }: { client: HiveClient; me: Me; onSi
   const visible = useMemo(() => {
     // Quản trị › Tổng quan vận hành is the same picture for every project; the members' Tổng quan stays for the others.
     const ids = new Set<PageId>([...webPages(me, projects, webCaps(client)), "read", "start", "overview"]);
+    if (client.terminal) ids.add("terminal");
     // Everyone with an account manages their own tokens (machines, CI), from the account menu; admins see all.
     if (client.tokens && (hubAdmin || me.user)) ids.add("tokens");
     if (client.device && me.user) ids.add("device");

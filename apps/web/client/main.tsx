@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HubSetup, hubSetupState, I18nProvider, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
+import { createHttpClient, HubSetup, hubSetupState, I18nProvider, InviteAccept, inviteTokenFromHash, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
 import { WebApp } from "./WebApp.tsx";
 import "@xdev-hive/ui/globals.css";
 
@@ -99,7 +99,29 @@ function Root() {
     return null;
   }, [session]);
 
+  const [inviteToken, setInviteToken] = useState(() => inviteTokenFromHash(window.location.hash));
+  useEffect(() => {
+    const on = () => setInviteToken(inviteTokenFromHash(window.location.hash));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+
   if (session.kind === "checking") return null;
+  // A sign-up link works for someone not signed in; a browser already signed in goes on to the app as before.
+  if (!client && inviteToken) {
+    return (
+      <InviteAccept
+        token={inviteToken}
+        onDone={() => {
+          window.location.hash = "#/";
+          setSession({ kind: "cookie" });
+        }}
+        onBack={() => {
+          window.location.hash = "#/";
+        }}
+      />
+    );
+  }
   if (!client) {
     return (
       <Login

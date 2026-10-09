@@ -51,11 +51,12 @@ it("saves runner and threshold changes without losing unrelated local config", (
   try {
     const file = join(dir, "config.json");
     const config = configSchema.parse({ runner: { maxParallel: 2, maxAttempts: 5 }, gitlab: { mr: { enabled: false, labels: ["custom"] } }, agents: [profile("claude-1")] });
-    const next = applyRunnerChange(config, { settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success" }, requestedBy: "tu", requestedAt: "2026-10-08T00:00:00.000Z" });
+    const next = applyRunnerChange(config, { settings: { maxParallel: 1, mrEnabled: true, mrWhen: "after_success", acceptHubRuns: true }, requestedBy: "tu", requestedAt: "2026-10-08T00:00:00.000Z" });
     next.agents = applyProfileChanges(config.agents, [{ ...change("claude-1", null, null), stopAtSession: 70, stopAtWeek: 60 }]).agents;
     saveConfig(next, file);
     const loaded = loadConfig(file);
     assert.equal(loaded.runner.maxParallel, 1);
+    assert.equal(loaded.runner.acceptHubRuns, true);
     assert.equal(loaded.runner.maxAttempts, 5);
     assert.equal(loaded.gitlab.mr.enabled, true);
     assert.equal(loaded.gitlab.mr.when, "after_success");

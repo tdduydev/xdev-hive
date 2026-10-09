@@ -845,6 +845,25 @@ const MIGRATIONS: string[] = [
    ALTER TABLE run_records ADD COLUMN pushed INTEGER;
    ALTER TABLE run_records ADD COLUMN push_error TEXT;
    ALTER TABLE machines ADD COLUMN git_push TEXT;`,
+  `
+  ALTER TABLE artifacts RENAME TO artifacts_old;
+  CREATE TABLE artifacts(
+    id INTEGER PRIMARY KEY, project TEXT NOT NULL, task_id TEXT NOT NULL, run_id TEXT NOT NULL, machine_id TEXT NOT NULL,
+    name TEXT NOT NULL, type TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL, stored TEXT, data BLOB NOT NULL,
+    profile_id TEXT, uploaded_by TEXT NOT NULL, on_behalf TEXT, source TEXT, created_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1, version_note TEXT NOT NULL DEFAULT '', pinned INTEGER NOT NULL DEFAULT 0);
+  INSERT INTO artifacts SELECT id, project, task_id, run_id, machine_id, name, type, size, sha256, stored, data,
+    profile_id, uploaded_by, on_behalf, source, created_at, 1, '', 0 FROM artifacts_old;
+  DROP TABLE artifacts_old;
+  CREATE INDEX artifacts_project ON artifacts(project, id);
+  CREATE INDEX artifacts_task ON artifacts(project, task_id);
+  CREATE INDEX artifacts_sha ON artifacts(sha256);
+  CREATE INDEX artifacts_file ON artifacts(project, task_id, name, version);
+  `,
+  // R-73b before R-72g-system: neither has run on a hub yet, and 73b was written first.
+  `ALTER TABLE tasks ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE machines ADD COLUMN platform TEXT;`,
+  `ALTER TABLE machines ADD COLUMN system TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1173,8 +1192,10 @@ const MAX_INTERRUPTED_TURNS = 3;
  */
 const APP_CLOSED_ERRORS = ["The app closed while the run was going", "App đã đóng khi run đang chạy"];
 /** What fails a group's item when it is released; anything else (offline, cap, pause, a run going) waits for later. */
-const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.secret"]);
+const GROUP_FAILS = new Set(["errors.machineNotFound", "errors.machineNoRepo", "errors.dispatchAssignedElsewhere", "errors.taskDone", "errors.taskNotInProject", "errors.profileNotOnMachine", "errors.machinePlatformMismatch", "errors.secret"]);
 const groupFails = (key: string | undefined) => !!key && (GROUP_FAILS.has(key) || key.startsWith("errors.hidden."));
+// A group is pinned to its machine; an assigned task can wait for that machine's next OS report.
+const agentFails = (key: string | undefined) => key !== "errors.machinePlatformMismatch" && groupFails(key);
 /** A merge no machine reported on within this time failed: machines hear one within 30 s, and a merge takes seconds. */
 const MERGE_TTL_MINUTES = 15;
 /** Answered run requests are kept this long. */
@@ -1604,7 +1625,7 @@ const toAsset = (r: Row): DocAsset => ({
 /** The tables whose rows point at bytes in the file store: both are read before a blob is dropped or backed up. */
 const BLOB_TABLES = ["doc_assets", "artifacts"] as const;
 /** Everything but the bytes: a list of artifacts never reads a blob. */
-const ARTIFACT_FIELDS = "id, project, task_id, run_id, machine_id, name, type, size, sha256, profile_id, uploaded_by, source, created_at";
+const ARTIFACT_FIELDS = "id, project, task_id, run_id, machine_id, name, type, size, sha256, profile_id, uploaded_by, source, created_at, version, version_note, pinned";
 const toArtifact = (r: Row): Artifact => ({
   id: num(r.id),
   project: str(r.project),
@@ -1619,6 +1640,9 @@ const toArtifact = (r: Row): Artifact => ({
   uploadedBy: str(r.uploaded_by),
   source: sourceOf(r.source),
   createdAt: str(r.created_at),
+  version: num(r.version ?? 1),
+  versionNote: str(r.version_note ?? ""),
+  pinned: num(r.pinned ?? 0) === 1,
 });
 const toDoc = (r: Row): Doc => ({ ...toSummary(r), content: str(r.content) });
 const toAssist = (r: Row): DocAssist => ({
@@ -1700,6 +1724,7 @@ const toTask = (
   id: str(r.id),
   project: str(r.project),
   title: str(r.title),
+  platforms: JSON.parse(str(r.platforms ?? "[]")) as Task["platforms"],
   priority: num(r.priority ?? 50),
   kind: strOrNull(r.kind) as Task["kind"],
   size: strOrNull(r.size) as Task["size"],
@@ -1984,6 +2009,8 @@ export class SqliteHive implements HiveBackend {
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
   readonly #machineIdentityReady: boolean;
+  /** Staged migration fixtures still create tasks before platform routing is installed. */
+  readonly #taskPlatformsReady: boolean;
   /** The desktop app's own machine in local mode (roadmap 48): it never heartbeats, so it is no row of `machines`. */
   #chatMachine: (() => Machine | null) | null = null;
 
@@ -2021,6 +2048,7 @@ export class SqliteHive implements HiveBackend {
         .run("Execution was interrupted; check the operation's effect before creating a new proposal.");
     }
     this.#machineIdentityReady = (this.db.prepare("PRAGMA table_info(machines)").all() as Row[]).some((r) => r.name === "token_id");
+    this.#taskPlatformsReady = (this.db.prepare("PRAGMA table_info(tasks)").all() as Row[]).some((r) => r.name === "platforms");
     this.#handlers = this.#buildHandlers();
   }
 
@@ -2030,6 +2058,9 @@ export class SqliteHive implements HiveBackend {
         throw new HiveError("forbidden", "An agent credential cannot call this method.");
       if (caller.runCredential && (method === "tasks.claim" || method === "tasks.update") && (input as { id?: string }).id !== caller.runCredential.task)
         throw new HiveError("forbidden", "A run credential can work only on its task.");
+      // A run works one task: it neither makes tasks nor decides which OS the hub gives its own task to.
+      if (caller.runCredential && (method === "tasks.create" || (method === "tasks.update" && (input as { platforms?: unknown }).platforms !== undefined)))
+        throw new HiveError("forbidden", "A run credential cannot create tasks or change a task's platforms.");
     }
     authorize(method, caller);
     const machine = this.#machineIdentityReady ? this.db.prepare("SELECT token_id FROM machines WHERE id = ?").get(caller.name) as Row | undefined : undefined;
@@ -2698,7 +2729,9 @@ export class SqliteHive implements HiveBackend {
       case "tasks.update": {
         const task = this.#getTask(i.id);
         if (!task) return;
-        this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
+        if (method === "tasks.update" && i.platforms !== undefined) this.#need(actor, task.project, "taskManage", `Task ${i.id}`);
+        if (method === "tasks.claim" || i.platforms === undefined || i.status !== undefined || i.note !== undefined || i.priority !== undefined)
+          this.#need(actor, task.project, "taskWork", `Task ${i.id}`);
         // Done is a reviewer's call: an agent sends its work to review, a person with codeReview takes it from there.
         if (method === "tasks.update" && i.status === "done" && task.status !== "done") {
           this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
@@ -2747,9 +2780,11 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** A run's file, or a gate job's (runId = its job id, no task): the same checks and the same store for both. */
-  async #putArtifact({ project, taskId, runId, profileId, name: raw, data }: { project: string; taskId: string; runId: string; profileId: string | null; name: string; data: string }, actor: Actor): Promise<Artifact> {
+  async #putArtifact({ project, taskId, runId, profileId, name: raw, data, versionNote = "" }: { project: string; taskId: string; runId: string; profileId: string | null; name: string; data: string; versionNote?: string }, actor: Actor): Promise<Artifact> {
     const name = artifactName(raw);
     if (!name) throw new HiveError("bad_request", `${raw} is not a file name.`, { key: "errors.artifactName", vars: { name: raw } });
+    assertNoHidden(versionNote, "versionNote");
+    assertNoSecret(versionNote, "versionNote");
     let bytes = new Uint8Array(Buffer.from(data, "base64"));
     const type = checkArtifact(name, bytes);
     if (isArtifactText(type)) {
@@ -2761,13 +2796,9 @@ export class SqliteHive implements HiveBackend {
     // After redaction: the bytes the store gets are the bytes the row names, or artifacts.get would refuse them.
     const sha = sha256(bytes);
     const allowed = () => {
-      const has = this.db.prepare("SELECT id, sha256, project, task_id FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
-      if (has) {
-        // A verifier's snapshot must keep pointing at the same bytes and scope after a rerun uploads files.
-        if (has.sha256 !== sha || has.project !== project || has.task_id !== taskId) this.#checkEvidenceArtifact(num(has.id));
-        return;
-      }
-      const count = num((this.db.prepare("SELECT COUNT(*) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
+      const exists = this.db.prepare("SELECT 1 AS found FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ? LIMIT 1").get(actor.name, runId, name) as Row | undefined;
+      if (exists) return;
+      const count = num((this.db.prepare("SELECT COUNT(DISTINCT name) AS n FROM artifacts WHERE machine_id = ? AND run_id = ?").get(actor.name, runId) as Row).n);
       if (count >= ARTIFACTS_PER_RUN) {
         throw new HiveError("bad_request", `Run ${runId} already has ${ARTIFACTS_PER_RUN} files.`, { key: "errors.artifactsFull", vars: { run: runId, max: ARTIFACTS_PER_RUN } });
       }
@@ -2780,21 +2811,17 @@ export class SqliteHive implements HiveBackend {
     }
     const { artifact, dropped } = this.#tx(() => {
       allowed();
-      const before = this.db.prepare("SELECT sha256, stored FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?").get(actor.name, runId, name) as Row | undefined;
+      const version = num((this.db.prepare("SELECT COALESCE(MAX(version), 0) AS n FROM artifacts WHERE project = ? AND task_id = ? AND name = ?").get(project, taskId, name) as Row).n) + 1;
       this.db.prepare(
-        `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(machine_id, run_id, name) DO UPDATE SET project = excluded.project, task_id = excluded.task_id,
-           type = excluded.type, size = excluded.size, sha256 = excluded.sha256, stored = excluded.stored, data = excluded.data,
-           profile_id = excluded.profile_id, uploaded_by = excluded.uploaded_by, on_behalf = excluded.on_behalf,
-           source = excluded.source, created_at = excluded.created_at`,
+        `INSERT INTO artifacts(project, task_id, run_id, machine_id, name, type, size, sha256, stored, data, profile_id, uploaded_by, on_behalf, source, created_at, version, version_note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         project, taskId, runId, actor.name, name, type, bytes.length, sha, blobs ? blobs.name : null, blobs ? new Uint8Array(0) : bytes,
-        profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(),
+        profileId, actor.name, actor.onBehalf ?? null, sourceJson(actor.source), this.#now(), version, versionNote.trim(),
       );
       return {
-        artifact: toArtifact(this.db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE machine_id = ? AND run_id = ? AND name = ?`).get(actor.name, runId, name) as Row),
-        dropped: before?.stored && before.sha256 !== sha ? str(before.sha256) : null,
+        artifact: toArtifact(this.db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE id = last_insert_rowid()`).get() as Row),
+        dropped: null,
       };
     });
     if (dropped) await this.#dropBlob(dropped);
@@ -4359,6 +4386,9 @@ export class SqliteHive implements HiveBackend {
     if (!row) throw new HiveError("not_found", `No machine ${machineId}.`, { key: "errors.machineNotFound", vars: { machine: machineId } });
     const m = this.#toMachine(row);
     const name = { machine: m.machine };
+    if (task?.platforms.length && (!m.platform || !task.platforms.includes(m.platform))) {
+      throw new HiveError("conflict", `${m.machine} does not match task ${task.id}'s platforms.`, { key: "errors.machinePlatformMismatch", vars: { machine: m.machine, platforms: task.platforms.join(", ") } });
+    }
     if (task?.agent && task.agent.machineId !== m.id) {
       throw new HiveError("conflict", `Task ${task.id} is assigned to ${task.agent.machine}. Unassign it before dispatching to another machine.`, {
         key: "errors.dispatchAssignedElsewhere", vars: { id: task.id, machine: task.agent.machine },
@@ -4558,8 +4588,10 @@ export class SqliteHive implements HiveBackend {
    */
   #freeMachine(project: string, profileId: string | null, taskId?: string): string | null {
     const waiting = this.#waitingRequests();
+    const task = taskId ? this.#getTask(taskId) : null;
     let best: { id: string; machine: string; free: number } | null = null;
     for (const m of (this.db.prepare("SELECT * FROM machines").all() as Row[]).map((r) => this.#toMachine(r))) {
+      if (task?.platforms.length && (!m.platform || !task.platforms.includes(m.platform))) continue;
       const free = taskId && this.#cannotPushTask(m.id, project, taskId) ? 0 : this.#freePlaces(m, project, profileId, waiting);
       if (free > 0 && (!best || free > best.free || (free === best.free && m.machine < best.machine))) best = { id: m.id, machine: m.machine, free };
     }
@@ -4832,6 +4864,7 @@ export class SqliteHive implements HiveBackend {
       const machines = (this.db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map((r) => this.#toMachine(r));
       const waiting = this.#waitingRequests();
       const candidates = machines.flatMap((m) => {
+        if (task.platforms.length && (!m.platform || !task.platforms.includes(m.platform))) return [];
         const free = (m.maxParallel ?? 1) - m.runs.length - (waiting.get(m.id) ?? 0) - this.#unreportedRequests(m);
         if (free <= 0) return [];
         return m.profiles.filter((p) => {
@@ -4869,7 +4902,7 @@ export class SqliteHive implements HiveBackend {
         // Still no kind: the classify run is going, or it went quiet and #queueClassify gives the default now.
         // runs.dispatch may leave the machine to the hub (49e): pick it as runs.dispatch does.
         const { project, role, profileId, preferKind, reviewAfter, candidates, instructions, timeoutMinutes } = wanted;
-        const machineId = wanted.machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id;
+        const machineId = wanted.machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId, task.id).id;
         if (task.kind === null && this.#queueClassify(task, this.#machineByRef(machineId), actor)) continue;
         const fresh = this.#getTask(task.id)!;
         const machine = this.#assertDispatchable({ machineId, project, task: fresh, role, profileId, candidates, instructions }, actor);
@@ -4940,7 +4973,7 @@ export class SqliteHive implements HiveBackend {
         const prior = db.prepare("SELECT profile_id FROM run_records WHERE machine_id = ? AND run_id = ?").get(source.machineId, source.runId) as Row | undefined;
         const retryMachines = (db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map(row => this.#toMachine(row));
         const choices = retryMachines.flatMap(machine => machine.profiles
-          .filter(profile => !this.#cannotPushTask(machine.id, task.project, task.id) && profile.redispatch && this.#autoProfileAllowed(task, profile, retryMachines) && (machine.id !== source.machineId || profile.id !== prior?.profile_id) && this.#freePlaces(machine, task.project, profile.id, waiting) - this.#unreportedRequests(machine, profile.id) > 0)
+          .filter(profile => (!task.platforms.length || (!!machine.platform && task.platforms.includes(machine.platform))) && !this.#cannotPushTask(machine.id, task.project, task.id) && profile.redispatch && this.#autoProfileAllowed(task, profile, retryMachines) && (machine.id !== source.machineId || profile.id !== prior?.profile_id) && this.#freePlaces(machine, task.project, profile.id, waiting) - this.#unreportedRequests(machine, profile.id) > 0)
           .map(profile => ({ machine, profile })))
           .sort((a, b) => (a.profile.priority ?? 50) - (b.profile.priority ?? 50));
         const choice = choices.find(({ machine, profile }) => {
@@ -4962,7 +4995,7 @@ export class SqliteHive implements HiveBackend {
       const free = m && !this.#cannotPushTask(m.id, task.project, task.id) ? this.#freePlaces(m, task.project, agent.profileId, waiting) - this.#unreportedRequests(m, agent.profileId) : 0;
       const why = this.#agentWait(task, m, free);
       if (why) {
-        if (groupFails(why.key)) this.#holdAgent(task.id, why);
+        if (agentFails(why.key)) this.#holdAgent(task.id, why);
         continue;
       }
       // Whoever gave the agent the task: its runs count for them, in the budgets and in the log (as a group's do).
@@ -4987,7 +5020,7 @@ export class SqliteHive implements HiveBackend {
         waiting.set(agent.machineId, (waiting.get(agent.machineId) ?? 0) + 1);
       } catch (err) {
         if (!(err instanceof HiveError)) throw err;
-        if (groupFails(err.key)) {
+        if (agentFails(err.key)) {
           this.#holdAgent(task.id, { message: err.message, ...(err.key ? { key: err.key } : {}), ...(err.vars ? { vars: err.vars as Record<string, string | number> } : {}) });
         }
       }
@@ -5003,6 +5036,7 @@ export class SqliteHive implements HiveBackend {
     const id = task.id;
     if (agent.hold) return agent.hold;
     if (!m) return { message: `No machine ${agent.machineId}.`, key: "errors.machineNotFound", vars: { machine: agent.machineId } };
+    if (task.platforms.length && (!m.platform || !task.platforms.includes(m.platform))) return { message: `${m.machine} does not match task ${id}'s platforms.`, key: "errors.machinePlatformMismatch", vars: { machine: m.machine, platforms: task.platforms.join(", ") } };
     if (task.status !== "todo") {
       return { message: `Task ${id} is ${task.status}.`, key: "errors.agentTaskBusy", vars: { id, status: task.status } };
     }
@@ -5265,8 +5299,8 @@ export class SqliteHive implements HiveBackend {
   }
 
   /** The machine a job runs on: the one asked for, which has the project's repo, or the one with the most free places now. */
-  #mapMachine(project: string, machineId: string | null, profileId: string | null = null): Machine {
-    const id = machineId ?? this.#freeMachine(project, profileId);
+  #mapMachine(project: string, machineId: string | null, profileId: string | null = null, taskId?: string): Machine {
+    const id = machineId ?? this.#freeMachine(project, profileId, taskId);
     if (!id) throw new HiveError("conflict", `No machine with ${project}'s repo is free now.`, { key: "errors.noFreeMachine", vars: { project } });
     const row = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", `No machine ${id}.`, { key: "errors.machineNotFound", vars: { machine: id } });
@@ -6227,6 +6261,7 @@ export class SqliteHive implements HiveBackend {
                 ...(action.taskKind ? { taskKind: action.taskKind } : {}),
                 ...(action.size ? { size: action.size } : {}),
                 ...(action.risk ? { risk: action.risk } : {}),
+                ...(action.platforms ? { platforms: action.platforms } : {}),
               };
               if (hub) scope = target;
               break;
@@ -6234,7 +6269,7 @@ export class SqliteHive implements HiveBackend {
             case "task.update": {
               const target = aimed();
               if (!known(action.id, target)) throw missing(action.id, target);
-              input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }) };
+              input = { id: action.id, status: action.status, ...(action.note === undefined ? {} : { note: action.note }), ...(action.platforms === undefined ? {} : { platforms: action.platforms }) };
               if (hub) scope = target;
               break;
             }
@@ -6395,13 +6430,16 @@ export class SqliteHive implements HiveBackend {
     const deps = this.#checkDeps(input.id, input.project, input.dependsOn, actor);
     // Save the initial brief with creation: a task manager need not have taskWork to describe new work.
     if (input.note) assertNoHidden(input.note, "Note");
-    db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
-      input.id,
-      input.project,
-      input.title,
-      input.note === undefined ? null : clean(input.note),
-      this.#now(),
-    );
+    const brief = input.note === undefined ? null : clean(input.note);
+    if (this.#taskPlatformsReady) {
+      db.prepare("INSERT INTO tasks(id, project, title, note, platforms, updated_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        input.id, input.project, input.title, brief, JSON.stringify([...new Set(input.platforms)]), this.#now(),
+      );
+    } else {
+      db.prepare("INSERT INTO tasks(id, project, title, note, updated_at) VALUES (?, ?, ?, ?, ?)").run(
+        input.id, input.project, input.title, brief, this.#now(),
+      );
+    }
     // Whoever creates it may say what it is (a leader's task.create): theirs, and the rules leave it alone.
     if (input.kind || input.size || input.risk) {
       db.prepare("UPDATE tasks SET kind = ?, size = ?, risk = ?, classified_by = ?, classified_at = ? WHERE id = ?").run(
@@ -6834,6 +6872,7 @@ export class SqliteHive implements HiveBackend {
     return {
       id: str(r.id),
       machine: str(r.machine),
+      platform: strOrNull(r.platform) as Machine["platform"],
       version: str(r.version),
       lastSeen: str(r.last_seen),
       online: str(r.last_seen) > this.#now(-ONLINE_MINUTES),
@@ -6848,6 +6887,7 @@ export class SqliteHive implements HiveBackend {
       runnerChange: r.runner_change == null ? null : JSON.parse(str(r.runner_change)) as RunnerChange,
       owner: strOrNull(r.owner),
       profileChanges: this.#profileChanges(str(r.id)),
+      ...(r.system == null ? {} : { system: JSON.parse(str(r.system)) as Machine["system"] }),
     };
   }
 
@@ -7449,8 +7489,9 @@ export class SqliteHive implements HiveBackend {
              (?8 = 'json' AND type = 'application/json') OR
              (?8 = 'image' AND type LIKE 'image/%') OR
              (?8 = 'text' AND type = 'text/plain' AND lower(name) NOT LIKE '%.log') OR
-             (?8 = 'pdf' AND type = 'application/pdf'))
-           ORDER BY created_at DESC, id DESC LIMIT ?9 OFFSET ?10`
+             (?8 = 'pdf' AND type = 'application/pdf') OR
+             (?8 = 'html' AND type = 'text/html'))
+           ORDER BY pinned DESC, created_at DESC, id DESC LIMIT ?9 OFFSET ?10`
         ).all(JSON.stringify(allowed), project ?? null, listParam(projects), taskId ?? null, runId ?? null,
           machineId ?? null, name?.trim() || null, kind ?? null, limit, offset) as Row[]).map(toArtifact);
       },
@@ -7465,6 +7506,14 @@ export class SqliteHive implements HiveBackend {
         // Never end a preview midway through a UTF-8 character.
         if (truncated) while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
         return { artifact: toArtifact(row), data: Buffer.from(bytes.subarray(0, end)).toString("base64"), ...(maxBytes === undefined ? {} : { truncated }) };
+      },
+
+      "artifacts.pin": ({ id, pinned }, actor) => {
+        const row = db.prepare("SELECT project FROM artifacts WHERE id = ?").get(id) as Row | undefined;
+        if (!row) throw new HiveError("not_found", "Artifact not found.", { key: "errors.notFound" });
+        this.#need(actor, str(row.project), "docPropose", `Artifact #${id}`);
+        db.prepare("UPDATE artifacts SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
+        return toArtifact(db.prepare(`SELECT ${ARTIFACT_FIELDS} FROM artifacts WHERE id = ?`).get(id) as Row);
       },
 
       "artifacts.remove": async ({ id }) => {
@@ -7485,6 +7534,20 @@ export class SqliteHive implements HiveBackend {
             )
             .all(status ?? null, docKey ?? null) as Row[]
         ).map(toProposal),
+
+      "proposals.count": ({ status }, actor) => {
+        const hidden = new Set(this.#projectStates().keys());
+        const rows = db.prepare("SELECT doc_key FROM proposals WHERE (? IS NULL OR status = ?)").all(status ?? null, status ?? null) as Row[];
+        let count = 0;
+        for (const row of rows) {
+          const key = str(row.doc_key);
+          const owner = SqliteHive.#docOwner(key);
+          if ((actor.access && !sees(actor, owner)) || (owner && hidden.has(owner))) continue;
+          const research = db.prepare("SELECT * FROM research_runs WHERE doc_key = ?").get(key) as Row | undefined;
+          if (!research || this.#researchVisible(research, actor)) count++;
+        }
+        return { count };
+      },
 
       "proposals.create": (input, actor) => {
         if ("action" in input) {
@@ -8061,28 +8124,36 @@ export class SqliteHive implements HiveBackend {
         return { claimed: num(res.changes) === 1, task: this.#getTask(id) };
       },
 
-      "tasks.update": ({ id, status, note, priority }, actor) =>
+      "tasks.update": ({ id, status, note, priority, platforms }, actor) =>
         this.#tx(() => {
           const task = this.#getTask(id);
           if (!task) throw new HiveError("not_found", `Task ${id} not found.`, { key: "errors.taskNotFound", vars: { id } });
           const now = this.#now();
+          const workChange = status !== undefined || note !== undefined || priority !== undefined;
           const heldByOther =
             task.owner !== null && task.owner !== actor.name && task.leaseUntil !== null && task.leaseUntil > now;
-          if (heldByOther && actor.role !== "admin") {
+          if (heldByOther && actor.role !== "admin" && workChange) {
             throw new HiveError("forbidden", `Task ${id} is held by ${task.owner} until ${task.leaseUntil}.`, {
               key: "errors.taskHeld",
               vars: { id, owner: task.owner ?? "", until: task.leaseUntil ?? "" },
             });
           }
+          if (platforms !== undefined) {
+            const required = JSON.stringify([...new Set(platforms)]);
+            db.prepare("UPDATE tasks SET platforms = ? WHERE id = ?").run(required, id);
+            if (platforms.length) db.prepare(`UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE task_id = ? AND status = 'pending'
+              AND machine_id IN (SELECT id FROM machines WHERE platform IS NULL OR platform NOT IN (SELECT value FROM json_each(?)))`).run(now, id, required);
+          }
+          const nextStatus = status ?? task.status;
           const doing = status === "doing";
           // A status change with no note leaves the note (and its history) alone: the audit log already has the move.
           const kept = note === undefined ? null : SqliteHive.#cleanNote(note);
           db.prepare(
             "UPDATE tasks SET status = ?, owner = ?, lease_until = ?, note = COALESCE(?, note), updated_at = ? WHERE id = ?",
           ).run(
-            status,
-            doing ? actor.name : null,
-            doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
+            nextStatus,
+            status === undefined ? task.owner : doing ? actor.name : null,
+            status === undefined ? task.leaseUntil : doing ? (task.owner === actor.name ? task.leaseUntil : this.#now(120)) : null,
             kept,
             now,
             id,
@@ -8090,7 +8161,7 @@ export class SqliteHive implements HiveBackend {
           if (priority !== undefined) db.prepare("UPDATE tasks SET priority = ? WHERE id = ?").run(priority, id);
           if (note !== undefined) this.#applyTaskRule(id);
           // An empty note clears the task's note as it always did, but is no handover to keep.
-          if (kept !== null && kept.trim()) this.#keepNote(id, kept, status, actor, now);
+          if (kept !== null && kept.trim()) this.#keepNote(id, kept, nextStatus, actor, now);
           if (status === "done" && task.status !== "done") this.#journalTask(id);
           return this.#getTask(id)!;
         }),
@@ -8273,7 +8344,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, runs, setup, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8306,6 +8377,11 @@ export class SqliteHive implements HiveBackend {
                prev_instance = excluded.prev_instance, version = excluded.version, runs = excluded.runs,
                last_seen = excluded.last_seen, duplicate_at = excluded.duplicate_at`,
           ).run(actor.name, machine, instance, prev, version, JSON.stringify(runs), now, duplicateAt, actor.tokenId ?? null, actor.account ?? null);
+          if (system) db.prepare("UPDATE machines SET system = ? WHERE id = ?").run(JSON.stringify(system), actor.name);
+          db.prepare("UPDATE machines SET platform = ? WHERE id = ?").run(platform === "win" ? "windows" : platform ?? null, actor.name);
+          db.prepare(`UPDATE run_requests SET status = 'cancelled', updated_at = ? WHERE machine_id = ? AND status = 'pending'
+            AND task_id IN (SELECT id FROM tasks WHERE json_array_length(platforms) > 0
+              AND (? IS NULL OR ? NOT IN (SELECT value FROM json_each(platforms))))`).run(now, actor.name, platform ?? null, platform === "win" ? "windows" : platform ?? null);
           if (setup) db.prepare("UPDATE machines SET setup = ?, setup_at = ? WHERE id = ?").run(JSON.stringify(setup.report), setup.checkedAt, actor.name);
           if (profiles) db.prepare("UPDATE machines SET profiles = ? WHERE id = ?").run(JSON.stringify(profiles), actor.name);
           if (worktrees) db.prepare("UPDATE machines SET worktrees = ? WHERE id = ?").run(JSON.stringify(worktrees), actor.name);
@@ -8800,7 +8876,7 @@ export class SqliteHive implements HiveBackend {
             throw new HiveError("conflict", `Task ${taskId} is in a flow that is going on.`, { key: "errors.taskInFlow", vars: { id: taskId } });
           }
           // Pick at dispatch time, when the hub knows which plans and machines still have room.
-          const m = this.#assertDispatchable({ machineId: machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId).id, project, task, role, profileId, candidates, instructions }, actor);
+          const m = this.#assertDispatchable({ machineId: machineId ?? task.agent?.machineId ?? this.#mapMachine(project, null, profileId, task.id).id, project, task, role, profileId, candidates, instructions }, actor);
           this.#requestTimeout(m, task, profileId, timeoutMinutes);
           if (redispatch) this.#assertRedispatchRunner(m, profileId);
           // Its group would run it again once this run ended.
@@ -9070,7 +9146,7 @@ export class SqliteHive implements HiveBackend {
             assertNoSecret(s.instructions, "Instructions");
           }
           // Every step on one machine: each finds the branch ai/<task> the steps before it left in its repository.
-          const m = this.#mapMachine(project, machineId);
+          const m = this.#mapMachine(project, machineId, null, taskId);
           for (const s of steps) {
             if (s.profileId && !m.profiles.some((p) => p.id === s.profileId)) {
               throw new HiveError("bad_request", `${m.machine} has no profile ${s.profileId}.`, { key: "errors.profileNotOnMachine", vars: { machine: m.machine, id: s.profileId } });
@@ -9835,6 +9911,7 @@ export class SqliteHive implements HiveBackend {
         const m = this.#toMachine(row);
         if (!this.#mayApproveTool(actor, m.owner)) throw new HiveError("forbidden", "Only a hub admin or machine owner changes runner settings.", { key: "errors.machineProfileForbidden", vars: { machine: m.machine } });
         if (!m.runnerSettings) throw new HiveError("bad_request", "App too old for runner settings.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
+        if (settings.acceptHubRuns !== undefined && m.runnerSettings.acceptHubRuns === undefined) throw new HiveError("bad_request", "App too old to change hub intake.", { key: "errors.machineAppTooOld", vars: { machine: m.machine } });
         const next = { ...m.runnerChange?.settings, ...settings };
         for (const key of Object.keys(next) as (keyof MachineRunnerSettings)[]) if (next[key] === m.runnerSettings[key]) delete next[key];
         const change: RunnerChange | null = Object.keys(next).length ? { settings: next, requestedBy: actor.account ?? actor.name, requestedAt: this.#now() } : null;

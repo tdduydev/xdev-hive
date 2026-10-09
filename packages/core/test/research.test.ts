@@ -47,6 +47,8 @@ describe("research from chat", () => {
       assert.equal(done.docKey, `project/app/research/research-${id}`);
       assert.equal(await hive.call("docs.get", { key: done.docKey }, manager), null, "approval required before publishing");
       const drafts = await hive.call("proposals.list", {}, manager);
+      assert.deepEqual(await hive.call("proposals.count", { status: "pending" }, manager), { count: drafts.length });
+      assert.deepEqual(await hive.call("proposals.count", { status: "pending" }, outsider), { count: 0 });
       const draft = drafts.find(p => p.id === done.proposalId)!;
       assert.equal(draft.status, "pending");
       assert.equal(draft.baseVersion, 0);
@@ -94,8 +96,8 @@ describe("research from chat", () => {
       await current.call("tasks.create", { id: "KEEP", project: "app", title: "Keep" }, admin);
       const version = migrationIndex("CREATE TABLE research_runs(");
       // The terminal, machine identity, gate and runner settings migrations came later and replay too.
-      current.db.exec("ALTER TABLE run_records DROP COLUMN start_sha; ALTER TABLE run_records DROP COLUMN remote_sha; ALTER TABLE run_records DROP COLUMN pushed; ALTER TABLE run_records DROP COLUMN push_error; ALTER TABLE machines DROP COLUMN git_push; DROP TABLE acceptance_evidence; ALTER TABLE run_records DROP COLUMN head_sha");
-      current.db.exec(`ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; DROP TABLE gate_jobs; DROP TABLE gate_manifests; ALTER TABLE machines DROP COLUMN gate_capability; DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; PRAGMA user_version = ${version}`);
+      current.db.exec("ALTER TABLE run_records DROP COLUMN start_sha; ALTER TABLE run_records DROP COLUMN remote_sha; ALTER TABLE run_records DROP COLUMN pushed; ALTER TABLE run_records DROP COLUMN push_error; ALTER TABLE machines DROP COLUMN git_push; ALTER TABLE machines DROP COLUMN platform; ALTER TABLE tasks DROP COLUMN platforms; DROP TABLE acceptance_evidence; ALTER TABLE run_records DROP COLUMN head_sha");
+      current.db.exec(`ALTER TABLE machines DROP COLUMN system; ALTER TABLE machines DROP COLUMN runner_settings; ALTER TABLE machines DROP COLUMN runner_change; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_session; ALTER TABLE machine_profile_changes DROP COLUMN stop_at_week; DROP TABLE gate_jobs; DROP TABLE gate_manifests; ALTER TABLE machines DROP COLUMN gate_capability; DROP TABLE research_runs; DROP TABLE terminal_audit_chunks; DROP TABLE terminal_stepups; DROP TABLE terminal_tickets; DROP TABLE terminal_sessions; ALTER TABLE machines DROP COLUMN terminal_capability; ALTER TABLE machines DROP COLUMN token_id; PRAGMA user_version = ${version}`);
       current.close();
       const upgraded = new SqliteHive(file);
       try {

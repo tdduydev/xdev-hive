@@ -35,6 +35,17 @@ describe("the run store", () => {
     assert.deepEqual(projects(store.list({ projects: [1, "web"] as never })), ["web"]);
   });
 
+  it("selects only list metadata for desktop runs", () => {
+    const store = new RunStore(":memory:");
+    const run = store.insert({ project: "app", taskId: "T-1", taskTitle: "Task", role: "implement", attempt: 1, maxAttempts: 1, instructions: "large prompt" }, "2026-10-01T00:00:00.000Z");
+    store.update(run.id, { diffPatch: "large patch", summary: "done", status: "succeeded" });
+    const listed = store.listForDesktop();
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]!.summary, "done");
+    assert.equal(listed[0]!.diffPatch, null);
+    assert.equal(listed[0]!.instructions, "large prompt", "retry keeps the original instructions");
+  });
+
   it("gives a profile's finished runs with their tokens (roadmap 46)", () => {
     const store = new RunStore(":memory:");
     const add = (profileId: string, finishedAt: string | null, cacheReadTokens: number | null) => {

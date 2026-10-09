@@ -361,17 +361,17 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **72. cosmic-redesign** (hỏi 8/10: "đọc thiết kế về làm giao diện"; thiết kế từ Claude Design project `e9ddc9b3…`, bản sao `docs/design/hive-2026-10/`; chọn: tối theo thiết kế + sáng suy ra, dùng nguyên asset của thiết kế, cả 20 trang một đợt). Spec: [docs/specs/72-cosmic-redesign.md](specs/72-cosmic-redesign.md). Tách:
   - [x] **72a. tokens-primitives** (0.152.0): token tối/sáng, Inter tự host, nền sao, component dùng chung (nút kính, card, tag, badge, input, toggle).
   - [x] **72b. shell** (0.152.0): sidebar 3 nhóm, bộ chọn phạm vi, thanh trên, Sáng/Tối, ngăn kéo mobile.
-  - [x] **72c. today** (0.152.0) · [ ] **72d. tasks** · [ ] **72e. runs** · [ ] **72f. docs** · [x] **72g. machines** · [x] **72h. chat**
-  - [ ] **72i. pipeline-features** · [ ] **72j. knowledge** (Memory, Skill, Artifact) · [ ] **72k. history-graph** · [ ] **72l. settings-admin** · [ ] **72m. terminal-start**
+  - [x] **72c. today** (0.152.0) · [ ] **72d. tasks** · [ ] **72e. runs** · [x] **72f. docs** (0.154.0) · [x] **72g. machines** · [x] **72h. chat**
+  - [ ] **72i. pipeline-features** · [ ] **72j. knowledge** (Memory, Skill, Artifact) · [x] **72k. history-graph** (0.154.0) · [x] **72l. settings-admin** (0.154.0) · [x] **72m. terminal-start** (0.154.0)
   - [ ] **72n. e2e-screens**: e2e web/mobile, smoke desktop, bộ ảnh tối/sáng 1440 và 390.
 
 - **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
   - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
-  - [ ] **73b. platform-routing**: task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
+  - [x] **73b. platform-routing** (0.154.0): task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
   - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
   - [ ] **73d. app-runner-console**: app chế độ hub chỉ còn việc của máy (trạng thái, gói agent và quota, run trên máy, worktree, công cụ, cài đặt máy); việc khác mở web. Chế độ cục bộ giữ nguyên.
   - [ ] **73e. admin-area**: gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền.
-  - [ ] **73f. release-split**: thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.
+  - [x] **73f. release-split** (0.154.0): thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.
 
 - **74. github-org-import** (hỏi 9/10: "hive app đã hỗ trợ clone repo vào thư mục và chọn thư mục để đồng bộ gitlab groups và github chưa?"; GitLab có từ 19a/38e, GitHub chưa có). Tách:
   - [x] **74a. github-repo-list** (0.149.0): `GitHubClient` liệt kê repo của org (`/orgs/{org}/repos`), user (`/users/{user}/repos`) hay của chính token (`/user/repos`), phân trang theo header `Link`; mỗi repo có `full_name`, `clone_url`, `ssh_url`, `default_branch`, `archived`. github.com và GHES.
@@ -395,10 +395,10 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **76i. local-hub**: chế độ cục bộ của app chạy hub nhúng và mở giao diện web.
 
 - **77. client-perf** (hỏi 9/10: "mấy app client này cần làm gì để tối ưu không, cache đồ nữa"). Người dùng trả lời 9/10: dùng TanStack Query, làm SSE ngay đợt này, cache truy vấn trong IndexedDB (xoá khi đăng xuất hoặc đổi quyền). Spec: [docs/specs/77-client-perf.md](specs/77-client-perf.md). Rà soát task theo kiến trúc 76/77: [docs/specs/76-task-triage.md](specs/76-task-triage.md). Tách:
-  - [ ] **77a. desktop-io**: log run chỉ đọc phần đuôi, bất đồng bộ; git bất đồng bộ trên các đường hay chạy; `desktop.runs` chỉ chọn cột cần.
+  - [x] **77a. desktop-io** (0.154.0): log run chỉ đọc phần đuôi, bất đồng bộ; git bất đồng bộ trên các đường hay chạy; `desktop.runs` chỉ chọn cột cần.
   - [ ] **77b. heartbeat-own-timer**: heartbeat chạy trên timer riêng, có jitter và chặn chồng nhịp; quét và dò ghi vào cache (thay BUG-heartbeat-stall).
-  - [ ] **77c. hub-timeouts-quit**: mọi lệnh gọi hub có timeout; thoát app có hạn chót khi hub sập, commit WIP vẫn xong.
-  - [ ] **77d. probe-dedup**: `setup.status` và dò login mỗi lúc chỉ chạy một lần, có cache, không mở login shell mỗi lần.
+  - [x] **77c. hub-timeouts-quit** (0.154.0): mọi lệnh gọi hub có timeout; thoát app có hạn chót khi hub sập, commit WIP vẫn xong.
+  - [x] **77d. probe-dedup** (0.154.0): `setup.status` và dò login mỗi lúc chỉ chạy một lần, có cache, không mở login shell mỗi lần.
   - [ ] **77e. static-cache**: asset `immutable` 1 năm, `index.html` `no-cache`, nén, asset thiếu trả 404, bắt `vite:preloadError`.
   - [ ] **77f. visible-polling**: chỉ poll khi tab đang mở (web và app), dừng poll khi run đã kết thúc.
   - [ ] **77g. query-cache**: TanStack Query, cache IndexedDB, phân trang hộp việc, log run theo offset.

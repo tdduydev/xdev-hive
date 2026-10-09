@@ -233,7 +233,7 @@ describe("quota outlook heartbeat", () => {
 describe("remote runner settings", () => {
   const owner: Actor = { name: "lan", role: "member", account: "lan" };
   const machine: Actor = { name: "runner.remote@lan", role: "agent", account: "lan" };
-  const settings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" as const };
+  const settings = { maxParallel: 2, mrEnabled: false, mrWhen: "after_review" as const, acceptHubRuns: false };
   const p = { id: "claude-1", label: "Claude", kind: "claude", enabled: true, installed: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, priority: 10, stopAtSession: 95, stopAtWeek: 90 };
   function setup() {
     const c = clock();
@@ -243,7 +243,7 @@ describe("remote runner settings", () => {
   }
   it("allows owner and hub admin, denies other people, scoped admins and agents; audits settings", async () => {
     const { hive, report } = setup(); await report();
-    const input = { machineId: machine.name, settings: { maxParallel: 4, mrEnabled: true } };
+    const input = { machineId: machine.name, settings: { maxParallel: 4, mrEnabled: true, acceptHubRuns: true } };
     for (const actor of [{ name: "other", role: "member", account: "other" }, { ...admin, access: { projects: {} } }, machine, { ...admin, agent: "codex.remote" }] as Actor[]) {
       await assert.rejects(hive.call("machines.setRunner", input, actor), (e: unknown) => e instanceof HiveError && e.code === "forbidden");
     }
@@ -277,6 +277,7 @@ describe("remote runner settings", () => {
     }
     await report({ runnerSettings: undefined });
     await assert.rejects(hive.call("machines.setRunner", { machineId: machine.name, settings: { mrEnabled: true } }, owner), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
+    await assert.rejects(hive.call("machines.setRunner", { machineId: machine.name, settings: { acceptHubRuns: true } }, owner), (e: unknown) => e instanceof HiveError && e.key === "errors.machineAppTooOld");
     for (const stopAtSession of [0, 101, 1.5]) await assert.rejects(hive.call("machines.setProfile", { machineId: machine.name, profileId: p.id, stopAtSession }, owner));
   });
   it("coalesces thresholds with enabled/priority and waits for full acknowledgement", async () => {
@@ -316,4 +317,27 @@ it("migrates existing machines and pending profile changes without losing them",
       assert.equal(m.profileChanges[0]!.stopAtWeek, null);
     } finally { after.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("persists the latest system snapshot, retaining it when older apps omit it", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-system-"));
+  const file = join(dir, "hub.sqlite");
+  let hive = new SqliteHive(file, { migrateTo: migrationIndex("ADD COLUMN system") });
+  try {
+    await beat(hive, mbp, "aaaaaaaa");
+    hive.close();
+    hive = new SqliteHive(file);
+    assert.equal((await hive.call("machines.list", {}, viewer))[0]!.system, undefined);
+    const system = { os: "macos" as const, osName: "macOS 26.0", hardware: "Mac mini", uptimeSeconds: 600, cpu: { percent: 24, detail: "", cores: 14, load: 2.4 } };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system }, mbp);
+    assert.deepEqual((await hive.call("machines.list", {}, viewer))[0]!.system, system);
+    const next = { ...system, cpu: { ...system.cpu, percent: 99 } };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system: next }, mbp);
+    await beat(hive, mbp, "aaaaaaaa");
+    hive.close(); hive = new SqliteHive(file);
+    assert.deepEqual((await hive.call("machines.list", {}, viewer))[0]!.system, next);
+    for (const bad of [{ ...next, hardware: "x".repeat(301) }, { ...next, cpu: { ...next.cpu, percent: 101 } }, { ...next, uptimeSeconds: -1 }]) {
+      await assert.rejects(() => hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "aaaaaaaa", system: bad }, mbp));
+    }
+  } finally { hive.close(); rmSync(dir, { recursive: true, force: true }); }
 });
