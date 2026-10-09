@@ -51,15 +51,22 @@ export async function requestDeviceToken(
 export class HubBackend implements HiveBackend {
   readonly url: string;
   readonly #token: string;
+  readonly #shutdown = new AbortController();
 
   constructor(url: string, token: string) {
     this.url = url.replace(/\/+$/, "");
     this.#token = token;
   }
 
+  /** End all pending and future hub calls by the quit deadline; local bookkeeping can continue. */
+  stopForQuit(): void {
+    setTimeout(() => this.#shutdown.abort(), 10_000);
+  }
+
   /** Who the hub thinks we are (name and role come from the token). */
   async me(label: string): Promise<Me> {
     const res = await reach(this.url, `${this.url}/api/me`, {
+      signal: this.#shutdown.signal,
       headers: { authorization: `Bearer ${this.#token}`, "x-hive-agent": label },
     });
     const body = (await res.json().catch(() => null)) as { result?: Me; error?: { code?: string; message?: string; key?: string; vars?: unknown } } | null;
@@ -71,6 +78,7 @@ export class HubBackend implements HiveBackend {
 
   async call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor): Promise<MethodOutput[M]> {
     const res = await reach(this.url, `${this.url}/api/rpc`, {
+      signal: this.#shutdown.signal,
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -137,7 +145,7 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
  */
 async function reach(hub: string, url: string, init: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, init);
+    return await fetch(url, { ...init, signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(10_000)]) });
   } catch (err) {
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     const reason = cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
