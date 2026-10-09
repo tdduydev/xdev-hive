@@ -103,16 +103,16 @@ export async function verifyTerminal(api: TerminalApi, target: { project: string
   } finally { popup?.close(); }
 }
 
-function TerminalForm({ api, target, busyRef, onCreated }: { api: TerminalApi; target: Target; busyRef: { current: boolean }; onCreated: (a: TerminalAttachment) => void }) {
+export function TerminalForm({ api, target, busyRef, onCreated, initial, hideSessions }: { api: TerminalApi; target: Target; busyRef: { current: boolean }; onCreated: (a: TerminalAttachment) => void; initial?: TerminalSession; hideSessions?: boolean }) {
   const { client, projects, scope, me } = useHive();
   const t = useT();
-  const [machineId, setMachine] = useState(target.machineId ?? "");
-  const [project, setProject] = useState(target.project ?? scopeProject(scope) ?? "");
-  const [checkoutRef, setCheckout] = useState(terminalCheckoutRef.safeParse(target.checkoutRef).success ? target.checkoutRef! : "repo");
+  const [machineId, setMachine] = useState(initial?.machineId ?? target.machineId ?? "");
+  const [project, setProject] = useState(initial?.project ?? target.project ?? scopeProject(scope) ?? "");
+  const [checkoutRef, setCheckout] = useState(initial?.checkoutRef ?? (terminalCheckoutRef.safeParse(target.checkoutRef).success ? target.checkoutRef! : "repo"));
   const [reason, setReason] = useState("");
   const [password, setPassword] = useState("");
   const [consent, setConsent] = useState(false);
-  const [selected, setSelected] = useState<TerminalSession | null>(null);
+  const [selected, setSelected] = useState<TerminalSession | null>(initial ?? null);
   const action = useAction();
   const key = useRef(crypto.randomUUID());
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
@@ -154,7 +154,7 @@ function TerminalForm({ api, target, busyRef, onCreated }: { api: TerminalApi; t
       <Button data-testid="terminal-confirm-open" type="submit" disabled={blocked || !password}>{t(selected ? "terminal.transfer" : "terminal.confirmOpen")}</Button>
       {me.sso?.linked ? <Button type="button" variant="outline" disabled={blocked} onClick={() => submit("oidc")}>{t("terminal.sso")}</Button> : null}
       {selected ? <Button type="button" variant="outline" onClick={() => setSelected(null)}>{t("terminal.newSession")}</Button> : null}
-      {sessions.data?.map(s => <div key={s.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line-default p-2"><span className="min-w-0 flex-1 break-all">{s.machineId} · {s.checkoutRef} · {t(`terminal.states.${s.state}`)}</span>{isTerminalFinal(s.state) ? <Button type="button" variant="outline" data-testid="terminal-session-audit" onClick={() => onCreated({ session: s, ticket: null })}>{t("terminal.audit")}</Button> : <><Button type="button" variant="outline" data-testid="terminal-session-attach" disabled={s.creator !== me.user?.username} title={s.creator !== me.user?.username ? t("errors.terminal.notCreator") : undefined} onClick={() => { setSelected(s); setMachine(s.machineId); setCheckout(s.checkoutRef); }}>{t("terminal.transfer")}</Button><Button type="button" variant="danger-outline" data-testid="terminal-session-stop" onClick={() => void action.run(async () => { await api.terminate(s.id); sessions.reload(); capability.reload(); })}>{t("terminal.stop")}</Button></>}</div>)}
+      {!hideSessions ? sessions.data?.map(s => <div key={s.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line-default p-2"><span className="min-w-0 flex-1 break-all">{s.machineId} · {s.checkoutRef} · {t(`terminal.states.${s.state}`)}</span>{isTerminalFinal(s.state) ? <Button type="button" variant="outline" data-testid="terminal-session-audit" onClick={() => onCreated({ session: s, ticket: null })}>{t("terminal.audit")}</Button> : <><Button type="button" variant="outline" data-testid="terminal-session-attach" disabled={s.creator !== me.user?.username} title={s.creator !== me.user?.username ? t("errors.terminal.notCreator") : undefined} onClick={() => { setSelected(s); setMachine(s.machineId); setCheckout(s.checkoutRef); }}>{t("terminal.transfer")}</Button><Button type="button" variant="danger-outline" data-testid="terminal-session-stop" onClick={() => void action.run(async () => { await api.terminate(s.id); sessions.reload(); capability.reload(); })}>{t("terminal.stop")}</Button></>}</div>) : null}
     </fieldset>
   </form>;
 }
