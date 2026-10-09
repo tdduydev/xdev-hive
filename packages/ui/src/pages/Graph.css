@@ -16,7 +16,7 @@
 .graph-toolbar button:not(:disabled), .graph-toolbar a { cursor: pointer; }
 .graph-toolbar :is(button, a, select, input):focus-visible, .graph-task:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
 .graph-filters label { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12px; }
-.graph-canvas { flex: 1; min-height: 300px; border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; background: var(--bg-sunken); }
+.graph-canvas { flex: 1; min-height: 300px; border-radius: 24px; overflow: hidden; background: var(--surface-1); box-shadow: var(--ring-glass); }
 .graph-workspace { display: flex; flex: 1; min-height: 0; gap: 10px; }
 .graph-unassigned { display: flex; flex-direction: column; width: 225px; min-width: 0; padding: 10px; gap: 7px; border: 1px solid var(--border-default); border-radius: 10px; background: var(--bg-surface); }
 .graph-unassigned h2 { margin: 0; font-size: 14px; }
@@ -44,19 +44,19 @@
 .graph-page .react-flow__node-group { border: 1px dashed var(--border-strong); border-radius: 10px; background: color-mix(in srgb, var(--bg-surface) 48%, transparent); }
 .graph-group-title { padding: 10px 14px; color: var(--text-secondary); font-weight: 700; font-size: 12px; }
 .graph-task {
-  display: flex; width: 228px; height: 94px; flex-direction: column; align-items: stretch; gap: 4px; padding: 9px 11px;
-  border: 2px solid var(--status-neutral-border); border-radius: 9px; background: var(--bg-surface); box-shadow: var(--shadow-1);
-  color: var(--text-primary); text-align: left; cursor: pointer;
+  display: flex; width: 228px; height: 94px; flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 12px;
+  border: 0; border-radius: 14px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--task-ring, var(--border-subtle));
+  color: var(--text-strong); text-align: left; cursor: pointer;
 }
-.graph-task:hover:not(:disabled) { box-shadow: var(--shadow-2); }
+.graph-task:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--task-ring, var(--border-default)), 0 0 0 1px var(--border-default); }
 .graph-task:disabled { cursor: default; }
-.graph-doing { border-color: var(--status-running-border); }
-.graph-review { border-color: var(--status-warning-border); }
-.graph-done { border-color: var(--status-success-border); }
-.graph-blocked { border-color: var(--status-danger-border); }
+.graph-doing { --task-ring: var(--status-running-fg); }
+.graph-review { --task-ring: var(--status-warning-fg); }
+.graph-done { --task-ring: var(--status-success-fg); }
+.graph-blocked { --task-ring: var(--status-danger-fg); }
 .graph-foreign { border-style: dashed; opacity: .7; }
-.graph-task-top { display: flex; justify-content: space-between; padding-right: 22px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
-.graph-task-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 12px; font-weight: 700; line-height: 1.3; color: var(--text-strong); }
+.graph-task-top { display: flex; justify-content: space-between; padding-right: 22px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; line-height: 1; color: var(--text-muted); }
+.graph-task-title { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font: 600 12.5px/17px var(--font-sans); color: var(--text-strong); }
 .graph-task-meta { display: flex; gap: 5px; align-items: center; overflow: hidden; font-size: 10px; color: var(--text-secondary); }
 .graph-task-meta > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graph-agent { border: 1px solid var(--border-default); border-radius: 4px; padding: 0 4px; }
@@ -67,7 +67,7 @@
 .graph-page .react-flow__handle { background: var(--border-strong); border-color: var(--bg-surface); }
 
 /* Unfinished dependencies are the ones that hold work back, so they get the solid, coloured line. */
-.graph-page .react-flow__edge-path { stroke: var(--status-warning-fg); stroke-width: 2; }
+.graph-page .react-flow__edge-path { stroke: var(--status-warning-fg); stroke-width: 1.5; }
 .graph-page .graph-edge-complete .react-flow__edge-path { stroke: var(--border-strong); opacity: .45; stroke-dasharray: 5 5; }
 
 .graph-page .react-flow__controls { box-shadow: var(--shadow-1); }
@@ -137,3 +137,6 @@
 @media (prefers-reduced-motion: reduce) {
   .graph-page * { animation-duration: 0ms !important; transition-duration: 0ms !important; }
 }
+
+/* Spec 72k: legend under the canvas, lines as the template draws them. */
+.graph-legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0; padding: 0; list-style: none; font: var(--type-caption); color: var(--text-muted); }
