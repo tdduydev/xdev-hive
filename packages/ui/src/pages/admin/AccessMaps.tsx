@@ -1,12 +1,14 @@
 // Quản trị › Vai trò & quyền and Sơ đồ tổ chức (R-72l): two read-only views over data the hub already serves
 // (ROLE_PERMISSIONS in core, the accounts' grants, the systems), so neither needs an endpoint of its own.
 import { useMemo, useState, type CSSProperties } from "react";
-import { PROJECT_ROLES, type HubUser } from "@xdev-hive/core";
+import { effectivePolicy, PROJECT_ROLES, type Autonomy, type ChatDefaults, type HubUser, type Machine } from "@xdev-hive/core";
+import { cosmicAssets } from "#ui/assets/cosmic.ts";
+import { Toggle } from "@xdev-hive/ui/components/ui/primitives";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { PERMISSION_GROUPS } from "#ui/components/GrantEditor.tsx";
 import { useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { avatarHue, initials, orgLegend, orgTree, permissionMatrix, roleCounts, type OrgRole } from "#ui/lib/users-table.ts";
+import { avatarHue, initials, orgLegend, orgTree, permissionMatrix, roleCounts, serviceAgents, type OrgRole } from "#ui/lib/users-table.ts";
 import { GrantsDialog } from "#ui/pages/Users.tsx";
 
 const hue = (name: string) => ({ "--hue": avatarHue(name) }) as CSSProperties;
@@ -93,13 +95,43 @@ function Faces({ people, onOpen }: { people: HubUser[]; onOpen: (u: HubUser) => 
 /** Connector geometry: the horizontal bar of a child runs from the first child's centre to the last's, so the ends are cut in half. */
 const bar = (i: number, n: number) => ({ left: i === 0 ? "50%" : 0, right: i === n - 1 ? "50%" : 0 });
 
+function ServiceAgents({ name, machines, defaults, autonomy }: { name: string; machines: Machine[]; defaults: ChatDefaults | null; autonomy: Autonomy | null }) {
+  const t = useT();
+  const { leader, agents } = serviceAgents(name, machines, defaults);
+  const planet = (kind: string) => (kind === "claude" ? cosmicAssets.planetViolet : kind === "codex" ? cosmicAssets.planetGreen : cosmicAssets.planetBlue);
+  return (
+    <div className="cu-agents" data-service-agents={name}>
+      <span>
+        <b>{t("adminUsers.org.agents")}</b>
+        <span className="cu-planets">
+          {agents.slice(0, 5).map((a) => (
+            <i key={a.key} title={`${a.machine} · ${a.label}`} data-online={a.online} style={{ backgroundImage: `url(${planet(a.kind)})` }} />
+          ))}
+        </span>
+      </span>
+      <small>
+        {t("adminUsers.org.leader")} · {leader ? `${leader.machine} · ${leader.label}` : t("adminUsers.org.noLeader")} · {agents.length ? t("adminUsers.org.agentCount", { n: agents.length }) : t("adminUsers.org.noAgent")}
+        {autonomy ? ` · ${t(`agentPolicy.autonomy.${autonomy}`)}` : ""}
+      </small>
+    </div>
+  );
+}
+
 export function OrgTab() {
   const { client, projects, systems } = useHive();
   const t = useT();
   const list = useQuery(() => client.users!.list(), [client]);
   const [role, setRole] = useState<OrgRole | null>(null);
+  const [agents, setAgents] = useState(true);
   const [editing, setEditing] = useState<HubUser | null>(null);
   const all = list.data ?? [];
+  const machines = useQuery(() => client.call("machines.list", {}).catch(() => []), [client]);
+  const policy = useQuery(() => client.call("agentPolicy.get", {}).catch(() => null), [client]);
+  // One call per service: a project's leader is its chat defaults, and the hub has no list of them.
+  const defaults = useQuery(
+    async () => Object.fromEntries(await Promise.all(projects.map(async (p) => [p, await client.call("chat.defaults", { project: p }).catch((): ChatDefaults | null => null)] as const))),
+    [client, projects.join("\n")],
+  );
   const tree = useMemo(() => orgTree(all, systems, projects, t("adminUsers.org.ungrouped")), [all, systems, projects, t]);
   const legend = orgLegend(tree);
   const admins = all.filter((u) => u.admin && !u.disabled);
@@ -117,6 +149,9 @@ export function OrgTab() {
             {roleName(r)}
           </button>
         ))}
+        <i />
+        <span>{t("adminUsers.org.agents")}</span>
+        <Toggle aria-label={t("adminUsers.org.agents")} data-org-agents checked={agents} onChange={(e) => setAgents(e.target.checked)} />
       </div>
       <div className="cu-canvas">
         <div className="cu-tree">
@@ -172,6 +207,7 @@ export function OrgTab() {
                             <span className="cu-orgnone">{t("adminUsers.org.noRole")}</span>
                           )}
                         </div>
+                        {agents ? <ServiceAgents name={sv.name} machines={machines.data ?? []} defaults={defaults.data?.[sv.name] ?? null} autonomy={policy.data ? effectivePolicy(policy.data.hub, policy.data.projects[sv.name] ?? {}).autonomy : null} /> : null}
                       </div>
                     </div>
                   ))}

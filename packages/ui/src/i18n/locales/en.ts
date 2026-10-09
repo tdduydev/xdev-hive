@@ -967,6 +967,7 @@ export const en: Catalog = {
     adminDesc: { roles: "Hub roles and the permission matrix per service.", org: "Who holds which role in each system and service.", ops: "Hub health, queue and costs.", users: "People, hub roles and per-service permissions.", policy: "Hub policy that applies to every project.", tools: "Tools and versions the hub allows.", budgets: "Budgets and what was spent.", alerts: "Alert rules and recipients.", audit: "Log of actions on the hub.", webhooks: "Notifications and outgoing webhooks.", versions: "Released desktop app versions.", hub: "Hub information and operations." },
   },
   settingsRows: {
+    allowHint: "One host per entry, comma-separated.", modelsHint: "Empty means any model; names separated by commas.", mcpToolHint: "Let agents use this server.",
     project: "Project", projectHint: "Changes below apply to this project.",
     autoDispatch: "Auto-dispatch", autoDispatchHint: "Eligible tasks go to an agent without waiting for a person.",
     fixRoundsHint: "How many times an agent fixes work after a failed review or test.",
@@ -3337,6 +3338,7 @@ export const en: Catalog = {
       denied: "no",
     },
     org: {
+      agents: "Agents", leader: "Leader", noLeader: "not set", agentCount: "{n} agents", noAgent: "no agent yet",
       highlight: "Highlight",
       hubMeta: "{users} people · {systems} systems · {services} services",
       admins: "Hub admins",

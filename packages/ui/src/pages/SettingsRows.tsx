@@ -1,6 +1,6 @@
 // Cài đặt service rows (R-72l): design lines 1135–1172, one row = label + hint + one control on the right.
 import { useMemo, useState, type ReactNode } from "react";
-import { SDLC_GATES, effectivePolicy, type AgentPolicy, type SdlcGate } from "@xdev-hive/core";
+import { SDLC_GATES, type SdlcGate } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Toggle } from "@xdev-hive/ui/components/ui/primitives";
 import { ErrorNote } from "#ui/components/common.tsx";
@@ -8,6 +8,7 @@ import { useAction, useCan, useHive, useProjects, useQuery } from "#ui/hooks.ts"
 import { useT } from "#ui/i18n/index.tsx";
 import { fixRoundOptions, gateModeOptions, projectSettingsPatch } from "#ui/lib/settings-rows.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
+import { AgentPolicyRows } from "#ui/pages/AgentPolicyRows.tsx";
 
 export function SettingsRow({ label, hint, children }: { label: string; hint?: string; children?: ReactNode }) {
   return <div className="cx-row"><span><strong>{label}</strong>{hint ? <small>{hint}</small> : null}</span>{children}</div>;
@@ -66,24 +67,10 @@ export function PolicyRows() {
   </>;
 }
 
-/** Agent: the effective autonomy, network and MCP as read-only pills, plus the per-project AI classify switches; the full editor is CompactAgentPolicy below. */
-export function AgentRows({ classify, editor }: { classify: ReactNode; editor: ReactNode }) {
-  const { client, scope } = useHive();
-  const t = useT();
-  const can = useCan();
-  const known = useProjects();
-  const view = useQuery(() => client.call("agentPolicy.get", {}), [client]);
-  const projects = known.filter((p) => can(p, "projectSettings")).sort();
-  const project = projects.includes(scopeProject(scope) ?? "") ? scopeProject(scope)! : projects[0];
-  const data = view.data;
-  const effective: AgentPolicy | null = data ? effectivePolicy(data.hub, project ? data.projects[project] ?? {} : {}) : null;
-  const mcp = effective ? (effective.mcp === null ? t("agentPolicy.mcpAll") : effective.mcp.length ? effective.mcp.join(", ") : t("agentPolicy.mcpNone")) : "";
+/** Agent: the policy as editable rows (AgentPolicyRows), plus the per-project AI classify switches. */
+export function AgentRows({ classify }: { classify: ReactNode }) {
   return <>
-    {effective ? <div className="cx-card" data-settings-rows="agent">
-      <SettingsRow label={t("agentPolicy.colAutonomy")} hint={t(`settingsTidy.autonomy.${effective.autonomy}`)}><ValuePill>{t(`agentPolicy.autonomy.${effective.autonomy}`)}</ValuePill></SettingsRow>
-      <SettingsRow label={t("agentPolicy.colNetwork")} hint={t("settingsRows.networkHint")}><ValuePill>{t(`agentPolicy.network.${effective.network.mode}`)}</ValuePill></SettingsRow>
-      <SettingsRow label={t("agentPolicy.colMcp")} hint={t("settingsRows.mcpHint")}><ValuePill>{mcp}</ValuePill></SettingsRow>
-    </div> : <ErrorNote error={view.error} />}
-    <div className="cx-stack">{editor}{classify}</div>
+    <AgentPolicyRows />
+    <div className="cx-stack">{classify}</div>
   </>;
 }

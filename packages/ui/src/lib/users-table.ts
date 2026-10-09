@@ -1,6 +1,6 @@
 // Pure helpers behind Quản trị › Người dùng, Vai trò & quyền and Sơ đồ tổ chức (R-72l): the lists are filtered, sorted and
 // paged in the browser because the hub returns every account in one call, so none of it needs a new endpoint.
-import { grantRole, PROJECT_ROLES, ROLE_PERMISSIONS, type HiveSystem, type HubUser, type Permission, type ProjectRole } from "@xdev-hive/core";
+import { grantRole, PROJECT_ROLES, ROLE_PERMISSIONS, type ChatDefaults, type HiveSystem, type Machine, type HubUser, type Permission, type ProjectRole } from "@xdev-hive/core";
 
 export type UserFilter = "all" | "admin" | "active" | "disabled" | "mustChange" | "sso";
 export const USER_FILTERS: UserFilter[] = ["all", "admin", "active", "disabled", "mustChange", "sso"];
@@ -118,4 +118,21 @@ export function orgLegend(tree: OrgSystem[]): Record<OrgRole, number> {
   const out = { viewer: 0, member: 0, qa: 0, reviewer: 0, lead: 0, custom: 0 } as Record<OrgRole, number>;
   for (const s of tree) for (const sv of s.services) for (const r of sv.roles) out[r.role] += r.people.length;
   return out;
+}
+
+export interface OrgAgent { key: string; machine: string; label: string; kind: string; online: boolean }
+export interface OrgServiceAgents { leader: { machine: string; label: string } | null; agents: OrgAgent[] }
+
+/**
+ * The agents of one service, from what the hub already knows: the machines that hold the repo and their enabled, installed
+ * profiles (the plan each runs on), and the leader the service's chat defaults pick. A leader whose machine or profile is
+ * gone stays null rather than being guessed.
+ */
+export function serviceAgents(project: string, machines: Machine[], defaults: ChatDefaults | null): OrgServiceAgents {
+  const agents = machines
+    .filter((m) => m.projects.includes(project))
+    .flatMap((m) => m.profiles.filter((p) => p.enabled && p.installed).map((p) => ({ key: `${m.id}/${p.id}`, machine: m.machine, label: p.label, kind: p.kind, online: m.online })));
+  const machine = defaults?.machineId ? machines.find((m) => m.id === defaults.machineId) : undefined;
+  const profile = machine?.profiles.find((p) => p.id === defaults?.profileId) ?? machine?.profiles.find((p) => p.enabled);
+  return { leader: machine && profile ? { machine: machine.machine, label: profile.label } : null, agents };
 }
