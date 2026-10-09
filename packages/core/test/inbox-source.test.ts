@@ -134,3 +134,16 @@ it("appends and applies the latest-run index to a populated full schema", () => 
     assert.ok(h.db.prepare("SELECT name FROM sqlite_master WHERE name = 'run_records_task_latest'").get());
   } finally { h.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+it("returns each listed review task's newest run so Today can merge its MR", async () => {
+  const h = new SqliteHive(":memory:");
+  try {
+    task(h, "R1");
+    task(h, "T1", "app", "todo");
+    run(h, "old", "R1", { created: "2026-10-07T04:00:00.000Z" });
+    run(h, "new", "R1", { mr: JSON.stringify({ iid: 7, status: "opened" }) });
+    run(h, "other", "T1");
+    const page = await h.call("inbox.source", { source: "tasks" }, admin);
+    assert.deepEqual(page.runs.map((r) => r.runId), ["new"]);
+  } finally { h.close(); }
+});

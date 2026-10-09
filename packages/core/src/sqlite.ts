@@ -7939,7 +7939,14 @@ export class SqliteHive implements HiveBackend {
           const args = [JSON.stringify(projects), review, dispatch, principalOf(actor), settings];
           const total = num((db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}`).get(...args) as Row).n);
           const rows = db.prepare(`SELECT * FROM tasks WHERE ${where} ORDER BY updated_at DESC, id DESC LIMIT ?6 OFFSET ?7`).all(...args, input.limit, input.offset) as Row[];
-          return { total, tasks: this.#tasks(rows).map((t) => hideDeps(t, (p) => sees(actor, p))), runs: [] };
+          // A review task's newest hub run carries the MR that Today merges; the runs source only lists waiting runs.
+          const reviewed = JSON.stringify(rows.filter((r) => str(r.status) === "review").map((r) => [str(r.project), str(r.id)]));
+          const runs = db.prepare(`WITH wanted AS (SELECT json_extract(value, '$[0]') AS project, json_extract(value, '$[1]') AS task_id FROM json_each(?1)),
+            ranked AS (SELECT r.machine_id, r.run_id, ROW_NUMBER() OVER (PARTITION BY r.project, r.task_id ORDER BY r.created_at DESC, r.run_id DESC, r.machine_id DESC) AS rank
+              FROM run_records r JOIN wanted w ON w.project = r.project AND w.task_id = r.task_id)
+            SELECT r.*, ${RUN_TOKEN_COLUMNS} FROM ranked n JOIN run_records r ON r.machine_id = n.machine_id AND r.run_id = n.run_id
+            LEFT JOIN run_costs c ON c.machine_id = r.machine_id AND c.run_id = r.run_id WHERE n.rank = 1`).all(reviewed) as Row[];
+          return { total, tasks: this.#tasks(rows).map((t) => hideDeps(t, (p) => sees(actor, p))), runs: runs.map((r) => toRunRecord(r, false)) };
         }
         const allowed = JSON.stringify(projects.filter((p) => may(actor, p, "runDispatch")));
         // Rank before testing signals: a newer answered run supersedes an older question, even across machines.
