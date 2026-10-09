@@ -3,15 +3,8 @@ import { execFile } from "node:child_process";
 import { lstat, readdir, realpath, statfs } from "node:fs/promises";
 import path from "node:path";
 import { HiveError, type DesktopProject, type Task, type WorktreeEntry } from "@xdev-hive/core";
-import { AGENT_CONFIG_FILES, AGENT_CLI_DIRS, renderedPaths } from "#desktop/main/runner/worktree.ts";
-
-// Git's successful stderr can contain platform diagnostics; it is never part of a ref or status record.
-function gitAsync(repo: string, args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => execFile("git", args, { cwd: repo, encoding: "utf8", timeout: 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
-    if (err) reject(Object.assign(err, { stderr }));
-    else resolve(stdout.trim());
-  }));
-}
+import { gitOutputAsync as gitAsync } from "#desktop/main/git.ts";
+import { AGENT_CONFIG_FILES, AGENT_CLI_DIRS, renderedPathsAsync } from "#desktop/main/runner/worktree.ts";
 
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 const inside = (root: string, dir: string) => {
@@ -69,10 +62,11 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
   const dir = item.path;
   const trackedConfig = await gitAsync(dir, ["ls-files", "--", ...AGENT_CONFIG_FILES, ...AGENT_CLI_DIRS]);
   const copied = [...AGENT_CONFIG_FILES, ...AGENT_CLI_DIRS].filter(f => !trackedConfig.split("\n").some(p => p === f || p.startsWith(`${f}/`)));
+  const rendered = await renderedPathsAsync(dir);
   const [head, status, modifiedMs, bytes] = await Promise.all([
     gitAsync(dir, ["rev-parse", "HEAD"]),
     // Rendered context and copied untracked configuration never belong to an agent commit.
-    gitAsync(dir, ["status", "--porcelain", "-z", "--", ".", ...renderedPaths(dir).map(f => `:(exclude)${f}`),
+    gitAsync(dir, ["status", "--porcelain", "-z", "--", ".", ...rendered.map(f => `:(exclude)${f}`),
       ...copied.map(f => `:(exclude)${f}`)]),
     modified(dir), diskBytes(dir),
   ]);

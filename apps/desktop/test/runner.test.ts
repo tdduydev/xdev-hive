@@ -2626,6 +2626,42 @@ describe("runs on the hub", () => {
     assert.equal(await runner.pushRuns(), 0, "nothing changed since");
   });
 
+  it("does not reopen a finished run's log after the hub has received it, even after restart", async () => {
+    const s = await setup([profile("claude-a", "claude", 1, "ok")], {}, "hub");
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    assert.ok(s.runner.store.pushedMetadataKey(run.id));
+    rmSync(path.join(s.dataDir, "runs", `${run.id}.log`));
+    assert.equal(await s.runner.pushRuns(), 0);
+    const restarted = new Runner({
+      backend: () => s.hive, profiles: () => [], projects: () => [{ name: "demo", repo: s.repo }],
+      mode: () => "hub", machine: () => "duy-mbp", env: () => ({}),
+      settings: () => ({ maxParallel: 1, maxAttempts: 1, worktreeRoot: null, acceptHubRuns: false, gateRunner: false }),
+    }, { dataDir: s.dataDir, user: "duy", chatPollMs: 0 });
+    try { assert.equal(await restarted.pushRuns(), 0); }
+    finally { await restarted.stop(); restarted.store.db.close(); }
+  });
+
+  it("revisits finished runs whose patches missed the first push quota", async () => {
+    const s = await setup([], {}, "hub");
+    for (let i = 0; i < 4; i++) {
+      const run = s.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Task", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
+      s.runner.store.update(run.id, { status: "succeeded", finishedAt: new Date().toISOString() });
+    }
+    assert.equal(await s.runner.pushRuns(), 4);
+    assert.equal(await s.runner.pushRuns(), 1, "the fourth run still owes its patch");
+    assert.equal(await s.runner.pushRuns(), 0);
+  });
+
+  it("runs a project configured as a subdirectory of a Git repository", async () => {
+    const s = await setup([profile("claude-a", "claude", 1, "ok")], {}, "local", {
+      projects: (repo) => { const nested = path.join(repo, "src"); mkdirSync(nested, { recursive: true }); return [{ name: "demo", repo: nested }]; },
+    });
+    const run = await s.runner.enqueue({ project: "demo", taskId: "T-1" });
+    await s.runner.settle();
+    assert.equal(s.runner.store.get(run.id)?.status, "succeeded", s.runner.store.get(run.id)?.error ?? "");
+  });
+
   it("pushes a running agent's current step, and nothing in local mode", async () => {
     const { runner, hive } = await setup([profile("claude-a", "claude", 1, "sleep")], {}, "hub");
     const run = await runner.enqueue({ project: "demo", taskId: "T-1" });

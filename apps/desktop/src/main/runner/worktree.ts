@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 
 import os from "node:os";
 import path from "node:path";
 import { ARTIFACT_DIR, CONTEXT_DIR, HiveError, MANAGED_START, RULES_DIR } from "@xdev-hive/core";
-import { git, gitAsync, gitErrorText, gitOutputAsync, isGitRepo, isRepoRoot } from "#desktop/main/git.ts";
+import { git, gitAsync, gitErrorText, gitOutputAsync, isGitRepo, isGitRepoAsync } from "#desktop/main/git.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { RENDERED_FILES } from "#desktop/main/installer.ts";
 
@@ -217,7 +217,7 @@ export async function ensureWorktreeAsync(
   repo: string, dir: string, taskId: string, knownBase: string | null,
   opts: { branch?: string; from?: string; start?: string } = {},
 ): Promise<Worktree> {
-  if (!isRepoRoot(repo)) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
+  if (!(await isGitRepoAsync(repo))) throw new HiveError("bad_request", `${repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: repo } });
   const branch = opts.branch ?? branchFor(taskId);
   await gitOutputAsync(repo, ["worktree", "prune"]);
   const registered = await isWorktreeOfAsync(repo, dir);
@@ -284,7 +284,7 @@ export function renderedPaths(dir: string): string[] {
   return out;
 }
 
-async function renderedPathsAsync(dir: string): Promise<string[]> {
+export async function renderedPathsAsync(dir: string): Promise<string[]> {
   const out = [...RENDERED_FILES, RULES_DIR, CONTEXT_DIR, ARTIFACT_DIR, STEER_FILE, ...AGENT_RUN_DIRS];
   const listed = (await tryGitAsync(dir, ["ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md", ":(glob).claude/skills/*/SKILL.md"]) ?? "")
     .split("\n").filter((f) => f && !RENDERED_FILES.includes(f));

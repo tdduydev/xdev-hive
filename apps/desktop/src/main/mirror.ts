@@ -2,7 +2,7 @@
 // which page (see core mirror.ts). Reads the branch as committed and fetched, never the checkout, so what someone is
 // still writing does not go out; a page whose text, title or place differs gets a new version naming the commit.
 import { HiveError, MIRROR_CONFIG, parseMirrorConfig, planMirror, type Actor, type DesktopProject, type HiveBackend, type MirrorReport } from "@xdev-hive/core";
-import { git, gitErrorText, gitOutputAsync, isGitRepo, isRepoRoot } from "./git.ts";
+import { git, gitErrorText, gitOutputAsync, isGitRepo, isGitRepoAsync } from "./git.ts";
 import { remoteStart } from "./runner/worktree.ts";
 
 const show = (repo: string, ref: string, file: string): string | null => {
@@ -17,12 +17,12 @@ const showAsync = (repo: string, ref: string, file: string): Promise<string | nu
 
 /** Whether the checkout has a mirror config at all: no fetch for projects that do not mirror. */
 export const mirrors = (repo: string): boolean => isGitRepo(repo) && show(repo, "HEAD", MIRROR_CONFIG) !== null;
-export const mirrorsAsync = async (repo: string): Promise<boolean> => isRepoRoot(repo) && (await showAsync(repo, "HEAD", MIRROR_CONFIG)) !== null;
+export const mirrorsAsync = async (repo: string): Promise<boolean> => (await isGitRepoAsync(repo)) && (await showAsync(repo, "HEAD", MIRROR_CONFIG)) !== null;
 
 /** `since`: the commit mirrored last time; the same one again is not read twice. */
 export async function mirrorDocs(backend: HiveBackend, actor: Actor, project: DesktopProject, opts: { fetch?: boolean; since?: string } = {}): Promise<MirrorReport> {
   const report: MirrorReport = { commit: null, changed: [], unchanged: 0, missing: [], skipped: [] };
-  if (!isRepoRoot(project.repo)) return report;
+  if (!(await isGitRepoAsync(project.repo))) return report;
   const ref = (opts.fetch === false ? null : (await remoteStart(project.repo, project.targetBranch)).ref) ?? "HEAD";
   const config = await showAsync(project.repo, ref, MIRROR_CONFIG);
   if (config === null) return report;
