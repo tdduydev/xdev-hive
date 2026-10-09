@@ -205,6 +205,8 @@ export class LoginMonitor {
   readonly onUsage?: (id: string, usage: PlanUsage) => void;
   readonly #checks = new Map<string, LoginStatus>();
   readonly #usage = new Map<string, PlanUsage>();
+  readonly #pending = new Map<string, Promise<void>>();
+  readonly #profileKeys = new Map<string, string>();
   readonly #profiles: () => AgentProfile[];
   readonly #env: () => NodeJS.ProcessEnv;
   readonly #run: RunCli;
@@ -233,6 +235,7 @@ export class LoginMonitor {
    * otherwise, so no run goes to it while that check is still on its way (an unknown status counts as signed in).
    */
   expectSignedOut(profile: AgentProfile): void {
+    this.#profileKeys.delete(profile.id);
     this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: this.#now().toISOString() });
   }
 
@@ -259,6 +262,26 @@ export class LoginMonitor {
   async refresh(ids?: string[]): Promise<void> {
     const profiles = this.#profiles();
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
+      const running = this.#pending.get(p.id);
+      if (running) { await running; continue; }
+      const checked = this.#checks.get(p.id);
+      const key = JSON.stringify([p.kind, p.bin, p.env]);
+      if (checked && this.#profileKeys.get(p.id) === key && this.#now().getTime() - Date.parse(checked.checkedAt) < 45_000) continue;
+      const pending = this.#refreshProfile(p);
+      this.#pending.set(p.id, pending);
+      try { await pending; this.#profileKeys.set(p.id, key); } finally { if (this.#pending.get(p.id) === pending) this.#pending.delete(p.id); }
+    }
+    // The profiles as they are now: one added while this check ran keeps what is known of it.
+    const now = this.#profiles();
+    for (const id of [...this.#checks.keys()]) {
+      if (now.some((p) => p.id === id && p.enabled)) continue;
+      this.#checks.delete(id);
+      this.#usage.delete(id);
+      this.#profileKeys.delete(id);
+    }
+  }
+
+  async #refreshProfile(p: AgentProfile): Promise<void> {
       const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
       this.#checks.set(p.id, login);
       // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
@@ -268,13 +291,5 @@ export class LoginMonitor {
         this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
       }
       else this.#usage.delete(p.id);
-    }
-    // The profiles as they are now: one added while this check ran keeps what is known of it.
-    const now = this.#profiles();
-    for (const id of [...this.#checks.keys()]) {
-      if (now.some((p) => p.id === id && p.enabled)) continue;
-      this.#checks.delete(id);
-      this.#usage.delete(id);
-    }
   }
 }
