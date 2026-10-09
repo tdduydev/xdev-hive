@@ -14,6 +14,7 @@ import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { DetailDialog } from "#ui/components/DetailDialog.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
@@ -21,6 +22,7 @@ import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#u
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
 import { emptyState } from "#ui/lib/empty.ts";
+import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
@@ -98,9 +100,16 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [filter, setFilter] = useState<Filter>(pendingOnly ? "pending" : "all");
-  // null: nothing open; NEW: the "write memory" form; an id: that entry's detail. A popup on every width, as the grid has no side pane.
-  const [selected, setSelected] = useState<number | null>(null);
-  const pick = setSelected;
+  // null: nothing open; NEW: the "write memory" form; an id: that entry's detail. A popup from the tablet width up, as the grid has no
+  // side pane; on a phone a page of its own, kept in the address (?memory=) so Back returns to the list.
+  const [popup, setPopup] = useState<number | null>(null);
+  const mobileDetail = useMobileDetail("memory");
+  const fromPhone = mobileDetail.value === "new" ? NEW : mobileDetail.value !== null && /^\d+$/.test(mobileDetail.value) ? Number(mobileDetail.value) : null;
+  const selected = mobileDetail.mobile ? fromPhone : popup;
+  const pick = (next: number | null) => {
+    if (mobileDetail.mobile) mobileDetail.navigate(next === null ? null : next === NEW ? "new" : String(next));
+    else setPopup(next);
+  };
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const toast = useToast();
   const bulk = useAction();
@@ -113,7 +122,9 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const shown = rows.filter(FILTERS.find(([id]) => id === filter)![1]);
   const current = selected === null || selected === NEW ? null : (rows.find((m) => m.id === selected) ?? null);
   useEffect(() => {
-    if (selected !== NEW && selected !== null && list.data && !rows.some((m) => m.id === selected)) setSelected(null);
+    if (selected !== NEW && selected !== null && list.data && !rows.some((m) => m.id === selected)) pick(null);
+    // pick changes with every render; the list and the selection are what decide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, selected, list.data]);
 
   // New entries default to the scope: the system's own memory for a system and for a service of one (roadmap 40c), the
@@ -167,6 +178,33 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
     if (m.stale || m.review) return manage ? { text: m.review ? t("memory.stillTrue") : t("memory.keep"), run: () => void quick.run(async () => { await client.call("memory.keep", { id: m.id }); toast(t("memory.keptToast", { id: m.id })); list.reload(); }) } : null;
     return null;
   };
+
+  const detailTitle = selected === NEW ? t("memory.newTitle") : current ? t("memory.detailTitle", { id: current.id }) : t("nav.memory");
+  const detail = (
+    <>
+      {selected === NEW ? (
+          <AddMemory
+            defaultOwner={defaultOwnerOf}
+            projects={pool}
+            onCancel={() => pick(null)}
+            onAdded={(id) => {
+              list.reload();
+              pick(id);
+            }}
+          />
+        ) : current ? (
+          <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={pick} />
+        ) : null}
+    </>
+  );
+  if (mobileDetail.showingDetail) {
+    return (
+      <div className="flex min-w-0 flex-col" data-memory-page>
+        <MobileBack onClick={() => pick(null)} />
+        <div className="flex min-h-0 flex-1 flex-col">{detail}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-col px-7 py-4" data-memory-page>
@@ -279,21 +317,11 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
         </ul>
       ) : null}
       {empty ? <PaneEmpty action={empty === "none" ? firstEntry : null}>{t(`memory.${empty}`)}</PaneEmpty> : null}
-      <DetailDialog open={selected !== null} onClose={() => pick(null)} title={selected === NEW ? t("memory.newTitle") : current ? t("memory.detailTitle", { id: current.id }) : t("nav.memory")} className="h-auto max-h-[85vh] w-[min(720px,calc(100%-2rem))]">
-        {selected === NEW ? (
-          <AddMemory
-            defaultOwner={defaultOwnerOf}
-            projects={pool}
-            onCancel={() => pick(null)}
-            onAdded={(id) => {
-              list.reload();
-              pick(id);
-            }}
-          />
-        ) : current ? (
-          <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={pick} />
-        ) : null}
-      </DetailDialog>
+      {mobileDetail.mobile ? null : (
+        <DetailDialog open={selected !== null} onClose={() => pick(null)} title={detailTitle} className="h-auto max-h-[85vh] w-[min(720px,calc(100%-2rem))]">
+          {detail}
+        </DetailDialog>
+      )}
     </div>
   );
 }

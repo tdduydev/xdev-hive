@@ -9,6 +9,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { runInNewContext } from "node:vm";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { tableCardsChecks } from "./table-cards.mjs";
 import { mobileAudit } from "./mobile-audit.mjs";
 import { accessibilityAudit, keyboardMenu, keyboardOverlays, keyboardTable, runContrast, dataTableAccessibility, memoryAccessibility } from "./accessibility.mjs";
@@ -353,6 +354,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "agent-assign": ["lead-sees-members"],
   "skill-usage": ["login-token"],
   "knowledge-pending": ["login-token", "lead-sees-members"],
+  "memory-variants": ["login-token"],
   "artifacts": ["lead-sees-members"],
   "run-steer": ["login-password", "lead-sees-members"],
   "codex-leader-chat": ["login-token"],
@@ -4165,7 +4167,7 @@ async function main() {
       ["runs", "run", 'main [data-pane-item]', null],
       ["chat", "thread", 'nav[aria-label="Các cuộc chat"] button', null],
       ["skills", "skill", 'main [data-pane-item]', null],
-      ["memory", "memory", 'main [data-pane-item]', null],
+      ["memory", "memory", 'main [data-memory-card]', null],
       // Đề xuất is a Chờ duyệt tab of Tài liệu and Skill since 49f (#/proposals redirects): the knowledge-pending step covers it.
       ["features", "project", "main [data-feature-card]", null],
     ];
@@ -4276,6 +4278,70 @@ async function main() {
   });
 
   // Roadmap 41c: what a run made is on the run and on its task, and the project manager can take it away.
+  // Every card of the Memory grid (template cards 915–951): one entry of each kind, and the button on each does what it says.
+  await step("memory-variants", async () => {
+    const machine = async (method, input) => {
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.memory-variants" }, body: JSON.stringify({ method, input }) });
+      const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
+    };
+    const write = (content, extra = {}, token = admin) => rpc("memory.write", { project: "payment", kind: "convention", content, ...extra }, token);
+    const pending = await write("Variant: thay đổi cấu hình cần người duyệt", {}, people.minh.token);
+    const plain = await write("Variant: mục đang dùng bình thường");
+    const base1 = await write("Variant: dùng cổng 8080 cho môi trường thử");
+    const conflict = await write("Variant: dùng cổng 9090 cho môi trường thử", { contradicts: base1.id });
+    const old = await write("Variant: chạy lint bằng npm run lint");
+    const next = await write("Variant: chạy lint bằng npm run check", { supersedes: old.id });
+    const cited = await write("Variant: trình dịch đọc file cấu hình ở đây", { files: ["src/e2e-variant.ts", "src/e2e-variant-gone.ts"] });
+    // First sight of a file sets its baseline; a later different object id flags the entry, a missing file too.
+    await machine("memory.checkFiles", { project: "payment", files: [{ path: "src/e2e-variant.ts", sha: "a".repeat(40) }, { path: "src/e2e-variant-gone.ts", sha: "b".repeat(40) }] });
+    await machine("memory.checkFiles", { project: "payment", files: [{ path: "src/e2e-variant.ts", sha: "c".repeat(40) }, { path: "src/e2e-variant-gone.ts", sha: null }] });
+    const stale = await write("Variant: ghi chú cũ không ai dùng");
+    // Staleness is read from the clock (90 days unused): the fixture moves the entry back instead of waiting.
+    // (A system node: Electron's own may not ship node:sqlite.)
+    execFileSync("node", ["-e", 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync(process.argv[1]); db.prepare("UPDATE memory SET created_at = ?, last_used_at = NULL WHERE id = ?").run(process.argv[2], Number(process.argv[3])); db.close();', process.env.HIVE_E2E_DB, new Date(Date.now() - 200 * 86_400_000).toISOString(), String(stale.id)]);
+    const get = async (id) => (await rpc("memory.list", { project: "payment", limit: 500 })).find((m) => m.id === id);
+    expect((await get(cited.id)).review, "the cited file entry is flagged for review");
+    expect((await get(stale.id)).stale, "the backdated entry is stale");
+
+    const tab = (current = tabs.admin);
+    await tab.go("memory");
+    const card = (id) => `[data-memory-card="${id}"]`;
+    const cardText = (id) => tab.eval((sel) => document.querySelector(sel)?.innerText ?? "", card(id));
+    await tab.waitFor("variant cards", (ids) => ids.every((id) => document.querySelector(`[data-memory-card="${id}"]`)), [pending, plain, base1, conflict, old, next, cited, stale].map((m) => m.id));
+    // [id, label on the card, the one button (none: null)]
+    const variants = [
+      [pending, "Chờ duyệt", "Duyệt"],
+      [conflict, "Mâu thuẫn", "Chọn"],
+      [cited, "Cần xem lại", "Vẫn đúng"],
+      [stale, "Cũ", "Giữ lại"],
+      [old, `Đã được thay bằng #${next.id}`, null],
+      [next, `Thay cho #${old.id}`, null],
+      [plain, "payment", null],
+    ];
+    for (const [m, label, button] of variants) {
+      const text = await cardText(m.id);
+      expect(text.includes(label), `#${m.id} shows "${label}": ${text}`);
+      const buttons = await tab.eval((sel) => [...document.querySelectorAll(`${sel} button`)].map((b) => b.textContent.trim()).filter(Boolean), card(m.id));
+      expect(button ? buttons.includes(button) : !buttons.some((b) => ["Duyệt", "Chọn", "Vẫn đúng", "Giữ lại"].includes(b)), `#${m.id} buttons: ${buttons}`);
+    }
+    expect((await cardText(cited.id)).includes("src/e2e-variant.ts"), "the review card lists the cited files");
+    await tab.shot("memory-variants");
+
+    // The buttons run for real, on the card, without opening it.
+    await tab.click(`${card(pending.id)} button`, "Duyệt");
+    await until("pending approved", async () => (await get(pending.id)).status === "approved");
+    await tab.click(`${card(cited.id)} button`, "Vẫn đúng");
+    await until("review cleared", async () => (await get(cited.id)).review === null);
+    await tab.click(`${card(stale.id)} button`, "Giữ lại");
+    await until("stale kept", async () => !(await get(stale.id)).stale);
+    // "Chọn" opens the conflict, where the choice is made.
+    await tab.click(`${card(conflict.id)} button`, "Chọn");
+    await tab.waitFor("conflict detail", () => document.body.innerText.includes("Giữ mục này"));
+    await tab.shot("memory-variants-conflict");
+    await tab.click("button", "Giữ mục này");
+    await until("conflict resolved", async () => (await get(conflict.id)).conflictsWith.length === 0);
+  });
+
   await step("artifacts-page", async () => {
     const machine = async (method, input) => {
       const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.artifacts-e2e" }, body: JSON.stringify({ method, input }) });
