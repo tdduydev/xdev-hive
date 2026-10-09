@@ -2786,6 +2786,15 @@ export const en: Catalog = {
     saved: "Saved",
   },
   agentMap: {
+    uptimeDays: "Up {count} days",
+    uptimeHours: "Up {count} hours",
+    uptimeMinutes: "Up {count} minutes",
+    cpuCores: "{count} cores",
+    cpuLoad: "{count} cores · load {load}",
+    diskFree: "Free {free} / {total}",
+    setupMissing: "Missing {items}",
+    setupAdmin: "A hub administrator can install the missing items.",
+
     picked: "{count} picked",
     promptOne: "Prompt the agent",
     promptMany: "Prompt {count} agents",

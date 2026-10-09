@@ -2791,6 +2791,15 @@ export const vi = {
     saved: "Đã lưu",
   },
   agentMap: {
+    uptimeDays: "Bật {count} ngày",
+    uptimeHours: "Bật {count} giờ",
+    uptimeMinutes: "Bật {count} phút",
+    cpuCores: "{count} nhân",
+    cpuLoad: "{count} nhân · tải {load}",
+    diskFree: "Còn {free} / {total}",
+    setupMissing: "Thiếu {items}",
+    setupAdmin: "Cần quản trị hub để cài các mục còn thiếu.",
+
     picked: "Đã chọn {count} gói",
     promptOne: "Prompt cho agent",
     promptMany: "Prompt cho {count} agent",

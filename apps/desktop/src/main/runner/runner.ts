@@ -1,3 +1,4 @@
+import { SystemSampler } from "#desktop/main/runner/system.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
 import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
@@ -1146,6 +1147,8 @@ export class Runner {
     this.store.resetStats(profileId, this.#opts.now().toISOString());
   }
 
+  #systemSampler = new SystemSampler();
+
   #worktreeRoot(): string {
     return this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
   }
@@ -1345,6 +1348,7 @@ export class Runner {
           machine: this.#host.machine(),
           instance: this.#instance,
           version: this.#opts.version,
+          system: await this.#systemSampler.sample(this.#worktreeRoot()),
           runs,
           costs,
           deliveredMessages,

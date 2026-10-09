@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "name": "login-token",
+      "ok": true,
+      "ms": 1823
+    },
+    {
+      "name": "lead-sees-members",
+      "ok": true,
+      "ms": 1268
+    },
+    {
+      "name": "agent-map",
+      "ok": true,
+      "ms": 1658
+    },
+    {
+      "name": "machines-design",
+      "ok": true,
+      "ms": 2518
+    }
+  ],
+  "errors": [],
+  "exitCode": 0
+}
