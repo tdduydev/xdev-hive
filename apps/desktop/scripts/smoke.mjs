@@ -46,9 +46,19 @@ const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-ev
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
 const shellWord = (value) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+// A fake CLI that runs the fake agent with these variables. Windows: a .cmd beside the sh script, since the app
+// starts only PATHEXT names there (resolveBin turns `fake-cli` into `fake-cli.cmd`).
+const fakeCli = (file, env = {}) => {
+  const exports = Object.entries(env).map(([k, v]) => `export ${k}=${shellWord(v)}\n`).join("");
+  writeFileSync(file, `#!/bin/sh\n${exports}exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+  if (process.platform === "win32") {
+    const sets = Object.entries(env).map(([k, v]) => `set "${k}=${v}"\r\n`).join("");
+    writeFileSync(`${file}.cmd`, `@echo off\r\n${sets}"${process.execPath}" "${fake}" %*\r\n`);
+  }
+};
 // A wrapper as the CLI, so sign-in checks (`<bin> auth status --json`) reach the fake agent as well.
 const cli = path.join(work, "fake-cli");
-writeFileSync(cli, `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+fakeCli(cli);
 // Quota with resets ahead of the smoke's own clock (roadmap 52): /usage's text for Claude, and a Codex session file as
 // Codex writes it, so codex-plus shows these numbers and not this machine's real ~/.codex.
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -74,18 +84,9 @@ writeFileSync(path.join(smokeHome, ".gemini/settings.json"), JSON.stringify({ se
 writeFileSync(path.join(smokeHome, ".gemini/oauth_creds.json"), JSON.stringify({ refresh_token: "fake-fixture" }));
 const agyBin = path.join(work, "agy-bin");
 mkdirSync(agyBin, { recursive: true });
-writeFileSync(path.join(agyBin, "agy"), `#!/bin/sh
-export FAKE_AGY=1 FAKE_AGY_VERSION='agy 1.2.17' FAKE_LOGIN=out
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
-writeFileSync(path.join(agyBin, "gemini"), `#!/bin/sh
-export FAKE_GEMINI=1
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
-writeFileSync(path.join(agyBin, "kilo"), `#!/bin/sh
-export FAKE_MODE=kilo-ok
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
+fakeCli(path.join(agyBin, "agy"), { FAKE_AGY: "1", FAKE_AGY_VERSION: "agy 1.2.17", FAKE_LOGIN: "out" });
+fakeCli(path.join(agyBin, "gemini"), { FAKE_GEMINI: "1" });
+fakeCli(path.join(agyBin, "kilo"), { FAKE_MODE: "kilo-ok" });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
   id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
@@ -791,7 +792,7 @@ await shoot("agents-cli", "agents", 2000, {
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
 mkdirSync(accountBin);
-for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+for (const name of ["claude", "codex"]) fakeCli(path.join(accountBin, name));
 const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
 for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
   await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-profile] && [data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
