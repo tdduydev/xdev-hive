@@ -98,3 +98,24 @@ export function systemFolders(system: { projects: string[]; source?: SystemSourc
     .sort(([a], [b]) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)))
     .map(([, v]) => ({ folder: v.folder, projects: [...v.projects].sort() }));
 }
+
+/**
+ * A source with `members` added: the import of a group (19a/19b) records where each repo it brought in comes from. A
+ * system already linked to another group keeps its source (undefined: leave it as saved); members it has stay as they
+ * are, by project and by path. undefined too when the result would not pass the hub's check, so the system itself is
+ * still saved.
+ */
+export function mergeSource(
+  current: SystemSource | null | undefined,
+  base: Pick<SystemSource, "forge" | "url" | "groupPath">,
+  members: Array<Omit<SystemSourceMember, "state">>,
+): SystemSource | undefined {
+  const same = current && current.forge === base.forge && current.groupPath.toLowerCase() === base.groupPath.toLowerCase();
+  if (current && !same) return undefined;
+  const have = current?.members ?? [];
+  const projects = new Set(have.map((m) => m.project));
+  const paths = new Set(have.map((m) => m.pathWithNamespace.toLowerCase()));
+  const added = members.filter((m) => !projects.has(m.project) && !paths.has(m.pathWithNamespace.toLowerCase())).map((m) => ({ ...m, state: "active" as const }));
+  const parsed = systemSourceSchema.safeParse({ ...(current ?? { ...base, syncedAt: null }), members: [...have, ...added] });
+  return parsed.success ? parsed.data : undefined;
+}
