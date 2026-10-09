@@ -25,10 +25,10 @@ export type InboxItem = Base &
     | { kind: "ci"; run: AgentRun }
     | { kind: "waitingRun"; run: RunRecord; reason: "question" | "ci" | "quota" }
     | { kind: "proposal"; proposal: Proposal }
-    | { kind: "review"; task: Task; run: AgentRun | null }
+    | { kind: "review"; task: Task; run: AgentRun | null; hubRun?: RunRecord }
     | { kind: "memory"; memory: Memory }
     | { kind: "conflict"; memory: Memory; other: Memory }
-    | { kind: "machine"; item: SetupItem }
+    | { kind: "machine"; item: SetupItem; machineId?: string; machine?: string }
     | { kind: "request"; command: MachineCommand }
     | { kind: "alert"; alert: HubAlert }
     | { kind: "hubIssue"; issue: "files" | "search" | "deploy"; detail: string }
@@ -148,7 +148,7 @@ export function buildInbox(src: InboxSources): InboxItem[] {
   for (const task of src.reviewTasks ?? []) {
     if (task.status !== "review" || !can(task.project, "codeReview")) continue;
     const run = runs.filter((r) => r.taskId === task.id && r.project === task.project).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
-    items.push({ kind: "review", key: `review:${task.project}:${task.id}:${task.updatedAt}`, tone: TONE.review, at: task.updatedAt, scope: task.project, task, run });
+    items.push({ kind: "review", key: `review:${task.project}:${task.id}:${task.updatedAt}`, tone: TONE.review, at: task.updatedAt, scope: task.project, task, run, hubRun: newest.get(`${task.project}/${task.id}`) });
   }
 
   for (const task of src.assignedTasks ?? []) {

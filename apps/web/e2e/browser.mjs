@@ -348,6 +348,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "graph-sdlc-system": ["lead-sees-members", "cross-service-task"], // cross-service-task's cross-service edge
   "task-note-history": ["lead-sees-members"],
   "today-web": ["lead-sees-members"],
+  "today-actions": ["today-web"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
   "agent-assign": ["lead-sees-members"],
@@ -3596,6 +3597,84 @@ async function main() {
     await until("the proposal confirmed from Hôm nay", async () => !(await rpc("chat.pending", { project: "payment" })).some((a) => a.id === proposed.id));
     // Leave the hub as it was: the plan step's request is not for this test.
     for (const r of (await beat()).runRequests.filter((x) => x.taskId === "SPEC-TODAY")) await rpc("runs.cancelRequest", { id: r.id });
+  });
+
+  await step("today-actions", async () => {
+    const machineRpc = async (method, input) => {
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": "runner.lan-mbp" }, body: JSON.stringify({ method, input }) });
+      const body = await response.json();
+      if (body.error) throw new Error(`${method}: ${body.error.message}`);
+      return body.result;
+    };
+    const at = new Date().toISOString();
+    await rpc("tasks.create", { project: "payment", id: "TODAY-MERGE", title: "Today merge action" });
+    await rpc("tasks.update", { id: "TODAY-MERGE", status: "review" });
+    const mrUrl = "https://git.example/payment/-/merge_requests/72";
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-today-merge", profileId: "claude-1", project: "payment", taskId: "TODAY-MERGE", taskTitle: "Today merge action", role: "implement", status: "succeeded", createdAt: at, finishedAt: at, mrUrl, mr: { iid: 72, status: "opened", draft: false, pipeline: "success", pipelineUrl: null, checkedAt: at } }] });
+    const tab = current = tabs.lan;
+    await tab.reload();
+    await tab.go("today");
+    const key = await tab.waitFor("review item from hub", () => document.querySelector('[data-inbox-key^="review:payment:TODAY-MERGE:"]')?.getAttribute("data-inbox-key"));
+    await tab.click(`[data-inbox-key="${key}"]`);
+    await tab.eval(() => { window.confirm = () => true; });
+    await tab.click("button", "Merge MR");
+    await until("merge requested on runner", async () => (await rpc("runs.list", { project: "payment", taskId: "TODAY-MERGE" }))[0]?.merge?.status === "pending");
+    await machineRpc("runs.mergeResult", { runId: "R-today-merge", ok: false, error: "e2e: declined" });
+    // Reopening a locally handled entry never reverses the merge request on the hub.
+    if (mobile) await tab.click("button", "Quay lại danh sách");
+    await tab.click("button", "Đã xong");
+    await tab.click(`[data-inbox-key="${key}"]`);
+    await tab.click("button", "Mở lại");
+    await tab.click("button", "Đang chờ");
+    await tab.click(`[data-inbox-key="${key}"]`);
+    await tab.fill("textarea", "Please add regression coverage");
+    await tab.click("button", "Yêu cầu sửa");
+    await until("review changes persisted", async () => (await rpc("tasks.list", { project: "payment" })).find(t => t.id === "TODAY-MERGE")?.status === "todo");
+    const failedUrl = "https://git.example/payment/-/merge_requests/73";
+    await machineRpc("runs.push", { machine: "lan-mbp", runs: [{ runId: "R-today-ci", profileId: "claude-1", project: "payment", taskId: "TODAY-CI", taskTitle: "Today CI action", role: "implement", status: "succeeded", createdAt: at, finishedAt: at, mrUrl: failedUrl, mr: { iid: 73, status: "opened", draft: false, pipeline: "failed", pipelineUrl: null, checkedAt: at } }] });
+    await tab.reload();
+    await tab.go("today");
+    const ciKey = await tab.waitFor("CI item", () => document.querySelector('[data-inbox-key*="/R-today-ci:ci:"]')?.getAttribute("data-inbox-key"));
+    await tab.click(`[data-inbox-key="${ciKey}"]`);
+    await tab.eval(() => { window.confirm = () => true; });
+    await tab.click("button", "Dừng tự sửa CI");
+    expect(!(await rpc("runs.ciPolicy", { project: "payment", mrUrl: failedUrl })).fixCi, "CI policy must be stopped");
+    await tab.reload();
+    await tab.go("today");
+    await tab.waitFor("open inbox rows", () => document.querySelectorAll("[data-inbox-key]").length > 1);
+    const selectedKey = () => tab.eval(() => document.querySelector('[data-inbox-key][aria-selected="true"]')?.getAttribute("data-inbox-key"));
+    // Focus an actual row so J/K work after mouse/touch selection too.
+    const firstKey = await tab.eval(() => {
+      const row = document.querySelector("[data-inbox-key]");
+      row.click(); row.focus();
+      return row.getAttribute("data-inbox-key");
+    });
+    await tab.key("j");
+    if (!mobile) expect(await selectedKey() !== firstKey, "J selects next row");
+    await tab.key("k");
+    if (!mobile) expect(await selectedKey() === firstKey, "K selects previous row");
+    await tab.key("e");
+    await tab.waitFor("E marks item handled", (key) => !document.querySelector(`[data-inbox-key="${key}"]`), firstKey);
+    const pending = await rpc("memory.write", { project: "payment", kind: "convention", content: "Today share action fixture" }, people.minh.token);
+    expect(pending.status === "pending", "member memory should await approval");
+    const adminTab = current = tabs.admin;
+    await adminTab.reload();
+    await adminTab.go("today");
+    await adminTab.waitFor("pending memory", id => !!document.querySelector(`[data-inbox-key="memory:${id}"]`), pending.id);
+    await adminTab.click(`[data-inbox-key="memory:${pending.id}"]`);
+    await adminTab.eval(() => { window.confirm = () => true; });
+    await adminTab.click("button", "Chuyển thành chung");
+    await until("memory now shared", async () => (await rpc("memory.list", { project: null, limit: 500 })).some(m => m.id === pending.id && m.status === "approved"));
+    await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", projects: ["payment"], acceptsRuns: true, setup: { checkedAt: at, report: { machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing", detail: "Codex CLI is missing", action: "Cài Codex" }], projects: [] } } });
+    await adminTab.reload();
+    await adminTab.go("today");
+    const machineKey = await adminTab.waitFor("remote missing setup", () => [...document.querySelectorAll('[data-inbox-key^="machine:"]')].find(row => row.textContent.includes("Codex CLI"))?.getAttribute("data-inbox-key"));
+    await adminTab.click(`[data-inbox-key="${machineKey}"]`);
+    await adminTab.eval(() => { window.confirm = () => true; });
+    await adminTab.click("button", "Cài trên máy");
+    const commands = (await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", projects: ["payment"] })).commands;
+    expect(commands.some(command => command.itemId === "cli:codex"), "install reaches owner's heartbeat");
+    await adminTab.shot(`${String(n).padStart(2, "0")}-today-actions`);
   });
 
   // Roadmap 49d: Tính năng, a board by step. A flow at its spec gate waits for Lan (lead), and only at a gate for Hoa

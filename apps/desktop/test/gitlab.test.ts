@@ -617,6 +617,17 @@ describe("CI fix", () => {
     return { ...s, review, watcher, fail };
   }
 
+  it("honors a stopped MR across later failed pipelines", async () => {
+    const { hive, review, watcher, fail, runner } = await failing();
+    await hive.call("runs.stopCi", { project: "demo", mrUrl: review.mrUrl! }, { name: "reviewer", role: "admin" });
+    fail(81);
+    const [first] = await watcher.check();
+    assert.equal(first!.fix, null);
+    fail(82);
+    await watcher.check();
+    assert.equal(runner.list().filter(r => r.ciFix).length, 0);
+  });
+
   it("queues a fix with the failed job's log, pushes it, and stops after the allowed number", async () => {
     const { runner, review, watcher, fail, origin } = await failing();
     fail(8);
