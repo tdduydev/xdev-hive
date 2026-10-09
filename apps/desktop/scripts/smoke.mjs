@@ -88,7 +88,9 @@ fakeCli(path.join(agyBin, "agy"), { FAKE_AGY: "1", FAKE_AGY_VERSION: "agy 1.2.17
 fakeCli(path.join(agyBin, "gemini"), { FAKE_GEMINI: "1" });
 fakeCli(path.join(agyBin, "kilo"), { FAKE_MODE: "kilo-ok" });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
-  id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
+  // Windows: the .cmd fake runs through cmd.exe, which cannot carry the multi-line prompt; `-p {prompt}` (the real
+  // Claude profile's form) lets the runner send it on stdin instead.
+  id, label, kind, bin: cli, args: process.platform === "win32" && kind === "claude" ? ["-p", "{prompt}"] : ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
   ...extra,
 });
