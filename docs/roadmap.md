@@ -366,7 +366,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **72n. e2e-screens**: e2e web/mobile, smoke desktop, bộ ảnh tối/sáng 1440 và 390.
 
 - **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
-  - [ ] **73a. branch-on-remote**: runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
+  - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
   - [ ] **73b. platform-routing**: task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
   - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
 
