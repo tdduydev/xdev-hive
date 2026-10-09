@@ -320,7 +320,7 @@ function ClientFrame({
                       className={cn(
                         "hive-nav-count inline-grid place-items-center rounded-full",
                         rail && "absolute right-0 top-0",
-                        item.badge.strong ? "bg-primary text-primary-foreground" : "text-fg-muted",
+                        item.badge.strong ? "hive-nav-count-strong" : "text-fg-muted",
                       )}
                     >{item.badge.count}</span>
                   ) : null}
@@ -499,11 +499,11 @@ function ClientFrame({
         {narrow ? <nav aria-label={t("shell.quickNav")} className="hive-mobile-nav flex shrink-0 border-t border-line-subtle bg-surface">
           {mobileItems.map((item) => {
             const Icon = item.icon;
-            return <a key={item.id} href={`#/${item.id}`} aria-current={current === item.id ? "page" : undefined} className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", current === item.id ? "font-semibold text-fg-brand bg-selected" : "text-fg-secondary")}>
+            return <a key={item.id} href={`#/${item.id}`} aria-current={current === item.id ? "page" : undefined} className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", current === item.id ? "font-semibold text-fg-strong bg-selected [&>svg]:text-fg-brand" : "text-fg-secondary")}>
               <Icon className="size-5" aria-hidden="true" /><span className="max-w-full truncate">{item.label}</span>
             </a>;
           })}
-          <button type="button" onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar(true); }} aria-expanded={sidebar} aria-controls="hive-navigation" className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", !mobileItems.some((item) => item.id === current) ? "font-semibold text-fg-brand bg-selected" : "text-fg-secondary")}><Menu className="size-5" aria-hidden="true" /><span>{t("shell.menu")}</span></button>
+          <button type="button" onClick={(event) => { drawerReturnFocus.current = event.currentTarget; setSidebar(true); }} aria-expanded={sidebar} aria-controls="hive-navigation" className={cn("flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-xs/4 focus-visible:focus-ring active:bg-pressed", !mobileItems.some((item) => item.id === current) ? "font-semibold text-fg-strong bg-selected [&>svg]:text-fg-brand" : "text-fg-secondary")}><Menu className="size-5" aria-hidden="true" /><span>{t("shell.menu")}</span></button>
         </nav> : null}
         <footer className="hive-status-footer flex h-[26px] shrink-0 items-center gap-0.5 border-t border-line-subtle bg-subtle px-2 max-md:hidden">
           {hubMode

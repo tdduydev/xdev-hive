@@ -618,8 +618,10 @@
 :is(.hive-shell,.hive-navigation-drawer) .hive-nav-item:hover{background:var(--shell-glass)}
 :is(.hive-shell,.hive-navigation-drawer) .hive-nav-active{background:var(--shell-glass);box-shadow:var(--shell-ring);color:var(--text-strong)}
 .hive-nav-shortcut{font-family:var(--font-sans);font-size:11px;line-height:1;font-weight:500;color:var(--shell-text-faint)}
-.hive-nav-count{height:20px;min-width:20px;padding:0 6px;font-size:11px;line-height:1;font-weight:500;color:var(--text-strong)}
-.hive-nav-count:not(.bg-primary){background:var(--shell-count-secondary)}
+.hive-nav-count{height:20px;min-width:20px;padding:0 6px;font-size:11px;line-height:1;font-weight:500}
+.hive-nav-count:not(.hive-nav-count-strong){background:var(--shell-count-secondary);color:var(--text-strong)}
+/* The active step of the primary ramp: white on --primary is 4.2:1 in dark, too low for 11px text. */
+.hive-nav-count-strong{background:var(--action-primary-active);color:var(--action-primary-fg)}
 :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-account{padding:10px;border:0;border-radius:14px;background:var(--bg-surface);box-shadow:var(--shell-ring)}
 .hive-shell .hive-main-topbar{height:72px;min-height:72px;gap:16px;padding:0 28px;background:transparent;border:0;box-shadow:var(--shell-divider)}
 .hive-topbar-title{min-width:160px}
