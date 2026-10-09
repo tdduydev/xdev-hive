@@ -9,15 +9,15 @@
 .runs-card:hover,.runs-card[aria-current="true"]{box-shadow:var(--ring-glass-strong);background:var(--surface-2)}
 .runs-card:focus-visible,.runs-row:focus-visible{outline:2px solid var(--focus-color);outline-offset:-2px}
 .runs-planet{display:inline-block;flex-shrink:0;border-radius:50%;background:center/contain no-repeat var(--planet)}
-.runs-pill{display:inline-flex;align-items:center;gap:6px;justify-self:start;height:24px;padding:0 10px;border-radius:999px;background:var(--pill-bg,var(--glass-bg));color:var(--tone);white-space:nowrap}
+.runs-pill{display:inline-flex;align-items:center;gap:6px;justify-self:start;height:24px;padding:0 10px;border-radius:999px;background:var(--pill-bg,var(--glass-bg));color:var(--tone-fg,var(--tone));white-space:nowrap}
 .runs-pill i{width:6px;height:6px;border-radius:50%;background:var(--tone)}
 .runs-card .runs-pill{box-shadow:var(--ring-glass);font:var(--type-micro,600 11px/1 var(--font-sans))}
 .runs-row .runs-pill{font:600 11.5px/1 var(--font-sans)}
-[data-tone="running"]{--tone:var(--accent-blue);--pill-bg:color-mix(in srgb,var(--accent-blue) 14%,transparent)}
-[data-tone="review"]{--tone:var(--accent-violet);--pill-bg:color-mix(in srgb,var(--accent-violet) 16%,transparent)}
+[data-tone="running"]{--tone-fg:var(--status-info-fg);--tone:var(--accent-blue);--pill-bg:color-mix(in srgb,var(--accent-blue) 14%,transparent)}
+[data-tone="review"]{--tone-fg:color-mix(in srgb,var(--accent-violet) 60%,var(--text-strong));--tone:var(--accent-violet);--pill-bg:color-mix(in srgb,var(--accent-violet) 16%,transparent)}
 [data-tone="queued"],[data-tone="neutral"]{--tone:var(--text-secondary);--pill-bg:var(--glass-bg)}
-[data-tone="danger"]{--tone:var(--accent-red);--pill-bg:color-mix(in srgb,var(--accent-red) 14%,transparent)}
-[data-tone="success"]{--tone:var(--accent-green);--pill-bg:color-mix(in srgb,var(--accent-green) 12%,transparent)}
+[data-tone="danger"]{--tone-fg:var(--status-danger-fg);--tone:var(--accent-red);--pill-bg:color-mix(in srgb,var(--accent-red) 14%,transparent)}
+[data-tone="success"]{--tone-fg:var(--status-success-fg);--tone:var(--accent-green);--pill-bg:color-mix(in srgb,var(--accent-green) 12%,transparent)}
 [data-tone="warning"]{--tone:var(--status-warning-fg);--pill-bg:var(--status-warning-bg)}
 .runs-mono{font-family:'SF Mono',ui-monospace,monospace}
 .runs-track{display:block;position:relative;height:4px;overflow:hidden;border-radius:999px;background:var(--border-subtle)}
