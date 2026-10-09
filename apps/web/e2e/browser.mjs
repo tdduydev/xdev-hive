@@ -1131,6 +1131,10 @@ async function main() {
       return edge.getTotalLength() > 0 && box.width > 0 && box.right > canvas.left && box.left < canvas.right && box.bottom > canvas.top && box.top < canvas.bottom && style.visibility === "visible" && style.stroke !== "none" && Number(style.strokeWidth.replace("px", "")) > 0 && Number(style.opacity) > 0;
     });
     await tab.shot("graph-task-layer");
+    await tab.eval(() => { localStorage.setItem("hive-theme", "dark"); document.documentElement.dataset.theme = "dark"; document.documentElement.style.colorScheme = "dark"; });
+    await sleep(400);
+    await tab.shot(`graph-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { localStorage.setItem("hive-theme", "light"); document.documentElement.dataset.theme = "light"; document.documentElement.style.colorScheme = "light"; });
     expect(!!(await tab.eval(() => document.querySelector('[data-graph-layer="task"]')?.getAttribute("aria-pressed") === "true")), "Task layer is active");
     // 51c opened the SDLC layer; only System stays locked in a single project (it needs a system scope).
     const locked = await tab.eval(() => [...document.querySelectorAll('[aria-label="Lớp sơ đồ"] button:disabled')].map((b) => b.getAttribute("data-graph-layer")));

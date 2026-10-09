@@ -366,6 +366,7 @@ export const en: Catalog = {
     badLink: "This sign-in link is not valid. Press sign-in through the browser in the app to open it again.",
   },
   graph: {
+    legendSolid: "Solid line: dependency within the same service", legendDashed: "Dashed line: cross-service dependency within the system",
     layers: "Graph layers", system: "System", completed: "completed", running: "Running",
     hideOldDone: "Hide tasks done over 7 days ago", openOnly: "Unfinished only", minimap: "Mini map", mine: "My tasks", byAgent: "Filter by agent", allAgents: "All agents",
     fit: "Fit view", reset: "Reset layout", list: "List", pickProject: "Select a service to view its task graph.",
