@@ -434,7 +434,8 @@ async function main() {
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
     if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
     // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt service, Máy & agent and Quản trị after the work.
-    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.innerText.includes("Máy & agent") && document.querySelector("#hive-navigation").innerText);
+    // textContent, not innerText: group headings are uppercased by CSS (72b) and innerText returns the rendered case.
+    const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.textContent.includes("Máy & agent") && document.querySelector("#hive-navigation").textContent);
     for (const label of ["Làm việc", "Task", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
     // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
@@ -519,8 +520,13 @@ async function main() {
       await tab.eval(() => { localStorage.setItem("hive-theme", "dark"); });
       await tab.reload();
     }
+    // The mobile drawer mounts after the Menu tap, so wait for it before reading the navigation.
+    const openDrawer = async () => {
+      await tab.click('.hive-mobile-nav button');
+      await tab.waitFor("navigation drawer", () => !!document.querySelector('.hive-navigation-drawer #hive-navigation'));
+    };
     for (const theme of ["dark", "light"]) {
-      if (mobile) await tab.click('.hive-mobile-nav button');
+      if (mobile) await openDrawer();
       const shell = await tab.eval(() => {
         const nav = document.querySelector('#hive-navigation');
         const rect = el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
@@ -559,7 +565,7 @@ async function main() {
       expect(composer.height > 0 && composer.bottom <= composer.viewport && composer.hit, `Leader Chat composer remains visible and usable: ${JSON.stringify(composer)}`);
       await tab.shot(`shell-${theme}-leader`);
       await tab.key("Escape");
-      if (mobile) await tab.click('.hive-mobile-nav button');
+      if (mobile) await openDrawer();
       await tab.click('#hive-navigation button[aria-label="Đổi giao diện sáng tối"]');
       if (mobile) await tab.key("Escape");
     }
