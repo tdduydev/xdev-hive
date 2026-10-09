@@ -8780,9 +8780,12 @@ export class SqliteHive implements HiveBackend {
           db.prepare("DELETE FROM machine_worktree_commands WHERE completed_at < ?").run(this.#now(-30 * 24 * 60));
           // Kept with the hub's deleted projects too (unlike `projects` below): those are the ones the web offers to drop.
           if (repos) db.prepare("UPDATE machines SET repos = ? WHERE id = ?").run(JSON.stringify(repos.filter((r) => sees(actor, r.project))), actor.name);
-          for (const result of projectResults) db.prepare("UPDATE machine_project_commands SET completed_at = ?, ok = ?, error = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
-            .run(now, result.ok ? 1 : 0, result.ok ? null : result.error, result.id, actor.name);
-          db.prepare("DELETE FROM machine_project_commands WHERE completed_at < ? OR json_extract(command, '$.requestedAt') < ?").run(this.#now(-30 * 24 * 60), this.#now(-30 * 24 * 60));
+          // Only an app that reports its repos takes project commands, so an older app's beat never touches their table.
+          if (repos) {
+            for (const result of projectResults) db.prepare("UPDATE machine_project_commands SET completed_at = ?, ok = ?, error = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
+              .run(now, result.ok ? 1 : 0, result.ok ? null : result.error, result.id, actor.name);
+            db.prepare("DELETE FROM machine_project_commands WHERE completed_at < ? OR json_extract(command, '$.requestedAt') < ?").run(this.#now(-30 * 24 * 60), this.#now(-30 * 24 * 60));
+          }
           if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
           // Written every beat: a machine that turned the terminal off, or went back to an app without it, is off now.
           db.prepare("UPDATE machines SET terminal_capability = ? WHERE id = ?").run(terminal ? JSON.stringify(terminal) : null, actor.name);
@@ -8908,7 +8911,7 @@ export class SqliteHive implements HiveBackend {
             agentPolicy: this.#machineAgentPolicy(actor),
             tools,
             worktreeCommands: this.#worktreeCommands(actor.name, true),
-            projectCommands: this.#projectCommands(actor.name, true),
+            projectCommands: repos ? this.#projectCommands(actor.name, true) : [],
             toolApprovals: (db.prepare("SELECT a.* FROM machine_tool_approvals a JOIN tools t ON t.id = a.tool_id WHERE a.machine_id = ? AND a.applied_at IS NULL").all(actor.name) as Row[])
               .map((a) => { const { appliedAt: _appliedAt, ...approval } = this.#toolApproval(a); return approval; })
               .filter((a) => tools.entries.some((e) => e.id === a.toolId && toolHash(e) === a.hash)),
