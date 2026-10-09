@@ -184,6 +184,20 @@ describe("sign-in terminal", () => {
     await logins.refresh();
     assert.deepEqual(logins.signedOut(), ["claude-1"]);
   });
+
+  it("coalesces login checks and reuses a recent answer", async () => {
+    const profile = { ...AGENT_TEMPLATES.claude, bin: process.execPath };
+    let probes = 0;
+    const monitor = new LoginMonitor(() => [profile], () => ({ PATH: path.dirname(process.execPath) }), async () => {
+      probes++;
+      return { code: 0, output: '{"loggedIn":false}' };
+    });
+    await Promise.all([monitor.refresh(), monitor.refresh(), monitor.refresh()]);
+    await monitor.refresh();
+    assert.equal(probes, 1);
+    await monitor.refresh(undefined, true);
+    assert.equal(probes, 2, "an explicit recheck bypasses the short cache");
+  });
 });
 
 after(() => {

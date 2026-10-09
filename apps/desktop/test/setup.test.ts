@@ -108,6 +108,29 @@ function gitRepo() {
 }
 
 describe("Setup: this machine", () => {
+  it("shares startup probes and keeps their report for 45 seconds", async (t) => {
+    const m = machine();
+    const [first, second, third] = await Promise.all([m.setup.status(), m.setup.status(), m.setup.status()]);
+    assert.strictEqual(first, second);
+    assert.strictEqual(first, third);
+    const before = calls(m.bin).length;
+    t.diagnostic(`startup CLI processes: sequential baseline ${before * 3}, shared ${before}`);
+    assert.strictEqual(await m.setup.status(), first);
+    assert.equal(calls(m.bin).length, before, "cached status starts no additional CLI");
+    m.setup.invalidateStatus();
+    await m.setup.status();
+    assert.ok(calls(m.bin).length > before);
+  });
+  it("does not cache a probe invalidated while it was running", async () => {
+    const m = machine();
+    const first = m.setup.status();
+    m.setup.invalidateStatus();
+    const second = m.setup.status();
+    await Promise.all([first, second]);
+    const before = calls(m.bin).length;
+    await m.setup.status();
+    assert.equal(calls(m.bin).length, before, "only the newer report is cached");
+  });
   it("finds installed CLIs with their version and installs a missing one with npm -g", async () => {
     const m = machine();
     const r = await m.setup.status();
@@ -614,10 +637,12 @@ describe("Setup: hub tools (tool:<id>)", () => {
     await assert.rejects(m.setup.item("tool:rtk"), /Không có mục tool:rtk/);
 
     m.hub.tools = catalog([RTK, mcp, APP_TOOLS.speckit], ["rtk", "docs-mcp", "speckit"]);
+    m.setup.invalidateStatus();
     // An MCP server with no check has nothing to install (npx fetches it); the seed keeps cli:specify and app:speckit.
     assert.deepEqual(ids(await m.setup.status()), ["tool:rtk"]);
 
     m.hub.tools = null;
+    m.setup.invalidateStatus();
     assert.deepEqual(ids(await m.setup.status()), []);
   });
 
