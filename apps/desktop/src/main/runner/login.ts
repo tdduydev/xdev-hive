@@ -259,14 +259,14 @@ export class LoginMonitor {
   }
 
   /** Checks the given profiles (default: every enabled one), one at a time. */
-  async refresh(ids?: string[]): Promise<void> {
+  async refresh(ids?: string[], force = false): Promise<void> {
     const profiles = this.#profiles();
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
       const running = this.#pending.get(p.id);
       if (running) { await running; continue; }
       const checked = this.#checks.get(p.id);
       const key = JSON.stringify([p.kind, p.bin, p.env]);
-      if (checked && this.#profileKeys.get(p.id) === key && this.#now().getTime() - Date.parse(checked.checkedAt) < 45_000) continue;
+      if (!force && checked && this.#profileKeys.get(p.id) === key && this.#now().getTime() - Date.parse(checked.checkedAt) < 45_000) continue;
       const pending = this.#refreshProfile(p);
       this.#pending.set(p.id, pending);
       try { await pending; this.#profileKeys.set(p.id, key); } finally { if (this.#pending.get(p.id) === pending) this.#pending.delete(p.id); }
@@ -282,14 +282,14 @@ export class LoginMonitor {
   }
 
   async #refreshProfile(p: AgentProfile): Promise<void> {
-      const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
-      this.#checks.set(p.id, login);
-      // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
-      const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
-      if (usage) {
-        this.#usage.set(p.id, usage);
-        this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
-      }
-      else this.#usage.delete(p.id);
+    const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
+    this.#checks.set(p.id, login);
+    // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
+    const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
+    if (usage) {
+      this.#usage.set(p.id, usage);
+      this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
+    }
+    else this.#usage.delete(p.id);
   }
 }

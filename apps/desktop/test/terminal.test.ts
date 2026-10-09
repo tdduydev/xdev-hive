@@ -195,6 +195,8 @@ describe("sign-in terminal", () => {
     await Promise.all([monitor.refresh(), monitor.refresh(), monitor.refresh()]);
     await monitor.refresh();
     assert.equal(probes, 1);
+    await monitor.refresh(undefined, true);
+    assert.equal(probes, 2, "an explicit recheck bypasses the short cache");
   });
 });
 

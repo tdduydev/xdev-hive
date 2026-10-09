@@ -121,6 +121,16 @@ describe("Setup: this machine", () => {
     await m.setup.status();
     assert.ok(calls(m.bin).length > before);
   });
+  it("does not cache a probe invalidated while it was running", async () => {
+    const m = machine();
+    const first = m.setup.status();
+    m.setup.invalidateStatus();
+    const second = m.setup.status();
+    await Promise.all([first, second]);
+    const before = calls(m.bin).length;
+    await m.setup.status();
+    assert.equal(calls(m.bin).length, before, "only the newer report is cached");
+  });
   it("finds installed CLIs with their version and installs a missing one with npm -g", async () => {
     const m = machine();
     const r = await m.setup.status();

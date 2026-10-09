@@ -713,7 +713,7 @@ function addAccount(input: NewAccount): { id: string; opened: boolean; profiles:
 async function recheckLogins() {
   const ids = logins.signedOut();
   if (ids.length) {
-    await logins.refresh(ids);
+    await logins.refresh(ids, true);
     void runner.tick();
   }
   return runner.profileStatuses();
@@ -721,7 +721,7 @@ async function recheckLogins() {
 
 /** Đọc lại quota on the Agent page (roadmap 52), for one profile or every enabled one. */
 const refreshUsage = usageRefresher(
-  (ids) => logins.refresh(ids),
+  (ids) => logins.refresh(ids, true),
   () => runner.tick(),
   () => runner.profileStatuses(),
 );
@@ -748,7 +748,7 @@ async function checkProfile(id: string): Promise<ProfileCheck> {
       resolve({ ok: !err, output: `${stdout}${stderr}`.trim() || (err ? err.message : "") });
     });
   });
-  await logins.refresh([id]);
+  await logins.refresh([id], true);
   const login = logins.get(id);
   const signIn =
     login?.loggedIn === true
