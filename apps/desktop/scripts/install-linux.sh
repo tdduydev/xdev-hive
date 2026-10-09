@@ -18,11 +18,16 @@ done
 [ -n "$image" ] && [ -f "$image" ] || { echo "Usage: sh $0 xdev-hive-<version>-linux-<arch>.AppImage [--no-start]" >&2; exit 2; }
 case "$image" in /*) ;; *) image="$PWD/$image" ;; esac
 
-# The app holds a single-instance lock: a running copy (deb or this layout) would swallow the new start.
-if pgrep -x xdev-hive >/dev/null 2>&1; then
+# Electron also runs the MCP server as Node; that helper has no app lock and must survive an update.
+for pid in $(pgrep -u "$(id -u)" -x xdev-hive 2>/dev/null || true); do
+  [ -d "/proc/$pid" ] || continue
+  if tr '\000' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qx 'ELECTRON_RUN_AS_NODE=1'; then
+    continue
+  fi
+  # The app holds a single-instance lock: a running copy would swallow the new start.
   echo "xDev Hive is running. Quit it first (tray icon → Quit), then run this again." >&2
   exit 1
-fi
+done
 
 root="${XDG_DATA_HOME:-$HOME/.local/share}/xdev-hive"
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
