@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, rmSync, readdirSync, readFileSync, readlinkSync, realpathSync, symlinkSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { applyProfileChanges, applyRunnerChange } from "#desktop/main/profile-changes.ts";
@@ -4118,7 +4118,7 @@ describe("redispatch branch choice", () => {
     assert.equal(readFileSync(path.join(done.worktree!, "wip.txt"), "utf8"), "new WIP\n");
   });
 
-  for (const same of [true, false]) it(`fast-forwards past ${same ? "matching" : "different"} untracked files`, async () => {
+  for (const collision of ["matching file", "different file", "dangling symlink", "directory"] as const) it(`fast-forwards past untracked ${collision}`, async () => {
     const s = await setup([profile("codex", "codex", 1, "ok")]);
     const origin = tmp("collision-origin");
     git(origin, "init", "-q", "--bare", "-b", "main");
@@ -4129,7 +4129,12 @@ describe("redispatch branch choice", () => {
     const wt = path.join(s.dataDir, "worktrees", "demo", "T-1");
     mkdirSync(path.dirname(wt), { recursive: true });
     git(s.repo, "worktree", "add", "-q", wt, "ai/T-1");
-    writeFileSync(path.join(wt, "collision.txt"), same ? "remote\n" : "local\n");
+    const collidingPath = path.join(wt, "collision.txt");
+    if (collision === "dangling symlink") symlinkSync("missing-target", collidingPath);
+    else if (collision === "directory") {
+      mkdirSync(collidingPath);
+      writeFileSync(path.join(collidingPath, "local.txt"), "local\n");
+    } else writeFileSync(collidingPath, collision === "matching file" ? "remote\n" : "local\n");
     const source = tmp("collision-source");
     git(source, "clone", "-q", origin, ".");
     git(source, "config", "user.email", "t@example.com"); git(source, "config", "user.name", "Test");
@@ -4143,9 +4148,16 @@ describe("redispatch branch choice", () => {
     assert.equal(done.status, "succeeded", done.error ?? "");
     assert.equal(readFileSync(path.join(wt, "collision.txt"), "utf8"), "remote\n");
     const backups = readdirSync(wt).filter(f => f.startsWith("collision.txt.pre-merge-"));
-    assert.equal(backups.length, same ? 0 : 1);
-    if (!same) {
-      assert.equal(readFileSync(path.join(wt, backups[0]!), "utf8"), "local\n");
+    assert.equal(backups.length, collision === "matching file" ? 0 : 1);
+    if (collision !== "matching file") {
+      const backup = path.join(wt, backups[0]!);
+      if (collision === "dangling symlink") {
+        assert.ok(lstatSync(backup).isSymbolicLink());
+        assert.equal(readlinkSync(backup), "missing-target");
+      } else if (collision === "directory") {
+        assert.ok(lstatSync(backup).isDirectory());
+        assert.equal(readFileSync(path.join(backup, "local.txt"), "utf8"), "local\n");
+      } else assert.equal(readFileSync(backup, "utf8"), "local\n");
       assert.match(done.continuation ?? "", /collision\.txt\.pre-merge-/);
       assert.equal(git(wt, "ls-files", backups[0]!), "");
     }

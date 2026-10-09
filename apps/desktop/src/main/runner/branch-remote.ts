@@ -1,6 +1,6 @@
 import { redactLines, stripHidden } from "@xdev-hive/core";
 import { git, gitAsync, gitErrorText } from "#desktop/main/git.ts";
-import { renameSync, existsSync } from "node:fs";
+import { lstatSync, renameSync } from "node:fs";
 import path from "node:path";
 
 const env = { GIT_TERMINAL_PROMPT: "0", GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o ConnectTimeout=15" };
@@ -36,18 +36,18 @@ export function prepareTaskBranchMerge(worktree: string, ref: string): string[] 
   const tracked = new Set(git(worktree, ["ls-files", "-z"]).split("\0").filter(Boolean));
   const moved: string[] = [];
   for (const file of incoming) {
-    if (tracked.has(file) || !existsSync(path.join(worktree, file))) continue;
-    const targetBlob = git(worktree, ["rev-parse", `${ref}:${file}`]);
-    const localBlob = git(worktree, ["hash-object", "--", file]);
-    if (localBlob === targetBlob) {
+    if (tracked.has(file)) continue;
+    const source = path.join(worktree, file);
+    const local = lstatSync(source, { throwIfNoEntry: false });
+    if (!local) continue;
+    if (local.isFile() && git(worktree, ["hash-object", "--", file]) === git(worktree, ["rev-parse", `${ref}:${file}`])) {
       // Staging matching bytes lets Git adopt the file in the fast-forward.
       git(worktree, ["add", "-f", "--", file]);
       continue;
     }
-    const source = path.join(worktree, file);
     const stamp = Date.now();
     let backup = `${source}.pre-merge-${stamp}`;
-    for (let n = 1; existsSync(backup); n++) backup = `${source}.pre-merge-${stamp}-${n}`;
+    for (let n = 1; lstatSync(backup, { throwIfNoEntry: false }); n++) backup = `${source}.pre-merge-${stamp}-${n}`;
     renameSync(source, backup);
     moved.push(path.relative(worktree, backup));
   }
