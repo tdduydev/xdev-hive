@@ -277,6 +277,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "a11y-list-tree": ["login-token"],
   "a11y-components": ["login-token"],
   "cosmic-primitives": ["login-token"],
+  "cosmic-tasks-board": ["login-token"],
   "a11y-menu": ["login-token"],
   "workspace-home": ["login-token"],
   "responsive-shell": ["login-token"],
@@ -752,6 +753,23 @@ async function main() {
     expect(!contrast.length, `light cosmic contrast: ${JSON.stringify(contrast)}`);
     await tab.shot(`cosmic-light-${mobile ? "390x844" : "1440x900"}`);
     await tab.eval(() => { document.querySelector("main").scrollTop = 0; });
+  });
+  // 72d: the board in the design's dark theme and in light, same layout; shots feed the compare image.
+  await step("cosmic-tasks-board", async () => {
+    const tab = (current = tabs.admin);
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
+    await tab.go("tasks");
+    await tab.click('[data-task-view="kanban"]');
+    await tab.waitFor("board columns", () => document.querySelectorAll("[data-column]").length === 5);
+    const geometry = await tab.eval(() => [...document.querySelectorAll("[data-column]")].map((el) => { const s = getComputedStyle(el); return { radius: s.borderTopLeftRadius, pad: s.paddingLeft, min: s.minHeight }; }));
+    // Empty columns fold into a 40px rail when the board is narrower than five columns (Hive's own behaviour), so only the first, which has cards, is measured.
+    if (!mobile) expect(geometry[0].radius === "22px" && geometry[0].pad === "12px" && parseFloat(geometry[0].min) >= 360, `column geometry: ${JSON.stringify(geometry)}`);
+    await sleep(200);
+    await tab.shot(`tasks-dark-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "light"; });
+    await sleep(200);
+    await tab.shot(`tasks-light-${mobile ? "390x844" : "1440x900"}`);
+    await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
   });
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
