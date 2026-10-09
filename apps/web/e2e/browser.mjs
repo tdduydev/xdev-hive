@@ -404,6 +404,18 @@ const results = [];
 const overflows = [];
 const contentOverflows = [];
 let current = null;
+// Opens the scope picker of the current tab (72j). Choosing a scope slides the phone menu away by itself, and one press
+// of the toggle right after can leave it shut: press until the picker shows.
+const openPicker = async () => {
+  const tab = current;
+  await sleep(800);
+  for (let tries = 0; mobile && tries < 3 && !await tab.eval(() => { const r = document.querySelector("[data-project-picker-trigger]")?.getBoundingClientRect(); return !!r && r.left >= 0 && r.right > 0; }); tries++) {
+    await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
+    await sleep(600);
+  }
+  // The phone menu's own slide leaves the trigger "moving" for the pointer helper, so the open menu's button is pressed in the page.
+  if (mobile) await tab.eval(() => document.querySelector("[data-project-picker-trigger]").click()); else await tab.click("[data-project-picker-trigger]");
+};
 let n = 0;
 async function step(name, fn) {
   if (only.length && !wanted.has(name)) return;
@@ -737,6 +749,10 @@ async function main() {
     await rpc("docs.save", { key: "org/a11y-folder", title: "A11y folder", content: "", folder: true, baseVersion: 0 });
     await rpc("docs.save", { key: "org/a11y-child", parent: "org/a11y-folder", title: "A11y child", content: "Child", baseVersion: 0 });
     await tab.go("runs");
+    // shell-run-count leaves a run behind; 72e opens on every run, so a search that matches none gives the empty list.
+    await tab.waitFor("runs loaded", () => !!document.querySelector('input[aria-label="Lọc task, gói, máy…"]'));
+    await tab.click('input[aria-label="Lọc task, gói, máy…"]');
+    await tab.type("khong-co-run-nao");
     await tab.waitFor("empty runs loaded", () => document.body.innerText.includes("Chưa máy nào báo run") || document.body.innerText.includes("Chưa có run") || document.body.innerText.includes("Không có run"));
     expect(await tab.eval(() => !document.querySelector('main [role="listbox"]')), "empty Runs is not a listbox missing options");
     await accessibilityAudit({ tab, out, expect, routes: ["runs"], filename: "accessibility-runs-empty.json" });
@@ -4928,7 +4944,7 @@ async function main() {
     try { await accessibilityAudit({ tab, out, expect, routes: ["artifacts"], filename: "artifacts-accessibility.json" }); }
     catch (e) { if (!/^axe WCAG: artifacts\/dark: color-contrast \(\d+\); see \S+$/.test(e.message)) throw e; }
     const ax = await tab.cdp("Accessibility.getFullAXTree");
-    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "list" && node.name?.value === "Tệp của agent"), "artifact groups reach the accessibility tree as a list");
+    expect(ax.nodes.some(node => !node.ignored && node.role?.value === "list" && node.name?.value === "Artifact"), "artifact groups reach the accessibility tree as a list");
     expect(ax.nodes.some(node => !node.ignored && node.role?.value === "listitem"), "artifact groups expose list items to assistive technology");
     await tab.click('[data-artifact-row="report.md"] button');
     await tab.waitFor("markdown document", () => document.querySelector('[data-artifact-content] h1')?.textContent === "Báo cáo kiểm thử");
@@ -5096,7 +5112,8 @@ async function main() {
       expect(shared.some((t) => t.includes("Riêng web · thay skill chung")), `overriding skill: ${shared}`);
       await tab.click('main [data-skill-proposals="org/skills/db-migration"]');
       await tab.waitFor("the skill's proposals", () => document.querySelectorAll("[data-proposal-card]").length === 2 && document.body.innerText.includes("Thêm bước lùi"));
-      await shoot("artifacts", "", () => !!document.querySelector("[data-artifact-row]") && document.body.innerText.includes("Ảnh, bằng chứng và tệp từ các run."));
+      // 72b took the page's subtitle out of the topbar: the list and the opened file are what the template shows.
+      await shoot("artifacts", "", () => !!document.querySelector("[data-artifact-row]") && !!document.querySelector("[data-artifact-viewer]"));
     } finally {
       await tab.eval((o) => { if (o.scope === null) localStorage.removeItem("xdev-hive.scope"); else localStorage.setItem("xdev-hive.scope", o.scope); if (o.theme) document.documentElement.dataset.theme = o.theme; }, original);
     }
