@@ -1265,13 +1265,13 @@ async function main() {
     if (mobile) await tab.click('nav button[aria-label="Đóng menu"]');
     await tab.go("docs");
     await tab.waitFor("the system's page before the service groups", () => {
-      const rows = [...document.querySelectorAll('[data-doc-list] > ul > li > div')];
+      const rows = [...document.querySelectorAll('[data-doc-list] [data-doc-group] > ul > li > div')];
       const first = rows.findIndex((r) => r.querySelector('[title="system/ban-hang/tong-quan"]'));
       const groups = ["demo", "ledger", "payment"].map((p) => rows.findIndex((r) => r.dataset.serviceGroup === p));
       // Earlier full-suite steps finish tasks and create the system journal before this page.
       return first >= 0 && groups.every((g) => g > first);
     });
-    await tab.click("button", "+ Trang");
+    await tab.click("[data-doc-new]");
     await tab.type("Quy ước chung");
     const key = await tab.waitFor("the new page's key", () => document.querySelector("[data-new-doc-key]")?.textContent.trim());
     expect(key === "system/ban-hang/quy-uoc-chung", `new page key: ${key}`);
@@ -1396,8 +1396,8 @@ async function main() {
   await step("docs-rich-editor", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/huong-dan")}`);
-    if (mobile) await tab.click("summary", "Chế độ");
-    await tab.click('[role="radio"]', "Sửa");
+    // Reading is the article; its Sửa button opens the editor (the same on a phone: no modes menu there yet).
+    await tab.click("[data-doc-edit]");
     await tab.click(".ProseMirror p");
     await tab.key("End");
     await tab.key("Enter");
@@ -1432,6 +1432,7 @@ async function main() {
 
   await step("docs-markdown", async () => {
     const tab = (current = tabs.admin);
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
     if (mobile) await tab.eval(() => document.querySelector('textarea[aria-label^="Nội dung"]')?.focus());
@@ -1453,8 +1454,7 @@ async function main() {
   await step("mermaid-draws", async () => {
     const tab = (current = tabs.admin);
     await tab.go(`admin/docs?doc=${encodeURIComponent("project/demo/so-do")}`);
-    if (mobile) await tab.click("summary", "Chế độ");
-    await tab.click('[role="radio"]', "Xem");
+    // A page opens as its article: the diagram is drawn there.
     await tab.waitFor("the diagram", () => document.querySelector('[data-mermaid] [role="img"] svg'));
   });
 
@@ -1473,6 +1473,7 @@ async function main() {
     // previous step's page is still open, and the Space select would move that one instead.
     const picked = (key) => document.querySelector('[data-doc-item][aria-current="page"]')?.getAttribute("title") === key;
     await tab.waitFor("the new page open", picked, "project/demo/tai-lieu-cu");
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     if (mobile) await tab.click("summary", "Chế độ");
     await tab.click('[role="radio"]', "Markdown");
     await tab.select("[data-doc-space]", "system:ban-hang");
@@ -1486,6 +1487,7 @@ async function main() {
   // Roadmap 38g: removing takes the page out of the lists without losing it; it comes back from Đã xoá.
   await step("docs-remove-page", async () => {
     const tab = (current = tabs.admin);
+    if (await tab.eval(() => !!document.querySelector("[data-doc-edit]"))) await tab.click("[data-doc-edit]");
     await tab.click("[data-doc-remove]");
     await tab.click("[data-doc-remove-confirm]");
     await until("the page out of the list", async () => !(await rpc("docs.list", {})).some((d) => d.key === "system/ban-hang/tai-lieu-cu"));
