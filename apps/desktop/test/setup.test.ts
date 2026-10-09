@@ -155,6 +155,21 @@ describe("Setup: this machine", () => {
     assert.deepEqual(cliUpgrade(codex, "/usr/lib/node_modules/@openai/codex/bin/codex.js", "/usr/bin/codex", "/home/u")?.args, ["install", "-g", "@openai/codex@latest"]);
   });
 
+  it("allows only OpenCode's binary installer on npm 12, for installs and upgrades", async () => {
+    for (const version of ["11.9.0", "12.0.2"]) {
+      const m = machine({ platform: "linux", realpath: () => "/usr/lib/node_modules/opencode-ai/bin/opencode.exe" });
+      fakeBin(m.bin, "npm", `[ "$1" = "--version" ] && echo ${version} && exit 0; [ "$1" = "prefix" ] && echo /usr && exit 0; echo installed`);
+      await m.setup.install("cli:opencode");
+      fakeBin(m.bin, "opencode", 'echo "1.18.35"');
+      await m.setup.install("cli:opencode");
+      fakeBin(m.bin, "opencode", 'echo "binary placeholder"; exit 1');
+      assert.equal((await m.setup.item("cli:opencode")).action, "Cài lại bằng npm");
+      const installs = calls(m.bin).filter((c) => c.startsWith("npm install"));
+      assert.equal(installs.length, 2);
+      for (const command of installs) assert.equal(command.includes("--allow-scripts=opencode-ai"), version.startsWith("12."), command);
+    }
+  });
+
   it("without npm, says to install Node.js and offers no button", async () => {
     const r = await machine({ npm: false }).setup.status();
     assert.equal(find(r, "cli:gemini").action, null);

@@ -3962,6 +3962,7 @@ export const vi = {
     opencodeInstall: "Nếu launcher npm không chạy trên OS/glibc/musl của máy: dùng installer chính thức https://opencode.ai/docs/ rồi kiểm lại opencode --version. Installer theo platform chưa kiểm chứng trên máy này.",
     agyInstallManual: "Cài / cập nhật theo https://antigravity.google/docs/cli/install/.",
     installNpm: "Cài bằng npm",
+    repairNpm: "Cài lại bằng npm",
     versionFailed: "{bin} · --version lỗi: {output}",
     cliOutdated: "{version}, có bản {latest} · {path}",
     cliOutdatedManual: "{version}, có bản {latest} · {path} · không biết CLI này cài bằng gì: nâng cấp theo cách bạn đã cài",
