@@ -3,7 +3,7 @@ import { ProjectOnboarding } from "#ui/components/ProjectOnboarding.tsx";
 // the pages show the tasks, runs, merge requests and chat of every project in the system.
 import { useMemo, useState } from "react";
 import { Boxes, FolderGit2, Search } from "lucide-react";
-import { PROJECT_NAME, type HiveSystem, type ProjectSummary, type RepoAccessStatus, type SystemMemberHealth, type SystemMemberMachine } from "@xdev-hive/core";
+import { PROJECT_NAME, systemFolders, type HiveSystem, type ProjectSummary, type SystemMemberState, type RepoAccessStatus, type SystemMemberHealth, type SystemMemberMachine } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
@@ -16,6 +16,7 @@ import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey } from "#ui/i18n/index.tsx";
 import { nameMatches, outsideSystems, projectScope, systemScope } from "#ui/lib/scope.ts";
 import { AgentPolicyCard } from "#ui/pages/admin/AgentPolicy.tsx";
+import { canSetUpGroups, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
 import { SdlcGatesCard } from "#ui/pages/admin/SdlcGates.tsx";
 
 /** `policy`: a lead's policy rows at the end; Cài đặt dự án has them on a tab of their own (roadmap 49b). */
@@ -36,6 +37,9 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
   const shown = systems.filter((s) => nameMatches(s.name, query) || s.projects.some((p) => nameMatches(p, query)));
   const outside = useMemo(() => outsideSystems(projects, systems), [projects, systems]);
   const outsideShown = outside.filter((p) => nameMatches(p, query));
+  // Setting a system's group up on this machine (GROUP-init-sync): the desktop app only.
+  const groups = canSetUpGroups(client.desktop);
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
 
   return (
     <Page>
@@ -80,8 +84,22 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
                 <Boxes className="size-4 text-muted-foreground" />
                 {s.name}
               </CardTitle>
-              <CardDescription>{t("systems.updated", { time: formatTime(s.updatedAt), name: s.updatedBy })}</CardDescription>
+              <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {t("systems.updated", { time: formatTime(s.updatedAt), name: s.updatedBy })}
+                {s.source ? (
+                  <span data-system-source={s.source.groupPath}>
+                    <Badge tone="neutral" className="font-mono">
+                      {t("systemGroup.source", { forge: s.source.forge === "github" ? "GitHub" : "GitLab", group: s.source.groupPath })}
+                    </Badge>
+                  </span>
+                ) : null}
+              </CardDescription>
               <CardAction className="flex gap-2">
+                {groups && (s.source || s.projects.every((p) => allow(p, "projectSettings"))) ? (
+                  <Button size="sm" variant="outline" data-system-group-open={s.name} aria-expanded={groupOpen === s.name} onClick={() => setGroupOpen(groupOpen === s.name ? null : s.name)}>
+                    {t(s.source ? "systemGroup.initOnMachine" : "systemGroup.link")}
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="outline"
@@ -113,23 +131,35 @@ export function SystemsPage({ policy = true }: { policy?: boolean } = {}) {
                 ) : null}
               </CardAction>
             </CardHeader>
-            {s.projects.some((p) => healthOf.has(p)) ? (
+            {groups && groupOpen === s.name ? (
               <CardContent>
-                <ul className="flex flex-col divide-y">
-                  {s.projects.map((p) => (
-                    <MemberHealth key={p} project={p} health={healthOf.get(p)} />
-                  ))}
-                </ul>
+                <SystemGroupPanel system={s} />
               </CardContent>
-            ) : (
-              <CardContent className="flex flex-wrap gap-1.5">
-                {s.projects.map((p) => (
-                  <Badge key={p} tone="neutral" className="font-mono">
-                    {p}
-                  </Badge>
-                ))}
+            ) : null}
+            {/* The group's tree (his › backend › svc-core) when the system has a source (GROUP-init-sync). */}
+            {systemFolders(s).map(({ folder, projects: inFolder }) => (
+              <CardContent key={folder.join("/")} className="flex flex-col gap-1" data-system-folder={folder.join("/")}>
+                {folder.length ? <span className="font-mono text-xs font-medium text-muted-foreground">{folder.join(" › ")}</span> : null}
+                {s.projects.some((p) => healthOf.has(p)) ? (
+                  <ul className="flex flex-col divide-y">
+                    {inFolder.map((p) => (
+                      <MemberHealth key={p} project={p} health={healthOf.get(p)} state={memberState(s, p)} />
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {inFolder.map((p) => (
+                      <span key={p} data-system-member={p} data-member-state={memberState(s, p)}>
+                        <Badge tone={memberState(s, p) === "active" ? "neutral" : "warn"} className="font-mono">
+                          {p}
+                          {memberState(s, p) !== "active" ? ` · ${t(`systemGroup.memberState.${memberState(s, p)}`)}` : ""}
+                        </Badge>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </CardContent>
-            )}
+            ))}
           </Card>
         ),
       )}
@@ -162,7 +192,10 @@ function healthHint(h: SystemMemberHealth): MessageKey {
  * One member of a system and whether its repo answers: reachable on some machine, not reachable on the ones that
  * checked (with why, and what to do), or on no machine at all (incident 2026-10-09: nobody knew until a clone failed).
  */
-function MemberHealth({ project, health }: { project: string; health: SystemMemberHealth | undefined }) {
+/** A member's state in the system's group: archived or gone ones stay in the system, marked. */
+const memberState = (s: HiveSystem, project: string): SystemMemberState => s.source?.members.find((m) => m.project === project)?.state ?? "active";
+
+function MemberHealth({ project, health, state = "active" }: { project: string; health: SystemMemberHealth | undefined; state?: SystemMemberState }) {
   const t = useT();
   const checked = (health?.machines ?? []).filter((m): m is SystemMemberMachine & { status: RepoAccessStatus } => m.status !== null);
   const reached = checked.filter((m) => m.status === "ok");
@@ -182,6 +215,7 @@ function MemberHealth({ project, health }: { project: string; health: SystemMemb
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <FolderGit2 className="size-4 text-muted-foreground" aria-hidden />
         <span className="font-mono text-sm">{project}</span>
+        {state !== "active" ? <span data-member-state={state}><Badge tone="warn">{t(`systemGroup.memberState.${state}`)}</Badge></span> : null}
         {badge ? <Badge tone={badge.tone}>{badge.text}</Badge> : null}
       </div>
       {health && health.state !== "reachable" ? <p className="text-xs text-muted-foreground">{t(healthHint(health))}</p> : null}

@@ -2,6 +2,7 @@ import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type A
 import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
 import { machineRepoSchema, projectOrderShape, refineProjectOrder, type MachineProjectCommand, type MachineProjects } from "#core/machine-projects.ts";
+import { systemSourceSchema } from "#core/system-source.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
@@ -1257,7 +1258,8 @@ export const schemas = {
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
-  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
+  /** source: left out keeps the one saved, null drops it (GROUP-init-sync). */
+  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200), source: systemSourceSchema.nullable().optional() }),
   "systems.remove": z.object({ name: systemName }),
   /** Whether each member of each system has a repo some machine reaches (git ls-remote), for the Systems page. */
   "systems.repoHealth": z.object({}),

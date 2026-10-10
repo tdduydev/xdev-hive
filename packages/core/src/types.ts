@@ -9,6 +9,7 @@ import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
 import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
 import type { RoleStep } from "./roles.ts";
+import type { SystemSource } from "./system-source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -660,6 +661,11 @@ export interface ToolStatus {
 export interface HiveSystem {
   name: string;
   projects: string[];
+  /**
+   * The forge group it mirrors, with each member's path and clone URLs (GROUP-init-sync); null: put together by hand.
+   * The hub always sends it; optional for the systems pages and tests build without one.
+   */
+  source?: SystemSource | null;
   updatedAt: string;
   updatedBy: string;
 }
