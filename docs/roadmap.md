@@ -407,7 +407,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 - **79. access-admin** (hỏi 10/10: "tiếp tục thiết kế phần quản trị users, quyền, permissions", "thêm phần tự duyệt", "các máy có nhiều disk"). Spec: [specs/79-access-admin.md](specs/79-access-admin.md). Người dùng chọn 10/10: TOTP bắt buộc cho admin và owner; phòng ban tạo trong Hive, map SSO sau; admin được tự duyệt đề xuất của mình (có audit); làm P0 trước.
   - [x] **79a. admin-is-a-person**: chỉ phiên web của người qua được cổng `hubAdmin`; token máy, token cá nhân, credential MCP không quản trị được; token không có chủ bị hạ quyền.
-  - [ ] **79b. agent-roles**: "Agent được làm gì" theo từng project (taskManage, codeReview, runDispatch…), không vượt quyền chủ; agent tạo, review, đóng task bằng danh tính của mình.
+  - [x] **79b. agent-roles**: "Agent được làm gì" theo từng project (taskManage, codeReview, runDispatch…), không vượt quyền chủ; agent tạo, review, đóng task bằng danh tính của mình.
   - [ ] **79c. disable-revokes**: khoá hoặc đưa người vào thùng rác thì thu hồi phiên, token, credential MCP; đổi mật khẩu thì đăng xuất các phiên khác.
   - [ ] **79d. system-grants**: gán quyền theo hệ thống; chọn project hoặc hệ thống từ danh sách, chép quyền từ người khác, xem trước quyền thật.
   - [ ] **79e. sso-policy**: danh sách tên miền được tạo tài khoản qua SSO; map claim nhóm vào phòng ban (76c).

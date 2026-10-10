@@ -141,6 +141,8 @@ export function MemberRows() {
   const [tick, setTick] = useState(0);
   const [saving, setSaving] = useState<string | null>(null);
   const members = useQuery(async () => (client.members && space !== null ? client.members.list(project) : []), [client, space, tick]);
+  // The project's agent row (spec 79b): read here, changed in the editor behind "Sửa".
+  const agents = useQuery(async () => (project !== null ? client.call("agentRights.get", { project }) : null), [client, project]);
   const mine = me.access ? (permissionsOn(me, project) ?? new Set()) : undefined;
   const allowed = (r: ProjectRole) => !mine || ROLE_PERMISSIONS[r].every((p) => mine.has(p));
   const set = (id: string, grant: ProjectRole | null) => {
@@ -155,6 +157,7 @@ export function MemberRows() {
   return <>
     <div className="cx-card" data-settings-rows="members">
       <ProjectPick projects={spaces} value={space ?? ""} onPick={setPicked} label={t("members.space")} />
+      {agents.data ? <SettingsRow label={t("members.agent")} hint={t("members.agentTitle")}><ValuePill>{agents.data.isDefault ? t("members.agentDefault") : t("members.agentCustom", { count: agents.data.permissions.length })}</ValuePill></SettingsRow> : null}
       {rows.map((m) => {
         const role = grantRole(m.grant);
         const locked = me.user?.id === m.id || saving === m.id;

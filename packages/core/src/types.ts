@@ -1,6 +1,6 @@
 import type { DiffReview } from "#core/diff-review.ts";
 import type { ModelSelection } from "./model-router.ts";
-import type { Access } from "./access.ts";
+import type { Access, Permission } from "./access.ts";
 import type { AgentPolicy } from "./agent-policy.ts";
 import type { AgentKind, AgentProfile, AgentRole, PreferKind, QuotaOutlook } from "./agents.ts";
 import type { Verdict } from "./verdict.ts";
@@ -67,6 +67,11 @@ export interface Actor {
    * that asked for it beside the person who approved it.
    */
   approvedProposal?: { id: number; author: string };
+  /**
+   * Set only by core when an agent calls (spec 79b): each project's "Agent được làm gì" that differs from the default.
+   * It caps what an agent of an account may do there, never past that account's own grant (access.ts permissionsOn).
+   */
+  agentRights?: Readonly<Record<string, readonly Permission[]>>;
 }
 
 export interface DocSummary {

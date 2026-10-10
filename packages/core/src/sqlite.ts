@@ -19,7 +19,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import { isContextDoc, may, sees, systemOf, systemOwner, withSystemGrants, type Permission } from "./access.ts";
+import { AGENT_DEFAULT, isContextDoc, may, permissionsOn, readAgentRights, sees, systemOf, systemOwner, withSystemGrants, type AgentRightsView, type Permission } from "./access.ts";
 import type { AgentKind, AgentRole, PreferKind } from "./agents.ts";
 import { ARTIFACTS_PER_RUN, artifactName, checkArtifact, isArtifactText, type Artifact } from "./artifacts.ts";
 import type { BlobStore } from "./blobs.ts";
@@ -1263,6 +1263,7 @@ const clipDetail = (s: string) => (s.length > 300 ? `${s.slice(0, 299)}…` : s)
 const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: string; detail?: string; text?: ErrorText }>> = {
   "evidence.record": (i, o: AcceptanceEvidence) => ({ target: `${i.project} ${i.taskId} #${o.id}`, detail: `${i.criterionId}: ${i.outcome} @ ${i.commitSha}`, text: { key: "audit.evidenceRecorded", vars: { criterion: i.criterionId, outcome: i.outcome, sha: i.commitSha } } }),
   "docs.save": (i, o) => ({ target: i.key, detail: `v${o.version}${i.note ? ` · ${i.note}` : ""}` }),
+  "agentRights.set": (i, o: AgentRightsView) => ({ target: i.project, detail: o.permissions.join(", "), text: { key: "audit.agentRights", vars: { project: i.project, permissions: o.permissions.join(", ") } } }),
   "docs.move": (i, o) => ({ target: i.key, detail: i.to ? `→ ${i.to}${o.moved.length > 1 ? ` (+${o.moved.length - 1})` : ""}` : `→ ${i.parent ?? "/"}` }),
   "docs.remove": (i, o) => ({ target: i.key, detail: `− ${o.keys.length}${i.note ? ` · ${i.note}` : ""}` }),
   "docs.restore": (i, o) => ({ target: i.key, detail: `+ ${o.keys.length}` }),
@@ -1559,6 +1560,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "agentPolicy.set": "project",
   "modelRouter.set": "project",
   "modelLearning.set": "project",
+  "agentRights.set": "project",
 };
 
 /** The event a successful call is worth telling people about, if any. */
@@ -2050,6 +2052,8 @@ const AGENT_METHODS = new Set<Method>([
 // Interactive MCP credentials may manage the owner's board. A run credential remains limited to its own task.
 const CLI_LEADER_METHODS = new Set<Method>([
   "tasks.create", "tasks.setDeps", "tasks.assign", "runs.dispatch", "plans.create",
+  // Reviewing another's work, for a project that lets its agents (spec 79b): codeReview still decides, as for a person.
+  "tasks.requestChanges",
 ]);
 
 // Legacy names can be forged before their first migrated heartbeat; they must not authorize machine reports or work.
@@ -2129,7 +2133,7 @@ export class SqliteHive implements HiveBackend {
     // machine row (the desktop app's own `desktop@<token>` calls) keep working: no machine's records are reachable by name.
     if (machine && machine.token_id == null && MACHINE_METHODS.has(method) && method !== "machines.heartbeat" && caller.tokenId)
       throw new HiveError("forbidden", "Heartbeat with the paired machine token first.", { key: "errors.machineIdentityForbidden" });
-    const actor = this.#withSystems(caller);
+    const actor = this.#withAgentRights(this.#withSystems(caller));
     const parsed = parseInput(method, input);
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
@@ -2281,6 +2285,33 @@ export class SqliteHive implements HiveBackend {
   }
 
   // ── per-project access (access.ts) ─────────────────────────────────────────
+
+  /**
+   * An agent with each project's "Agent được làm gì" (spec 79b), read on every call so a change counts at once. Always
+   * replaced, so a set can only come from here.
+   */
+  #withAgentRights(actor: Actor): Actor {
+    if (actor.role !== "agent") return actor.agentRights ? { ...actor, agentRights: undefined } : actor;
+    return { ...actor, agentRights: this.#agentRightsAll() };
+  }
+
+  /** The projects whose agent set is not the default; a stored set that no longer reads (a right taken off) is left out. */
+  #agentRightsAll(): Record<string, Permission[]> {
+    const out: Record<string, Permission[]> = {};
+    for (const r of this.db.prepare("SELECT key, value FROM settings WHERE key LIKE 'agentRights:%'").all() as Row[]) {
+      const set = readAgentRights((JSON.parse(str(r.value)) as { permissions?: unknown }).permissions);
+      if (set) out[str(r.key).slice("agentRights:".length)] = set;
+    }
+    return out;
+  }
+
+  #agentRightsView(project: string): AgentRightsView {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = ?").get(`agentRights:${project}`) as Row | undefined;
+    const stored = row ? (JSON.parse(str(row.value)) as { permissions?: unknown; by?: string; at?: string }) : null;
+    const set = stored ? readAgentRights(stored.permissions) : null;
+    if (!set) return { project, permissions: [...AGENT_DEFAULT], isDefault: true };
+    return { project, permissions: set, isDefault: false, ...(stored?.by ? { updatedBy: stored.by } : {}), ...(stored?.at ? { updatedAt: stored.at } : {}) };
+  }
 
   /** An account's grants with the ones it gets on each system from its services (roadmap 19c). */
   #withSystems(actor: Actor): Actor {
@@ -2713,6 +2744,19 @@ export class SqliteHive implements HiveBackend {
       case "runs.setTimeoutSettings":
         if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Only a hub admin sets run timeouts.", { key: "errors.hubAdminOnly" });
         return;
+      case "agentRights.get":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      case "agentRights.set": {
+        // What agents may do is a person's call: any bearer, a lead's own machine token too, is what an agent holds, so
+        // it could raise its own rights (spec 79b). The hub's page or the local app, never a token.
+        if (isAgentCaller(actor) || actor.tokenId) throw new HiveError("forbidden", "Only a person signed in on the hub's page changes what agents may do.", { key: "errors.agentRightsPerson" });
+        this.#need(actor, i.project, "membersManage", `Project ${i.project}`);
+        // As with members: a lead hands agents no more than they have here themselves.
+        const mine = permissionsOn(actor, i.project) ?? new Set<Permission>();
+        const over = actor.access ? i.permissions.filter((p: string) => !mine.has(p as Permission)) : [];
+        if (over.length) throw new HiveError("forbidden", `Vượt quyền của bạn: ${over.join(", ")}`, { key: "errors.memberAboveYou", vars: { permissions: over.join(", ") } });
+        return;
+      }
       case "agentPolicy.set":
         // The default binds every project, so only someone over all of them: a hub admin (no per-project grants).
         if (i.project === null) {
@@ -2882,6 +2926,9 @@ export class SqliteHive implements HiveBackend {
         // Done is a reviewer's call: an agent sends its work to review, a person with codeReview takes it from there.
         if (method === "tasks.update" && i.status === "done" && task.status !== "done") {
           this.#need(actor, task.project, "codeReview", `Task ${i.id}`);
+          // A run credential works its own task only, so done from it is the agent approving its own run, whoever asked
+          // for that run, even where the project lets its agents review (spec 79b).
+          if (actor.runCredential) throw new HiveError("forbidden", `Task ${i.id}: someone else has to approve your own work.`, { key: "errors.selfApprove" });
           // The MR watcher moves a task to done when its MR merged: someone already approved it on GitLab or GitHub,
           // so the merge is the review and the rule below does not apply. (Its label is not proof; a person who fakes
           // it only skips a check meant to stop their own slip, the codeReview right above still holds.)
@@ -4428,6 +4475,7 @@ export class SqliteHive implements HiveBackend {
     run("run_group_items", "DELETE FROM run_group_items WHERE group_id IN (SELECT id FROM run_groups WHERE project = ?)", project);
     run("merge_batch_items", "DELETE FROM merge_batch_items WHERE batch_id IN (SELECT id FROM merge_batches WHERE project = ?)", project);
     run("settings", "DELETE FROM settings WHERE key = ?", `mergeQueue:${project}`);
+    run("settings", "DELETE FROM settings WHERE key = ?", `agentRights:${project}`);
 
     for (const table of this.#projectTables()) run(table, `DELETE FROM "${table}" WHERE project = ?`, project);
 
@@ -4581,6 +4629,7 @@ export class SqliteHive implements HiveBackend {
     add("run_group_items", "group_id IN (SELECT id FROM run_groups WHERE project = ?1)");
     add("merge_batch_items", "batch_id IN (SELECT id FROM merge_batches WHERE project = ?1)");
     add("settings", "key = 'mergeQueue:' || ?1");
+    add("settings", "key = 'agentRights:' || ?1");
 
     // Rows the deletion took by ON DELETE CASCADE (a thread's messages, a memory's vector): no project column says
     // whose they are, only the foreign key to a parent that is being copied back.
@@ -10807,6 +10856,17 @@ export class SqliteHive implements HiveBackend {
           return this.#learningView(project);
         }),
       "agentPolicy.get": () => agentPolicyView(this.#agentPolicy()),
+      "agentRights.get": ({ project }) => this.#agentRightsView(project),
+      "agentRights.set": ({ project, permissions }, actor) => {
+        const set = readAgentRights(permissions);
+        if (!set) throw new HiveError("bad_request", "An agent may get only view, taskWork, docPropose, memoryWrite, taskManage, codeReview, runDispatch and chatUse, and always view.", { key: "errors.agentRightsInvalid" });
+        const key = `agentRights:${project}`;
+        // The default is no row: a project nobody touched and one put back read the same, and the code's default holds.
+        if (set.length === AGENT_DEFAULT.length && AGENT_DEFAULT.every((p) => set.includes(p))) this.db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+        else this.db.prepare("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(key, JSON.stringify({ permissions: set, by: actor.account ?? actor.name, at: this.#now() }));
+        return this.#agentRightsView(project);
+      },
 
       "agentPolicy.set": (input, actor) => {
         const current = this.#agentPolicy();

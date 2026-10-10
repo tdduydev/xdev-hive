@@ -100,8 +100,47 @@ export function grantRole(grant: Grant | null | undefined): ProjectRole | "custo
   return PROJECT_ROLES.find((r) => ROLE_PERMISSIONS[r].length === has.size && ROLE_PERMISSIONS[r].every((p) => has.has(p))) ?? "custom";
 }
 
-/** The most a role may do, whatever the grants say: an agent token never approves its own work. */
+/**
+ * The most a role may do, whatever the grants say. For an agent this is only the default: a project may let its agents
+ * do more (spec 79b, agentCap below), never past what their account may do there.
+ */
 const ROLE_CAP: Record<Role, readonly Permission[]> = { viewer: ["view"], agent: MEMBER, member: PERMISSIONS, admin: PERMISSIONS };
+
+/** "Agent được làm gì" of a project nobody changed: what agents could always do (spec 79b). */
+export const AGENT_DEFAULT: readonly Permission[] = MEMBER;
+/**
+ * What a project may let its agents do (spec 79b). Making and closing tasks, reviewing someone else's run, dispatching
+ * runs and the leader's chat are work an agent does for its person. Approving docs, memory or the leader's proposals,
+ * editing what agents read, QA sign-off, settings and members stay a person's: an agent with them could approve or
+ * widen its own work.
+ */
+export const AGENT_PERMISSIONS: readonly Permission[] = PERMISSIONS.filter((p) =>
+  [...MEMBER, "taskManage", "codeReview", "runDispatch", "chatUse"].includes(p));
+
+/** A project's agent set as stored or sent, or null when it holds anything an agent may not get or leaves out view. */
+export function readAgentRights(raw: unknown): Permission[] | null {
+  if (!Array.isArray(raw) || raw.some((p) => typeof p !== "string" || !AGENT_PERMISSIONS.includes(p as Permission))) return null;
+  const picked = AGENT_PERMISSIONS.filter((p) => raw.includes(p));
+  return picked.includes("view") ? picked : null;
+}
+
+/** agentRights.get and .set: a project's agent set, and who changed it last when it is not the default. */
+export interface AgentRightsView {
+  project: string;
+  permissions: Permission[];
+  isDefault: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+/**
+ * The most an agent may do in a project. Only an agent of an account gets a project's set: a token of no account has
+ * nobody to be capped by, and a chat leader's reply token is already cut to its sender's rights (grants.ts).
+ */
+function agentCap(actor: Actor, owner: string | null): readonly Permission[] {
+  if (owner === null || actor.account === undefined || actor.chatReply !== undefined) return AGENT_DEFAULT;
+  return actor.agentRights?.[owner] ?? AGENT_DEFAULT;
+}
 
 /**
  * Unrestricted actors: the role alone, as before roadmap 25 (contribute then also moved a task to done, which the local
@@ -121,10 +160,27 @@ export function sharedPermissions(access: Access): Set<Permission> {
 
 /** What an actor may do in a project (owner) or in the shared data (owner null); null = cannot see it. */
 export function permissionsOn(actor: Actor, owner: string | null): Set<Permission> | null {
+  if (isAgentRole(actor)) return agentPermissionsOn(actor, owner);
   const cap = ROLE_CAP[actor.role];
   // A hub admin's own token (spec 79a): a member for the hub, its owner's reach on the projects.
   if (!actor.access && actor.allProjects && actor.role === "member" && !actor.runCredential && !actor.mcpCredential) return new Set(PERMISSIONS);
   if (!actor.access) return new Set(actor.runCredential || actor.mcpCredential || (actor.tokenId && (actor.role === "agent" || actor.role === "viewer")) ? cap : ROLE_DEFAULT[actor.role]);
+  const granted = owner === null ? sharedPermissions(actor.access) : grantPermissions(actor.access.projects[owner]);
+  if (!granted.has("view")) return null;
+  return new Set([...granted].filter((p) => cap.includes(p)));
+}
+
+// A plain boolean, not a narrowing check: permissionsOn's rule after it still reads as written for every role.
+const isAgentRole = (actor: Actor): boolean => actor.role === "agent";
+
+/**
+ * An agent's permissions, as permissionsOn's rule for any role with the project's agent set as the cap (spec 79b): the
+ * set ∩ the account's grant there, so it is never more than its person may do. A token scope (one project, a system,
+ * read-only) already narrowed `access` or the role before this.
+ */
+function agentPermissionsOn(actor: Actor, owner: string | null): Set<Permission> | null {
+  const cap = agentCap(actor, owner);
+  if (!actor.access) return new Set(actor.runCredential || actor.mcpCredential || actor.tokenId ? cap : ROLE_DEFAULT.agent);
   const granted = owner === null ? sharedPermissions(actor.access) : grantPermissions(actor.access.projects[owner]);
   if (!granted.has("view")) return null;
   return new Set([...granted].filter((p) => cap.includes(p)));
