@@ -157,10 +157,20 @@ const leanDocRow = (d: Record<string, any>): Record<string, unknown> =>
 const DOC_MAX_CHARS = 12_000;
 const headingsOf = (content: string): { line: number; level: number; title: string }[] => {
   const out: { line: number; level: number; title: string }[] = [];
-  let fence = false;
+  // A fence closes only on the same character with at least the opening length (CommonMark): a four-backtick block
+  // can hold a three-backtick example, and toggling a boolean would then show its "# comments" as headings.
+  let fence: { ch: string; len: number } | null = null;
   content.split("\n").forEach((l, i) => {
-    if (/^\s*(```|~~~)/.test(l)) fence = !fence;
-    const m = !fence && /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l);
+    const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(l);
+    if (fence) {
+      if (f && f[1]![0] === fence.ch && f[1]!.length >= fence.len && f[2]!.trim() === "") fence = null;
+      return;
+    }
+    if (f && !(f[1]![0] === "`" && f[2]!.includes("`"))) {
+      fence = { ch: f[1]![0]!, len: f[1]!.length };
+      return;
+    }
+    const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l);
     if (m) out.push({ line: i, level: m[1]!.length, title: m[2]! });
   });
   return out;
@@ -175,17 +185,18 @@ const leanDoc = (doc: Record<string, any>, section: string | undefined, maxChars
   const heads = headingsOf(content);
   const list = heads.map((h) => `${"#".repeat(h.level)} ${h.title}`);
   let body = content;
+  let picked: { title: string } | undefined;
   if (section) {
     const want = section.replace(/^#+\s*/, "").trim().toLowerCase();
-    const at = heads.findIndex((h) => h.title.toLowerCase() === want) >= 0
-      ? heads.findIndex((h) => h.title.toLowerCase() === want)
-      : heads.findIndex((h) => h.title.toLowerCase().includes(want));
+    const exact = heads.findIndex((h) => h.title.toLowerCase() === want);
+    const at = exact >= 0 ? exact : heads.findIndex((h) => h.title.toLowerCase().includes(want));
     if (at < 0) return { ...dropEmpty({ ...doc, content: undefined }), content: "", sectionNotFound: section, headings: list, length: content.length };
     const end = heads.slice(at + 1).find((h) => h.level <= heads[at]!.level);
+    picked = heads[at]!;
     body = lines.slice(heads[at]!.line, end ? end.line : lines.length).join("\n");
   }
   const out: Record<string, unknown> = { ...doc, content: body, length: content.length };
-  if (section) out.section = heads.find((h) => body.startsWith("#") && body.split("\n")[0]!.includes(h.title))?.title ?? section;
+  if (picked) out.section = picked.title;
   if (body.length > maxChars) {
     const cut = body.slice(0, maxChars);
     const nl = cut.lastIndexOf("\n");

@@ -386,6 +386,30 @@ describe("mcp tools", () => {
     t.diagnostic(`doc_list ${leanList.length} B vs ${fullList.length} B; doc_get ${JSON.stringify(cut).length} B vs ${JSON.stringify(whole).length} B`);
   });
 
+  it("doc_get section ignores headings inside longer fences and reports the heading it picked (roadmap 80c)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const fence = "````";
+    const content = [
+      "# Doc", "## Setup", "intro", fence + "md", "```sh", "# Fake", "```", "# Still code", fence, "tail of setup",
+      "## Setup advanced", "advanced body", "## Other", "other body",
+    ].join("\n");
+    await hive.call("docs.save", { key: "org/fenced", content }, admin);
+    const claude = await connect(hive);
+    const get = async (args: Record<string, unknown>) => JSON.parse(text(await claude.callTool({ name: "doc_get", arguments: { key: "org/fenced", ...args } })));
+
+    const setup = await get({ section: "Setup" });
+    assert.equal(setup.section, "Setup");
+    assert.ok(setup.content.includes("# Still code") && setup.content.includes("tail of setup") && !setup.content.includes("advanced body"));
+    assert.ok(!setup.headings.includes("# Fake") && !setup.headings.includes("# Still code"));
+
+    const adv = await get({ section: "Setup advanced" });
+    assert.equal(adv.section, "Setup advanced");
+    assert.ok(adv.content.startsWith("## Setup advanced") && !adv.content.includes("other body"));
+    const partial = await get({ section: "advanced" });
+    assert.equal(partial.section, "Setup advanced");
+  });
+
   it("says whose task each one is, and keeps another machine's agent off it (roadmap 50)", async () => {
     const hive = new SqliteHive(":memory:");
     const admin = { name: "duy", role: "admin" as const };
