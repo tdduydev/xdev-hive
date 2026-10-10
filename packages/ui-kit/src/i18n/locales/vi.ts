@@ -409,6 +409,8 @@ export const vi = {
     group: { machine: "Việc của máy", web: "Mở trên web" },
     webItem: "Mở {page} trên web",
     webOff: "Chưa có địa chỉ hub để mở trên web",
+    search: "Tìm run, worktree, gói, công cụ…",
+    palette: { placeholder: "Tìm run, worktree, gói agent, công cụ hoặc lệnh", runs: "Run", worktrees: "Worktree", agents: "Gói agent", tools: "Công cụ" },
     machine: {
       hub: "Kết nối hub",
       hubOk: "Hub đang trả lời",
@@ -419,7 +421,8 @@ export const vi = {
       resources: "Tài nguyên",
       cpu: "Tải CPU (1 phút)",
       cpuNone: "Hệ điều hành này không có số đo",
-      cores: "{count} nhân",
+      load: "tải {load} / {count} nhân",
+      overloaded: "Quá tải: việc đang chờ nhiều hơn số nhân",
       ram: "Bộ nhớ",
       used: "{used} / {total}",
       disk: "Ổ đĩa chứa dữ liệu app",

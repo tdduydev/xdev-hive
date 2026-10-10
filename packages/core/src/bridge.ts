@@ -656,7 +656,8 @@ export interface HubConnection {
 
 export interface DesktopBridge {
   /** The app's own version and the OS it runs on (sidebar footer, status bar, macOS window chrome). */
-  appInfo(): Promise<{ version: string; platform: string }>;
+  /** osVersion: absent from an app before 76h. */
+  appInfo(): Promise<{ version: string; platform: string; osVersion?: string }>;
   /** Load, memory and disk of this machine (Máy này); an app before 76h has none. */
   machineStats?(): Promise<MachineStats>;
   /** The hub connection as the last heartbeat found it; hubRetry sends a heartbeat now. */

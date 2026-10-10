@@ -4,8 +4,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Download, ExternalLink, LogOut, Moon, Search, Sun } from "lucide-react";
 import { cn } from "@xdev-hive/ui-kit/lib/utils";
+import { TitleInTopBar } from "@xdev-hive/ui-kit/components/common";
 import type { Me } from "@xdev-hive/core";
-import { useT, type HiveClient } from "@xdev-hive/ui";
+import { useT, type HiveClient, type MessageKey } from "@xdev-hive/ui";
 import darkWordmark from "@xdev-hive/ui/assets/cosmic/xdev-hive-dark.svg";
 import { AccountMenu } from "@xdev-hive/ui/components/Account";
 import { HiveWordmark } from "@xdev-hive/ui/components/Brand";
@@ -16,7 +17,7 @@ import { CommandPalette, type PaletteCommand } from "@xdev-hive/ui/shell/Command
 import { useHubConnection } from "@xdev-hive/ui/shell/connection";
 import { InShellContext } from "@xdev-hive/ui/shell/frame";
 import { ToastProvider } from "@xdev-hive/ui/shell/toast";
-import { DESK_LABEL, DESK_MENU, DESK_SHORTCUTS, WEB_ENTRIES, type DeskPage } from "./desk-nav.ts";
+import { DESK_LABEL, DESK_MENU, DESK_SHORTCUTS, WEB_ENTRIES, deskSearchRows, type DeskPage, type DeskSearchGroup } from "./desk-nav.ts";
 import { DESK_ICONS } from "./desk-icons.ts";
 
 export function DesktopShell(props: {
@@ -38,6 +39,13 @@ export function DesktopShell(props: {
     </ToastProvider>
   );
 }
+
+const SEARCH_GROUPS: Array<{ group: DeskSearchGroup; label: MessageKey; icon: DeskPage }> = [
+  { group: "runs", label: "desk.palette.runs", icon: "runs" },
+  { group: "worktrees", label: "desk.palette.worktrees", icon: "worktrees" },
+  { group: "agents", label: "desk.palette.agents", icon: "agents" },
+  { group: "tools", label: "desk.palette.tools", icon: "setup" },
+];
 
 const openWeb = (webUrl: string | null, hash: string) => {
   if (webUrl) window.open(`${webUrl}/${hash}`, "_blank");
@@ -101,6 +109,19 @@ function Frame({ client, me, onSignOut, current, title, subtitle, webUrl, counts
     ],
     [t, webUrl],
   );
+
+  // Asked for only while ⌘K is open; each source on its own, so a slow tool check does not hold back the runs.
+  const runs = useQuery(async () => (palette ? desktop.runs({ limit: 50 }) : null), [desktop, palette]).data;
+  const worktrees = useQuery(async () => (palette ? desktop.worktrees() : null), [desktop, palette]).data;
+  const agents = useQuery(async () => (palette ? desktop.profiles() : null), [desktop, palette]).data;
+  const setup = useQuery(async () => (palette ? desktop.setupStatus() : null), [desktop, palette]).data;
+  const sources = useMemo<Array<[string, PaletteCommand[]]>>(() => {
+    const rows = deskSearchRows({ runs, worktrees, agents, setup });
+    return SEARCH_GROUPS.map(({ group, label, icon }) => [
+      t(label),
+      rows.filter((r) => r.group === group).map((r) => ({ id: r.id, label: r.label, hint: r.hint, icon: DESK_ICONS[icon], run: () => { window.location.hash = r.hash; } })),
+    ]);
+  }, [runs, worktrees, agents, setup, t]);
 
   const offline = link.state === "offline" || link.state === "refused";
 
@@ -179,7 +200,7 @@ function Frame({ client, me, onSignOut, current, title, subtitle, webUrl, counts
                 className={cn("hive-topbar-search flex min-w-[120px] shrink cursor-pointer items-center text-fg-muted outline-none focus-visible:focus-ring", noDrag)}
               >
                 <Search className="size-[15px] shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-left">{t("shell.search")}</span>
+                <span className="min-w-0 flex-1 truncate text-left">{t("desk.search")}</span>
                 <kbd className="hive-search-key">⌘K</kbd>
               </button>
               {up?.state === "ready" && up.version ? (
@@ -228,7 +249,10 @@ function Frame({ client, me, onSignOut, current, title, subtitle, webUrl, counts
               </div>
             ) : null}
             <main id="hive-main" ref={mainRef} tabIndex={-1} aria-label={title} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-              <InShellContext.Provider value={true}>{children}</InShellContext.Provider>
+              <InShellContext.Provider value={true}>
+                {/* The top bar holds the page's title; a page's own header keeps its description (design system: one title). */}
+                <TitleInTopBar.Provider value={true}>{children}</TitleInTopBar.Provider>
+              </InShellContext.Provider>
             </main>
           </div>
         </div>
@@ -247,7 +271,7 @@ function Frame({ client, me, onSignOut, current, title, subtitle, webUrl, counts
           ) : null}
         </footer>
       </div>
-      <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} />
+      <CommandPalette open={palette} onOpenChange={setPalette} commands={commands} pages={pages} sources={sources} placeholder={t("desk.palette.placeholder")} />
     </>
   );
 }
