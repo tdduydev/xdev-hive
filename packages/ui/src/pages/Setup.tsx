@@ -1,13 +1,13 @@
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
-import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { FileText, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
 import { EMPTY_POLICY, requiredItemIds, systemFolders, type HiveSystem, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
-import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Empty, ErrorNote, Notice, TitleInTopBar } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
@@ -99,11 +99,13 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   const local = useMemo(() => new Set((settings.data?.projects ?? []).map((p) => p.name)), [settings.data]);
   const remoteOnly = groups ? systems.filter((s) => s.source && s.projects.every((p) => !local.has(p))).map((s) => ({ name: s.name, projects: [] as SetupReport["projects"] })) : [];
   const platform = info.data?.platform;
+  const inTopBar = useContext(TitleInTopBar);
   const os = platform === "darwin" || platform === "win32" || platform === "linux" ? t(`setup.platform.${platform}`) : (platform ?? "");
 
   return (
     <div className="max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:py-3 [&_summary]:focus-visible:focus-ring mx-auto flex w-full max-w-[980px] flex-col gap-[18px] px-6 pt-5 pb-8">
-      <h1 className="sr-only">{t("nav.setup")}</h1>
+      {/* The app's top bar already is the page's h1; elsewhere a screen reader still needs one. */}
+      {inTopBar ? null : <h1 className="sr-only">{t("nav.setup")}</h1>}
       <p className="sr-only">{t("setup.subtitle")}</p>
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-xs/none text-fg-muted">{status.loading ? t("setup.checking") : checkedAt ? t("setup.lastChecked", { time: formatTime(checkedAt) }) : ""}</span>

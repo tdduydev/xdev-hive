@@ -406,6 +406,8 @@ export const en: Catalog = {
     group: { machine: "This machine's work", web: "Open on the web" },
     webItem: "Open {page} on the web",
     webOff: "No hub address to open on the web",
+    search: "Search runs, worktrees, packs, tools…",
+    palette: { placeholder: "Search runs, worktrees, agent packs, tools or commands", runs: "Runs", worktrees: "Worktrees", agents: "Agent packs", tools: "Tools" },
     machine: {
       hub: "Hub connection",
       hubOk: "The hub is answering",
@@ -416,7 +418,8 @@ export const en: Catalog = {
       resources: "Resources",
       cpu: "CPU load (1 minute)",
       cpuNone: "This operating system has no figure",
-      cores: "{count} cores",
+      load: "load {load} / {count} cores",
+      overloaded: "Overloaded: more work waiting than there are cores",
       ram: "Memory",
       used: "{used} / {total}",
       disk: "Disk holding the app's data",

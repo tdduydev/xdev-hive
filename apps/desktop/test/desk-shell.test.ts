@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { opensOnHome, DESK_ALIASES, DESK_MENU, DESK_PAGES, DESK_SHORTCUTS, resolveDeskHash, webTarget, WEB_ENTRIES } from "#desktop/renderer/desk-nav.ts";
-import { formatBytes, loadPercent, percentOf, uptimeParts } from "#desktop/renderer/machine-format.ts";
+import { deskSearchRows, opensOnHome, DESK_ALIASES, DESK_MENU, DESK_PAGES, DESK_SHORTCUTS, resolveDeskHash, webTarget, WEB_ENTRIES } from "#desktop/renderer/desk-nav.ts";
+import { formatBytes, loadFigure, loadPercent, overloaded, percentOf, platformName, uptimeParts } from "#desktop/renderer/machine-format.ts";
 import { machineStats, type StatsSource } from "#desktop/main/machine-stats.ts";
 
 describe("the app's menu on a hub (roadmap 76h)", () => {
@@ -64,6 +64,17 @@ describe("Máy này figures", () => {
     assert.equal(percentOf(null, 10), null);
     assert.equal(loadPercent(0.426), 43);
     assert.equal(loadPercent(null), null);
+    // Overloaded: the bar stops full and turns to a warning; the figure is the load beside the core count.
+    assert.equal(loadPercent(1.46), 100);
+    assert.equal(overloaded(1.46), true);
+    assert.equal(overloaded(0.9), false);
+    assert.equal(overloaded(null), false);
+    assert.equal(loadFigure(1.4625, 8, "vi-VN"), "11,7");
+    assert.equal(loadFigure(0.5, 8, "en-US"), "4.0");
+    assert.equal(platformName("darwin", "15.4.1"), "macOS 15.4.1");
+    assert.equal(platformName("win32"), "Windows");
+    assert.equal(platformName("linux", ""), "Linux");
+    assert.equal(platformName("freebsd"), "freebsd");
     assert.deepEqual(uptimeParts(90_061), { days: 1, hours: 1, minutes: 1 });
   });
 
@@ -84,5 +95,24 @@ describe("Máy này figures", () => {
     assert.deepEqual([stats.memTotal, stats.memFree, stats.diskTotal, stats.diskFree], [16, 4, 4096 * 1000, 4096 * 250]);
     const gone = await machineStats("/missing", { ...source, statfs: async () => { throw new Error("ENOENT"); } });
     assert.deepEqual([gone.diskTotal, gone.diskFree], [null, null]);
+  });
+});
+
+describe("⌘K in the app", () => {
+  it("searches the machine's runs, worktrees, agent packs and tools, each opening its page", () => {
+    const rows = deskSearchRows({
+      runs: [{ id: "r1", taskId: "T-1", project: "hive", status: "running" }] as never,
+      worktrees: { entries: [{ path: "/w/T-2", taskId: "T-2", branch: "ai/T-2", project: "hive" }] } as never,
+      agents: [{ id: "claude-1", label: "Claude chính", kind: "claude" }] as never,
+      setup: { machine: [{ id: "cli:codex", label: "Codex CLI", detail: "0.40" }], projects: [{ project: "hive", repo: "/r", items: [{ id: "hive:agents", label: "AGENTS.md", detail: "" }] }] } as never,
+    });
+    assert.deepEqual(rows.map((r) => [r.group, r.label, r.hash]), [
+      ["runs", "T-1 · hive", "#/runs?run=r1"],
+      ["worktrees", "T-2 · hive", "#/worktrees"],
+      ["agents", "Claude chính", "#/agents"],
+      ["tools", "Codex CLI", "#/setup"],
+      ["tools", "AGENTS.md", "#/setup"],
+    ]);
+    assert.deepEqual(deskSearchRows({}), []);
   });
 });
