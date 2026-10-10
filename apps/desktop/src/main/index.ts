@@ -49,6 +49,8 @@ import {
   type SystemSource,
   type SystemSyncReport,
   type SystemCliOpened,
+  type RepoPullResult,
+  type RepoStatusRow,
   type Doc,
   agentsDocKey,
   type LoginHow,
@@ -93,6 +95,8 @@ import { diffSource, initSystem, linkSource, planSystemInit, suggestRoot, type I
 import { parseRemoteUrl } from "./gitlab/remote.ts";
 import { findGitRepos, git, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { checkRepoAccess, forgeEnv, RepoHealthMonitor } from "#desktop/main/repo-health.ts";
+import { fetchRepo, pullRepo, statusRow, type FetchMark, type RepoDeps } from "#desktop/main/repo-status.ts";
+import { ForgeUsageStore, type ForgeKind } from "#desktop/main/forge-usage.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { applyProjectCommand, type ProjectCommandDeps } from "#desktop/main/machine-projects.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
@@ -185,6 +189,12 @@ const repoHealth = new RepoHealthMonitor({
     return checkRepoAccess({ ...target, env });
   },
 });
+/** When the forge tokens last worked: a file beside config.json, made on first use (configPath() is read lazily). */
+let forgeUsageStore: ForgeUsageStore | null = null;
+const forgeUsage = () => (forgeUsageStore ??= new ForgeUsageStore(path.join(path.dirname(configPath()), "forge-usage.json")));
+/** The Repo screen's own fetches (GROUP-repos-forge), fresher than the 6-hourly ls-remote, for this session. */
+const repoFetches = new Map<string, FetchMark>();
+
 /** What the hub sent on the last heartbeat (hub mode only). */
 let hubState: HubUpdate | null = null;
 const notifiedCommands = new Set<number>();
@@ -256,8 +266,8 @@ function settings(): DesktopSettings {
     configPath: configPath(),
     dbPath: localDbPath(config),
     runner: config.runner,
-    gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr },
-    github: { url: config.github.url, hasToken: config.github.token.length > 0 },
+    gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr, use: forgeUsage().get("gitlab") },
+    github: { url: config.github.url, hasToken: config.github.token.length > 0, use: forgeUsage().get("github") },
     configIssues,
   };
 }
@@ -307,6 +317,9 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
       token: typeof g.token === "string" && g.token.trim() ? g.token.trim() : next.github.token,
     });
     if (!/^https?:\/\//.test(next.github.url)) throw new HiveError("bad_request", "GitHub URL phải bắt đầu bằng http(s)://", { key: "errors.githubUrl" });
+  }
+  for (const kind of ["gitlab", "github"] as const) {
+    if (next[kind].token !== config[kind].token || next[kind].url !== config[kind].url) forgeUsage().forget(kind);
   }
   if (next.mode === "hub") {
     if (!/^https?:\/\//.test(next.hub.url) || !next.hub.token) {
@@ -374,6 +387,7 @@ async function gitlabGroup(input: { group: string; baseDir: string }): Promise<G
   if (!/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
   const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
   const repos = await importClient().groupProjects(group);
+  forgeUsage().record("gitlab", "group");
   const depth = Math.max(3, ...repos.map((repo) => repo.pathWithNamespace.split("/").length - group.split("/").length));
   const local = findGitRepos(baseDir, depth, true).map((dir) => ({ dir, remote: remoteUrl(dir) }));
   return planImport(repos, baseDir, config.projects, group, local);
@@ -533,6 +547,7 @@ async function systemLink(input: { system?: unknown; forge?: unknown; group?: un
   const group = forge === "github" ? githubOwnerName(input?.group) : String(input?.group ?? "").trim().replace(/^\/+|\/+$/g, "");
   if (forge === "gitlab" && !/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
   const repos = forge === "github" ? await githubImportClient().ownerRepos(group) : await importClient().groupProjects(group);
+  forgeUsage().record(forge, "group");
   const url = (forge === "github" ? config.github.url : config.gitlab.url).replace(/\/+$/, "");
   const taken = (await backend.call("projects.list", {}, actor())).map((p) => p.project);
   return linkSource(system, forge, url, group, repos, config.projects, (dir) => (isRepoRoot(dir) ? remoteUrl(dir) : null), taken, new Date().toISOString());
@@ -886,6 +901,51 @@ async function openSystemCli(id: string, name: string, opts?: { bypass?: boolean
   return { opened: true, cwd: ws.cwd, repos: ws.repos.length, missing: ws.missing.map((m) => m.project), dirsSupported: Boolean(EXTRA_DIR_ARGS[profile.kind]) };
 }
 
+function repoDeps(): RepoDeps {
+  const forges = [
+    { kind: "gitlab" as const, url: config.gitlab.url, token: config.gitlab.token, user: "oauth2" },
+    { kind: "github" as const, url: config.github.url, token: config.github.token, user: "x-access-token" },
+  ];
+  const hostOfUrl = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return null; } };
+  return {
+    forges: () => forges.map(({ kind, url }) => ({ kind, url })),
+    env: (url) => forgeEnv(url, forges),
+    // The merge queue or a release works in the checkout itself; a run starts from it (worktree add) and pushes from it.
+    busy: (name) => runner.checkoutBusy(name, "repo") ?? (runner.store.active().some((r) => r.project === name && r.status === "running") ? "run" : null),
+    health: (name) => {
+      const r = repoHealth.latest().find((x) => x.project === name);
+      return r ? { access: r.status, detail: r.detail } : null;
+    },
+    fetched: repoFetches,
+    now: () => new Date(),
+    used: (url, by) => {
+      const remote = parseRemoteUrl(url);
+      const forge = forges.find((f) => f.token && remote?.https && hostOfUrl(f.url) === remote.host);
+      if (forge) forgeUsage().record(forge.kind as ForgeKind, by);
+    },
+  };
+}
+
+const repoProjects = (names: unknown): DesktopProject[] => (Array.isArray(names) ? names : []).map((n) => project(String(n)));
+
+/** One repo after another: a dozen parallel fetches to one GitLab look like a scan (as the repo check says). */
+async function repoStatus(names: unknown, opts?: { fetch?: unknown }): Promise<RepoStatusRow[]> {
+  const deps = repoDeps();
+  const rows: RepoStatusRow[] = [];
+  for (const p of repoProjects(names)) {
+    if (opts?.fetch === true) await fetchRepo(p, deps);
+    rows.push(await statusRow(p, deps));
+  }
+  return rows;
+}
+
+async function pullRepos(names: unknown): Promise<RepoPullResult[]> {
+  const deps = repoDeps();
+  const out: RepoPullResult[] = [];
+  for (const p of repoProjects(names)) out.push(await pullRepo(p, deps));
+  return out;
+}
+
 /** One project at a time; a project whose check fails (no repo, no access) does not stop the others. */
 async function checkAllCitations(): Promise<void> {
   for (const project of config.projects) {
@@ -1101,6 +1161,7 @@ function updateProject(name: string, patch: { autoRelease?: DesktopProject["auto
 async function checkGitLab(): Promise<GitLabCheck> {
   try {
     const user = await new GitLabClient(config.gitlab.url, config.gitlab.token, gitlabFetch).user();
+    forgeUsage().record("gitlab", "check", user.username);
     return { ok: true, user: user.username, message: tr("desktop.gitlabSignedIn", { name: user.name, username: user.username }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
@@ -1110,6 +1171,7 @@ async function checkGitLab(): Promise<GitLabCheck> {
 async function checkGitHub(): Promise<GitLabCheck> {
   try {
     const user = await new GitHubClient(config.github.url, config.github.token, gitlabFetch).user();
+    forgeUsage().record("github", "check", user.login);
     return { ok: true, user: user.login, message: tr("desktop.githubSignedIn", { name: user.name ?? user.login, username: user.login }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
@@ -1700,6 +1762,8 @@ function registerIpc(): void {
   handle("desktop:setProfileToken", setProfileToken);
   handle("desktop:openSetupToken", openSetupToken);
   handle("desktop:openCli", openCli);
+  handle("desktop:repoStatus", repoStatus);
+  handle("desktop:pullRepos", pullRepos);
   handle("desktop:openSystemCli", openSystemCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));

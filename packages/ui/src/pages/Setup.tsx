@@ -11,7 +11,10 @@ import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { GitLabCard, GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { ForgeMissing, forgeConnected } from "#ui/components/ForgeConnections.tsx";
+import { SystemRepos } from "#ui/components/SystemRepos.tsx";
+import { shortPath } from "#ui/lib/repo-status.ts";
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
 import { canSetUpGroups, missingHere, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
@@ -90,6 +93,9 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   const groups = canSetUpGroups(desktop);
   const profiles = useQuery(() => desktop.profiles(), [desktop]);
   const [groupOpen, setGroupOpen] = useState<string | null>(null);
+  // GROUP-repos-forge: the system whose repos are listed with their state against the remote; an older app has no such call.
+  const [reposOpen, setReposOpen] = useState<string | null>(null);
+  const repoScreen = Boolean(desktop.repoStatus && desktop.pullRepos);
   const local = useMemo(() => new Set((settings.data?.projects ?? []).map((p) => p.name)), [settings.data]);
   const remoteOnly = groups ? systems.filter((s) => s.source && s.projects.every((p) => !local.has(p))).map((s) => ({ name: s.name, projects: [] as SetupReport["projects"] })) : [];
   const platform = info.data?.platform;
@@ -173,11 +179,19 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                       {t(system.source ? "systemGroup.initOnMachine" : "systemGroup.link")}
                     </Button>
                   ) : null}
+                  {system && repoScreen && group.projects.length ? (
+                    <Button size="sm" variant="ghost" data-system-repos-toggle={group.name} aria-expanded={reposOpen === group.name} onClick={() => setReposOpen(reposOpen === group.name ? null : group.name)}>
+                      {t("repos.toggle")}
+                    </Button>
+                  ) : null}
                   {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
                 </div>
               </div>
               {/* GROUP-cli: one CLI over every repo of the system here, next to installing them all. */}
               {system && group.projects.length ? <OpenSystemCli profiles={profiles.data ?? []} system={group.name} /> : null}
+              {system && repoScreen && reposOpen === group.name ? (
+                <SystemRepos system={system} projects={inTree(group.projects, system).flatMap((f) => f.projects.map((p) => p.project))} />
+              ) : null}
               {system && groupOpen === group.name ? (
                 <SystemGroupPanel
                   system={system}
@@ -230,7 +244,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                         </div>
                       </Notice>
                     ) : null}
-                    <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{p.repo.replace(/^.*[\\/]([^\\/]+[\\/][^\\/]+)$/, "…/$1")}{branch ? ` · ${branch}` : ""}</p>
+                    <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{shortPath(p.repo)}{branch ? ` · ${branch}` : ""}</p>
                     <details data-project-checks={p.project}>
                       <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.viewItems")}</summary>
                       <SetupList items={[...p.items].sort((a, b) => Number(needsSetup(b)) - Number(needsSetup(a)))} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
@@ -257,7 +271,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
               status.reload();
             }}
           />
-          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" ? <GitLabCard settings={settings.data} onSaved={settings.reload} /> : null}
+          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" && !forgeConnected(settings.data) ? <ForgeMissing /> : null}
           {settings.data.github.url && settings.data.github.hasToken ? <GitLabImportCard forge="github" settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : null}
         </>
       ) : null}
