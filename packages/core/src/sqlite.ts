@@ -852,8 +852,7 @@ const MIGRATIONS: string[] = [
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_session INTEGER;
    ALTER TABLE machine_profile_changes ADD COLUMN stop_at_week INTEGER;`,
 
-  `CREATE TABLE mr_ci_policy(project TEXT NOT NULL, mr_url TEXT NOT NULL, stopped_by TEXT NOT NULL, stopped_at TEXT NOT NULL, PRIMARY KEY(project, mr_url));`,
-`ALTER TABLE run_records ADD COLUMN start_sha TEXT;
+  `ALTER TABLE run_records ADD COLUMN start_sha TEXT;
    ALTER TABLE run_records ADD COLUMN remote_sha TEXT;
    ALTER TABLE run_records ADD COLUMN pushed INTEGER;
    ALTER TABLE run_records ADD COLUMN push_error TEXT;
@@ -898,7 +897,8 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE systems ADD COLUMN source TEXT;`,
   // GROUP-cli: an MCP credential for a person's CLI opened on a whole system: the system's projects, not one of them.
   `ALTER TABLE mcp_credentials ADD COLUMN system TEXT;`,
-
+  // Appended last: migrations apply by position, so inserting earlier would skip it on existing hubs.
+  `CREATE TABLE mr_ci_policy(project TEXT NOT NULL, mr_url TEXT NOT NULL, stopped_by TEXT NOT NULL, stopped_at TEXT NOT NULL, PRIMARY KEY(project, mr_url));`,
 ];
 
 function browserSeedSql(): string {
@@ -2042,10 +2042,7 @@ const AGENT_METHODS = new Set<Method>([
   "agentPolicy.get", "agents.paused", "artifacts.get", "artifacts.list", "budgets.list", "costs.summary",
   "docs.assetGet", "docs.assets", "docs.get", "docs.list", "gate.get", "gate.list", "machines.list", "machines.setupMissing",
   "memory.search", "memory.write", "policy.get", "projects.list", "proposals.create", "runs.get",
-
-  "runs.ciPolicy", "runs.list", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
-"runs.list", "runs.count", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
-
+  "runs.ciPolicy", "runs.list", "runs.count", "runs.requests", "skills.list", "systems.list", "tasks.claim", "tasks.list",
   "tasks.next", "tasks.notes", "tasks.update", "tools.list", "tools.status",
 ]);
 
