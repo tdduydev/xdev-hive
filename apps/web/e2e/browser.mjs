@@ -4678,9 +4678,9 @@ async function main() {
     const now = new Date().toISOString();
     const entry = (taskId, changes = {}) => ({ project: "payment", taskId, taskStatus: "done", taskUpdatedAt: now,
       path: `/fixture/worktrees/payment/${taskId}`, branch: `ai/${taskId}`, head: "a".repeat(40), fingerprint: "b".repeat(64),
-      bytes: 1024 ** 3, modifiedAt: now, dirty: false, merged: true, active: false, error: null, ...changes });
-    const report = { measuredAt: now, entries: [entry("WT-clean"), entry("WT-dirty", { dirty: true, merged: false }), entry("WT-active", { active: true })],
-      totalBytes: 3 * 1024 ** 3, freeBytes: 20 * 1024 ** 3, cleanup: { enabled: true, retentionDays: 30, minFreeGb: 10 }, logs: [], errors: [] };
+      bytes: 1024 ** 3, modifiedAt: now, dirty: false, merged: true, pushed: true, active: false, error: null, ...changes });
+    const report = { measuredAt: now, entries: [entry("WT-clean"), entry("WT-dirty", { dirty: true, merged: false }), entry("WT-active", { active: true }), entry("WT-unpushed", { pushed: false })],
+      totalBytes: 4 * 1024 ** 3, freeBytes: 20 * 1024 ** 3, cleanup: { enabled: true, retentionDays: 30, minFreeGb: 10 }, logs: [], errors: [] };
     const beat = async (extra = {}) => {
       const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${people.lan.token}`, "x-hive-agent": `runner.${machineName}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: machineName, instance: "63f63f63f", projects: ["payment"], acceptsRuns: false, worktrees: report, ...extra } }) });
       const body = await response.json(); if (body.error) throw new Error(body.error.message); return body.result;
@@ -4699,6 +4699,7 @@ async function main() {
     };
     await open(tabs.admin);
     expect(await tabs.admin.eval(() => !document.querySelector('[data-worktree="WT-active"] [data-delete-worktree]')), "active task cannot be deleted");
+    expect(await tabs.admin.eval(() => !document.querySelector('[data-worktree="WT-unpushed"] [data-delete-worktree]') && document.querySelector('[data-worktree="WT-unpushed"]')?.textContent?.includes('Chưa push')), "unpushed worktree is visible but cannot be deleted");
     if (mobile) {
       // The dialog zooms in from 95%: measured mid-animation a 44px button reads 43.7.
       await tabs.admin.waitFor("worktree dialog settled", () => (document.querySelector('[data-slot="dialog-content"]')?.getAnimations({ subtree: true }) ?? [])

@@ -8,7 +8,7 @@ import { AGENT_TEMPLATES, MANAGED_START, worktreeCleanupSchema, type Actor, type
 import { SqliteHive } from "@xdev-hive/core/node";
 import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
 import { cleanupReason } from "@xdev-hive/core";
-import { deleteWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
+import { deleteWorktree, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { ensureWorktree, hasBranch, renderedPathsAsync } from "#desktop/main/runner/worktree.ts";
 
 const admin: Actor = { name: "admin", role: "admin" };
@@ -18,15 +18,18 @@ async function fixture(mode: "local" | "hub" = "local") {
   const repo = path.join(dir, "repo"); mkdirSync(repo);
   git(repo, "init", "-q", "-b", "main"); git(repo, "config", "user.email", "t@example.com"); git(repo, "config", "user.name", "Test");
   writeFileSync(path.join(repo, "README.md"), "base\n"); git(repo, "add", "."); git(repo, "commit", "-qm", "base");
+  const remote = path.join(dir, "remote.git"); mkdirSync(remote); git(remote, "init", "--bare", "-q"); git(remote, "symbolic-ref", "HEAD", "refs/heads/main");
+  git(repo, "remote", "add", "origin", remote); git(repo, "push", "-q", "origin", "main");
   const hive = new SqliteHive(":memory:");
   await hive.call("tasks.create", { project: "demo", id: "T-1", title: "Task" }, admin);
   let clock = new Date();
   let settings: RunnerSettings = { worktreeRoot: null, maxParallel: 1, maxAttempts: 1, acceptHubRuns: false, gateRunner: false, worktreeCleanup: worktreeCleanupSchema.parse({ enabled: false }) };
   const profile = { ...AGENT_TEMPLATES.claude, bin: process.execPath, args: [path.join(import.meta.dirname, "fixtures/fake-agent.mjs"), "{prompt}"], env: { FAKE_MODE: "ok" } };
-  const host: RunnerHost = { backend: () => hive, profiles: () => [profile], projects: () => [{ name: "demo", repo }], settings: () => settings, mode: () => mode, machine: () => "test", env: () => ({ PATH: process.env.PATH }), applyWorktreeCleanup: cleanup => { settings = { ...settings, worktreeCleanup: cleanup }; } };
+  const host: RunnerHost = { backend: () => hive, profiles: () => [profile], projects: () => [{ name: "demo", repo, targetBranch: "main" }], settings: () => settings, mode: () => mode, machine: () => "test", env: () => ({ PATH: process.env.PATH }), applyWorktreeCleanup: cleanup => { settings = { ...settings, worktreeCleanup: cleanup }; } };
   const runner = new Runner(host, { dataDir: dir, now: () => clock, diffReview: false, fetchRetryMs: [] });
   const root = path.join(dir, "worktrees");
   const wt = ensureWorktree(repo, path.join(root, "demo", "T-1"), "T-1", null);
+  git(repo, "push", "-q", "origin", wt.branch);
   return { dir, repo, hive, runner, root, wt, host, settings: () => settings, advance: () => { clock = new Date(+clock + 61_000); }, close: () => { runner.store.db.close(); hive.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
@@ -35,7 +38,7 @@ describe("runner worktree administration", () => {
     const f = await fixture();
     try {
       const entry = (await f.runner.worktrees()).entries[0]!;
-      assert.equal(entry.taskStatus, "todo"); assert.equal(entry.merged, true); assert.ok(entry.bytes! > 0); assert.ok((await f.runner.worktrees()).freeBytes! > 0);
+      assert.equal(entry.taskStatus, "todo"); assert.equal(entry.merged, true); assert.equal(entry.pushed, true); assert.ok(entry.bytes! > 0); assert.ok((await f.runner.worktrees()).freeBytes! > 0);
       await assert.rejects(deleteWorktree({ name: "demo", repo: f.repo }, f.root, entry, true, () => true), error => (error as { key: string }).key === "errors.worktreeActive");
       assert.equal(existsSync(f.wt.path), true, "checks active runs immediately before removal too");
       const run = f.runner.store.insert({ project: "demo", taskId: "T-1", taskTitle: "Task", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
@@ -61,11 +64,11 @@ describe("runner worktree administration", () => {
       writeFileSync(path.join(f.wt.path, "feature.txt"), "done\n"); git(f.wt.path, "add", "."); git(f.wt.path, "commit", "-qm", "work");
       assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, false, "the work is not in main yet");
       // Landed as a squash on main: same content, another commit, so the branch is no ancestor of main.
-      git(f.repo, "merge", "-q", "--squash", "ai/T-1"); git(f.repo, "commit", "-qm", "squash T-1");
+      git(f.repo, "merge", "-q", "--squash", "ai/T-1"); git(f.repo, "commit", "-qm", "squash T-1"); git(f.repo, "push", "-q", "origin", "main");
       assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, true);
       writeFileSync(path.join(f.wt.path, "more.txt"), "after landing\n"); git(f.wt.path, "add", "."); git(f.wt.path, "commit", "-qm", "more");
       assert.equal((await f.runner.worktrees(true)).entries[0]!.merged, false, "work committed after landing keeps the worktree");
-      const entry = { ...(await f.runner.worktrees(true)).entries[0]!, taskStatus: "done" as const, merged: true };
+      const entry = { ...(await f.runner.worktrees(true)).entries[0]!, taskStatus: "done" as const, merged: true, pushed: true };
       assert.equal(cleanupReason(entry, worktreeCleanupSchema.parse({ enabled: false }), new Date()), null, "automatic cleanup off");
       assert.equal(cleanupReason(entry, worktreeCleanupSchema.parse({ enabled: false }), new Date(), { now: true }), "merged", "Dọn ngay applies the rules anyway");
     } finally { f.close(); }
@@ -83,6 +86,66 @@ describe("runner worktree administration", () => {
     } finally { f.close(); }
   });
 
+  it("keeps a worktree when its branch is missing or behind on the remote, even for forced deletion", async () => {
+    const f = await fixture();
+    try {
+      await f.hive.call("tasks.update", { id: "T-1", status: "done" }, admin);
+      writeFileSync(path.join(f.wt.path, "feature.txt"), "committed\n"); git(f.wt.path, "add", "."); git(f.wt.path, "commit", "-qm", "feature");
+      let entry = (await f.runner.worktrees(true)).entries[0]!;
+      assert.equal(entry.pushed, false);
+      assert.equal(cleanupReason(entry, worktreeCleanupSchema.parse({}), new Date()), null);
+      assert.equal((await f.runner.manageWorktrees([entry], true))[0]?.ok, false);
+      git(f.repo, "push", "-q", "origin", f.wt.branch);
+      entry = (await f.runner.worktrees(true)).entries[0]!;
+      assert.equal(entry.pushed, true);
+      git(f.repo, "push", "-q", "origin", `:${f.wt.branch}`);
+      assert.equal((await f.runner.manageWorktrees([entry], true))[0]?.ok, false, "a remote change after the scan blocks deletion");
+      git(f.repo, "remote", "set-url", "origin", path.join(f.dir, "missing.git"));
+      entry = (await f.runner.worktrees(true)).entries[0]!;
+      assert.equal(entry.pushed, null, "an unreachable remote is unknown, not proof of a push");
+      assert.equal((await f.runner.manageWorktrees([entry], true))[0]?.ok, false);
+      assert.equal(existsSync(f.wt.path), true);
+    } finally { f.close(); }
+  });
+
+  it("checks the push URL, not the fetch URL, before treating a branch as pushed", async () => {
+    const f = await fixture();
+    try {
+      const mirror = path.join(f.dir, "mirror.git"); mkdirSync(mirror); git(mirror, "init", "--bare", "-q");
+      git(f.repo, "remote", "set-url", "--push", "origin", mirror);
+      const project = { name: "demo", repo: f.repo, targetBranch: "main" };
+      const item = { path: f.wt.path, branch: f.wt.branch, taskId: "T-1" };
+      let entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, false, "the head on the fetch URL alone is not a push");
+      await assert.rejects(deleteWorktree(project, f.root, entry, true), /not confirmed on the remote/);
+      git(f.repo, "push", "-q", "origin", f.wt.branch);
+      entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, true);
+      git(f.repo, "remote", "set-url", "--add", "--push", "origin", path.join(f.dir, "missing.git"));
+      entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, null, "every push URL must have the branch");
+      assert.equal(existsSync(f.wt.path), true);
+    } finally { f.close(); }
+  });
+
+  it("uses the configured remote when rechecking a merged worktree for deletion", async () => {
+    const f = await fixture();
+    try {
+      const remote = git(f.repo, "remote", "get-url", "origin");
+      git(f.repo, "remote", "rename", "origin", "publish");
+      git(f.repo, "remote", "add", "origin", path.join(f.dir, "missing.git"));
+      git(f.repo, "fetch", "-q", "publish", "main");
+      assert.equal(git(f.repo, "remote", "get-url", "publish"), remote);
+      const project = { name: "demo", repo: f.repo, targetBranch: "main", git: { remote: "publish" } };
+      const entry = await inspectWorktree(project, { path: f.wt.path, branch: f.wt.branch, taskId: "T-1" }, undefined, false);
+      assert.equal(entry.merged, true);
+      assert.equal(entry.pushed, true);
+      await deleteWorktree(project, f.root, entry, false);
+      assert.equal(existsSync(f.wt.path), false);
+    } finally { f.close(); }
+  });
+
+
   it("excludes rendered nested instructions from the async worktree status scan", async () => {
     const f = await fixture();
     try {
@@ -95,7 +158,7 @@ describe("runner worktree administration", () => {
     } finally { f.close(); }
   });
 
-  it("auto-cleans only done, clean, merged or expired worktrees; honors disabling and records low-disk cleanup", async () => {
+  it("auto-cleans eligible done worktrees; honors disabling and records low-disk cleanup", async () => {
     const f = await fixture();
     try {
       const entry = (await f.runner.worktrees()).entries[0]!;
@@ -113,6 +176,21 @@ describe("runner worktree administration", () => {
     } finally { f.close(); }
   });
 
+  it("reclaims a pushed worktree after its run ends when disk is low, even while its task is unfinished", async () => {
+    const f = await fixture();
+    try {
+      const policy = worktreeCleanupSchema.parse({ minFreeGb: 1000 });
+      const entry = (await f.runner.worktrees()).entries[0]!;
+      assert.equal(entry.taskStatus, "todo");
+      assert.equal(cleanupReason(entry, policy, new Date()), null);
+      assert.equal(cleanupReason(entry, policy, new Date(), { lowDisk: true }), "lowDisk");
+      f.host.applyWorktreeCleanup!(policy);
+      await f.runner.cleanWorktrees();
+      assert.equal(existsSync(f.wt.path), false);
+      assert.equal(f.runner.store.worktreeLogs()[0]?.reason, "lowDisk");
+    } finally { f.close(); }
+  });
+
   it("delivers delete and settings commands with durable receipts even when intake is off", async () => {
     const f = await fixture("hub");
     try {
@@ -123,7 +201,7 @@ describe("runner worktree administration", () => {
       const command = await f.hive.call("machines.manageWorktrees", { machineId, targets: [entry] }, admin);
       await Promise.all([f.runner.heartbeat(), f.runner.heartbeat()]);
       assert.equal(f.runner.store.worktreeLogs().length, 1, "overlapping heartbeats apply the command once");
-      assert.equal(existsSync(f.wt.path), false); assert.ok(f.runner.store.worktreeResult(command.id)?.[0]?.ok);
+      assert.equal(existsSync(f.wt.path), false, JSON.stringify(f.runner.store.worktreeResult(command.id))); assert.ok(f.runner.store.worktreeResult(command.id)?.[0]?.ok);
       ensureWorktree(f.repo, f.wt.path, "T-1", entry.head);
       await f.runner.heartbeat();
       assert.equal(existsSync(f.wt.path), true, "retrying a receipt never deletes a recreated worktree");
