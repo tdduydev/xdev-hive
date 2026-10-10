@@ -439,6 +439,17 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **80o. task-path-web**: component `TaskPath` trong chi tiết task trên hub, có bản mobile.
   - [ ] **80p. task-path-pipeline**: thanh đếm task theo bước trên Pipeline cho mọi task.
   - [ ] **80q. task-path-desktop**: bản gọn trong chi tiết run và Inspector trên desktop.
+- **81. ba-editor** (hỏi 11/10: "về phần editor ở máy, có cách nào soạn 1 editor chuyên cho anh em BA, SA vào soạn tài liệu không? hiện tại đang hơi khó"). Spec: [specs/81-ba-editor.md](specs/81-ba-editor.md). Nghiên cứu xong, bản nháp chờ chọn hướng (khuyến nghị nâng cấp trang Tài liệu, không viết trình soạn thứ hai).
+  - [ ] **81a. templates**: mẫu SRS, BRD, use case, user story, đặc tả API, ADR; *Từ mẫu* khi tạo trang; mẫu riêng dự án trong `templates/`.
+  - [ ] **81b. export-pdf-md**: xuất PDF (desktop `printToPDF`, web in) và Markdown, có Mermaid và ảnh.
+  - [ ] **81c. export-docx**: xuất .docx bằng `docx`, đề mục là kiểu Heading của Word.
+  - [ ] **81d. import-docx**: nhập .docx bằng `mammoth`, ảnh vào `docs.assetPut`, báo phần không giữ được.
+  - [ ] **81e. comments**: góp ý theo đoạn, trả lời, xong/mở lại, lưu ở hub, Markdown không đổi.
+  - [ ] **81f. section-review**: đề xuất và duyệt theo đề mục, áp một phần (sau 76e).
+  - [ ] **81g. diagram-assist**: thư viện mẫu Mermaid, tách đôi mã | xem trước, báo lỗi theo dòng, xuất PNG/SVG, nhờ trợ lý vẽ.
+  - [ ] **81h. ba-fullscreen**: chế độ toàn màn hình có đề cương và mục bắt buộc của mẫu.
+  - [ ] **81i. excalidraw**: khối bản vẽ Excalidraw lưu JSON + SVG làm ảnh có mô tả.
+  - [ ] **81j. realtime**: cùng soạn thời gian thực Yjs + Hocuspocus; chỉ làm khi người dùng còn cần sau 81a–81f.
 
 ## Sửa lỗi
 
