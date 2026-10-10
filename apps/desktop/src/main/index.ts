@@ -1542,7 +1542,7 @@ async function chatUpload(project: unknown, name: unknown, bytes: unknown): Prom
 async function readChatFile(id: number): Promise<{ name: string; type: string; bytes: Uint8Array } | null> {
   const hub = hubAccess();
   if (hub) {
-    const res = await gitlabFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name }, signal: AbortSignal.timeout(45_000) });
+    const res = await hubFetch(`${hub.url}/api/chat/files/${id}`, { headers: { authorization: `Bearer ${hub.token}`, "x-hive-agent": actor().name }, signal: AbortSignal.timeout(45_000) });
     if (!res.ok) return null;
     return { name: servedName(res.headers.get("content-disposition")) ?? `file-${id}`, type: res.headers.get("content-type") ?? "application/octet-stream", bytes: new Uint8Array(await res.arrayBuffer()) };
   }
@@ -2314,7 +2314,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     alertWatch = new AlertWatch({
       me: () => me(),
-      list: () => fetchAlerts({ url: config.hub.url, token: config.hub.token }, gitlabFetch),
+      list: () => fetchAlerts({ url: config.hub.url, token: config.hub.token }, hubFetch),
       notify: showAlert,
     });
     updater = new Updater({
