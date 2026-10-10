@@ -122,5 +122,8 @@ jobs:
         env:
           DIGEST: ${{ needs.publish.outputs.digest }}
         run: |
-          docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:prod" "$IMAGE@$DIGEST"
+          # --prefer-index=false: the tags point at the pushed manifest itself, not at a new index wrapping it, so prod
+          # has the digest that was scanned and attested.
+          docker buildx imagetools create --prefer-index=false -t "$IMAGE:latest" -t "$IMAGE:prod" "$IMAGE@$DIGEST"
+          [ "$(docker buildx imagetools inspect "$IMAGE:prod" --format "{{json .Manifest.Digest}}" | tr -d '"')" = "$DIGEST" ] || { echo "prod does not point at $DIGEST" >&2; exit 1; }
           echo "prod → \`$IMAGE@$DIGEST\` (commit \`${{ needs.publish.outputs.sha }}\`)" >> "$GITHUB_STEP_SUMMARY"
