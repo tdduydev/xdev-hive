@@ -42,6 +42,9 @@ COPY packages/mcp/src packages/mcp/src
 COPY packages/ui-kit/src/i18n packages/ui-kit/src/i18n
 COPY apps/web/src apps/web/src
 COPY --from=build /app/apps/web/dist apps/web/dist
+# The commit the image was built from (hub-image.yml passes it), for the Hub page; a HIVE_COMMIT set at run time wins.
+ARG HIVE_COMMIT=
+ENV HIVE_COMMIT=${HIVE_COMMIT}
 # Both exist in the image so new named volumes start out owned by `node` (uid 1000).
 RUN mkdir -p /data/backups && chown -R node:node /data
 USER node

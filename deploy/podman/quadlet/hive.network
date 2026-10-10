@@ -1,0 +1,3 @@
+# The hub and SeaweedFS talk on this network; nothing on it is published except the hub's port.
+[Network]
+NetworkName=hive
