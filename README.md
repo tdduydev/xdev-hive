@@ -295,7 +295,7 @@ Things to know:
 - **Run one hub container per database.** SQLite does not share a file between replicas.
 - **Backups** use `VACUUM INTO`, so they are safe while the hub runs. Do not copy `hub.db` directly. For an immediate backup, run `npm run backup -w @xdev-hive/web -- [dir] [keep]`.
 - **The LAN port is unencrypted.** Only enable it on a trusted network, and restrict it to the LAN interface and address range.
-- **Lost the admin password?** On the server (prefix with `docker compose exec hub` under Docker):
+- **Lost the admin password?** In a checkout of the repo on the server, run the commands below. The hub image has no npm, so inside the container call the same CLI with node: `docker compose exec -w /app/apps/web hub node src/cli.ts user reset admin` (and `user list`, `token create ci-bot agent`).
 
   ```bash
   npm run user -w @xdev-hive/web -- reset admin

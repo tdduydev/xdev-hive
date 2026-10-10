@@ -1,0 +1,10 @@
+[Unit]
+Description=xDev Hive: deploy the hub image prod points to
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive-deploy
+# A deploy waits for the trial, the snapshot and two health checks.
+TimeoutStartSec=1800
