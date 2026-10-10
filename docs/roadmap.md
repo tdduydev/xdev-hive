@@ -442,6 +442,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 
 ## Sửa lỗi
 
+- [x] **BUG-randomuuid-http** (11/10, 0.162.1): mở Terminal trên hub HTTP trong LAN không còn lỗi `crypto.randomUUID is not a function`; client dùng UUID v4 từ `crypto.getRandomValues` khi trình duyệt không có `randomUUID`.
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
 - [x] **linux-appimage** (8/10, BUG-linux-appimage, 0.146.1): AppImage và bản giải nén tự tắt sandbox Chromium khi AppArmor chặn user namespace hoặc chrome-sandbox không setuid (ghi lý do vào main.log); bản cài từ .deb giữ sandbox. Ghi chú phát hành nêu libfuse2/libfuse2t64.
 - [x] **data-cleanup** (8/10, DATA-cleanup-hub, DATA-cleanup-machine, 0.146.0): trang Hub có thẻ *Dữ liệu* (dung lượng bản build, artifacts, log) và nút *Dọn dữ liệu*; hub giữ bản build của 3 bản mới nhất (`HIVE_RELEASE_KEEP`), artifacts của task xong 30 ngày (`HIVE_ARTIFACT_DAYS`), VACUUM khi dọn. Trên máy: worktree của nhánh commit gộp đã vào main được coi là đã merge, nút *Dọn ngay*, log run cũ theo hạn giữ worktree, Linux chỉ giữ bản app đang chạy và một bản trước trong `~/hive-runtime`.

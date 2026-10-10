@@ -1,5 +1,5 @@
 import { createContext, lazy, Suspense, useContext, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
-import { isTerminalFinal, terminalCheckoutRef, type TerminalSession, type TerminalStepUpOperation } from "@xdev-hive/core";
+import { isTerminalFinal, randomId, terminalCheckoutRef, type TerminalSession, type TerminalStepUpOperation } from "@xdev-hive/core";
 import { Terminal as TerminalIcon } from "lucide-react";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { NativeSelect } from "#ui/components/ui/native-select.tsx";
@@ -124,7 +124,7 @@ export function TerminalForm({ api, target, busyRef, onCreated, initial, hideSes
   const [more, setMore] = useState(false);
   const [selected, setSelected] = useState<TerminalSession | null>(initial ?? null);
   const action = useAction();
-  const key = useRef(crypto.randomUUID());
+  const key = useRef(randomId());
   const machines = useQuery(() => client.call("machines.list", {}), [client]);
   const machine = machines.data?.find(m => m.id === machineId);
   const availableProjects = projects.filter(p => machine?.projects.includes(p));

@@ -20,6 +20,7 @@ export * from "./hub-roles.ts";
 export * from "./keys.ts";
 export * from "./mapreduce.ts";
 export * from "./roles.ts";
+export * from "./random-id.ts";
 export * from "./methods.ts";
 export * from "./mirror.ts";
 export * from "./policy.ts";

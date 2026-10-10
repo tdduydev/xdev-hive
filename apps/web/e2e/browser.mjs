@@ -5672,6 +5672,9 @@ async function main() {
     for (const locale of ["en", "vi"]) {
       await tab.eval(value => localStorage.setItem("xdev-hive.locale", value), locale); await tab.reload();
       await tab.go("machines");
+      // Plain HTTP on a LAN has getRandomValues but may not expose randomUUID.
+      await tab.eval(() => Object.defineProperty(Crypto.prototype, "randomUUID", { configurable: true, value: undefined }));
+      expect(await tab.eval(() => typeof crypto.randomUUID === "undefined" && typeof crypto.getRandomValues === "function"), "terminal HTTP crypto fixture unavailable");
       await tab.click('[data-map-manage="terminal-fixture"]');
       await tab.click('[data-testid="terminal-open-machine"]');
       await tab.waitFor(`terminal form ${locale}`, () => !!document.querySelector('[data-testid="terminal-create-dialog"]'));

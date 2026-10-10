@@ -2,6 +2,7 @@ import { HiveError, type ErrorText, type HiveErrorCode } from "./errors.ts";
 import type { Me } from "./bridge.ts";
 import type { HiveBackend, Method, MethodInput, MethodOutput } from "./methods.ts";
 import { sourceHeader } from "./source.ts";
+import { randomId } from "./random-id.ts";
 import type { Actor } from "./types.ts";
 
 /** The message key of a hub error answer, if it has one. */
@@ -99,7 +100,7 @@ export class HubBackend implements HiveBackend {
 
   async #call<M extends Method>(method: M, input: MethodInput<M>, actor: Actor, replayId?: string): Promise<MethodOutput[M]> {
     const report = method === "tasks.update" || method === "runs.report";
-    const id = replayId ?? (report ? crypto.randomUUID() : undefined);
+    const id = replayId ?? (report ? randomId() : undefined);
     try {
       const res = await reach(this.url, `${this.url}/api/rpc`, {
         signal: this.#shutdown.signal,
