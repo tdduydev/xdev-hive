@@ -89,6 +89,7 @@ import {
   learnedTasks,
   learningDue,
   learningStats,
+  planScores,
   qualityStats,
   proposeTier,
   type LearningChange,
@@ -4059,9 +4060,17 @@ export class SqliteHive implements HiveBackend {
   /** The project's own cell, as a person would set it in its part of modelRouter: the hub's table stays as it is. */
   #setModelCell(project: string, kind: TaskKind, size: TaskSize, tier: ModelTier): void {
     const router = this.#modelRouter();
-    const own: ModelProject = router.projects[project] ?? { enabled: true, profile: "balanced", cells: {} };
+    const own: ModelProject = router.projects[project] ?? { enabled: true, preferByCleanRate: false, profile: "balanced", cells: {} };
     const cells = { ...own.cells, [kind]: { ...own.cells[kind], [size]: tier } };
     this.#saveModelRouter({ ...router, projects: { ...router.projects, [project]: { ...own, cells } } });
+  }
+
+  #cachedPlanScores(project: string, kind: TaskKind, size: TaskSize, tier: ModelTier): Map<string, { score: number; tasks: number }> {
+    const row = this.db.prepare("SELECT value FROM hive_meta WHERE key = ?").get(`plan_scores:${project}`) as Row | undefined;
+    if (!row) return new Map();
+    const entries = JSON.parse(str(row.value)) as { kind: TaskKind; size: TaskSize; tier: ModelTier; plan: string; score: number; tasks: number }[];
+    return new Map(entries.filter((entry) => entry.kind === kind && entry.size === size && entry.tier === tier)
+      .map((entry) => [entry.plan, { score: entry.score, tasks: entry.tasks }]));
   }
 
   #learningOn(project: string): boolean {
@@ -4168,6 +4177,13 @@ export class SqliteHive implements HiveBackend {
       this.db.prepare("INSERT INTO hive_meta(key, value) VALUES ('model_learning_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(this.#now());
       let changed = 0;
       for (const project of this.#projectNames()) {
+        const stats = learningStats(learnedTasks(this.#learningRuns(project)));
+        const scores = stats.flatMap((row) => {
+          const score = planScores(stats, row.kind, row.size, row.tier).get(row.plan ?? "");
+          return score === undefined || !row.plan ? [] : [{ kind: row.kind, size: row.size, tier: row.tier, plan: row.plan, score, tasks: row.tasks }];
+        });
+        this.db.prepare("INSERT INTO hive_meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+          .run(`plan_scores:${project}`, JSON.stringify(scores));
         // Routing off: its runs carry no tier, and a cell set now would surprise whoever turns it back on.
         if (this.#modelRouter().projects[project]?.enabled === false || !this.#learningOn(project) || this.#projectState(project) !== null) continue;
         for (const cell of this.#learningView(project).cells) {
@@ -5294,6 +5310,9 @@ export class SqliteHive implements HiveBackend {
       const actor: Actor = { name: own.autoDispatchBy, role: "member" };
       const machines = (this.db.prepare("SELECT * FROM machines ORDER BY machine, id").all() as Row[]).map((r) => this.#toMachine(r));
       const waiting = this.#waitingRequests();
+      const rank = this.#modelRouter().projects[task.project]?.preferByCleanRate && task.kind && task.size && task.risk !== "high" && !isTrialTask(task.project, task.id)
+        ? this.#selection(task.project, task, "implement") : null;
+      const scores = rank && task.kind && task.size ? this.#cachedPlanScores(task.project, task.kind, task.size, rank.tier) : new Map<string, { score: number; tasks: number }>();
       const candidates = machines.flatMap((m) => {
         if (task.platforms.length && (!m.platform || !task.platforms.includes(m.platform))) return [];
         const free = (m.maxParallel ?? 1) - m.runs.length - (waiting.get(m.id) ?? 0) - this.#unreportedRequests(m);
@@ -5301,14 +5320,27 @@ export class SqliteHive implements HiveBackend {
         return m.profiles.filter((p) => {
           return !this.#cannotPushTask(m.id, task.project, task.id) && this.#freePlaces(m, task.project, p.id, waiting) - this.#unreportedRequests(m, p.id) > 0 && this.#autoProfileAllowed(task, p, machines);
         }).map((p) => ({ m, p, free }));
-      }).sort((a, b) => (a.p.priority ?? 50) - (b.p.priority ?? 50) || b.free - a.free || a.m.id.localeCompare(b.m.id) || a.p.id.localeCompare(b.p.id));
+      });
+      const oldOrder = (a: typeof candidates[number], b: typeof candidates[number]) =>
+        (a.p.priority ?? 50) - (b.p.priority ?? 50) || b.free - a.free || a.m.id.localeCompare(b.m.id) || a.p.id.localeCompare(b.p.id);
+      const baseline = [...candidates].sort(oldOrder)[0];
+      candidates.sort((a, b) => (a.p.priority ?? 50) - (b.p.priority ?? 50) ||
+        (scores.has(a.p.kind) && scores.has(b.p.kind) ? scores.get(b.p.kind)!.score - scores.get(a.p.kind)!.score : 0) ||
+        b.free - a.free || a.m.id.localeCompare(b.m.id) || a.p.id.localeCompare(b.p.id));
       for (const { m, p } of candidates) {
         const preview: Task = { ...task, agent: { machineId: m.id, machine: m.machine, profileId: p.id, order: 0, by: actor.name, at: this.#now(), hold: null } };
         if (this.#agentWait(preview, m, 1)) continue;
         try {
           this.#assertDispatchable({ machineId: m.id, project: task.project, task, role: "implement", profileId: p.id, candidates: 1, instructions: "" }, actor);
           this.#assignTask({ id: task.id, machineId: m.id, profileId: p.id }, actor, true);
-          this.audit(actor, "tasks.autoAssign", task.id, `${m.machine}/${p.id}`, { key: "audit.autoAssign", vars: { task: task.id, machine: m.machine, profile: p.id } });
+          const score = scores.get(p.kind);
+          const changedByScore = score && baseline && (baseline.m.id !== m.id || baseline.p.id !== p.id) &&
+            (baseline.p.priority ?? 50) === (p.priority ?? 50) && scores.has(baseline.p.kind);
+          this.audit(actor, "tasks.autoAssign", task.id,
+            `${m.machine}/${p.id}${changedByScore ? ` · ${p.kind}: ${score.score.toFixed(3)} (${score.tasks} tasks)` : ""}`,
+            changedByScore
+              ? { key: "audit.autoAssignCleanRate", vars: { task: task.id, machine: m.machine, profile: p.id, plan: p.kind, score: score.score.toFixed(3), tasks: score.tasks } }
+              : { key: "audit.autoAssign", vars: { task: task.id, machine: m.machine, profile: p.id } });
           break;
         } catch (err) {
           if (!(err instanceof HiveError)) throw err;

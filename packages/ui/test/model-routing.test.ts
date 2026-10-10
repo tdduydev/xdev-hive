@@ -16,7 +16,7 @@ describe("models in pipeline", () => {
   it("uses hub tiers and profile shifts, and respects routing off", () => {
     const settings = structuredClone(DEFAULT_MODEL_ROUTER);
     settings.tiers.strong.claude = { model: "my-model", effort: "high" };
-    settings.projects.app = { enabled: true, profile: "balanced", cells: { spec: { m: "strong" } } };
+    settings.projects.app = { enabled: true, preferByCleanRate: false, profile: "balanced", cells: { spec: { m: "strong" } } };
     assert.equal(stepModel(settings, "app", "plan")?.models.claude?.model, "my-model");
     settings.projects.app.profile = "economy";
     assert.equal(stepModel(settings, "app", "plan")?.tier, "standard");

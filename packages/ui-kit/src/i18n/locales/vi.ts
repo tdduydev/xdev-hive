@@ -773,6 +773,7 @@ export const vi = {
     noun: { runs: "lượt chạy", machines: "máy", requests: "yêu cầu", entries: "mục" },
     audit: {
     autoAssign: "Tự giao {task} cho {machine} / {profile}",
+    autoAssignCleanRate: "Tự giao {task} cho {machine} / {profile}: điểm sạch {plan} {score} từ {tasks} task",
       onBehalf: "thay {user}",
       filter: { agent: "Agent, vd. claude-1", user: "Người", run: "Id run" },
       apply: "Lọc",
@@ -2572,6 +2573,8 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
     minutes: "{count} phút",
   },
   modelRouting: {
+    "preferByCleanRate": "Ưu tiên loại CLI có kết quả sạch hơn",
+    "preferByCleanRateHint": "Với task đã phân loại, so các gói cùng cấp từ ít nhất 10 task hoàn thành. Ưu tiên thủ công vẫn đứng trước; task thăm dò hoặc rủi ro cao giữ thứ tự cũ.",
     "planKind": "Loại gói (xem trước)",
     "title": "Model theo loại task",
     "steps": "Các bước",
@@ -2595,7 +2598,7 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
     "byTask": "Theo loại và cỡ task",
     "preview": "Model dự kiến · {reason}",
     "reason": "Lựa chọn của hub: {reason}. Args của gói và chính sách agent có thể thay đổi model thực chạy.",
-    "learning": "Bảng học sẽ có khi hub hỗ trợ thống kê và đề xuất 54d.",
+    "learning": "Tự học từ task đã hoàn thành",
     "reset": "Dùng bảng của hub",
     "model": "Model",
     "effort": "Mức suy nghĩ"
@@ -4825,6 +4828,7 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
   audit: {
     evidenceRecorded: "Nghiệm thu {criterion}: {outcome} · {sha}",
     autoAssign: "Tự giao {task} cho {machine} / {profile}",
+    autoAssignCleanRate: "Tự giao {task} cho {machine} / {profile}: điểm sạch {plan} {score} từ {tasks} task",
     research: "Bắt đầu nghiên cứu #{id}",
     runTimeoutSettings: "Đổi thời hạn run",
     memberSet: "{project}: {user} là {role}",

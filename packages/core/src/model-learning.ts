@@ -189,6 +189,21 @@ export function learningStats(tasks: LearnedTask[]): ModelLearningStat[] {
     .sort((a, b) => order(a.kind, a.size, a.tier) - order(b.kind, b.size, b.tier) || (a.plan ?? "").localeCompare(b.plan ?? ""));
 }
 
+/** Conservative clean-rate estimate for comparable plans in one cell and one starting tier. */
+export function planScores(stats: ModelLearningStat[], kind: TaskKind, size: TaskSize, tier: ModelTier): Map<string, number> {
+  const scores = new Map<string, number>();
+  const z = 1.6448536269514722; // Two-sided 90% Wilson interval.
+  for (const row of stats) {
+    if (row.kind !== kind || row.size !== size || row.tier !== tier || !row.plan || row.tasks < LEARN_MIN_TASKS) continue;
+    const n = row.tasks;
+    const p = row.clean / n;
+    const denominator = 1 + z * z / n;
+    const lower = (p + z * z / (2 * n) - z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))) / denominator;
+    scores.set(row.plan, lower);
+  }
+  return scores;
+}
+
 /**
  * The cheapest tier of a cell finishing ≥ 80% of ≥ 10 tasks without escalation, every kind of plan together: the cell
  * names a tier, and each kind of plan takes its own model at it. Taken back through the project's profile, so that

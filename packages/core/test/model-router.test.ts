@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DEFAULT_MODEL_ROUTER, HiveError, selectModel, type Actor, type ModelRouterSettings, type RouteInput } from "#core/index.ts";
+import { DEFAULT_MODEL_ROUTER, HiveError, modelProjectSchema, selectModel, type Actor, type ModelRouterSettings, type RouteInput } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const settings = (): ModelRouterSettings => structuredClone(DEFAULT_MODEL_ROUTER);
 const task = (over: Partial<RouteInput> = {}): RouteInput => ({ kind: "feature", size: "m", risk: "normal", role: "implement", ...over });
 
 describe("model router (roadmap 54c)", () => {
+  it("keeps clean-rate dispatch off for existing project settings", () => {
+    assert.equal(modelProjectSchema.parse({ enabled: true, profile: "balanced", cells: {} }).preferByCleanRate, false);
+  });
   it("starts from the kind × size cell, with the tier's model for each kind of plan", () => {
     const docs = selectModel(settings(), "app", task({ kind: "docs", size: "s" }))!;
     assert.equal(docs.tier, "light");
@@ -32,7 +35,7 @@ describe("model router (roadmap 54c)", () => {
 
   it("moves with the project's profile, within light and max, never above max effort", () => {
     const r = settings();
-    r.projects.app = { enabled: true, profile: "economy", cells: {} };
+    r.projects.app = { enabled: true, preferByCleanRate: false, profile: "economy", cells: {} };
     assert.equal(selectModel(r, "app", task({ kind: "docs", size: "s" }))!.tier, "light", "no lower than light");
     assert.equal(selectModel(r, "app", task({ kind: "debug" }))!.tier, "standard");
     r.projects.app.profile = "quality";
@@ -46,7 +49,7 @@ describe("model router (roadmap 54c)", () => {
     r.cells.docs.s = "standard";
     r.tiers.standard.claude = { model: "claude-sonnet-5-5", effort: "medium" };
     assert.equal(selectModel(r, "app", task({ kind: "docs", size: "s" }))!.models.claude?.model, "claude-sonnet-5-5");
-    r.projects.app = { enabled: true, profile: "balanced", cells: { docs: { s: "light" } } };
+    r.projects.app = { enabled: true, preferByCleanRate: false, profile: "balanced", cells: { docs: { s: "light" } } };
     assert.equal(selectModel(r, "app", task({ kind: "docs", size: "s" }))!.tier, "light");
   });
 
@@ -67,7 +70,7 @@ describe("model router (roadmap 54c)", () => {
     assert.equal(selectModel(settings(), "app", task({ kind: "debug", role: "review" }))!.reason, "review/m, balanced");
     assert.equal(selectModel(settings(), "app", task({ role: "classify" })), null);
     const r = settings();
-    r.projects.app = { enabled: false, profile: "balanced", cells: {} };
+    r.projects.app = { enabled: false, preferByCleanRate: false, profile: "balanced", cells: {} };
     assert.equal(selectModel(r, "app", task()), null);
   });
 });

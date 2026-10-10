@@ -8,6 +8,7 @@ import {
   learningDue,
   learningStats,
   median,
+  planScores,
   proposeTier,
   qualityStats,
   selectModel,
@@ -71,6 +72,21 @@ describe("model learning, the numbers (roadmap 54d)", () => {
     const [claude, codex] = learningStats(tasks);
     assert.deepEqual(claude, { kind: "feature", size: "m", tier: "standard", plan: "claude", tasks: 3, clean: 2, cleanRate: 2 / 3, tokensMedian: 300, costMedian: 2 });
     assert.deepEqual([codex?.plan, codex?.tasks, codex?.costMedian], ["codex", 1, null]);
+  });
+
+  it("scores only plans with enough tasks in the same kind, size and tier", () => {
+    const rows = learningStats([
+      ...Array.from({ length: 20 }, (_, i) => ({ taskId: `c-${i}`, kind: "feature" as const, size: "m" as const, tier: "standard" as const, plan: "claude", clean: i < 18, tokens: null, costUsd: null })),
+      ...Array.from({ length: 20 }, (_, i) => ({ taskId: `x-${i}`, kind: "feature" as const, size: "m" as const, tier: "standard" as const, plan: "codex", clean: i < 12, tokens: null, costUsd: null })),
+      ...Array.from({ length: 9 }, (_, i) => ({ taskId: `g-${i}`, kind: "feature" as const, size: "m" as const, tier: "standard" as const, plan: "gemini", clean: true, tokens: null, costUsd: null })),
+      ...Array.from({ length: 20 }, (_, i) => ({ taskId: `l-${i}`, kind: "feature" as const, size: "m" as const, tier: "light" as const, plan: "vibe", clean: true, tokens: null, costUsd: null })),
+    ]);
+    const standard = planScores(rows, "feature", "m", "standard");
+    assert.deepEqual([...standard.keys()], ["claude", "codex"]);
+    assert.ok(standard.get("claude")! > standard.get("codex")!);
+    assert.ok(standard.get("claude")! < 0.9, "Wilson lower bound is conservative");
+    assert.deepEqual([...planScores(rows, "feature", "m", "light").keys()], ["vibe"]);
+    assert.equal(planScores(rows, "ui", "m", "standard").size, 0);
   });
 
   it("proposes the cheapest tier finishing ≥ 80% of ≥ 10 tasks, every kind of plan together", () => {

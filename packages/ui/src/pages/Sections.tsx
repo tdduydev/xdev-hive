@@ -35,6 +35,7 @@ import { OpsContext, OpsHub } from "./admin/HubOps.tsx";
 import { OpsAudit, OpsCosts, OpsFleet, OpsQueue } from "./admin/Ops.tsx";
 import { SdlcGatesCard } from "./admin/SdlcGates.tsx";
 import { ClassifySettingsCard } from "./admin/ClassifySettings.tsx";
+import { CleanRateSettingsCard } from "./admin/CleanRate.tsx";
 import { OpsVersions } from "./admin/Versions.tsx";
 import { BatchesPage } from "./Batches.tsx";
 import { QuotaPage } from "#ui/pages/Quota.tsx";
@@ -160,7 +161,7 @@ function AdminTabs() {
     users: () => <UsersPage inviteOpen={inviteOpen} onInviteClose={() => setInviteOpen(false)} />,
     roles: () => <RolesTab />,
     org: () => <OrgTab />,
-    policy: () => ops(<><PolicyTab /><AgentPolicyRows hubOnly /><SdlcGatesCard hubOnly /></>),
+    policy: () => ops(<><PolicyTab /><AgentPolicyRows hubOnly /><SdlcGatesCard hubOnly /><CleanRateSettingsCard /></>),
     tools: () => <ToolsPage />,
     budgets: () => ops(<BudgetsCard tick={poll} />),
     alerts: () => ops(<OpsAlerts />),

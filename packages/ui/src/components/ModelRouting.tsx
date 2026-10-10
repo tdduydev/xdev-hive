@@ -25,7 +25,7 @@ export function ModelRoutingPanel({ settings, project, onSaved }: { settings: Mo
   const can = useCan();
   const t = useT();
   const action = useAction();
-  const [draft, setDraft] = useState<ModelProject>(() => structuredClone(settings.projects[project] ?? { enabled: true, profile: "balanced", cells: {} }));
+  const [draft, setDraft] = useState<ModelProject>(() => structuredClone(settings.projects[project] ?? { enabled: true, preferByCleanRate: false, profile: "balanced", cells: {} }));
   const [tiers, setTiers] = useState(() => structuredClone(settings.tiers));
   const [saved, setSaved] = useState(false);
   const editable = can(project, "projectSettings") && !action.busy;
@@ -38,10 +38,10 @@ export function ModelRoutingPanel({ settings, project, onSaved }: { settings: Mo
     <div className="space-y-3">{TASK_KINDS.map((kind) => <fieldset key={kind} className="rounded-lg border border-border p-3" data-model-row={kind}><legend className="px-1 text-sm font-medium">{t(`taskClass.kindValues.${kind}`)}</legend><div className="grid gap-2 md:grid-cols-3">{TASK_SIZES.map((size) => <label key={size} className="min-w-0 text-sm">{t(`taskClass.sizeValues.${size}`)} · {t("modelRouting.inherit")}: {settings.cells[kind][size]}<TierSelect value={draft.cells[kind]?.[size] ?? ""} label={`${kind}/${size}`} inherit disabled={!editable} onChange={(value) => {
       const cells = structuredClone(draft.cells); const row = { ...cells[kind] }; if (value) row[size] = value as ModelTier; else delete row[size]; cells[kind] = row; change({ ...draft, cells });
     }} /></label>)}</div></fieldset>)}</div>
+    <div className="space-y-1"><h3 className="text-sm font-medium">{t("modelRouting.learning")}</h3><label className="flex min-h-(--control-h-touch) items-center gap-2 text-sm"><input type="checkbox" checked={draft.preferByCleanRate ?? false} disabled={!editable} onChange={(e) => change({ ...draft, preferByCleanRate: e.target.checked })} data-model-prefer-clean />{t("modelRouting.preferByCleanRate")}</label><p className="text-sm text-muted-foreground">{t("modelRouting.preferByCleanRateHint")}</p></div>
     <div className="flex flex-wrap gap-2"><Button disabled={!editable} onClick={() => void action.run(async () => { await client.call("modelRouter.set", { project, setting: draft }); setSaved(true); onSaved(); })} data-model-save>{t("modelRouting.save")}</Button><Button variant="outline" disabled={!editable} onClick={() => change({ ...draft, cells: {} })}>{t("modelRouting.reset")}</Button></div>
     {saved ? <p className="text-sm text-success" role="status">{t("modelRouting.saved")}</p> : null}
     <ErrorNote error={action.error} />
-    <p className="text-sm text-muted-foreground">{t("modelRouting.learning")}</p>
     <ModelQuality key={project} project={project} />
     {admin ? <details className="rounded-lg border border-border p-3"><summary className="min-h-(--control-h-touch) cursor-pointer text-sm font-medium">{t("modelRouting.hub")}</summary><p className="text-sm text-muted-foreground">{t("modelRouting.hubHint")}</p><div className="space-y-3">{MODEL_TIERS.map((tier) => <fieldset key={tier} className="space-y-3 rounded-lg border border-border p-3"><legend>{tier}</legend>{ROUTED_KINDS.map((kind) => { const choice = tiers[tier][kind]; return <div key={kind} className="grid gap-2 md:grid-cols-2"><label className="min-w-0 text-sm">{kind} · {t("modelRouting.model")}<input className={modelControl} value={choice?.model ?? ""} disabled={action.busy} pattern={String.raw`[A-Za-z0-9._:\/\[\]\-]{1,200}`} onChange={(e) => setTiers({ ...tiers, [tier]: { ...tiers[tier], [kind]: e.target.value ? { model: e.target.value, effort: choice?.effort ?? null } : null } })} data-hub-model={`${tier}/${kind}`} /></label><label className="min-w-0 text-sm">{kind} · {t("modelRouting.effort")}<select className={modelControl} disabled={(kind === "opencode" || kind === "gemini" || kind === "vibe") || !choice || action.busy} value={choice?.effort ?? ""} onChange={(e) => setTiers({ ...tiers, [tier]: { ...tiers[tier], [kind]: choice ? { ...choice, effort: (e.target.value || null) as typeof choice.effort } : null } })}><option value="">{t("modelRouting.defaultEffort")}</option>{MODEL_EFFORTS.map((effort) => <option key={effort} value={effort}>{t(`effort.${effort}`)}</option>)}</select></label></div>; })}</fieldset>)}</div><Button className="mt-3 min-h-(--control-h-touch)" disabled={action.busy || Object.values(tiers).some((row) => Object.values(row).some((c) => c && !/^[A-Za-z0-9._:/[\]-]{1,200}$/.test(c.model)))} onClick={() => void action.run(async () => { await client.call("modelRouter.set", { project: null, tiers, cells: settings.cells }); onSaved(); })} data-hub-model-save>{t("modelRouting.save")}</Button></details> : null}
   </div>;
@@ -51,7 +51,7 @@ export function StepModelEditor({ settings, project, step, kind: initialKind = "
   const { client } = useHive(); const t = useT(); const can = useCan(); const action = useAction();
   const [kind, setKind] = useState(initialKind); const [size, setSize] = useState(initialSize);
   const cell = stepModelKind(step, kind);
-  const own = settings.projects[project] ?? { enabled: true, profile: "balanced" as const, cells: {} };
+  const own = settings.projects[project] ?? { enabled: true, preferByCleanRate: false, profile: "balanced" as const, cells: {} };
   const [tier, setTier] = useState<string>(cell ? own.cells[cell]?.[size] ?? "" : "");
   const [saved, setSaved] = useState(false);
   const pick = (kind: TaskKind, size: TaskSize) => { setKind(kind); setSize(size); const cell = stepModelKind(step, kind); setTier(cell ? own.cells[cell]?.[size] ?? "" : ""); setSaved(false); };

@@ -29,6 +29,7 @@ export const modelCellsSchema = z.record(z.enum(TASK_KINDS), z.record(z.enum(TAS
 /** A project's part: off keeps runs exactly as before 54c; its cells override the hub's one by one. */
 export const modelProjectSchema = z.object({
   enabled: z.boolean().default(true),
+  preferByCleanRate: z.boolean().default(false),
   profile: z.enum(MODEL_PROFILES).default("balanced"),
   cells: z.partialRecord(z.enum(TASK_KINDS), z.partialRecord(z.enum(TASK_SIZES), z.enum(MODEL_TIERS))).default({}),
 });

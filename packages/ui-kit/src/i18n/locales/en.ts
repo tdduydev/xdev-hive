@@ -769,6 +769,7 @@ export const en: Catalog = {
     noun: { runs: "runs", machines: "machines", requests: "requests", entries: "entries" },
     audit: {
     autoAssign: "Auto-assigned {task} to {machine} / {profile}",
+    autoAssignCleanRate: "Auto-assigned {task} to {machine} / {profile}: {plan} clean score {score} from {tasks} tasks",
       onBehalf: "for {user}",
       filter: { agent: "Agent, e.g. claude-1", user: "Person", run: "Run id" },
       apply: "Filter",
@@ -2567,6 +2568,8 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     minutes: "{count} min",
   },
   modelRouting: {
+    "preferByCleanRate": "Prefer CLI types with cleaner results",
+    "preferByCleanRateHint": "For classified tasks, compare plans in the selected tier using at least 10 completed tasks. Manual priority still wins; trial and high-risk tasks keep the usual order.",
     "planKind": "Plan type (preview)",
     "title": "Models by task type",
     "steps": "Steps",
@@ -2590,7 +2593,7 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     "byTask": "By task type and size",
     "preview": "Expected model · {reason}",
     "reason": "Hub choice: {reason}. Plan arguments and agent policy may change the model actually used.",
-    "learning": "The learning table will be available when the hub supports 54d statistics and suggestions.",
+    "learning": "Learning from completed tasks",
     "reset": "Use the hub table",
     "model": "Model",
     "effort": "Reasoning effort"
@@ -4819,6 +4822,7 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
   audit: {
     evidenceRecorded: "Verified {criterion}: {outcome} · {sha}",
     autoAssign: "Auto-assigned {task} to {machine} / {profile}",
+    autoAssignCleanRate: "Auto-assigned {task} to {machine} / {profile}: {plan} clean score {score} from {tasks} tasks",
     research: "Started research #{id}",
     runTimeoutSettings: "Changed run timeouts",
     memberSet: "{project}: {user} is {role}",

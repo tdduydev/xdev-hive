@@ -6,6 +6,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { type Actor } from "#core/index.ts";
 import { ROUTED_KINDS } from "#core/model-router.ts";
+import { isTrialTask } from "#core/model-learning.ts";
 import { SqliteHive, migrationIndex } from "#core/node.ts";
 
 const admin: Actor = { name: "manager", role: "admin" };
@@ -21,6 +22,34 @@ function fixture(file = ":memory:") {
 }
 
 describe("auto-dispatch (60a)", () => {
+  it("prefers the cleaner CLI only when enabled and comparable, without overruling priority or trials", async () => {
+    for (const scenario of ["enabled", "disabled", "priority", "trial", "high-risk", "unclassified"] as const) {
+      const { hive, beat, create, enable } = fixture();
+      try {
+        for (const [plan, clean] of [["claude", 12], ["codex", 18]] as const) {
+          for (let i = 0; i < 20; i++) {
+            const id = `${plan}-${i}`;
+            await create(id, { kind: "feature", size: "m" });
+            hive.db.prepare("UPDATE tasks SET status = 'done' WHERE id = ?").run(id);
+            hive.db.prepare(`INSERT INTO run_records(machine_id, run_id, machine, project, task_id, task_title, role, status, verdict, tier, kind, created_at, finished_at, updated_at)
+              VALUES ('training', ?, 'training', 'app', ?, 'training', 'implement', ?, NULL, 'standard', ?, ?, ?, ?)`)
+              .run(id, id, i < clean ? "succeeded" : "failed", plan, new Date().toISOString(), new Date().toISOString(), new Date().toISOString());
+          }
+        }
+        hive.learnModels(true);
+        await hive.call("modelRouter.set", { project: "app", setting: { enabled: true, profile: "balanced", cells: {}, preferByCleanRate: scenario !== "disabled" } }, admin);
+        const id = Array.from({ length: 100 }, (_, i) => `pick-${i}`).find((item) => isTrialTask("app", item) === (scenario === "trial"))!;
+        await create(id, { kind: "feature", size: "m", risk: scenario === "high-risk" ? "high" : "normal" });
+        if (scenario === "unclassified") hive.db.prepare("UPDATE tasks SET kind = NULL, size = NULL WHERE id = ?").run(id);
+        await enable();
+        const sent = (await beat({ profiles: [profile("claude-1", { priority: scenario === "priority" ? 1 : 50 }), profile("codex-1", { priority: 50 })] })).runRequests;
+        assert.equal(sent[0]?.profileId, scenario === "enabled" ? "codex-1" : "claude-1", scenario);
+        const audit = (await hive.call("admin.audit", {}, admin)).find((a) => a.action === "tasks.autoAssign" && a.target === id);
+        assert.ok(audit, scenario);
+        assert.equal(audit.detail.includes("codex: "), scenario === "enabled", scenario);
+      } finally { hive.close(); }
+    }
+  });
   it("routes platform tasks only to a matching heartbeat OS, including manual dispatch", async () => {
     const { hive, beat, create, enable, tasks } = fixture();
     const mac: Actor = { name: "mac-runner", role: "agent" };

@@ -2475,10 +2475,12 @@ async function main() {
         await tab.shot(`${String(n).padStart(2, "0")}-model-quality`);
         await tab.waitFor("supported profile models alongside routing", () => !!document.querySelector("[data-supported-models] h2") && document.querySelector('[data-supported-profile="codex-1"]')?.textContent.includes("gpt-6-luna"));
         expect(await tab.eval(() => !document.querySelector('[data-hub-model-save]')), "project manager cannot edit hub tiers");
+        expect(await tab.eval(() => document.querySelector('[data-model-prefer-clean]')?.checked === false), "clean-rate preference starts off");
+        await tab.click('[data-model-prefer-clean]');
         await tab.click('[data-model-profile="economy"]');
         await tab.eval(() => { const el = document.querySelector('[data-model-row="docs"] [data-model-tier]'); el.value = "standard"; el.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.click('[data-model-save]');
-        await until("profile and docs cell saved", async () => { const p = (await rpc("modelRouter.get", {})).projects.payment; return p?.profile === "economy" && p.cells.docs?.s === "standard"; });
+        await until("profile, clean-rate preference and docs cell saved", async () => { const p = (await rpc("modelRouter.get", {})).projects.payment; return p?.profile === "economy" && p.preferByCleanRate === true && p.cells.docs?.s === "standard"; });
         if (mobile) {
           const fit = await tab.eval(() => ({ overflow: document.documentElement.scrollWidth > innerWidth, controls: [...document.querySelectorAll('[data-model-routing] select, [data-model-routing] button')].every((el) => el.getBoundingClientRect().height >= 44 && parseFloat(getComputedStyle(el).fontSize) >= 12) }));
           expect(!fit.overflow && fit.controls, `model table mobile: ${JSON.stringify(fit)}`);
@@ -2508,6 +2510,14 @@ async function main() {
         await until("hub model saved", async () => (await rpc("modelRouter.get", {})).tiers.light.claude?.model === "haiku");
         await until("qualified OpenCode model saved", async () => (await rpc("modelRouter.get", {})).tiers.light.opencode?.model === "test/model");
         await adminTab.shot(`${String(n).padStart(2, "0")}-models-hub`);
+        await adminTab.go("admin?tab=policy");
+        await adminTab.waitFor("admin clean-rate setting", () => !!document.querySelector('[data-clean-rate-project="payment"]'));
+        expect(await adminTab.eval(() => document.querySelector('[data-clean-rate-project="payment"]')?.getAttribute("data-state") === "checked"), "admin reads the project clean-rate setting");
+        await adminTab.click('[data-clean-rate-project="payment"]');
+        await until("admin clean-rate disabled", async () => (await rpc("modelRouter.get", {})).projects.payment?.preferByCleanRate === false);
+        await adminTab.click('[data-clean-rate-project="payment"]');
+        await until("admin clean-rate restored", async () => (await rpc("modelRouter.get", {})).projects.payment?.preferByCleanRate === true);
+        await adminTab.shot(`${String(n).padStart(2, "0")}-models-admin-clean-rate`);
         current = tab;
         await tab.go("tasks?task=SPEC-E2E");
         await tab.waitFor("task model reason", () => document.querySelector('[data-task-model]')?.textContent.includes("spec/"));
