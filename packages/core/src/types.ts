@@ -1558,7 +1558,21 @@ export interface MachineSystem {
   uptimeSeconds?: number;
   cpu?: { percent: number; detail: string; cores?: number; load?: number };
   ram?: { percent: number; detail: string; usedBytes?: number; totalBytes?: number };
+  /** The volume holding the worktrees: what the low-disk cleanup watches. Kept for hubs and apps older than `disks`. */
   disk?: { percent: number; detail: string; freeBytes?: number; totalBytes?: number };
+  /** Every fixed disk of the machine (spec 79o), at most 16; absent from apps older than 79o. */
+  disks?: MachineDisk[];
+}
+
+/** One fixed disk as the machine listed it: a drive letter on Windows, a mount point elsewhere. */
+export interface MachineDisk {
+  mount: string;
+  label?: string;
+  totalBytes: number;
+  freeBytes: number;
+  percent: number;
+  /** The disk that holds the worktree root. */
+  worktree?: boolean;
 }
 
 /** A desktop runner as the hub last heard from it. */
