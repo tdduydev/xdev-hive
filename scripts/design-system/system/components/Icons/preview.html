@@ -1,0 +1,72 @@
+<!-- @dsCard group="Foundations" height=640 page subtitle="Lucide, the full set" -->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Icons</title>
+<style>
+  body{margin:0;background:var(--bg-canvas);color:var(--text-primary);font:var(--type-body-md)}
+  .bar{position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--bg-canvas);box-shadow:var(--hairline)}
+  .bar input{flex:1;min-width:0;height:44px;padding:0 14px;border:0;border-radius:var(--radius-control);background:var(--surface-sunken);box-shadow:var(--ring-glass);color:var(--text-primary);font:500 14px/22px var(--font-sans)}
+  .bar input:focus-visible{outline:var(--focus-ring-width) solid var(--focus-color);outline-offset:var(--focus-ring-offset)}
+  .bar input::placeholder{color:var(--text-muted)}
+  .count{font:var(--type-caption);color:var(--text-muted);white-space:nowrap}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;padding:16px 20px 24px}
+  .icon{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;padding:14px 6px 10px;border:0;border-radius:var(--radius-control);background:var(--surface-1);box-shadow:var(--ring-glass);color:var(--text-primary);cursor:pointer;font:inherit}
+  .icon:hover{background:var(--surface-2)}
+  .icon:focus-visible{outline:var(--focus-ring-width) solid var(--focus-color);outline-offset:var(--focus-ring-offset)}
+  .icon svg{width:24px;height:24px;flex-shrink:0}
+  .icon span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:var(--type-caption);color:var(--text-secondary)}
+  .icon[data-copied] span{color:var(--status-success-fg)}
+  .note{padding:24px 20px;font:var(--type-body-sm);color:var(--text-secondary)}
+</style>
+</head>
+<body>
+<div class="bar">
+  <input id="q" type="search" placeholder="Tìm icon (tên hoặc tên cũ)…" aria-label="Tìm icon" autocomplete="off">
+  <span class="count" id="count" aria-live="polite"></span>
+</div>
+<div class="grid" id="grid" role="list"></div>
+<p class="note" id="note" hidden></p>
+<script>
+  // The set lives in assets/Icons/lucide.json beside this system; one fetch instead of an upload per icon.
+  var grid = document.getElementById("grid"), q = document.getElementById("q"), count = document.getElementById("count"), note = document.getElementById("note");
+  var NS = "http://www.w3.org/2000/svg", set = null, names = [], byAlias = {};
+  function svg(name) {
+    return '<svg xmlns="' + NS + '" width="24" height="24" viewBox="' + set.viewBox + '" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + set.icons[name] + "</svg>";
+  }
+  function render() {
+    var term = q.value.trim().toLowerCase().replace(/\s+/g, "-");
+    var shown = names.filter(function (n) { return !term || n.indexOf(term) >= 0 || (byAlias[n] || []).some(function (a) { return a.indexOf(term) >= 0; }); });
+    grid.innerHTML = shown.map(function (n) {
+      var alias = byAlias[n] ? " (" + byAlias[n].join(", ") + ")" : "";
+      return '<button class="icon" type="button" role="listitem" data-name="' + n + '" title="' + n + alias + '">' + svg(n) + "<span>" + n + "</span></button>";
+    }).join("");
+    count.textContent = shown.length + " / " + names.length;
+  }
+  grid.addEventListener("click", function (e) {
+    var b = e.target.closest(".icon");
+    if (!b || !navigator.clipboard) return;
+    navigator.clipboard.writeText(svg(b.dataset.name)).then(function () {
+      b.setAttribute("data-copied", "");
+      b.querySelector("span").textContent = "Đã chép SVG";
+      setTimeout(function () { b.removeAttribute("data-copied"); b.querySelector("span").textContent = b.dataset.name; }, 1200);
+    }, function () {});
+  });
+  q.addEventListener("input", render);
+  fetch("../../assets/Icons/lucide.json").then(function (r) {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }).then(function (data) {
+    set = data;
+    names = Object.keys(data.icons).sort();
+    Object.keys(data.aliases).forEach(function (a) { (byAlias[data.aliases[a]] = byAlias[data.aliases[a]] || []).push(a); });
+    q.placeholder = "Tìm trong " + names.length + " icon Lucide " + data.version + " (tên hoặc tên cũ)…";
+    render();
+  }).catch(function () {
+    note.hidden = false;
+    note.textContent = "Không tải được assets/Icons/lucide.json. Trang này cần đọc file đó từ hệ thống thiết kế.";
+  });
+</script>
+</body>
+</html>
