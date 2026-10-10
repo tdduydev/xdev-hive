@@ -19,10 +19,9 @@ export const ARTIFACT_DEPTH = 3;
 
 /**
  * Only these kinds. Text the hub can read, hide secrets in and keep hidden characters out of; images and PDF a
- * person looks at. GIF and CSV, which an attachment may be, are not among them: 41c lists png, jpg, webp and pdf
- * for bytes nobody can read, and md, txt, json and log for text.
+ * person looks at. HTML is sandboxed by the viewer. GIF and CSV, which an attachment may be, are not among them.
  */
-export const ARTIFACT_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf", "text/plain", "text/markdown", "application/json"] as const;
+export const ARTIFACT_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf", "text/plain", "text/markdown", "application/json", "text/html"] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 
 /** Its bytes are text: they go through redactLines and are refused when they hide characters. */
@@ -46,6 +45,9 @@ export interface Artifact {
   uploadedBy: string;
   source: WriteSource | null;
   createdAt: string;
+  version: number;
+  versionNote: string;
+  pinned: boolean;
 }
 
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
@@ -78,9 +80,14 @@ export function checkArtifactSize(name: string, size: number): void {
 /** Refuses what the hub will not keep, in the words the interface shows. */
 export function checkArtifact(name: string, bytes: Uint8Array): ArtifactType {
   checkArtifactSize(name, bytes.length);
-  const type = sniffChatFile(name, bytes);
+  const html = /\.html$/i.test(name) && !bytes.includes(0);
+  if (html) {
+    try { new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+    catch { throw new HiveError("bad_request", `${name} is not valid UTF-8 HTML.`, { key: "errors.artifactType", vars: { name } }); }
+  }
+  const type = html ? "text/html" : sniffChatFile(name, bytes);
   if (!type || !(ARTIFACT_TYPES as readonly string[]).includes(type)) {
-    throw new HiveError("bad_request", `${name}: an artifact is a png, jpg, webp or pdf, or text as md, txt, json or log.`, { key: "errors.artifactType", vars: { name } });
+    throw new HiveError("bad_request", `${name}: an artifact is a png, jpg, webp or pdf, or text as md, txt, json, log or html.`, { key: "errors.artifactType", vars: { name } });
   }
   return type as ArtifactType;
 }

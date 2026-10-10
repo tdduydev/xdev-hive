@@ -2,7 +2,8 @@
 // database) holds, and writes it once with one of its Claude profiles. The ask carries the page and the sources the
 // person picked; repo files are read here, in the project's checkout, which Claude may read but not change. No MCP, no
 // commands. The answer is a short reply and the whole page as proposed, which the person applies to a draft or drops.
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { spawnCli } from "#desktop/main/spawn-cli.ts";
 import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -296,7 +297,7 @@ export class AssistWorker {
     let cancelled = false;
     let timedOut = false;
     try {
-      const child = spawn(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawnCli(bin, args, { cwd, env, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
       if (this.#job) this.#job.stop = () => killTree(child);
       child.stdin.on("error", () => undefined);
       child.stdin.end(assistInput(job, files, missing, commits));

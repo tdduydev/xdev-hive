@@ -3,7 +3,7 @@
 import { geminiLogin } from "#desktop/main/runner/gemini.ts";
 import { opencodeEnv, opencodeLogin, OPENCODE_XDG } from "#desktop/main/runner/opencode.ts";
 import { kiloLogin, KILO_XDG_DIRS } from "#desktop/main/runner/kilo.ts";
-import { execFile } from "node:child_process";
+import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import os from "node:os";
 import path from "node:path";
 import { HiveError, type AgentKind, type AgentProfile, type LoginHow, type LoginStatus, type PlanUsage } from "@xdev-hive/core";
@@ -107,7 +107,7 @@ export type RunCli = (bin: string, args: string[], env: NodeJS.ProcessEnv) => Pr
 /** Out of any repo: the checks must not pick up a project's settings. */
 const runCli: RunCli = (bin, args, env) =>
   new Promise((resolve) => {
-    execFile(bin, args, { env, cwd: os.tmpdir(), timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
+    execFileCli(bin, args, { env, cwd: os.tmpdir(), timeout: 30_000, windowsHide: true }, (err, stdout, stderr) => {
       const code = err ? (typeof (err as { code?: unknown }).code === "number" ? (err as { code: number }).code : null) : 0;
       resolve({ code, output: `${stdout}${stderr}` });
     });
@@ -205,6 +205,8 @@ export class LoginMonitor {
   readonly onUsage?: (id: string, usage: PlanUsage) => void;
   readonly #checks = new Map<string, LoginStatus>();
   readonly #usage = new Map<string, PlanUsage>();
+  readonly #pending = new Map<string, Promise<void>>();
+  readonly #profileKeys = new Map<string, string>();
   readonly #profiles: () => AgentProfile[];
   readonly #env: () => NodeJS.ProcessEnv;
   readonly #run: RunCli;
@@ -233,6 +235,7 @@ export class LoginMonitor {
    * otherwise, so no run goes to it while that check is still on its way (an unknown status counts as signed in).
    */
   expectSignedOut(profile: AgentProfile): void {
+    this.#profileKeys.delete(profile.id);
     this.#checks.set(profile.id, { loggedIn: false, method: null, loginCommand: loginCommand(profile), checkedAt: this.#now().toISOString() });
   }
 
@@ -256,18 +259,17 @@ export class LoginMonitor {
   }
 
   /** Checks the given profiles (default: every enabled one), one at a time. */
-  async refresh(ids?: string[]): Promise<void> {
+  async refresh(ids?: string[], force = false): Promise<void> {
     const profiles = this.#profiles();
     for (const p of profiles.filter((x) => x.enabled && (!ids || ids.includes(x.id)))) {
-      const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
-      this.#checks.set(p.id, login);
-      // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
-      const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
-      if (usage) {
-        this.#usage.set(p.id, usage);
-        this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
-      }
-      else this.#usage.delete(p.id);
+      const running = this.#pending.get(p.id);
+      if (running) { await running; continue; }
+      const checked = this.#checks.get(p.id);
+      const key = JSON.stringify([p.kind, p.bin, p.env]);
+      if (!force && checked && this.#profileKeys.get(p.id) === key && this.#now().getTime() - Date.parse(checked.checkedAt) < 45_000) continue;
+      const pending = this.#refreshProfile(p);
+      this.#pending.set(p.id, pending);
+      try { await pending; this.#profileKeys.set(p.id, key); } finally { if (this.#pending.get(p.id) === pending) this.#pending.delete(p.id); }
     }
     // The profiles as they are now: one added while this check ran keeps what is known of it.
     const now = this.#profiles();
@@ -275,6 +277,19 @@ export class LoginMonitor {
       if (now.some((p) => p.id === id && p.enabled)) continue;
       this.#checks.delete(id);
       this.#usage.delete(id);
+      this.#profileKeys.delete(id);
     }
+  }
+
+  async #refreshProfile(p: AgentProfile): Promise<void> {
+    const login = await checkLogin(p, this.#env(), this.#now(), this.#run);
+    this.#checks.set(p.id, login);
+    // Codex's numbers come from files, not from its sign-in: only a profile known to be signed out goes without.
+    const usage = login.loggedIn || (p.kind === "codex" && login.loggedIn !== false) ? await checkUsage(p, this.#env(), this.#now(), this.#run) : null;
+    if (usage) {
+      this.#usage.set(p.id, usage);
+      this.onUsage?.(p.id, withResetsAt(usage, this.#now())!);
+    }
+    else this.#usage.delete(p.id);
   }
 }

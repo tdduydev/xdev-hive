@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
 import { toolHash, type DesktopProject, type MachineTools, type SetupReport, type ToolEntry } from "@xdev-hive/core";
 import { setMainLocale } from "#desktop/main/i18n.ts";
+import { installSetupSequence } from "@xdev-hive/ui/lib/setup";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
 import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
@@ -39,7 +40,8 @@ esac`;
 function machine(opts: { npm?: boolean; uv?: boolean; specify?: boolean } & Pick<SetupHost, "latest" | "realpath" | "cliBusy" | "holdCli" | "platform" | "registry" | "writable" | "runtimeRoots"> = {}) {
   const bin = tmp("bin");
   const shimDir = tmp("shim");
-  const home = tmp("home");
+  // macOS resolves /var to /private/var; use the same canonical home for CLI realpaths and prefix checks.
+  const home = realpathSync(tmp("home"));
   // uv's tool bin dir, not on PATH (like ~/.local/bin for a login shell that lacks it).
   const uvBin = tmp("uvbin");
   fakeBin(bin, "claude", 'echo "2.1.283 (Claude Code)"');
@@ -107,6 +109,29 @@ function gitRepo() {
 }
 
 describe("Setup: this machine", () => {
+  it("shares startup probes and keeps their report for 45 seconds", async (t) => {
+    const m = machine();
+    const [first, second, third] = await Promise.all([m.setup.status(), m.setup.status(), m.setup.status()]);
+    assert.strictEqual(first, second);
+    assert.strictEqual(first, third);
+    const before = calls(m.bin).length;
+    t.diagnostic(`startup CLI processes: sequential baseline ${before * 3}, shared ${before}`);
+    assert.strictEqual(await m.setup.status(), first);
+    assert.equal(calls(m.bin).length, before, "cached status starts no additional CLI");
+    m.setup.invalidateStatus();
+    await m.setup.status();
+    assert.ok(calls(m.bin).length > before);
+  });
+  it("does not cache a probe invalidated while it was running", async () => {
+    const m = machine();
+    const first = m.setup.status();
+    m.setup.invalidateStatus();
+    const second = m.setup.status();
+    await Promise.all([first, second]);
+    const before = calls(m.bin).length;
+    await m.setup.status();
+    assert.equal(calls(m.bin).length, before, "only the newer report is cached");
+  });
   it("finds installed CLIs with their version and installs a missing one with npm -g", async () => {
     const m = machine();
     const r = await m.setup.status();
@@ -153,6 +178,21 @@ describe("Setup: this machine", () => {
       "install", "-g", "@openai/codex@latest", "--prefix", "/home/u/.local",
     ]);
     assert.deepEqual(cliUpgrade(codex, "/usr/lib/node_modules/@openai/codex/bin/codex.js", "/usr/bin/codex", "/home/u")?.args, ["install", "-g", "@openai/codex@latest"]);
+  });
+
+  it("allows only OpenCode's binary installer on npm 12, for installs and upgrades", async () => {
+    for (const version of ["11.9.0", "12.0.2"]) {
+      const m = machine({ platform: "linux", realpath: () => "/usr/lib/node_modules/opencode-ai/bin/opencode.exe" });
+      fakeBin(m.bin, "npm", `[ "$1" = "--version" ] && echo ${version} && exit 0; [ "$1" = "prefix" ] && echo /usr && exit 0; echo installed`);
+      await m.setup.install("cli:opencode");
+      fakeBin(m.bin, "opencode", 'echo "1.18.35"');
+      await m.setup.install("cli:opencode");
+      fakeBin(m.bin, "opencode", 'echo "binary placeholder"; exit 1');
+      assert.equal((await m.setup.item("cli:opencode")).action, "Cài lại bằng npm");
+      const installs = calls(m.bin).filter((c) => c.startsWith("npm install"));
+      assert.equal(installs.length, 2);
+      for (const command of installs) assert.equal(command.includes("--allow-scripts=opencode-ai"), version.startsWith("12."), command);
+    }
   });
 
   it("without npm, says to install Node.js and offers no button", async () => {
@@ -285,6 +325,31 @@ describe("Setup: project repos", () => {
     );
   });
 
+  it("Windows: one install-all leaves every repo item installed, codegraph in Claude's local scope too", async () => {
+    const m = machine({ platform: "win32" });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    const host = { setupStatus: () => (m.setup.invalidateStatus(), m.setup.status()), installSetup: (id: string) => m.setup.install(id) };
+    const left = await installSetupSequence(await m.setup.status(), ["app"], host, () => {}, () => {});
+    assert.deepEqual(left.map((i) => i.id), ["app:speckit"], "only Spec Kit, which needs specify on this machine");
+    const r = await host.setupStatus();
+    assert.deepEqual(r.projects[0]!.items.filter((i) => i.state !== "installed").map((i) => i.id), ["app:speckit"]);
+    const local = JSON.parse(readFileSync(path.join(m.home, ".claude.json"), "utf8")).projects[repo].mcpServers;
+    assert.deepEqual(Object.keys(local).sort(), ["codegraph", "xdev-hive"]);
+    assert.equal(local.codegraph.command, "cmd");
+  });
+
+  it("Windows: adding codegraph after agents keeps the agents item installed", async () => {
+    const m = machine({ platform: "win32" });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    assert.equal((await m.setup.install("app:agents")).item.state, "installed");
+    const res = await m.setup.install("app:codegraph-mcp");
+    assert.equal(res.item.state, "installed");
+    assert.match(res.output, /updated\s+~\/\.claude\.json/);
+    assert.equal((await m.setup.item("app:agents")).state, "installed");
+  });
+
   it("accepts an existing codegraph entry as it is, and flags a hook it must not overwrite", async () => {
     const m = machine();
     const repo = gitRepo();
@@ -397,6 +462,7 @@ describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
   it("reads the version out of each CLI's --version", () => {
     assert.equal(parseCliVersion("2.1.283 (Claude Code)"), "2.1.283");
     assert.equal(parseCliVersion("codex-cli 0.157.1"), "0.157.1");
+    assert.equal(parseCliVersion("GitHub Copilot CLI 1.0.80.\nRun 'copilot update' to check for updates."), "1.0.80");
     assert.equal(parseCliVersion("0.61.0\n"), "0.61.0");
     assert.equal(parseCliVersion("gemini 0.62.0-preview.3"), "0.62.0-preview.3");
     assert.equal(parseCliVersion("no version here"), null);
@@ -450,6 +516,29 @@ describe("Setup: CLI versions and upgrades (roadmap 33)", () => {
     assert.ok(calls(m.bin).some((c) => c.startsWith("npm install -g @anthropic-ai/claude-code@latest")), calls(m.bin).join("\n"));
     assert.deepEqual(held, ["claude:true", "claude:false"]);
     assert.equal(r.item.id, "cli:claude");
+  });
+
+  it("upgrades a system npm CLI into the user's prefix when the global tree needs root", async () => {
+    const m = machine({
+      platform: "linux",
+      realpath: () => "/usr/lib/node_modules/@openai/codex/bin/codex.js",
+      writable: (dir) => dir !== "/usr/lib/node_modules",
+    });
+    fakeBin(m.bin, "codex", 'echo "codex-cli 0.157.1"');
+    await m.setup.install("cli:codex");
+    assert.ok(calls(m.bin).includes(`npm install -g @openai/codex@latest --prefix ${path.join(m.home, ".local")} telemetry=`), calls(m.bin).join("\n"));
+  });
+
+  it("keeps an existing user npm prefix when upgrading", async () => {
+    const m = machine({ platform: "linux", writable: () => false });
+    const prefix = path.join(m.home, ".local");
+    const pkg = path.join(prefix, "lib/node_modules/@openai/codex/bin");
+    mkdirSync(pkg, { recursive: true });
+    fakeBin(pkg, "codex", 'echo "codex-cli 0.157.1"');
+    symlinkSync(path.join(pkg, "codex"), path.join(m.bin, "codex"));
+    await m.setup.install("cli:codex");
+    assert.ok(calls(m.bin).includes(`npm install -g @openai/codex@latest --prefix ${prefix} telemetry=`), calls(m.bin).join("\n"));
+    assert.ok(!calls(m.bin).some((c) => c.startsWith("npm prefix")));
   });
 
   it("asks the registry for the newest version once in a while, not at every check", async () => {
@@ -574,10 +663,12 @@ describe("Setup: hub tools (tool:<id>)", () => {
     await assert.rejects(m.setup.item("tool:rtk"), /Không có mục tool:rtk/);
 
     m.hub.tools = catalog([RTK, mcp, APP_TOOLS.speckit], ["rtk", "docs-mcp", "speckit"]);
+    m.setup.invalidateStatus();
     // An MCP server with no check has nothing to install (npx fetches it); the seed keeps cli:specify and app:speckit.
     assert.deepEqual(ids(await m.setup.status()), ["tool:rtk"]);
 
     m.hub.tools = null;
+    m.setup.invalidateStatus();
     assert.deepEqual(ids(await m.setup.status()), []);
   });
 

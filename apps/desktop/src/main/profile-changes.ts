@@ -29,8 +29,8 @@ export function applyProfileChanges(agents: AgentProfile[], changes: ProfileChan
 }
 
 /** Preserve every local setting outside the public remote patch, including credentials and MR policy. */
-export function applyRunnerChange<T extends { runner: { maxParallel: number }; gitlab: { mr: { enabled: boolean; when: "after_review" | "after_success" } } }>(config: T, change: RunnerChange): T {
+export function applyRunnerChange<T extends { runner: { maxParallel: number; acceptHubRuns: boolean }; gitlab: { mr: { enabled: boolean; when: "after_review" | "after_success" } } }>(config: T, change: RunnerChange): T {
   const s = change.settings;
-  return { ...config, runner: { ...config.runner, maxParallel: s.maxParallel ?? config.runner.maxParallel },
+  return { ...config, runner: { ...config.runner, maxParallel: s.maxParallel ?? config.runner.maxParallel, acceptHubRuns: s.acceptHubRuns ?? config.runner.acceptHubRuns },
     gitlab: { ...config.gitlab, mr: { ...config.gitlab.mr, enabled: s.mrEnabled ?? config.gitlab.mr.enabled, when: s.mrWhen ?? config.gitlab.mr.when } } };
 }

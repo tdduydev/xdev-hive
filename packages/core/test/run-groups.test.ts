@@ -191,6 +191,25 @@ describe("run groups (roadmap 31a)", () => {
     assert.ok(over!.closedAt);
   });
 
+  it("fails a pinned group item when its task requires another OS", async () => {
+    const { hive, beat, take, push } = await hub();
+    await beat(mbp, { platform: "linux" });
+    const group = await hive.call("runs.dispatchMany", {
+      project: "app", items: [{ taskId: "T-1", machineId: mbp.name }, { taskId: "T-2", machineId: mbp.name }], maxParallel: 1,
+    }, admin);
+    assert.deepEqual(states(group), ["T-1:sent/pending", "T-2:held"]);
+    await hive.call("tasks.update", { id: "T-2", platforms: ["mac"] }, admin);
+    await take(mbp, (await beat(mbp, { platform: "linux" })).runRequests);
+    await push(mbp, "R-T-1", "T-1", "succeeded");
+    await beat(mbp, { platform: "linux" });
+    const [stopped] = await hive.call("runs.groups", { project: "app" }, admin);
+    assert.equal(stopped!.items[1]!.status, "failed");
+    assert.equal(stopped!.items[1]!.error?.key, "errors.machinePlatformMismatch");
+    await beat(mbp, { platform: "linux" });
+    assert.equal((await hive.call("runs.groups", { project: "app" }, admin))[0]!.items[1]!.status, "failed");
+    hive.close();
+  });
+
   it("checks at once what does not change while items wait, and makes nothing then", async () => {
     const { hive, beat } = await hub();
     await beat(mbp, { projects: ["site"] });

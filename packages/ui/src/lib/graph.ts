@@ -8,7 +8,7 @@ export type GraphModel = { nodes: GraphNode[]; edges: GraphEdge[] };
 export type AgentGraphNode = { id: string; kind: "machine" | "profile" | "agentTask"; label: string; position: Point; width: number; height: number; machine?: Machine; profileId?: string | null; task?: Task; run?: MachineRun };
 export type AgentGraphEdge = { id: string; source: string; target: string; running: boolean };
 export type AgentGraphModel = { nodes: AgentGraphNode[]; edges: AgentGraphEdge[] };
-const SIZE = { width: 228, height: 94 };
+const SIZE = { width: 190, height: 94 };
 const key = (project: string, id: string) => `${project}:${id}`;
 
 /** The queue response supplies hub order; active runs lead each profile and appear only once. */
@@ -36,7 +36,7 @@ export function agentGraph(machines: Machine[], queues: Record<string, TaskAgent
       ].filter(({ task }) => { const id = key(task.project, task.id); if (shown.has(id)) return false; shown.add(id); return true; }).slice(0, 3);
       lines.forEach(({ task, run }, index) => {
         const id = `agent-task:${machine.id}:${profile.id ?? "any"}:${key(task.project, task.id)}`;
-        nodes.push({ id, kind: "agentTask", label: task.title, task, run, position: previous[id] ?? { x: 590, y: row + index * 104 }, width: 228, height: 94 });
+        nodes.push({ id, kind: "agentTask", label: task.title, task, run, position: previous[id] ?? { x: 590, y: row + index * 104 }, width: SIZE.width, height: SIZE.height });
         edges.push({ id: `${profileId}->${id}`, source: profileId, target: id, running: run?.status === "running" });
       });
       row += Math.max(142, lines.length * 104 + 24);

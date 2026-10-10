@@ -1,4 +1,2 @@
-/* Accessibility baseline shared by every surface */
-:focus-visible{outline:var(--focus-ring-width) solid var(--focus-color);outline-offset:var(--focus-ring-offset)}
-::selection{background:var(--code-selection)}
-@media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important;scroll-behavior:auto!important}}
+/* Kept for in-flight 72 branches; remove in 76h. */
+@import "../../../ui-kit/src/tokens/base.css";

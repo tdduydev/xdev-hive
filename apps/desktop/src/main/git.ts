@@ -1,6 +1,23 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+
+const gitQueues = new Map<string, Promise<void>>();
+
+/** Git's index and worktree state must be observed one command at a time per checkout. */
+export async function withGitWorktreeLock<T>(repo: string, action: () => Promise<T>): Promise<T> {
+  const key = path.resolve(repo);
+  const previous = gitQueues.get(key);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  gitQueues.set(key, current);
+  if (previous) await previous;
+  try { return await action(); }
+  finally {
+    if (gitQueues.get(key) === current) gitQueues.delete(key);
+    release();
+  }
+}
 
 export function git(repo: string, args: string[], env: Record<string, string> = {}): string {
   return execFileSync("git", args, {
@@ -13,7 +30,7 @@ export function git(repo: string, args: string[], env: Record<string, string> = 
 
 /** Async variant for network operations (push), so the main process never blocks on the network. */
 export function gitAsync(repo: string, args: string[], env: Record<string, string> = {}, timeoutMs = 120_000): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return withGitWorktreeLock(repo, () => new Promise((resolve, reject) => {
     execFile(
       "git",
       args,
@@ -23,7 +40,20 @@ export function gitAsync(repo: string, args: string[], env: Record<string, strin
         else resolve(`${stdout}${stderr}`.trim());
       },
     );
-  });
+  }));
+}
+
+/** Async stdout-only form of git(), for commands whose output is parsed or shown as a patch. */
+export function gitOutputAsync(repo: string, args: string[], env: Record<string, string> = {}, timeoutMs = 120_000): Promise<string> {
+  return withGitWorktreeLock(repo, () => new Promise((resolve, reject) => {
+    execFile("git", args, {
+      cwd: repo, encoding: "utf8", env: { ...process.env, ...env }, timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024, windowsHide: true,
+    }, (err, stdout, stderr) => {
+      if (err) reject(Object.assign(err, { stdout, stderr }));
+      else resolve(stdout.trim());
+    });
+  }));
 }
 
 export function isGitRepo(repo: string): boolean {
@@ -32,6 +62,10 @@ export function isGitRepo(repo: string): boolean {
   } catch {
     return false;
   }
+}
+
+export async function isGitRepoAsync(repo: string): Promise<boolean> {
+  return gitOutputAsync(repo, ["rev-parse", "--is-inside-work-tree"]).then((v) => v === "true", () => false);
 }
 
 /** A folder is a repository when it has `.git`: a folder, or the file a worktree or submodule has instead. */
@@ -45,9 +79,15 @@ const SKIP_DIRS = new Set(["node_modules"]);
  * `maxDepth` levels down (`<root>/app/backend/billing` is three). Dependencies, hidden folders and anything inside
  * a repository already found are left out, so a repository with submodules counts once. Reads the folder tree only —
  * no `git` process per folder, since a folder someone keeps every project in holds thousands.
+ *
+ * `below`: only the ones under `root`, even when `root` is a repository itself. A group's folder someone ran `git init`
+ * in still holds the group's clones (GROUP-init-sync), and an import or a group set-up has to see them.
  */
-export function findGitRepos(root: string, maxDepth = 3): string[] {
-  if (isRepoRoot(root)) return [root];
+export function findGitRepos(root: string, maxDepth = 3, below = false): string[] {
+  const inRepo = isRepoRoot(root);
+  if (inRepo && !below) return [root];
+  // Inside a repository a submodule or worktree has a `.git` file: part of that repository, not a clone of its own.
+  const isRepo = inRepo ? (dir: string) => { try { return statSync(path.join(dir, ".git")).isDirectory(); } catch { return false; } } : isRepoRoot;
   const found: string[] = [];
   const walk = (dir: string, depth: number) => {
     let entries;
@@ -60,8 +100,8 @@ export function findGitRepos(root: string, maxDepth = 3): string[] {
     // isDirectory() is false for a symlink, so a link back up the tree cannot loop the scan.
     for (const entry of entries.filter((e) => e.isDirectory() && !e.name.startsWith(".") && !SKIP_DIRS.has(e.name)).sort((a, b) => a.name.localeCompare(b.name))) {
       const child = path.join(dir, entry.name);
-      if (isRepoRoot(child)) found.push(child);
-      else if (depth < maxDepth) walk(child, depth + 1);
+      if (isRepo(child)) found.push(child);
+      else if (depth < maxDepth && !isRepoRoot(child)) walk(child, depth + 1);
     }
   };
   walk(root, 1);

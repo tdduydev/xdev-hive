@@ -2,13 +2,14 @@ import { ResponsiveTable as Table, ResponsiveTableRow as TableRow } from "#ui/co
 import { useEffect, useMemo, useState } from "react";
 import { cacheReadShare, type CompressionCompare, type CompressionSide, type CostSummary, type CostTotals, type RunTokens } from "@xdev-hive/core";
 import { TableBody, TableCell, TableHead, TableHeader } from "@xdev-hive/ui/components/ui/table";
-import { Empty, ErrorNote, Notice, Page, PageHeader } from "#ui/components/common.tsx";
+import { Empty, ErrorNote, Notice, Page } from "#ui/components/common.tsx";
 import { formatCount, formatTime, formatUsd, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { mapMachines } from "#ui/lib/agentmap.ts";
 import { scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { Skeleton } from "#ui/components/ui/skeleton.tsx";
 import { AgentMap } from "#ui/pages/AgentMap.tsx";
+import { MachineProjectsPanel } from "#ui/components/MachineProjects.tsx";
 
 /** How often the map asks the hub again while it is on screen (machines report every 30 s, runs as they go). */
 const MAP_REFRESH_MS = 5000;
@@ -27,7 +28,7 @@ function usePageVisible(): boolean {
 const CODE = "rounded bg-muted px-1 py-0.5 font-mono text-xs";
 
 export function MachinesPage() {
-  const { client, scope } = useHive();
+  const { client, scope, me } = useHive();
   const t = useT();
   // Every few seconds while the page is in view: the map shows what agents do now.
   const visible = usePageVisible();
@@ -46,8 +47,8 @@ export function MachinesPage() {
   const shown = useMemo(() => mapMachines(machines.data ?? [], scope), [machines.data, scope]);
 
   return (
-    <Page wide>
-      <PageHeader title={t("nav.machines")} subtitle={t("dashboardAgents.mapHint")} />
+    <Page wide className="gap-0">
+      <p className="m-0 mb-5 max-w-[760px] text-[14px]/[22px] font-medium text-fg-secondary [text-wrap:pretty]">{t("agentMap.pageHint")}</p>
 
       <section className="flex flex-col gap-3">
         <ErrorNote error={machines.error ?? runs.error ?? requests.error ?? cooldowns.error} />
@@ -69,6 +70,8 @@ export function MachinesPage() {
         ) : null}
       </section>
 
+      {/* A machine's config holds every project of its user, folders included: hub admins only, as the hub enforces. */}
+      {me.role === "admin" && !me.access && me.mode === "hub" ? <MachineProjectsPanel poll={poll} /> : null}
     </Page>
   );
 }

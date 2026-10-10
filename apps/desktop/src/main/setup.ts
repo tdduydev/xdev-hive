@@ -36,7 +36,7 @@ import {
 import { addToUserPath, pathHasDir, type UserPath } from "./winpath.ts";
 import { tr } from "./i18n.ts";
 import { geminiLaunch } from "#desktop/main/runner/gemini-launch.ts";
-import { resolveBin } from "./runner/command.ts";
+import { cliLaunch, resolveBin } from "#desktop/main/spawn-cli.ts";
 import { VIBE_VERSION } from "#desktop/main/runner/vibe.ts";
 import { supportsAgyUsage } from "#desktop/main/runner/antigravity.ts";
 import { APP_TOOLS, toolOn, trustOf } from "./runner/tools.ts";
@@ -86,7 +86,7 @@ export interface SetupHost {
 
 /** The first dotted version in a CLI's --version output: "2.1.283 (Claude Code)", "codex-cli 0.157.1", "0.61.0". */
 export function parseCliVersion(output: string): string | null {
-  return /(?<![\w.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?![\w.])/.exec(output)?.[1] ?? null;
+  return /(?<![\w.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)(?!\w|\.[\w.])/.exec(output)?.[1] ?? null;
 }
 
 /** How a CLI upgrades itself; `bin` is a command looked up on PATH, or the CLI's own path. */
@@ -210,8 +210,16 @@ const noNpm = () => tr("setupItem.noNpm");
 
 export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
   new Promise((resolve) => {
-    const launch = geminiLaunch(bin, args, env);
-    execFile(launch.bin, launch.args, { cwd, env: launch.env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+    let launch: ReturnType<typeof cliLaunch> & { env: NodeJS.ProcessEnv };
+    try {
+      const node = geminiLaunch(bin, args, env);
+      launch = { ...cliLaunch(node.bin, node.args), env: node.env };
+    } catch (err) {
+      resolve({ ok: false, output: (err as Error).message });
+      return;
+    }
+    const { windowsVerbatimArguments } = launch;
+    execFile(launch.bin, launch.args, { cwd, env: launch.env, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, windowsHide: true, windowsVerbatimArguments }, (err, stdout, stderr) => {
       const output = `${stdout}${stderr}`.trim();
       resolve({ ok: !err, output: output || (err ? err.message : "") });
     });
@@ -219,6 +227,9 @@ export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
 
 const describeFiles = (files: FileAction[]) =>
   files.map((f) => `${f.action.padEnd(9)} ${f.file}${f.note ? ` · ${f.note}` : ""}`).join("\n");
+
+// "removed" too: a leftover xdev-hive in .mcp.json still has to go, or the repo keeps a server that cannot start.
+const writes = (f: FileAction) => f.action === "created" || f.action === "updated" || f.action === "removed";
 
 /** Like an agent CLI's --version: a check that takes longer is stuck (asking for input, waiting on the network). */
 const TOOL_CHECK_MS = 15_000;
@@ -237,11 +248,21 @@ export class Setup {
   readonly #platform: NodeJS.Platform;
   /** The registry's newest version of each CLI package, and when it was looked up. */
   readonly #latest = new Map<string, { at: number; version: string | null }>();
+  #statusPending: Promise<SetupReport> | null = null;
+  #statusCached: { at: number; report: SetupReport } | null = null;
+  #statusGeneration = 0;
 
   constructor(host: SetupHost) {
     this.#host = host;
     this.#run = host.run ?? defaultRun;
     this.#platform = host.platform ?? process.platform;
+  }
+
+  /** Call when projects or the hub tool catalog changes outside an install. */
+  invalidateStatus(): void {
+    this.#statusGeneration++;
+    this.#statusCached = null;
+    this.#statusPending = null;
   }
 
   /** What installAgents needs to name this machine's shim and pick the launch form of each config. */
@@ -250,6 +271,21 @@ export class Setup {
   }
 
   async status(): Promise<SetupReport> {
+    if (this.#statusPending) return this.#statusPending;
+    if (this.#statusCached && Date.now() - this.#statusCached.at < 45_000) return this.#statusCached.report;
+    const generation = this.#statusGeneration;
+    const pending = this.#readStatus();
+    this.#statusPending = pending;
+    try {
+      const report = await pending;
+      if (generation === this.#statusGeneration) this.#statusCached = { at: Date.now(), report };
+      return report;
+    } finally {
+      if (this.#statusPending === pending) this.#statusPending = null;
+    }
+  }
+
+  async #readStatus(): Promise<SetupReport> {
     const pathEnv = await this.#host.pathEnv(true);
     const clis = await Promise.all(AGENT_CLIS.map((c) => this.#cli(c, pathEnv)));
     const specify = await this.#findSpecify(pathEnv);
@@ -275,6 +311,7 @@ export class Setup {
   }
 
   async install(id: string): Promise<SetupInstallResult> {
+    this.invalidateStatus();
     const pathEnv = await this.#host.pathEnv(true);
     const env = { ...this.#host.env(), PATH: pathEnv };
     let output: string;
@@ -306,7 +343,7 @@ export class Setup {
     } else if (cli) {
       const npm = resolveBin("npm", pathEnv);
       if (!npm) throw new HiveError("bad_request", noNpm(), { key: "setupItem.noNpm" });
-      const args = ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg, ...(await this.#npmPrefixArgs(npm, env))];
+      const args = ["install", "-g", cli.kind === "kilo" ? `${cli.pkg}@7.8.3` : cli.pkg, ...(await this.#npmPrefixArgs(npm, env)), ...(await this.#npmScriptArgs(cli.kind, npm, env))];
       const r = await this.#run(npm, args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
@@ -319,12 +356,20 @@ export class Setup {
     } else {
       const { project, part } = this.#split(id);
       if (part === "agents") output = describeFiles(installAgents(project.repo, project.name, this.#agentOpts()));
-      else if (part === "codegraph-mcp") output = describeFiles([installCodegraphMcp(project.repo)]);
+      else if (part === "codegraph-mcp") {
+        // Windows: agents puts codegraph in ~/.claude.json only once .mcp.json lists it, so an agents item that was
+        // complete would read as missing again after this one; its local scope is brought along instead.
+        const agentsDone = this.#platform === "win32" && !installAgents(project.repo, project.name, this.#agentOpts(true)).some(writes);
+        const files = [installCodegraphMcp(project.repo)];
+        if (agentsDone) files.push(...installAgents(project.repo, project.name, this.#agentOpts()).filter(writes));
+        output = describeFiles(files);
+      }
       else if (part === "superpowers") output = describeFiles([enableSuperpowers(project.repo)]);
       else if (part === "codegraph-index") output = await this.#codegraphIndex(project, pathEnv, env);
       else if (part === "speckit") output = await this.#speckitRepoInstall(project, await this.#findSpecify(pathEnv), env);
       else throw notFound(id);
     }
+    this.invalidateStatus();
     return { item: await this.item(id), output };
   }
 
@@ -345,6 +390,14 @@ export class Setup {
     if (insideRuntime(prefix, this.#host.runtimeRoots?.() ?? [])) return ["--prefix", userNpmPrefix(this.#home())];
     const writable = this.#host.writable ?? canWrite;
     return writable(path.join(prefix, "lib", "node_modules")) ? [] : ["--prefix", userNpmPrefix(this.#home())];
+  }
+
+  async #npmScriptArgs(kind: AgentKind, npm: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+    if (kind !== "opencode") return [];
+    // npm 12 blocks postinstall by default; OpenCode's bin is a placeholder until its own script selects the native binary.
+    const result = await this.#run(npm, ["--version"], { env, timeoutMs: 15_000 });
+    const version = result.ok ? parseCliVersion(result.output) : null;
+    return version && Number(version.split(".")[0]) >= 12 ? ["--allow-scripts=opencode-ai"] : [];
   }
 
   /** Runs `argv` (argv[0] already resolved to `bin`): the output's tail, or an error that carries it. */
@@ -483,7 +536,7 @@ export class Setup {
     }
     const env = { ...this.#host.env(), PATH: pathEnv };
     const v = await this.#run(bin, ["--version"], { env, timeoutMs: 15_000 });
-    if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: null, version: null, latest: null };
+    if (!v.ok) return { ...base, state: "installed", detail: tr("setupItem.versionFailed", { bin, output: firstLine(v.output) }), action: cliUpgrade(cli, this.#realpath(bin), bin, this.#home())?.method === "npm" ? tr("setupItem.repairNpm") : null, version: null, latest: null };
     const version = parseCliVersion(v.output);
     const latest = await this.#latestOf(cli.pkg, pathEnv, env);
     if (cli.kind === "antigravity") return {
@@ -514,9 +567,14 @@ export class Setup {
     if (busy) throw new HiveError("conflict", tr("setupItem.cliBusy", { label: cli.label, count: busy }), { key: "setupItem.cliBusy", vars: { label: cli.label, count: busy } });
     const bin = upgrade.bin === own ? own : resolveBin(upgrade.bin, pathEnv);
     if (!bin) throw new HiveError("bad_request", upgrade.bin === "npm" ? noNpm() : tr("setupItem.upgradeUnknown", { label: cli.label, pkg: cli.pkg }), { key: upgrade.bin === "npm" ? "setupItem.noNpm" : "setupItem.upgradeUnknown", vars: { label: cli.label, pkg: cli.pkg } });
-    const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
     this.#host.holdCli?.(cli.kind, true);
     try {
+      // Existing system-wide CLIs need the same writable destination as first-time installs.
+      if (upgrade.method === "npm" && !upgrade.args.includes("--prefix")) {
+        upgrade.args.push(...await this.#npmPrefixArgs(bin, env));
+      }
+      if (upgrade.method === "npm") upgrade.args.push(...await this.#npmScriptArgs(cli.kind, bin, env));
+      const command = `${upgrade.bin === own ? cli.bin : upgrade.bin} ${upgrade.args.join(" ")}`;
       const r = await this.#run(bin, upgrade.args, { env, timeoutMs: 15 * 60_000 });
       if (!r.ok) {
         const output = tail(r.output);
@@ -623,8 +681,7 @@ export class Setup {
       return [{ id: id("agents"), label: agentsLabel, state: "manual", detail: tr("errors.noFolder", { path: project.repo }), action: null }];
     }
     const plan = installAgents(project.repo, project.name, this.#agentOpts(true));
-    // "removed" too: a leftover xdev-hive in .mcp.json still has to go, or the repo keeps a server that cannot start.
-    const changes = plan.filter((f) => f.action === "created" || f.action === "updated" || f.action === "removed");
+    const changes = plan.filter(writes);
     const manual = plan.filter((f) => f.action === "skipped");
     const agents: SetupItem = changes.length
       ? { id: id("agents"), label: agentsLabel, state: "missing", detail: tr("setupItem.agentsWrites", { files: changes.map((f) => f.file).join(", ") }), action: tr("setupItem.installAgents") }

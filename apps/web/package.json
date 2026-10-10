@@ -24,7 +24,9 @@
     "@xdev-hive/core": "*",
     "@xdev-hive/mcp": "*",
     "@xdev-hive/ui": "*",
+    "@xdev-hive/ui-kit": "*",
     "express": "^5.2.1",
+    "lucide-react": "^1.52.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

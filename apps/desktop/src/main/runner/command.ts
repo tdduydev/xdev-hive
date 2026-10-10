@@ -1,11 +1,9 @@
 import { opencodeEnv, opencodePermissions, opencodeUserConfig } from "#desktop/main/runner/opencode.ts";
 import { kiloRunEnv } from "#desktop/main/runner/kilo.ts";
-import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 // Builds the command line and prompt for one run.
-import { accessSync, constants, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
+import { AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection, type RunStepPrompt, STEER_PROMPT, artifactLines, frameLines, stepPromptBlock } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -51,6 +49,8 @@ export interface PromptContext {
   rules?: WorktreeRule[] | null;
   /** Hub mode: files the agent leaves in ARTIFACT_DIR go to the hub when the run ends (roadmap 41c). */
   artifacts?: boolean;
+  /** What the project's manager wrote for the SDLC step this run is in (roadmap 72i); null outside a flow. */
+  stepPrompt?: RunStepPrompt | null;
 }
 
 export interface JudgeCandidate {
@@ -100,52 +100,8 @@ export function buildPrompt(c: PromptContext): string {
       "Winner: c<number>",
       "Reason: <one sentence>",
     );
-  } else if (c.role === "review") {
-    lines.push(
-      `Review the work for task ${c.taskId} of project "${c.project}" (xDev Hive): ${c.title}`,
-      "",
-      `Working copy: ${c.worktree} (branch ${c.branch}). See the change with: git diff ${c.baseSha}...HEAD`,
-      "",
-      "Read AGENTS.md in the working copy first for the project's conventions.",
-      "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
-      "fix only small, obvious mistakes. End your report with exactly one standalone line: `Verdict: approve` if no findings block the review, or `Verdict: changes` if changes are needed. Put findings before that line.",
-      c.readOnly
-        ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
-        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not call task_claim or task_update: the task is not yours, the implementer's run keeps it.",
-    );
   } else {
-    lines.push(
-      `You are working on task ${c.taskId} of project "${c.project}" (xDev Hive).`,
-      `Task: ${c.title}`,
-      "",
-      `Working copy: ${c.worktree} (git worktree on branch ${c.branch}, based on ${c.baseSha.slice(0, 10)}). Stay inside it.`,
-    );
-    if (c.role === "plan") {
-      lines.push("", "This is a planning run: write the plan to docs/plans/" + c.taskId + ".md. Do not implement yet.");
-    }
-    if (c.readOnly) {
-      lines.push(
-        "",
-        "Read AGENTS.md in the working copy first and follow its conventions. xDev Hive is read-only for this run " + `(project key "${c.project}"):`,
-        "1. memory_search and doc_get for context before changing code.",
-        "2. You cannot write memory, propose doc changes or update the task. End with a note for the task instead:",
-        "   what changed, what is left, how to verify, risks, and any decision or gotcha worth sharing.",
-        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md.",
-        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-      );
-    } else {
-      lines.push(
-        "",
-        "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
-        "1. memory_search for context before changing code.",
-        "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
-        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
-        c.candidate
-          ? `4. Do not call task_update: this run is one of several candidates (see below). End with a note instead: what changed, what is left, how to verify, risks.`
-          : `4. When done, task_update ${c.taskId} to "review" with a note: what changed, what is left, how to verify, risks.`,
-        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-      );
-    }
+    lines.push(...frameLines(c));
   }
   if (c.contextFile) {
     lines.push(
@@ -158,14 +114,7 @@ export function buildPrompt(c: PromptContext): string {
   const rules = c.rules ?? (c.worktree ? loadWorktreeRules(c.worktree) : []);
   lines.push(...skillAndRuleLines(skills, rules));
   // The judge keeps nothing: the branch it picks is the work.
-  if (c.artifacts && !c.judge) {
-    lines.push(
-      "",
-      `A file worth keeping that is not code (a screenshot, a report, a measurement${c.role === "plan" ? ", the plan" : ""}): write it in ${ARTIFACT_DIR}/ of the working copy.`,
-      `That folder stays out of the commit; when this run ends the files go to xDev Hive, beside this run and task ${c.taskId}, and other agents read them with artifact_list and artifact_get.`,
-      "At most 20 files, 5 MB each; png, jpg, webp and pdf, or text as md, txt, json and log. Never put a secret in one.",
-    );
-  }
+  if (c.artifacts && !c.judge) lines.push("", ...artifactLines(c.taskId, c.role));
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {
     lines.push(
@@ -188,6 +137,9 @@ export function buildPrompt(c: PromptContext): string {
     );
   }
   if (c.ciFix) lines.push("", ...ciFixLines(c.ciFix));
+  // After the protocol and before the admin's words: it adds to the step, and the run's own instructions still win.
+  const step = c.judge ? null : stepPromptBlock(c.stepPrompt, { taskId: c.taskId, taskTitle: c.title, service: c.project, branch: c.branch });
+  if (step && "lines" in step) lines.push("", ...step.lines);
   if (c.instructions.trim()) lines.push("", "Extra instructions from the admin:", c.instructions.trim());
   if (!c.judge) lines.push("", STEER_PROMPT);
   return lines.join("\n");
@@ -895,6 +847,20 @@ export function policyLine(pol: AgentPolicy, fit: PolicyFit): string {
   return `# policy ${policySummary(pol)} → model ${fit.model ?? "—"} · autonomy ${fit.autonomy}${hive} · network ${network} · mcp ${mcp}`;
 }
 
+/**
+ * An npm-installed CLI on Windows runs through cmd.exe, which cannot carry a line break and stops at 8191 characters:
+ * the prompt then goes on stdin, where Claude (`-p` without a value) and Codex (`exec -`) read it. Other kinds keep
+ * their args, and cliLaunch reports what cmd.exe cannot pass.
+ */
+export function promptOnStdin(kind: AgentKind, args: string[], stdin: string | null): { args: string[]; stdin: string | null } {
+  if (stdin !== null) return { args, stdin };
+  const at = args.findIndex((a) => /[\r\n]/.test(a) || a.length > 2000);
+  if (at < 0) return { args, stdin };
+  if (kind === "claude" && ["-p", "--print"].includes(args[at - 1]!)) return { args: args.toSpliced(at, 1), stdin: args[at]! };
+  if (kind === "codex" && args[0] === "exec") return { args: args.with(at, "-"), stdin: args[at]! };
+  return { args, stdin };
+}
+
 /** The MCP server names a Codex config.toml declares (`[mcp_servers.<name>]` and its sub-tables). */
 export function codexMcpNames(toml: string): string[] {
   const names = [...toml.matchAll(/^\s*\[mcp_servers\.(?:"([^"]+)"|([\w-]+))(?:\.[^\]]*)?\]/gm)].map((m) => m[1] ?? m[2]!);
@@ -909,27 +875,8 @@ export function expandEnv(env: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(env).map(([k, v]) => [k, expandHome(v)]));
 }
 
-/** Finds an executable like `which`. Returns null when missing. */
-export function resolveBin(bin: string, pathEnv: string): string | null {
-  const isFile = (p: string) => {
-    try {
-      if (!statSync(p).isFile()) return false;
-      if (process.platform !== "win32") accessSync(p, constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  if (bin.includes("/") || bin.includes("\\")) return isFile(bin) ? bin : null;
-  const exts = process.platform === "win32" ? bin === "gemini" ? [".exe", ".cmd", ".bat", ""] : ["", ".cmd", ".exe", ".bat"] : [""];
-  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
-    for (const ext of exts) {
-      const candidate = path.join(dir, bin + ext);
-      if (isFile(candidate)) return candidate;
-    }
-  }
-  return null;
-}
+// Callers across the runner import it from here; it lives beside cliLaunch, which handles what it finds on Windows.
+export { resolveBin } from "#desktop/main/spawn-cli.ts";
 
 /** Shown in the run log. The prompt is shortened; env is never logged. */
 export function describeCommand(cmd: BuiltCommand): string {

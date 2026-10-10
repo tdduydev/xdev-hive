@@ -1,6 +1,8 @@
 import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type AcceptanceEvidence, type EvidenceContext } from "#core/evidence.ts";
 import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
+import { machineRepoSchema, projectOrderShape, refineProjectOrder, type MachineProjectCommand, type MachineProjects } from "#core/machine-projects.ts";
+import { systemSourceSchema } from "#core/system-source.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
@@ -20,6 +22,7 @@ import { CHAT_FILES_PER_MESSAGE } from "./chatfiles.ts";
 import { DOC_ASSET_MAX_BYTES } from "./doclinks.ts";
 import { MR_STATUSES, PIPELINE_STATUSES } from "./gitlab.ts";
 import { MACHINE_ID, PROJECT_NAME } from "./keys.ts";
+import { isAgentActor } from "./source.ts";
 import { MAX_MAP_PART, MAX_MAP_PARTS, MAX_MAP_PROMPT } from "./mapreduce.ts";
 import { MAX_ROLE_INSTRUCTIONS, MAX_ROLE_STEPS, MIN_ROLE_STEPS, ROLE_STEPS } from "./roles.ts";
 import type { SkillSummary } from "./skills.ts";
@@ -28,7 +31,8 @@ import { toolEntrySchema } from "./tools.ts";
 import { ROUTED_KINDS, modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "#core/model-router.ts";
 import { modelLearningSetSchema, type ModelLearningView } from "./model-learning.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
-import { FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { SDLC_GATES, FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
+import { STEP_PROMPT_HISTORY, STEP_PROMPT_MAX, type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
 import {
   MEMORY_KINDS,
   MEMORY_STATUSES,
@@ -37,6 +41,7 @@ import {
   PROPOSAL_STATUSES,
   SELF_APPROVALS,
   TASK_STATUSES,
+  TASK_PLATFORMS,
   type Actor,
   type AgentsPaused,
   type AgentsStop,
@@ -68,6 +73,8 @@ import {
   type DocSummary,
   type DocVersion,
   type HiveSystem,
+  REPO_ACCESS_STATUSES,
+  type SystemMemberHealth,
   type RetiredProject,
   type Machine,
   type ProfileChange,
@@ -156,6 +163,7 @@ const machineRunnerSettings = z.object({
   maxParallel: z.number().int().min(1).max(8),
   mrEnabled: z.boolean(),
   mrWhen: z.enum(["after_review", "after_success"]),
+  acceptHubRuns: z.boolean().optional(),
 });
 const reportedProfile = z.object({
   supportedModels: z.array(z.string().max(200)).max(2000).nullable().optional(),
@@ -243,6 +251,7 @@ export const chatPlanSchema = z.object({
     acceptance: z.string().trim().min(1).max(1500),
     dependsOn: z.array(taskId).max(20).default([]),
     taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   })).min(1).max(50),
   batches: z.array(z.object({ title: z.string().trim().min(1).max(200), taskIds: z.array(taskId).min(1).max(50) })).min(1).max(50),
 });
@@ -265,8 +274,9 @@ const chatAction = z.discriminatedUnion("kind", [
     taskKind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
-  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional() }),
+  z.object({ kind: z.literal("task.update"), project: project.optional(), id: taskId, status: z.enum(TASK_STATUSES), note: z.string().max(2000).optional(), platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional() }),
   /** Corrects what a task is (roadmap 54b): at least one of the three. */
   z.object({ kind: z.literal("task.classify"), project: project.optional(), id: taskId, taskKind: z.enum(TASK_KINDS).optional(), size: z.enum(TASK_SIZES).optional(), risk: z.enum(TASK_RISKS).optional() }),
   /** Gives a task to an agent (roadmap 50); the machine is named by hub id or name, like the kinds below. */
@@ -369,6 +379,7 @@ export const schemas = {
     taskId,
     runId,
     profileId: z.string().max(40).nullable().default(null),
+    versionNote: z.string().max(500).optional(),
     /** Relative to .xdev-hive/artifacts/, e.g. "shots/board.png". */
     name: z.string().min(1).max(300),
     data: z.string().min(1).max(Math.ceil((ARTIFACT_MAX_BYTES * 4) / 3) + 8),
@@ -378,7 +389,7 @@ export const schemas = {
     project: project.optional(),
     projects: z.array(project).max(500).optional(),
     name: z.string().max(300).optional(),
-    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf"]).optional(),
+    kind: z.enum(["markdown", "log", "json", "image", "text", "pdf", "html"]).optional(),
     offset: z.number().int().min(0).default(0),
     taskId: taskId.optional(),
     runId: runId.optional(),
@@ -393,6 +404,7 @@ export const schemas = {
   "artifacts.get": z.object({ id, metadataOnly: z.boolean().optional(), maxBytes: z.number().int().min(1).max(ARTIFACT_MAX_BYTES).optional() }),
   /** A project manager removes one (it is written in the audit log); nothing else ever deletes an artifact. */
   "artifacts.remove": z.object({ id }),
+  "artifacts.pin": z.object({ id, pinned: z.boolean() }),
   /**
    * Asks the writing assistant (roadmap 22k): the page as it is being edited, other pages of its space or the team's,
    * memory entries, and repo files (paths or globs, read on the machine that writes it).
@@ -429,6 +441,7 @@ export const schemas = {
     status: z.enum(PROPOSAL_STATUSES).optional(),
     docKey: docKey.optional(),
   }),
+  "proposals.count": z.object({ status: z.enum(PROPOSAL_STATUSES).optional() }),
   "proposals.create": z.union([
     z.object({
       docKey,
@@ -538,6 +551,7 @@ export const schemas = {
     kind: z.enum(TASK_KINDS).optional(),
     size: z.enum(TASK_SIZES).optional(),
     risk: z.enum(TASK_RISKS).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).default([]),
   }),
   /** One atomic CLI leader plan: new spec plus its task graph. */
   "plans.create": chatPlanSchema.extend({ project }),
@@ -553,8 +567,10 @@ export const schemas = {
   "tasks.update": z.object({
     id: taskId,
     priority: z.number().int().min(0).max(100).optional(),
-    status: z.enum(TASK_STATUSES),
+    /** Left out, the status, owner and lease stay: that is how platforms alone changes without touching a running task. */
+    status: z.enum(TASK_STATUSES).optional(),
     note: z.string().max(2000).optional(),
+    platforms: z.array(z.enum(TASK_PLATFORMS)).max(3).optional(),
   }),
   /** Says what a task is (roadmap 54b), by hand: what is given replaces the hub's rules and its classify run. */
   "tasks.classify": z
@@ -592,11 +608,27 @@ export const schemas = {
     /** Random per app start, to tell two live instances apart from a restart. */
     instance: z.string().regex(/^[a-f0-9]{8,64}$/),
     version: z.string().max(40).default(""),
+    /** null: an OS the hub has no routing key for (platformKey); the machine still reports. */
+    platform: z.enum(["win", "windows", "linux", "mac"]).nullable().optional(),
     /** The machine's Setup page result; sent after each check, kept by the hub until the next one. */
     setup: z.object({ checkedAt: z.iso.datetime(), report: setupReport }).optional(),
+    system: z.object({
+      os: z.enum(["macos", "ubuntu", "windows", "linux"]),
+      osName: z.string().min(1).max(200),
+      hardware: z.string().min(1).max(300),
+      uptime: z.string().max(100).optional(),
+      uptimeSeconds: z.number().finite().min(0).max(1e10).optional(),
+      cpu: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), cores: z.number().int().min(1).max(65536).optional(), load: z.number().min(0).max(1e6).optional() }).optional(),
+      ram: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), usedBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+      disk: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), freeBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+    }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
     worktreeResults: z.array(z.object({ id: z.uuid(), results: z.array(z.object({ path: z.string().max(2000), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100) })).max(100).default([]),
+    /** Every project of the app's config with its folder, the hub's deleted ones too: the web can then offer to drop them. */
+    repos: z.array(machineRepoSchema).max(200).optional(),
+    /** How the project commands went (machines.projectCommand); sent until the hub answers a heartbeat. */
+    projectResults: z.array(z.object({ id: z.uuid(), ok: z.boolean(), error: z.string().max(1000).nullable() })).max(100).default([]),
     toolStates: z.array(z.object({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/), trust: z.enum(["app", "trusted", "new", "changed"]) })).max(500).optional(),
     appliedToolApprovals: z.array(z.uuid()).max(100).default([]),
     /** Remote terminal opt-in (spec 69). Absent (older app) or malformed reads as none, never as the last one sent. */
@@ -605,8 +637,21 @@ export const schemas = {
     gate: z.unknown().optional(),
     /** Projects the app has a repo for: the web offers only these machines for a project's runs. */
     projects: z.array(project).max(200).optional(),
+    /**
+     * `git ls-remote` of each of those repos, checked every few hours and not at every beat: the last results, resent
+     * each beat. Absent (an older app): the hub keeps what it had. `detail` arrives without credentials; the hub
+     * redacts it again anyway.
+     */
+    repoHealth: z.array(z.object({
+      project,
+      status: z.enum(REPO_ACCESS_STATUSES),
+      checkedAt: z.iso.datetime(),
+      head: z.string().regex(/^[0-9a-f]{40,64}$/).nullable().default(null),
+      detail: z.string().max(300).nullable().default(null),
+    })).max(200).optional(),
     /** The user lets project managers queue runs on this machine from the web. */
     acceptsRuns: z.boolean().optional(),
+    gitPush: z.record(project, z.boolean()).optional(),
     gateRunner: z.boolean().optional(),
     maxParallel: z.number().int().min(1).max(20).optional(),
     runnerSettings: machineRunnerSettings.optional(),
@@ -641,6 +686,13 @@ export const schemas = {
     force: z.boolean().default(false),
     cleanup: worktreeCleanupSchema.optional(),
   }).refine(v => !!v.targets || !!v.cleanup, "targets or cleanup"),
+  /** Each machine's projects with their folders and the commands below: hub admins only, paths are the machine's own. */
+  "machines.projects": z.object({}),
+  /**
+   * Adds a project to a machine's app config or drops one from it (never deleting the folder). The machine takes it at
+   * its next heartbeat and answers how it went. Hub admins only.
+   */
+  "machines.projectCommand": z.object({ machine: machineRef, ...projectOrderShape }).superRefine(refineProjectOrder),
   "machines.tools": z.object({ machineId: machineRef }),
   /** Human hub admin or machine owner only; hash is the commands shown before approval. */
   "machines.approveTool": z.object({ machineId: machineRef, toolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/), hash: z.string().regex(/^[0-9a-f]{64}$/) }),
@@ -735,6 +787,10 @@ export const schemas = {
           instructions: z.string().max(4000).optional(),
           baseSha: z.string().regex(/^[a-f0-9]{40,64}$/).nullable().optional(),
           headSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          startSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          remoteSha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/).nullable().optional(),
+          pushed: z.boolean().nullable().optional(),
+          pushError: z.string().max(4000).nullable().optional(),
           verdict: z.enum(VERDICTS).nullable().optional(),
           log: z.string().max(60_000).default(""),
           /** What the run changed (git diff from its base), when it changed since the last push (roadmap 22l). */
@@ -786,6 +842,7 @@ export const schemas = {
   "runs.plans": z.object({ project: project.optional(), projects: projectList, taskId: taskId.optional(), status: z.enum(["planning", "waiting", "approved", "changes", "failed", "cancelled"]).optional(), limit: z.number().int().min(1).max(200).default(100) }),
   "runs.decidePlan": z.object({ id, revision: z.number().int().min(1), decision: z.enum(["approve", "changes", "cancel"]), note: z.string().max(2000).default("") }),
   "runs.list": z.object({ taskId: taskId.optional(), project: project.optional(), projects: projectList, activeOnly: z.boolean().optional(), limit: z.number().int().min(1).max(200).default(50) }),
+  "runs.count": z.object({ project: project.optional(), projects: projectList }),
   /**
    * A project manager stops a run that waits or runs on a machine taking runs from the hub: the machine hears it at
    * its next heartbeat, stops the agent and reports the run as cancelled.
@@ -1164,6 +1221,17 @@ export const schemas = {
     status: z.enum(GATE_STATUSES).optional(),
     limit: z.number().int().min(1).max(200).default(50),
   }),
+  /** The nine steps' prompts as they stand (72i); a step never written has version 0 and no text. */
+  "sdlc.prompts": z.object({ project }),
+  /** One step's versions, the newest first: who saved each and when. */
+  "sdlc.promptHistory": z.object({ project, step: z.enum(SDLC_GATES), limit: z.number().int().min(1).max(STEP_PROMPT_HISTORY).default(STEP_PROMPT_HISTORY) }),
+  /**
+   * A step's prompt as a new version (empty text clears it). baseVersion is the version the editor read: a save over a
+   * newer one is refused, so two people do not undo each other without seeing it.
+   */
+  "sdlc.setPrompt": z.object({ project, step: z.enum(SDLC_GATES), text: z.string().max(STEP_PROMPT_MAX), baseVersion: z.number().int().min(0) }),
+  /** What a run of the task is told for its step (the runner's): null outside a flow, or when its step has no prompt. */
+  "sdlc.runPrompt": z.object({ project, taskId, role: z.enum(AGENT_ROLES) }),
   "modelRouter.get": z.object({}),
   "modelRouter.set": z.union([z.object({ project: z.null(), tiers: modelTableSchema, cells: modelCellsSchema }), z.object({ project, setting: modelProjectSchema })]),
   /** The router's learning table of a project (54d): 30 days of finished tasks per cell, proposals, locks, its log. */
@@ -1194,8 +1262,11 @@ export const schemas = {
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
-  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
+  /** source: left out keeps the one saved, null drops it (GROUP-init-sync). */
+  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200), source: systemSourceSchema.nullable().optional() }),
   "systems.remove": z.object({ name: systemName }),
+  /** Whether each member of each system has a repo some machine reaches (git ls-remote), for the Systems page. */
+  "systems.repoHealth": z.object({}),
 
   /** Every project the hub knows (roadmap 47) with what it holds and its state; a reader sees only the ones they view. */
   "projects.list": z.object({}),
@@ -1270,6 +1341,7 @@ export interface MethodOutput {
   "artifacts.get": { artifact: Artifact; data: string; truncated?: boolean } | null;
   /** project and name say what went, for the audit log; both null when there was nothing to remove. */
   "artifacts.remove": { removed: boolean; project: string | null; name: string | null };
+  "artifacts.pin": Artifact;
   "docs.assist": DocAssist;
   "docs.assists": DocAssist[];
   "docs.assistCancel": DocAssist;
@@ -1279,6 +1351,7 @@ export interface MethodOutput {
   "docs.assistFinish": { ok: boolean };
   "skills.list": SkillSummary[];
   "proposals.list": Proposal[];
+  "proposals.count": { count: number };
   "proposals.create": Proposal;
   "proposals.approve": Proposal;
   "proposals.reject": Proposal;
@@ -1338,6 +1411,8 @@ export interface MethodOutput {
     tools: MachineTools;
     toolApprovals: ToolApproval[];
     worktreeCommands: WorktreeCommand[];
+    /** Project adds and removes a hub admin asked for; sent until the machine reports them. Older apps ignore it. */
+    projectCommands?: MachineProjectCommand[];
     /** Install requests waiting for the machine's user. */
     commands: MachineCommand[];
     /**
@@ -1380,6 +1455,8 @@ export interface MethodOutput {
   "machines.repair": Machine;
   "machines.worktrees": MachineWorktrees;
   "machines.manageWorktrees": WorktreeCommand;
+  "machines.projects": MachineProjects[];
+  "machines.projectCommand": MachineProjectCommand;
   "machines.tools": MachineToolAccess;
   "machines.approveTool": ToolApproval;
   "machines.setupMissing": MachineSetupMissing[];
@@ -1398,6 +1475,7 @@ export interface MethodOutput {
   "runs.plans": ImplementationPlan[];
   "runs.decidePlan": ImplementationPlan;
   "runs.list": RunRecord[];
+  "runs.count": { running: number; queued: number };
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
   "runs.steer": RunMessage;
@@ -1477,6 +1555,10 @@ export interface MethodOutput {
   "sdlc.setCeiling": SdlcPolicyView;
   "sdlc.setProject": SdlcPolicyView;
   "sdlc.gates": SdlcGateRecord[];
+  "sdlc.prompts": StepPrompt[];
+  "sdlc.promptHistory": StepPromptVersion[];
+  "sdlc.setPrompt": StepPrompt;
+  "sdlc.runPrompt": RunStepPrompt | null;
   "specs.runStep": { task: Task; request: RunRequest; flow: SdlcFlow };
   "sdlc.decide": SdlcFlow;
   "sdlc.retry": SdlcFlow;
@@ -1496,6 +1578,7 @@ export interface MethodOutput {
   "systems.list": HiveSystem[];
   "systems.save": HiveSystem;
   "systems.remove": { removed: boolean };
+  "systems.repoHealth": SystemMemberHealth[];
   "projects.list": ProjectSummary[];
   "projects.archive": ProjectSummary;
   "projects.restore": ProjectSummary;
@@ -1542,6 +1625,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "artifacts.get": "viewer",
   // Also projectSettings on the project, which no agent token has: only a person who manages it removes an artifact.
   "artifacts.remove": "member",
+  "artifacts.pin": "member",
   "docs.assist": "agent",
   "docs.assists": "viewer",
   "docs.assistCancel": "agent",
@@ -1551,6 +1635,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "docs.assistFinish": "agent",
   "skills.list": "viewer",
   "proposals.list": "viewer",
+  "proposals.count": "viewer",
   "proposals.create": "agent",
   "proposals.approve": "agent",
   "proposals.reject": "agent",
@@ -1603,6 +1688,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "machines.approveTool": "viewer",
   "machines.worktrees": "viewer",
   "machines.manageWorktrees": "viewer",
+  // A machine's config is not a project right: only a hub admin, and #check also refuses agents holding an admin token.
+  "machines.projects": "admin",
+  "machines.projectCommand": "admin",
   "machines.setupMissing": "viewer",
   // Not a project right: the hub checks for a hub admin or the machine's owner, and refuses agents.
   "machines.setProfile": "agent",
@@ -1621,6 +1709,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.plans": "viewer",
   "runs.decidePlan": "agent",
   "runs.list": "viewer",
+  "runs.count": "viewer",
   "runs.get": "viewer",
   "runs.cancel": "agent",
   "runs.steer": "agent",
@@ -1709,6 +1798,12 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "projectSettings" on the project.
   "sdlc.setProject": "agent",
   "sdlc.gates": "viewer",
+  "sdlc.prompts": "viewer",
+  "sdlc.promptHistory": "viewer",
+  // Also "contextEdit" on the project: what agents read, a person's to change, never an agent token's.
+  "sdlc.setPrompt": "agent",
+  // The runner's, with the run's own credential: view on the project is enough.
+  "sdlc.runPrompt": "agent",
   // Also "taskManage" and "runDispatch" on the project, as runs.prompt.
   "specs.runStep": "agent",
   // Also "runDispatch" on the project (and "taskManage" for the tasks gate, which imports tasks).
@@ -1735,6 +1830,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also "manage" on each project of the system: a project manager, never an agent token.
   "systems.save": "agent",
   "systems.remove": "agent",
+  "systems.repoHealth": "viewer",
   // The list is for anyone (filtered to what they view); archiving and deleting are a hub admin's, checked in #check.
   "projects.list": "viewer",
   "projects.archive": "admin",
@@ -1765,6 +1861,56 @@ export function authorize(method: Method, actor: Actor): void {
   if (ROLE_RANK[actor.role] < ROLE_RANK[needed]) {
     throw new HiveError("forbidden", `${method} requires role "${needed}", you are "${actor.role}".`, { key: "errors.roleTooLow" });
   }
+}
+
+/**
+ * Calls an agent never makes on its own (incident 2026-10-05: an agent on a machine's admin token deleted three
+ * projects within a second). From an agent they become an operation proposal a person approves on the Proposals
+ * page, which then runs exactly that input with the approver's rights. Role is no guard here: the agent had "admin".
+ */
+export const DESTRUCTIVE_METHODS = [
+  "projects.delete", "projects.archive", "systems.remove", "machines.remove", "tools.remove",
+  "docs.remove", "docs.assetRemove", "memory.remove", "artifacts.remove", "chat.delete",
+] as const satisfies readonly Method[];
+
+/**
+ * Methods named like a deletion that stay direct, each with why. A test puts every method whose name says
+ * delete/remove/purge/restore in this list or in DESTRUCTIVE_METHODS, so a new one cannot slip past unclassified.
+ */
+export const DESTRUCTIVE_EXEMPT: Readonly<Partial<Record<Method, string>>> = {
+  "docs.restore": "Brings removed pages back; nothing is lost.",
+  "docs.removed": "Reads the list of removed pages.",
+  "projects.restore": "Undoes an archive; nothing is lost.",
+};
+
+/**
+ * The hub's own RPCs (apps/web, outside the method table) that destroy accounts, credentials or stored data. They get
+ * the same treatment; the hub registers how to run each one once approved (SqliteHive.onApprovedAction). A backup
+ * restore has no RPC at all: it runs only from the server's shell (apps/web/src/cli.ts).
+ */
+export const DESTRUCTIVE_HUB_RPCS = ["tokens.revoke", "users.trash", "users.purge", "users.inviteRevoke", "webhooks.remove", "hub.cleanup", "backups.restoreProject"] as const;
+export type DestructiveHubRpc = (typeof DESTRUCTIVE_HUB_RPCS)[number];
+
+/** Hub RPCs named like a deletion that stay direct; the hub's test holds every such name to one of the two lists. */
+export const DESTRUCTIVE_HUB_EXEMPT: Readonly<Record<string, string>> = {
+  "users.restore": "Takes an account out of the trash; nothing is lost.",
+};
+
+/** A name that reads like it destroys something: what the classification tests look for. */
+export const DESTRUCTIVE_NAME = /delete|remove|purge|restore|revoke/i;
+
+export function isDestructive(method: string): boolean {
+  return (DESTRUCTIVE_METHODS as readonly string[]).includes(method) || (DESTRUCTIVE_HUB_RPCS as readonly string[]).includes(method);
+}
+
+/**
+ * Anything but a person at the hub's page or the desktop window: an agent token, an MCP, run or chat credential, or a
+ * call an agent labelled (x-hive-agent) that did not come from a window. A bare token with no label stays a person's,
+ * as the server shell, CI and tests call; an agent's client always sends its label (hub-client, the MCP server).
+ */
+export function isAgentCaller(actor: Actor): boolean {
+  if (actor.humanSession && !actor.mcpCredential && !actor.runCredential && actor.chatReply === undefined) return false;
+  return actor.role === "agent" || !!actor.mcpCredential || !!actor.runCredential || actor.chatReply !== undefined || isAgentActor(actor);
 }
 
 export function parseInput<M extends Method>(method: M, raw: unknown): ParsedInput<M> {
