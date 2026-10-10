@@ -15,6 +15,7 @@
   <a href="https://github.com/tdduydev/xdev-hive/releases">Download</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#connecting-agents-mcp">Connect agents</a> ·
+  <a href="docs/user-guide/en/getting-started.md">User guide</a> ·
   <a href="docs/README.vi.md">Tiếng Việt (full guide)</a>
 </p>
 
@@ -391,6 +392,8 @@ Releases can also be cut by hand with `npm run release -w @xdev-hive/desktop` fr
 
 | Document | Contents |
 |---|---|
+| [User guide (English)](docs/user-guide/en/getting-started.md) · [Hướng dẫn (Tiếng Việt)](docs/user-guide/vi/getting-started.md) | Using the hub and the desktop app step by step: getting started, tasks and runs, leader chat, docs and memory, agents and quota, administration |
+| [Feature list](docs/user-guide/en/features.md) · [Danh sách tính năng](docs/user-guide/vi/features.md) | Every feature by area, and where to find it in the interface |
 | [docs/README.vi.md](docs/README.vi.md) | Full Vietnamese guide: every feature, runner behaviour, GitLab/GitHub, hub operations, permissions, SSO, backups |
 | [docs/roadmap.md](docs/roadmap.md) | Roadmap and completed items |
 | [docs/goals.md](docs/goals.md) | Remaining work, order and completion criteria |
