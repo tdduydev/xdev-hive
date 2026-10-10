@@ -11,7 +11,7 @@ D=$(mktemp -d /tmp/hive-drill-XXXX)
 NET=hive-drill-net
 IMG=${HIVE_DRILL_IMAGE:-xdev-hive-hub:latest}
 BACKUPS=${HIVE_BACKUPS_VOLUME:-xdev-hive_hive-backups}
-SEAWEED=${HIVE_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.48}
+SEAWEED=${HIVE_SEAWEEDFS_IMAGE:-ghcr.io/tdduydev/xdev-hive-seaweedfs:4.48}
 TOKEN=drill-$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
 cleanup() {
   docker rm -f -v hive-drill-hub hive-drill-sw >/dev/null 2>&1

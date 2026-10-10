@@ -14,7 +14,7 @@ services:
       HIVE_LAN_HOSTS: ${HIVE_LAN_HOSTS:?set HIVE_LAN_HOSTS, e.g. 10.86.140.52,my-server}
 
   lan:
-    image: caddy:2
+    image: ${HIVE_CADDY_IMAGE:-ghcr.io/tdduydev/xdev-hive-caddy:2.11.7}
     restart: unless-stopped
     depends_on: [hub]
     ports:
