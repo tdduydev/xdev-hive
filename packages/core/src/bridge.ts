@@ -262,6 +262,19 @@ export interface SystemOnMachine {
   lastSync: SystemSyncReport | null;
 }
 
+/** What opening a CLI on a whole system did (GROUP-cli). */
+export interface SystemCliOpened {
+  opened: boolean;
+  /** Where the CLI started: the group's root, or the app's own folder for the system. */
+  cwd: string;
+  /** The system's repos this machine has, each given to the CLI. */
+  repos: number;
+  /** Projects of the system with no repo on this machine. */
+  missing: string[];
+  /** The CLI takes more folders (claude, codex, copilot: --add-dir; gemini: --include-directories). */
+  dirsSupported: boolean;
+}
+
 export interface RepoImportResult {
   key: string;
   dir: string;
@@ -638,6 +651,8 @@ export interface DesktopBridge {
   systemsOnMachine?(): Promise<Record<string, SystemOnMachine>>;
   /** Stops syncing the system on this machine; its folders and projects stay. */
   systemForget?(system: string): Promise<void>;
+  /** A profile's CLI over every repo of a system on this machine (GROUP-cli); older apps have none. */
+  openSystemCli?(profileId: string, system: string, opts?: { bypass?: boolean }): Promise<SystemCliOpened>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;

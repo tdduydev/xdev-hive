@@ -894,6 +894,8 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE machines ADD COLUMN repo_health TEXT;`,
   // GROUP-init-sync: the forge group a system mirrors and each member's path and clone URLs, as JSON SystemSource.
   `ALTER TABLE systems ADD COLUMN source TEXT;`,
+  // GROUP-cli: an MCP credential for a person's CLI opened on a whole system: the system's projects, not one of them.
+  `ALTER TABLE mcp_credentials ADD COLUMN system TEXT;`,
 ];
 
 function browserSeedSql(): string {

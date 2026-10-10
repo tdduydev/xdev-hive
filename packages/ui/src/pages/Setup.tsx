@@ -15,6 +15,7 @@ import { GitLabCard, GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.t
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
 import { canSetUpGroups, missingHere, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
+import { OpenSystemCli } from "#ui/components/OpenCli.tsx";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 
@@ -87,6 +88,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
   // A system's group on this machine (GROUP-init-sync): set up or linked from its section; a system none of whose repos
   // is here yet still gets a section, so a new machine can set the group up from this page.
   const groups = canSetUpGroups(desktop);
+  const profiles = useQuery(() => desktop.profiles(), [desktop]);
   const [groupOpen, setGroupOpen] = useState<string | null>(null);
   const local = useMemo(() => new Set((settings.data?.projects ?? []).map((p) => p.name)), [settings.data]);
   const remoteOnly = groups ? systems.filter((s) => s.source && s.projects.every((p) => !local.has(p))).map((s) => ({ name: s.name, projects: [] as SetupReport["projects"] })) : [];
@@ -174,6 +176,8 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                   {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
                 </div>
               </div>
+              {/* GROUP-cli: one CLI over every repo of the system here, next to installing them all. */}
+              {system && group.projects.length ? <OpenSystemCli profiles={profiles.data ?? []} system={group.name} /> : null}
               {system && groupOpen === group.name ? (
                 <SystemGroupPanel
                   system={system}

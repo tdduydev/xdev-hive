@@ -846,6 +846,32 @@ await shoot("agents-cli", "agents", 2000, {
   if (!script.includes(repo)) failures.push(`open-cli: the script of claude-max-1 does not start in ${repo}`);
   if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_AGENT !== "claude-max-1") failures.push(`open-cli: mcp.json is ${JSON.stringify(mcp)}`);
 }
+// GROUP-cli: a CLI over a whole system, from its section on Service & công cụ. ehs-smoke has demo here and lab nowhere:
+// the script adds demo's repo, Hive's server is the system's, and the context goes to the app's folder for the system
+// (one repo here: its working tree must not get it), with lab listed as missing.
+{
+  const local = new SqliteHive(path.join(work, "local.db"));
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/ehs/${p}`, sshUrl: `git@gitlab.example.test:fis/ehs/${p}.git`, httpUrl: `https://gitlab.example.test/fis/ehs/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo", "lab"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [member("demo", "his/demo"), member("lab", "his/lab")] } }, admin);
+  local.close();
+}
+await shoot("setup-system-cli", "setup", 3000, {
+  HIVE_SMOKE_CLICK: '[data-open-system-cli-button="claude-max-1:ehs-smoke"]',
+  HIVE_SMOKE_SCROLL: '[data-open-system-cli="ehs-smoke"]',
+  HIVE_SMOKE_EXPECT: '[data-system-cli-opened="ehs-smoke"] && [data-setup-system="ehs-smoke"] [data-setup-folder="his"]',
+});
+{
+  const dir = path.join(work, "cli", "claude-max-1");
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  const script = files.filter((f) => f.startsWith("cli.")).map((f) => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const mcp = files.includes("mcp-system-ehs-smoke.json") ? JSON.parse(readFileSync(path.join(dir, "mcp-system-ehs-smoke.json"), "utf8")) : null;
+  const session = path.join(work, "systems", "ehs-smoke");
+  const context = existsSync(path.join(session, "AGENTS.md")) ? readFileSync(path.join(session, "AGENTS.md"), "utf8") : "";
+  if (!script.includes("--add-dir") || !script.includes(repo)) failures.push(`system-cli: the script does not add ${repo}: ${script.slice(0, 400)}`);
+  if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_SYSTEM !== "ehs-smoke" || mcp.mcpServers["xdev-hive"].env.HIVE_PROJECT) failures.push(`system-cli: mcp is ${JSON.stringify(mcp)}`);
+  if (!context.includes("Hive system: `ehs-smoke`") || !context.includes("- `lab`")) failures.push(`system-cli: context is ${context.slice(0, 400)}`);
+  if (existsSync(path.join(repo, "AGENTS.md")) && readFileSync(path.join(repo, "AGENTS.md"), "utf8").includes("Hive system: `ehs-smoke`")) failures.push("system-cli: the context went into demo's repo");
+}
 // One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
