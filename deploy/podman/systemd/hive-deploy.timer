@@ -1,0 +1,10 @@
+[Unit]
+Description=xDev Hive: look for a new hub image every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+RandomizedDelaySec=15s
+
+[Install]
+WantedBy=timers.target
