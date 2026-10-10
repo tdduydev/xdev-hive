@@ -51,7 +51,7 @@ jobs:
         run: |
           digest="$(docker buildx imagetools inspect "$IMAGE:sha-$SHA" --format '{{json .Manifest.Digest}}' | tr -d '"')"
           [ -n "$digest" ] || { echo "no image $IMAGE:sha-$SHA" >&2; exit 1; }
-          docker buildx imagetools create -t "$IMAGE:prod" "$IMAGE@$digest"
+          docker buildx imagetools create --prefer-index=false -t "$IMAGE:prod" "$IMAGE@$digest"
           {
             echo "### prod → \`$IMAGE@$digest\`"
             echo "- commit: \`$SHA\`"
