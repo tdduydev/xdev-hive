@@ -16,6 +16,15 @@ const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export type UserInfo = HubUser;
 
+/** What revokeAccess took away: browser sessions, and hub tokens of the account (MCP and run credentials go with them). */
+export interface Revoked {
+  sessions: number;
+  tokens: number;
+}
+
+/** The audit detail of a revocation (the page shows the translated audit.*Revoked key instead). */
+export const revokedText = (r: Revoked): string => `thu hồi ${r.tokens} token, ${r.sessions} phiên`;
+
 /** The project key the shared data's grant is stored under: no project can be called that. */
 const SHARED_ROW = "*";
 
@@ -225,7 +234,7 @@ export class UserStore {
    * `admin` keeps its old meaning (true: admin, or owner when already one; false: member, or viewer when already one),
    * `hubRole` sets the role itself. Either way the admin column follows the role.
    */
-  update(id: string, patch: { displayName?: string; admin?: boolean; hubRole?: HubRole; disabled?: boolean }): UserInfo {
+  update(id: string, patch: { displayName?: string; admin?: boolean; hubRole?: HubRole; disabled?: boolean }, onRevoked?: (r: Revoked) => void): UserInfo {
     const user = this.#require(id);
     if (user.deletedAt) throw new HiveError("bad_request", "Tài khoản đang trong thùng rác: khôi phục trước.", { key: "errors.userInTrash" });
     const hubRole: HubRole =
@@ -238,20 +247,28 @@ export class UserStore {
     this.#db
       .prepare("UPDATE hub_users SET display_name = ?, admin = ?, hub_role = ?, disabled = ? WHERE id = ?")
       .run((patch.displayName ?? user.displayName).trim().slice(0, 80) || user.username, admin ? 1 : 0, hubRole, disabled ? 1 : 0, id);
-    if (disabled || hubRole !== user.hubRole) this.endSessions(id);
+    // Disabling must not be undone by enabling: whatever could act as the account is deleted, not just refused.
+    // Enabling revokes too, for accounts disabled before revocation existed, whose tokens were only refused.
+    if (disabled !== user.disabled) {
+      // Not inside onRevoked?.(…): an optional call skips evaluating its argument when there is no callback.
+      const revoked = this.revokeAccess(id);
+      onRevoked?.(revoked);
+    }
+    else if (disabled || hubRole !== user.hubRole) this.endSessions(id);
     return this.get(id)!;
   }
 
   // ── trash ─────────────────────────────────────────────────────────────────
 
-  /** Soft delete: the account is disabled and signed out, its grants and tokens stay so a restore brings back everything. */
-  trash(id: string): UserInfo {
+  /** Soft delete: the account is disabled, signed out and its tokens revoked; its grants stay so a restore brings them back. */
+  trash(id: string, onRevoked?: (r: Revoked) => void): UserInfo {
     const user = this.#require(id);
     if (user.deletedAt) return user;
     if (user.admin && this.#activeAdmins() <= 1) throw new HiveError("bad_request", "Phải còn ít nhất một admin đang hoạt động.", { key: "errors.lastAdmin" });
     if (user.hubRole === "owner" && this.#activeOwners() <= 1) throw new HiveError("bad_request", "Phải còn ít nhất một chủ hub đang hoạt động.", { key: "errors.lastOwner" });
     this.#db.prepare("UPDATE hub_users SET deleted_at = ?, disabled = 1 WHERE id = ?").run(new Date().toISOString(), id);
-    this.endSessions(id);
+    const revoked = this.revokeAccess(id);
+    onRevoked?.(revoked);
     // A link for a trashed account would let its holder set the password of something that is gone.
     this.#db.prepare("UPDATE hub_invites SET revoked_at = ? WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL").run(new Date().toISOString(), id);
     return this.get(id)!;
@@ -262,6 +279,8 @@ export class UserStore {
     const user = this.#require(id);
     if (!user.deletedAt) throw new HiveError("bad_request", "Tài khoản không nằm trong thùng rác.", { key: "errors.notInTrash" });
     this.#db.prepare("UPDATE hub_users SET deleted_at = NULL, disabled = 0 WHERE id = ?").run(id);
+    // Trashed before revocation existed, its tokens were only refused: they must not come back with the account.
+    this.revokeAccess(id);
     return this.get(id)!;
   }
 
@@ -375,6 +394,8 @@ export class UserStore {
         if (bound.deletedAt) throw new HiveError("not_found", "Link mời không còn hiệu lực.", { key: "errors.inviteInvalid" });
         id = bound.id;
         this.#db.prepare("UPDATE hub_users SET password_hash = ?, must_change = 0 WHERE id = ?").run(hashPassword(input.password), id);
+        // A new password from the link: whoever was signed in with the old one is not any more.
+        this.#db.prepare("DELETE FROM hub_sessions WHERE user_id = ?").run(id);
       } else {
         id = this.create({ username, displayName: input.displayName, hubRole: String(row.role) as HubRole, password: input.password }).user.id;
         this.#db.prepare("UPDATE hub_users SET must_change = 0 WHERE id = ?").run(id);
@@ -490,8 +511,37 @@ export class UserStore {
     this.#db.prepare("DELETE FROM hub_sessions WHERE hash = ?").run(sha256(token));
   }
 
-  endSessions(userId: string): void {
-    this.#db.prepare("DELETE FROM hub_sessions WHERE user_id = ?").run(userId);
+  endSessions(userId: string): number {
+    return Number(this.#db.prepare("DELETE FROM hub_sessions WHERE user_id = ?").run(userId).changes);
+  }
+
+  /**
+   * Signs the account out everywhere and deletes every hub token it owns, with the MCP and run credentials issued from
+   * them. Deleted, not flagged: an account enabled again starts with no token, so a leaked one stays dead.
+   */
+  revokeAccess(id: string): Revoked {
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const sessions = this.endSessions(id);
+      let tokens = 0;
+      // Tokens live in the core's tables (absent in a bare database). Credentials are deleted by hand as well as by the
+      // foreign key, which only cascades on a connection with foreign_keys on.
+      if (this.#hasTable("hub_tokens")) {
+        for (const table of ["mcp_credentials", "run_credentials"]) {
+          if (this.#hasTable(table)) this.#db.prepare(`DELETE FROM ${table} WHERE parent_id IN (SELECT id FROM hub_tokens WHERE owner_id = ?)`).run(id);
+        }
+        tokens = Number(this.#db.prepare("DELETE FROM hub_tokens WHERE owner_id = ?").run(id).changes);
+      }
+      this.#db.exec("COMMIT");
+      return { sessions, tokens };
+    } catch (err) {
+      this.#db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  #hasTable(name: string): boolean {
+    return !!this.#db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
   }
 
   #require(id: string): UserInfo {
