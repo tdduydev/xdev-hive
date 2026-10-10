@@ -1,4 +1,4 @@
-import type { HiveSystem } from "@xdev-hive/core";
+import { systemFolders, type HiveSystem } from "@xdev-hive/core";
 import { fold } from "#ui/lib/text.ts";
 import { ALL, outsideSystems, projectScope, scopeId, SHARED, systemScope, type Scope } from "#ui/lib/scope.ts";
 
@@ -50,12 +50,26 @@ export function pickerGroups(projects: string[], systems: HiveSystem[], mode: "s
 
 /** A root of the scope picker (roadmap 40a): a system, or a repo in no system shown as a system of that one service.
  *  The second is virtual: it is not in the hub's systems, and picking it is that project's scope. */
-export interface SystemRoot { name: string; services: string[]; virtual: boolean }
+export interface SystemRoot {
+  name: string;
+  services: string[];
+  virtual: boolean;
+  /** Each service's subgroups in the system's forge group (his › backend), when it has a source (GROUP-init-sync). */
+  folders?: Record<string, string[]>;
+}
 
-/** The systems with the services the person may see, and a virtual one per repo in no system, by name. */
+/**
+ * The systems with the services the person may see, and a virtual one per repo in no system, by name. A system linked
+ * to a group lists its services in the group's tree order, each with its subgroups.
+ */
 export function systemTree(projects: string[], systems: HiveSystem[]): SystemRoot[] {
   const allowed = new Set(projects);
-  const real = systems.map((system) => ({ name: system.name, services: system.projects.filter((project) => allowed.has(project)), virtual: false }));
+  const real = systems.map((system): SystemRoot => {
+    const services = system.projects.filter((project) => allowed.has(project));
+    if (!system.source) return { name: system.name, services, virtual: false };
+    const tree = systemFolders({ projects: services, source: system.source });
+    return { name: system.name, services: tree.flatMap((f) => f.projects), virtual: false, folders: Object.fromEntries(tree.flatMap((f) => f.projects.map((p) => [p, f.folder]))) };
+  });
   const lone = outsideSystems(projects, systems).map((project) => ({ name: project, services: [project], virtual: true }));
   return [...real, ...lone].sort((a, b) => a.name.localeCompare(b.name) || Number(a.virtual) - Number(b.virtual));
 }
@@ -72,6 +86,8 @@ export interface ScopeRow {
   depth: 0 | 1;
   /** The system a systems row is or sits in. */
   root?: SystemRoot;
+  /** A service's subgroups in its system's group, shown before its name. */
+  folder?: string[];
   /** Its own name matched the search: the keyboard starts on the first such row, not on the system around it. */
   match: boolean;
 }
@@ -100,7 +116,7 @@ export function scopeRows(projects: string[], systems: HiveSystem[], query: stri
     const services = root.virtual ? [] : !q ? (expanded.has(root.name) ? root.services : []) : own ? root.services : root.services.filter(matches);
     if (q && !own && !services.length) continue;
     rows.push({ scope: rootScope(root), label: root.name, section: "systems", depth: 0, root, match: own });
-    for (const service of services) rows.push({ scope: projectScope(service), label: service, section: "systems", depth: 1, root, match: matches(service) });
+    for (const service of services) rows.push({ scope: projectScope(service), label: service, section: "systems", depth: 1, root, match: matches(service), ...(root.folders?.[service]?.length ? { folder: root.folders[service] } : {}) });
   }
   return rows;
 }

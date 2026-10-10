@@ -6,6 +6,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { toolHash, type DesktopProject, type MachineTools, type SetupReport, type ToolEntry } from "@xdev-hive/core";
 import { setMainLocale } from "#desktop/main/i18n.ts";
+import { installSetupSequence } from "@xdev-hive/ui/lib/setup";
 import { CODEGRAPH_PACKAGE } from "#desktop/main/installer.ts";
 import { APP_TOOLS } from "#desktop/main/runner/tools.ts";
 import { AGENT_CLIS, cliUpgrade, parseCliVersion, Setup, type SetupHost } from "#desktop/main/setup.ts";
@@ -322,6 +323,31 @@ describe("Setup: project repos", () => {
       [`npx -y ${CODEGRAPH_PACKAGE} telemetry off telemetry=0`, `npx -y ${CODEGRAPH_PACKAGE} init telemetry=0`],
       "telemetry goes off before the first index",
     );
+  });
+
+  it("Windows: one install-all leaves every repo item installed, codegraph in Claude's local scope too", async () => {
+    const m = machine({ platform: "win32" });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    const host = { setupStatus: () => (m.setup.invalidateStatus(), m.setup.status()), installSetup: (id: string) => m.setup.install(id) };
+    const left = await installSetupSequence(await m.setup.status(), ["app"], host, () => {}, () => {});
+    assert.deepEqual(left.map((i) => i.id), ["app:speckit"], "only Spec Kit, which needs specify on this machine");
+    const r = await host.setupStatus();
+    assert.deepEqual(r.projects[0]!.items.filter((i) => i.state !== "installed").map((i) => i.id), ["app:speckit"]);
+    const local = JSON.parse(readFileSync(path.join(m.home, ".claude.json"), "utf8")).projects[repo].mcpServers;
+    assert.deepEqual(Object.keys(local).sort(), ["codegraph", "xdev-hive"]);
+    assert.equal(local.codegraph.command, "cmd");
+  });
+
+  it("Windows: adding codegraph after agents keeps the agents item installed", async () => {
+    const m = machine({ platform: "win32" });
+    const repo = gitRepo();
+    m.projects.push({ name: "app", repo });
+    assert.equal((await m.setup.install("app:agents")).item.state, "installed");
+    const res = await m.setup.install("app:codegraph-mcp");
+    assert.equal(res.item.state, "installed");
+    assert.match(res.output, /updated\s+~\/\.claude\.json/);
+    assert.equal((await m.setup.item("app:agents")).state, "installed");
   });
 
   it("accepts an existing codegraph entry as it is, and flags a hook it must not overwrite", async () => {

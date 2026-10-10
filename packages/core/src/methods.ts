@@ -2,6 +2,7 @@ import { evidenceScopeSchema, evidenceSourceSchema, evidenceRecordSchema, type A
 import type { HistoryEntry } from "#core/history.ts";
 import { worktreeReportSchema, worktreeTargetSchema, worktreeCleanupSchema, type WorktreeCommand, type MachineWorktrees } from "#core/worktrees.ts";
 import { machineRepoSchema, projectOrderShape, refineProjectOrder, type MachineProjectCommand, type MachineProjects } from "#core/machine-projects.ts";
+import { systemSourceSchema } from "#core/system-source.ts";
 import { greenBatchSchema, RELEASE_STEPS, type AutoReleaseRecord, type AutoReleaseView } from "#core/auto-release.ts";
 import { mergeQueueConfigSchema, mergeResultSchema, type MergeQueueView, type MergeBatch } from "#core/merge-queue.ts";
 import { runTimeoutSettingsSchema, type RunTimeoutSettings } from "#core/run-timeout.ts";
@@ -510,6 +511,7 @@ export const schemas = {
       contradicts: id.optional(),
     })
     .refine((m) => [m.project !== undefined, m.shared, m.system !== undefined].filter(Boolean).length === 1, "memory needs a project, a system, or shared: true (one of them)"),
+  "memory.share": z.object({ id }),
   "memory.approve": z.object({ id }),
   /** Settles a conflict: keep this entry (the other is replaced by it), the other, or both (no conflict after all). */
   "memory.resolve": z.object({ id, other: id, keep: z.enum(["this", "other", "both"]) }),
@@ -561,6 +563,7 @@ export const schemas = {
     id: taskId,
     leaseMinutes: z.number().int().min(5).max(24 * 60).default(120),
   }),
+  "tasks.requestChanges": z.object({ id: taskId, note: z.string().trim().min(1).max(2000) }),
   "tasks.update": z.object({
     id: taskId,
     priority: z.number().int().min(0).max(100).optional(),
@@ -618,6 +621,15 @@ export const schemas = {
       cpu: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), cores: z.number().int().min(1).max(65536).optional(), load: z.number().min(0).max(1e6).optional() }).optional(),
       ram: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), usedBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
       disk: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), freeBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+      /** Spec 79o. A list this hub cannot read is dropped rather than failing the beat that carries it. */
+      disks: z.array(z.object({
+        mount: z.string().min(1).max(300),
+        label: z.string().max(200).optional(),
+        totalBytes: z.number().positive().max(1e18),
+        freeBytes: z.number().min(0).max(1e18),
+        percent: z.number().min(0).max(100),
+        worktree: z.boolean().optional(),
+      })).max(16).optional().catch(undefined),
     }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
@@ -846,6 +858,8 @@ export const schemas = {
    */
   "runs.steer": z.object({ machineId: z.string().min(1).max(200), runId, text: z.string().trim().min(1).max(8000) }),
   "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId }),
+  "runs.ciPolicy": z.object({ project, mrUrl: z.string().url().max(2000) }),
+  "runs.stopCi": z.object({ project, mrUrl: z.string().url().max(2000) }),
   /**
    * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
    * run. The machine does it with its own GitLab or GitHub token at its next heartbeat; only one that takes runs from the hub.
@@ -1257,7 +1271,8 @@ export const schemas = {
   /** Systems (roadmap 19b), by name. */
   "systems.list": z.object({}),
   /** Creates a system or replaces its projects: needs "manage" on every project it had and gets. */
-  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200) }),
+  /** source: left out keeps the one saved, null drops it (GROUP-init-sync). */
+  "systems.save": z.object({ name: systemName, projects: z.array(project).min(1).max(200), source: systemSourceSchema.nullable().optional() }),
   "systems.remove": z.object({ name: systemName }),
   /** Whether each member of each system has a repo some machine reaches (git ls-remote), for the Systems page. */
   "systems.repoHealth": z.object({}),
@@ -1361,6 +1376,7 @@ export interface MethodOutput {
   "memory.search": Memory[];
   "memory.list": Memory[];
   "memory.write": Memory;
+  "memory.share": Memory;
   "memory.approve": Memory;
   "memory.resolve": Memory;
   "memory.keep": Memory;
@@ -1375,6 +1391,7 @@ export interface MethodOutput {
   "tasks.setDeps": Task;
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
+  "tasks.requestChanges": Task;
   "tasks.update": Task;
   "tasks.classify": Task;
   "tasks.classifyConfig": { project: string; enabled: boolean }[];
@@ -1471,6 +1488,8 @@ export interface MethodOutput {
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
   "runs.steer": RunMessage;
+  "runs.ciPolicy": { fixCi: boolean };
+  "runs.stopCi": { fixCi: boolean };
   "runs.merge": RunRecord;
   "runs.mergeResult": RunRecord;
   "runs.timeoutSettings": RunTimeoutSettings;
@@ -1641,6 +1660,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.search": "viewer",
   "memory.list": "viewer",
   "memory.write": "agent",
+  "memory.share": "agent",
   "memory.approve": "agent",
   "memory.resolve": "agent",
   "memory.keep": "agent",
@@ -1655,6 +1675,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.setDeps": "agent",
   "tasks.next": "viewer",
   "tasks.claim": "agent",
+  "tasks.requestChanges": "agent",
   "tasks.update": "agent",
   "tasks.classify": "agent",
   "tasks.classifyConfig": "viewer",
@@ -1701,6 +1722,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.get": "viewer",
   "runs.cancel": "agent",
   "runs.steer": "agent",
+  "runs.ciPolicy": "viewer",
+  "runs.stopCi": "agent",
   "runs.merge": "agent",
   "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.

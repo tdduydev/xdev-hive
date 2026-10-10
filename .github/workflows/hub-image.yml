@@ -1,0 +1,143 @@
+# The hub image that production runs (docs/deployment/cicd.md). It is built only from a commit of main whose CI
+# passed: workflow_run fires when the CI workflow ends, and the job checks out exactly that run's commit. The image is
+# scanned before anything is pushed, pushed under its commit (sha-<commit>), given a build provenance attestation,
+# and only then promoted: the tags latest and prod move to its digest. The production host deploys what prod points
+# to (deploy/podman/hive-deploy.sh), by digest.
+name: Hub image
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+permissions: {}
+# One publish at a time, in order: a second merge waits instead of racing the first one's promotion.
+concurrency:
+  group: hub-image
+  cancel-in-progress: false
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+jobs:
+  publish:
+    # A push to main that passed: never a pull request (whose code is not reviewed yet), never a failed run.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+      sha: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The version the Hub page shows: the app's version (every roadmap item bumps it) plus the short commit.
+      - name: Build version
+        id: build
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          version="$(node -p 'require("./apps/desktop/package.json").version')"
+          echo "version=${version}+${SHA:0:7}" >> "$GITHUB_OUTPUT"
+      - name: Labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
+          # The workflow runs on main's newest commit; the image is of the CI run's commit, which may be older.
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+            org.opencontainers.image.title=xDev Hive hub
+            org.opencontainers.image.version=${{ steps.build.outputs.version }}
+      - name: Build (loaded for the scan)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: xdev-hive-hub:scan
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            HIVE_COMMIT=${{ github.event.workflow_run.head_sha }}
+            HIVE_BUILD_VERSION=${{ steps.build.outputs.version }}
+            HIVE_BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          cache-from: type=gha,scope=hub-image
+          cache-to: type=gha,scope=hub-image,mode=max
+      - name: Vulnerability scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: xdev-hive-hub:scan
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Same inputs as the scanned build, so every layer comes from the cache: what is pushed is what was scanned.
+      - name: Push sha-<commit>
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            HIVE_COMMIT=${{ github.event.workflow_run.head_sha }}
+            HIVE_BUILD_VERSION=${{ steps.build.outputs.version }}
+            HIVE_BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          cache-from: type=gha,scope=hub-image
+          provenance: false
+          sbom: false
+      - name: Build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+      - name: Summary
+        run: |
+          {
+            echo "### Hub image"
+            echo "- commit: \`${{ github.event.workflow_run.head_sha }}\`"
+            echo "- version: \`${{ steps.build.outputs.version }}\`"
+            echo "- image: \`${{ env.IMAGE }}@${{ steps.push.outputs.digest }}\`"
+            echo "- tag: \`sha-${{ github.event.workflow_run.head_sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Moving prod is what releases to production. The production environment can require a reviewer (GitHub settings);
+  # without one it runs at once.
+  promote:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: latest and prod → ${{ needs.publish.outputs.digest }}
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          # --prefer-index=false: the tags point at the pushed manifest itself, not at a new index wrapping it, so prod
+          # has the digest that was scanned and attested.
+          docker buildx imagetools create --prefer-index=false -t "$IMAGE:latest" -t "$IMAGE:prod" "$IMAGE@$DIGEST"
+          [ "$(docker buildx imagetools inspect "$IMAGE:prod" --format "{{json .Manifest.Digest}}" | tr -d '"')" = "$DIGEST" ] || { echo "prod does not point at $DIGEST" >&2; exit 1; }
+          echo "prod → \`$IMAGE@$DIGEST\` (commit \`${{ needs.publish.outputs.sha }}\`)" >> "$GITHUB_STEP_SUMMARY"

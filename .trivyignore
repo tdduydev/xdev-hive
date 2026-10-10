@@ -1,0 +1,3 @@
+# Vulnerabilities the hub image is allowed to ship with, one CVE id per line, each with why and until when.
+# Read by the vulnerability scan of .github/workflows/ci.yml and hub-image.yml. Empty: every fixable HIGH or
+# CRITICAL finding fails the build.

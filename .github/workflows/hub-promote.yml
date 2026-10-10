@@ -1,0 +1,59 @@
+# Points prod at an image that hub-image.yml already published, by hand: to roll production back to an earlier
+# commit, or to release one again after a hold. The commit must be on main and its image must exist; nothing is
+# built here. The production host then deploys it like any other prod change, with its own checks: an image whose
+# database schema is older than production's is refused there and needs the rollback steps of
+# docs/deployment/backup-restore.md.
+name: Hub promote
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full commit SHA on main whose image prod should point to
+        required: true
+      reason:
+        description: Why (shown in the run summary)
+        required: true
+permissions: {}
+concurrency:
+  group: hub-image
+  cancel-in-progress: false
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: The commit is on main
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "sha must be a full 40-character commit SHA" >&2; exit 1; }
+          git merge-base --is-ancestor "$SHA" origin/main || { echo "$SHA is not on main" >&2; exit 1; }
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: prod → sha-${{ inputs.sha }}
+        env:
+          SHA: ${{ inputs.sha }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          digest="$(docker buildx imagetools inspect "$IMAGE:sha-$SHA" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          [ -n "$digest" ] || { echo "no image $IMAGE:sha-$SHA" >&2; exit 1; }
+          docker buildx imagetools create --prefer-index=false -t "$IMAGE:prod" "$IMAGE@$digest"
+          {
+            echo "### prod → \`$IMAGE@$digest\`"
+            echo "- commit: \`$SHA\`"
+            echo "- reason: $REASON"
+          } >> "$GITHUB_STEP_SUMMARY"

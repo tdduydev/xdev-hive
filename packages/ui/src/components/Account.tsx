@@ -126,6 +126,7 @@ export function AccountMenu({
   subtitle,
   connected,
   onNavigate,
+  build,
 }: {
   client: HiveClient;
   me: Me;
@@ -133,6 +134,8 @@ export function AccountMenu({
   subtitle?: string;
   connected?: boolean;
   onNavigate?: () => void;
+  /** The hub's build in words (lib/build-info.ts): phones have no status bar, so the menu says it too. */
+  build?: { label: string; tip: string } | null;
 }) {
   const [changing, setChanging] = useState(false);
   const [changed, setChanged] = useState(false);
@@ -182,6 +185,7 @@ export function AccountMenu({
               <span className="text-xs text-muted-foreground">{t("account.adminAll")}</span>
             ) : null}
             {me.sso?.linked ? <span className="text-xs text-muted-foreground">{t("account.ssoLinked", { name: me.sso.name })}</span> : null}
+            {build ? <span data-hub-build title={build.tip} className="truncate font-mono text-[11px] text-muted-foreground">{build.label}</span> : null}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <LanguageMenu />

@@ -1,19 +1,24 @@
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useContext, useEffect, useMemo, useState, type ComponentType } from "react";
 import { FileText, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
-import { EMPTY_POLICY, requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
+import { EMPTY_POLICY, requiredItemIds, systemFolders, type HiveSystem, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
-import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
+import { Empty, ErrorNote, Notice, TitleInTopBar } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { GitLabCard, GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
+import { ForgeMissing, forgeConnected } from "#ui/components/ForgeConnections.tsx";
+import { SystemRepos } from "#ui/components/SystemRepos.tsx";
+import { shortPath } from "#ui/lib/repo-status.ts";
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
+import { canSetUpGroups, missingHere, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
+import { OpenSystemCli } from "#ui/components/OpenCli.tsx";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 
@@ -27,6 +32,14 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
   if (id.endsWith(":superpowers")) return Sparkles;
   if (id.endsWith(":speckit")) return ListChecks;
   return Wrench;
+}
+
+/** A system's cards under its group's subgroups (his › backend), in tree order; a system without a source: as they are. */
+function inTree<P extends { project: string }>(projects: P[], system: HiveSystem | undefined): Array<{ folder: string[]; projects: P[] }> {
+  if (!system?.source) return [{ folder: [], projects }];
+  // Inside a folder the cards keep their order (the ones that need setup first).
+  return systemFolders({ projects: projects.map((p) => p.project), source: system.source })
+    .map((f) => ({ folder: f.folder, projects: projects.filter((p) => f.projects.includes(p.project)) }));
 }
 
 export function SetupPage({ section, onChanged }: { section?: "machine" | "projects"; onChanged?: () => void } = {}) {
@@ -75,12 +88,24 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
     setReport(await desktop.setupStatus());
   };
   const missing = shown ? [...shown.machine, ...shown.projects.flatMap((p) => p.items)].filter(needsSetup).length : 0;
+  // A system's group on this machine (GROUP-init-sync): set up or linked from its section; a system none of whose repos
+  // is here yet still gets a section, so a new machine can set the group up from this page.
+  const groups = canSetUpGroups(desktop);
+  const profiles = useQuery(() => desktop.profiles(), [desktop]);
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
+  // GROUP-repos-forge: the system whose repos are listed with their state against the remote; an older app has no such call.
+  const [reposOpen, setReposOpen] = useState<string | null>(null);
+  const repoScreen = Boolean(desktop.repoStatus && desktop.pullRepos);
+  const local = useMemo(() => new Set((settings.data?.projects ?? []).map((p) => p.name)), [settings.data]);
+  const remoteOnly = groups ? systems.filter((s) => s.source && s.projects.every((p) => !local.has(p))).map((s) => ({ name: s.name, projects: [] as SetupReport["projects"] })) : [];
   const platform = info.data?.platform;
+  const inTopBar = useContext(TitleInTopBar);
   const os = platform === "darwin" || platform === "win32" || platform === "linux" ? t(`setup.platform.${platform}`) : (platform ?? "");
 
   return (
     <div className="max-md:[&_button]:min-h-11 max-md:[&_summary]:min-h-11 max-md:[&_summary]:py-3 [&_summary]:focus-visible:focus-ring mx-auto flex w-full max-w-[980px] flex-col gap-[18px] px-6 pt-5 pb-8">
-      <h1 className="sr-only">{t("nav.setup")}</h1>
+      {/* The app's top bar already is the page's h1; elsewhere a screen reader still needs one. */}
+      {inTopBar ? null : <h1 className="sr-only">{t("nav.setup")}</h1>}
       <p className="sr-only">{t("setup.subtitle")}</p>
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-xs/none text-fg-muted">{status.loading ? t("setup.checking") : checkedAt ? t("setup.lastChecked", { time: formatTime(checkedAt) }) : ""}</span>
@@ -142,13 +167,48 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
           {section !== "machine" && shown.projects.length === 0 ? (
             <Empty>{t("setup.noProjectsBelow")}</Empty>
           ) : null}
-          {setupGroups(shown.projects, systems).map((group) => (
+          {[...setupGroups(shown.projects, systems), ...(section !== "machine" ? remoteOnly : [])].map((group) => {
+            const system = systems.find((s) => s.name === group.name);
+            const missingCount = system ? missingHere(system, local) : 0;
+            return (
             <section key={group.name} data-setup-system={group.name} className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-[13px] font-semibold text-fg-strong">{group.name || t("setup.outsideSystems")}</h2>
-                {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {missingCount ? <Chip kind="warning">{t("systemGroup.missingHere", { count: missingCount })}</Chip> : null}
+                  {system && groups ? (
+                    <Button size="sm" variant={missingCount ? "default" : "ghost"} data-setup-group={group.name} aria-expanded={groupOpen === group.name} onClick={() => setGroupOpen(groupOpen === group.name ? null : group.name)}>
+                      {t(system.source ? "systemGroup.initOnMachine" : "systemGroup.link")}
+                    </Button>
+                  ) : null}
+                  {system && repoScreen && group.projects.length ? (
+                    <Button size="sm" variant="ghost" data-system-repos-toggle={group.name} aria-expanded={reposOpen === group.name} onClick={() => setReposOpen(reposOpen === group.name ? null : group.name)}>
+                      {t("repos.toggle")}
+                    </Button>
+                  ) : null}
+                  {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
+                </div>
               </div>
-              {group.projects.map((p) => {
+              {/* GROUP-cli: one CLI over every repo of the system here, next to installing them all. */}
+              {system && group.projects.length ? <OpenSystemCli profiles={profiles.data ?? []} system={group.name} /> : null}
+              {system && repoScreen && reposOpen === group.name ? (
+                <SystemRepos system={system} projects={inTree(group.projects, system).flatMap((f) => f.projects.map((p) => p.project))} />
+              ) : null}
+              {system && groupOpen === group.name ? (
+                <SystemGroupPanel
+                  system={system}
+                  onChanged={() => {
+                    settings.reload();
+                    setReport(null);
+                    status.reload();
+                    onChanged?.();
+                  }}
+                />
+              ) : null}
+              {inTree(group.projects, system).map(({ folder, projects: inFolder }) => (
+              <Fragment key={folder.join("/")}>
+              {folder.length ? <h3 className="m-0 pt-1 font-mono text-xs font-medium text-fg-muted" data-setup-folder={folder.join("/")}>{folder.join(" › ")}</h3> : null}
+              {inFolder.map((p) => {
                 const count = p.items.filter(needsSetup).length;
                 const branch = settings.data?.projects.find((project) => project.name === p.project)?.targetBranch ?? "main";
                 const closed = gone.get(p.project);
@@ -186,7 +246,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                         </div>
                       </Notice>
                     ) : null}
-                    <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{p.repo.replace(/^.*[\\/]([^\\/]+[\\/][^\\/]+)$/, "…/$1")}{branch ? ` · ${branch}` : ""}</p>
+                    <p className="my-2 truncate font-mono text-xs text-fg-muted" title={p.repo}>{shortPath(p.repo)}{branch ? ` · ${branch}` : ""}</p>
                     <details data-project-checks={p.project}>
                       <summary className="cursor-pointer text-[13px] text-fg-secondary">{t("setup.viewItems")}</summary>
                       <SetupList items={[...p.items].sort((a, b) => Number(needsSetup(b)) - Number(needsSetup(a)))} required={required} onChanged={replace} disabled={busy} onBusy={setRowBusy} />
@@ -194,8 +254,11 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                   </CardContent>
                 </Card>;
               })}
+              </Fragment>
+              ))}
             </section>
-          ))}
+            );
+          })}
         </>
       ) : null}
       {/* The repos on this machine (add, sync, open a CLI): what the checks above run on (roadmap 35a). */}
@@ -210,7 +273,7 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
               status.reload();
             }}
           />
-          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" ? <GitLabCard settings={settings.data} onSaved={settings.reload} /> : null}
+          {settings.data.gitlab.url && settings.data.gitlab.hasToken ? <GitLabImportCard settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : section === "projects" && !forgeConnected(settings.data) ? <ForgeMissing /> : null}
           {settings.data.github.url && settings.data.github.hasToken ? <GitLabImportCard forge="github" settings={settings.data} onChanged={() => { settings.reload(); setReport(null); status.reload(); onChanged?.(); }} /> : null}
         </>
       ) : null}

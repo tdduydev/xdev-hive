@@ -33,3 +33,7 @@ apps/web/artifacts/
 
 # Screenshots e2e/smoke runs leave beside a workspace; evidence goes to .xdev-hive/artifacts instead.
 apps/*/.xdev-hive/
+
+# hive-deploy (deploy/docker) writes these on the hub host: the image pinned by digest, and the trial run's copy.
+deploy/compose.image.yaml
+deploy/.compose.trial.*.yaml

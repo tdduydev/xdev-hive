@@ -94,3 +94,28 @@ describe("scope picker: systems first", () => {
     assert.deepEqual(rows("", [], ["all", "project:payment", "project:gone"]).filter((row) => row.section === "recent").map((row) => row.label), ["ban-hang › payment"]);
   });
 });
+
+describe("a system linked to its group (GROUP-init-sync)", () => {
+  const m = (project: string, path: string) => ({ project, pathWithNamespace: `customer-ai/${path}`, sshUrl: `git@gitlab.x:customer-ai/${path}.git`, httpUrl: `https://gitlab.x/customer-ai/${path}.git`, defaultBranch: "main", state: "active" as const });
+  const customer: HiveSystem = {
+    ...system("customer-ai", ["svc-portal", "svc-core", "infa", "login-theme"]),
+    source: { forge: "gitlab", url: "https://gitlab.x", groupPath: "customer-ai", syncedAt: null, members: [m("svc-core", "his/backend/svc-core"), m("svc-portal", "his/frontend/svc-portal"), m("infa", "deploy/infa"), m("login-theme", "login-theme")] },
+  };
+
+  it("lists the services in the group's tree, each with its subgroups", () => {
+    const [root] = systemTree(customer.projects, [customer]);
+    assert.deepEqual(root!.services, ["login-theme", "infa", "svc-core", "svc-portal"]);
+    const rows = scopeRows(customer.projects, [customer], "", [], new Set(["customer-ai"]));
+    assert.deepEqual(rows.filter((r) => r.depth === 1).map((r) => [r.label, r.folder?.join("/") ?? ""]), [
+      ["login-theme", ""],
+      ["infa", "deploy"],
+      ["svc-core", "his/backend"],
+      ["svc-portal", "his/frontend"],
+    ]);
+  });
+
+  it("a system without a source keeps its order and has no folders", () => {
+    const [root] = systemTree(["demo", "thanh-toan"], [systems[0]!]);
+    assert.deepEqual([root!.services, root!.folders], [["thanh-toan", "demo"], undefined]);
+  });
+});

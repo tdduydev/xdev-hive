@@ -285,6 +285,14 @@ async function setupCardShots(prefix = "") {
       HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-setup-project]").length === 3',
     };
     await shoot(`${prefix}setup-cards-${state}`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, ...checks });
+    if (!process.env.HIVE_SMOKE_BEFORE && process.env.HIVE_SMOKE_ONLY === "setup-cards") {
+      // A system linked to its group: the cards under its subgroups, and the group's set-up with lab still to clone.
+      await shoot(`${prefix}setup-cards-${state}-group`, "setup", 3500, {
+        HIVE_SMOKE_SETUP_REPORT: fixture,
+        HIVE_SMOKE_CLICK: '[data-setup-group="hospital"]',
+        HIVE_SMOKE_EXPECT: '[data-setup-system="hospital"] [data-setup-folder="his/backend"] && [data-setup-system="hospital"] [data-system-group="hospital"] [data-group-item="lab"][data-group-state="new"] && [data-system-group="hospital"] [data-group-item="demo"][data-group-state="added"]',
+      });
+    }
     if (!process.env.HIVE_SMOKE_BEFORE) {
       await shoot(`${prefix}setup-cards-${state}-details`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_CLICK: '[data-project-checks="demo"] > summary', ...checks });
       await shoot(`${prefix}setup-cards-${state}-mobile`, "setup", 2500, {
@@ -316,8 +324,9 @@ async function startGuideShots(prefix = "") {
     // The size the design's reference shot is taken at (docs/design/hive-2026-10/shots/start-1440.png), to compare side by side.
     if (state === "half") await shoot(`${prefix}start-half-1440`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "1440x900" });
     if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
-    // Today's banner lists what is left; once every step is done there is nothing to offer, so no Start button is expected.
+
     await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: prefix ? 'a[href="#/machine"][aria-current="page"]' : 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
+
   }
   writeFileSync(file, before);
 }
@@ -425,7 +434,13 @@ if (process.env.HIVE_SMOKE_ONLY === "setup-guide") {
 }
 if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
   const local = new SqliteHive(path.join(work, "local.db"));
-  await local.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, admin);
+  // GROUP-init-sync: hospital mirrors a GitLab group; lab is a member this machine has no repo for yet.
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/hospital/${p}`, sshUrl: `git@gitlab.example.test:fis/hospital/${p}.git`, httpUrl: `https://gitlab.example.test/fis/hospital/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", {
+    name: "hospital",
+    projects: ["demo", "api", "lab"],
+    source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/hospital", syncedAt: null, members: [member("demo", "his/backend/demo"), member("api", "his/api"), member("lab", "his/backend/lab")] },
+  }, admin);
   local.close();
   await setupCardShots();
   await gitlab.close();
@@ -511,6 +526,18 @@ if (process.env.HIVE_SMOKE_AGY_ONLY === "1") {
 await startGuideShots();
 
 const failures = [];
+
+if (process.env.HIVE_SMOKE_ONLY === "repos-forge") {
+  const local = new SqliteHive(path.join(work, "local.db"));
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [{ project: "demo", pathWithNamespace: "fis/ehs/his/demo", sshUrl: "git@gitlab.example.test:fis/ehs/his/demo.git", httpUrl: "https://gitlab.example.test/fis/ehs/his/demo.git", defaultBranch: "main" }] } }, admin);
+  local.close();
+  await systemReposShot();
+  await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
+  await gitlab.close();
+  if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
+  console.log(`repos-forge screenshots in ${out}`);
+  process.exit(0);
+}
 
 // Roadmap 39h: Skill and Memory with nothing in them yet — before the skills below are seeded, and before a run is
 // queued, so the pages are quiet. EXPECT asserts the empty state's button is really there, not only in the picture.
@@ -706,8 +733,9 @@ writeFileSync(
 await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"] && [data-project-tools]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
-// The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
-await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
+// The GitLab/GitHub connection (GROUP-repos-forge), opened by the link a group panel gives: GitLab set (the mock),
+// GitHub not yet. The MR/PR options stay in the card below it.
+await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
 await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // A folder that is no repository but holds some (roadmap 38d): Chọn thư mục offers each repository under it with its
@@ -832,6 +860,33 @@ await shoot("agents-cli", "agents", 2000, {
   if (!script.includes(repo)) failures.push(`open-cli: the script of claude-max-1 does not start in ${repo}`);
   if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_AGENT !== "claude-max-1") failures.push(`open-cli: mcp.json is ${JSON.stringify(mcp)}`);
 }
+// GROUP-cli: a CLI over a whole system, from its section on Service & công cụ. ehs-smoke has demo here and lab nowhere:
+// the script adds demo's repo, Hive's server is the system's, and the context goes to the app's folder for the system
+// (one repo here: its working tree must not get it), with lab listed as missing.
+{
+  const local = new SqliteHive(path.join(work, "local.db"));
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/ehs/${p}`, sshUrl: `git@gitlab.example.test:fis/ehs/${p}.git`, httpUrl: `https://gitlab.example.test/fis/ehs/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo", "lab"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [member("demo", "his/demo"), member("lab", "his/lab")] } }, admin);
+  local.close();
+}
+await shoot("setup-system-cli", "setup", 3000, {
+  HIVE_SMOKE_CLICK: '[data-open-system-cli-button="claude-max-1:ehs-smoke"]',
+  HIVE_SMOKE_SCROLL: '[data-open-system-cli="ehs-smoke"]',
+  HIVE_SMOKE_EXPECT: '[data-system-cli-opened="ehs-smoke"] && [data-setup-system="ehs-smoke"] [data-setup-folder="his"]',
+});
+{
+  const dir = path.join(work, "cli", "claude-max-1");
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  const script = files.filter((f) => f.startsWith("cli.")).map((f) => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const mcp = files.includes("mcp-system-ehs-smoke.json") ? JSON.parse(readFileSync(path.join(dir, "mcp-system-ehs-smoke.json"), "utf8")) : null;
+  const session = path.join(work, "systems", "ehs-smoke");
+  const context = existsSync(path.join(session, "AGENTS.md")) ? readFileSync(path.join(session, "AGENTS.md"), "utf8") : "";
+  if (!script.includes("--add-dir") || !script.includes(repo)) failures.push(`system-cli: the script does not add ${repo}: ${script.slice(0, 400)}`);
+  if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_SYSTEM !== "ehs-smoke" || mcp.mcpServers["xdev-hive"].env.HIVE_PROJECT) failures.push(`system-cli: mcp is ${JSON.stringify(mcp)}`);
+  if (!context.includes("Hive system: `ehs-smoke`") || !context.includes("- `lab`")) failures.push(`system-cli: context is ${context.slice(0, 400)}`);
+  if (existsSync(path.join(repo, "AGENTS.md")) && readFileSync(path.join(repo, "AGENTS.md"), "utf8").includes("Hive system: `ehs-smoke`")) failures.push("system-cli: the context went into demo's repo");
+}
+await systemReposShot();
 // One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
@@ -891,7 +946,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     // Run trên máy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
     // Connected (roadmap 39d): Cài đặt máy is one line about the hub, the account and this machine, with no form.
     const pages = [
-      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="app"] && [data-card="hub"]'],
+      // 79o: every disk of the machine running the smoke, one row each.
+      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="resources"] [data-disk] && [data-card="app"] && [data-card="hub"]'],
       // 72e: the page opens on its list; a run's detail waits for a click (runs-list above checks it).
       ["runs", "runs", '[data-run-status="succeeded"]'],
       ["agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
@@ -908,7 +964,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
           HIVE_SMOKE_SIDEBAR: "open",
           HIVE_SMOKE_EXPECT: [`nav a[href="#/${page}"][aria-current="page"]`, "[data-desktop-shell]", nav, web, also].filter(Boolean).join(" && "),
           HIVE_SMOKE_ABSENT: absent,
-          HIVE_SMOKE_ASSERT: fits,
+          // One title per page (the top bar's), and ⌘K's placeholder names what the app has, not tasks or docs.
+          HIVE_SMOKE_ASSERT: `${fits} && document.querySelectorAll("h1").length === 1 && !/task|tài liệu/i.test(document.querySelector(".hive-topbar-search").textContent)`,
         });
       }
     }
@@ -946,3 +1003,31 @@ console.log(`mock GitLab MRs: ${gitlab.mrs.map((m) => `!${m.iid} "${m.title}" ${
 for (const b of ["ai/T-001", "ai/T-002"]) console.log(`origin has ${b}: ${execFileSync("git", ["-C", origin, "branch", "--list", b], { encoding: "utf8" }).trim() || "no"}`);
 await gitlab.close();
 console.log(`screenshots in ${out}\ndata in ${work}`);
+
+// GROUP-repos-forge: the repos of ehs-smoke on this machine (the system is saved by the GROUP-cli shot,
+// or by HIVE_SMOKE_ONLY=repos-forge). demo tracks origin/main and the remote moved on by a
+// commit, so Fetch tất cả finds it behind and Pull tất cả fast-forwards it; afterwards demo and origin go back to
+// where they were, for the shots after this one.
+async function systemReposShot() {
+  const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  git("branch", "-q", "--set-upstream-to=origin/main", "main");
+  const mover = path.join(work, "origin-mover");
+  execFileSync("git", ["clone", "-q", origin, mover], { stdio: "ignore" });
+  const inMover = (...args) => execFileSync("git", args, { cwd: mover, stdio: "ignore" });
+  inMover("config", "user.email", "smoke@example.com");
+  inMover("config", "user.name", "Smoke");
+  writeFileSync(path.join(mover, "upstream.txt"), "from someone else\n");
+  inMover("add", "upstream.txt");
+  inMover("commit", "-qm", "upstream");
+  inMover("push", "-q", "origin", "HEAD:main");
+  await shoot("setup-system-repos", "setup", 3000, {
+    HIVE_SMOKE_CLICK: '[data-system-repos-toggle="ehs-smoke"] && [data-repos-fetch] && [data-repos-pull-all]',
+    HIVE_SMOKE_SCROLL: '[data-system-repos="ehs-smoke"]',
+    HIVE_SMOKE_EXPECT: '[data-repos-summary] && [data-repo-row="demo"] [data-repo-result="pulled"] && [data-repo-row="demo"] [data-repo-branch]',
+  });
+  const pulled = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: repo, encoding: "utf8" }).trim();
+  if (pulled !== "upstream") failures.push(`system-repos: demo's HEAD is "${pulled}", not the remote's commit`);
+  git("reset", "-q", "--hard", before);
+  git("push", "-q", "-f", "origin", `${before}:main`);
+  git("branch", "-q", "--unset-upstream", "main");
+}

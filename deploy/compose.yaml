@@ -9,7 +9,13 @@
 # Doc images and files are kept in SeaweedFS below (roadmap 23c); HIVE_SEAWEEDFS_URL= (empty) keeps them in the database.
 services:
   hub:
-    build: ..
+    build:
+      context: ..
+      # What the Hub page and the status bar show as the build (deploy/update.sh sets them); empty: "dev build".
+      args:
+        HIVE_COMMIT: ${HIVE_COMMIT:-}
+        HIVE_BUILD_VERSION: ${HIVE_BUILD_VERSION:-}
+        HIVE_BUILD_DATE: ${HIVE_BUILD_DATE:-}
     restart: unless-stopped
     environment:
       # The public hostname. Empty only for a hub that lives on the LAN alone (compose.lan.yaml adds its
@@ -53,7 +59,7 @@ services:
   # Doc images and files (roadmap 23c): master, volume server and filer in one process. Only the hub reaches it, on this
   # compose network (nothing is published); the hub uses the filer's HTTP API on 8888.
   seaweedfs:
-    image: ${HIVE_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.48}
+    image: ${HIVE_SEAWEEDFS_IMAGE:-ghcr.io/tdduydev/xdev-hive-seaweedfs:4.48}
     restart: unless-stopped
     command: server -dir=/data -filer -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
     volumes:
@@ -80,7 +86,7 @@ services:
       - "11434"
 
   caddy:
-    image: caddy:2
+    image: ${HIVE_CADDY_IMAGE:-ghcr.io/tdduydev/xdev-hive-caddy:2.11.7}
     restart: unless-stopped
     depends_on: [hub]
     ports:

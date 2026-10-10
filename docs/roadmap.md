@@ -368,7 +368,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
   - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
   - [x] **73b. platform-routing** (0.154.0): task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
-  - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
+  - [x] **73c. ephemeral-worktree** (0.158.0): worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
   - [ ] **73d. app-runner-console**: app chế độ hub chỉ còn việc của máy (trạng thái, gói agent và quota, run trên máy, worktree, công cụ, cài đặt máy); việc khác mở web. Chế độ cục bộ giữ nguyên.
   - [ ] **73e. admin-area**: gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền.
   - [x] **73f. release-split** (0.154.0): thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.
@@ -404,6 +404,41 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **77g. query-cache**: TanStack Query, cache IndexedDB, phân trang hộp việc, log run theo offset.
   - [ ] **77h. lazy-pages**: mỗi trang nạp khi cần, chunk đầu ≤ 250 KB gzip, ảo hoá log và danh sách dài, worker cho diff và markdown (làm cùng 76h).
   - [ ] **77i. push-events**: SSE cho run, chat và log, invalidate cache, đi được qua tunnel.
+
+- **79. access-admin** (hỏi 10/10: "tiếp tục thiết kế phần quản trị users, quyền, permissions", "thêm phần tự duyệt", "các máy có nhiều disk"). Spec: [specs/79-access-admin.md](specs/79-access-admin.md). Người dùng chọn 10/10: TOTP bắt buộc cho admin và owner; phòng ban tạo trong Hive, map SSO sau; admin được tự duyệt đề xuất của mình (có audit); làm P0 trước.
+  - [ ] **79a. admin-is-a-person**: chỉ phiên web của người qua được cổng `hubAdmin`; token máy, token cá nhân, credential MCP không quản trị được; token không có chủ bị hạ quyền.
+  - [ ] **79b. agent-roles**: "Agent được làm gì" theo từng project (taskManage, codeReview, runDispatch…), không vượt quyền chủ; agent tạo, review, đóng task bằng danh tính của mình.
+  - [ ] **79c. disable-revokes**: khoá hoặc đưa người vào thùng rác thì thu hồi phiên, token, credential MCP; đổi mật khẩu thì đăng xuất các phiên khác.
+  - [ ] **79d. system-grants**: gán quyền theo hệ thống; chọn project hoặc hệ thống từ danh sách, chép quyền từ người khác, xem trước quyền thật.
+  - [ ] **79e. sso-policy**: danh sách tên miền được tạo tài khoản qua SSO; map claim nhóm vào phòng ban (76c).
+  - [ ] **79f. audit-plus**: lọc theo ngày, đối tượng, nhóm hành động; xuất CSV; tab Hoạt động của từng người; lọc hành động tự động.
+  - [ ] **79g. sessions**: danh sách phiên, đăng xuất từng phiên; nhập lại mật khẩu hoặc mã TOTP trước thao tác quản trị.
+  - [ ] **79h. mfa-totp**: TOTP kèm mã dự phòng, bắt buộc cho admin và owner; khôi phục bằng CLI.
+  - [ ] **79i. custom-roles**: vai trò tuỳ chỉnh có tên trên trang Vai trò & quyền.
+  - [ ] **79j. access-mobile**: Người dùng, Sơ đồ tổ chức, ma trận quyền dạng thẻ dưới 768px.
+  - [ ] **79k. auto-doc-proposals**: tự duyệt đề xuất tài liệu (human | ai | auto) theo project; doc mà agent đọc luôn cần người.
+  - [ ] **79l. auto-memory**: tự duyệt memory của agent theo project, kèm danh sách agent tin cậy; mức trần là `HIVE_MEMORY_APPROVAL`.
+  - [ ] **79m. auto-merge-on-approve**: task ngoài flow có review approve và CI xanh thì tự merge, rồi done.
+  - [ ] **79n. auto-rollout**: bản app mới nhận đủ file thì tự thành bản đích (phần trăm, cài khi rảnh).
+  - [x] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
+- **80. tokens-plugins-path** (hỏi 10/10: "nghiên cứu cách tối ưu token tối đa nhất", "thêm sơ đồ kiểu code-modernization trong client vs admin", "với kho plugin thêm này vô đi https://github.com/anthropics/claude-plugins-official"). Spec: [specs/80-tokens-plugins-path.md](specs/80-tokens-plugins-path.md). Người dùng chọn 10/10: token thì nghiên cứu + spec + task; kho plugin duyệt trong danh mục tool; sơ đồ là đường đi của task.
+  - [ ] **80a. task-list-lean**: `task_list` mặc định bỏ task done, `project` và trường rỗng; note chỉ cho task chưa xong.
+  - [ ] **80b. run-get-lean**: `run_get` mặc định không kèm patch, log chỉ lấy đuôi; `full:true` để lấy hết.
+  - [ ] **80c. doc-lean**: `doc_list` gọn; `doc_get` có `section` và `maxChars`.
+  - [ ] **80d. run-toolset**: run task chỉ nhận tool cần dùng; bỏ `$schema`, rút mô tả tool dài.
+  - [ ] **80e. prompt-dedupe**: bỏ giao thức lặp trong prompt run, bỏ "đọc AGENTS.md trước", bỏ skill chỉ cho hub.
+  - [ ] **80f. claude-settings-isolation**: run Claude không nạp plugin và skill của người dùng; phân loại bằng Codex tắt MCP và plugin.
+  - [ ] **80g. leader-cache**: leader hub lấy project qua tool thay vì system prompt; lịch sử chat ngắn khi mở phiên mới.
+  - [ ] **80h. task-token-budget**: trần token hoặc USD theo task, vượt thì dừng run.
+  - [ ] **80i. plugin-source-model**: trường `pluginSource`, ghim SHA 40 ký tự, plugin chỉ cho Claude.
+  - [ ] **80j. plugin-index**: hub lưu kho được phép và bản cache `marketplace.json` theo commit.
+  - [ ] **80k. plugin-browser**: khu Kho plugin trong trang Tool: duyệt, tìm, lọc, chi tiết, ghim.
+  - [ ] **80l. plugin-install**: app ghi kho cục bộ `xdev-hive`, cài, kiểm, cập nhật plugin đã ghim.
+  - [ ] **80m. superpowers-repin**: ghim superpowers theo SHA thật (6.4.1).
+  - [ ] **80n. task-path-model**: method `tasks.path` tính các bước của task từ audit, run, gate.
+  - [ ] **80o. task-path-web**: component `TaskPath` trong chi tiết task trên hub, có bản mobile.
+  - [ ] **80p. task-path-pipeline**: thanh đếm task theo bước trên Pipeline cho mọi task.
+  - [ ] **80q. task-path-desktop**: bản gọn trong chi tiết run và Inspector trên desktop.
 
 ## Sửa lỗi
 

@@ -19,8 +19,26 @@ export function percentOf(used: number | null, total: number | null): number | n
   return Math.min(100, Math.max(0, Math.round((used / total) * 100)));
 }
 
-/** The 1-minute load per core as a percent of the cores; it may pass 100 when work is queued, the bar stops at 100. */
-export const loadPercent = (load: number | null): number | null => (load === null ? null : Math.max(0, Math.round(load * 100)));
+/** The 1-minute load per core as a percent of the cores, for the bar: stops at 100 (overloaded() says when it passed). */
+export const loadPercent = (load: number | null): number | null => (load === null ? null : Math.min(100, Math.max(0, Math.round(load * 100))));
+
+/** More work queued than the cores can run: the bar turns to a warning however full it already looked. */
+export const overloaded = (load: number | null): boolean => load !== null && load > 1;
+
+/**
+ * The load as the system counts it, for the number beside the bar: 1.46 per core on 8 cores reads "11,7" in Vietnamese.
+ * "146 %" left people asking how a CPU passes 100; a figure next to the core count does not.
+ */
+export const loadFigure = (load: number, cores: number, intl: string): string =>
+  (load * cores).toLocaleString(intl, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+const OS_NAMES: Record<string, string> = { darwin: "macOS", win32: "Windows", linux: "Linux" };
+
+/** process.platform as people say it ("darwin" → "macOS"), with the version when the app knows it. */
+export function platformName(platform: string, version?: string | null): string {
+  const name = OS_NAMES[platform] ?? platform;
+  return version ? `${name} ${version}` : name;
+}
 
 /** Seconds up → the two largest units worth showing. */
 export function uptimeParts(seconds: number): { days: number; hours: number; minutes: number } {

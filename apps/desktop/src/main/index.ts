@@ -38,7 +38,21 @@ import {
   type GitLabCheck,
   type GitLabImportCandidate,
   type GitLabImportResult,
+  type GitLabGroupRepo,
   type HiveBackend,
+  type HiveSystem,
+  memberPath,
+  systemSourceSchema,
+  type SystemLinkPlan,
+  type SystemOnMachine,
+  type SystemPlan,
+  type SystemSource,
+  type SystemSyncReport,
+  type SystemCliOpened,
+  type RepoPullResult,
+  type RepoStatusRow,
+  type Doc,
+  agentsDocKey,
   type LoginHow,
   type NewAccount,
   type MachineCommand,
@@ -76,10 +90,13 @@ import {
 } from "@xdev-hive/core/node";
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
-import { gitClone, importRepos, planImport } from "./gitlab/import.ts";
+import { gitClone, importRepos, planImport, type LocalClone } from "./gitlab/import.ts";
+import { diffSource, initSystem, linkSource, planSystemInit, suggestRoot, type InitDeps } from "#desktop/main/system-init.ts";
 import { parseRemoteUrl } from "./gitlab/remote.ts";
 import { findGitRepos, git, isGitRepo, isRepoRoot, remoteUrl } from "./git.ts";
 import { checkRepoAccess, forgeEnv, RepoHealthMonitor } from "#desktop/main/repo-health.ts";
+import { fetchRepo, pullRepo, statusRow, type FetchMark, type RepoDeps } from "#desktop/main/repo-status.ts";
+import { ForgeUsageStore, type ForgeKind } from "#desktop/main/forge-usage.ts";
 import { addRepos, planLocalImport } from "./local-import.ts";
 import { applyProjectCommand, type ProjectCommandDeps } from "#desktop/main/machine-projects.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
@@ -91,7 +108,7 @@ import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
 import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
-import { installAgents, installCodexConfig, installShim, repoFeatures, shimTarget } from "./installer.ts";
+import { hiveMcpServerAt, installAgents, installCodexConfig, installShim, MCP_NAME, repoFeatures, shimTarget } from "./installer.ts";
 import { windowsUserPath } from "./winpath.ts";
 import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
@@ -114,7 +131,8 @@ import { checkCitations } from "./citations.ts";
 import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
 import { mirrorDocs, mirrorsAsync } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
-import { cliCommand } from "./cli-open.ts";
+import { cliCommand, EXTRA_DIR_ARGS } from "./cli-open.ts";
+import { renderSystemContext, repoRole, systemWorkspace, writeSystemContext } from "#desktop/main/system-cli.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges, applyRunnerChange } from "./profile-changes.ts";
@@ -171,6 +189,12 @@ const repoHealth = new RepoHealthMonitor({
     return checkRepoAccess({ ...target, env });
   },
 });
+/** When the forge tokens last worked: a file beside config.json, made on first use (configPath() is read lazily). */
+let forgeUsageStore: ForgeUsageStore | null = null;
+const forgeUsage = () => (forgeUsageStore ??= new ForgeUsageStore(path.join(path.dirname(configPath()), "forge-usage.json")));
+/** The Repo screen's own fetches (GROUP-repos-forge), fresher than the 6-hourly ls-remote, for this session. */
+const repoFetches = new Map<string, FetchMark>();
+
 /** What the hub sent on the last heartbeat (hub mode only). */
 let hubState: HubUpdate | null = null;
 const notifiedCommands = new Set<number>();
@@ -242,8 +266,8 @@ function settings(): DesktopSettings {
     configPath: configPath(),
     dbPath: localDbPath(config),
     runner: config.runner,
-    gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr },
-    github: { url: config.github.url, hasToken: config.github.token.length > 0 },
+    gitlab: { url: config.gitlab.url, hasToken: config.gitlab.token.length > 0, mr: config.gitlab.mr, use: forgeUsage().get("gitlab") },
+    github: { url: config.github.url, hasToken: config.github.token.length > 0, use: forgeUsage().get("github") },
     configIssues,
   };
 }
@@ -293,6 +317,9 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
       token: typeof g.token === "string" && g.token.trim() ? g.token.trim() : next.github.token,
     });
     if (!/^https?:\/\//.test(next.github.url)) throw new HiveError("bad_request", "GitHub URL phải bắt đầu bằng http(s)://", { key: "errors.githubUrl" });
+  }
+  for (const kind of ["gitlab", "github"] as const) {
+    if (next[kind].token !== config[kind].token || next[kind].url !== config[kind].url) forgeUsage().forget(kind);
   }
   if (next.mode === "hub") {
     if (!/^https?:\/\//.test(next.hub.url) || !next.hub.token) {
@@ -360,8 +387,9 @@ async function gitlabGroup(input: { group: string; baseDir: string }): Promise<G
   if (!/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
   const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
   const repos = await importClient().groupProjects(group);
+  forgeUsage().record("gitlab", "group");
   const depth = Math.max(3, ...repos.map((repo) => repo.pathWithNamespace.split("/").length - group.split("/").length));
-  const local = findGitRepos(baseDir, depth).map((dir) => ({ dir, remote: remoteUrl(dir) }));
+  const local = findGitRepos(baseDir, depth, true).map((dir) => ({ dir, remote: remoteUrl(dir) }));
   return planImport(repos, baseDir, config.projects, group, local);
 }
 
@@ -408,7 +436,7 @@ async function githubOwner(input: { owner: string; baseDir: string }): Promise<G
   const owner = githubOwnerName(input?.owner);
   const baseDir = path.resolve(expandHome(String(input?.baseDir ?? "")));
   const repos = await githubImportClient().ownerRepos(owner);
-  const local = findGitRepos(baseDir, 3).map((dir) => ({ dir, remote: remoteUrl(dir) }));
+  const local = findGitRepos(baseDir, 3, true).map((dir) => ({ dir, remote: remoteUrl(dir) }));
   return planImport(repos, baseDir, config.projects, owner, local, "githubRepo");
 }
 
@@ -438,6 +466,160 @@ async function importGithub(input: {
     field: "githubRepo",
   });
   return { results, settings: settings() };
+}
+
+// ── a system's group on this machine (GROUP-init-sync) ───────────────────────
+
+const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return ""; } };
+
+/** The forge of a system's source, when this machine has a token for that host: listing it needs one. */
+function sourceForge(source: SystemSource): { list(): Promise<GitLabGroupRepo[]>; archived(path: string): Promise<boolean> } | null {
+  const host = hostOf(source.url);
+  if (source.forge === "gitlab" && config.gitlab.token && hostOf(config.gitlab.url) === host) {
+    const client = importClient();
+    return { list: () => client.groupProjects(source.groupPath), archived: (p) => client.project(p).then((r) => r.archived === true, () => false) };
+  }
+  if (source.forge === "github" && config.github.token && hostOf(config.github.url) === host) {
+    const client = githubImportClient();
+    return { list: () => client.ownerRepos(source.groupPath), archived: (p) => client.repo(p).then((r) => r.archived === true, () => false) };
+  }
+  return null;
+}
+
+async function hubSystem(name: unknown): Promise<HiveSystem> {
+  const found = (await backend.call("systems.list", {}, actor())).find((s) => s.name === name);
+  if (!found) throw new HiveError("not_found", `Không có hệ thống ${String(name)}.`, { key: "errors.notFound" });
+  // Parsed again here: what the hub sends decides what this machine clones.
+  return { ...found, source: found.source ? systemSourceSchema.parse(found.source) : null };
+}
+
+/** The clones under `root`, down to the depth the group's tree reaches. */
+function clonesUnder(root: string, source: SystemSource | null | undefined): LocalClone[] {
+  if (!existsSync(root)) return [];
+  const depth = Math.max(3, ...(source?.members ?? []).map((m) => memberPath(source!.groupPath, m.pathWithNamespace).split("/").length));
+  return findGitRepos(root, depth, true).map((dir) => ({ dir, remote: remoteUrl(dir) }));
+}
+
+const systemReports = new Map<string, SystemSyncReport>();
+
+async function systemPlan(input: { system?: unknown; root?: unknown }): Promise<SystemPlan> {
+  const system = await hubSystem(input?.system);
+  const asked = typeof input?.root === "string" && input.root.trim() ? path.resolve(expandHome(input.root.trim())) : null;
+  const root = asked ?? config.systemRoots[system.name]?.root ?? suggestRoot(system, config.projects) ?? path.join(os.homedir(), "Work", system.name);
+  const forgeReady = system.source ? sourceForge(system.source) !== null : false;
+  return { system: system.name, root, items: planSystemInit(system, root, config.projects, clonesUnder(root, system.source)), protocol: forgeReady ? "https" : "ssh", forgeReady };
+}
+
+const initDeps = (): InitDeps => ({
+  projects: () => config.projects,
+  add: (p) => {
+    addProject({ name: p.name, repo: p.repo, targetBranch: p.targetBranch });
+    updateProject(p.name, { gitlabProject: p.gitlabProject ?? null, githubRepo: p.githubRepo ?? null });
+  },
+  clone: hubOrderedClone,
+  remote: (dir) => (isRepoRoot(dir) ? remoteUrl(dir) : null),
+});
+
+/**
+ * Remembers the root and the members seen, so the sync clones only what is new to this machine. A member whose clone
+ * failed is not seen yet: the next sync tries it again.
+ */
+function rememberSystem(system: HiveSystem, root: string, failed: string[] = []): void {
+  const members = (system.source?.members.map((m) => m.project) ?? []).filter((p) => !failed.includes(p));
+  const seen = [...new Set([...(config.systemRoots[system.name]?.seen ?? []), ...members])].sort();
+  persist({ ...config, systemRoots: { ...config.systemRoots, [system.name]: { root, seen } } });
+}
+
+async function systemInit(input: { system?: unknown; root?: unknown; protocol?: unknown }): Promise<{ results: GitLabImportResult[]; settings: DesktopSettings }> {
+  const system = await hubSystem(input?.system);
+  if (!system.source) throw new HiveError("bad_request", `Hệ thống ${system.name} chưa liên kết group.`, { key: "errors.systemNoSource", vars: { system: system.name } });
+  const root = path.resolve(expandHome(String(input?.root ?? "").trim()));
+  if (!String(input?.root ?? "").trim()) throw new HiveError("bad_request", "Chọn thư mục gốc của group.", { key: "errors.systemNoRoot" });
+  mkdirSync(root, { recursive: true });
+  const results = await initSystem(system, root, input?.protocol === "https" ? "https" : "ssh", clonesUnder(root, system.source), initDeps());
+  rememberSystem(system, root, results.filter((r) => !r.ok).map((r) => r.key));
+  return { results, settings: settings() };
+}
+
+async function systemLink(input: { system?: unknown; forge?: unknown; group?: unknown }): Promise<SystemLinkPlan> {
+  const system = await hubSystem(input?.system);
+  const forge = input?.forge === "github" ? "github" : "gitlab";
+  const group = forge === "github" ? githubOwnerName(input?.group) : String(input?.group ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (forge === "gitlab" && !/^[\w.-]+(\/[\w.-]+)*$/.test(group)) throw new HiveError("bad_request", "A group path like company/team.", { key: "errors.gitlabGroup" });
+  const repos = forge === "github" ? await githubImportClient().ownerRepos(group) : await importClient().groupProjects(group);
+  forgeUsage().record(forge, "group");
+  const url = (forge === "github" ? config.github.url : config.gitlab.url).replace(/\/+$/, "");
+  const taken = (await backend.call("projects.list", {}, actor())).map((p) => p.project);
+  return linkSource(system, forge, url, group, repos, config.projects, (dir) => (isRepoRoot(dir) ? remoteUrl(dir) : null), taken, new Date().toISOString());
+}
+
+/**
+ * Compares a system with its group and saves what changed; on a machine that set the group up, clones the members it
+ * has not seen yet. A refused save (no right on a new project) still lets the clones of known members go ahead.
+ */
+async function systemSync(name: unknown): Promise<SystemSyncReport> {
+  const report: SystemSyncReport = { system: String(name), at: new Date().toISOString(), added: [], gone: [], back: [], cloned: [], failed: [], saved: false, error: null };
+  try {
+    let system = await hubSystem(name);
+    const forge = system.source && sourceForge(system.source);
+    if (system.source && forge) {
+      const repos = await forge.list();
+      const listed = new Set(repos.map((r) => r.pathWithNamespace.toLowerCase()));
+      const missing = system.source.members.filter((m) => m.state !== "archived" && !listed.has(m.pathWithNamespace.toLowerCase()));
+      const archived = new Set<string>();
+      for (const m of missing) if (await forge.archived(m.pathWithNamespace)) archived.add(m.pathWithNamespace.toLowerCase());
+      const taken = (await backend.call("projects.list", {}, actor())).map((p) => p.project);
+      const diff = diffSource(system, system.source, repos, archived, taken, report.at);
+      Object.assign(report, { added: diff.added, gone: diff.gone, back: diff.back });
+      if (diff.changed) {
+        try {
+          system = await backend.call("systems.save", { name: system.name, projects: diff.projects, source: diff.source }, actor());
+          report.saved = true;
+        } catch (err) {
+          report.error = toErrorPayload(err).message;
+          // What this machine may still clone: the members the hub has, not the ones it refused.
+        }
+      }
+    } else if (system.source) {
+      report.error = tr("desktop.systemNoForgeToken", { forge: system.source.forge, host: hostOf(system.source.url) });
+    }
+    const here = config.systemRoots[system.name];
+    if (here && system.source) {
+      const fresh = system.source.members.filter((m) => m.state === "active" && !here.seen.includes(m.project)).map((m) => m.project);
+      if (fresh.length) {
+        const results = await initSystem(system, here.root, sourceForge(system.source) ? "https" : "ssh", clonesUnder(here.root, system.source), initDeps(), fresh);
+        report.cloned = results.filter((r) => r.ok).map((r) => r.key);
+        report.failed = results.filter((r) => !r.ok).map((r) => ({ project: r.key, error: r.error ?? "" }));
+      }
+      // A member that failed is tried again next round; the rest count as seen, cloned or skipped on purpose.
+      const failed = new Set(report.failed.map((f) => f.project));
+      const seen = [...new Set([...here.seen, ...system.source.members.map((m) => m.project).filter((p) => !failed.has(p))])].sort();
+      if (seen.join() !== [...here.seen].sort().join()) persist({ ...config, systemRoots: { ...config.systemRoots, [system.name]: { ...here, seen } } });
+    }
+  } catch (err) {
+    report.error = toErrorPayload(err).message;
+  }
+  systemReports.set(report.system, report);
+  if (report.error || report.failed.length) mainLog.write(`system sync ${report.system}: ${report.error ?? ""} ${report.failed.map((f) => `${f.project}: ${f.error}`).join("; ")}`.trim());
+  return report;
+}
+
+let systemSyncRunning: Promise<void> | null = null;
+/** Every system this machine set up, one after another; a round still going is not started twice. */
+function syncSystems(): Promise<void> {
+  systemSyncRunning ??= (async () => {
+    for (const name of Object.keys(config.systemRoots)) await systemSync(name);
+  })().finally(() => { systemSyncRunning = null; });
+  return systemSyncRunning;
+}
+
+function systemsOnMachine(): Record<string, SystemOnMachine> {
+  return Object.fromEntries(Object.entries(config.systemRoots).map(([name, r]) => [name, { root: r.root, lastSync: systemReports.get(name) ?? null }]));
+}
+
+function systemForget(name: unknown): void {
+  const { [String(name)]: _gone, ...rest } = config.systemRoots;
+  persist({ ...config, systemRoots: rest });
 }
 
 function addProject(p: DesktopProject): DesktopSettings {
@@ -497,7 +679,9 @@ function scanRepos(dir: unknown): RepoScan {
   return {
     root,
     isGit,
-    repos: isGit ? [] : planLocalImport(root, findGitRepos(root), config.projects),
+    // A repository that holds other clones is most likely a group's folder someone ran `git init` in (registered as one
+    // project, then deleted on 5/10): its repos are offered as for a plain folder, the page warns before adding it.
+    repos: planLocalImport(root, findGitRepos(root, 3, true), config.projects),
     system: suggestProjectKey(path.basename(root), []),
   };
 }
@@ -646,6 +830,120 @@ function openCli(id: string, name: string, opts?: { bypass?: boolean }): { opene
   const file = openInTerminal(command, { dir, which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) });
   if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
   return { opened: true };
+}
+
+/**
+ * The system's docs and the team's that every agent reads, and each repo's first line of its own AGENTS doc, for the
+ * context of a system's session. A hub that does not answer leaves them out: the session still opens.
+ */
+async function systemContextDocs(system: HiveSystem, projects: string[]): Promise<{ docs: { system: Doc[]; org: Doc[] }; roles: Record<string, string> }> {
+  const empty = { docs: { system: [], org: [] }, roles: {} };
+  const any = projects[0] ?? system.projects[0];
+  if (!any) return empty;
+  try {
+    const wanted = async (scope: "system" | "org", prefix: string) => {
+      const list = (await backend.call("docs.list", { project: any, scope }, actor())).filter((d) => d.key.startsWith(prefix) && d.includeInAgents && !d.paths?.length);
+      return (await Promise.all(list.map((d) => backend.call("docs.get", { key: d.key }, actor())))).filter((d): d is Doc => d !== null);
+    };
+    const [sys, org] = await Promise.all([wanted("system", `system/${system.name}/`), wanted("org", "org/")]);
+    const roles = Object.fromEntries(await Promise.all(projects.map(async (p) => [p, repoRole(await backend.call("docs.get", { key: agentsDocKey(p) }, actor()).catch(() => null))] as const)));
+    return { docs: { system: sys, org }, roles };
+  } catch {
+    return empty;
+  }
+}
+
+/**
+ * A profile's CLI over every repo of a system on this machine (GROUP-cli): started in the group's root (or the app's
+ * own folder for the system), each repo added with the CLI's flag, Hive's server scoped to the system. Repos missing
+ * here are named in the context and on the page; they never stop it from opening.
+ */
+async function openSystemCli(id: string, name: string, opts?: { bypass?: boolean }): Promise<SystemCliOpened> {
+  const profile = config.agents.find((a) => a.id === id);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  if (logins.get(id)?.loggedIn === false) throw new HiveError("conflict", tr("desktop.cliSignedOut", { profile: id }), { key: "desktop.cliSignedOut", vars: { profile: id } });
+  const pathEnv = agentEnv().PATH ?? "";
+  const bin = resolveBin(expandHome(profile.bin), pathEnv);
+  if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
+  const system = await hubSystem(name);
+  const ws = systemWorkspace(system, config.projects, {
+    root: config.systemRoots[system.name]?.root ?? null,
+    home: os.homedir(),
+    sessionDir: path.join(path.dirname(configPath()), "systems", system.name),
+    insideRepo: (dir) => isGitRepo(dir),
+  });
+  const { docs, roles } = await systemContextDocs(system, ws.repos.map((r) => r.project));
+  const shim = shimPath();
+  writeSystemContext(ws.cwd, renderSystemContext(system, ws, docs, roles), {
+    mcpServers: { [MCP_NAME]: { ...hiveMcpServerAt(shim, profile.id, ""), env: { HIVE_AGENT: profile.id, HIVE_SYSTEM: system.name } } },
+  });
+  const dir = path.join(path.dirname(configPath()), "cli", profile.id);
+  const mcpFile = path.join(dir, `mcp-system-${system.name}.json`);
+  const { command, mcpConfig } = cliCommand(profile, {
+    project: ws.repos[0]?.project ?? system.projects[0] ?? system.name,
+    repo: ws.cwd,
+    bin,
+    path: process.platform === "win32" ? null : pathEnv,
+    shim,
+    mcpFile,
+    title: `xDev Hive: ${tr("desktop.cliTitle", { profile: profile.id, project: system.name })}`,
+    done: tr("desktop.cliDone"),
+    bypass: opts?.bypass === true,
+    system: system.name,
+    extraDirs: ws.repos.map((r) => r.dir),
+  });
+  if (mcpConfig) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(mcpFile, mcpConfig, { mode: 0o600 });
+  }
+  const file = openInTerminal(command, { dir, which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) });
+  if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
+  return { opened: true, cwd: ws.cwd, repos: ws.repos.length, missing: ws.missing.map((m) => m.project), dirsSupported: Boolean(EXTRA_DIR_ARGS[profile.kind]) };
+}
+
+function repoDeps(): RepoDeps {
+  const forges = [
+    { kind: "gitlab" as const, url: config.gitlab.url, token: config.gitlab.token, user: "oauth2" },
+    { kind: "github" as const, url: config.github.url, token: config.github.token, user: "x-access-token" },
+  ];
+  const hostOfUrl = (u: string) => { try { return new URL(u).hostname.toLowerCase(); } catch { return null; } };
+  return {
+    forges: () => forges.map(({ kind, url }) => ({ kind, url })),
+    env: (url) => forgeEnv(url, forges),
+    // The merge queue or a release works in the checkout itself; a run starts from it (worktree add) and pushes from it.
+    busy: (name) => runner.checkoutBusy(name, "repo") ?? (runner.store.active().some((r) => r.project === name && r.status === "running") ? "run" : null),
+    health: (name) => {
+      const r = repoHealth.latest().find((x) => x.project === name);
+      return r ? { access: r.status, detail: r.detail } : null;
+    },
+    fetched: repoFetches,
+    now: () => new Date(),
+    used: (url, by) => {
+      const remote = parseRemoteUrl(url);
+      const forge = forges.find((f) => f.token && remote?.https && hostOfUrl(f.url) === remote.host);
+      if (forge) forgeUsage().record(forge.kind as ForgeKind, by);
+    },
+  };
+}
+
+const repoProjects = (names: unknown): DesktopProject[] => (Array.isArray(names) ? names : []).map((n) => project(String(n)));
+
+/** One repo after another: a dozen parallel fetches to one GitLab look like a scan (as the repo check says). */
+async function repoStatus(names: unknown, opts?: { fetch?: unknown }): Promise<RepoStatusRow[]> {
+  const deps = repoDeps();
+  const rows: RepoStatusRow[] = [];
+  for (const p of repoProjects(names)) {
+    if (opts?.fetch === true) await fetchRepo(p, deps);
+    rows.push(await statusRow(p, deps));
+  }
+  return rows;
+}
+
+async function pullRepos(names: unknown): Promise<RepoPullResult[]> {
+  const deps = repoDeps();
+  const out: RepoPullResult[] = [];
+  for (const p of repoProjects(names)) out.push(await pullRepo(p, deps));
+  return out;
 }
 
 /** One project at a time; a project whose check fails (no repo, no access) does not stop the others. */
@@ -863,6 +1161,7 @@ function updateProject(name: string, patch: { autoRelease?: DesktopProject["auto
 async function checkGitLab(): Promise<GitLabCheck> {
   try {
     const user = await new GitLabClient(config.gitlab.url, config.gitlab.token, gitlabFetch).user();
+    forgeUsage().record("gitlab", "check", user.username);
     return { ok: true, user: user.username, message: tr("desktop.gitlabSignedIn", { name: user.name, username: user.username }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
@@ -872,6 +1171,7 @@ async function checkGitLab(): Promise<GitLabCheck> {
 async function checkGitHub(): Promise<GitLabCheck> {
   try {
     const user = await new GitHubClient(config.github.url, config.github.token, gitlabFetch).user();
+    forgeUsage().record("github", "check", user.login);
     return { ok: true, user: user.login, message: tr("desktop.githubSignedIn", { name: user.name ?? user.login, username: user.login }) };
   } catch (err) {
     return { ok: false, user: null, message: toErrorPayload(err).message };
@@ -1382,8 +1682,9 @@ function registerIpc(): void {
     return backend.call(method, input as never, actor());
   });
   handle("hive:me", me);
-  handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform }));
-  handle("desktop:machineStats", () => machineStats(path.dirname(configPath())));
+  // The OS version is Electron's (macOS 15.4, a Windows build), not os.release(), which on a Mac is the Darwin kernel's.
+  handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform, osVersion: process.getSystemVersion() }));
+  handle("desktop:machineStats", () => machineStats(path.dirname(configPath()), undefined, config.runner.worktreeRoot ?? path.join(path.dirname(configPath()), "worktrees")));
   handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
   handle("desktop:updateStatus", () => ({ ...updater.status(), ...idleUpdate?.status() }));
   handle("desktop:installUpdate", () => installAndRestart());
@@ -1405,6 +1706,12 @@ function registerIpc(): void {
   handle("desktop:importGitlab", importGitlab);
   handle("desktop:githubOwner", githubOwner);
   handle("desktop:importGithub", importGithub);
+  handle("desktop:systemPlan", systemPlan);
+  handle("desktop:systemInit", systemInit);
+  handle("desktop:systemLink", systemLink);
+  handle("desktop:systemSync", systemSync);
+  handle("desktop:systemsOnMachine", systemsOnMachine);
+  handle("desktop:systemForget", systemForget);
   handle("desktop:removeProject", (name: string) => removeProject(name));
   handle("desktop:pickFolder", async () => {
     // Screenshots only: no one can answer a file dialog, so the folder the shot wants comes from the environment.
@@ -1456,6 +1763,9 @@ function registerIpc(): void {
   handle("desktop:setProfileToken", setProfileToken);
   handle("desktop:openSetupToken", openSetupToken);
   handle("desktop:openCli", openCli);
+  handle("desktop:repoStatus", repoStatus);
+  handle("desktop:pullRepos", pullRepos);
+  handle("desktop:openSystemCli", openSystemCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runs-count", (filter?: { project?: string; projects?: string[] }) => runner.store.countActive(filter));
@@ -2119,6 +2429,13 @@ if (!app.requestSingleInstanceLock()) {
     if (!smokeShot) {
       void pathReady.then(repos);
       setInterval(repos, 10 * 60_000).unref();
+    }
+    // Systems whose group this machine set up (GROUP-init-sync): new repos of the group a few minutes after start, then
+    // every 6 hours. Not in the smoke run, which has no forge to ask.
+    const groups = () => void syncSystems().catch(() => undefined);
+    if (!smokeShot) {
+      setTimeout(groups, 3 * 60_000).unref();
+      setInterval(groups, 6 * 60 * 60_000).unref();
     }
     // Memory that cites files: compare them with each project's branch shortly after start, then every 30 minutes.
     const citations = () => void checkAllCitations().catch(() => undefined);
