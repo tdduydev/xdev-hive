@@ -108,6 +108,26 @@ describe("runner worktree administration", () => {
     } finally { f.close(); }
   });
 
+  it("checks the push URL, not the fetch URL, before treating a branch as pushed", async () => {
+    const f = await fixture();
+    try {
+      const mirror = path.join(f.dir, "mirror.git"); mkdirSync(mirror); git(mirror, "init", "--bare", "-q");
+      git(f.repo, "remote", "set-url", "--push", "origin", mirror);
+      const project = { name: "demo", repo: f.repo, targetBranch: "main" };
+      const item = { path: f.wt.path, branch: f.wt.branch, taskId: "T-1" };
+      let entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, false, "the head on the fetch URL alone is not a push");
+      await assert.rejects(deleteWorktree(project, f.root, entry, true), /not confirmed on the remote/);
+      git(f.repo, "push", "-q", "origin", f.wt.branch);
+      entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, true);
+      git(f.repo, "remote", "set-url", "--add", "--push", "origin", path.join(f.dir, "missing.git"));
+      entry = await inspectWorktree(project, item, undefined, false);
+      assert.equal(entry.pushed, null, "every push URL must have the branch");
+      assert.equal(existsSync(f.wt.path), true);
+    } finally { f.close(); }
+  });
+
   it("uses the configured remote when rechecking a merged worktree for deletion", async () => {
     const f = await fixture();
     try {
