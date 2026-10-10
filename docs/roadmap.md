@@ -405,6 +405,23 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **77h. lazy-pages**: mỗi trang nạp khi cần, chunk đầu ≤ 250 KB gzip, ảo hoá log và danh sách dài, worker cho diff và markdown (làm cùng 76h).
   - [ ] **77i. push-events**: SSE cho run, chat và log, invalidate cache, đi được qua tunnel.
 
+- **79. access-admin** (hỏi 10/10: "tiếp tục thiết kế phần quản trị users, quyền, permissions", "thêm phần tự duyệt", "các máy có nhiều disk"). Spec: [specs/79-access-admin.md](specs/79-access-admin.md). Người dùng chọn 10/10: TOTP bắt buộc cho admin và owner; phòng ban tạo trong Hive, map SSO sau; admin được tự duyệt đề xuất của mình (có audit); làm P0 trước.
+  - [ ] **79a. admin-is-a-person**: chỉ phiên web của người qua được cổng `hubAdmin`; token máy, token cá nhân, credential MCP không quản trị được; token không có chủ bị hạ quyền.
+  - [ ] **79b. agent-roles**: "Agent được làm gì" theo từng project (taskManage, codeReview, runDispatch…), không vượt quyền chủ; agent tạo, review, đóng task bằng danh tính của mình.
+  - [ ] **79c. disable-revokes**: khoá hoặc đưa người vào thùng rác thì thu hồi phiên, token, credential MCP; đổi mật khẩu thì đăng xuất các phiên khác.
+  - [ ] **79d. system-grants**: gán quyền theo hệ thống; chọn project hoặc hệ thống từ danh sách, chép quyền từ người khác, xem trước quyền thật.
+  - [ ] **79e. sso-policy**: danh sách tên miền được tạo tài khoản qua SSO; map claim nhóm vào phòng ban (76c).
+  - [ ] **79f. audit-plus**: lọc theo ngày, đối tượng, nhóm hành động; xuất CSV; tab Hoạt động của từng người; lọc hành động tự động.
+  - [ ] **79g. sessions**: danh sách phiên, đăng xuất từng phiên; nhập lại mật khẩu hoặc mã TOTP trước thao tác quản trị.
+  - [ ] **79h. mfa-totp**: TOTP kèm mã dự phòng, bắt buộc cho admin và owner; khôi phục bằng CLI.
+  - [ ] **79i. custom-roles**: vai trò tuỳ chỉnh có tên trên trang Vai trò & quyền.
+  - [ ] **79j. access-mobile**: Người dùng, Sơ đồ tổ chức, ma trận quyền dạng thẻ dưới 768px.
+  - [ ] **79k. auto-doc-proposals**: tự duyệt đề xuất tài liệu (human | ai | auto) theo project; doc mà agent đọc luôn cần người.
+  - [ ] **79l. auto-memory**: tự duyệt memory của agent theo project, kèm danh sách agent tin cậy; mức trần là `HIVE_MEMORY_APPROVAL`.
+  - [ ] **79m. auto-merge-on-approve**: task ngoài flow có review approve và CI xanh thì tự merge, rồi done.
+  - [ ] **79n. auto-rollout**: bản app mới nhận đủ file thì tự thành bản đích (phần trăm, cài khi rảnh).
+  - [ ] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
+
 ## Sửa lỗi
 
 - [x] **assigned-claim-linux** (8/10, BUG-assigned-claim-linux, 0.146.1): runner nhận task bằng tên gói mà không nói tên máy, nên hub từ chối task giao cho chính máy đó ("assigned to linux-runner"); giờ runner gửi kèm máy.
