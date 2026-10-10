@@ -1,0 +1,44 @@
+# The hub. hive-deploy.sh writes /etc/containers/systemd/hive-hub.container from this file, with @IMAGE@ the image
+# by digest (never a moving tag), so a reboot or a restart runs exactly the image that passed its checks.
+# One container on one database: SQLite has a single writer, so there is never a second hub on /srv/hive/data.
+[Unit]
+Description=xDev Hive hub
+Requires=hive-seaweedfs.service
+After=hive-seaweedfs.service network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=hive-hub
+Image=@IMAGE@
+EnvironmentFile=/etc/xdev-hive/hub.env
+Environment=HIVE_SEAWEEDFS_URL=http://hive-seaweedfs:8888
+Volume=/srv/hive/data:/data:Z
+Volume=/srv/hive/backups:/data/backups:Z
+Network=hive.network
+PublishPort=0.0.0.0:@PORT@:7788
+# The image's own check, spelled out: Podman keeps HEALTHCHECK only for Docker-format images. A script, not
+# node -e "…": Quadlet drops the closing quote of a quoted command.
+HealthCmd=node /app/apps/web/src/healthcheck.ts
+HealthStartPeriod=60s
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+# Unhealthy for good: stop it, and systemd starts it again (Restart=always).
+HealthOnFailure=kill
+# systemctl start returns once the hub answers, not when the process is up.
+Notify=healthy
+LogDriver=journald
+User=1000:1000
+NoNewPrivileges=true
+DropCapability=ALL
+ReadOnly=true
+ReadOnlyTmpfs=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+# The hub closes its database on SIGTERM; give it time before the kill.
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -594,7 +594,7 @@ Mặc định `memory_search` tìm theo từ (FTS5, có dấu hay không dấu �
 - Endpoint khác cũng được (API ngoài): `HIVE_EMBED_URL` + `HIVE_EMBED_MODEL` + `HIVE_EMBED_KEY`, không cần profile `embed`. Khi đó nội dung memory được gửi tới nhà cung cấp đó.
 - Chế độ cục bộ của app desktop vẫn chỉ tìm theo từ.
 
-Không ai đăng nhập được (quên mật khẩu admin…) thì làm trên server (Docker: thêm `docker compose -f deploy/compose.yaml exec hub` phía trước):
+Không ai đăng nhập được (quên mật khẩu admin…) thì làm trên server, trong một bản checkout của repo. Image của hub không có npm, nên trong container gọi thẳng CLI bằng node: `docker compose -f deploy/compose.yaml exec -w /app/apps/web hub node src/cli.ts user reset admin` (tương tự `user list`, `token create …`):
 
 ```bash
 npm run user -w @xdev-hive/web -- reset admin          # mật khẩu tạm mới, đăng xuất mọi nơi
@@ -675,7 +675,7 @@ Hub nhận mọi nhà cung cấp OpenID Connect: GitLab, Microsoft Entra, Google
 - Mặc định, compose để backup trên volume `hive-backups`, cùng đĩa với database. Để backup còn nguyên khi mất đĩa, trỏ `HIVE_BACKUP_PATH=/mnt/backup/hive` sang đĩa khác (thư mục phải cho uid 1000 ghi), hoặc đồng bộ thư mục backup ra ngoài.
 - Backup gồm database và mọi tệp đã chuyển sang SeaweedFS mà các bảng `doc_assets` (ảnh/tệp của tài liệu) và `artifacts` (tệp của run) tham chiếu. Chúng được chép theo SHA-256 vào `<thư mục backup>/files/<sha256>` sau mỗi lần backup (cả *Backup ngay*): nội dung trùng chỉ có một bản, chỉ chép tệp mới, và chỉ xoá tệp mà database lẫn các snapshot còn giữ đều không dùng. Tệp còn nằm trực tiếp trong database đã được chứa trong snapshot. Tệp đính kèm chat và ảnh bàn giao chỉ được backup nếu được ghi vào một trong hai bảng trên; hiện kho dùng hai bảng đó.
 - **Khôi phục một service đã xoá hẳn**: Quản trị › Hub › Các bản backup › *Khôi phục project* trên bản `Trước khi xoá <service>` (hoặc bản bất kỳ còn service đó), gõ tên để xác nhận. Hub chép lại mọi dòng của service từ bản backup trong một giao dịch, đưa tệp SeaweedFS của nó từ `<thư mục backup>/files` về kho, rồi gỡ trạng thái đã xoá. Service đang có dữ liệu trên hub thì bị từ chối (không gộp). Tải bản backup về: nút *Tải về* cùng chỗ (chỉ admin hub).
-- **Khôi phục cả hub**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại. Mất cả dữ liệu SeaweedFS thì đưa tệp từ backup vào lại: `HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 npm run files -w @xdev-hive/web -- restore [thư mục backup]` (trong container hub: `docker compose -p xdev-hive -f deploy/compose.yaml exec hub npm run files -w @xdev-hive/web -- restore`).
+- **Khôi phục cả hub**: dừng hub, chép bản backup đè lên `hub.db`, xoá `hub.db-wal` và `hub.db-shm` nếu có, rồi khởi động lại. Mất cả dữ liệu SeaweedFS thì đưa tệp từ backup vào lại: `HIVE_SEAWEEDFS_URL=http://seaweedfs:8888 npm run files -w @xdev-hive/web -- restore [thư mục backup]` (trong container hub, image không có npm: `docker compose -p xdev-hive -f deploy/compose.yaml exec -w /app/apps/web hub node src/cli.ts files restore`).
 - **Diễn tập khôi phục**: `bash deploy/restore-drill.sh` trên server, sau `deploy/update.sh`. Script làm từ đầu tới cuối mà không đụng vào hub đang chạy:
   - lấy bản backup mới nhất và `backups/files`;
   - đưa tệp vào một SeaweedFS mới bằng `files restore`;
