@@ -312,6 +312,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "nav-by-job": ["login-token", "login-password"],
   "reviewer-approves-a-guide-not-context": ["login-password"],
   "lead-sees-members": [],
+  "agent-rights": [], // its own tab, signed in with Lan's password
   "admin-grants-a-role": ["login-token"],
   "admin-users-trash-invite": ["login-token"],
   "docs-rich-editor": ["login-token"],
@@ -1455,6 +1456,38 @@ async function main() {
     await tab.click("button", "Sửa");
     const text = await tab.waitFor("the members of payment", () => document.body.innerText.includes("Hoa Trần") && document.body.innerText);
     expect(/Minh Lê/.test(text), "Minh is a member of payment");
+  });
+
+  // Spec 79b: the Agent row on Thành viên. Lan leads payment and changes it from her own session (a token cannot).
+  await step("agent-rights", async () => {
+    const tab = (current = tabs.lanSession = await Tab.open("lan-session"));
+    await tab.click("#username");
+    await tab.type("lan");
+    await tab.click("#password");
+    await tab.type(people.lan.password);
+    await tab.key("Enter");
+    await tab.waitFor("Lan signed in", () => !document.querySelector("#username") && !!document.querySelector("[data-shell-title]"));
+    await tab.go("settings?tab=members");
+    await tab.waitFor("the Agent summary row", () => document.body.innerText.includes("Agent được làm gì"));
+    await tab.click("button", "Sửa");
+    await tab.waitFor("the Agent row of payment", () => document.querySelector('[data-agent-rights="payment"] [data-agent-right="taskManage"]:not([disabled])'));
+    await tab.click('[data-agent-rights="payment"] [data-agent-right="taskManage"]');
+    const widened = await until("taskManage for payment's agents", async () => {
+      const view = await rpc("agentRights.get", { project: "payment" });
+      return view.permissions.includes("taskManage") && view;
+    });
+    expect(widened.updatedBy === "lan", `changed by ${widened.updatedBy}`);
+    await tab.waitFor("the reset button", () => document.querySelector("[data-agent-rights-reset]"));
+    const fits = await tab.eval(() => {
+      const row = document.querySelector('[data-agent-rights="payment"]');
+      const small = [...row.querySelectorAll("label, [data-agent-rights-reset]")].filter((el) => el.getBoundingClientRect().height < 44).map((el) => el.textContent.trim().slice(0, 30));
+      return { overflow: document.documentElement.scrollWidth - window.innerWidth, small };
+    });
+    expect(fits.overflow <= 0, `the page scrolls sideways by ${fits.overflow}px`);
+    expect(fits.small.length === 0, `tap targets under 44px: ${fits.small.join(" | ")}`);
+    await tab.shot("members-agent-rights");
+    await tab.click("[data-agent-rights-reset]");
+    await until("payment's agents back to the default", async () => (await rpc("agentRights.get", { project: "payment" })).isDefault);
   });
 
   await step("admin-grants-a-role", async () => {

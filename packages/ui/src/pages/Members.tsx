@@ -1,7 +1,9 @@
 // Thành viên (roadmap 25): who has which role in a project, or in the shared data, for whoever may manage its members.
 // A lead gives roles to accounts that exist, up to their own permissions; making accounts stays a hub admin's.
 import { useMemo, useState } from "react";
-import { may, permissionsOn, type Grant } from "@xdev-hive/core";
+import { AGENT_DEFAULT, AGENT_PERMISSIONS, may, permissionsOn, type Grant, type Permission } from "@xdev-hive/core";
+import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
+import { Button } from "@xdev-hive/ui/components/ui/button";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "@xdev-hive/ui/components/ui/toggle-group";
 import { Badge, Empty, ErrorNote, Page, PageHeader } from "#ui/components/common.tsx";
@@ -76,6 +78,7 @@ export function MembersPage() {
             </ToggleGroup>
           </div>
           <RoleLegend />
+          {project !== null ? <AgentRightsRow key={project} project={project} mine={mine} /> : null}
           <ErrorNote error={members.error} />
           {members.data && rows.length === 0 ? <Empty>{t("members.none")}</Empty> : null}
           <div className="flex flex-col divide-y rounded-md border">
@@ -111,5 +114,71 @@ export function MembersPage() {
         </div>
       )}
     </Page>
+  );
+}
+
+/**
+ * "Agent được làm gì" (spec 79b): the one set every agent on the project gets, each still capped by its own person's
+ * grant on the hub. Saved on each tick, like a member's role; view stays on, without it nothing else means anything.
+ */
+function AgentRightsRow({ project, mine }: { project: string; mine: ReadonlySet<Permission> | undefined }) {
+  const { client } = useHive();
+  const t = useT();
+  const toast = useToast();
+  const [tick, setTick] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const view = useQuery(() => client.call("agentRights.get", { project }), [client, project, tick]);
+  const has = new Set(view.data?.permissions ?? AGENT_DEFAULT);
+  const save = (permissions: Permission[]) => {
+    setSaving(true);
+    void client
+      .call("agentRights.set", { project, permissions })
+      .then(
+        () => {
+          toast(t("members.agentSaved", { project }));
+          setTick((n) => n + 1);
+        },
+        (err: unknown) => toast(errorMessage(err), { tone: "error" }),
+      )
+      .finally(() => setSaving(false));
+  };
+  const toggle = (p: Permission, on: boolean) => save(AGENT_PERMISSIONS.filter((x) => (x === p ? on : has.has(x))));
+  return (
+    <section className="flex flex-col gap-2 rounded-md border px-3 py-2.5" data-agent-rights={project} aria-label={t("members.agentTitle")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="flex min-w-0 flex-col">
+          <span className="text-sm font-medium">
+            {t("members.agent")} · {t("members.agentTitle")}
+          </span>
+          <span className="text-xs text-muted-foreground">{t("members.agentHint", { project })}</span>
+        </span>
+        <span className="flex flex-wrap items-center gap-2">
+          <Badge tone={view.data?.isDefault === false ? "warn" : "neutral"}>
+            {view.data?.isDefault === false ? t("members.agentCustom", { count: has.size }) : t("members.agentDefault")}
+          </Badge>
+          {view.data?.isDefault === false ? (
+            <Button variant="ghost" size="sm" className="min-h-11" disabled={saving} onClick={() => save([...AGENT_DEFAULT])} data-agent-rights-reset>
+              {t("members.agentReset")}
+            </Button>
+          ) : null}
+        </span>
+      </div>
+      <ErrorNote error={view.error} />
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+        {AGENT_PERMISSIONS.map((p) => {
+          const locked = p === "view" || saving || !view.data || (mine !== undefined && !mine.has(p));
+          return (
+            <label key={p} className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2 text-xs has-[:disabled]:cursor-default" title={t(`permissionHint.${p}`)}>
+              <Checkbox checked={has.has(p)} disabled={locked} onCheckedChange={(v) => toggle(p, v === true)} data-agent-right={p} aria-label={t(`permission.${p}`)} />
+              <span className="flex min-w-0 flex-col">
+                <span className="font-medium text-fg-strong">{t(`permission.${p}`)}</span>
+                <span className="text-[11px]/4 break-words text-fg-muted">{t(`permissionHint.${p}`)}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {view.data?.updatedBy ? <span className="text-[11px] text-muted-foreground">{t("members.agentChangedBy", { by: view.data.updatedBy })}</span> : null}
+    </section>
   );
 }

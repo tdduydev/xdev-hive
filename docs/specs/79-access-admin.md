@@ -65,6 +65,12 @@ Quy tắc gốc giữ nguyên: **một lần gọi được làm gì = quyền c
 - Áp cho credential MCP, credential run và token máy khi gọi các method của project. `ROLE_CAP.agent` thành giá trị mặc định, không còn là giới hạn cứng.
 - Giao diện: trang Thành viên của project có thêm một hàng "Agent".
 - Kết quả: agent của admin tạo task, review và đóng task bằng **danh tính của chính nó**, không cần token máy.
+- **Đã làm (79b):**
+  - Lưu theo project trong `settings` (khoá `agentRights:<project>`, không cần migration; bản mặc định là không có dòng). Xoá và khôi phục project mang theo khoá này.
+  - Tập agent được nhận (`AGENT_PERMISSIONS`): view, taskWork, docPropose, memoryWrite, taskManage, codeReview, runDispatch, chatUse. Luôn có view. Các quyền duyệt (docApprove, memoryApprove, chatApprove), contextEdit, docEdit, qaVerify, projectSettings, membersManage vẫn là của người.
+  - Giao nhau tính ở `permissionsOn` (`packages/core/src/access.ts`): agent của một tài khoản = tập của project ∩ grant của chủ; admin là mọi quyền. Token không có chủ và token trả lời chat giữ mặc định. Core gắn tập vào actor ở mỗi lần `call`, nên tập do client gửi lên bị thay.
+  - Đổi tập (`agentRights.set`): cần `membersManage` trên project, không quá quyền của chính mình, và chỉ từ phiên của người (không token nào, kể cả token máy của lead hay admin). Mỗi lần đổi ghi audit.
+  - Credential run không bao giờ chuyển task của chính nó sang done, kể cả khi project cho agent `codeReview`. Credential MCP gọi thêm được `tasks.requestChanges`.
 
 ### 79c. disable-revokes
 

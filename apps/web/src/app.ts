@@ -11,6 +11,7 @@ import type { SetupGate } from "./hub-setup.ts";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
+  AGENT_DEFAULT,
   CHAT_FILE_MAX_BYTES,
   compareVersions,
   DESTRUCTIVE_HUB_RPCS,
@@ -26,6 +27,7 @@ import {
   MACHINE_ID,
   permissionsOn,
   HUB_SCOPE,
+  PERMISSIONS,
   PROJECT_NAME,
   isHubRole,
   type HubRole,
@@ -382,10 +384,12 @@ export function createHubApp({
       // grant, so a project added to the system later is reached and one the account does not see never is.
       const members = who.mcp.system ? systemProjects(who.mcp.system).filter((p) => !full || grantPermissions(full.projects[p]).has("view")) : null;
       if (members && !members.length) return null;
+      // A hub admin's grant on a project is every permission (spec 79b): the project's agent set alone caps the agent.
+      const owner: Grant = user ? "lead" : "member";
       const access = project
-        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared } as Actor["access"]
+        ? { projects: { [project]: full?.projects[project] ?? owner }, shared } as Actor["access"]
         : members
-          ? { projects: Object.fromEntries(members.map((p) => [p, full?.projects[p] ?? "member"])), shared } as Actor["access"]
+          ? { projects: Object.fromEntries(members.map((p) => [p, full?.projects[p] ?? owner])), shared } as Actor["access"]
           : full;
       if (user) res.locals.user = user;
       return {
@@ -400,7 +404,8 @@ export function createHubApp({
       if (who.ownerId && (!user || user.disabled)) return null;
       const full = user ? users.access(user) : undefined;
       if (full && !grantPermissions(full.projects[project]).has("taskWork")) return null;
-      const allowed = full ? grantPermissions(full.projects[project]) : new Set(["view", "taskWork", "docPropose", "memoryWrite"]);
+      // An admin's run has every permission of its owner (spec 79b), cut to the project's agent set in access.ts.
+      const allowed = full ? grantPermissions(full.projects[project]) : user ? new Set(PERMISSIONS) : new Set(AGENT_DEFAULT);
       const shared = full ? sharedPermissions(full) : new Set(["view", "docPropose", "memoryWrite"]);
       const access = { projects: { [project]: { permissions: [...allowed] } }, shared: { permissions: [...shared] } } as Actor["access"];
       if (user) res.locals.user = user;
