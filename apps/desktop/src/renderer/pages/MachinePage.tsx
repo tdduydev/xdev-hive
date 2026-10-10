@@ -8,15 +8,16 @@ import { useT } from "@xdev-hive/ui";
 import { activeIntl } from "@xdev-hive/ui-kit/i18n";
 import { useHive, usePoll, useQuery } from "@xdev-hive/ui/hooks";
 import { useStartStatus } from "@xdev-hive/ui/pages/Start";
+import { DISK_WARN } from "@xdev-hive/ui/components/MachineCards";
 import { formatBytes, loadFigure, loadPercent, overloaded, percentOf, platformName, uptimeParts } from "../machine-format.ts";
 
 /** A labelled figure with an optional bar: the bar is decoration, the text carries the value. */
-function Meter({ label, value, detail, percent, warn = false }: { label: string; value: string; detail?: string; percent: number | null; warn?: boolean }) {
+function Meter({ label, value, detail, percent, warn = false, tag, attrs }: { label: string; value: string; detail?: string; percent: number | null; warn?: boolean; tag?: ReactNode; attrs?: Record<string, string | undefined> }) {
   const high = warn || (percent !== null && percent >= 85);
   return (
-    <div className="flex flex-col gap-1.5" data-meter={label} data-meter-warn={high || undefined}>
+    <div className="flex flex-col gap-1.5" data-meter={label} data-meter-warn={high || undefined} {...attrs}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm text-fg-secondary">{label}</span>
+        <span className="flex min-w-0 items-baseline gap-2 text-sm text-fg-secondary"><span className="truncate">{label}</span>{tag}</span>
         <span className="font-mono text-sm text-fg-strong">{value}</span>
       </div>
       {percent !== null ? (
@@ -110,12 +111,23 @@ export function MachinePage() {
                   warn={overloaded(s.load)}
                 />
                 <Meter label={t("desk.machine.ram")} value={t("desk.machine.used", { used: formatBytes(mem), total: formatBytes(s.memTotal) })} percent={percentOf(mem, s.memTotal)} />
-                <Meter
+                {s.disks?.length ? s.disks.map((d) => (
+                  <Meter
+                    key={d.mount}
+                    label={d.label ? `${d.mount} · ${d.label}` : d.mount}
+                    attrs={{ "data-disk": d.mount }}
+                    tag={d.worktree ? <Badge tone="neutral">{t("desk.machine.diskWorktree")}</Badge> : undefined}
+                    value={t("desk.machine.used", { used: formatBytes(d.totalBytes - d.freeBytes), total: formatBytes(d.totalBytes) })}
+                    detail={d.percent >= DISK_WARN ? t("desk.machine.diskFull", { free: formatBytes(d.freeBytes) }) : t("desk.machine.diskFree", { free: formatBytes(d.freeBytes), total: formatBytes(d.totalBytes) })}
+                    percent={d.percent}
+                    warn={d.percent >= DISK_WARN}
+                  />
+                )) : <Meter
                   label={t("desk.machine.disk")}
                   value={disk === null ? t("desk.machine.diskNone") : t("desk.machine.used", { used: formatBytes(disk), total: formatBytes(s.diskTotal) })}
                   detail={s.diskFree === null ? undefined : t("desk.machine.diskFree", { free: formatBytes(s.diskFree), total: formatBytes(s.diskTotal) })}
                   percent={percentOf(disk, s.diskTotal)}
-                />
+                />}
                 {upt ? <Row label={t("desk.machine.uptime")}>{upt.days > 0 ? t("desk.machine.days", upt) : t("desk.machine.hours", { hours: upt.hours, minutes: upt.minutes })}</Row> : null}
               </>
             ) : (

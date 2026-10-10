@@ -9,7 +9,7 @@ import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, Profile
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { SystemSource } from "./system-source.ts";
-import type { ChatFile, Machine, MachineCommand, Proposal, RepoAccessStatus, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { ChatFile, Machine, MachineCommand, MachineDisk, Proposal, RepoAccessStatus, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -624,6 +624,8 @@ export interface MachineStats {
   diskPath: string;
   diskTotal: number | null;
   diskFree: number | null;
+  /** Every fixed disk (spec 79o); absent or empty when the listing failed, and the card falls back to diskPath. */
+  disks?: MachineDisk[];
   uptime: number;
 }
 

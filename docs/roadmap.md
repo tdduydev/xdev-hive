@@ -420,7 +420,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **79l. auto-memory**: tự duyệt memory của agent theo project, kèm danh sách agent tin cậy; mức trần là `HIVE_MEMORY_APPROVAL`.
   - [ ] **79m. auto-merge-on-approve**: task ngoài flow có review approve và CI xanh thì tự merge, rồi done.
   - [ ] **79n. auto-rollout**: bản app mới nhận đủ file thì tự thành bản đích (phần trăm, cài khi rảnh).
-  - [ ] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
+  - [x] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
 
 ## Sửa lỗi
 
