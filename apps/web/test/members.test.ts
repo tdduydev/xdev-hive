@@ -6,6 +6,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 let base = "";
 let close: () => void;
@@ -22,9 +23,10 @@ before(async () => {
   users = new UserStore(hive.db);
   // An account's machine token carries the account's grants, as a signed-in browser would.
   for (const [name, admin] of [["duy", true], ["lan", false], ["kha", false], ["minh", false], ["hoa", false]] as const) {
-    const u = users.create({ username: name, admin }).user;
+    const u = users.create({ username: name, admin, ...(admin ? { password: "Correct-horse-79a!", mustChange: false } : {}) }).user;
     id[name] = u.id;
-    token[name] = tokens.create(`${name}-mbp`, admin ? "admin" : "member", u.id).token;
+    // A hub admin administers from the page (spec 79a); the others call with their machine's token.
+    token[name] = admin ? adminSession(users, name) : tokens.create(`${name}-mbp`, "member", u.id).token;
   }
   users.setGrants(id.lan!, { app: "lead" });
   // Manages members but holds little else: may give only that much.
@@ -37,7 +39,7 @@ before(async () => {
 after(() => close());
 
 const rpc = async (who: string, method: string, input: unknown = {}) => {
-  const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token[who]}` }, body: JSON.stringify({ method, input }) });
+  const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token[who]!) }, body: JSON.stringify({ method, input }) });
   return { status: res.status, body: (await res.json()) as { result?: any; error?: { key?: string } } };
 };
 

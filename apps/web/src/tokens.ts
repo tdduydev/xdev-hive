@@ -13,12 +13,14 @@ const toInfo = (r: Row): TokenInfo => ({
   ownerId: r.owner_id == null ? null : String(r.owner_id),
   createdAt: String(r.created_at),
   lastUsedAt: r.last_used_at == null ? null : String(r.last_used_at),
+  ...(r.release_upload ? { releaseUpload: true } : {}),
 });
 
 /**
  * API tokens for agents, machines and CI. Only the SHA-256 is stored; the plaintext is shown once at creation.
  * A token of an account (owner) sees only what that account was granted; tokens of no account keep the old
- * role-only rules (they predate accounts, or are the bootstrap token).
+ * role-only rules (they predate accounts, or are the bootstrap token). No token administers the hub (spec 79a): the
+ * hub caps every token at member when it is used, whatever role is stored here.
  */
 export class TokenStore {
   readonly #db: DatabaseSync;
@@ -30,15 +32,20 @@ export class TokenStore {
       created_at TEXT NOT NULL, last_used_at TEXT)`);
     const columns = new Set((db.prepare("PRAGMA table_info(hub_tokens)").all() as Row[]).map((c) => String(c.name)));
     if (!columns.has("owner_id")) db.exec("ALTER TABLE hub_tokens ADD COLUMN owner_id TEXT");
+    // Spec 79a: uploading desktop builds is the one admin chore a script still does, so it gets its own narrow flag
+    // instead of an admin token.
+    if (!columns.has("release_upload")) db.exec("ALTER TABLE hub_tokens ADD COLUMN release_upload INTEGER NOT NULL DEFAULT 0");
+    // A desktop sign-in's token (spec 79a): it stands for its person at their window, unlike a token made for a script.
+    if (!columns.has("machine")) db.exec("ALTER TABLE hub_tokens ADD COLUMN machine INTEGER NOT NULL DEFAULT 0");
   }
 
   count(): number {
     return Number((this.#db.prepare("SELECT COUNT(*) AS n FROM hub_tokens").get() as Row).n);
   }
 
-  create(name: string, role: Role, ownerId: string | null = null): { token: string; info: TokenInfo } {
+  create(name: string, role: Role, ownerId: string | null = null, opts: { releaseUpload?: boolean; machine?: boolean } = {}): { token: string; info: TokenInfo } {
     const token = `hive_${randomBytes(32).toString("base64url")}`;
-    return { token, info: this.#insert(token, name, role, ownerId) };
+    return { token, info: this.#insert(token, name, role, ownerId, opts.releaseUpload === true, opts.machine === true) };
   }
 
   /** Registers a token chosen by the operator (HIVE_BOOTSTRAP_TOKEN). No-op if it already exists. */
@@ -47,7 +54,7 @@ export class TokenStore {
     if (!this.#db.prepare("SELECT 1 FROM hub_tokens WHERE hash = ?").get(sha256(token))) this.#insert(token, name, role, null);
   }
 
-  verify(token: string): { id: string; name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null; system: string | null } } | null {
+  verify(token: string): { id: string; name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null; system: string | null }; releaseUpload?: boolean; machine?: boolean } | null {
     const scoped = this.#db.prepare(`SELECT r.*, p.name, p.owner_id FROM run_credentials r
       JOIN hub_tokens p ON p.id = r.parent_id
       JOIN machines m ON m.id = 'runner.' || r.machine || '@' || p.name AND m.token_id = p.id
@@ -71,7 +78,11 @@ export class TokenStore {
     if (now.getTime() - last > 60_000) {
       this.#db.prepare("UPDATE hub_tokens SET last_used_at = ? WHERE id = ?").run(now.toISOString(), String(row.id));
     }
-    return { id: String(row.id), name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id) };
+    return {
+      id: String(row.id), name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id),
+      ...(row.release_upload ? { releaseUpload: true } : {}),
+      ...(row.machine ? { machine: true } : {}),
+    };
   }
 
   /**
@@ -131,9 +142,8 @@ export class TokenStore {
   revoke(id: string): void {
     const row = this.#db.prepare("SELECT role, owner_id FROM hub_tokens WHERE id = ?").get(id) as Row | undefined;
     if (!row) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
-    // Unowned admin tokens are the way back in when no account can sign in: keep the last one.
-    const admins = Number((this.#db.prepare("SELECT COUNT(*) AS n FROM hub_tokens WHERE role = 'admin'").get() as Row).n);
-    if (row.role === "admin" && admins <= 1 && row.owner_id == null) throw new HiveError("bad_request", "Cannot revoke the last admin token.", { key: "errors.lastAdminToken" });
+    // No "keep the last admin token" rule any more (spec 79a): no token administers, and the way back in when nobody
+    // can sign in is `npm run user -- reset <username>` on the server.
     this.#db.prepare("DELETE FROM hub_tokens WHERE id = ?").run(id);
   }
 
@@ -142,13 +152,13 @@ export class TokenStore {
     return Number(this.#db.prepare("DELETE FROM hub_tokens WHERE owner_id = ?").run(ownerId).changes);
   }
 
-  #insert(token: string, name: string, role: Role, ownerId: string | null): TokenInfo {
+  #insert(token: string, name: string, role: Role, ownerId: string | null, releaseUpload = false, machine = false): TokenInfo {
     if (!NAME.test(name)) throw new HiveError("bad_request", "Token name: 1-60 chars of letters, digits, . _ @ -", { key: "errors.badTokenName" });
     if (!TOKEN_ROLES.includes(role)) throw new HiveError("bad_request", `Role must be one of ${TOKEN_ROLES.join(", ")}`);
     const id = randomBytes(6).toString("hex");
     this.#db
-      .prepare("INSERT INTO hub_tokens(id, hash, name, role, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(id, sha256(token), name, role, ownerId, new Date().toISOString());
+      .prepare("INSERT INTO hub_tokens(id, hash, name, role, owner_id, created_at, release_upload, machine) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(id, sha256(token), name, role, ownerId, new Date().toISOString(), releaseUpload ? 1 : 0, machine ? 1 : 0);
     return toInfo(this.#db.prepare("SELECT * FROM hub_tokens WHERE id = ?").get(id) as Row);
   }
 }

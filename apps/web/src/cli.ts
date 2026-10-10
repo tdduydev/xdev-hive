@@ -1,5 +1,7 @@
 // Hub admin from the server shell (e.g. when nobody can sign in):
-//   npm run token -w @xdev-hive/web -- create <name> [viewer|agent|admin]
+//   npm run token -w @xdev-hive/web -- create <name> <owner username> [viewer|agent|member|release]
+//     Every token has an owner and acts as a member at most (spec 79a): administering is for a person on the hub's page.
+//     release: a token for release.mjs (HIVE_RELEASE_TOKEN) that uploads desktop builds only; its owner must be an admin.
 //   npm run token -w @xdev-hive/web -- list
 //   npm run token -w @xdev-hive/web -- revoke <id>
 //   npm run user -w @xdev-hive/web -- create <username> [admin]   (prints a temporary password)
@@ -18,8 +20,26 @@ import { seaweedFromEnv } from "./seaweed.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
 
+/**
+ * A token from the server shell: always of an account (spec 79a), never admin. A release token's owner is checked here
+ * too, though the hub would ignore its flag once that person is no admin.
+ */
+function createToken(tokens: TokenStore, users: UserStore, name: string, owner: string | undefined, kind: string | undefined) {
+  if (!owner) throw new Error("A token needs an owner: token create <name> <owner username> [viewer|agent|member|release]");
+  const user = users.list().find((u) => u.username === owner.toLowerCase());
+  if (!user || user.disabled) throw new Error(`No active account ${owner}`);
+  if (kind === "admin") throw new Error("No token is admin (spec 79a): administer on the hub's page; a token acts as a member at most.");
+  if (kind === "release") {
+    if (!user.admin) throw new Error(`${owner} is not a hub admin: only an admin's token uploads releases.`);
+    return tokens.create(name, "viewer", user.id, { releaseUpload: true });
+  }
+  const role = (kind ?? "agent") as Role;
+  if (!["viewer", "agent", "member"].includes(role)) throw new Error("Role must be one of viewer, agent, member, release");
+  return tokens.create(name, role, user.id);
+}
+
 const dbPath = path.resolve(process.env.HIVE_DB ?? path.join(import.meta.dirname, "..", "data", "hub.db"));
-const [cmd, sub, arg, extra] = process.argv.slice(2);
+const [cmd, sub, arg, extra, more] = process.argv.slice(2);
 
 // Backup reads the file as it is: no SqliteHive, so an older database is not migrated first.
 if (cmd === "backup") {
@@ -74,15 +94,15 @@ if (cmd === "backup") {
     } else if (cmd === "user" && sub === "list") {
       console.table(users.list().map((u) => ({ username: u.username, admin: u.admin, disabled: u.disabled, projects: Object.keys(u.grants).join(" ") })));
     } else if (cmd === "token" && sub === "create" && arg) {
-      const { token, info } = tokens.create(arg, (extra as Role) ?? "agent");
-      console.log(`${info.name} (${info.role}, id ${info.id}):\n${token}`);
+      const { token, info } = createToken(tokens, users, arg, extra, more);
+      console.log(`${info.name} (${info.releaseUpload ? "release upload" : info.role}, owner ${extra}, id ${info.id}):\n${token}`);
     } else if (cmd === "token" && sub === "list") {
       console.table(tokens.list());
     } else if (cmd === "token" && sub === "revoke" && arg) {
       tokens.revoke(arg);
       console.log(`revoked ${arg}`);
     } else {
-      console.log("usage: token create <name> [role] | token list | token revoke <id> | user create <username> [admin] | user reset <username> | user list | backup [dir] [keep]");
+      console.log("usage: token create <name> <owner> [viewer|agent|member|release] | token list | token revoke <id> | user create <username> [admin] | user reset <username> | user list | backup [dir] [keep]");
       process.exitCode = 1;
     }
   } catch (err) {

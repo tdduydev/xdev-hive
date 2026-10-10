@@ -11,6 +11,7 @@ import { buildInfo, repoVersion } from "#web/build-info.ts";
 import { HubInfoSource } from "#web/hubinfo.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 describe("buildInfo", () => {
   it("reads the image's version, date and commit", () => {
@@ -42,7 +43,7 @@ async function serve(build?: HubBuild) {
   hive.seed("hub", { hub: true });
   const tokens = new TokenStore(hive.db);
   const users = new UserStore(hive.db);
-  const admin = tokens.create("duy", "admin").token;
+  const admin = adminSession(users, "duy");
   const hub = new HubInfoSource({ hive, dbPath, users, commit: build?.commit, buildVersion: build?.buildVersion, buildDate: build?.buildDate });
   const app = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1"], hub, build });
   const server = app.listen(0, "127.0.0.1");
@@ -70,7 +71,7 @@ describe("the hub's build on /api/health and the Hub page", () => {
       assert.deepEqual(((await res.json()) as { result: unknown }).result, { ok: true, ...build });
       const info = await fetch(`${s.base}/api/rpc`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${s.admin}` },
+        headers: { "content-type": "application/json", ...authHeaders(s.admin) },
         body: JSON.stringify({ method: "hub.info" }),
       });
       const result = ((await info.json()) as { result: { commit: string; buildVersion: string; buildDate: string } }).result;

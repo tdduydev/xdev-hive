@@ -122,6 +122,8 @@ export function sharedPermissions(access: Access): Set<Permission> {
 /** What an actor may do in a project (owner) or in the shared data (owner null); null = cannot see it. */
 export function permissionsOn(actor: Actor, owner: string | null): Set<Permission> | null {
   const cap = ROLE_CAP[actor.role];
+  // A hub admin's own token (spec 79a): a member for the hub, its owner's reach on the projects.
+  if (!actor.access && actor.allProjects && actor.role === "member" && !actor.runCredential && !actor.mcpCredential) return new Set(PERMISSIONS);
   if (!actor.access) return new Set(actor.runCredential || actor.mcpCredential || (actor.tokenId && (actor.role === "agent" || actor.role === "viewer")) ? cap : ROLE_DEFAULT[actor.role]);
   const granted = owner === null ? sharedPermissions(actor.access) : grantPermissions(actor.access.projects[owner]);
   if (!granted.has("view")) return null;

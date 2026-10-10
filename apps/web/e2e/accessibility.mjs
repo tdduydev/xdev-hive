@@ -207,7 +207,9 @@ async function clickPoint(tab, { x, y }) {
 
 export async function dataTableAccessibility({ tab, mobile, expect }) {
   // Enough local fixtures to exercise pagination, selection and the empty table independently.
-  const headers = { "content-type": "application/json", authorization: `Bearer ${JSON.parse(process.env.HIVE_E2E_SEED).admin}` };
+  const { admin } = JSON.parse(process.env.HIVE_E2E_SEED);
+  // The admin's page session since spec 79a.
+  const headers = { "content-type": "application/json", ...(admin.startsWith("hive_session=") ? { cookie: admin, "x-hive-csrf": "1" } : { authorization: `Bearer ${admin}` }) };
   for (let i = 0; i < 27; i++) {
     const response = await fetch(`${process.env.HIVE_E2E_BASE}/api/rpc`, { method: "POST", headers: { ...headers, "x-hive-agent": `runner.a11y-table-${i}` }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: `a11y-table-${String(i).padStart(2, "0")}`, instance: `a110${String(i).padStart(4, "0")}`, version: "0.142.0", projects: ["payment"] } }) });
     expect(response.ok && !(await response.json()).error, "could not seed local machine fixture");

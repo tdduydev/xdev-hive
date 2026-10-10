@@ -256,7 +256,7 @@ The hub reads `HIVE_*` environment variables. With Docker Compose, put them in t
 | `HIVE_PUBLIC_URL` | `https://` + first allowed host | Base URL used in webhook links and the OIDC redirect URI |
 | `HIVE_SETUP` | – (`1` in `compose.yaml`) | With no accounts yet, show the setup page and log a setup code |
 | `HIVE_ADMIN_USER` | `admin` | First admin account, created with a temporary password when setup mode is off |
-| `HIVE_BOOTSTRAP_TOKEN` | – | Fixed admin token for automated deployments (at least 32 characters) |
+| `HIVE_BOOTSTRAP_TOKEN` | – | Fixed token for automated deployments (at least 32 characters). It belongs to no account, so it acts as a member: it can seed projects but cannot administer (spec 79a) |
 | `HIVE_TRUST_PROXY` | off | `1` behind a TLS proxy: `Secure` cookies, client address from `X-Forwarded-For` |
 | `HIVE_MEMORY_APPROVAL` | on | `off` makes agent-written memory visible without approval |
 | `HIVE_MEMORY_STALE_DAYS` | `90` | Memory unused for this many days is left out of agent searches (`0` = never) |

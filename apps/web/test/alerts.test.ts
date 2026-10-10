@@ -11,6 +11,7 @@ import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
 import { WebhookStore } from "#web/webhooks.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -198,14 +199,15 @@ describe("hub alerts", () => {
   it("answers hub admins only", async () => {
     const hive = new SqliteHive(":memory:");
     const tokens = new TokenStore(hive.db);
-    const admin = tokens.create("duy", "admin").token;
+    const users = new UserStore(hive.db);
+    const admin = adminSession(users, "duy");
     const agent = tokens.create("duy-mbp", "agent").token;
-    const app = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1"], alerts: new AlertStore(hive) });
+    const app = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1"], alerts: new AlertStore(hive) });
     const server = app.listen(0, "127.0.0.1");
     await new Promise((r) => server.once("listening", r));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const rpc = async (token: string, method: string, input?: unknown) =>
-      (await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ method, input }) })).status;
+      (await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ method, input }) })).status;
     try {
       assert.equal(await rpc(admin, "alerts.list"), 200);
       assert.equal(await rpc(admin, "alerts.feed", { limit: 10 }), 200);

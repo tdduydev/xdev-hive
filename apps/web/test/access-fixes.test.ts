@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import type { Request, RequestHandler, Response } from "express";
-import { toolHash, worktreeCleanupSchema, type Actor } from "@xdev-hive/core";
+import { METHOD_ROLES, toolHash, worktreeCleanupSchema, type Actor, type Method } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { createHubApp } from "#web/app.ts";
+import { createHubApp, WEB_RPC } from "#web/app.ts";
 import type { ChatGrants } from "#web/grants.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 // Runs the real Bearer auth and RPC handlers in-process (no socket), as token-security.test.ts does.
 function harness(opts: { chatGrant?: { role: Actor["role"]; replyId: number } } = {}) {
@@ -18,7 +19,7 @@ function harness(opts: { chatGrant?: { role: Actor["role"]; replyId: number } } 
   const router = (app as unknown as { router: { stack: Array<{ route?: { path: string; stack: Array<{ handle: RequestHandler }> } }> } }).router;
   const route = router.stack.find((layer) => layer.route?.path === "/api/rpc")!.route!;
   const rpc = async (credential: string, method: string, input: unknown = {}, headers: Record<string, string> = {}) => {
-    const req = { method: "POST", path: "/api/rpc", body: { method, input }, get: (key: string) => (key === "authorization" ? `Bearer ${credential}` : headers[key]) };
+    const req = { method: "POST", path: "/api/rpc", body: { method, input }, get: (key: string) => ({ ...authHeaders(credential), ...headers })[key] };
     let status = 200, body: any, authenticated = false;
     const res = { locals: {}, status: (n: number) => { status = n; return res; }, json: (v: unknown) => { body = v; return res; } };
     route.stack[0]!.handle(req as unknown as Request, res as unknown as Response, () => { authenticated = true; });
@@ -135,7 +136,10 @@ it("P0-4: web-only RPCs are default-deny, hub-admin gated, and changes are audit
     for (const method of ["releases.notes", "alerts.ack", "webhooks.test", "automation.save", "users.create", "hub.cleanup"]) {
       assert.equal((await rpc(member, method, {})).status, 403, method);
     }
-    const root = tokens.create("root", "admin", null).token;
+    // Spec 79a: the admin is a person signed in on the page; an ownerless admin token is no longer one.
+    const legacy = tokens.create("legacy-root", "admin", null).token;
+    assert.equal((await rpc(legacy, "users.create", { username: "kim" })).status, 403);
+    const root = adminSession(users, "root");
     assert.equal((await rpc(root, "users.create", { username: "kim" })).status, 200);
     assert.equal(auditOf("users.create"), 1);
     assert.equal((await rpc(root, "tokens.create", { name: "ci", role: "agent" })).status, 200);
@@ -144,5 +148,92 @@ it("P0-4: web-only RPCs are default-deny, hub-admin gated, and changes are audit
     assert.equal(auditOf("alerts.ack"), 0);
     assert.equal((await rpc(root, "releases.notes", {})).status, 400);
     assert.equal(auditOf("releases.notes"), 0);
+  } finally { hive.close(); }
+});
+
+/**
+ * Spec 79a: only a person's session on the hub's page passes the hubAdmin gate or calls a method that needs the admin
+ * role. Every credential kind of an admin account is refused there, whatever headers its client sends.
+ */
+it("79a: actor x method matrix, only a person's web session administers", async () => {
+  const { hive, tokens, users, rpc } = harness();
+  try {
+    const admin = users.create({ username: "duy", admin: true, password: "Correct-horse-79a!", mustChange: false }).user;
+    await hive.call("tasks.create", { id: "app-1", project: "app", title: "t" }, { name: "duy", role: "admin" });
+    const session = adminSession(users, "duy");
+    // A desktop sign-in's token as it is made now, and one from before 79a (stored as admin).
+    const machine = tokens.create("duy-mbp", "member", admin.id, { machine: true });
+    const oldMachine = tokens.create("duy-old", "admin", admin.id);
+    const personal = tokens.create("duy-ci", "member", admin.id).token;
+    const personalAgent = tokens.create("duy-agent", "agent", admin.id).token;
+    const ownerless = tokens.create("root", "admin", null).token;
+    const release = tokens.create("duy-release", "viewer", admin.id, { releaseUpload: true }).token;
+    const mcp = tokens.issueMcp(machine.token, null, false);
+    hive.db.prepare("INSERT INTO machines(id, machine, instance, last_seen, owner, token_id) VALUES ('runner.mbp@duy-mbp', 'mbp', 'aaaaaaaa', ?, 'duy', ?)")
+      .run(new Date().toISOString(), machine.info.id);
+    const run = tokens.issueRun(machine.token, { machine: "mbp", project: "app", task: "app-1", run: "R-79a", minutes: 30, readOnly: false });
+
+    const hubAdminRpcs = Object.entries(WEB_RPC).filter(([, level]) => level === "hubAdmin").map(([m]) => m);
+    const adminMethods = (Object.entries(METHOD_ROLES) as Array<[Method, string]>).filter(([, role]) => role === "admin").map(([m]) => m);
+    const gated = [...hubAdminRpcs, ...adminMethods];
+    assert.ok(hubAdminRpcs.includes("users.create") && hubAdminRpcs.includes("releases.setRollout") && adminMethods.includes("projects.delete"), "the matrix covers both gates");
+
+    const refused: Array<[string, string, Record<string, string>?]> = [
+      ["admin machine token", machine.token],
+      ["admin machine token from before 79a", oldMachine.token],
+      ["admin machine token claiming to be the web page", machine.token, { "x-hive-source": JSON.stringify({ via: "web" }) }],
+      ["admin machine token claiming to be the desktop window", machine.token, { "x-hive-source": JSON.stringify({ via: "desktop" }), "x-hive-agent": "desktop" }],
+      ["admin personal member token", personal],
+      ["admin personal agent token", personalAgent],
+      ["admin MCP credential", mcp],
+      ["admin run credential", run],
+      ["ownerless token (CLI, bootstrap)", ownerless],
+      ["admin release token", release],
+    ];
+    for (const [who, credential, headers] of refused) {
+      for (const method of gated) {
+        const r = await rpc(credential, method, {}, headers);
+        assert.equal(r.status, 403, `${who}: ${method} answered ${r.status} ${JSON.stringify(r.body)}`);
+      }
+    }
+    // The person's session passes both gates (the handler may then want more input or a service the test hub lacks).
+    for (const method of gated) assert.notEqual((await rpc(session, method, {})).status, 403, `session: ${method}`);
+    assert.equal((await rpc(session, "users.list")).status, 200);
+
+    // What machines still do with their token: report, take work, and the admin's own reach on the projects.
+    assert.equal((await rpc(machine.token, "machines.heartbeat", { machine: "mbp", instance: "aaaaaaaa", projects: ["app"], acceptsRuns: true }, { "x-hive-agent": "runner.mbp" })).status, 200);
+    assert.equal((await rpc(machine.token, "tasks.create", { id: "app-2", project: "app", title: "from the desktop window" })).status, 200);
+    assert.equal((await rpc(oldMachine.token, "tasks.create", { id: "app-3", project: "app", title: "old sign-in" })).status, 200);
+    // A member token made for a script keeps 76 P0-3: cut to its role.
+    assert.equal((await rpc(personal, "tasks.create", { id: "app-4", project: "app", title: "script" })).status, 403);
+    // The desktop's notifications: a machine token of an admin lists open alerts (no alert store here: past the gate).
+    assert.notEqual((await rpc(machine.token, "alerts.list")).status, 403);
+    for (const credential of [mcp, run, ownerless, release]) assert.equal((await rpc(credential, "alerts.list")).status, 403);
+    // release.mjs: a release token reaches releases.list and releases.notes, nothing else.
+    for (const method of ["releases.list", "releases.notes"]) {
+      assert.notEqual((await rpc(release, method)).status, 403, method);
+      assert.equal((await rpc(machine.token, method)).status, 403, method);
+    }
+    // A release token whose owner is no admin any more is a plain viewer.
+    users.create({ username: "second-admin", admin: true });
+    users.update(admin.id, { admin: false, hubRole: "member" });
+    assert.equal((await rpc(release, "releases.list")).status, 403);
+    assert.equal((await rpc(machine.token, "alerts.list")).status, 403);
+    users.update(admin.id, { admin: true, hubRole: "admin" });
+    // Demoting ended the person's sessions: sign in again.
+    const again = adminSession(users, "duy");
+
+    // The ownerless token acts as a member: it reads in its role, never makes a token or sees the admin's token list.
+    assert.equal((await rpc(ownerless, "docs.list")).status, 200);
+    assert.equal((await rpc(ownerless, "tokens.list")).status, 403);
+    assert.equal((await rpc(ownerless, "tokens.create", { name: "child", role: "agent" })).status, 403);
+    // No token is made admin any more, not even by the admin's session; a release token only by that session.
+    assert.equal((await rpc(again, "tokens.create", { name: "x", role: "admin" })).status, 403);
+    assert.equal((await rpc(personal, "tokens.create", { name: "y", releaseUpload: true })).status, 403);
+    const made = await rpc(again, "tokens.create", { name: "rel-2", releaseUpload: true });
+    assert.equal(made.status, 200);
+    assert.equal(made.body.result.info.releaseUpload, true);
+    assert.equal(made.body.result.info.role, "viewer");
+    assert.equal(made.body.result.info.ownerId, admin.id);
   } finally { hive.close(); }
 });

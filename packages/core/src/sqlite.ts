@@ -2355,6 +2355,14 @@ export class SqliteHive implements HiveBackend {
     return actor.role === "admin" && !actor.access;
   }
 
+  /** Whether a chat message sits in the thread of the reply the actor's chat token was issued for. */
+  #sameThreadAsReply(actor: Actor, messageId: unknown): boolean {
+    if (actor.chatReply === undefined || messageId == null) return false;
+    const row = this.db.prepare(`SELECT 1 FROM chat_messages m JOIN chat_messages r ON r.thread_id = m.thread_id
+      WHERE m.id = ? AND r.id = ?`).get(Number(messageId), actor.chatReply);
+    return !!row;
+  }
+
   /** The thread a reply belongs to, or a chat action: HUB_SCOPE for the hub-wide one. */
   #threadProjectOfReply(replyId: number): string | null {
     const row = this.db.prepare("SELECT t.project FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE m.id = ?").get(replyId) as Row | undefined;
@@ -3262,7 +3270,9 @@ export class SqliteHive implements HiveBackend {
   chatFile(id: number, actor: Actor): (ChatFile & { bytes: Uint8Array }) | null {
     const row = this.db.prepare("SELECT * FROM chat_files WHERE id = ?").get(id) as Row | undefined;
     if (!row || !sees(actor, str(row.project))) return null;
-    if (str(row.project) === HUB_SCOPE && !this.#isHubAdmin(actor)) return null;
+    // The hub-wide leader is no hub admin (its reply token is a member's at most since spec 79a): it reads the files of
+    // its own thread only, through that reply's token.
+    if (str(row.project) === HUB_SCOPE && !this.#isHubAdmin(actor) && !this.#sameThreadAsReply(actor, row.message_id)) return null;
     if (row.message_id == null && str(row.uploaded_by) !== actor.name) return null;
     return { ...toChatFile(row), bytes: row.data as Uint8Array };
   }

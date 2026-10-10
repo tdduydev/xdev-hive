@@ -11,6 +11,7 @@ import { createHubApp } from "#web/app.ts";
 import { bucket, ReleaseStore } from "#web/releases.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -22,16 +23,21 @@ function testTmpDir(prefix: string): string {
 let base = "";
 let close: () => void;
 let store: ReleaseStore;
-const tok = { admin: "", machine: "" };
+const tok = { admin: "", machine: "", release: "", adminMachine: "" };
 
 before(async () => {
   const hive = new SqliteHive(":memory:");
   hive.seed();
   const tokens = new TokenStore(hive.db);
-  tok.admin = tokens.create("duy", "admin").token;
+  const users = new UserStore(hive.db);
+  tok.admin = adminSession(users, "duy");
   tok.machine = tokens.create("duy-mbp", "agent").token;
+  // Spec 79a: what release.mjs uses now, and the admin's own desktop token, which no longer uploads.
+  const duy = users.byUsername("duy")!;
+  tok.release = tokens.create("duy-release", "viewer", duy.id, { releaseUpload: true }).token;
+  tok.adminMachine = tokens.create("duy-laptop", "member", duy.id, { machine: true }).token;
   store = new ReleaseStore(hive.db, path.join(testTmpDir(path.join(os.tmpdir(), "hive-releases-")), "releases"));
-  const app = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1"], releases: store });
+  const app = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1"], releases: store });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -43,14 +49,14 @@ const baseUrl = () => base;
 async function rpc(token: string, method: string, input?: unknown, agent = "runner.duy-mbp") {
   const res = await fetch(`${base}/api/rpc`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": agent },
+    headers: { "content-type": "application/json", ...authHeaders(token), "x-hive-agent": agent },
     body: JSON.stringify({ method, input }),
   });
   return { status: res.status, body: (await res.json()) as { result?: any; error?: { code: string; key?: string } } };
 }
 
 const upload = (token: string, q: Record<string, string>, body: Uint8Array) =>
-  fetch(`${base}/api/releases/upload?${new URLSearchParams(q)}`, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/octet-stream" }, body });
+  fetch(`${base}/api/releases/upload?${new URLSearchParams(q)}`, { method: "POST", headers: { ...authHeaders(token), "content-type": "application/octet-stream" }, body });
 
 const beat = (version: string, update: unknown = null) =>
   rpc(tok.machine, "machines.heartbeat", { machine: "duy-mbp", instance: "abcdef0123", version, runs: [], platform: "mac", arch: "arm64", update });
@@ -87,7 +93,7 @@ describe("app releases", () => {
     assert.equal((await beat("0.80.0")).body.result.update, null, "a machine on the target is offered nothing");
 
     // The machine downloads with its own token.
-    const dl = await fetch(`${base}${offer.url}`, { headers: { authorization: `Bearer ${tok.machine}` } });
+    const dl = await fetch(`${base}${offer.url}`, { headers: { ...authHeaders(tok.machine) } });
     assert.equal(dl.status, 200);
     assert.deepEqual(new Uint8Array(await dl.arrayBuffer()), bytes);
     assert.equal(dl.headers.get("x-hive-sha256"), file.sha256);
@@ -118,7 +124,7 @@ describe("app releases", () => {
     for (const i of [0, 1]) assert.equal((await part(i)).status, 200);
     const done = ((await (await part(2)).json()) as { result: { size: number; sha256: string } }).result;
     assert.deepEqual([done.size, done.sha256], [whole.length, sha256]);
-    const dl = await fetch(`${baseUrl()}/api/releases/files/${(done as unknown as { id: number }).id}`, { headers: { authorization: `Bearer ${tok.machine}` } });
+    const dl = await fetch(`${baseUrl()}/api/releases/files/${(done as unknown as { id: number }).id}`, { headers: { ...authHeaders(tok.machine) } });
     assert.deepEqual(new Uint8Array(await dl.arrayBuffer()), whole);
 
     const wrong = { ...base, upload: "ffeeddccbbaa9988", parts: "1", sha256: "0".repeat(64) };
@@ -144,6 +150,19 @@ describe("app releases", () => {
     const res = await rpc(tok.admin, "runs.dispatch", { machineId: m!.id, project: "demo", taskId: "T-1", role: "implement", profileId: null, reviewAfter: false, candidates: 1, instructions: "" });
     assert.equal(res.body.error?.key, "errors.machineTooOld");
     await rpc(tok.admin, "releases.setRollout", { minVersion: null });
+  });
+  it("takes a build and its notes from a release token, as release.mjs sends them, and nothing else (79a)", async () => {
+    const bytes = new TextEncoder().encode("zip bytes of 0.70.0");
+    const q = { version: "0.70.0", channel: "stable", platform: "mac", arch: "arm64", kind: "zip", name: "xdev-hive-0.70.0-mac-arm64.zip" };
+    const listed = await rpc(tok.release, "releases.list", {}, "");
+    assert.equal(listed.status, 200);
+    assert.ok(listed.body.result.uploadPart > 0);
+    assert.equal(listed.body.result.machines, undefined, "a release token does not see the machines");
+    assert.equal((await upload(tok.release, q, bytes)).status, 200);
+    assert.equal((await rpc(tok.release, "releases.notes", { version: "0.70.0", notes: "Bản thử" }, "")).status, 200);
+    assert.equal((await rpc(tok.release, "releases.setRollout", { target: "0.70.0" }, "")).status, 403, "picking the target stays the admin's");
+    assert.equal((await upload(tok.adminMachine, { ...q, name: "xdev-hive-0.70.0-mac-x64.zip", arch: "x64" }, bytes)).status, 403, "an admin's machine token no longer uploads");
+    assert.equal((await rpc(tok.adminMachine, "releases.list", {}, "")).status, 403);
   });
 });
 

@@ -6,6 +6,7 @@ import { SqliteHive, migrationIndex } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 function setup(legacy = false, unowned = false) {
   let hive = new SqliteHive(":memory:", legacy ? { migrateTo: migrationIndex("ALTER TABLE machines ADD COLUMN token_id") } : {});
@@ -19,7 +20,7 @@ function setup(legacy = false, unowned = false) {
   const attacker = tokens.create("device", "agent", other.id);
   const human = tokens.create("owner-human", "member", owner.id);
   const stranger = tokens.create("other-human", "member", other.id);
-  const admin = tokens.create("hub-admin", "admin");
+  const admin = { token: adminSession(users, "hub-admin") };
   const machineId = "runner.test@device";
   const now = new Date().toISOString();
   if (legacy) {
@@ -33,7 +34,7 @@ function setup(legacy = false, unowned = false) {
   const routes = (app as unknown as { router: { stack: Array<{ route?: { path: string; methods: Record<string, boolean>; stack: Array<{ handle: RequestHandler }> } }> } }).router.stack;
   const invoke = async (credential: string, path: string, body: unknown, label = "runner.test", verb = "post", extraHeaders = {}) => {
     const route = routes.find((layer) => layer.route?.path === path && layer.route.methods[verb])!.route!;
-    const headers: Record<string, string> = { authorization: `Bearer ${credential}`, "x-hive-agent": label, ...extraHeaders };
+    const headers: Record<string, string> = { ...authHeaders(credential), "x-hive-agent": label, ...extraHeaders };
     const req = { method: verb.toUpperCase(), path, body, get: (key: string) => headers[key] };
     let status = 200, answer: any, authenticated = false;
     const res = { locals: {} as { actor?: Actor }, status: (code: number) => { status = code; return res; }, json: (value: unknown) => { answer = value; return res; } };
