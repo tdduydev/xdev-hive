@@ -10,7 +10,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import { compareVersions, HiveError, type InstallWhen, type UpdateOffer, type UpdateReport } from "@xdev-hive/core";
-import { markStartHidden, START_HIDDEN } from "#desktop/main/applog.ts";
+import { markRelaunchWindow, RELAUNCH_WINDOW, type WindowState } from "#desktop/main/window-state.ts";
 import { extractedInstallScript, extractLinuxUpdate, linuxLayout, linuxUpdateService, updateCommand, type DebInstall, type UpdateCommand } from "#desktop/main/linux-update.ts";
 
 const run = promisify(execFile);
@@ -216,7 +216,7 @@ export class Updater {
    * apt/dpkg must own system files; the desktop never replaces them as the current user. restart: the package is in,
    * so the caller relaunches into it. A dismissed password dialog leaves the download ready for another try.
    */
-  async #installDeb(file: string, relaunch: boolean): Promise<{ restart: boolean }> {
+  async #installDeb(file: string, relaunch: boolean, window?: WindowState): Promise<{ restart: boolean }> {
     const fail = (err: unknown): never => {
       this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
       this.#log(`deb install failed: ${this.#state.error}`);
@@ -235,6 +235,7 @@ export class Updater {
         // Not app.relaunch(): the quit path ends the process with reallyExit once cleanup is done (Electron's own
         // teardown can hang), which would skip Electron's relauncher. A helper outlives this process instead.
         if (relaunch) {
+          if (window) markRelaunchWindow(path.dirname(file), window);
           await this.#startHelper("/bin/sh", ["-c", 'while kill -0 "$PID" 2>/dev/null; do sleep 0.3; done; exec "$APP"'], {
             detached: true, stdio: "ignore", env: { ...process.env, PID: String(process.pid), APP: this.#host.execPath },
           }).catch((err) => this.#log(`relaunch helper failed: ${String(err)}`));
@@ -267,22 +268,23 @@ export class Updater {
   /**
    * Prepares the swap and starts the helper that performs it once this process has exited. The caller quits the app
    * right after. relaunch: the helper starts the new build (a restart always; an install at quit when
-   * relaunchAfterQuitInstall says so). hidden: that start stays in the tray, through the start-hidden marker.
+   * relaunchAfterQuitInstall says so). window: how the window was, which that start repeats (shown where it was, or
+   * in the tray), through a marker beside the downloads; without it the start is an ordinary one.
    */
-  async install({ relaunch, hidden = false, beforeHelper }: { relaunch: boolean; hidden?: boolean; beforeHelper?: () => void }): Promise<{ restart: boolean }> {
+  async install({ relaunch, window, beforeHelper }: { relaunch: boolean; window?: WindowState; beforeHelper?: () => void }): Promise<{ restart: boolean }> {
     const file = this.#file;
     if (this.#state.state !== "ready" || !file || !existsSync(file)) {
       this.#log(`install skipped: nothing ready (state ${this.#state.state})`);
       throw new HiveError("conflict", "No update is ready to install.", { key: "errors.updateNotReady" });
     }
-    if (this.updateKind === "deb") return this.#installDeb(file, relaunch);
-    this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && hidden ? ", hidden" : ""})`);
+    if (this.updateKind === "deb") return this.#installDeb(file, relaunch, window);
+    this.#log(`install ${this.#state.version} (relaunch ${relaunch}${relaunch && window ? `, window ${window.visible ? "shown" : "hidden"}` : ""})`);
     this.#set({ state: "installing" });
     try {
       const dir = path.dirname(file);
       const pid = String(process.pid);
       rmSync(path.join(dir, "install-error"), { force: true });
-      if (relaunch && hidden) markStartHidden(dir);
+      if (relaunch && window) markRelaunchWindow(dir, window);
       if (this.#host.platform === "darwin") {
         // …/xDev Hive.app/Contents/MacOS/xDev Hive → …/xDev Hive.app
         const app = path.resolve(this.#host.execPath, "..", "..", "..");
@@ -363,7 +365,7 @@ export class Updater {
       return { restart: true };
     } catch (err) {
       // Nothing will start the new build, so the marker must not hide the window of the next start by hand.
-      rmSync(path.join(path.dirname(file), START_HIDDEN), { force: true });
+      rmSync(path.join(path.dirname(file), RELAUNCH_WINDOW), { force: true });
       this.#set({ state: "failed", error: (err instanceof Error ? err.message : String(err)).slice(0, 300) });
       this.#log(`install failed: ${this.#state.error}`);
       throw new HiveError("bad_request", `Could not install the update: ${this.#state.error}`, { key: "errors.updateInstall", vars: { reason: this.#state.error ?? "" } });

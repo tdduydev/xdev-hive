@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { execFileCli } from "#desktop/main/spawn-cli.ts";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -6,7 +6,7 @@ import { machineStats } from "./machine-stats.ts";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { trustedRendererUrl } from "#desktop/main/ipc-trust.ts";
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, protocol, shell, Tray, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, net, Notification, powerMonitor, protocol, screen, shell, Tray, type IpcMainInvokeEvent } from "electron";
 import {
   agentActorName,
   AGENT_TEMPLATES,
@@ -101,7 +101,9 @@ import { addRepos, planLocalImport } from "./local-import.ts";
 import { applyProjectCommand, type ProjectCommandDeps } from "#desktop/main/machine-projects.ts";
 import { appendCrashLog, crashLogPath, ReloadGuard, rendererGoneText, type RendererMemorySample } from "./crashlog.ts";
 import { readDesktopConfig } from "./config-read.ts";
-import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, takeStartHidden } from "./applog.ts";
+import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall } from "./applog.ts";
+import { fitBounds, takeRelaunchWindow, type WindowState } from "./window-state.ts";
+import { envForSession, parseSecondInstanceData, secondInstanceAction, selfCommand, sessionEnv, SWITCH_WHEN_IDLE, waitHandoff, writeHandoff, type SecondInstanceData, type SessionEnv } from "./session.ts";
 import { pendingProposalCount } from "#desktop/main/tray-count.ts";
 import { mainLocale, setMainLocale, tr } from "./i18n.ts";
 import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
@@ -204,10 +206,14 @@ let alertHub = "";
 // Electron's network stack: honours system proxy settings and the macOS keychain's certificates.
 const gitlabFetch = (url: string, init: RequestInit) => net.fetch(url, init);
 let quitting = false;
-// Started by the computer at sign-in ("Mở cùng máy" on Windows), or again by the updater after an install at quit
-// (takeStartHidden, read once this instance holds the lock): the window waits in the tray until asked for.
+// Started by the computer at sign-in ("Mở cùng máy" on Windows), or again by the updater with the window hidden before
+// the install (takeRelaunchWindow, read once this instance holds the lock): the window waits in the tray until asked for.
 let startHidden = process.argv.includes("--hidden");
 let lastWindowHash = "";
+/** Where and how the window was before the updater restarted the app: the first window made takes it. */
+let restoredWindow: WindowState | null = null;
+/** Another login session asked to have the app once its runs are done (session.ts, "queue"). */
+let pendingSession: SessionEnv | null = null;
 // OOM every ~315 seconds evades a five-minute rolling limit. Keep a budget across windows for this app session.
 const rendererReloads = new ReloadGuard(3, 5 * 60_000, 3);
 // A screenshot run logs into its own temp profile: its starts and quits are not the real app's.
@@ -1290,15 +1296,18 @@ function onUpdateChange(status: UpdateStatus): void {
   n.show();
 }
 
-/** Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app. */
-async function installAndRestart(hidden = false): Promise<void> {
+/**
+ * Restarts into the downloaded build: the runner stops its agents first (before-quit), then the helper swaps the app.
+ * The new build opens its window as this one has it now, whichever installWhen started it (BUG-update-hidden-window).
+ */
+async function installAndRestart(): Promise<void> {
   if (quitting || installingUpdate) return;
   if (updater.updateKind === "deb") {
     installingUpdate = true;
     // No new run starts while apt replaces the app's files under it; a cancelled prompt lets them start again.
     runner.drainForUpdate(true);
     try {
-      const { restart } = await updater.install({ relaunch: true });
+      const { restart } = await updater.install({ relaunch: true, window: windowState() });
       if (!restart) {
         runner.drainForUpdate(false);
         return;
@@ -1317,7 +1326,7 @@ async function installAndRestart(hidden = false): Promise<void> {
   installingUpdate = true;
   runner.drainForUpdate(true);
   try {
-    await updater.install({ relaunch: true, hidden, beforeHelper: () => {
+    await updater.install({ relaunch: true, window: windowState(), beforeHelper: () => {
       if (quitting) throw new Error("App is already quitting; update deferred.");
     } });
     quitReasons.mark("update", "restart into the new build");
@@ -1786,10 +1795,30 @@ function registerIpc(): void {
   handle("desktop:chatUpload", chatUpload);
 }
 
+/** How the window is now, for the build the updater starts next (window-state.ts). */
+function windowState(): WindowState {
+  const window = win && !win.isDestroyed() ? win : null;
+  if (!window) return { visible: false, ...(lastWindowHash ? { hash: lastWindowHash } : {}) };
+  const url = window.webContents.getURL();
+  const hash = url ? new URL(url).hash.slice(1) : lastWindowHash;
+  return {
+    visible: window.isVisible() || window.isMinimized(),
+    bounds: window.getNormalBounds(),
+    ...(window.isMaximized() ? { maximized: true } : {}),
+    ...(window.isMinimized() ? { minimized: true } : {}),
+    ...(hash ? { hash } : {}),
+  };
+}
+
 function createWindow(): void {
+  const restored = restoredWindow;
+  restoredWindow = null;
+  // A screen unplugged or a smaller remote desktop since: the default size, centred, rather than out of reach.
+  const bounds = smokeSize ? undefined : fitBounds(restored?.bounds, screen.getAllDisplays().map((d) => d.workArea));
   const window = new BrowserWindow({
-    width: smokeSize ? Number(smokeSize[1]) : 1240,
-    height: smokeSize ? Number(smokeSize[2]) : 820,
+    width: smokeSize ? Number(smokeSize[1]) : (bounds?.width ?? 1240),
+    height: smokeSize ? Number(smokeSize[2]) : (bounds?.height ?? 820),
+    ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
     // The asked-for size is what the page gets, frame and title bar apart: the shot proves that width.
     ...(smokeSize ? { useContentSize: true } : {}),
     minWidth: smokeSize ? Math.min(820, Number(smokeSize[1])) : 820,
@@ -1837,7 +1866,11 @@ function createWindow(): void {
   window.once("ready-to-show", () => {
     // macOS can defer painting a hidden fixture; an inactive window makes capturePage reliable.
     if (smokeShot) window.showInactive();
-    else if (!startHidden) window.show();
+    else if (!startHidden) {
+      if (restored?.maximized) window.maximize();
+      window.show();
+      if (restored?.minimized) window.minimize();
+    }
   });
   // A renderer that died (out of memory, a GPU crash) or a page that failed to load leaves the window blank: say so in
   // the log and load it again.
@@ -2018,6 +2051,91 @@ function showPage(hash: string): void {
   showWindow();
 }
 
+/** What would be cut short by quitting now (an idle update waits for it, and so does a move to another session). */
+function machineWork(): { busy: boolean; deadline: number } {
+  const work = runner.updateWork();
+  // An open remote terminal holds its checkout and a person at it: wait for it, at most its absolute TTL.
+  const terminal = remoteTerminal?.busy ?? false;
+  // A gate job is never cut short by an update: wait for it, at most the longest timeout a template may have.
+  const gate = gateExecutor?.busy ?? false;
+  return {
+    busy: work.busy || merging.size > 0 || terminal || gate,
+    deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0, terminal ? Date.now() + TERMINAL_LIMITS.absoluteTtlMs : 0, gate ? Date.now() + 130 * 60_000 : 0),
+  };
+}
+
+const handoffDir = () => path.join(path.dirname(configPath()), "handoff");
+
+/** The app was opened again: show the window, or move to the login session it was opened in (session.ts). */
+function onSecondInstance(data: unknown): void {
+  const theirs = parseSecondInstanceData(data);
+  // Before the runner is up nothing can be cut short, but the window is not ready to move either: show it as before.
+  const action = runner ? secondInstanceAction({ platform: process.platform, mine: sessionEnv(process.env), theirs, busy: machineWork().busy }) : "show";
+  const runs = runner ? runner.store.active().filter((r) => r.status === "running").length : 0;
+  if (theirs && process.platform === "linux") {
+    try {
+      writeHandoff(handoffDir(), theirs.pid, { action, runs, locale: mainLocale(), at: Date.now() });
+    } catch (err) {
+      mainLog.write(`session: could not answer pid ${theirs.pid}: ${toErrorPayload(err).message}`);
+    }
+  }
+  if (action !== "show") mainLog.write(`session: opened in another session (${theirs?.session.DISPLAY ?? ""} ${theirs?.session.WAYLAND_DISPLAY ?? ""} id ${theirs?.session.XDG_SESSION_ID ?? "?"}): ${action}, ${runs} running`);
+  if (action === "show") showWindow();
+  else if (action === "move") moveToSession(theirs!.session);
+  else if (action === "queue") {
+    pendingSession = theirs!.session;
+    // No new run starts here, so the runs going now are the last ones to wait for; queued runs wait for the new start.
+    runner.drainForUpdate(true);
+  }
+}
+
+/**
+ * Quits and starts again in the other session. A helper waits for this process to be gone (the lock goes with it)
+ * and starts the app with that session's display, bus and auth; the window opens there as an ordinary start.
+ */
+function moveToSession(target: SessionEnv): void {
+  if (quitting) return;
+  pendingSession = null;
+  const { file, args } = selfCommand(process.execPath, process.argv, process.env);
+  try {
+    const child = spawn("/bin/sh", ["-c", 'while kill -0 "$HIVE_OLD_PID" 2>/dev/null; do sleep 0.3; done; exec "$@"', "sh", file, ...args], {
+      detached: true, stdio: "ignore", env: { ...envForSession(process.env, target), HIVE_OLD_PID: String(process.pid) },
+    });
+    child.unref();
+  } catch (err) {
+    mainLog.write(`session: could not start the helper: ${toErrorPayload(err).message}`);
+    runner.drainForUpdate(updateDraining);
+    return;
+  }
+  quitReasons.mark("session", `to ${target.DISPLAY ?? target.WAYLAND_DISPLAY ?? "?"}`);
+  app.quit();
+}
+
+/**
+ * This start lost the lock. The first instance answers through a file: it showed its window, it moves here, or it
+ * still has runs, which this session hears about (the person sees nothing of the other session) with the choice to
+ * have the app move once they are done.
+ */
+async function followFirstInstance(): Promise<void> {
+  const reply = await waitHandoff(handoffDir(), process.pid);
+  if (reply?.action !== "busy") return;
+  setMainLocale(reply.locale);
+  const { response } = await dialog.showMessageBox({
+    type: "info",
+    title: "xDev Hive",
+    message: tr("desktop.otherSessionTitle"),
+    detail: tr("desktop.otherSessionBody", { count: reply.runs }),
+    buttons: [tr("desktop.otherSessionSwitch"), tr("desktop.otherSessionClose")],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  if (response !== 0) return;
+  // Asked again with the flag: the first instance queues the move. A detached start, as this one exits right away.
+  const { file, args } = selfCommand(process.execPath, process.argv, process.env);
+  spawn(file, [...args, SWITCH_WHEN_IDLE], { detached: true, stdio: "ignore" }).unref();
+}
+
 let lastPending = 0;
 let trayRefreshPending = false;
 async function refreshTray(): Promise<void> {
@@ -2150,13 +2268,25 @@ if (process.platform === "linux") {
   app.commandLine.appendSwitch("disable-accelerated-video-encode");
 }
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
+const instanceData: SecondInstanceData = { pid: process.pid, session: sessionEnv(process.env), ...(process.argv.includes(SWITCH_WHEN_IDLE) ? { switchWhenIdle: true } : {}) };
+if (!app.requestSingleInstanceLock(instanceData)) {
+  // Linux: the first instance may run in another login session; wait for its answer before going (session.ts).
+  if (process.platform === "linux" && !smokeShot) void app.whenReady().then(followFirstInstance).catch(() => undefined).finally(() => app.exit(0));
+  else app.quit();
 } else {
-  const afterUpdate = !smokeShot && takeStartHidden(path.join(path.dirname(configPath()), "updates"));
-  if (afterUpdate) startHidden = true;
-  mainLog.write(`start ${app.getVersion()} pid ${process.pid} ${process.platform}/${process.arch}${startHidden ? " hidden" : ""}${afterUpdate ? " (started again by the updater)" : ""}`);
-  app.on("second-instance", showWindow);
+  const relaunched = smokeShot ? null : takeRelaunchWindow(path.join(path.dirname(configPath()), "updates"));
+  if (relaunched) {
+    // The updater's start keeps the window as it was: shown where it was, or in the tray. --hidden alone (a start with
+    // the computer) still hides it.
+    startHidden = !relaunched.visible;
+    restoredWindow = relaunched;
+    if (relaunched.hash) lastWindowHash = relaunched.hash;
+  }
+  mainLog.write(`start ${app.getVersion()} pid ${process.pid} ${process.platform}/${process.arch}${startHidden ? " hidden" : ""}${relaunched ? " (started again by the updater)" : ""}`);
+  app.on("second-instance", (_e, _argv, _cwd, data) => onSecondInstance(data));
+  setInterval(() => {
+    if (pendingSession && !quitting && !machineWork().busy) moveToSession(pendingSession);
+  }, 2000).unref();
   const quit = new QuitLifecycle();
   app.on("before-quit", (e) => {
     quitting = true;
@@ -2166,6 +2296,8 @@ if (!app.requestSingleInstanceLock()) {
     // Stop agents and let the runner commit their work and update Hive before exiting.
     e.preventDefault();
     if (quit.started) return;
+    // Read before the windows go: an install at quit starts the new build with the window as it was.
+    const windowBefore = windowState();
     // The window must not keep accepting settings while its runner is going offline. destroy() also avoids
     // renderer beforeunload vetoes after we have already committed to stopping the runner.
     for (const window of BrowserWindow.getAllWindows()) window.destroy();
@@ -2180,11 +2312,12 @@ if (!app.requestSingleInstanceLock()) {
         await Promise.all([runner.stop(), remoteTerminal?.stop(), gateExecutor?.settle()]);
         mainLog.write("runner stopped");
         // The rollout says "install when the app quits": the helper swaps the build once this process is gone, and
-        // starts it again (hidden) only when relaunchAfterQuitInstall says so: a machine taking work that the person
-        // did not quit on purpose. "now"/"restart"/"idle" installs go through installAndRestart, unchanged.
-        if (!updater.installsOn("quit")) return;
+        // starts it again (its window as it was) only when relaunchAfterQuitInstall says so: a machine taking work that
+        // the person did not quit on purpose. "now"/"restart"/"idle" installs go through installAndRestart.
+        // A move to another session starts this build there itself: the swap waits for the next quit.
+        if (!updater.installsOn("quit") || reason === "session") return;
         const relaunch = relaunchAfterQuitInstall(reason, takesWork);
-        await updater.install({ relaunch, hidden: relaunch }).catch(() => undefined);
+        await updater.install({ relaunch, window: windowBefore }).catch(() => undefined);
       }, () => {
         // Chromium can hang in native shutdown even after the runner has finished. Only bypass Electron after
         // bookkeeping and the update helper have settled. The separate 15s deadline covers stuck cleanup.
@@ -2380,20 +2513,11 @@ if (!app.requestSingleInstanceLock()) {
       enabled: () => updater.updateKind !== "deb" && (config.runner.autoUpdateIdle ?? config.runner.acceptHubRuns),
       drain: (value) => {
         updateDraining = value;
-        runner.drainForUpdate(value);
+        // A move to another session waiting for the runs keeps its own drain when the update gives up.
+        runner.drainForUpdate(value || pendingSession !== null);
       },
-      work: () => {
-        const work = runner.updateWork();
-        // An open remote terminal holds its checkout and a person at it: wait for it, at most its absolute TTL.
-        const terminal = remoteTerminal?.busy ?? false;
-        // A gate job is never cut short by an update: wait for it, at most the longest timeout a template may have.
-        const gate = gateExecutor?.busy ?? false;
-        return {
-          busy: work.busy || merging.size > 0 || terminal || gate,
-          deadline: Math.max(work.deadline, merging.size ? Date.now() + 20 * 60_000 : 0, terminal ? Date.now() + TERMINAL_LIMITS.absoluteTtlMs : 0, gate ? Date.now() + 130 * 60_000 : 0),
-        };
-      },
-      install: () => installAndRestart(true),
+      work: machineWork,
+      install: () => installAndRestart(),
       log: (line) => mainLog.write(line),
     });
     setInterval(() => void idleUpdate?.tick(), 1000).unref();

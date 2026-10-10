@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { HiveError, type UpdateOffer } from "@xdev-hive/core";
 import { updateCommand } from "#desktop/main/linux-update.ts";
 import { platformKey, Updater, type UpdaterHost, type UpdateStatus } from "#desktop/main/updater.ts";
+import { takeRelaunchWindow } from "#desktop/main/window-state.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -257,7 +258,7 @@ describe("app updater: extracted Linux", () => {
       u.offer(served(fixture, "xdev-hive-0.80.0-linux-x64.AppImage"));
       assert.equal(u.status().supported, true);
       await u.download();
-      await u.install({ relaunch: true, hidden: true });
+      await u.install({ relaunch: true, window: { visible: false } });
       assert.equal(realpathSync(path.join(root, "current")), old);
       assert.ok(existsSync(path.join(root, "app-0.80.0", "AppRun")));
       assert.equal(spawned.length, service ? 0 : 1);
@@ -345,36 +346,40 @@ describe("app updater: install", () => {
     }
   });
 
-  it("logs each step and leaves the start-hidden marker only for a hidden relaunch (BUG-update-relaunch)", async () => {
-    for (const [relaunch, hidden, marker] of [
-      [true, true, true],
-      [false, true, false],
-      [true, false, false],
+  it("logs each step and leaves the window marker only for a relaunch that was given the window (BUG-update-hidden-window)", async () => {
+    const shown = { visible: true, bounds: { x: 40, y: 30, width: 1300, height: 900 }, hash: "/tasks" };
+    for (const [relaunch, window, marker] of [
+      [true, { visible: false }, "hidden"],
+      [true, shown, "shown"],
+      [false, shown, null],
+      [true, undefined, null],
     ] as const) {
       const lines: string[] = [];
       const { u, dataDir } = updater(true, { platform: "win32", log: (l) => lines.push(l) });
-      const o = served(Buffer.from(`setup hidden ${relaunch} ${hidden}`), "xdev-hive-0.80.0-win-x64.exe");
+      const o = served(Buffer.from(`setup window ${relaunch} ${marker}`), "xdev-hive-0.80.0-win-x64.exe");
       u.offer({ ...o, installWhen: "quit" });
       u.offer({ ...o, installWhen: "quit" });
       await u.download();
-      await u.install({ relaunch, hidden });
-      assert.equal(existsSync(path.join(dataDir, "updates", "start-hidden")), marker, `relaunch ${relaunch}, hidden ${hidden}`);
+      await u.install({ relaunch, window });
+      const updates = path.join(dataDir, "updates");
+      assert.equal(existsSync(path.join(updates, "start-hidden")), marker !== null, `relaunch ${relaunch}, window ${marker}`);
+      if (marker) assert.deepEqual(takeRelaunchWindow(updates), window, "the next start reads the window back as it was");
       assert.deepEqual(lines, [
         "updater: offer 0.80.0 (installWhen quit, autoDownload false)",
         "updater: download 0.80.0 xdev-hive-0.80.0-win-x64.exe",
         "updater: ready 0.80.0 (SHA-256 checked)",
-        `updater: install 0.80.0 (relaunch ${relaunch}${marker ? ", hidden" : ""})`,
+        `updater: install 0.80.0 (relaunch ${relaunch}${marker ? `, window ${marker}` : ""})`,
         "updater: install helper started: it swaps the build once this process has exited",
       ], "a repeated offer (every heartbeat) is not logged again");
     }
   });
 
-  it("removes the start-hidden marker and logs it when the install fails", async () => {
+  it("removes the window marker and logs it when the install fails", async () => {
     const lines: string[] = [];
     const { u, dataDir } = updater(true, { platform: "linux", appImage: "/nonexistent-dir/xDev-Hive.AppImage", log: (l) => lines.push(l) });
     u.offer(served(Buffer.from("appimage hidden"), "xdev-hive-0.80.0-linux-x64.AppImage"));
     await u.download();
-    await assert.rejects(() => u.install({ relaunch: true, hidden: true }));
+    await assert.rejects(() => u.install({ relaunch: true, window: { visible: false } }));
     assert.equal(existsSync(path.join(dataDir, "updates", "start-hidden")), false);
     assert.match(lines.at(-1) ?? "", /^updater: install failed: /);
   });
