@@ -64,6 +64,7 @@ export const ACTION_LABEL: Record<string, MessageKey> = {
   "cooldowns.clear": "auditAction.cooldownsClear",
   "policy.set": "auditAction.policySet",
   "agentPolicy.set": "auditAction.agentPolicySet",
+  "agentRights.set": "auditAction.agentRightsSet",
   "sdlc.setCeiling": "auditAction.sdlcCeiling",
   "sdlc.setProject": "auditAction.sdlcProject",
   "budgets.set": "auditAction.budgetsSet",

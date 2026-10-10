@@ -30,6 +30,7 @@ import { SPEC_DIR, SPEC_FEATURES_MAX, SPEC_FILE_MAX, SPEC_STEPS, type SpecFeatur
 import { toolEntrySchema } from "./tools.ts";
 import { ROUTED_KINDS, modelCellsSchema, modelProjectSchema, modelTableSchema, type ModelRouterSettings } from "#core/model-router.ts";
 import { modelLearningSetSchema, type ModelLearningView } from "./model-learning.ts";
+import type { AgentRightsView } from "./access.ts";
 import { TASK_KINDS, TASK_RISKS, TASK_SIZES } from "./task-classify.ts";
 import { SDLC_GATES, FAST_LANE_KINDS, GATE_STATUSES, gateModesSchema, MAX_FIX_ROUNDS, type SdlcFlow, type SdlcFlowTask, type SdlcGateRecord, type SdlcPolicyView } from "./sdlc.ts";
 import { STEP_PROMPT_HISTORY, STEP_PROMPT_MAX, type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
@@ -1248,6 +1249,10 @@ export const schemas = {
   /** Learning on or off, a cell locked or unlocked, a proposal applied; each part left out stays as it is. */
   "modelLearning.set": modelLearningSetSchema.extend({ project }),
   "agentPolicy.get": z.object({}),
+  /** "Agent được làm gì" of a project (spec 79b): what its agents may do, each capped by its account's grant. */
+  "agentRights.get": z.object({ project }),
+  /** The whole set; the default one clears what was stored. Checked against AGENT_PERMISSIONS by the hive. */
+  "agentRights.set": z.object({ project, permissions: z.array(z.string()).max(32) }),
   /**
    * project null: the hub's default (a hub admin; a field left out is open). A project: its own part, which only
    * tightens the default (projectSettings on it); policy null clears it.
@@ -1578,6 +1583,8 @@ export interface MethodOutput {
   "modelLearning.get": ModelLearningView;
   "modelLearning.set": ModelLearningView;
   "agentPolicy.get": AgentPolicyView;
+  "agentRights.get": AgentRightsView;
+  "agentRights.set": AgentRightsView;
   "agentPolicy.set": AgentPolicyView;
   "tools.list": ToolView[];
   "tools.save": ToolView;
@@ -1826,6 +1833,9 @@ export const METHOD_ROLES: Record<Method, Role> = {
   // Also projectSettings on the project, like the project's part of modelRouter.set.
   "modelLearning.set": "agent",
   "agentPolicy.get": "viewer",
+  "agentRights.get": "viewer",
+  // Also membersManage on the project, from a person's own session (spec 79b): no token raises its own agents.
+  "agentRights.set": "member",
   // Also a hub admin for the hub's default, or projectSettings on the project: a person, never an agent token.
   "agentPolicy.set": "agent",
   "tools.list": "viewer",
