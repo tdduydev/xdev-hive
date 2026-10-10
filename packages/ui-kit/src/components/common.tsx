@@ -1,6 +1,6 @@
 import * as React from "react";
 // Small building blocks every page uses, on top of shadcn/ui.
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { Alert, AlertDescription, AlertTitle } from "@xdev-hive/ui-kit/components/ui/alert";
@@ -96,11 +96,19 @@ export function PageIntro({ children }: { children: string }) {
   );
 }
 
+/**
+ * True under a shell whose top bar is the page's title (the desktop app's): one title per page, so PageHeader keeps only
+ * its description and actions there.
+ */
+export const TitleInTopBar = createContext(false);
+
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  const inTopBar = useContext(TitleInTopBar);
+  if (inTopBar && !subtitle && !actions) return null;
   return (
     <header className="hive-page-header flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0 flex-1 space-y-2">
-        <h1 className="type-display-md text-fg-strong">{title}</h1>
+        {inTopBar ? null : <h1 className="type-display-md text-fg-strong">{title}</h1>}
         {subtitle ? <PageIntro>{subtitle}</PageIntro> : null}
       </div>
       {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2">{actions}</div> : null}

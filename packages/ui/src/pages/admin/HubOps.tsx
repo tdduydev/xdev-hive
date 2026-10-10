@@ -10,7 +10,8 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { activeIntl, useT } from "#ui/i18n/index.tsx";
+import { buildText } from "#ui/lib/build-info.ts";
 import { fileSize } from "#ui/lib/chat.ts";
 import { contextProjects } from "#ui/lib/permission-controls.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
@@ -91,6 +92,7 @@ export function OpsHub() {
       .finally(() => setBusy(false));
   };
   const s = h?.storage;
+  const build = h ? buildText(h, activeIntl(), t) : null;
   const cards: AdminCard[] = h
     ? [
         hubCard(
@@ -98,13 +100,19 @@ export function OpsHub() {
           t("hub.version"),
           t("hub.ok"),
           "ok",
-          `hub ${h.version}${h.commit ? ` · ${h.commit}` : ""}`,
-          t("hub.versionDetail", {
-            where: h.container ? t("hub.container") : t("hub.process"),
-            node: h.node,
-            uptime: uptime(h.uptimeSeconds),
-            since: formatTime(h.startedAt),
-          }),
+          `hub ${build!.label}`,
+          [
+            h.buildDate ? t("build.built", { date: build!.date }) : build!.date,
+            h.commit ? `commit ${h.commit}` : null,
+            t("hub.versionDetail", {
+              where: h.container ? t("hub.container") : t("hub.process"),
+              node: h.node,
+              uptime: uptime(h.uptimeSeconds),
+              since: formatTime(h.startedAt),
+            }),
+          ]
+            .filter(Boolean)
+            .join(" · "),
         ),
         hubCard("database", t("hub.database"), t("hub.ok"), "ok", `${h.db.path.split("/").pop()} · ${fileSize(h.db.bytes + h.db.walBytes)}`, t("hub.dbDetail", { path: h.db.path, ...h.db.counts })),
         hubCard(

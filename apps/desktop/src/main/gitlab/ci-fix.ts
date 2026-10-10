@@ -3,7 +3,7 @@
 // (MergeRequester.pushFix). At most mr.maxCiFixes per MR; each pipeline gets one fix. No Electron imports.
 import { findSecret, stripHidden, type AgentRun, type CiFix, type StartRunRequest } from "@xdev-hive/core";
 import type { GitLabClient } from "./client.ts";
-import type { MrHost } from "./mr.ts";
+import { mrActor, type MrHost } from "./mr.ts";
 
 export interface CiFixHost extends MrHost {
   enqueue(req: StartRunRequest, extra: { ciFix: CiFix }): Promise<AgentRun>;
@@ -77,6 +77,8 @@ export class CiFixer {
     const mrUrl = run.mrUrl;
     const key = `${mrUrl}#${pipeline.id}`;
     if (!s.mr.fixCi || !mrUrl || this.#failed.has(key)) return null;
+    // Fail closed when the hub cannot confirm the per-MR policy.
+    if (!(await this.#host.backend().call("runs.ciPolicy", { project: run.project, mrUrl }, mrActor(this.#host))).fixCi) return null;
     const store = this.#host.store();
     const fixed = store.ciFixedPipelines(mrUrl);
     if (fixed.includes(pipeline.id)) return null;
@@ -102,6 +104,7 @@ export class CiFixer {
           })),
         ),
       };
+      if (!(await this.#host.backend().call("runs.ciPolicy", { project: run.project, mrUrl }, mrActor(this.#host))).fixCi) return null;
       const next = await this.#host.enqueue({ project: run.project, taskId: run.taskId, role: "implement", reviewAfter: false }, { ciFix });
       return { kind: "queued", run: next, n: ciFix.n, max };
     } catch (err) {

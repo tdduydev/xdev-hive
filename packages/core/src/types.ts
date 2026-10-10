@@ -9,6 +9,7 @@ import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
 import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
 import type { RoleStep } from "./roles.ts";
+import type { SystemSource } from "./system-source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -170,10 +171,18 @@ export interface HubCleanup {
   db: { before: number; after: number };
 }
 
-export interface HubInfo {
-  /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy said. */
+/** The image the hub runs (UI-hub-build-info); /api/health answers it to anyone, so nothing else goes in here. */
+export interface HubBuild {
+  /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy or image said. */
   version: string;
   commit: string | null;
+  /** HIVE_BUILD_VERSION, e.g. 0.158.0+6dc8d24; null on a build without it (local docker build, npm run dev). */
+  buildVersion: string | null;
+  /** HIVE_BUILD_DATE as ISO 8601 UTC; null when unknown. */
+  buildDate: string | null;
+}
+
+export interface HubInfo extends HubBuild {
   node: string;
   container: boolean;
   startedAt: string;
@@ -660,6 +669,11 @@ export interface ToolStatus {
 export interface HiveSystem {
   name: string;
   projects: string[];
+  /**
+   * The forge group it mirrors, with each member's path and clone URLs (GROUP-init-sync); null: put together by hand.
+   * The hub always sends it; optional for the systems pages and tests build without one.
+   */
+  source?: SystemSource | null;
   updatedAt: string;
   updatedBy: string;
 }
@@ -1534,7 +1548,21 @@ export interface MachineSystem {
   uptimeSeconds?: number;
   cpu?: { percent: number; detail: string; cores?: number; load?: number };
   ram?: { percent: number; detail: string; usedBytes?: number; totalBytes?: number };
+  /** The volume holding the worktrees: what the low-disk cleanup watches. Kept for hubs and apps older than `disks`. */
   disk?: { percent: number; detail: string; freeBytes?: number; totalBytes?: number };
+  /** Every fixed disk of the machine (spec 79o), at most 16; absent from apps older than 79o. */
+  disks?: MachineDisk[];
+}
+
+/** One fixed disk as the machine listed it: a drive letter on Windows, a mount point elsewhere. */
+export interface MachineDisk {
+  mount: string;
+  label?: string;
+  totalBytes: number;
+  freeBytes: number;
+  percent: number;
+  /** The disk that holds the worktree root. */
+  worktree?: boolean;
 }
 
 /** A desktop runner as the hub last heard from it. */

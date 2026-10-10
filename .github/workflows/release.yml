@@ -1,0 +1,47 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      dry:
+        description: Build and list files only, publish nothing
+        type: boolean
+        default: true
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # release.mjs reads tags and history for scope and notes
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HIVE_RELEASE_HUB: ${{ secrets.HIVE_RELEASE_HUB }}
+          HIVE_RELEASE_TOKEN: ${{ secrets.HIVE_RELEASE_TOKEN }}
+          DRY: ${{ github.event_name == 'workflow_dispatch' && inputs.dry }}
+        run: |
+          if [ "$DRY" = "true" ]; then
+            npm run release -w @xdev-hive/desktop -- --dry --force-app
+          else
+            npm run release -w @xdev-hive/desktop
+          fi
+      # What the signed app really carries: electron-builder warns about library validation on every ad-hoc build,
+      # whatever the entitlements, so the log has to show them to tell a real gap from that warning.
+      - name: Show macOS entitlements
+        if: always()
+        run: |
+          for app in apps/desktop/release/mac*/*.app; do
+            [ -d "$app" ] || continue
+            echo "== $app"
+            codesign -d --entitlements - --xml "$app" | plutil -convert xml1 -o - - | grep -E "<key>" || true
+          done

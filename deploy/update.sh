@@ -74,6 +74,9 @@ done
 # The hub backs up its database on start, before any schema migration of the new version.
 # Its Hub page shows the commit it runs.
 export HIVE_COMMIT="$(git rev-parse --short HEAD)"
+# Its build too: the app's version plus that commit, and when it was built (the same as hub-image.yml passes).
+export HIVE_BUILD_VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' apps/desktop/package.json | head -n1)+${HIVE_COMMIT}"
+export HIVE_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 "${compose[@]}" up -d --build "${services[@]}"
 
 container="$("${compose[@]}" ps -q hub)"

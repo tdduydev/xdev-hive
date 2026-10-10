@@ -5,17 +5,19 @@ import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Badge, ErrorNote, Page, PageHeader, StatusDot } from "@xdev-hive/ui-kit/components/common";
 import { useT } from "@xdev-hive/ui";
+import { activeIntl } from "@xdev-hive/ui-kit/i18n";
 import { useHive, usePoll, useQuery } from "@xdev-hive/ui/hooks";
 import { useStartStatus } from "@xdev-hive/ui/pages/Start";
-import { formatBytes, loadPercent, percentOf, uptimeParts } from "../machine-format.ts";
+import { DISK_WARN } from "@xdev-hive/ui/components/MachineCards";
+import { formatBytes, loadFigure, loadPercent, overloaded, percentOf, platformName, uptimeParts } from "../machine-format.ts";
 
 /** A labelled figure with an optional bar: the bar is decoration, the text carries the value. */
-function Meter({ label, value, detail, percent }: { label: string; value: string; detail?: string; percent: number | null }) {
-  const high = percent !== null && percent >= 85;
+function Meter({ label, value, detail, percent, warn = false, tag, attrs }: { label: string; value: string; detail?: string; percent: number | null; warn?: boolean; tag?: ReactNode; attrs?: Record<string, string | undefined> }) {
+  const high = warn || (percent !== null && percent >= 85);
   return (
-    <div className="flex flex-col gap-1.5" data-meter={label}>
+    <div className="flex flex-col gap-1.5" data-meter={label} data-meter-warn={high || undefined} {...attrs}>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm text-fg-secondary">{label}</span>
+        <span className="flex min-w-0 items-baseline gap-2 text-sm text-fg-secondary"><span className="truncate">{label}</span>{tag}</span>
         <span className="font-mono text-sm text-fg-strong">{value}</span>
       </div>
       {percent !== null ? (
@@ -103,17 +105,29 @@ export function MachinePage() {
               <>
                 <Meter
                   label={t("desk.machine.cpu")}
-                  value={s.load === null ? "—" : `${loadPercent(s.load)}%`}
-                  detail={s.load === null ? t("desk.machine.cpuNone") : `${t("desk.machine.cores", { count: s.cpuCount })}${s.cpuModel ? ` · ${s.cpuModel}` : ""}`}
+                  value={s.load === null ? "—" : t("desk.machine.load", { load: loadFigure(s.load, s.cpuCount, activeIntl()), count: s.cpuCount })}
+                  detail={s.load === null ? t("desk.machine.cpuNone") : overloaded(s.load) ? t("desk.machine.overloaded") : s.cpuModel ?? undefined}
                   percent={loadPercent(s.load)}
+                  warn={overloaded(s.load)}
                 />
                 <Meter label={t("desk.machine.ram")} value={t("desk.machine.used", { used: formatBytes(mem), total: formatBytes(s.memTotal) })} percent={percentOf(mem, s.memTotal)} />
-                <Meter
+                {s.disks?.length ? s.disks.map((d) => (
+                  <Meter
+                    key={d.mount}
+                    label={d.label ? `${d.mount} · ${d.label}` : d.mount}
+                    attrs={{ "data-disk": d.mount }}
+                    tag={d.worktree ? <Badge tone="neutral">{t("desk.machine.diskWorktree")}</Badge> : undefined}
+                    value={t("desk.machine.used", { used: formatBytes(d.totalBytes - d.freeBytes), total: formatBytes(d.totalBytes) })}
+                    detail={d.percent >= DISK_WARN ? t("desk.machine.diskFull", { free: formatBytes(d.freeBytes) }) : t("desk.machine.diskFree", { free: formatBytes(d.freeBytes), total: formatBytes(d.totalBytes) })}
+                    percent={d.percent}
+                    warn={d.percent >= DISK_WARN}
+                  />
+                )) : <Meter
                   label={t("desk.machine.disk")}
                   value={disk === null ? t("desk.machine.diskNone") : t("desk.machine.used", { used: formatBytes(disk), total: formatBytes(s.diskTotal) })}
                   detail={s.diskFree === null ? undefined : t("desk.machine.diskFree", { free: formatBytes(s.diskFree), total: formatBytes(s.diskTotal) })}
                   percent={percentOf(disk, s.diskTotal)}
-                />
+                />}
                 {upt ? <Row label={t("desk.machine.uptime")}>{upt.days > 0 ? t("desk.machine.days", upt) : t("desk.machine.hours", { hours: upt.hours, minutes: upt.minutes })}</Row> : null}
               </>
             ) : (
@@ -126,7 +140,7 @@ export function MachinePage() {
           <CardHeader><CardTitle>{t("desk.machine.app")}</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Row label={t("desk.machine.version")}>{info.data ? `v${info.data.version}` : "—"}</Row>
-            <Row label={t("desk.machine.platform")}>{info.data?.platform ?? "—"}</Row>
+            <Row label={t("desk.machine.platform")}>{info.data ? platformName(info.data.platform, info.data.osVersion) : "—"}</Row>
             <div className="flex flex-wrap items-center gap-3" data-update-state={up?.state ?? "unknown"}>
               <span className="text-sm text-fg-secondary">{t("desk.machine.update")}</span>
               {up?.state === "downloading" && up.version ? <Badge tone="info">{t("desk.machine.updateDownloading", { version: up.version, percent: up.percent ?? 0 })}</Badge> : null}

@@ -46,6 +46,7 @@ import {
   type ChatRequest,
   type AppRollout,
   type UpdateReport,
+  type HubBuild,
 } from "@xdev-hive/core";
 import { TerminalStore, type SqliteHive, type TerminalMachineIdentity } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
@@ -55,7 +56,7 @@ import { ChatGrants } from "./grants.ts";
 import { TerminalHub, type TerminalRelay } from "./terminal.ts";
 import { TerminalRelayHub, type RelayTimings } from "./terminal-relay.ts";
 import type { TokenStore } from "./tokens.ts";
-import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
+import { LoginThrottle, revokedText, type Revoked, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
 import type { AlertStore } from "./alerts.ts";
 import type { HubInfoSource } from "./hubinfo.ts";
@@ -87,6 +88,8 @@ export interface HubAppOptions {
   alerts?: AlertStore;
   /** Trang Hub (roadmap 22n): what the hub is, and a backup on request. */
   hub?: HubInfoSource;
+  /** The image's version and build date for /api/health (build-info.ts); left out, health says only ok. */
+  build?: HubBuild;
   /** Remote terminal (spec 69): HIVE_REMOTE_TERMINAL=1. Off by default. */
   remoteTerminal?: boolean;
   /** A browser-socket relay to use instead of the built-in one (tests of the ticket check). */
@@ -242,6 +245,7 @@ export function createHubApp({
   autoReleaseProject,
   alerts,
   hub,
+  build,
   remoteTerminal = false,
   terminalRelay,
   terminalIdentity,
@@ -313,6 +317,12 @@ export function createHubApp({
     if (users.byUsername(actor.account)?.hubRole !== "owner") throw new HiveError("forbidden", "Chỉ chủ hub mới cấp hoặc sửa vai trò chủ hub.", { key: "errors.ownerOnly" });
   };
 
+  /** The projects of a system, for an MCP credential scoped to it; none when it is gone. */
+  const systemProjects = (name: string): string[] => {
+    const row = hive.db.prepare("SELECT projects FROM systems WHERE name = ?").get(name) as { projects?: string } | undefined;
+    return row?.projects ? (JSON.parse(row.projects) as string[]) : [];
+  };
+
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
     const source = readSourceHeader(req.get("x-hive-source"));
@@ -343,9 +353,16 @@ export function createHubApp({
       if (project && full && !grantPermissions(full.projects[project]).has("view")) return null;
       // authenticate answers with why the project is gone; the terminal upgrade refuses agent credentials anyway.
       res.locals.mcpProject = project;
+      const shared = full ? { permissions: [...sharedPermissions(full)] } : "member";
+      // A CLI opened on a whole system (GROUP-cli): the system's projects as they are now, each with the account's own
+      // grant, so a project added to the system later is reached and one the account does not see never is.
+      const members = who.mcp.system ? systemProjects(who.mcp.system).filter((p) => !full || grantPermissions(full.projects[p]).has("view")) : null;
+      if (members && !members.length) return null;
       const access = project
-        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared: full ? { permissions: [...sharedPermissions(full)] } : "member" } as Actor["access"]
-        : full;
+        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared } as Actor["access"]
+        : members
+          ? { projects: Object.fromEntries(members.map((p) => [p, full?.projects[p] ?? "member"])), shared } as Actor["access"]
+          : full;
       if (user) res.locals.user = user;
       return {
         name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
@@ -471,14 +488,17 @@ export function createHubApp({
       const actor = actorOf(res);
       if (actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
         throw new HiveError("forbidden", "A machine credential is required.");
-      const { project = null, readOnly } = req.body ?? {};
-      if ((project !== null && (typeof project !== "string" || !PROJECT_NAME.test(project))) || typeof readOnly !== "boolean")
+      const { project = null, system = null, readOnly } = req.body ?? {};
+      const key = (v: unknown) => v === null || (typeof v === "string" && PROJECT_NAME.test(v));
+      if (!key(project) || !key(system) || (project && system) || typeof readOnly !== "boolean")
         throw new HiveError("bad_request", "Invalid MCP credential request.");
       if (project && !sees(actor, project)) throw new HiveError("forbidden", "No access to this project.");
+      // A system's credential needs one project of it the token sees; it reaches no more than the token does.
+      if (system && !systemProjects(system).some((p) => sees(actor, p))) throw new HiveError("forbidden", "No access to this system.");
       const closed = project ? hive.closedProject(project) : null;
       if (closed) throw closed;
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
-      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly) } });
+      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly, system) } });
     } catch (err) { sendError(res, err); }
   });
 
@@ -548,8 +568,9 @@ export function createHubApp({
     return user;
   };
 
+  // Unauthenticated: version, commit and build date only, so the status bar can show them before and after sign-in.
   app.get("/api/health", (_req, res) => {
-    res.json({ result: { ok: true } });
+    res.json({ result: build ? { ok: true, version: build.version, commit: build.commit, buildVersion: build.buildVersion, buildDate: build.buildDate } : { ok: true } });
   });
 
   app.post("/api/login", json, (req, res) => {
@@ -873,9 +894,11 @@ export function createHubApp({
     if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
     return () => {
       if (method === "users.purge") users.purge(id);
-      const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
+      let revoked: Revoked | undefined;
+      const updated = method === "users.trash" ? users.trash(id, (r) => (revoked = r)) : method === "users.restore" ? users.restore(id) : target;
       const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
-      hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
+      if (revoked) hive.audit(actor, method, target.username, `trashed · ${revokedText(revoked)}`, { key: "audit.userTrashedRevoked", vars: { ...revoked } });
+      else hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
       return method === "users.purge" ? { id, purged: true } : updated;
     };
   };
@@ -1102,15 +1125,16 @@ export function createHubApp({
           if (target.hubRole === "owner") assertMayGrant(actor, "owner");
           if (hubRole) assertMayGrant(actor, hubRole);
           if (typeof i.admin === "boolean" && i.admin && !target.admin) assertMayGrant(actor, "admin");
+          let revoked: Revoked | undefined;
           const updated = users.update(id, {
             displayName: typeof i.displayName === "string" ? i.displayName : undefined,
             admin: typeof i.admin === "boolean" ? i.admin : undefined,
             hubRole,
             disabled: typeof i.disabled === "boolean" ? i.disabled : undefined,
-          });
+          }, (r) => (revoked = r));
           const changes = [
             updated.hubRole !== target.hubRole ? `${target.hubRole} → ${updated.hubRole}` : "",
-            updated.disabled !== target.disabled ? (updated.disabled ? "khoá" : "mở khoá") : "",
+            updated.disabled !== target.disabled ? (updated.disabled ? `khoá · ${revokedText(revoked!)}` : "mở khoá") : "",
           ].filter(Boolean);
           // The admin page changes one thing at a time; the key names the first change.
           const key =
@@ -1118,10 +1142,11 @@ export function createHubApp({
               ? "audit.hubRole"
               : updated.disabled !== target.disabled
                 ? updated.disabled
-                  ? "audit.disabled"
+                  ? "audit.disabledRevoked"
                   : "audit.enabled"
                 : "audit.renamed";
-          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(key === "audit.hubRole" ? { vars: { from: target.hubRole, to: updated.hubRole } } : {}) });
+          const vars: Record<string, string | number> | undefined = key === "audit.hubRole" ? { from: target.hubRole, to: updated.hubRole } : key === "audit.disabledRevoked" ? { ...revoked! } : undefined;
+          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(vars ? { vars } : {}) });
           res.json({ result: updated });
         } else if (method === "users.restore") {
           res.json({ result: userLifecycle(method, i, actor)() });

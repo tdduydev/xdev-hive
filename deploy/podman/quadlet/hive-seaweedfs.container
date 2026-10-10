@@ -1,0 +1,28 @@
+# Doc images and files (roadmap 23c): master, volume server and filer in one process. Only the hub reaches it, on
+# the hive network; no port is published. Its data stays in /srv/hive/seaweedfs across image changes and reboots.
+[Unit]
+Description=xDev Hive SeaweedFS
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=hive-seaweedfs
+# Rebuilt with a current Go so it passes the vulnerability scan (deploy/images/seaweedfs, deps-images.yml).
+Image=ghcr.io/tdduydev/xdev-hive-seaweedfs:4.48
+Exec=server -dir=/data -filer -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
+Volume=/srv/hive/seaweedfs:/data:Z
+Network=hive.network
+HealthCmd=curl -fs -o /dev/null http://127.0.0.1:8888/
+HealthInterval=10s
+HealthTimeout=3s
+HealthRetries=12
+HealthStartPeriod=20s
+LogDriver=journald
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

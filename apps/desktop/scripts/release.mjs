@@ -5,6 +5,7 @@
 //   npm run release -w @xdev-hive/desktop -- --hub-only   (skip GitHub: upload the built files to the hub again)
 //   npm run release -w @xdev-hive/desktop -- --whatsnew <file>   (use edited release notes)
 //   npm run release -w @xdev-hive/desktop -- --force-app   (build app even for hub-only changes)
+// CI: .github/workflows/release.yml runs it on macOS (HEAD on origin/main is enough there).
 // Needs: a clean checkout of origin/main, `gh` signed in with push access. macOS builds are ad-hoc
 // signed (no Developer ID yet); Windows installers are unsigned.
 // The builds also go to the hub, which hands them to machines as updates (roadmap 22i; admins pick the version on
@@ -23,6 +24,7 @@ import { changedSinceAppRelease } from "#desktop/scripts/release-scope.mjs";
 const desktop = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(desktop, "..", "..");
 const release = path.join(desktop, "release");
+const inCI = process.env.GITHUB_ACTIONS === "true";
 const dry = process.argv.includes("--dry");
 const hubOnly = process.argv.includes("--hub-only");
 const linuxOnly = process.argv.includes("--linux-only");
@@ -70,8 +72,16 @@ const out = (cmd, args) => execFileSync(cmd, args, { cwd: repoRoot, encoding: "u
 if (!dry && !hubOnly) {
   if (out("git", ["status", "--porcelain"])) throw new Error("Working tree is not clean.");
   run("git", ["fetch", "-q", "origin", "main", "--tags"], { cwd: repoRoot });
-  if (out("git", ["rev-parse", "HEAD"]) !== out("git", ["rev-parse", "origin/main"])) throw new Error("HEAD is not origin/main.");
-  if (out("git", ["tag", "--list", tag])) throw new Error(`Tag ${tag} exists: bump "version" in apps/desktop/package.json.`);
+  // Actions checks out detached (often at a tag), so HEAD only has to be on main there, not equal to its tip.
+  if (inCI) {
+    try { run("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], { cwd: repoRoot }); } catch { throw new Error("HEAD is not on origin/main."); }
+  } else if (out("git", ["rev-parse", "HEAD"]) !== out("git", ["rev-parse", "origin/main"])) throw new Error("HEAD is not origin/main.");
+  // A pushed tag v<version> is what triggers the CI release, so it already exists there.
+  if (inCI && process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF?.startsWith("refs/tags/") && process.env.GITHUB_REF !== `refs/tags/${tag}`) {
+    throw new Error(`Pushed tag ${process.env.GITHUB_REF} does not match package version ${tag}.`);
+  }
+  const pushedTag = inCI && process.env.GITHUB_REF === `refs/tags/${tag}`;
+  if (!pushedTag && out("git", ["tag", "--list", tag])) throw new Error(`Tag ${tag} exists: bump "version" in apps/desktop/package.json.`);
 }
 
 if (!hubOnly) rmSync(release, { recursive: true, force: true });
