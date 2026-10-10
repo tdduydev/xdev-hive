@@ -1,4 +1,4 @@
-/* xDev Hive design system (docs/design/2026-09-redesign) on shadcn/ui + Tailwind v4.
+/* xDev Hive design system (docs/design/hive-2026-10) on shadcn/ui + Tailwind v4.
    The design's semantic tokens live in ./tokens; shadcn's variables alias them so the ui/ components and the
    pages pick up the new look. Light is :root, dark is [data-theme="dark"] on <html> (lib/theme.ts sets it);
    a subtree can re-theme itself with data-theme, which is why the aliases are declared on [data-theme] too. */
@@ -6,30 +6,41 @@
 
 @import "tw-animate-css";
 
-@import "@fontsource/be-vietnam-pro/400.css";
-@import "@fontsource/be-vietnam-pro/400-italic.css";
-@import "@fontsource/be-vietnam-pro/500.css";
-@import "@fontsource/be-vietnam-pro/600.css";
-@import "@fontsource/be-vietnam-pro/700.css";
-@import "@fontsource-variable/space-grotesk/wght.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 
-@import "./tokens/primitives.css";
-@import "./tokens/colors.css";
-@import "./tokens/typography.css";
-@import "./tokens/spacing.css";
-@import "./tokens/motion.css";
+@import "../../ui-kit/src/tokens/primitives.css";
+@import "../../ui-kit/src/tokens/colors.css";
+@import "../../ui-kit/src/tokens/typography.css";
+@import "../../ui-kit/src/tokens/spacing.css";
+@import "../../ui-kit/src/tokens/shell.css";
+@import "../../ui-kit/src/tokens/motion.css";
+@import "../../ui-kit/src/tokens/cosmic.css";
+@import "../../ui-kit/src/tokens/today.css";
+@import "../../ui-kit/src/components/ui/cosmic.css";
+@import "./components/ui/cosmic-pages.css";
+@import "./components/ui/cosmic-users.css";
+@import "./components/ui/cosmic-admin-ops.css";
 @import "./components/ResponsiveTable.css";
+@import "./components/chat/chat.css";
 @import "./mobile.css";
 /* In the base layer so a component's own focus style (outline-none + ring) still wins over the global outline. */
-@import "./tokens/base.css" layer(base);
+@import "../../ui-kit/src/tokens/base.css" layer(base);
 
 .terminal-screen .xterm { height: 100%; }
+/* xterm.css paints the viewport #000; the strip below the last whole row showed as a black band in both themes. */
+.terminal-screen .xterm, .terminal-screen .xterm .xterm-viewport { background-color: var(--code-bg); }
 .terminal-screen .xterm-helper-textarea { font-size: 16px !important; }
 .terminal-screen .xterm:focus-within { box-shadow: inset 0 0 0 2px var(--focus-color); }
 
 /* Components live in this package; the apps only import this file. */
 @source "./";
+@source "../../ui-kit/src";
+@source "../../../apps/web/client";
+@source "../../../apps/desktop/src/renderer";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
@@ -124,6 +135,9 @@
   --color-fg-primary: var(--text-primary);
   --color-fg-secondary: var(--text-secondary);
   --color-fg-muted: var(--text-muted);
+  --color-fg-faint: var(--text-faint);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
   --color-fg-disabled: var(--text-disabled);
   --color-fg-inverse: var(--text-inverse);
   --color-fg-link: var(--text-link);
@@ -598,3 +612,59 @@
 .workspace-section-tabs a[aria-current]{background:var(--state-selected-bg);color:var(--state-selected-fg);border-color:var(--border-selected)}
 .workspace-section-tabs a:focus-visible{outline:2px solid var(--focus-color);outline-offset:4px}
 @media(max-width:767px){.workspace-section-tabs{padding-inline:var(--space-4)}}
+
+/* Cosmic shell dimensions come from the 72 design template. */
+.hive-shell{background:var(--shell-backdrop);background-size:var(--shell-backdrop-size);background-attachment:fixed}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar{padding:20px 14px 14px;gap:18px;background:var(--shell-sidebar-bg);box-shadow:var(--shell-sidebar-divider);backdrop-filter:blur(12px);border:0}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-brand{height:36px;padding-inline:8px}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-scope{padding:0}
+.hive-sidebar-scope [data-project-picker-trigger]{height:44px;gap:10px;padding:8px 10px 8px 8px;border:0;border-radius:14px;background:var(--shell-glass);box-shadow:var(--shell-ring);color:var(--text-strong)}
+.hive-sidebar-scope [data-project-picker-trigger]:hover{background:var(--shell-glass-hover)}
+.hive-scope-caption{font-size:11px;line-height:14px;color:var(--text-muted);letter-spacing:.3px}
+:is(.hive-shell,.hive-navigation-drawer) .workspace-new-work{padding:0}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
+.hive-nav-group{gap:2px}
+.hive-nav-heading{padding:0 10px 6px;color:var(--shell-text-faint);font-size:11px;line-height:16px;font-weight:600;letter-spacing:.6px;text-transform:uppercase}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar .hive-nav-item{height:36px;min-height:36px;gap:10px;padding:0 10px;border-radius:12px;font-size:13.5px;line-height:18px;font-weight:500}
+:is(.hive-shell,.hive-navigation-drawer) .hive-nav-item:hover{background:var(--shell-glass)}
+:is(.hive-shell,.hive-navigation-drawer) .hive-nav-active{background:var(--shell-glass);box-shadow:var(--shell-ring);color:var(--text-strong)}
+.hive-nav-shortcut{font-family:var(--font-sans);font-size:11px;line-height:1;font-weight:500;color:var(--shell-text-faint)}
+.hive-nav-count{height:20px;min-width:20px;padding:0 6px;font-size:11px;line-height:1;font-weight:500}
+.hive-nav-count:not(.hive-nav-count-strong){background:var(--shell-count-secondary);color:var(--text-strong)}
+/* The active step of the primary ramp: white on --primary is 4.2:1 in dark, too low for 11px text. */
+.hive-nav-count-strong{background:var(--action-primary-active);color:var(--action-primary-fg)}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-account{padding:10px;border:0;border-radius:14px;background:var(--bg-surface);box-shadow:var(--shell-ring)}
+.hive-shell .hive-main-topbar{height:72px;min-height:72px;gap:16px;padding:0 28px;background:transparent;border:0;box-shadow:var(--shell-divider)}
+.hive-topbar-title{min-width:160px}
+.hive-topbar-title>span{font-size:12px;line-height:16px}
+.hive-topbar-title h1{margin:0;font-size:22px;line-height:30px;font-weight:700;letter-spacing:-.2px}
+.hive-shell .hive-topbar-search{height:40px;flex:0 1 260px;gap:10px;padding:0 8px 0 14px;border:0;border-radius:999px;background:var(--shell-glass);box-shadow:var(--shell-ring);font-size:13px;font-weight:500}
+.hive-shell .hive-topbar-search:hover{background:var(--shell-glass-hover)}
+.hive-search-key{padding:4px 8px;border-radius:999px;background:var(--shell-glass);color:var(--text-secondary);font-size:11px;line-height:14px}
+.hive-shell #hive-main{background:transparent}
+@media(max-width:767px){
+  .hive-shell .hive-main-topbar{height:64px;min-height:64px;padding:0 12px;gap:8px}
+  .hive-topbar-title{min-width:0}
+  .hive-topbar-title h1{font-size:18px;line-height:24px}
+  :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar{padding-bottom:max(14px,env(safe-area-inset-bottom))}
+  :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar .hive-nav-item{min-height:44px;height:44px}
+}
+[data-workspace-web] .hive-sidebar:not(.hive-sidebar-rail) .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail{padding-inline:8px}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail .hive-sidebar-scope{display:flex;justify-content:center}
+:is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail .hive-sidebar-account{padding:4px}
+.hive-nav-item svg{color:var(--text-strong);opacity:.55}
+.hive-nav-active svg{color:var(--text-strong);opacity:.95}
+/* Portalled navigation shares the shell skin, without styling Chat's composer footer. */
+.hive-navigation-drawer{padding:0;background:var(--shell-sidebar-bg)}
+.hive-sidebar-brand .hive-sidebar-toggle{display:grid}
+.hive-sidebar-rail .hive-sidebar-brand{padding:0;justify-content:center}
+@media(max-width:767px){
+  .hive-scope-caption,.hive-nav-heading,.hive-nav-shortcut{font-size:12px;line-height:16px}
+  .hive-sidebar-scope [data-project-picker-trigger]{height:auto;min-height:48px}
+  .hive-shell .hive-topbar-chat{height:44px}
+  .hive-sidebar-account{gap:8px}
+  .hive-navigation-drawer :is(button,a){min-width:44px;min-height:44px}
+}
+/* Leave macOS traffic lights clear in the draggable title area. */
+.hive-shell .hive-sidebar-brand-mac{padding-left:70px;padding-right:0}

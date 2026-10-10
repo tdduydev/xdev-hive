@@ -33,7 +33,7 @@ it("a viewer credential cannot mint an agent token with its owner's write grants
     const before = tokens.count();
     for (const role of ["agent", "member", "admin"]) assert.equal((await rpc(viewer, "tokens.create", { name: "audit-child", role })).status, 403);
     assert.equal(tokens.count(), before, "refused minting does not persist a credential");
-    assert.equal((await rpc(viewer, "tokens.create", { name: "audit-read-child", role: "viewer" })).status, 200);
+    assert.equal((await rpc(viewer, "tokens.create", { name: "audit-read-child", role: "viewer" })).status, 403);
     assert.equal((await rpc(member, "tokens.create", { name: "audit-agent-child", role: "agent" })).status, 200);
     assert.equal((await rpc(member, "tokens.create", { name: "audit-admin-child", role: "admin" })).status, 403);
     assert.equal((await rpc(viewer, "tokens.revoke", { id: memberCreated.info.id })).status, 403);

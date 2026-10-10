@@ -1,0 +1,11 @@
+/* xDev Hive design system tokens (docs/design/2026-09-redesign/tokens). */
+/* Primitive palette — never use directly in components; use semantic tokens in colors.css */
+:root{
+--brand-blue-light:#7BD4FF;--brand-blue-mid:#1E90FF;--brand-blue-deep:#004CFF;--brand-navy:#142745;--brand-ink:#344568;--brand-ink-inverse:#E8ECF8;--brand-canvas:#F7F9FC;
+--blue-50:#F0F7FF;--blue-100:#DDEEFF;--blue-200:#BFE0FF;--blue-300:#7BD4FF;--blue-400:#4AAEFF;--blue-500:#1E90FF;--blue-600:#0B6CF5;--blue-700:#004CFF;--blue-800:#0038C2;--blue-900:#002A8F;
+--neutral-0:#FFFFFF;--neutral-25:#F7F9FC;--neutral-50:#F0F3F9;--neutral-100:#E6EBF4;--neutral-200:#D5DCE9;--neutral-300:#B8C2D6;--neutral-400:#8B97B1;--neutral-500:#7C89A5;--neutral-600:#5B6885;--neutral-700:#344568;--neutral-800:#22314F;--neutral-900:#142745;--neutral-950:#0C1A33;
+--navy-950:#0B1830;--navy-900:#0F203C;--navy-850:#142745;--navy-800:#1A2F52;--navy-750:#213762;--navy-700:#2B4170;--navy-600:#3A5285;--navy-500:#6E80A8;--navy-400:#9DAAC7;--navy-300:#B9C3DB;--navy-100:#E8ECF8;
+--green-50:#E6F6EE;--green-200:#9ED9BC;--green-400:#4ADE9B;--green-500:#1FA46A;--green-700:#0F7A4A;
+--amber-50:#FFF4DB;--amber-200:#F5C86B;--amber-300:#FFC35C;--amber-400:#F2A516;--amber-700:#9A5B00;
+--red-50:#FDECEC;--red-200:#F3B4B4;--red-300:#FF8A8A;--red-500:#D93636;--red-600:#C62828;--red-700:#A51F1F;
+}

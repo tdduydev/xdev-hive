@@ -41,7 +41,7 @@ export function writeDrafts(drafts: Record<string, DocDraft>): void {
 
 /** A call that failed because the hub could not be reached at all (desktop: HiveError "unavailable"; web: fetch). */
 export function isUnreachable(err: unknown): boolean {
-  return (err as { code?: unknown } | null)?.code === "unavailable" || err instanceof TypeError;
+  return (err as { code?: unknown } | null)?.code === "unavailable" || err instanceof TypeError || (err instanceof DOMException && (err.name === "TimeoutError" || err.name === "AbortError"));
 }
 
 /**

@@ -91,6 +91,16 @@ describe("importing a GitLab group", () => {
     assert.deepEqual([plan[0]?.state, plan[0]?.key, plan[0]?.dir], ["added", "my-app", registered]);
   });
 
+  it("two clones of one remote: the one where the group's tree puts it, not the first scanned", () => {
+    const base = tmp("tree");
+    const project = repo("customer-ai/his/backend/svc-core");
+    // findGitRepos sorts by name: the e2e copy comes first at the same depth, and the tree's own one later.
+    const e2e = path.join(base, "his", "backend", "svc-core-e2e");
+    const tree = path.join(base, "his", "backend", "svc-core");
+    const plan = planImport([project], base, [], "customer-ai", [{ dir: e2e, remote: project.sshUrl }, { dir: tree, remote: project.httpUrl }]);
+    assert.deepEqual([plan[0]?.state, plan[0]?.dir], ["folder", tree]);
+  });
+
   it("accepts an existing prefixed HTTPS clone during import", async () => {
     const base = tmp("prefixed-import");
     const dir = path.join(base, "app");

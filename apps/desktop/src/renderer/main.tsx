@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HiveApp, I18nProvider, type HiveClient } from "@xdev-hive/ui";
+import { I18nProvider, type HiveClient } from "@xdev-hive/ui";
 import "@xdev-hive/ui/globals.css";
+import { DesktopApp } from "./DesktopApp.tsx";
+import { withHiveErrors } from "./bridge-errors.ts";
 
 declare global {
   interface Window {
@@ -21,10 +23,12 @@ window.addEventListener("unhandledrejection", (e) => {
 // The main process shows the tray, notifications and dialogs in the same language.
 const setMainLocale = (locale: string) => void window.hive.desktop?.setLocale(locale).catch(() => undefined);
 
+const client = withHiveErrors(window.hive);
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider onChange={setMainLocale}>
-      <HiveApp client={window.hive} />
+      <DesktopApp client={client} />
     </I18nProvider>
   </StrictMode>,
 );

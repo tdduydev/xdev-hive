@@ -1,0 +1,15 @@
+{
+  "contextFileName": [
+    "AGENTS.md"
+  ],
+  "mcpServers": {
+    "xdev-hive": {
+      "command": "hive-mcp",
+      "args": [],
+      "env": {
+        "HIVE_AGENT": "gemini",
+        "HIVE_PROJECT": "xdev-hive"
+      }
+    }
+  }
+}

@@ -40,6 +40,48 @@ after(() => stop());
 const user = { id: 1, username: "duy", name: "Duy", role: "admin" };
 
 describe("hub client", () => {
+  it("gives normal RPCs 15 seconds and 5 MB uploads 45 seconds without retrying writes", async (t) => {
+    const deadlines: number[] = [];
+    t.mock.method(AbortSignal, "timeout", (ms: number) => { deadlines.push(ms); return new AbortController().signal; });
+    const methods: string[] = [];
+    t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+      const method = JSON.parse(String(init.body)).method as string;
+      methods.push(method);
+      return Response.json({ result: method === "docs.list" ? [] : {} });
+    });
+    const hub = new HubBackend(hubUrl, "token");
+    const actor = { name: "runner", role: "agent" as const };
+    await hub.call("docs.list", {}, actor);
+    await hub.call("artifacts.put", { project: "app", taskId: "T-1", runId: "R-1", profileId: "p", name: "report.md", data: "eA==" }, actor);
+    await hub.call("docs.assetPut", { key: "project/app/readme", name: "file.txt", data: "eA==" }, actor);
+    assert.deepEqual(deadlines, [15_000, 45_000, 45_000]);
+    assert.deepEqual(methods, ["docs.list", "artifacts.put", "docs.assetPut"]);
+  });
+
+  it("does not replay an artifact write after an ambiguous timeout", async (t) => {
+    let requests = 0;
+    t.mock.method(globalThis, "fetch", async () => {
+      requests++;
+      throw new DOMException("deadline reached", "TimeoutError");
+    });
+    const hub = new HubBackend(hubUrl, "token");
+    await assert.rejects(
+      hub.call("artifacts.put", { project: "app", taskId: "T-1", runId: "R-1", profileId: "p", name: "report.md", data: "eA==" }, { name: "runner", role: "agent" }),
+      (err: unknown) => err instanceof HiveError && err.code === "unavailable",
+    );
+    assert.equal(requests, 1);
+  });
+
+  it("treats a stalled response body as an unavailable hub", async (t) => {
+    t.mock.method(globalThis, "fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => { throw new DOMException("body stalled", "AbortError"); },
+    }) as unknown as Response);
+    const hub = new HubBackend(hubUrl, "token");
+    await assert.rejects(hub.me("desktop"), (err: unknown) => err instanceof HiveError && err.code === "unavailable" && err.key === "errors.hubUnreachable");
+  });
+
   it("reports a hub it cannot reach as unavailable, with the catalogue key", async () => {
     const hub = new HubBackend(`http://127.0.0.1:${await closedPort()}`, "t".repeat(40));
     await assert.rejects(

@@ -12,24 +12,30 @@ import { useT } from "#ui/i18n/index.tsx";
 import { canRedispatch, runLabel, runLink, runOutcome } from "#ui/lib/runs.ts";
 
 /** Shared by the run page and the task sheet, keeping a failed submission's draft available. */
-export function RunRedispatch({ run, onSent }: { run: RunRecord; onSent: () => void }) {
+export function RunRedispatch({ run, onSent, split = false }: { run: RunRecord; onSent: () => void; split?: boolean }) {
   const { client } = useHive();
   const allow = useCan();
   const t = useT();
   const id = useId();
   const [open, setOpen] = useState(false);
+  // Split (the run drawer): "Chạy lại" and "Đổi gói" are one form opened from two buttons; the second one clears the profile.
+  const [swap, setSwap] = useState(false);
   const full = useQuery(() => open ? client.call("runs.get", { machineId: run.machineId, runId: run.runId }) : Promise.resolve(null), [client, run.machineId, run.runId, open]);
   if (!canRedispatch(run) || !allow(run.project, "runDispatch")) return null;
-  return <div className="flex flex-col gap-3">
-    <Button size="sm" variant="outline" className="w-fit max-md:min-h-11" data-run-redispatch aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>{t("redispatch.title")}</Button>
+  const toggle = (to: boolean) => { if (open && swap === to) setOpen(false); else { setSwap(to); setOpen(true); } };
+  return <div className="flex w-full flex-col gap-3">
+    <div className="flex flex-wrap gap-1.5">
+      <Button size="sm" variant={split ? "default" : "outline"} className="w-fit max-md:min-h-11" data-run-redispatch aria-expanded={open && !swap} aria-controls={id} onClick={() => toggle(false)}>{t(split ? "runs.rerun" : "redispatch.title")}</Button>
+      {split ? <Button size="sm" variant="outline" className="w-fit max-md:min-h-11" data-run-swap-profile aria-expanded={open && swap} aria-controls={id} onClick={() => toggle(true)}>{t("redispatch.swapProfile")}</Button> : null}
+    </div>
     {open ? <div id={id}>
       <ErrorNote error={full.error} />
-      {full.loading ? <p className="text-xs text-fg-muted" role="status">{t("common.loading")}</p> : full.data ? <RedispatchForm run={full.data} onSent={onSent} /> : !full.error ? <Notice tone="warn">{t("errors.runNotFound", { id: run.runId })}</Notice> : null}
+      {full.loading ? <p className="text-xs text-fg-muted" role="status">{t("common.loading")}</p> : full.data ? <RedispatchForm key={String(swap)} run={full.data} swap={swap} onSent={onSent} /> : !full.error ? <Notice tone="warn">{t("errors.runNotFound", { id: run.runId })}</Notice> : null}
     </div> : null}
   </div>;
 }
 
-function RedispatchForm({ run, onSent }: { run: RunRecord; onSent: () => void }) {
+function RedispatchForm({ run, swap, onSent }: { run: RunRecord; swap: boolean; onSent: () => void }) {
   const { client } = useHive();
   const t = useT();
   const id = useId();
@@ -40,7 +46,7 @@ function RedispatchForm({ run, onSent }: { run: RunRecord; onSent: () => void })
   const fit = (machines.data ?? []).filter(m => takesRunsOf(m, run.project));
   const [machineId, setMachineId] = useState(run.machineId);
   const machine = fit.find(m => m.id === machineId) ?? null;
-  const [profileId, setProfileId] = useState(run.profileId ?? "");
+  const [profileId, setProfileId] = useState(swap ? "" : run.profileId ?? "");
   const [instructions, setInstructions] = useState(run.instructions ?? "");
   const [continueBranch, setContinueBranch] = useState(!!run.branch);
   const [reviewAfter, setReviewAfter] = useState(false);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { SquareTerminal } from "lucide-react";
-import { CLI_BYPASS_ARGS, type AgentProfileStatus } from "@xdev-hive/core";
+import { CLI_BYPASS_ARGS, type AgentProfileStatus, type SystemCliOpened } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
@@ -76,6 +76,72 @@ export function OpenCli({ profiles, projects }: { profiles: AgentProfileStatus[]
         ) : null}
       </div>
       {opened ? <Notice tone={opened.bypass ? "warn" : "info"}>{t(opened.bypass ? "openCli.openedBypass" : "openCli.opened", { profile: opened.profile, project: opened.project })}</Notice> : null}
+      <ErrorNote error={action.error} />
+    </div>
+  );
+}
+
+/**
+ * A profile's CLI over every repo of a system on this machine (GROUP-cli): in the group's root, each repo given to the
+ * CLI, Hive's server scoped to the system. Next to "Cài hết cho hệ thống" and on the Systems page; the per-project
+ * button above stays as it is.
+ */
+export function OpenSystemCli({ profiles, system }: { profiles: AgentProfileStatus[]; system: string }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const usable = profiles.filter(canOpenCli).sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.priority - b.priority);
+  const [profileId, setProfileId] = useState("");
+  const [bypass, setBypass] = useState(false);
+  const [opened, setOpened] = useState<(SystemCliOpened & { profile: string; bypass: boolean }) | null>(null);
+  const open = client.desktop?.openSystemCli;
+  if (!usable.length || !open) return null;
+  const profile = usable.find((p) => p.id === profileId) ?? usable[0]!;
+  const cli = profile.kind === "custom" ? profile.label : t(`agentKind.${profile.kind}`);
+  const canBypass = !!CLI_BYPASS_ARGS[profile.kind];
+  return (
+    <div className="flex flex-col gap-2" data-open-system-cli={system}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {usable.length > 1 ? (
+          <NativeSelect size="sm" value={profile.id} onChange={(e) => setProfileId(e.target.value)} aria-label={t("openCli.profile")}>
+            {usable.map((p) => (
+              <NativeSelectOption key={p.id} value={p.id}>
+                {p.label} ({p.id})
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        ) : null}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={action.busy}
+          data-open-system-cli-button={`${profile.id}:${system}`}
+          onClick={() =>
+            void action.run(async () => {
+              const skip = canBypass && bypass;
+              const out = await open(profile.id, system, { bypass: skip });
+              setOpened({ ...out, profile: profile.id, bypass: skip });
+              setBypass(false);
+            })
+          }
+        >
+          <SquareTerminal />
+          {t("openCli.openSystem", { cli })}
+        </Button>
+        {canBypass ? (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={bypass} onCheckedChange={(v) => setBypass(v === true)} data-open-system-cli-bypass={profile.id} />
+            {t("openCli.bypass")}
+          </label>
+        ) : null}
+      </div>
+      {opened ? (
+        <Notice tone={opened.bypass ? "warn" : "info"} data-system-cli-opened={system}>
+          {t(opened.bypass ? "openCli.openedSystemBypass" : "openCli.openedSystem", { profile: opened.profile, system, cwd: opened.cwd, repos: opened.repos })}
+          {opened.missing.length ? <span className="mt-1 block">{t("openCli.systemMissing", { count: opened.missing.length, projects: opened.missing.join(", ") })}</span> : null}
+          {!opened.dirsSupported ? <span className="mt-1 block">{t("openCli.noDirFlag", { cli })}</span> : null}
+        </Notice>
+      ) : null}
       <ErrorNote error={action.error} />
     </div>
   );

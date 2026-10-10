@@ -45,3 +45,15 @@ it("logs a failed cleanup and still finishes exactly once", async () => {
   await quit.start(async () => assert.fail("second cleanup"), () => assert.fail("second exit"), () => assert.fail("second failure"));
   assert.deepEqual(events, [error, "exit"]);
 });
+
+it("forces app exit when runner or update cleanup remains stuck", async () => {
+  const quit = new QuitLifecycle();
+  const stalled = deferred();
+  let forced = 0;
+  const pending = quit.start(() => stalled.promise, () => undefined, () => assert.fail("unexpected failure"), () => { forced++; }, 20);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(forced, 1);
+  assert.equal(quit.ready, false);
+  stalled.resolve();
+  await pending;
+});

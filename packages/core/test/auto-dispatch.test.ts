@@ -21,6 +21,33 @@ function fixture(file = ":memory:") {
 }
 
 describe("auto-dispatch (60a)", () => {
+  it("routes platform tasks only to a matching heartbeat OS, including manual dispatch", async () => {
+    const { hive, beat, create, enable, tasks } = fixture();
+    const mac: Actor = { name: "mac-runner", role: "agent" };
+    await beat({ platform: "linux" });
+    await beat({ platform: "mac" }, mac);
+    await create("mac-only", { platforms: ["mac"] });
+    assert.deepEqual((await tasks())[0]?.platforms, ["mac"]);
+    await assert.rejects(hive.call("runs.dispatch", { project: "app", taskId: "mac-only", machineId: runner.name }, admin), (e: unknown) => (e as { key?: string }).key === "errors.machinePlatformMismatch");
+    await enable();
+    assert.equal((await beat()).runRequests.length, 0);
+    assert.equal((await beat({ platform: "mac" }, mac)).runRequests[0]?.taskId, "mac-only");
+    hive.close();
+  });
+
+  it("normalizes a Windows heartbeat and rejects an unknown machine OS", async () => {
+    const { hive, beat, create } = fixture();
+    const unknown: Actor = { name: "old-runner", role: "agent" };
+    await beat({ platform: "win" });
+    await beat({ platform: null }, unknown);
+    await create("win-only", { platforms: ["windows"] });
+    assert.equal((await hive.call("machines.list", {}, admin)).find((m) => m.id === runner.name)?.platform, "windows");
+    assert.equal((await hive.call("machines.list", {}, admin)).find((m) => m.id === unknown.name)?.platform, null);
+    await assert.rejects(hive.call("runs.dispatch", { project: "app", taskId: "win-only", machineId: unknown.name }, admin), (e: unknown) => (e as { key?: string }).key === "errors.machinePlatformMismatch");
+    assert.equal((await hive.call("runs.dispatch", { project: "app", taskId: "win-only", machineId: runner.name }, admin)).machineId, runner.name);
+    hive.close();
+  });
+
   it("requires explicit opt-in, preserves it on unrelated edits, resets it explicitly", async () => {
     const { hive, beat, create, enable, tasks } = fixture();
     await create("T1");

@@ -6,6 +6,9 @@ export const COLUMN_MIN = 200;
 /** gap-2.5 between the columns, in pixels. */
 const COLUMN_GAP = 10;
 
+/** The order the columns are drawn in (the design's); TASK_STATUSES stays the core's order. */
+export const BOARD_ORDER: readonly TaskStatus[] = ["todo", "doing", "review", "blocked", "done"];
+
 /** Only these two fold away: the work in front of the reader (Chưa làm, Đang làm, Chờ review) always shows. */
 export const FOLDABLE: readonly TaskStatus[] = ["blocked", "done"];
 
@@ -18,12 +21,13 @@ export function fitsEveryColumn(width: number): boolean {
 }
 
 /**
- * The columns shown as a narrow rail with their count: Xong and Bị chặn when they hold nothing, and — when five
- * columns no longer fit — those two whatever they hold, until the reader opens one.
+ * The columns shown as a narrow rail with their count: Xong and Bị chặn, only when five
+ * columns no longer fit, whatever they hold, until the reader opens one.
  */
-export function foldedColumns(width: number, count: (status: TaskStatus) => number, opened: ReadonlySet<TaskStatus>): Set<TaskStatus> {
+export function foldedColumns(width: number, _count: (status: TaskStatus) => number, opened: ReadonlySet<TaskStatus>): Set<TaskStatus> {
+  // An empty column stays open: the design shows all five, and the board scrolls sideways when they do not fit.
   const narrow = !fitsEveryColumn(width);
-  return new Set(FOLDABLE.filter((status) => !opened.has(status) && (narrow || count(status) === 0)));
+  return new Set(FOLDABLE.filter((status) => !opened.has(status) && narrow));
 }
 
 /** Why a subscription is not taking work, in the order the Board says it. */

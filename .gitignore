@@ -17,12 +17,19 @@ data/
 deploy/.env
 
 # What agents make in a run (roadmap 41c uploads it to the hub); never part of a commit.
-.xdev-hive/artifacts/
+**/.xdev-hive/artifacts/
 # Local test evidence can exceed the artifact upload limit; keep it outside commits.
 .xdev-hive/test-output/
+.xdev-hive/*.log
 # The vendored ui-ux-pro-max skill keeps its search data in data/ (roadmap 49).
 !.claude/skills/ui-ux-pro-max/data/
 # Bytecode the vendored skill's search.py leaves behind; a run must not commit it.
 __pycache__/
 # e2e runs that pass an output dir inside the repo leave screenshots here.
 apps/web/artifacts/
+# Antigravity's MCP entry: Setup writes it per machine (Windows starts the shim through cmd /c), so one committed
+# copy breaks every other OS.
+.agents/mcp_config.json
+
+# Screenshots e2e/smoke runs leave beside a workspace; evidence goes to .xdev-hive/artifacts instead.
+apps/*/.xdev-hive/

@@ -70,6 +70,17 @@ describe("findGitRepos (roadmap 38d)", () => {
     repoAt(repo, "inner");
     assert.deepEqual(findGitRepos(repo), [repo]);
   });
+
+  it("below a repository: its own clones, not its submodules (a group's folder with git init, GROUP-init-sync)", () => {
+    const root = testTmpDir(path.join(os.tmpdir(), "hive-below-"));
+    const group = repoAt(root, "customer-ai");
+    const service = repoAt(group, path.join("his", "backend", "svc-core"));
+    // A submodule's .git is a file pointing into the outer repository.
+    mkdirSync(path.join(group, "vendor", "lib"), { recursive: true });
+    writeFileSync(path.join(group, "vendor", "lib", ".git"), "gitdir: ../../.git/modules/lib\n");
+    assert.deepEqual(findGitRepos(group, 3, true), [service]);
+    assert.deepEqual(findGitRepos(root, 3, true), [group], "a plain folder: as before");
+  });
 });
 
 describe("defaultBranch", () => {

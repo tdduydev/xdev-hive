@@ -5,19 +5,19 @@ import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 // beside what it decides on. #/features?project=&flow= opens a flow's, ?project=&dir=&branch= a folder's (the Spec
 // page's links, #/specs?…, come here). The desktop app keeps its Spec page (pages/Specs.tsx).
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { cn } from "cn";
 import { SPEC_FILES, specNextStep, type RunRecord, type SdlcGateRecord, type SpecFile } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@xdev-hive/ui/components/ui/tabs";
+import { Tag } from "@xdev-hive/ui/components/ui/primitives";
+import "./pipeline-features.css";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
-import { Badge, ErrorNote, STATUS_TONE } from "#ui/components/common.tsx";
+import { ErrorNote } from "#ui/components/common.tsx";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { AcceptanceEvidence } from "#ui/components/AcceptanceEvidence.tsx";
-import { FlowTasks, MOVING, STATE_CHIP } from "#ui/components/FlowCard.tsx";
-import { Chip, DetailBody, DetailHeader, PaneEmpty } from "#ui/components/panes.tsx";
+import { MOVING } from "#ui/components/FlowCard.tsx";
+import { PaneEmpty } from "#ui/components/panes.tsx";
+import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { formatTime, useAction, useCan, useHashParam, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import {
@@ -31,7 +31,6 @@ import {
   featureTaskIds,
   findFeature,
   gateTab,
-  isWaiting,
   mayDecide,
   noteRequired,
   ownsTask,
@@ -44,11 +43,11 @@ import {
   type FeatureTab,
 } from "#ui/lib/features.ts";
 import { runLabel, runOutcome } from "#ui/lib/runs.ts";
+import { fold } from "#ui/lib/text.ts";
 import { inScope, projectScope, scopeFilter, scopeKey } from "#ui/lib/scope.ts";
 import { flowStep, taskStep, allPipelineFlows } from "#ui/lib/pipeline.ts";
-import { fold } from "#ui/lib/text.ts";
 import { useToast } from "#ui/shell/toast.tsx";
-import { ImportTasks, Progress, SpecRun, STAGE_CHIP } from "./Specs.tsx";
+import { ImportTasks, Progress, SpecRun } from "./Specs.tsx";
 
 /** The right sdlc.decide asks for at a gate, named for the person who lacks it. */
 const gateRight = (g: Pick<SdlcGateRecord, "gate">): "codeReview" | "qaVerify" | "taskManage" | "runDispatch" => (g.gate === "test" ? "qaVerify" : g.gate === "review" || g.gate === "merge" ? "codeReview" : g.gate === "tasks" ? "taskManage" : "runDispatch");
@@ -93,36 +92,9 @@ export function FeaturesPage() {
   const manyProjects = scope.kind !== "project";
   useChatPageContext(current ? { id: current.flow?.taskId ?? current.spec?.dir ?? current.key, href: featureHref(current), project: current.project } : null);
 
-  if (linked) {
-    return (
-      <div className="mobile-master-detail flex h-full min-h-0 w-full flex-col bg-surface" data-feature-title={current?.title}>
-        <BackBar />
-        {current ? (
-          <FeatureView key={current.key} item={current} manyProjects={manyProjects} onChanged={data.reload} />
-        ) : data.data ? (
-          <PaneEmpty>{t("specs.notFound")}</PaneEmpty>
-        ) : (
-          <ErrorNote error={data.error} />
-        )}
-      </div>
-    );
-  }
   // Roadmap 20d: a new feature's spec written by an agent, in a project's scope (the run needs one repo).
   const newProject = scope.kind === "project" && allow(scope.project, "taskManage") && allow(scope.project, "runDispatch") ? scope.project : null;
-  return <Board items={items.filter((item) => (!linkColumn || item.column === linkColumn) && (!linkStep || (item.flow?.step !== "dispatch" && item.flow && flowStep(item.flow) === linkStep) || item.tasks.some((task) => taskStep(task) === linkStep)))} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} />;
-}
-
-/** Back to the board, at every width: the board and a feature are two pages of one entry. */
-function BackBar() {
-  const t = useT();
-  return (
-    <div className="shrink-0 border-b border-line-subtle px-3 py-1.5 md:px-4">
-      <Button variant="ghost" size="sm" className="max-md:min-h-11" onClick={() => (window.location.hash = "#/features")}>
-        <ArrowLeft />
-        {t("common.backToList")}
-      </Button>
-    </div>
-  );
+  return <Board items={items.filter((item) => (!linkColumn || item.column === linkColumn) && (!linkStep || (item.flow?.step !== "dispatch" && item.flow && flowStep(item.flow) === linkStep) || item.tasks.some((task) => taskStep(task) === linkStep)))} loaded={!!data.data} error={data.error} shared={shared} manyProjects={manyProjects} newProject={newProject} newWork={newWork} initialBoard={!!linkStep || !!linkColumn} selected={current} notFound={linked && !current && !!data.data} onChanged={data.reload} />;
 }
 
 /** Whether any gate of the card waits for this person. */
@@ -131,16 +103,25 @@ function useMine() {
   return (item: FeatureItem) => item.waiting.some((g) => mayDecide(allow, g));
 }
 
-function Board({ items, loaded, error, shared, manyProjects, newProject, newWork }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null; newWork: string | null }) {
+// The design's five stages: review counts as being worked on, as the board's Review column sits between doing and done.
+const STAGE_OF: Record<FeatureColumn, number> = { spec: 1, plan: 2, tasks: 3, doing: 4, review: 4, done: 5 };
+const STAGE_NAME = ["specify", "plan", "tasks", "implement", "done"] as const;
+
+function Board({ items, loaded, error, shared, manyProjects, newProject, newWork, initialBoard, selected, notFound, onChanged }: { items: FeatureItem[]; loaded: boolean; error: string | null; shared: boolean; manyProjects: boolean; newProject: string | null; newWork: string | null; initialBoard: boolean; selected: FeatureItem | null; notFound: boolean; onChanged: () => void }) {
   const t = useT();
   const mine = useMine();
   const [q, setQ] = useState("");
   const [onlyMine, setOnlyMine] = useState(false);
+  const [mode, setMode] = useState<"list" | "board">(initialBoard ? "board" : "list");
   const [creating, setCreating] = useState(!!newWork);
   // The board stays mounted when + Mới opens another feature: its new key opens the form again.
   useEffect(() => {
     if (newWork) setCreating(true);
   }, [newWork]);
+  // A card of the board opens its feature, which only the two-column view shows: the mode follows the address.
+  useEffect(() => {
+    if (selected) setMode("list");
+  }, [selected?.key]);
   const needle = fold(q.trim());
   const mineCount = items.filter(mine).length;
   const shown = items.filter((x) => (!needle || fold(`${x.title} ${x.project} ${x.flow?.taskId ?? ""} ${x.spec?.dir ?? ""} ${x.spec?.branch ?? ""}`).includes(needle)) && (!onlyMine || mine(x)));
@@ -148,157 +129,140 @@ function Board({ items, loaded, error, shared, manyProjects, newProject, newWork
   // On a phone one column at a time: the first with something waiting for you, else the first with anything.
   const [picked, setPicked] = useState<FeatureColumn | null>(null);
   const active = picked ?? FEATURE_COLUMNS.find((c) => inColumn(c).some(mine)) ?? FEATURE_COLUMNS.find((c) => inColumn(c).length) ?? "spec";
-
-  return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-surface" data-features-board>
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line-subtle px-4 py-2 md:px-6">
-        <Input className="h-11 w-full text-xs sm:w-64 md:h-7" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("features.search")} aria-label={t("features.search")} />
-        <Button
-          size="sm"
-          variant={onlyMine ? "default" : "outline"}
-          className="max-md:min-h-11"
-          aria-pressed={onlyMine}
-          title={t("features.onlyMineHint")}
-          onClick={() => setOnlyMine((v) => !v)}
-          data-features-mine
-        >
-          {t("features.onlyMine")} · {mineCount}
-        </Button>
-        {newProject ? (
-          <Button size="sm" variant={creating ? "ghost" : "outline"} className="max-md:min-h-11 md:ml-auto" onClick={() => setCreating((v) => !v)}>
-            {creating ? t("specs.import.close") : t("specs.run.new")}
+  const board = mode === "board" && !selected;
+  const current = selected ?? shown[0] ?? null;
+  const pickMode = (next: "list" | "board") => {
+    setMode(next);
+    // Leaving a feature for the board: the address drops its link, or the feature would pull the view back.
+    if (next === "board" && selected) window.location.hash = "#/features";
+  };
+  const form = creating && newProject ? (
+    <div className="max-w-[760px]" data-feature-new={newProject}>
+      {/* Keyed by the opening, so a second + Mới starts from an empty draft rather than the previous one's. */}
+      <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
+    </div>
+  ) : null;
+  const newButton = newProject ? (
+    <Button size="sm" variant="glass" className="self-start" onClick={() => setCreating((v) => !v)}>
+      {creating ? t("specs.import.close") : t("specs.run.new")}
+    </Button>
+  ) : null;
+  const empty = shared ? (
+    <PaneEmpty>{t("specs.sharedScope")}</PaneEmpty>
+  ) : loaded && !items.length ? (
+    <PaneEmpty
+      action={
+        newProject && !creating ? (
+          <Button size="sm" data-empty-action onClick={() => setCreating(true)}>
+            {t("specs.newFirst")}
           </Button>
-        ) : null}
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 md:px-6">
-        {creating && newProject ? (
-          <div className="max-w-[760px]" data-feature-new={newProject}>
-            {/* Keyed by the opening, so a second + Mới starts from an empty draft rather than the previous one's. */}
-            <SpecRun key={`${newWork ?? "draft"}:${newProject}`} project={newProject} step="specify" feature={null} onSent={() => setCreating(false)} />
-          </div>
-        ) : null}
-        <ErrorNote error={error} />
-        {shared ? (
-          <PaneEmpty>{t("specs.sharedScope")}</PaneEmpty>
-        ) : loaded && !items.length ? (
-          <PaneEmpty
-            action={
-              newProject && !creating ? (
-                <Button size="sm" data-empty-action onClick={() => setCreating(true)}>
-                  {t("specs.newFirst")}
-                </Button>
-              ) : null
-            }
-          >
-            {t("specs.empty")}
-            <span className="mt-1.5 block text-[11px]/4">{t("specs.emptyHow")}</span>
-          </PaneEmpty>
-        ) : loaded && !shown.length ? (
-          <PaneEmpty>{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</PaneEmpty>
-        ) : loaded ? (
-          <>
-            <div role="tablist" aria-label={t("features.board")} className="mb-2 flex gap-1 overflow-x-auto pb-1 md:hidden">
-              {FEATURE_COLUMNS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  role="tab"
-                  id={`feature-tab-${c}`}
-                  aria-selected={active === c}
-                  aria-controls={`feature-column-${c}`}
-                  onClick={() => setPicked(c)}
-                  className={cn("min-h-11 shrink-0 rounded-md px-3 text-xs font-semibold outline-none focus-visible:focus-ring", active === c ? "bg-selected text-fg-strong" : "bg-subtle text-fg-secondary")}
-                >
-                  {t(`features.column.${c}`)} · {inColumn(c).length}
-                </button>
-              ))}
+        ) : null
+      }
+    >
+      {t("specs.empty")}
+      <span className="mt-1.5 block text-[11px]/4">{t("specs.emptyHow")}</span>
+    </PaneEmpty>
+  ) : notFound ? (
+    <PaneEmpty>{t("specs.notFound")}</PaneEmpty>
+  ) : null;
+  const filters = (
+    <div className="ft-filters">
+      <Input controlSize="sm" className="ft-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("features.search")} aria-label={t("features.search")} data-features-search />
+      <button type="button" className="pf-tagbtn" aria-pressed={onlyMine} title={t("features.onlyMineHint")} onClick={() => setOnlyMine((v) => !v)} data-features-mine>
+        <Tag active={onlyMine}>{t("features.onlyMine")} · {mineCount}</Tag>
+      </button>
+      <span className="pf-spacer" />
+      {(["list", "board"] as const).map((m) => (
+        <button key={m} type="button" className="pf-tagbtn" aria-pressed={board ? m === "board" : m === "list"} onClick={() => pickMode(m)} data-features-view={m}>
+          <Tag active={board ? m === "board" : m === "list"}>{t(`features.view.${m}`)}</Tag>
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div className="w-full" data-features-board data-feature-title={current?.title}>
+      {form}
+      <ErrorNote error={error} />
+      {empty ?? (loaded ? (
+        <>
+          {filters}
+          {board ? (
+            <>
+              {shown.length ? (
+                <>
+                  <div role="tablist" aria-label={t("features.board")} className="ft-coltabs">
+                    {FEATURE_COLUMNS.map((c) => (
+                      <button key={c} type="button" role="tab" id={`feature-tab-${c}`} aria-selected={active === c} aria-controls={`feature-column-${c}`} onClick={() => setPicked(c)} className="pf-tab">
+                        {t(`features.column.${c}`)} · {inColumn(c).length}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ft-cols">
+                    {FEATURE_COLUMNS.map((c) => {
+                      const cards = inColumn(c);
+                      return (
+                        <section key={c} id={`feature-column-${c}`} aria-label={t("features.columnTitle", { column: t(`features.column.${c}`), count: cards.length })} data-feature-column={c} className="ft-col" data-hidden={active !== c ? "" : undefined}>
+                          <h3>
+                            {t(`features.column.${c}`)}
+                            <span>{cards.length}</span>
+                          </h3>
+                          {cards.map((x) => (
+                            <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={false} />
+                          ))}
+                          {!cards.length ? <p className="pf-empty m-0 px-1 py-2">{t("features.columnEmpty")}</p> : null}
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <PaneEmpty>{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</PaneEmpty>
+              )}
+              {newButton}
+            </>
+          ) : current ? (
+            <div className="ft-grid" data-detail={selected ? "" : undefined}>
+              {selected ? <div className="basis-full md:hidden"><MobileBack onClick={() => { window.location.hash = "#/features"; }} /></div> : null}
+              <nav className="ft-list" aria-label={t("features.board")}>
+                {shown.map((x) => (
+                  <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} current={x.key === current.key} />
+                ))}
+                {!shown.length ? <p className="pf-empty m-0 px-2 py-2">{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</p> : null}
+                {newButton}
+              </nav>
+              <FeatureView key={current.key} item={current} manyProjects={manyProjects} onChanged={onChanged} />
             </div>
-            <div className="overflow-x-auto max-md:overflow-x-visible">
-              <div className="grid gap-2.5 max-md:block md:min-w-[960px] md:grid-cols-6">
-                {FEATURE_COLUMNS.map((c) => {
-                  const cards = inColumn(c);
-                  return (
-                    <section
-                      key={c}
-                      id={`feature-column-${c}`}
-                      aria-label={t("features.columnTitle", { column: t(`features.column.${c}`), count: cards.length })}
-                      data-feature-column={c}
-                      className={cn("flex min-h-40 min-w-0 flex-col gap-1.5 rounded-[10px] bg-subtle p-2", active !== c && "max-md:hidden")}
-                    >
-                      <h3 className="m-0 flex items-center gap-1.5 px-1 pt-0.5 pb-1 text-xs font-semibold text-fg-strong max-md:hidden">
-                        {t(`features.column.${c}`)}
-                        <span className="font-normal text-fg-muted tabular-nums">{cards.length}</span>
-                      </h3>
-                      {cards.map((x) => (
-                        <FeatureCard key={x.key} item={x} mine={mine(x)} manyProjects={manyProjects} />
-                      ))}
-                      {!cards.length ? <p className="m-0 px-1 py-2 text-xs text-fg-muted">{t("features.columnEmpty")}</p> : null}
-                    </section>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        ) : null}
-      </div>
+          ) : (
+            <>
+              <PaneEmpty>{t(onlyMine && !needle ? "features.noneMine" : "specs.noMatch")}</PaneEmpty>
+              {newButton}
+            </>
+          )}
+        </>
+      ) : null)}
     </div>
   );
 }
 
-/** Where a card stands, in one chip: the flow's state, or the folder's stage when no flow drives it. */
-function StandChip({ item }: { item: FeatureItem }) {
+function FeatureCard({ item: x, mine, manyProjects, current }: { item: FeatureItem; mine: boolean; manyProjects: boolean; current: boolean }) {
   const t = useT();
-  const f = item.flow;
-  if (f) return <Chip kind={STATE_CHIP[f.state]} small>{t(`flow.state.${f.state}`, { step: t(`flow.step.${f.step}`), gate: f.gate ? t(`sdlc.gate.${f.gate.gate}`) : "" })}</Chip>;
-  return item.spec ? <Chip kind={STAGE_CHIP[item.spec.stage]} small>{t(`specs.stage.${item.spec.stage}`)}</Chip> : null;
-}
-
-function WaitChip({ item, mine }: { item: FeatureItem; mine: boolean }) {
-  const t = useT();
-  const g = item.waiting[0];
-  if (!g) return null;
-  const gate = t(`sdlc.gate.${g.gate}`);
-  return mine ? (
-    <Chip kind="warning" small title={t("features.waitingYouHint", { gate })}>
-      {t("features.waitingYou")}
-    </Chip>
-  ) : (
-    <Chip kind="neutral" small title={t("features.waitingOtherHint", { gate })}>
-      {t("features.waitingOther")}
-    </Chip>
-  );
-}
-
-function FeatureCard({ item: x, mine, manyProjects }: { item: FeatureItem; mine: boolean; manyProjects: boolean }) {
-  const t = useT();
-  const merged = x.tasks.filter((k) => k.stage === "done").length;
+  const stage = STAGE_OF[x.column];
+  const waiting = x.waiting.length > 0;
   return (
-    <a
-      href={featureHref(x)}
-      data-feature-card={x.flow?.taskId ?? x.spec?.dir}
-      data-feature-mine={mine ? "" : undefined}
-      className="flex min-h-11 flex-col gap-1.5 rounded-md border border-line-default bg-surface p-2.5 text-fg-primary no-underline outline-none hover:bg-hover focus-visible:focus-ring"
-    >
-      <span className="flex flex-wrap items-center gap-1">
-        <WaitChip item={x} mine={mine} />
-        <StandChip item={x} />
-        {!x.flow ? (
-          <Chip kind="neutral" small title={t("features.noFlowHint")}>
-            {t("features.noFlow")}
-          </Chip>
-        ) : null}
+    <a href={featureHref(x)} data-feature-card={x.flow?.taskId ?? x.spec?.dir} data-feature-mine={mine ? "" : undefined} aria-current={current} className="ft-card outline-none focus-visible:focus-ring">
+      <span className="ft-card-top">
+        <b>{x.title}</b>
+        <span>{manyProjects ? x.project : x.flow?.taskId ?? x.spec?.dir}{!x.flow && x.spec?.branch ? ` · ${x.spec.branch}` : ""}</span>
       </span>
-      <span className="line-clamp-3 text-[13px]/[18px] font-semibold text-pretty text-fg-strong [overflow-wrap:anywhere]">{x.title}</span>
-      <span className="truncate font-mono text-[11px]/[14px] text-fg-muted max-md:text-xs">
-        {manyProjects ? `${x.project} · ` : ""}
-        {x.flow?.taskId ?? x.spec?.dir}
-        {x.spec?.branch && !x.flow ? ` · ${x.spec.branch}` : ""}
+      <span className="ft-bar" aria-hidden="true">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <i key={i} data-on={i < stage || stage === 5 ? "done" : i === stage ? "now" : undefined} />
+        ))}
       </span>
-      {x.tasks.length ? (
-        <span className="text-[11px]/[14px] text-fg-muted max-md:text-xs">{t("features.tasksDone", { done: merged, total: x.tasks.length })}</span>
-      ) : x.spec?.tasksTotal ? (
-        <Progress done={x.spec.tasksDone} total={x.spec.tasksTotal} />
-      ) : null}
+      <span className="ft-stage" data-tone={stage === 5 ? "done" : waiting ? "gate" : undefined} title={waiting ? t(mine ? "features.waitingYou" : "features.waitingOther") : undefined}>
+        {t(`specs.stage.${STAGE_NAME[stage - 1]!}`)}
+        {waiting ? ` · ${t(mine ? "features.waitingYou" : "features.waitingOther")}` : ""}
+      </span>
     </a>
   );
 }
@@ -335,7 +299,6 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
   const canImport = !!spec && shown === "tasks" && files?.tasks != null && allow(spec.project, "taskManage");
   const next = spec ? specNextStep(spec.stage) : null;
   const canRun = !!spec && ["spec", "plan", "tasks"].includes(shown) && !item.flow && next !== null && allow(spec.project, "runDispatch") && allow(spec.project, "taskManage");
-  const decidingHere = item.waiting.filter((g) => gateTab(g) === shown);
   const fileOf = (tab: FeatureTab): SpecFile | null => (tab === "spec" || tab === "plan" || tab === "tasks" ? tab : null);
   const has = (f: SpecFile) => !!files && files[f] !== null;
   const enabled = (tab: FeatureTab) => {
@@ -346,85 +309,83 @@ function FeatureView({ item, manyProjects, onChanged }: { item: FeatureItem; man
   const file = fileOf(shown);
   const text = file && files ? files[file] : null;
 
+  const scope = `${manyProjects ? `${item.project} · ` : ""}${spec ? `specs/${spec.dir}` : (item.flow?.taskId ?? "")}`;
   return (
-    <Tabs value={shown} onValueChange={(v) => pick(v as FeatureTab)} className="min-h-0 flex-1 gap-0">
-      <DetailHeader
-        chips={
-          <>
-            <WaitChip item={item} mine={item.waiting.some((g) => mayDecide(allow, g))} />
-            <Chip kind="info">{t(`features.column.${item.column}`)}</Chip>
-            <StandChip item={item} />
-            {spec ? <Chip kind={spec.branch ? "warning" : "neutral"}>{spec.branch || t("specs.targetBranch")}</Chip> : null}
-          </>
-        }
-        scope={`${manyProjects ? `${item.project} · ` : ""}${spec ? `specs/${spec.dir}` : (item.flow?.taskId ?? "")}`}
-        when={spec ? `${spec.machine} · ${formatTime(spec.pushedAt)} · ${spec.commit.slice(0, 12)}` : item.flow ? `${item.flow.machine} · ${formatTime(item.flow.updatedAt)}` : undefined}
-        title={item.title}
-      />
-      <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line-subtle px-4 py-2 md:px-6">
-        <div className="min-w-0 max-w-full">
-          <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
-            <TabsList aria-label={t("features.tabsLabel")}>
-              {FEATURE_TABS.map((tab) => (
-                <TabsTrigger key={tab} value={tab} className="px-3 max-md:min-h-11" disabled={!enabled(tab)} data-feature-tab={tab}>
-                  {t(`features.tab.${tab}`)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-        </div>
-        {spec?.tasksTotal ? <Progress done={spec.tasksDone} total={spec.tasksTotal} /> : null}
-        <span className="flex flex-wrap gap-1.5 md:ml-auto md:flex-nowrap">
+    <div className="ft-main" data-feature-view={item.key}>
+      <div className="flex flex-col gap-2">
+        <span className="ft-branch">{spec?.branch ? `${scope} · ${spec.branch}` : scope}</span>
+        <h2 className="ft-h2">{item.title}</h2>
+      </div>
+      {/* The gate's buttons sit at the top whatever the tab: it is what the feature waits for. */}
+      {item.waiting.map((g) => (
+        <GateDecision key={g.id} gate={g} task={g.taskId} item={item} onDone={onChanged} />
+      ))}
+      <div className="ft-tabs" role="tablist" aria-label={t("features.tabsLabel")}>
+        {FEATURE_TABS.map((tab) => (
+          <button key={tab} type="button" role="tab" className="pf-tagbtn" aria-selected={shown === tab} disabled={!enabled(tab)} onClick={() => pick(tab)} data-feature-tab={tab}>
+            <Tag active={shown === tab}>{t(`features.tab.${tab}`)}</Tag>
+          </button>
+        ))}
+      </div>
+      {spec?.tasksTotal || (item.flow?.state === "stopped" && allow(item.project, "runDispatch")) || (canRun && next) || canImport ? (
+        <div className="ft-tools">
+          {spec?.tasksTotal ? <Progress done={spec.tasksDone} total={spec.tasksTotal} /> : null}
           {item.flow?.state === "stopped" && allow(item.project, "runDispatch") ? (
-            <Button size="sm" variant="outline" disabled={retry.busy} onClick={() => void retry.run(async () => (await client.call("sdlc.retry", { taskId: item.flow!.taskId }), onChanged()))}>
+            <Button size="sm" variant="glass" disabled={retry.busy} onClick={() => void retry.run(async () => (await client.call("sdlc.retry", { taskId: item.flow!.taskId }), onChanged()))}>
               {t("flow.retry", { step: t(`flow.step.${item.flow.step}`) })}
             </Button>
           ) : null}
           {canRun && next ? (
-            <Button size="sm" variant={running ? "ghost" : "outline"} onClick={() => (setRunning((v) => !v), setImporting(false))}>
+            <Button size="sm" variant="glass" onClick={() => (setRunning((v) => !v), setImporting(false))}>
               {running ? t("specs.import.close") : t(`specs.run.step.${next}`)}
             </Button>
           ) : null}
           {canImport ? (
-            <Button size="sm" variant={importing ? "ghost" : "outline"} onClick={() => (setImporting((v) => !v), setRunning(false))}>
+            <Button size="sm" variant="glass" onClick={() => (setImporting((v) => !v), setRunning(false))}>
               {importing ? t("specs.import.close") : t("specs.import.open")}
             </Button>
           ) : null}
-        </span>
-      </div>
-      <TabsContent value={shown} className="flex min-h-0 flex-1 flex-col"><DetailBody>
-        <ErrorNote error={detail.error ?? retry.error} />
-        {/* Why the flow stopped, or what its last check said. */}
-        {item.flow?.note && item.flow.state !== "gate" ? <p className="m-0 text-xs wrap-anywhere text-fg-muted">{item.flow.note}</p> : null}
-        {importing && canImport && spec ? <ImportTasks feature={spec} onDone={() => setImporting(false)} /> : null}
-        {running && canRun && spec && next ? <SpecRun project={spec.project} step={next} feature={spec} onSent={() => setRunning(false)} /> : null}
-        {/* The gate's buttons beside what it decides on: the file, or the flow's tasks. */}
-        {decidingHere.map((g) => (
-          <GateDecision key={g.id} gate={g} task={g.taskId} item={item} onDone={onChanged} />
-        ))}
-        {file ? (
-          <>
-            {shown === "tasks" && item.flow ? <FlowTasks project={item.project} flowTask={item.flow.taskId} /> : null}
-            {!spec ? (
-              <p className="m-0 text-[13px] text-fg-muted">{t("features.writing")}</p>
-            ) : text !== null ? (
-              <DocMarkdown text={text} />
-            ) : files ? (
-              <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${file}.md` })}</p>
-            ) : null}
-          </>
-        ) : shown === "checks" ? (
-          <>
-            <AcceptanceEvidence key={item.key} item={item} />
-            <details className="rounded-md border border-line-subtle p-3"><summary className="min-h-11 cursor-pointer text-sm font-medium">{t("evidence.personal")}</summary><Checks item={item} spec={files ? files.spec : spec ? undefined : null} canVerify={allow(item.project, "qaVerify")} /></details>
-          </>
-        ) : shown === "runs" ? (
-          <FeatureRuns item={item} />
-        ) : (
-          <GateHistory item={item} />
-        )}
-      </DetailBody></TabsContent>
-    </Tabs>
+        </div>
+      ) : null}
+      <ErrorNote error={detail.error ?? retry.error} />
+      {/* Why the flow stopped, or what its last check said. */}
+      {item.flow?.note && item.flow.state !== "gate" ? <p className="m-0 text-xs wrap-anywhere text-fg-muted">{item.flow.note}</p> : null}
+      {importing && canImport && spec ? <ImportTasks feature={spec} onDone={() => setImporting(false)} /> : null}
+      {running && canRun && spec && next ? <SpecRun project={spec.project} step={next} feature={spec} onSent={() => setRunning(false)} /> : null}
+      {file ? (
+        <>
+          {shown === "tasks" && item.tasks.length ? (
+            <ol className="ft-rows" data-flow-tasks={item.flow?.taskId}>
+              {item.tasks.map((x, i) => (
+                <li key={x.taskId} className="ft-row">
+                  <span className="ft-mark">{i + 1}</span>
+                  <span className="ft-row-text">
+                    <a className="hover:underline" href={`#/tasks?task=${encodeURIComponent(x.taskId)}`}>{x.taskId}</a>
+                    <span>{t(`flow.stage.${x.stage}`, { gate: x.gate ? t(`sdlc.gate.${x.gate.gate}`) : "" })}{x.fixRounds ? ` · ${t("flow.fixRounds", { count: x.fixRounds })}` : ""}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {!spec ? (
+            <p className="m-0 text-[13px] text-fg-muted">{t("features.writing")}</p>
+          ) : text !== null ? (
+            <DocMarkdown text={text} />
+          ) : files ? (
+            shown === "tasks" && item.tasks.length ? null : <p className="m-0 text-[13px] text-fg-muted">{t("specs.noFile", { file: `${file}.md` })}</p>
+          ) : null}
+        </>
+      ) : shown === "checks" ? (
+        <>
+          <AcceptanceEvidence key={item.key} item={item} />
+          <details className="ft-row block"><summary className="min-h-11 cursor-pointer text-sm font-medium">{t("evidence.personal")}</summary><Checks item={item} spec={files ? files.spec : spec ? undefined : null} canVerify={allow(item.project, "qaVerify")} /></details>
+        </>
+      ) : shown === "runs" ? (
+        <FeatureRuns item={item} />
+      ) : (
+        <GateHistory item={item} />
+      )}
+    </div>
   );
 }
 
@@ -436,6 +397,7 @@ function GateDecision({ gate: g, task, item, onDone }: { gate: SdlcGateRecord; t
   const action = useAction();
   const toast = useToast();
   const [note, setNote] = useState("");
+  const [asking, setAsking] = useState(false);
   const may = mayDecide(allow, g);
   const needsNote = noteRequired(g);
   const gate = t(`sdlc.gate.${g.gate}`);
@@ -450,43 +412,43 @@ function GateDecision({ gate: g, task, item, onDone }: { gate: SdlcGateRecord; t
       await client.call("sdlc.decide", { gateId: g.id, decision, note });
       toast(t(decision === "pass" ? "features.decide.passed" : "features.decide.changed", { gate, task }));
       setNote("");
+      setAsking(false);
       bump();
       onDone();
     });
   const noteId = `gate-note-${g.id}`;
   return (
-    <section className="flex flex-col gap-2 rounded-md border border-line-default bg-sunken p-3" data-gate-decision={g.id} aria-label={t("features.decide.title", { gate, task })}>
-      <div className="flex flex-wrap items-center gap-2">
-        <b className="text-[13px] font-semibold text-fg-strong">{t("features.decide.title", { gate, task })}</b>
-        <Chip kind={g.status === "escalated" ? "danger" : "warning"} small>
-          {t(`flow.gateStatus.${g.status}`)}
-        </Chip>
-        {run ? (
-          <a className="ml-auto text-xs text-fg-link underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(run)}`}>
-            {t("features.decide.openRun")}
-          </a>
-        ) : null}
-      </div>
-      <p className="m-0 text-xs text-fg-secondary">{t(g.status === "escalated" ? "flow.escalated" : "flow.waiting", { gate, mode: t(`sdlc.mode.${g.mode}`) })}</p>
-      {g.note ? <pre className="m-0 max-h-48 overflow-auto rounded border border-line-subtle bg-code p-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{g.note}</pre> : null}
+    <section className="ft-gate" data-gate-decision={g.id} aria-label={t("features.decide.title", { gate, task })}>
+      <p>
+        <b>{t("features.decide.title", { gate, task })}</b> · {t(g.status === "escalated" ? "flow.escalated" : "flow.waiting", { gate, mode: t(`sdlc.mode.${g.mode}`) })}
+      </p>
       {may ? (
         <>
-          <label htmlFor={noteId} className="text-xs font-medium text-fg-secondary">
-            {t("features.decide.noteLabel")}
-          </label>
-          <Textarea id={noteId} rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder={t(needsNote ? "features.decide.noteRequired" : "features.decide.noteOptional")} />
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" className="max-md:min-h-11" disabled={action.busy} title={passWhat} onClick={() => decide("pass")} data-feature-pass={g.id}>
-              {passLabel}
-            </Button>
-            <Button size="sm" variant="outline" className="max-md:min-h-11" disabled={action.busy || (needsNote && !note.trim())} onClick={() => decide("changes")} data-feature-changes={g.id}>
-              {changesLabel}
-            </Button>
-          </div>
+          <Button size="sm" variant="solid" disabled={action.busy} title={passWhat} onClick={() => decide("pass")} data-feature-pass={g.id}>
+            {passLabel}
+          </Button>
+          {/* The design's banner has two buttons and no note box: asking for changes opens the box the agent's redo needs. */}
+          <Button size="sm" variant="glass" disabled={action.busy || (asking && needsNote && !note.trim())} onClick={() => (asking ? decide("changes") : setAsking(true))} data-feature-changes={g.id}>
+            {changesLabel}
+          </Button>
+          {asking ? (
+            <div className="ft-gate-wide flex flex-col gap-1.5">
+              <label htmlFor={noteId} className="text-xs font-medium text-fg-secondary">
+                {t("features.decide.noteLabel")}
+              </label>
+              <Textarea id={noteId} rows={2} autoFocus value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} placeholder={t(needsNote ? "features.decide.noteRequired" : "features.decide.noteOptional")} />
+            </div>
+          ) : null}
         </>
       ) : (
-        <p className="m-0 text-xs text-fg-muted">{t("features.decide.noRight", { right: t(`features.right.${gateRight(g)}`), project: g.project })}</p>
+        <p className="ft-gate-wide text-xs text-fg-muted">{t("features.decide.noRight", { right: t(`features.right.${gateRight(g)}`), project: g.project })}</p>
       )}
+      {run ? (
+        <a className="ft-gate-wide text-xs text-fg-link underline underline-offset-2" href={`#/runs?run=${encodeURIComponent(run)}`}>
+          {t("features.decide.openRun")}
+        </a>
+      ) : null}
+      {g.note ? <pre className="ft-gate-wide m-0 max-h-48 overflow-auto rounded bg-code p-2 font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">{g.note}</pre> : null}
       <ErrorNote error={action.error} />
     </section>
   );
@@ -578,7 +540,7 @@ function FeatureRuns({ item }: { item: FeatureItem }) {
   if (!runs.data) return null;
   if (!shown.length) return <PaneEmpty>{t("features.runs.none")}</PaneEmpty>;
   return (
-    <ul className="m-0 flex list-none flex-col gap-1.5 p-0" data-feature-runs>
+    <ul className="ft-rows" data-feature-runs>
       {shown.map((r) => (
         <RunRow key={`${r.machineId}/${r.runId}`} run={r} />
       ))}
@@ -587,22 +549,15 @@ function FeatureRuns({ item }: { item: FeatureItem }) {
 }
 
 function RunRow({ run: r }: { run: RunRecord }) {
+  const mark = r.status === "succeeded" ? "✓" : r.status === "failed" ? "✕" : "·";
   return (
     <li>
-      <a
-        href={`#/runs?run=${encodeURIComponent(r.runId)}`}
-        data-feature-run={r.runId}
-        className="flex min-h-11 flex-col gap-1 rounded-md border border-line-default bg-surface px-3 py-2 text-fg-primary no-underline outline-none hover:bg-hover focus-visible:focus-ring"
-      >
-        <span className="flex flex-wrap items-center gap-2">
-          <Badge tone={STATUS_TONE[r.status] ?? "neutral"}>{runLabel("runStatus", r.status)}</Badge>
-          <span className="font-mono text-xs text-fg-strong">{r.taskId}</span>
-          <span className="text-xs text-fg-muted">{runLabel("agentRole", r.role)}</span>
-          <span className="ml-auto font-mono text-[11px] text-fg-muted max-md:text-xs">
-            {r.machine} · {formatTime(r.finishedAt ?? r.startedAt ?? r.createdAt)}
-          </span>
+      <a href={`#/runs?run=${encodeURIComponent(r.runId)}`} data-feature-run={r.runId} className="ft-row outline-none focus-visible:focus-ring">
+        <span className="ft-mark" data-tone={mark === "✓" ? "ok" : mark === "✕" ? "bad" : undefined}>{mark}</span>
+        <span className="ft-row-text">
+          <span>{r.taskId} · {runLabel("agentRole", r.role)} · {r.machine}</span>
+          <span>{runLabel("runStatus", r.status)} · {formatTime(r.finishedAt ?? r.startedAt ?? r.createdAt)} · {runOutcome(r)}</span>
         </span>
-        <span className="truncate text-xs text-fg-secondary">{runOutcome(r)}</span>
       </a>
     </li>
   );
@@ -619,19 +574,14 @@ function GateHistory({ item }: { item: FeatureItem }) {
   if (!gates.data) return null;
   if (!shown.length) return <PaneEmpty>{t("features.gates.none")}</PaneEmpty>;
   return (
-    <ol className="m-0 flex list-none flex-col gap-1.5 p-0" data-feature-gates>
+    <ol className="ft-rows" data-feature-gates>
       {shown.map((g) => (
-        <li key={g.id} className="flex flex-col gap-1 rounded-md border border-line-subtle bg-surface px-3 py-2" data-feature-gate={g.id} data-gate-status={g.status}>
-          <span className="flex flex-wrap items-center gap-2 text-xs">
-            <b className="font-semibold text-fg-strong">{t("features.gates.of", { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId })}</b>
-            <Chip kind={g.status === "passed" ? "success" : g.status === "rejected" ? "danger" : isWaiting(g) ? "warning" : "info"} small>
-              {t(`flow.gateStatus.${g.status}`)}
-            </Chip>
-            <span className="text-fg-muted">{t(`sdlc.mode.${g.mode}`)}</span>
-            {g.decidedBy ? <span className="font-mono text-fg-muted">{t("features.gates.by", { who: g.decidedBy })}</span> : null}
-            <span className="ml-auto text-fg-muted">{formatTime(g.decidedAt ?? g.createdAt)}</span>
+        <li key={g.id} className="ft-row" data-feature-gate={g.id} data-gate-status={g.status}>
+          <span className="ft-mark" data-tone={g.status === "passed" ? "ok" : g.status === "rejected" ? "bad" : undefined}>{g.status === "passed" ? "✓" : g.status === "rejected" ? "✕" : "·"}</span>
+          <span className="ft-row-text">
+            <span>{t("features.gates.of", { gate: t(`sdlc.gate.${g.gate}`), task: g.taskId })} · {t(`flow.gateStatus.${g.status}`)} · {t(`sdlc.mode.${g.mode}`)}{g.decidedBy ? ` · ${t("features.gates.by", { who: g.decidedBy })}` : ""}</span>
+            <span>{formatTime(g.decidedAt ?? g.createdAt)}{g.note ? ` · ${g.note}` : ""}</span>
           </span>
-          {g.note ? <p className="m-0 text-xs whitespace-pre-wrap text-fg-secondary [overflow-wrap:anywhere]">{g.note}</p> : null}
         </li>
       ))}
     </ol>

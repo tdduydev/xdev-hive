@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HiveError, type Actor } from "#core/index.ts";
+import { HiveError, memberPath, mergeSource, parseSystemSource, systemFolders, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -113,5 +113,78 @@ describe("systems", () => {
     for (const p of ["app", "web", "api"]) await hive.call("chat.send", { project: p, machineId: machine.name, text: `hi ${p}` }, admin);
     assert.deepEqual(ids(await hive.call("chat.threads", { projects: ["web", "api"] }, admin)), ["api", "web"]);
     assert.deepEqual(ids(await hive.call("chat.threads", { projects: [] }, admin)), []);
+  });
+});
+
+describe("system source (GROUP-init-sync)", () => {
+  const member = (project: string, path: string, state: "active" | "archived" | "gone" = "active") => ({
+    project,
+    pathWithNamespace: `shop/${path}`,
+    sshUrl: `git@gitlab.example.com:shop/${path}.git`,
+    httpUrl: `https://gitlab.example.com/shop/${path}.git`,
+    defaultBranch: "main",
+    state,
+  });
+  const source = (members: ReturnType<typeof member>[]) => ({ forge: "gitlab" as const, url: "https://gitlab.example.com", groupPath: "shop", members, syncedAt: null });
+
+  it("keeps the group and each member's path and clone URLs; a save without one keeps it, null drops it", async () => {
+    const hive = await hub();
+    const saved = await hive.call("systems.save", { name: "shop", projects: ["app", "web"], source: source([member("app", "mobile/app"), member("web", "web")]) }, admin);
+    assert.equal(saved.source?.groupPath, "shop");
+    assert.deepEqual(saved.source?.members.map((m) => [m.project, m.pathWithNamespace]), [["app", "shop/mobile/app"], ["web", "shop/web"]]);
+    // The editor of the Systems page only sends projects: the source must survive it.
+    await hive.call("systems.save", { name: "shop", projects: ["app", "web", "api"] }, admin);
+    const [kept] = await hive.call("systems.list", {}, admin);
+    assert.deepEqual([kept!.projects, kept!.source?.members.length], [["api", "app", "web"], 2]);
+    assert.ok((await hive.call("admin.audit", {}, admin)).some((a) => a.action === "systems.save" && a.detail === "app, web · source gitlab:shop (2)"));
+    await hive.call("systems.save", { name: "shop", projects: ["app"], source: null }, admin);
+    assert.equal((await hive.call("systems.list", {}, admin))[0]!.source, null);
+  });
+
+  it("shows only the members of projects the reader sees, and a member takes the right of its project", async () => {
+    const hive = await hub();
+    await hive.call("systems.save", { name: "shop", projects: ["app", "web", "billing"], source: source([member("app", "app"), member("web", "web"), member("billing", "billing")]) }, admin);
+    const [seen] = await hive.call("systems.list", {}, lan);
+    assert.deepEqual(seen!.source?.members.map((m) => m.project), ["app", "web"], "billing's repo stays hidden");
+    // A member names where a project is cloned from on every machine: only who manages that project may set it.
+    assert.equal(await refusal(hive.call("systems.save", { name: "front", projects: ["web"], source: source([member("web", "web"), member("app", "app")]) }, lan)), "forbidden");
+    assert.equal((await hive.call("systems.save", { name: "front", projects: ["web", "api"], source: source([member("web", "web"), member("api", "api")]) }, lan)).source?.members.length, 2);
+  });
+
+  it("refuses a source that carries credentials, another transport, or the same repo twice", async () => {
+    const hive = await hub();
+    const bad = [
+      source([{ ...member("app", "app"), httpUrl: "https://oauth2:secret@gitlab.example.com/shop/app.git" }]),
+      source([{ ...member("app", "app"), sshUrl: "ext::sh -c touch% /tmp/x" }]),
+      source([member("app", "app"), member("web", "app")]),
+      { ...source([member("app", "app")]), url: "https://user:pw@gitlab.example.com" },
+      { ...source([member("app", "app")]), groupPath: "shop/../other" },
+    ];
+    for (const s of bad) assert.equal(await refusal(hive.call("systems.save", { name: "shop", projects: ["app"], source: s }, admin)), "bad_request", JSON.stringify(s));
+  });
+
+  it("lays the projects out as the group's tree", () => {
+    const s = { projects: ["svc-core", "svc-portal", "infa", "login-theme", "loose"], source: source([member("svc-core", "his/backend/svc-core"), member("svc-portal", "his/frontend/svc-portal"), member("infa", "deploy/infa"), member("login-theme", "login-theme")]) };
+    assert.deepEqual(systemFolders(s), [
+      { folder: [], projects: ["login-theme", "loose"] },
+      { folder: ["deploy"], projects: ["infa"] },
+      { folder: ["his", "backend"], projects: ["svc-core"] },
+      { folder: ["his", "frontend"], projects: ["svc-portal"] },
+    ]);
+    assert.equal(memberPath("customer-ai", "customer-ai/his/backend/svc-core"), "his/backend/svc-core");
+    assert.equal(memberPath("customer-ai", "elsewhere/svc-core"), "svc-core", "outside the group: its own name");
+    assert.equal(parseSystemSource("{not json"), null);
+  });
+
+  it("an import adds its repos to the source of the same group, and leaves another group's source alone", () => {
+    const base = { forge: "gitlab" as const, url: "https://gitlab.example.com", groupPath: "shop" };
+    const { state: _s, ...app } = member("app", "app");
+    const { state: _w, ...web } = member("web", "web");
+    const first = mergeSource(null, base, [app]);
+    assert.deepEqual(first?.members.map((m) => [m.project, m.state]), [["app", "active"]]);
+    const archived = { ...first!, members: [{ ...first!.members[0]!, state: "archived" as const }] };
+    assert.deepEqual(mergeSource(archived, base, [app, web])?.members.map((m) => [m.project, m.state]), [["app", "archived"], ["web", "active"]], "known members stay as they are");
+    assert.equal(mergeSource(first, { ...base, groupPath: "other" }, [web]), undefined);
+    assert.equal(mergeSource(null, base, [{ ...web, httpUrl: "https://u:p@gitlab.example.com/shop/web.git" }]), undefined, "would fail the hub: not sent");
   });
 });

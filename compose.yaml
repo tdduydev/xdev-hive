@@ -1,0 +1,82 @@
+# xDev Hive hub in one command (roadmap 75): from a clone of this repo,
+#   docker compose up -d
+# then open http://<this machine>:7788 and fill in the setup page; the code it asks for is in
+#   docker compose logs hub
+# The page saves its settings in the data volume (/data/settings.json) and the hub restarts with them.
+# A HIVE_* variable set here or in a .env next to this file wins over the page and shows as locked on it.
+#
+# Optional parts, each a profile:
+#   COMPOSE_PROFILES=embed                                  Ollama for memory search by meaning
+#                                                           (setup page: embeddings URL http://ollama:11434/v1)
+#   HIVE_HOSTNAME=hive.example.com COMPOSE_PROFILES=https   Caddy with automatic HTTPS (DNS to this machine, ports 80/443)
+#   TUNNEL_TOKEN=… COMPOSE_PROFILES=tunnel                  Cloudflare Tunnel; its public hostname points to http://hub:7788
+# Behind either, tick "behind an HTTPS proxy" on the setup page.
+# The existing deploy/compose.yaml (with deploy/update.sh) is unchanged and does not show the setup page.
+services:
+  hub:
+    build: .
+    restart: unless-stopped
+    environment:
+      HIVE_SETUP: "1"
+      HIVE_COMMIT: ${HIVE_COMMIT:-}
+    depends_on: [seaweedfs]
+    volumes:
+      - hive-data:/data
+    ports:
+      - "${HIVE_HTTP_BIND:-0.0.0.0}:${HIVE_HTTP_PORT:-7788}:7788"
+
+  # Doc images and files (roadmap 23c); only the hub reaches it. The setup page can keep them in the database instead.
+  seaweedfs:
+    image: ${HIVE_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.48}
+    restart: unless-stopped
+    command: server -dir=/data -filer -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
+    volumes:
+      - seaweedfs-data:/data
+    expose:
+      - "8888"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "-o", "/dev/null", "http://127.0.0.1:8888/"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    profiles: [embed]
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-data:/root/.ollama
+    expose:
+      - "11434"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    profiles: [https]
+    depends_on: [hub]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Not a required variable: compose reads the whole file, so one would stop `docker compose up` without the profile.
+      HIVE_HOSTNAME: ${HIVE_HOSTNAME:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.12.2
+    restart: unless-stopped
+    profiles: [tunnel]
+    depends_on: [hub]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+
+volumes:
+  hive-data:
+  seaweedfs-data:
+  caddy-data:
+  ollama-data:

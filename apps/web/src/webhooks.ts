@@ -14,7 +14,7 @@ import {
   type WebhookInput,
   type WebhookKind,
 } from "@xdev-hive/core";
-import { isLocale, translate, type MessageKey } from "@xdev-hive/ui/i18n";
+import { isLocale, translate, type MessageKey } from "@xdev-hive/ui-kit/i18n";
 
 type Row = Record<string, unknown>;
 type Stored = WebhookInfo & { url: string };

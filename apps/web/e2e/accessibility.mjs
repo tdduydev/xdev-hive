@@ -14,7 +14,13 @@ export async function runContrast({ tab, expect }) {
   await tab.win.webContents.executeJavaScript(axe.source);
   const violations = await tab.eval(async () => {
     const { violations } = await window.axe.run(document.querySelector("main"), { runOnly: { type: "rule", values: ["color-contrast"] } });
-    return violations.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
+    // White on the dark cosmic primary (#7B61FF) is 4.2:1, the owner's chosen colour and the only accepted contrast exception.
+    const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
+      if (document.documentElement.dataset.theme !== "dark") return false;
+      const summary = failureSummary.toLowerCase().replaceAll(" ", "");
+      return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
+    };
+    return violations.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length);
   });
   expect(!violations.length, `selected run contrast: ${JSON.stringify(violations)}`);
 }
@@ -33,15 +39,20 @@ export async function accessibilityAudit({ tab, out, expect, routes = pages, fil
       for (const route of routes) {
         await tab.go(route);
         await tab.waitFor("loaded audit page", () => !!document.querySelector("main") && !document.querySelector('main [aria-busy="true"]'));
-        const result = await tab.eval(async () => {
+        const result = await tab.eval(async theme => {
           const { violations, incomplete } = await window.axe.run(document, {
             runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
           });
+          const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
+            if (theme !== "dark") return false;
+            const summary = failureSummary.toLowerCase().replaceAll(" ", "");
+            return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
+          };
           const summarize = issues => issues.map(({ id, impact, nodes }) => ({
-            id, impact, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
-          }));
+            id, impact, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })),
+          })).filter(({ nodes }) => nodes.length);
           return { viewport: [innerWidth, innerHeight], violations: summarize(violations), incomplete: summarize(incomplete) };
-        });
+        }, theme);
         report.push({ route, theme, ...result });
         writeFileSync(path.join(out, filename), JSON.stringify(report, null, 2));
       }
@@ -53,7 +64,11 @@ export async function accessibilityAudit({ tab, out, expect, routes = pages, fil
       document.documentElement.style.colorScheme = scheme;
     }, original);
   }
-  const violations = report.flatMap(({ route, theme, violations }) => violations.map(v => `${route}/${theme}: ${v.id} (${v.nodes.length})`));
+  // The cosmic primary (#7B61FF) in dark is the owner's chosen colour: white on it is 4.2:1, the one contrast exception.
+  const cosmic = (theme, node) => theme === "dark" && node.failureSummary.includes("foreground color: #ffffff, background color: #7b61ff");
+  const violations = report.flatMap(({ route, theme, violations }) => violations
+    .map(v => ({ ...v, nodes: v.nodes.filter(n => !cosmic(theme, n)) })).filter(v => v.nodes.length)
+    .map(v => `${route}/${theme}: ${v.id} (${v.nodes.length})`));
   expect(!violations.length, `axe WCAG: ${violations.join(", ")}; see ${filename}`);
 }
 
@@ -97,7 +112,12 @@ export async function keyboardMenu({ tab, mobile, expect, out }) {
         await tab.eval(theme => document.documentElement.dataset.theme = theme, theme);
         audit.push(await tab.eval(async theme => {
           const { violations, incomplete } = await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] } });
-          const summarize = issues => issues.map(({ id, nodes }) => ({ id, nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary })) }));
+          const acceptedDarkCosmicNode = ({ target, failureSummary }) => {
+            if (theme !== "dark") return false;
+            const summary = failureSummary.toLowerCase().replaceAll(" ", "");
+            return summary.includes("foregroundcolor:#ffffff") && summary.includes("backgroundcolor:#7b61ff");
+          };
+          const summarize = issues => issues.map(({ id, nodes }) => ({ id, nodes: nodes.filter(node => !acceptedDarkCosmicNode(node)).map(({ target, failureSummary }) => ({ target, failureSummary })) })).filter(({ nodes }) => nodes.length);
           return { theme, violations: summarize(violations), incomplete: summarize(incomplete) };
         }, theme));
       }

@@ -1,15 +1,18 @@
-// Importing a GitLab group (roadmap 19a): each repository of the group (and its subgroups) becomes a project of this
-// app, cloned under its subgroup path or reused at a matching local clone, with its GitLab path set so merge requests
-// go to the right place. An occupied folder with a different remote is left alone.
+// Importing a GitLab group (roadmap 19a) or a GitHub owner (74b): each repository of the group (and its subgroups) or
+// of the organization/user becomes a project of this app, cloned under its subgroup path or reused at a matching local
+// clone, with its GitLab path or GitHub owner/repo set so merge requests and pull requests go to the right place. An
+// occupied folder with a different remote is left alone.
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { suggestProjectKey, type DesktopProject, type GitLabGroupRepo, type GitLabImportCandidate, type GitLabImportResult } from "@xdev-hive/core";
-import type { GitLabClient } from "./client.ts";
 import { parseRemoteUrl } from "./remote.ts";
 import { pushEnv } from "./mr.ts";
 
 export interface LocalClone { dir: string; remote: string | null }
+
+/** The project field that names the repository on its forge, so MRs or PRs go there. */
+export type ForgeField = "gitlabProject" | "githubRepo";
 
 /** Keep the path relative to the selected group, including subgroups. */
 export function subgroupPath(repo: GitLabGroupRepo, group: string): string {
@@ -30,9 +33,9 @@ export function matchesRemote(remote: string | null, repo: Pick<GitLabGroupRepo,
 }
 
 /** What the import offers: keys that do not clash with this app's projects or each other, and the folder of each. */
-export function planImport(repos: GitLabGroupRepo[], baseDir: string, projects: DesktopProject[], group: string, local: LocalClone[]): GitLabImportCandidate[] {
+export function planImport(repos: GitLabGroupRepo[], baseDir: string, projects: DesktopProject[], group: string, local: LocalClone[], field: ForgeField = "gitlabProject"): GitLabImportCandidate[] {
   const taken = new Set(projects.map((p) => p.name));
-  const known = new Map(projects.filter((p) => p.gitlabProject).map((p) => [p.gitlabProject!.toLowerCase(), p]));
+  const known = new Map(projects.filter((p) => p[field]).map((p) => [p[field]!.toLowerCase(), p]));
   const byDir = new Map(projects.map((p) => [path.resolve(p.repo), p]));
   const byLocalDir = new Map(local.map((clone) => [path.resolve(clone.dir), clone]));
   const dirs = new Set<string>();
@@ -42,14 +45,16 @@ export function planImport(repos: GitLabGroupRepo[], baseDir: string, projects: 
       const already = known.get(repo.pathWithNamespace.toLowerCase());
       if (already) return { repo, key: already.name, dir: already.repo, state: "added" as const };
       const matching = local.filter((clone) => matchesRemote(clone.remote, repo));
-      // An already registered clone wins even when an unregistered copy sorts first in the scan.
-      const clone = matching.find((c) => byDir.has(path.resolve(c.dir))) ?? matching[0];
+      const tree = path.join(baseDir, subgroupPath(repo, group));
+      // An already registered clone wins even when an unregistered copy sorts first in the scan. Then the clone where
+      // the group's tree puts it: svc-core and svc-core-e2e can share one remote, and the e2e copy sorts first.
+      const clone = matching.find((c) => byDir.has(path.resolve(c.dir))) ?? matching.find((c) => path.resolve(c.dir) === path.resolve(tree)) ?? matching[0];
       const owner = clone && byDir.get(path.resolve(clone.dir));
       if (owner) return { repo, key: owner.name, dir: owner.repo, state: "added" as const };
       const key = suggestProjectKey(repo.pathWithNamespace, taken);
       taken.add(key);
       if (clone) return { repo, key, dir: clone.dir, state: "folder" as const };
-      let dir = path.join(baseDir, subgroupPath(repo, group));
+      let dir = tree;
       if (dirs.has(dir)) dir = path.join(baseDir, key);
       dirs.add(dir);
       const occupied = existsSync(dir);
@@ -76,6 +81,8 @@ export interface ImportDeps {
   remote(dir: string): string | null;
   /** Adds the project to the app (throws when the key is taken or the folder is missing). */
   add(project: DesktopProject): void;
+  /** Where the repository's path goes on the project; GitLab when not said. */
+  field?: ForgeField;
 }
 
 /** One after another, so a slow or failing clone is reported on its own and the rest still come in. */
@@ -95,7 +102,7 @@ export async function importRepos(items: ImportItem[], deps: ImportDeps): Promis
         await deps.clone(item.url, item.dir);
         result.cloned = true;
       }
-      deps.add({ name: item.key, repo: item.dir, gitlabProject: item.pathWithNamespace, targetBranch: item.targetBranch ?? undefined });
+      deps.add({ name: item.key, repo: item.dir, [deps.field ?? "gitlabProject"]: item.pathWithNamespace, targetBranch: item.targetBranch ?? undefined });
       result.ok = true;
     } catch (err) {
       result.error = String((err as Error).message ?? err).slice(0, 500);
@@ -106,13 +113,14 @@ export async function importRepos(items: ImportItem[], deps: ImportDeps): Promis
 }
 
 /**
- * `git clone` that never waits for a password or a host-key question; over HTTPS to the GitLab host the token goes as
- * a header in env-scoped git config, never into .git/config (as pushes do).
+ * `git clone` that never waits for a password or a host-key question; over HTTPS to the forge's host the token goes as
+ * a header in env-scoped git config, never into .git/config (as pushes do). GitLab takes user oauth2, GitHub
+ * x-access-token.
  */
-export function gitClone(client: GitLabClient, token: string): ImportDeps["clone"] {
+export function gitClone(host: string, auth: { user: string; token: string }): ImportDeps["clone"] {
   return (url, dir) =>
     new Promise((resolve, reject) => {
-      const env = { ...process.env, ...pushEnv(url, parseRemoteUrl(url), client.host, { user: "oauth2", token }) };
+      const env = { ...process.env, ...pushEnv(url, parseRemoteUrl(url), host, auth) };
       execFile("git", ["clone", "--quiet", url, dir], { env, timeout: 10 * 60_000, maxBuffer: 4 * 1024 * 1024 }, (err, _out, stderr) => {
         if (!err) return resolve();
         const last = String(stderr).trim().split("\n").filter(Boolean).at(-1);

@@ -1,43 +1,56 @@
 import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
 import { confirmTaskClose } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
-import { StartReminder } from "#ui/pages/Start.tsx";
+import { useStartStatus } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
-// Hôm nay (docs/design/2026-09-redesign, xDev Hive Client): a list of what needs the person on the left, the
+// Hôm nay (docs/design/hive-2026-10, template dòng 108–230): a card of what needs the person on the left, the
 // selected item with its actions on the right. J / K move, ↵ runs the first button, E marks it seen.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
-import { CircleCheck, Copy, Info, TriangleAlert } from "lucide-react";
+import { Copy, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
-import { HUB_SCOPE, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
+import { HUB_SCOPE, isCliActionProposalKey, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
-import { Diff } from "#ui/components/Diff.tsx";
+import { DiffPanel } from "#ui/components/Diff.tsx";
 import { requestErrorText } from "#ui/lib/runs.ts";
-import { Chip, DetailActions, DetailHeader, KvRows } from "#ui/components/panes.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { DesktopConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { errorMessage, formatTime, hashParam, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
-import { groupInbox, shortAgo, type InboxDone, type InboxItem } from "#ui/lib/inbox.ts";
+import { groupToday, shortAgo, todayDot, type InboxDone, type InboxItem, type TodayDot } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
-import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
+import { Button } from "@xdev-hive/ui/components/ui/button";
+import { cosmicAssets } from "#ui/assets/cosmic.ts";
+import { remainingSteps, type StartStep } from "#ui/lib/start.ts";
 import { alertDetail, alertTitle } from "./admin/Alerts.tsx";
 import { ActionItem } from "#ui/components/LeaderChat.tsx";
 
-// ── Detail blocks (the design's paragraph, list, code, note, pair and key/value blocks) ──
+// ── Detail blocks (the design's paragraph, check list, code, note, key/value and note-field blocks) ──
+
+const DOT: Record<TodayDot, string> = {
+  violet: "bg-(--accent-violet) shadow-[0_0_8px_var(--accent-violet)]",
+  blue: "bg-(--accent-blue) shadow-[0_0_8px_var(--accent-blue)]",
+  red: "bg-(--accent-red) shadow-[0_0_8px_var(--accent-red)]",
+  amber: "bg-(--accent-amber) shadow-[0_0_8px_var(--accent-amber)]",
+};
+const TONE_DOT: Record<InboxItem["tone"], TodayDot> = { danger: "red", warning: "amber", info: "blue" };
 
 function P({ children }: { children: ReactNode }) {
-  return <p className="m-0 text-sm/[22px] text-pretty whitespace-pre-wrap text-fg-primary">{children}</p>;
+  return <p className="m-0 max-w-[720px] text-[15px]/6 font-medium text-pretty whitespace-pre-wrap text-fg-secondary">{children}</p>;
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="m-0 text-[13px]/5 font-semibold text-fg-strong">{children}</h3>;
 }
 
 function Li({ dot, tone, children }: { dot: string; tone: "ok" | "bad" | "muted"; children: ReactNode }) {
   return (
-    <div className="flex gap-2 text-sm/[22px] text-fg-primary">
-      <span className={cn("w-3.5 shrink-0 text-center font-bold", tone === "ok" ? "text-success" : tone === "bad" ? "text-danger" : "text-fg-muted")}>{dot}</span>
+    <div className="flex items-start gap-2.5 text-[14px]/[22px] font-medium text-fg-secondary">
+      <span className={cn("w-[18px] shrink-0 text-center font-bold", tone === "ok" ? "text-(--mark-ok)" : tone === "bad" ? "text-(--mark-bad)" : "text-(--mark-skip)")}>{dot}</span>
       <span>{children}</span>
     </div>
   );
@@ -47,45 +60,78 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
   const t = useT();
   const toast = useToast();
   return (
-    <div className="overflow-hidden rounded-md border border-line-subtle bg-code">
-      <div className="flex h-7 items-center border-b border-line-subtle pr-1.5 pl-3 font-mono text-[11px]/none font-medium text-fg-muted">
+    <div className="overflow-hidden rounded-[16px] bg-(--surface-sunken) shadow-[var(--ring-glass)]">
+      <div className="flex h-9 items-center gap-2 pr-2 pl-3.5 font-mono text-[12px]/none font-medium text-fg-muted shadow-[inset_0_-1px_0_var(--today-rule)]">
         <span className="min-w-0 flex-1 truncate">{lang}</span>
         <button
           type="button"
           onClick={() => void navigator.clipboard?.writeText(text).then(() => toast(t("common.copied")), () => undefined)}
-          className="flex h-[22px] cursor-pointer items-center gap-1 rounded-xs px-1.5 font-sans text-[11px]/none font-medium text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring"
+          className="flex h-6 cursor-pointer items-center gap-1 rounded-[8px] px-1.5 font-sans text-[11px]/none font-semibold text-fg-secondary outline-none hover:bg-(--glass-bg) focus-visible:focus-ring"
         >
           <Copy className="size-3" />
           {t("common.copy")}
         </button>
       </div>
-      <pre className="m-0 max-h-80 overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{text}</pre>
+      <pre className="m-0 max-h-80 overflow-auto px-3.5 py-2 font-mono text-[12.5px]/[21px] font-medium whitespace-pre-wrap text-code-fg [overflow-wrap:anywhere]">{text}</pre>
     </div>
   );
 }
 
 function Note({ tone, children }: { tone: "info" | "warning" | "danger"; children: ReactNode }) {
   const Icon = tone === "info" ? Info : TriangleAlert;
-  const cls = { info: "bg-info-soft border-info-line text-info", warning: "bg-warning-soft border-warning-line text-warning", danger: "bg-danger-soft border-danger-line text-danger" }[tone];
+  const cls = { info: "bg-info-soft text-info", warning: "bg-warning-soft text-warning", danger: "bg-danger-soft text-danger" }[tone];
   return (
-    <div className={cn("flex gap-2.5 rounded-md border px-3 py-2.5", cls)}>
+    <div className={cn("flex gap-2.5 rounded-[14px] px-3.5 py-3 shadow-[var(--ring-glass)]", cls)}>
       <Icon className="mt-0.5 size-4 shrink-0" />
-      <span className="text-[13px]/5 text-fg-strong">{children}</span>
+      <span className="text-[14px]/[22px] font-medium text-fg-strong">{children}</span>
     </div>
   );
 }
 
 function MemoryCard({ m, t }: { m: Memory; t: TFunction }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-md border border-line-default bg-surface p-3">
+    <div className="flex flex-col gap-1.5 rounded-[14px] bg-(--surface-sunken) px-3.5 py-3 shadow-[var(--ring-glass)]">
       <span className="font-mono text-xs/none font-semibold text-fg-strong">#{m.id}</span>
-      <span className="text-[13px]/5 whitespace-pre-wrap text-fg-primary">{m.content}</span>
-      <span className="text-[11px]/[14px] text-fg-muted">
+      <span className="text-[14px]/[22px] font-medium whitespace-pre-wrap text-fg-secondary">{m.content}</span>
+      <span className="text-xs/[18px] font-medium text-fg-muted">
         {m.author} · {formatTime(m.createdAt)} · {t("inbox.conflict.used", { n: m.useCount })}
       </span>
     </div>
   );
 }
+
+/** Label / value cells of the design (1px gaps over a tinted base, sunken cells). */
+function KvRows({ rows }: { rows: Array<[string, ReactNode, boolean?]> }) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-px overflow-hidden rounded-[16px] bg-(--today-kv-gap) shadow-[var(--ring-glass)]">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex min-w-0 flex-col gap-0.5 bg-(--surface-sunken) px-3.5 py-3">
+          <span className="text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-faint) uppercase">{k}</span>
+          <span className="text-[13px]/5 font-medium text-fg-strong [overflow-wrap:anywhere]">{v}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** "Ghi chú gửi kèm": the note a decision carries (the plan's and the gate's). */
+function NoteField({ title, value, onChange, placeholder, plan }: { title: string; value: string; onChange: (v: string) => void; placeholder?: string; plan?: boolean }) {
+  return (
+    <label className="flex flex-col gap-2">
+      <SectionTitle>{title}</SectionTitle>
+      <textarea
+        rows={3}
+        value={value}
+        maxLength={2000}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        data-plan-note={plan ? "" : undefined}
+        className="min-h-[76px] resize-y rounded-[14px] bg-(--surface-sunken) px-3.5 py-3 text-[14px]/[22px] font-medium text-fg-strong shadow-[var(--ring-glass)] outline-none placeholder:text-fg-muted focus-visible:focus-ring"
+      />
+    </label>
+  );
+}
+
 
 /** "task.create" → its label (a dot in a message key reads as one more level). */
 const leaderKind = (a: ChatAction, t: TFunction) => t(`chat.autoKind.${a.kind.replace(".", "_")}` as MessageKey);
@@ -164,7 +210,9 @@ function metaOf(item: InboxItem, t: TFunction): string {
     case "waitingRun": return [t(`inbox.waitingRun.reason.${item.reason}`), item.run.machine, item.run.profileId].filter(Boolean).join(" · ");
     case "cleanup": return t("cleanup.source", { id: item.proposal.runId });
     case "proposal":
-      return t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
+      return isCliActionProposalKey(item.proposal.docKey)
+        ? `${item.proposal.author} · ${t("proposals.operation", { id: item.proposal.id })}`
+        : t("inbox.proposal.meta", { author: item.proposal.author, from: item.proposal.baseVersion, to: item.proposal.baseVersion + 1 });
     case "review": {
       const r = item.run;
       if (!r) return item.task.owner ?? firstLine(item.task.note ?? "", 60);
@@ -219,7 +267,7 @@ export function TodayInboxPage() {
   const reloadInbox = inbox.reload;
   useEffect(() => { reloadInbox(); }, [reloadInbox]);
 
-  const groups = useMemo(() => groupInbox(inbox.items, inbox.role), [inbox.items, inbox.role]);
+  const groups = useMemo(() => groupToday(inbox.items), [inbox.items]);
   // J / K and the first item follow the groups as shown, not the newest-first order they came in.
   const list = useMemo(() => (tab === "open" ? groups.flatMap((g) => g.items) : []), [tab, groups]);
   const selected = mobileDetail.mobile ? mobileDetail.value : sel;
@@ -288,132 +336,184 @@ export function TodayInboxPage() {
   };
   const seen = (item: InboxItem) => finish(item, t("inbox.seenNote"), true);
 
+  const startStatus = useStartStatus();
+  const [startDismissed, setStartDismissed] = useState(false);
+  const startLeft = startStatus.data?.remaining ?? 0;
+  const startNext = startStatus.data ? (Object.keys(startStatus.data.steps) as StartStep[]).find((k) => startStatus.data!.steps[k] === "todo") : undefined;
+  // Four numbers the inbox already holds (no figure of its own): what waits per group, and what this device settled.
+  const summary = [
+    ...groups.map(({ group, items }) => ({ id: group, dot: ({ approve: "violet", fix: "red", machine: "amber" } as const)[group], label: t(`inbox.page.group.${group}`), value: items.length, note: longAgo(items.at(-1)!.at, now, t) ? t("inbox.page.oldest", { when: longAgo(items.at(-1)!.at, now, t) }) : "", go: () => { setTab("open"); pick(items[0]!.key); } })),
+    { id: "done", dot: "blue" as const, label: t("inbox.page.tabDone"), value: inbox.done.length, note: t("inbox.page.thisDevice"), go: () => { setTab("done"); pick(null); } },
+  ];
+  const sub = t("inbox.page.sub");
   return (
-    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
-      <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle md:flex md:min-w-[280px] md:flex-none md:shrink md:basis-[360px]", mobileDetail.showingDetail ? "hidden" : "flex")}>
-        <div data-today-reminders className="flex shrink-0 flex-col gap-3 border-b border-line-subtle p-3 [&:not(:has(>*))]:hidden">
-          <StartReminder className="" />
-          <DesktopConfigIssues />
+    <div className="mobile-master-detail flex min-h-full w-full flex-col px-4 pt-6 pb-8 md:px-7">
+      <div data-today-reminders className="flex shrink-0 flex-col gap-3 empty:hidden [&:not(:has(>*))]:hidden">
+        <DesktopConfigIssues />
+      </div>
+      <p className="m-0 mb-5 max-w-[760px] text-[14px]/[22px] font-medium text-pretty text-fg-secondary">{sub}</p>
+      {startLeft && !startDismissed ? (
+        <div className="mb-4 flex flex-wrap items-center gap-3.5 rounded-[20px] bg-(--today-banner-bg) py-3.5 pr-4 pl-[18px] shadow-[var(--today-banner-ring)]">
+          <img src={cosmicAssets.planetViolet} alt="" className="size-[34px] rounded-full shadow-[var(--today-banner-glow)]" />
+          <span className="flex min-w-[220px] flex-1 flex-col">
+            <span className="text-[14px]/5 font-semibold">{t("inbox.page.startLeft", { count: startLeft })}</span>
+            {startNext ? <span className="text-xs/[18px] font-medium text-fg-secondary">{t(`start.${startNext}`)}</span> : null}
+          </span>
+          <Button variant="solid" size="sm" onClick={() => { window.location.hash = "/start"; }}>{t("inbox.page.startOpen")}</Button>
+          <Button variant="ghost" size="sm" onClick={() => setStartDismissed(true)}>{t("inbox.page.startLater")}</Button>
         </div>
-        <div className="flex shrink-0 items-center gap-2 border-b border-line-subtle px-3 py-[9px]">
-          <div role="tablist" className="flex gap-0.5 rounded-[7px] bg-sunken p-0.5">
-            {(
-              [
-                ["open", t("inbox.open"), inbox.items.length],
-                ["done", t("inbox.done"), inbox.done.length],
-              ] as const
-            ).map(([k, label, n]) => (
-              <button
-                key={k}
-                type="button"
-                role="tab"
-                aria-selected={tab === k}
-                onClick={() => {
-                  setTab(k);
-                  pick(null);
-                }}
-                className={cn(
-                  "h-6 cursor-pointer rounded-[5px] px-2.5 text-xs/none font-semibold whitespace-nowrap outline-none focus-visible:focus-ring",
-                  tab === k ? "bg-surface text-fg-strong shadow-e1" : "text-fg-secondary",
-                )}
-              >
-                {label} <span className="font-normal text-fg-muted">{n}</span>
-              </button>
-            ))}
-          </div>
-          {tab === "open" && groups.length > 1 ? (
-            <span className="ml-auto min-w-0 truncate text-[11px]/4 text-fg-muted" data-inbox-role={inbox.role}>
-              {t("inbox.orderBy", { role: t(`projectRole.${inbox.role}`) })}
+      ) : null}
+      <div data-today-summary className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 max-md:grid-cols-2">
+        {summary.map((tile) => (
+          <button
+            key={tile.id}
+            type="button"
+            onClick={tile.go}
+            className="flex cursor-pointer flex-col gap-1.5 rounded-[20px] bg-(--surface-1) px-[18px] py-4 text-left text-fg-strong shadow-[var(--ring-glass)] outline-none hover:shadow-[var(--ring-glass-strong)] focus-visible:focus-ring"
+          >
+            <span className="flex items-center gap-2 text-xs/[18px] font-medium text-fg-muted">
+              <span className={cn("size-1.5 rounded-full", DOT[tile.dot])} />
+              {tile.label}
             </span>
-          ) : null}
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-        <div role="listbox" aria-label={t("inbox.listLabel")}>
-          {tab === "open"
-            ? groups.map(({ group, items }) => (
-                <div key={group} role="group" aria-labelledby={`inbox-group-${group}`} data-inbox-group={group}>
-                  <div id={`inbox-group-${group}`} className="flex items-center gap-1.5 border-b border-line-subtle bg-subtle px-3.5 py-1.5 text-[11px]/4 font-semibold text-fg-secondary">
-                    <span className="min-w-0 flex-1 truncate">{t(`inbox.group.${group}`)}</span>
-                    <span className="font-normal text-fg-muted">{items.length}</span>
-                  </div>
-                  {items.map((item) => {
-                    const on = item.key === current?.key;
-                    const unread = !inbox.read.has(item.key) && !on;
-                    return (
-                      <div
-                        key={item.key}
-                        role="option"
-                        aria-selected={on}
-                        data-inbox-key={item.key}
-                        onClick={() => pick(item.key)}
-                        className={cn(
-                          "relative flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
-                          on ? "bg-selected" : "hover:bg-hover",
-                        )}
-                      >
-                        {unread ? <span aria-label={t("inbox.unread")} className="absolute top-[17px] left-[9px] size-[7px] rounded-full bg-info-solid" /> : null}
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>
-                          <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{titleOf(item, t)}</span>
-                          <span className={cn("shrink-0 text-[11px]/none", on ? "text-fg-secondary" : "text-fg-muted")}>{shortAgo(item.at, now, t)}</span>
-                        </div>
-                        <span className={cn("truncate text-xs/4", on ? "text-fg-secondary" : "text-fg-muted")}>
-                          <span className="font-mono">{scopeText(item, t)}</span>
-                          {metaOf(item, t) ? ` · ${metaOf(item, t)}` : ""}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))
-            : inbox.done.map((d) => (
-                <div
-                  key={d.key}
-                  role="option"
-                  aria-selected={d.key === doneCurrent?.key}
-                  onClick={() => pick(d.key)}
-                  className={cn(
-                    "flex cursor-pointer flex-col gap-1 border-b border-line-subtle py-2.5 pr-3.5 pl-[22px]",
-                    d.key === doneCurrent?.key ? "bg-selected" : "hover:bg-hover",
-                  )}
+            <span className="text-[30px]/9 font-bold tracking-[-0.4px]">{tile.value}</span>
+            <span className="text-xs/[18px] font-medium text-fg-secondary">{tile.note}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-start gap-4">
+        <div className={cn("max-w-full min-w-0 flex-[1_1_300px] flex-col overflow-hidden rounded-[24px] bg-(--surface-1) shadow-[var(--ring-glass)] max-md:w-full", mobileDetail.showingDetail ? "hidden" : "flex")}>
+          <div className="flex items-center gap-1.5 px-3.5 pt-3.5 pb-2.5">
+            <div role="tablist" className="flex gap-1.5">
+              {(
+                [
+                  ["open", t("inbox.page.tabOpen"), inbox.items.length],
+                  ["done", t("inbox.page.tabDone"), inbox.done.length],
+                ] as const
+              ).map(([k, label, n]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === k}
+                  data-active={tab === k}
+                  onClick={() => {
+                    setTab(k);
+                    pick(null);
+                  }}
+                  className="cosmic-tag cursor-pointer outline-none focus-visible:focus-ring"
                 >
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <Chip kind={d.tone}>{t(`inbox.tag.${d.kind}`)}</Chip>
-                    <span className="min-w-0 flex-1 truncate text-[13px]/[18px] font-semibold text-fg-strong">{d.title}</span>
-                    <span className={cn("shrink-0 text-[11px]/none", d.key === doneCurrent?.key ? "text-fg-secondary" : "text-fg-muted")}>{shortAgo(d.at, now, t)}</span>
-                  </div>
-                  <span className={cn("truncate text-xs/4", d.key === doneCurrent?.key ? "text-fg-secondary" : "text-fg-muted")}>
-                    <span className="font-mono">{d.scope}</span> · {d.note}
-                  </span>
-                </div>
+                  {label} · {n}
+                </button>
               ))}
-          {(tab === "open" ? list.length : inbox.done.length) === 0 && !inbox.loading ? (
-            <div className="px-6 py-10 text-center text-[13px] text-fg-muted">{t("inbox.empty")}</div>
+            </div>
+            <span className="flex-1" />
+            <span data-today-shortcuts data-inbox-role={inbox.role} className="hidden text-[11px]/4 font-semibold text-(--text-faint) md:inline">{t("inbox.page.keys")}</span>
+          </div>
+          <div role="listbox" aria-label={t("inbox.listLabel")}>
+            {tab === "open"
+              ? groups.map(({ group, items }) => (
+                  <div key={group} role="group" aria-labelledby={`inbox-group-${group}`} data-inbox-group={group} className="flex flex-col">
+                    <div id={`inbox-group-${group}`} className="px-[18px] pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.6px] text-(--text-faint) uppercase">
+                      {t(`inbox.page.group.${group}`)} · {items.length}
+                    </div>
+                    {items.map((item) => (
+                      <Row
+                        key={item.key}
+                        itemKey={item.key}
+                        on={item.key === current?.key}
+                        dot={todayDot(item)}
+                        title={titleOf(item, t)}
+                        scope={scopeText(item, t)}
+                        meta={metaOf(item, t)}
+                        age={shortAgo(item.at, now, t)}
+                        onPick={() => pick(item.key)}
+                      />
+                    ))}
+                  </div>
+                ))
+              : inbox.done.map((d) => (
+                  <Row
+                    key={d.key}
+                    itemKey={d.key}
+                    on={d.key === doneCurrent?.key}
+                    dot={TONE_DOT[d.tone]}
+                    title={d.title}
+                    scope={d.scope}
+                    meta={d.note}
+                    age={shortAgo(d.at, now, t)}
+                    onPick={() => pick(d.key)}
+                  />
+                ))}
+            {(tab === "open" ? list.length : inbox.done.length) === 0 && !inbox.loading ? (
+              <div className="px-6 py-10 text-center text-[14px]/[22px] font-medium text-fg-muted">{t("inbox.page.empty")}</div>
+            ) : null}
+          </div>
+          <div className="h-2.5" />
+        </div>
+        <div data-today-detail className={cn("min-w-0 flex-[999_1_440px] flex-col gap-3", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden" : "flex", !current && !doneCurrent && !mobileDetail.showingDetail && "md:hidden")}>
+          {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
+          <ErrorNote error={inbox.error} />
+          {current ? (
+            <Detail key={current.key} item={current} now={now} onActions={setActions} finish={finish} seen={seen} />
+          ) : doneCurrent ? (
+            <DoneDetail entry={doneCurrent} now={now} onReopen={() => inbox.reopen(doneCurrent.key)} />
           ) : null}
-        </div>
-        </div>
-        <div data-today-shortcuts className="hidden shrink-0 gap-3.5 border-t border-line-subtle px-3.5 py-[7px] text-[11px]/4 text-fg-muted md:flex">
-          <span>{t("inbox.keySelect")}</span>
-          <span>{t("inbox.keyMain")}</span>
-          <span>{t("inbox.keySeen")}</span>
         </div>
       </div>
-      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
-        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
-        <ErrorNote error={inbox.error} />
-        {current ? (
-          <Detail key={current.key} item={current} now={now} onActions={setActions} finish={finish} seen={seen} />
-        ) : doneCurrent ? (
-          <DoneDetail entry={doneCurrent} now={now} onReopen={() => inbox.reopen(doneCurrent.key)} />
-        ) : (
-          <div className="grid flex-1 place-items-center p-6">
-            <div className="flex max-w-[320px] flex-col items-center gap-2 text-center">
-              <CircleCheck className="size-7 text-success" />
-              <span className="text-[15px]/5 font-semibold text-fg-strong">{t("inbox.allDone")}</span>
-              <span className="text-[13px]/5 text-fg-muted">{t("inbox.allDoneBody")}</span>
-            </div>
-          </div>
-        )}
+    </div>
+  );
+}
+
+function Row({ itemKey, on, dot, title, scope, meta, age, onPick }: { itemKey: string; on: boolean; dot: TodayDot; title: string; scope: string; meta: string; age: string; onPick: () => void }) {
+  return (
+    <div
+      role="option"
+      aria-selected={on}
+      data-inbox-key={itemKey}
+      onClick={onPick}
+      className={cn(
+        "mx-2 grid cursor-pointer grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 rounded-[14px] px-2.5 py-3 text-left",
+        on ? "bg-(--today-row-selected-bg) shadow-[var(--today-row-selected-ring)]" : "hover:bg-(--glass-bg)",
+      )}
+    >
+      <span className={cn("mt-1.5 size-2 rounded-full", DOT[dot])} />
+      <span className="flex min-w-0 flex-col gap-[3px]">
+        <span className="text-[13.5px]/[19px] font-semibold text-pretty text-fg-strong">{title}</span>
+        <span className="truncate text-xs/[18px] font-medium text-fg-muted">
+          {scope}
+          {meta ? ` · ${meta}` : ""}
+        </span>
+      </span>
+      <span className="pt-0.5 text-[11px]/4 font-semibold text-(--text-faint)">{age}</span>
+    </div>
+  );
+}
+
+const VARIANT = { primary: "solid", secondary: "glass", ghost: "ghost", danger: "glass" } as const;
+
+/** The design's detail card: pill and age, title, the item's blocks, then its buttons (the first runs on ↵). */
+function DetailCard({ dot, kind, scope, when, title, children, actions, busy, foot }: { dot: TodayDot; kind: string; scope: string; when: string; title: string; children?: ReactNode; actions: Action[]; busy: boolean; foot?: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-5 rounded-[24px] bg-(--surface-1) px-4 pt-5 pb-5 shadow-[var(--ring-glass)] md:px-7 md:pt-6 md:pb-[26px] [&>header+p]:-mt-2.5">
+      <header className="flex flex-col gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-(--glass-bg) px-2.5 text-[11px]/4 font-semibold text-fg-secondary shadow-[var(--ring-glass)]">
+            <span className={cn("size-1.5 rounded-full", DOT[dot])} />
+            {kind}
+          </span>
+          <span className="text-xs/[18px] font-medium text-fg-muted">{[scope, when].filter(Boolean).join(" · ")}</span>
+        </div>
+        <h2 className="m-0 text-[24px]/8 font-bold tracking-[-0.2px] text-pretty text-fg-strong [overflow-wrap:anywhere]">{title}</h2>
+      </header>
+      {children}
+      <div data-today-actions className="flex flex-wrap items-center gap-2.5 pt-1">
+        {actions.map((a) => (
+          <Button key={a.label} variant={VARIANT[a.kind]} size="md" disabled={busy} onClick={() => void a.run()}>
+            {a.label}
+          </Button>
+        ))}
+        <span className="flex-1" />
+        {foot ? <span className="hidden text-[11px]/4 font-semibold text-(--text-faint) md:inline">{foot}</span> : null}
       </div>
     </div>
   );
@@ -422,15 +522,9 @@ export function TodayInboxPage() {
 function DoneDetail({ entry, now, onReopen }: { entry: InboxDone; now: number; onReopen: () => void }) {
   const t = useT();
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <DetailHeader chips={<Chip kind={entry.tone}>{t(`inbox.tag.${entry.kind}`)}</Chip>} scope={entry.scope} when={longAgo(entry.at, now, t)} title={entry.title} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
-          <P>{t("inbox.doneNote", { note: entry.note })}</P>
-        </div>
-      </div>
-      <DetailActions actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} foot={t("inbox.doneNote", { note: entry.note })} busy={false} />
-    </div>
+    <DetailCard dot={TONE_DOT[entry.tone]} kind={t(`inbox.tag.${entry.kind}`)} scope={entry.scope} when={longAgo(entry.at, now, t)} title={entry.title} actions={[{ label: t("inbox.reopen"), kind: "secondary", run: onReopen }]} busy={false}>
+      <P>{t("inbox.doneNote", { note: entry.note })}</P>
+    </DetailCard>
   );
 }
 
@@ -455,7 +549,7 @@ function Detail({
   const [error, setError] = useState<string | null>(null);
   // What to change, for a gate sent back (the agent works from it).
   const [note, setNote] = useState("");
-  const docKey = item.kind === "proposal" ? item.proposal.docKey : null;
+  const docKey = item.kind === "proposal" && !isCliActionProposalKey(item.proposal.docKey) ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
 
   const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
@@ -546,6 +640,11 @@ function Detail({
     }
     case "proposal": {
       const p = item.proposal;
+      if (isCliActionProposalKey(p.docKey)) {
+        body = <><P>{p.reason}</P><Note tone="warning">{t("proposals.operationApproval")}</Note></>;
+        actions = [{ label: t("inbox.proposal.reviewOperation"), kind: "primary", run: go("#/proposals") }, seenAction()];
+        break;
+      }
       const manage = allow(docOwner(p.docKey), approvalOf(p.docKey));
       const stale = doc.data && doc.data.version !== p.baseVersion;
       body = (
@@ -554,7 +653,7 @@ function Detail({
           {doc.data?.includeInAgents ? <Note tone="info">{t("inbox.proposal.inAgents")}</Note> : null}
           {stale ? <Note tone="warning">{t("proposals.stale", { version: doc.data?.version ?? 0 })}</Note> : null}
           {!manage ? <Note tone="info">{t("inbox.proposal.noRight")}</Note> : null}
-          {doc.loading ? null : <Diff before={doc.data?.content ?? ""} after={p.content} />}
+          {doc.loading ? null : <DiffPanel before={doc.data?.content ?? ""} after={p.content} file={p.docKey} />}
         </>
       );
       actions = manage
@@ -599,7 +698,7 @@ function Detail({
               {t("inbox.review.byRun", { run: r.id, profile: r.profileId ?? "—" })}
             </Li>
           ) : null}
-          <h3 className="m-0 mt-1.5 text-[13px]/[18px] font-semibold text-fg-strong">{t("inbox.review.handoff")}</h3>
+          <SectionTitle>{t("inbox.review.handoff")}</SectionTitle>
           <ReviewArtifacts project={task.project} taskId={task.id} note={task.note?.trim() || t("inbox.review.noNote")} />
         </>
       );
@@ -733,7 +832,7 @@ function Detail({
     }
     case "plan": {
       const p = item.plan;
-      body = <><P>{t("planApproval.intro")}</P>{p.text ? <CodeBlock lang="plan.md" text={p.text} /> : null}{p.deadline ? <P>{t("planApproval.deadline", { time: formatTime(p.deadline) })}</P> : null}<label className="space-y-1 text-sm"><span>{t("planApproval.note")}</span><Textarea className="text-base" rows={3} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} data-plan-note /></label></>;
+      body = <><P>{t("planApproval.intro")}</P>{p.text ? <CodeBlock lang="plan.md" text={p.text} /> : null}{p.deadline ? <P>{t("planApproval.deadline", { time: formatTime(p.deadline) })}</P> : null}<NoteField title={t("planApproval.note")} value={note} onChange={setNote} plan /></>;
       const decide = (decision: "approve" | "changes") => act(async () => {
         if (decision === "changes" && !note.trim()) throw new Error(t("planApproval.noteRequired"));
         await client.call("runs.decidePlan", { id: p.id, revision: p.revision, decision, note });
@@ -767,16 +866,7 @@ function Detail({
               [t("inbox.gate.mode"), t(`sdlc.mode.${g.mode}`)],
             ]}
           />
-          {may ? (
-            <Textarea
-              rows={3}
-              value={note}
-              maxLength={2000}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={labels.noteRequired ? t("flow.notePlaceholder") : t("flow.taskNoteOther")}
-              aria-label={t("flow.note")}
-            />
-          ) : null}
+          {may ? <NoteField title={t("inbox.page.noteTitle")} value={note} onChange={setNote} placeholder={labels.noteRequired ? t("flow.notePlaceholder") : t("flow.taskNoteOther")} /> : null}
         </>
       );
       const decide = (decision: "pass" | "changes") =>
@@ -847,17 +937,9 @@ function Detail({
   });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <DetailHeader chips={<Chip kind={item.tone}>{t(`inbox.tag.${item.kind}`)}</Chip>} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex max-w-[760px] flex-col gap-3 px-6 pt-[18px] pb-6">
-          {client.desktop ? <>{body}<ErrorNote error={error} /></> : <>
-            <div className="flex flex-col gap-3">{body}<ErrorNote error={error} /></div>
-            <div data-today-actions><DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /></div>
-          </>}
-        </div>
-      </div>
-      {client.desktop ? <DetailActions actions={actions} foot={t("inbox.enterHint")} busy={busy} /> : null}
-    </div>
+    <DetailCard dot={todayDot(item)} kind={t(`inbox.tag.${item.kind}`)} scope={scopeText(item, t)} when={longAgo(item.at, now, t)} title={titleOf(item, t)} actions={actions} busy={busy} foot={t("inbox.page.foot")}>
+      {body}
+      <ErrorNote error={error} />
+    </DetailCard>
   );
 }

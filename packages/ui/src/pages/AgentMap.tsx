@@ -9,15 +9,19 @@ import { cn } from "cn";
 import { expandPackage, toolCommands } from "@xdev-hive/core";
 import type { Machine, QuotaCooldown, ReportedProfile, RunGroup, RunRecord, RunRequest } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@xdev-hive/ui/components/ui/alert-dialog";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Switch } from "@xdev-hive/ui/components/ui/switch";
+import { Badge } from "@xdev-hive/ui/components/ui/badge";
+import { Tag, Toggle } from "@xdev-hive/ui/components/ui/primitives";
+import { MachineSystemBlock, PlanTile } from "#ui/components/MachineCards.tsx";
 import { AssignedQueue } from "#ui/components/AgentAssignment.tsx";
 import { ErrorNote } from "#ui/components/common.tsx";
-import { Chip, type ChipKind } from "#ui/components/panes.tsx";
+import { Chip } from "#ui/components/panes.tsx";
 import { formatTime, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { usageAsOf } from "#ui/lib/agents.ts";
-import { encodeTargets, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
+import { encodeTargets, hubIntakeControl, machineCards, type AgentTarget, type ProfileCard, type ProfileState } from "#ui/lib/agentmap.ts";
 import { shortAgo } from "#ui/lib/inbox.ts";
 import { TerminalEntry } from "#ui/components/RemoteTerminal.tsx";
 
@@ -27,12 +31,12 @@ import { QuotaBars } from "#ui/components/QuotaBars.tsx";
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "#ui/components/ui/sheet.tsx";
 import { meterTone } from "#ui/lib/agents.ts";
 
-const STATE_KIND: Record<ProfileState, ChipKind> = {
+const STATE_TONE: Record<ProfileState, "neutral" | "info" | "success" | "warning" | "danger"> = {
   offline: "neutral",
   off: "neutral",
   noCli: "danger",
   signedOut: "danger",
-  running: "running",
+  running: "info",
   overLimit: "warning",
   resting: "warning",
   ready: "success",
@@ -88,16 +92,7 @@ export function AgentMap({
 
 
   return (
-    <div className="flex flex-col gap-3">
-      {attention.length ? <section className="flex flex-col gap-2"><h2 className="text-sm font-semibold">{t("dashboardAgents.attention")}</h2><AttentionList items={attention} label={t("dashboardAgents.attention")} /><a className="min-h-11 content-center text-xs underline md:min-h-7" href="#/today">{t("dashboardAgents.today")}</a></section> : null}
-      <div onClick={e => { const link = (e.target as HTMLElement).closest<HTMLAnchorElement>("[data-summary]"); if (link && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setFilter(link.dataset.summary ?? ""); } }}>
-        <SummaryStrip label={t("dashboardAgents.summary")} items={[
-          { id: "ready", label: t("dashboardAgents.ready"), value: `${entries.filter(e => e.card.state === "ready" && takesWork(e.machine, e.card)).length}/${entries.length}`, href: summaryHref("ready") },
-          { id: "running", label: t("dashboardAgents.running"), value: entries.reduce((n, e) => n + e.card.running, 0), href: summaryHref("running") },
-          { id: "queue", label: t("dashboardAgents.queue"), value: machines.reduce((n, m) => n + machineCards(m, cooldowns, now).queue.length, 0) + requests.filter(r => r.status === "pending").length, href: summaryHref("queue") },
-          { id: "attention", label: t("dashboardAgents.attention"), value: attention.length, href: summaryHref("attention"), tone: attention.length ? "warning" : undefined },
-        ]} />
-      </div>
+    <div className="flex flex-col gap-4">
       {filter ? <Button variant="outline" className="self-start min-h-11 md:min-h-7" onClick={() => setFilter("")}>{t("dashboardAgents.all")}</Button> : null}
       {picks.length ? (
         <div role="toolbar" aria-label={t("agentMap.picked", { count: picks.length })} className="flex flex-wrap items-center gap-2 rounded-[10px] bg-inverse px-3 py-2 text-[13px] text-fg-inverse">
@@ -112,7 +107,7 @@ export function AgentMap({
           </button>
         </div>
       ) : null}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] items-start gap-3 pb-2">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,340px),1fr))] gap-4 pb-2">
         {visible.map((m) => (
           <MachineColumn
             key={m.id}
@@ -130,9 +125,19 @@ export function AgentMap({
         ))}
       </div>
 
+      {/* Not in the design, kept below the cards: the attention list and filters are existing features with their own tests. */}
+      <div className="mt-2 flex flex-col gap-3">
+      {attention.length ? <section className="flex flex-col gap-2"><h2 className="text-sm font-semibold">{t("dashboardAgents.attention")}</h2><AttentionList items={attention} label={t("dashboardAgents.attention")} /><a className="min-h-11 content-center text-xs underline md:min-h-7" href="#/today">{t("dashboardAgents.today")}</a></section> : null}
+      <div onClick={e => { const link = (e.target as HTMLElement).closest<HTMLAnchorElement>("[data-summary]"); if (link && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) { e.preventDefault(); setFilter(link.dataset.summary ?? ""); } }}>
+        <SummaryStrip label={t("dashboardAgents.summary")} items={[
+          { id: "ready", label: t("dashboardAgents.ready"), value: `${entries.filter(e => e.card.state === "ready" && takesWork(e.machine, e.card)).length}/${entries.length}`, href: summaryHref("ready") },
+          { id: "running", label: t("dashboardAgents.running"), value: entries.reduce((n, e) => n + e.card.running, 0), href: summaryHref("running") },
+          { id: "queue", label: t("dashboardAgents.queue"), value: machines.reduce((n, m) => n + machineCards(m, cooldowns, now).queue.length, 0) + requests.filter(r => r.status === "pending").length, href: summaryHref("queue") },
+          { id: "attention", label: t("dashboardAgents.attention"), value: attention.length, href: summaryHref("attention"), tone: attention.length ? "warning" : undefined },
+        ]} />
+      </div>
       <a href="#/runs?tab=batches" className="min-h-11 content-center text-sm underline md:min-h-7">{t("dashboardAgents.batches", { count: open.length })}</a>
-
-
+      </div>
     </div>
   );
 }
@@ -175,41 +180,106 @@ function MachineColumn({
   const { me } = useHive();
   const t = useT();
   const { cards, queue } = machineCards(m, cooldowns, now);
+  const shown = cards.filter(showCard);
+  const running = shown.flatMap((c) => c.runs.map((r) => ({ r, c })));
+  const accepting = m.online && m.acceptsRuns && !m.duplicate;
+  const dot = m.duplicate ? "danger" : !m.online ? "neutral" : m.acceptsRuns ? "success" : "warning";
+  const stateText = m.duplicate ? t("machineState.duplicate") : m.online ? t(m.acceptsRuns ? "agentMap.online" : "agentMap.onlineIdle") : t("machines.lastSeen", { time: formatTime(m.lastSeen) });
+  const owner = m.owner ?? t("agentMap.sharedMachine");
   return (
-    <section className={cn("flex min-w-0 w-full flex-col gap-2 rounded-xl border border-line-default bg-sunken p-2.5", !m.online && "opacity-75", !m.profiles.length && "col-span-full")} aria-label={m.machine} data-map-machine={m.machine} data-map-machine-id={m.id}>
-      <div className="flex flex-col gap-0.5 px-1">
-        <div className="flex items-center gap-2">
-          <span className={cn("size-2 shrink-0 rounded-full", m.duplicate ? "bg-danger-solid" : m.online ? "bg-success-solid" : "bg-neutral-solid")} />
-          <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold text-fg-strong">{m.machine}</span>
-          {m.version ? <span className="font-mono text-xs text-fg-muted">v{m.version}</span> : null}
-          <MachineManagement machine={m} onChanged={onChanged} />
+    <section className={cn("relative flex min-w-0 w-full flex-col gap-[18px] rounded-[24px] bg-surface p-[22px] shadow-[var(--ring-glass)]", !m.online && "opacity-75", !m.profiles.length && "col-span-full")} aria-label={m.machine} data-map-machine={m.machine} data-map-machine-id={m.id}>
+      <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="truncate text-[17px]/6 font-semibold" title={m.version ? `${m.machine} · v${m.version}` : m.machine}>{m.machine}</span>
+          <span className="text-[12px]/[18px] font-medium text-fg-muted">{[m.maxParallel ? t("agentMap.slotsAtOnce", { count: m.maxParallel }) : null, owner].filter(Boolean).join(" · ")}</span>
         </div>
-        <span className="text-xs text-fg-muted">
-          {m.duplicate ? t("machineState.duplicate") : m.online ? t("machineState.online") : t("machines.lastSeen", { time: formatTime(m.lastSeen) })}
-          {" · "}
-          {m.profiles.length ? m.acceptsRuns ? t("machines.acceptsRuns") : t("agentMap.notAccepting") : t("agentMap.noProfiles")}
+        <Badge tone={dot}>{stateText}</Badge>
+      </div>
+
+      {m.system ? <MachineSystemBlock system={m.system} /> : null}
+
+      <div className="flex items-center justify-between gap-3 rounded-[14px] bg-sunken px-[14px] py-3 shadow-[var(--ring-glass)]">
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[13px]/[18px] font-semibold">{t("agentMap.acceptTitle")}</span>
+          <span className="text-[12px]/[18px] font-medium text-fg-muted">{accepting ? t("agentMap.acceptSlots", { n: m.runs.length, max: m.maxParallel ?? 1 }) : t("agentMap.acceptOff")}</span>
+        </span>
+        {/* The runner's own setting: the hub only shows it. */}
+        <span className="flex items-center gap-2">
+          {/* Not in the design: the owner's manage sheet sits beside the toggle so the header keeps the design's widths. */}
+          <MachineManagement machine={m} onChanged={onChanged} />
+          {mayManage(me, m) ? <HubIntakeToggle machine={m} onChanged={onChanged} /> : <Toggle checked={accepting} readOnly aria-readonly="true" aria-label={t("agentMap.acceptTitle")} onChange={() => {}} onClick={(e) => e.preventDefault()} />}
         </span>
       </div>
 
-      {cards.filter(showCard).map((c) => {
-        const target = { machineId: m.id, profileId: c.profile.id };
-        return (
-          <div key={c.profile.id} className="flex min-w-0 flex-col gap-2">
-          <ProfileCardView
-            key={c.profile.id}
-            card={c}
-            machine={m}
-            activity={activity}
-            now={now}
-            pick={canPick && takesWork(m, c) ? { on: picked(target), toggle: () => onToggle(target) } : null}
-          />
-          <AssignedQueue machineId={m.id} profileId={c.profile.id} />
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-3 text-[12px]/[18px] font-medium text-fg-muted">
+          <span className="flex-1 text-[11px]/4 font-semibold tracking-[.5px] text-[color:var(--text-faint)] uppercase">{t("agentMap.plans", { count: m.profiles.length })}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-full shadow-[inset_0_0_0_3px_var(--text-secondary)]" />{t("agentMap.legendOuter")}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full shadow-[inset_0_0_0_2px_var(--text-faint)]" />{t("agentMap.legendInner")}</span>
+        </div>
+        {m.profiles.length ? (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(104px,1fr))] gap-2">
+            {shown.map((c) => {
+              const target = { machineId: m.id, profileId: c.profile.id };
+              const waiting = m.profileChanges?.find((x) => x.profileId === c.profile.id) ?? null;
+              const stateLabel = c.state === "ready" || c.state === "running" ? null : c.state === "resting" && c.restingUntil
+                ? t("agentMap.state.restingUntil", { time: new Date(c.restingUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })
+                : t(`agentMap.state.${c.state}`);
+              const usageAsOfAt = usageAsOf(c.profile.usageCheckedAt);
+              return (
+                <PlanTile
+                  key={c.profile.id}
+                  profile={c.profile}
+                  state={c.state}
+                  attrs={{ "data-map-profile": `${m.machine}/${c.profile.id}` }}
+                  pick={canPick && takesWork(m, c) ? { on: picked(target), toggle: () => onToggle(target) } : null}
+                  extra={stateLabel || waiting || usageAsOfAt ? (
+                    <span className="flex max-w-full flex-col items-center gap-px text-[10.5px]/[14px] font-medium text-fg-muted">
+                      {stateLabel ? <Tag tone={STATE_TONE[c.state]} className="h-5 px-2 text-[10.5px]">{stateLabel}</Tag> : null}
+                      {waiting ? <span className="text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
+                      {usageAsOfAt ? <span>{t("agents.usageAsOf", { time: formatTime(c.profile.usageCheckedAt!) })}</span> : null}
+                    </span>
+                  ) : null}
+                />
+              );
+            })}
           </div>
-        );
-      })}
-      <AssignedQueue machineId={m.id} profileId={null} />
+        ) : <span className="text-[12px]/[18px] font-medium text-fg-muted">{t("agentMap.noProfiles")}</span>}
+        {shown.map((c) => <AssignedQueue key={c.profile.id} machineId={m.id} profileId={c.profile.id} />)}
+        <AssignedQueue machineId={m.id} profileId={null} />
+      </div>
+
+      {running.length ? (
+        <div className="flex flex-col gap-2">
+          <span className="text-[11px]/4 font-semibold tracking-[.5px] text-[color:var(--text-faint)] uppercase">{t("agentMap.runningNow")}</span>
+          {running.map(({ r, c }) => {
+            const doing = activity.get(`${m.id}/${r.runId}`);
+            return (
+              <a key={r.runId} href={`#/runs?run=${encodeURIComponent(r.runId)}`} className="flex flex-col gap-0.5 rounded-[14px] bg-sunken px-[14px] py-2.5 shadow-[var(--ring-glass)] outline-none hover:bg-hover focus-visible:focus-ring">
+                <span className="flex min-w-0 items-center gap-1.5 text-[12px]/[18px] font-medium">
+                  <span className={cn("size-1.5 shrink-0 rounded-full", r.status === "running" ? "bg-running" : "bg-neutral-solid")} />
+                  <span className="font-mono text-fg-secondary">{r.taskId}</span>
+                  <span className="min-w-0 flex-1 truncate">{r.taskTitle}</span>
+                  <span className="shrink-0 text-fg-muted">{c.profile.label} · {shortAgo(r.since, now, t)}</span>
+                </span>
+                {doing ? <span className="line-clamp-2 text-[12px]/[18px] font-medium text-fg-muted">{doing}</span> : null}
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {m.projects.length ? (
+        <div className="flex flex-col gap-2">
+          <span className="text-[11px]/4 font-semibold tracking-[.5px] text-[color:var(--text-faint)] uppercase">{t("agentMap.services")}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {m.projects.map((name) => <span key={name} className="inline-flex h-[26px] items-center rounded-[8px] bg-[var(--glass-faint)] px-2.5 text-[12px]/none font-medium text-fg-secondary">{name}</span>)}
+          </div>
+        </div>
+      ) : null}
+
       {queue.length || queued.length ? (
-        <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line-default p-2">
+        <div className="flex flex-col gap-1 rounded-[14px] border border-dashed border-line-default p-3">
           <span className="text-xs font-medium text-fg-secondary">{t("agentMap.queue", { count: queue.length + queued.length })}</span>
           {queue.map((r) => (
             <span key={r.runId} className="truncate text-xs text-fg-muted" title={r.taskTitle}>
@@ -223,9 +293,45 @@ function MachineColumn({
           ))}
         </div>
       ) : null}
+      <MachineSetupBanner machine={m} onChanged={onChanged} />
       {!mayManage(me, m) ? <MachineTools machine={m} /> : null}
     </section>
   );
+}
+
+function HubIntakeToggle({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client } = useHive();
+  const t = useT();
+  const action = useAction();
+  const [requested, setRequested] = useState<boolean | null>(null);
+  const { supported, value, waiting } = hubIntakeControl(m);
+  const request = async () => {
+    if (requested === null) return;
+    await client.call("machines.setRunner", { machineId: m.id, settings: { acceptHubRuns: requested } });
+    setRequested(null);
+    onChanged();
+  };
+  return <div className="flex flex-col items-end gap-1">
+    <label className="flex min-h-11 min-w-11 items-center justify-center gap-2 text-xs md:min-h-7 md:min-w-7" title={!supported ? t("machines.acceptHubRunsTooOld") : undefined}>
+      <span className="sr-only">{t("machines.acceptHubRuns")}</span>
+      <Switch data-hub-intake checked={value} disabled={!supported || action.busy} aria-label={t("machines.acceptHubRuns")} onCheckedChange={(next) => setRequested(next)} />
+    </label>
+    {!supported ? <span className="max-w-40 text-right text-[11px]/[15px] text-fg-muted">{t("machines.acceptHubRunsTooOld")}</span> : null}
+    {waiting ? <span role="status" className="text-right text-[11px]/[15px] text-warning">{t("machines.acceptHubRunsPending")}</span> : null}
+    <AlertDialog open={requested !== null} onOpenChange={(open) => { if (!open) setRequested(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t("machines.acceptHubRunsConfirmTitle")}</AlertDialogTitle>
+          <AlertDialogDescription>{t(requested ? "machines.acceptHubRunsConfirmOn" : "machines.acceptHubRunsConfirmOff")}</AlertDialogDescription>
+          <ErrorNote error={action.error} />
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={action.busy}>{t("common.cancel")}</AlertDialogCancel>
+          <AlertDialogAction disabled={action.busy} onClick={(e) => { e.preventDefault(); void action.run(request); }}>{t("machines.acceptHubRunsConfirm")}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </div>;
 }
 
 function MachineManagement({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
@@ -269,100 +375,6 @@ function MachineManagement({ machine: m, onChanged }: { machine: Machine; onChan
         </SheetContent>
       </Sheet>;
 
-}
-
-function ProfileCardView({
-  card: c,
-  machine: m,
-  activity,
-  now,
-  pick,
-}: {
-  card: ProfileCard;
-  machine: Machine;
-  activity: Map<string, string | null>;
-  now: number;
-  pick: { on: boolean; toggle: () => void } | null;
-}) {
-  const t = useT();
-  const p = c.profile;
-  const waiting = m.profileChanges?.find((x) => x.profileId === p.id) ?? null;
-  const label =
-    c.state === "running"
-      ? t("agentMap.state.running", { n: c.running, max: c.max })
-      : c.state === "resting" && c.restingUntil
-        ? t("agentMap.state.restingUntil", { time: new Date(c.restingUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })
-        : t(`agentMap.state.${c.state}`);
-  const onKey = (e: KeyboardEvent) => {
-    if (pick && (e.key === " " || e.key === "Enter")) {
-      e.preventDefault();
-      pick.toggle();
-    }
-  };
-  return (
-    <div
-      role={pick ? "checkbox" : undefined}
-      aria-checked={pick ? pick.on : undefined}
-      tabIndex={pick ? 0 : undefined}
-      onClick={pick?.toggle}
-      onKeyDown={onKey}
-      data-map-profile={`${m.machine}/${p.id}`}
-      data-map-state={c.state}
-      className={cn(
-        "flex flex-col gap-1.5 rounded-lg border bg-surface p-2.5 outline-none",
-        pick ? "cursor-pointer hover:border-fg-secondary focus-visible:focus-ring" : "",
-        pick?.on ? "border-primary ring-2 ring-primary/30" : "border-line-default",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg-strong" title={p.label}>
-          {p.label}
-        </span>
-        <Chip kind={STATE_KIND[c.state]} small>
-          {label}
-        </Chip>
-      </div>
-      <span className="truncate font-mono text-xs text-fg-muted">
-        {p.id} · {p.kind}
-        {p.account ? ` · ${p.account}` : ""}
-      </span>
-      {/* A change asked on the web shows on the card until the machine reports it, the manage section closed or not. */}
-      {waiting ? <span className="text-xs text-warning">{t("machines.profileWaiting", { who: waiting.requestedBy, time: formatTime(waiting.requestedAt) })}</span> : null}
-      {p.sessionPercent != null || p.weekPercent != null ? (
-        <QuotaBars profile={p} />
-      ) : null}
-      {p.sessionResets || p.weekResets || usageAsOf(p.usageCheckedAt) ? (
-        <span data-usage-resets className="text-xs/4 text-fg-muted">
-          {[
-            p.sessionResets ? t("machines.sessionResets", { time: p.sessionResets }) : null,
-            p.weekResets ? t("machines.weekResets", { time: p.weekResets }) : null,
-            usageAsOf(p.usageCheckedAt) ? t("agents.usageAsOf", { time: formatTime(p.usageCheckedAt!) }) : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-      ) : null}
-      {c.runs.map((r) => {
-        const doing = activity.get(`${m.id}/${r.runId}`);
-        return (
-          <a
-            key={r.runId}
-            href={`#/runs?run=${encodeURIComponent(r.runId)}`}
-            onClick={(e) => e.stopPropagation()}
-            className="flex flex-col gap-0.5 rounded-md bg-sunken px-2 py-1.5 outline-none hover:bg-hover focus-visible:focus-ring"
-          >
-            <span className="flex min-w-0 items-center gap-1.5 text-xs">
-              <span className={cn("size-1.5 shrink-0 rounded-full", r.status === "running" ? "bg-running" : "bg-neutral-solid")} />
-              <span className="font-mono text-fg-secondary">{r.taskId}</span>
-              <span className="min-w-0 flex-1 truncate text-fg-strong">{r.taskTitle}</span>
-              <span className="shrink-0 text-xs text-fg-muted">{shortAgo(r.since, now, t)}</span>
-            </span>
-            {doing ? <span className="line-clamp-2 text-xs/4 text-fg-muted">{doing}</span> : null}
-          </a>
-        );
-      })}
-    </div>
-  );
 }
 
 function MachineTools({ machine: m }: { machine: Machine }) {
@@ -477,4 +489,41 @@ function PriorityInput({ value, busy, label, onSave }: { value: number; busy: bo
       />
     </label>
   );
+}
+
+
+/** Readers see missing setup; install actions stay behind the existing hub-admin API. */
+export function MachineSetupBanner({ machine: m, onChanged }: { machine: Machine; onChanged: () => void }) {
+  const { client, me, projects } = useHive();
+  const t = useT();
+  const action = useAction();
+  const isAdmin = me.role === "admin" && !me.access;
+  const [open, setOpen] = useState(false);
+  const accessible = m.projects.filter(p => projects.includes(p));
+  const missing = useQuery(async () => (await Promise.all(accessible.map(project => client.call("machines.setupMissing", { project })))).flat().filter(x => x.machineId === m.id), [client, m.id, m.lastSeen, accessible.join("|")]);
+  const details = useQuery(() => open && isAdmin ? client.call("admin.machines", {}) : Promise.resolve([]), [client, open, isAdmin, m.lastSeen]);
+  const items = [...new Map((missing.data ?? []).flatMap(x => x.items).map(i => [i.id, i])).values()];
+  const detail = details.data?.find(x => x.id === m.id);
+  const installable = [...(detail?.setup?.machine ?? []), ...(detail?.setup?.projects ?? []).flatMap(p => p.items)];
+  if (!items.length) return <ErrorNote error={missing.error} />;
+  return <div data-machine-setup={m.machine} className="flex flex-wrap items-center gap-3 rounded-[14px] bg-[var(--danger-panel-bg)] px-[14px] py-3 text-fg shadow-[var(--danger-panel-ring)]">
+    <span className="min-w-0 flex-1 text-sm">{t("agentMap.setupMissing", { items: items.map(i => i.label).join(", ") })}</span>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild><Button size="sm" variant="glass" className="min-h-11 md:min-h-8">{t("start.doNow")}</Button></SheetTrigger>
+      <SheetContent><SheetHeader><SheetTitle>{m.machine}</SheetTitle><SheetDescription>{t("agentMap.setupMissing", { items: items.map(i => i.label).join(", ") })}</SheetDescription></SheetHeader>
+        <div className="flex flex-col gap-3 px-4">
+          {!isAdmin ? <p className="text-sm">{t("agentMap.setupAdmin")}</p> : null}
+          {details.loading ? <p role="status">{t("common.loading")}</p> : null}
+          {items.map(i => {
+            const pending = detail?.commands.find(c => c.itemId === i.id && ["pending", "running"].includes(c.status));
+            return <div key={i.id} className="flex flex-col gap-2 text-sm">
+              <span className="font-semibold">{i.label}</span><span className="break-words text-fg-muted">{i.detail}</span>
+              {pending ? <span role="status">{t(`commandStatus.${pending.status}`)}</span> : installable.find(x => x.id === i.id)?.action ? <Button disabled={action.busy} onClick={() => void action.run(async () => { await client.call("admin.commandCreate", { machineId: m.id, itemId: i.id }); onChanged(); setOpen(false); })}>{t("admin.requestInstall")}</Button> : null}
+            </div>;
+          })}
+          <ErrorNote error={action.error ?? details.error} />
+        </div>
+      </SheetContent>
+    </Sheet>
+  </div>;
 }

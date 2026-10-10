@@ -24,6 +24,24 @@ const run = (over: Record<string, unknown> = {}) => ({
 });
 
 describe("run records", () => {
+  it("counts all active runs in scope without leaking projects or truncating at the list limit", async t => {
+    const hive = new SqliteHive(":memory:");
+    t.after(() => hive.close());
+    for (let start = 0; start < 205; start += 20) {
+      await hive.call("runs.push", { machine: "duy-mbp", runs: Array.from({ length: Math.min(20, 205 - start) }, (_, i) => run({ runId: `active-${start + i}` })) }, machineA);
+    }
+    await hive.call("runs.push", { machine: "lan-mbp", runs: [run({ project: "billing", status: "queued" }), run({ runId: "finished", status: "succeeded" })] }, machineB);
+    assert.deepEqual(await hive.call("runs.count", {}, admin), { running: 205, queued: 1 });
+    assert.deepEqual(await hive.call("runs.count", {}, lan), { running: 205, queued: 0 });
+    assert.deepEqual(await hive.call("runs.count", { projects: ["billing"] }, lan), { running: 0, queued: 0 });
+    assert.deepEqual(await hive.call("runs.count", { projects: ["billing"] }, admin), { running: 0, queued: 1 });
+    assert.deepEqual(await hive.call("runs.count", { projects: [] }, admin), { running: 0, queued: 0 });
+    await assert.rejects(hive.call("runs.count", { project: "billing" }, lan), { code: "not_found" });
+    await hive.call("projects.archive", { project: "billing" }, admin);
+    assert.deepEqual(await hive.call("runs.count", {}, admin), { running: 205, queued: 0 });
+    assert.deepEqual(await hive.call("runs.count", { project: "billing" }, admin), { running: 0, queued: 1 });
+  });
+
   it("keeps an exact code revision across older-client pushes and isolates machines", async t => {
     const hive = new SqliteHive(":memory:");
     t.after(() => hive.close());

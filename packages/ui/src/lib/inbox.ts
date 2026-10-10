@@ -1,6 +1,6 @@
 // "Hôm nay": what needs the person, gathered from what the hub and this machine already know. Each source becomes
 // items with a stable key, so "seen" and "done" survive reloads (kept in localStorage, per device).
-import { HUB_SCOPE, type HubInfo, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
+import { HUB_SCOPE, isCliActionProposalKey, type HubInfo, type ImplementationPlan, type MemoryCleanupProposal, type AgentRun, type ChatAction, type HubAlert, type MachineCommand, type Memory, type Permission, type ProjectRole, type Proposal, type RunRecord, type SdlcGateRecord, type SetupItem, type Task } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { waitingReason } from "#ui/lib/runs.ts";
 
@@ -136,7 +136,8 @@ export function buildInbox(src: InboxSources): InboxItem[] {
 
   for (const p of src.proposals ?? []) {
     if (p.status !== "pending" || !can(docProject(p.docKey), approvalOf(p.docKey))) continue;
-    items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: p.docKey, proposal: p });
+    const operation = isCliActionProposalKey(p.docKey);
+    items.push({ kind: "proposal", key: `proposal:${p.id}`, tone: TONE.proposal, at: p.createdAt, scope: operation ? docProject(p.docKey) ?? "" : p.docKey, proposal: p });
   }
 
   for (const p of src.cleanup ?? []) {
@@ -348,4 +349,44 @@ export function shortAgo(iso: string, now: number, t: (key: "inbox.ago.now" | "i
   const h = Math.floor(min / 60);
   if (h < 24) return t("inbox.ago.h", { n: h });
   return t("inbox.ago.d", { n: Math.floor(h / 24) });
+}
+
+/** Hôm nay's three design groups (72c): what to approve, what to fix, the machine. */
+export const TODAY_GROUPS = ["approve", "fix", "machine"] as const;
+export type TodayGroup = (typeof TODAY_GROUPS)[number];
+
+export function todayGroup(item: InboxItem): TodayGroup {
+  switch (item.kind) {
+    case "machine":
+    case "request":
+      return "machine";
+    case "ci":
+    case "waitingRun":
+    case "agentHold":
+    case "conflict":
+    case "alert":
+    case "hubIssue":
+    case "releaseFailure":
+      return "fix";
+    default:
+      return "approve";
+  }
+}
+
+/** The glow dot of a row, by what the item is (the design's violet / blue / red / amber). */
+export type TodayDot = "violet" | "blue" | "red" | "amber";
+
+export function todayDot(item: InboxItem): TodayDot {
+  switch (item.kind) {
+    case "review": case "proposal": case "plan": case "gate": case "leader": return "violet";
+    case "memory": case "cleanup": return "blue";
+    case "ci": return "red";
+    case "alert": case "hubIssue": case "releaseFailure": return item.tone === "danger" ? "red" : "amber";
+    default: return "amber";
+  }
+}
+
+/** Items in the three design groups, each keeping the newest-first order they came in (as the design lists them). */
+export function groupToday(items: InboxItem[]): Array<{ group: TodayGroup; items: InboxItem[] }> {
+  return TODAY_GROUPS.map((group) => ({ group, items: items.filter((i) => todayGroup(i) === group) })).filter((g) => g.items.length);
 }

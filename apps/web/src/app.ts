@@ -1,17 +1,21 @@
 import type { Automation } from "./automation.ts";
 import { hubLog } from "#web/deploy-log.ts";
 import { createHash, type Hash } from "node:crypto";
-import { createWriteStream, rmSync } from "node:fs";
+import { createReadStream, createWriteStream, rmSync, statSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform, type Duplex } from "node:stream";
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from "express";
+import type { SetupGate } from "./hub-setup.ts";
 import { hostHeaderValidation } from "@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CHAT_FILE_MAX_BYTES,
   compareVersions,
+  DESTRUCTIVE_HUB_RPCS,
+  type DestructiveHubRpc,
+  isAgentCaller,
   grantPermissions,
   grantRole,
   HiveError,
@@ -23,6 +27,8 @@ import {
   permissionsOn,
   HUB_SCOPE,
   PROJECT_NAME,
+  isHubRole,
+  type HubRole,
   sees,
   TERMINAL_STEPUP_PATH,
   readRun,
@@ -34,6 +40,7 @@ import {
   type Actor,
   type Grant,
   type Me,
+  type Method,
   type Role,
   type WebhookInput,
   type ChatRequest,
@@ -91,6 +98,8 @@ export interface HubAppOptions {
   terminalIdentity?: TerminalMachineIdentity;
   /** Shorter relay clocks, for tests. */
   terminalTimings?: Partial<RelayTimings>;
+  /** First-run setup (roadmap 75): while it is pending only health and /api/setup answer. */
+  setup?: SetupGate;
 }
 
 const CSP = [
@@ -153,10 +162,43 @@ const actorOf = (res: Response) => res.locals.actor as Actor;
 const grantLabel = (g: Grant) => (grantRole(g) === "custom" ? [...grantPermissions(g)].join("+") : String(grantRole(g)));
 const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 
-/** Hub admins: an admin account, or an admin token of no account (the bootstrap / pre-account tokens). */
+/**
+ * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants), "own" (a person on their
+ * own things, each handler checks the rest). A name not here is refused. Spec 76 P0-4.
+ */
+export const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
+  "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
+  "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
+  "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
+  "backups.list": "hubAdmin", "backups.pin": "hubAdmin", "backups.unpin": "hubAdmin", "backups.projects": "hubAdmin", "backups.restoreProject": "hubAdmin",
+  "alerts.list": "hubAdmin", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
+  "automation.list": "hubAdmin", "automation.history": "hubAdmin", "automation.save": "hubAdmin", "automation.dryRun": "hubAdmin", "automation.retry": "hubAdmin",
+  "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
+  "users.list": "hubAdmin", "users.create": "hubAdmin", "users.update": "hubAdmin", "users.setGrants": "hubAdmin", "users.resetPassword": "hubAdmin",
+  "users.trash": "hubAdmin", "users.restore": "hubAdmin", "users.purge": "hubAdmin", "users.inviteList": "hubAdmin", "users.inviteCreate": "hubAdmin", "users.inviteRevoke": "hubAdmin",
+};
+
+// The leader proposes with its reply token; progress and finish use the paired machine's token in chat.ts.
+const CHAT_RPC = new Set<Method>(["chat.propose"]);
+
+/** Changes whose handler writes no audit line of its own. */
+const WEB_RPC_AUDITED = new Set(["releases.notes", "alerts.ack", "webhooks.test", "automation.save"]);
+
 function requireHubAdmin(res: Response): void {
-  const actor = actorOf(res);
+  assertHubAdmin(actorOf(res));
+}
+
+function assertHubAdmin(actor: Actor): void {
   if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
+}
+
+const isDestructiveHubRpc = (method: unknown): method is DestructiveHubRpc => (DESTRUCTIVE_HUB_RPCS as readonly unknown[]).includes(method);
+
+/** A hub role from a request, or the fallback when it is left out; anything else is a bad_request. */
+function readRole(raw: unknown, fallback: HubRole): HubRole {
+  if (raw === undefined || raw === null) return fallback;
+  if (!isHubRole(raw)) throw new HiveError("bad_request", "Vai trò không hợp lệ.", { key: "errors.badHubRole" });
+  return raw;
 }
 
 function cookieValue(header: string | undefined, name: string): string | null {
@@ -173,6 +215,9 @@ export function terminalUpgrade(app: express.Express): (req: IncomingMessage, so
   const terminal = app.locals.terminal as TerminalHub;
   return (req, socket, head) => terminal.upgrade(req, socket, head);
 }
+
+/** The actor role of an account: admins as before, a viewer capped to reading (a narrowing), everyone else a member. */
+const accountRole = (u: Pick<UserInfo, "admin" | "hubRole">): Role => (u.admin ? "admin" : u.hubRole === "viewer" ? "viewer" : "member");
 
 function publicUser(u: UserInfo): NonNullable<Me["user"]> {
   return { id: u.id, username: u.username, displayName: u.displayName, admin: u.admin, mustChangePassword: u.mustChangePassword };
@@ -201,6 +246,7 @@ export function createHubApp({
   terminalRelay,
   terminalIdentity,
   terminalTimings,
+  setup,
 }: HubAppOptions): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -212,10 +258,15 @@ export function createHubApp({
     if (ui && "dir" in ui) res.setHeader("content-security-policy", CSP);
     next();
   });
+  // The page asks every hub first; one not started for setup simply says so.
+  if (setup) setup.mount(app);
+  else app.get("/api/setup", (_req, res) => void res.json({ result: { pending: false } }));
 
   const json = express.json({ limit: "1mb" });
   // RPC carries a doc's attached file in base64 (docs.assetPut, roadmap 22j): parsed only once the caller is known.
   const rpcJson = express.json({ limit: "8mb" });
+  hive.db.exec("CREATE TABLE IF NOT EXISTS rpc_idempotency (key TEXT PRIMARY KEY, digest TEXT NOT NULL, result TEXT NOT NULL)");
+  const pendingReports = new Map<string, { digest: string; request: Promise<unknown> }>();
   const secure = (req: Request) => req.secure || (trustProxy && req.get("x-forwarded-proto") === "https");
   const clientIp = (req: Request) => (trustProxy ? (req.get("x-forwarded-for") ?? "").split(",")[0]!.trim() : "") || req.socket.remoteAddress || "?";
 
@@ -249,9 +300,24 @@ export function createHubApp({
    * the terminal (spec 69) binds proofs to it, and only a session cookie leads here, so no bearer passes for a person.
    */
   const humanActor = (user: UserInfo, session: string): Actor => ({
-    name: user.username, role: user.admin ? "admin" : "member", access: users.access(user), source: { via: "web" }, account: user.username,
+    name: user.username, role: accountRole(user), access: users.access(user), source: { via: "web" }, account: user.username,
     humanSession: createHash("sha256").update(session).digest("hex"),
   });
+
+  /** A viewer account's agents and tokens read only, whatever role the token was made with. */
+  const capRole = (role: Role, user: UserInfo | null): Role => (user?.hubRole === "viewer" ? "viewer" : role);
+
+  /** Only an owner may hand out, or touch, owner; a token of no account (the operator's) counts as one. */
+  const assertMayGrant = (actor: Actor, role: HubRole): void => {
+    if (role !== "owner" || actor.account === undefined) return;
+    if (users.byUsername(actor.account)?.hubRole !== "owner") throw new HiveError("forbidden", "Chỉ chủ hub mới cấp hoặc sửa vai trò chủ hub.", { key: "errors.ownerOnly" });
+  };
+
+  /** The projects of a system, for an MCP credential scoped to it; none when it is gone. */
+  const systemProjects = (name: string): string[] => {
+    const row = hive.db.prepare("SELECT projects FROM systems WHERE name = ?").get(name) as { projects?: string } | undefined;
+    return row?.projects ? (JSON.parse(row.projects) as string[]) : [];
+  };
 
   const tokenActor = (req: Request, res: Response, raw: string): Actor | null => {
     const label = (req.get("x-hive-agent") ?? "").replace(/[^\w.-]/g, "").slice(0, 80);
@@ -269,7 +335,7 @@ export function createHubApp({
             name: label ? `${label}@${grant.name}` : grant.name,
             role: grant.role,
             ...(grant.access ? { access: grant.access } : {}),
-            source,
+            source: { ...source, via: "mcp" },
             chatReply: grant.replyId,
             ...trail(grant.name),
           }
@@ -281,12 +347,21 @@ export function createHubApp({
       const full = user ? users.access(user) : undefined;
       const project = who.mcp.project;
       if (project && full && !grantPermissions(full.projects[project]).has("view")) return null;
+      // authenticate answers with why the project is gone; the terminal upgrade refuses agent credentials anyway.
+      res.locals.mcpProject = project;
+      const shared = full ? { permissions: [...sharedPermissions(full)] } : "member";
+      // A CLI opened on a whole system (GROUP-cli): the system's projects as they are now, each with the account's own
+      // grant, so a project added to the system later is reached and one the account does not see never is.
+      const members = who.mcp.system ? systemProjects(who.mcp.system).filter((p) => !full || grantPermissions(full.projects[p]).has("view")) : null;
+      if (members && !members.length) return null;
       const access = project
-        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared: full ? { permissions: [...sharedPermissions(full)] } : "member" } as Actor["access"]
-        : full;
+        ? { projects: { [project]: full?.projects[project] ?? "member" }, shared } as Actor["access"]
+        : members
+          ? { projects: Object.fromEntries(members.map((p) => [p, full?.projects[p] ?? "member"])), shared } as Actor["access"]
+          : full;
       if (user) res.locals.user = user;
       return {
-        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
         source: { via: "mcp" }, tokenId: who.id, mcpCredential: true, agent: label || "mcp", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
       };
@@ -302,22 +377,27 @@ export function createHubApp({
       const access = { projects: { [project]: { permissions: [...allowed] } }, shared: { permissions: [...shared] } } as Actor["access"];
       if (user) res.locals.user = user;
       return {
-        name: label ? `${label}@${who.name}` : who.name, role: who.role, access,
+        name: label ? `${label}@${who.name}` : who.name, role: capRole(who.role, user), access,
         source: { via: "mcp", machine, run: runId, task }, run: runId,
         tokenId: who.id, runCredential: who.run, agent: label || "run", onBehalf: user?.username ?? who.name,
         ...(user ? { account: user.username } : {}),
       };
     }
     const name = label ? `${label}@${who.name}` : who.name;
+    const tokenSource = source.via === "desktop" ? { ...source, via: "api" as const } : source;
+    // The desktop window names itself `desktop`, while machine reports use `runner.<machine>`.
+    // Both are trusted only with a bearer paired to a registered machine.
+    const machineSource = (actor: Actor): Actor => source.via === "desktop" &&
+      (hive.isMachineActor(name, actor) || hive.isPairedDesktopToken(actor)) ? { ...actor, source } : actor;
     // A token of no account (CI, the CLI's) stands for itself.
-    if (!who.ownerId) return { name, role: who.role, tokenId: who.id, source, ...trail(who.name) };
+    if (!who.ownerId) return machineSource({ name, role: who.role, tokenId: who.id, source: tokenSource, ...trail(who.name) });
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
     // An account that lost admin keeps its old admin tokens only as a member.
-    const role: Role = who.role === "admin" && !user.admin ? "member" : who.role;
+    const role: Role = capRole(who.role === "admin" && !user.admin ? "member" : who.role, user);
     // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
-    return { name, role, tokenId: who.id, access: users.access(user), source, ...trail(user.username), account: user.username };
+    return machineSource({ name, role, tokenId: who.id, access: users.access(user), source: tokenSource, ...trail(user.username), account: user.username });
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */
@@ -331,8 +411,20 @@ export function createHubApp({
           res.status(401).json({ error: { code: "unauthorized", message: "Missing or invalid token.", key: "errors.invalidToken" } });
           return;
         }
+        // The reply's token also fetches the message's files (the runner reads them before it writes).
+        const chatFile = actor.chatReply !== undefined && req.method === "GET" && req.path.startsWith("/api/chat/files/");
+        if (actor.chatReply !== undefined && !chatFile && !["/mcp", "/api/me", "/api/rpc"].includes(req.path)) {
+          res.status(403).json({ error: { code: "forbidden", message: "Chat credentials are limited to leader calls." } });
+          return;
+        }
         if ((actor.runCredential || actor.mcpCredential) && !["/api/rpc", "/mcp", "/api/me"].includes(req.path)) {
           res.status(403).json({ error: { code: "forbidden", message: "Agent credentials are limited to agent calls." } });
+          return;
+        }
+        // A credential issued before its project was archived or deleted: a clear error rather than empty lists.
+        const closed = typeof res.locals.mcpProject === "string" ? hive.closedProject(res.locals.mcpProject) : null;
+        if (closed) {
+          sendError(res, closed);
           return;
         }
         res.locals.actor = actor;
@@ -392,12 +484,17 @@ export function createHubApp({
       const actor = actorOf(res);
       if (actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined)
         throw new HiveError("forbidden", "A machine credential is required.");
-      const { project = null, readOnly } = req.body ?? {};
-      if ((project !== null && (typeof project !== "string" || !PROJECT_NAME.test(project))) || typeof readOnly !== "boolean")
+      const { project = null, system = null, readOnly } = req.body ?? {};
+      const key = (v: unknown) => v === null || (typeof v === "string" && PROJECT_NAME.test(v));
+      if (!key(project) || !key(system) || (project && system) || typeof readOnly !== "boolean")
         throw new HiveError("bad_request", "Invalid MCP credential request.");
       if (project && !sees(actor, project)) throw new HiveError("forbidden", "No access to this project.");
+      // A system's credential needs one project of it the token sees; it reaches no more than the token does.
+      if (system && !systemProjects(system).some((p) => sees(actor, p))) throw new HiveError("forbidden", "No access to this system.");
+      const closed = project ? hive.closedProject(project) : null;
+      if (closed) throw closed;
       const bearer = /^Bearer\s+(\S+)$/i.exec(req.get("authorization") ?? "")!;
-      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly) } });
+      res.json({ result: { token: tokens.issueMcp(bearer[1]!, project, readOnly, system) } });
     } catch (err) { sendError(res, err); }
   });
 
@@ -477,9 +574,51 @@ export function createHubApp({
       const user = signIn(req);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, clientIp(req));
+      hive.audit({ name: user.username, role: accountRole(user) }, "auth.login", user.username, clientIp(req));
       res.locals.user = user;
       // The new session's id, as the cookie middleware sets it for the requests after this one.
+      res.locals.actor = humanActor(user, session.token);
+      res.json({ result: me(res) });
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  // Sign-up by link (R-72l). Public like sign-in: the secret in the link is the credential, so wrong guesses are throttled per address.
+  const inviteKey = (req: Request) => `invite|${clientIp(req)}`;
+  app.post("/api/invite/peek", json, (req, res) => {
+    try {
+      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
+      const wait = throttle.blockedFor(inviteKey(req));
+      if (wait) throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60_000)} phút.`, { key: "errors.tooManyAttempts", vars: { minutes: Math.ceil(wait / 60_000) } });
+      try {
+        res.json({ result: users.peekInvite(String((req.body as { token?: unknown } | undefined)?.token ?? "")) });
+      } catch (err) {
+        throttle.fail(inviteKey(req));
+        throw err;
+      }
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  app.post("/api/invite/accept", json, (req, res) => {
+    try {
+      if (!sameSite(req)) throw new HiveError("forbidden", "Yêu cầu không đến từ trang của hub.", { key: "errors.crossSite" });
+      const wait = throttle.blockedFor(inviteKey(req));
+      if (wait) throw new HiveError("forbidden", `Sai quá nhiều lần. Thử lại sau ${Math.ceil(wait / 60_000)} phút.`, { key: "errors.tooManyAttempts", vars: { minutes: Math.ceil(wait / 60_000) } });
+      const { token, username, displayName, password } = (req.body ?? {}) as Record<string, unknown>;
+      let user: UserInfo;
+      try {
+        user = users.acceptInvite({ token: String(token ?? ""), username: typeof username === "string" ? username : undefined, displayName: typeof displayName === "string" ? displayName : undefined, password: String(password ?? "") });
+      } catch (err) {
+        if (err instanceof HiveError && err.key === "errors.inviteInvalid") throttle.fail(inviteKey(req));
+        throw err;
+      }
+      const session = users.startSession(user.id);
+      setSession(req, res, session.token, session.maxAge);
+      hive.audit({ name: user.username, role: accountRole(user) }, "users.inviteAccept", user.username, user.hubRole, { key: "audit.inviteAccepted" });
+      res.locals.user = user;
       res.locals.actor = humanActor(user, session.token);
       res.json({ result: me(res) });
     } catch (err) {
@@ -521,8 +660,8 @@ export function createHubApp({
   /** A token for one machine of the account; signing in again from the same machine replaces the old one. */
   const machineToken = (user: UserInfo, rawName: unknown) => {
     const name = String(rawName ?? "").trim();
-    const created = tokens.create(name, user.admin ? "admin" : "member", user.id);
-    const person: Actor = { name: user.username, role: user.admin ? "admin" : "member", account: user.username };
+    const created = tokens.create(name, accountRole(user), user.id);
+    const person: Actor = { name: user.username, role: accountRole(user), account: user.username };
     for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) {
       tokens.revoke(old.id);
       hive.rebindMachineToken(old.id, created.info.id, person);
@@ -581,6 +720,7 @@ export function createHubApp({
   });
 
   app.get("/api/me", authenticate({ cookie: true, allowPasswordChange: true }), (_req, res) => {
+    res.setHeader("x-hive-report-idempotency", "1");
     res.json({ result: me(res) });
   });
 
@@ -643,7 +783,7 @@ export function createHubApp({
         const target = users.get(linkUserId);
         if (!target || target.disabled) throw new HiveError("forbidden", "Account disabled", { key: "errors.ssoDisabled" });
         users.linkIdentity(target.id, identity);
-        hive.audit({ name: target.username, role: target.admin ? "admin" : "member" }, "users.ssoLink", target.username, oidc.settings.name);
+        hive.audit({ name: target.username, role: accountRole(target) }, "users.ssoLink", target.username, oidc.settings.name);
         return void res.redirect(302, "/");
       }
       let user = users.byIdentity(identity);
@@ -658,7 +798,7 @@ export function createHubApp({
       users.touchLogin(user.id);
       const session = users.startSession(user.id);
       setSession(req, res, session.token, session.maxAge);
-      hive.audit({ name: user.username, role: user.admin ? "admin" : "member" }, "auth.login", user.username, `${clientIp(req)} · SSO`);
+      hive.audit({ name: user.username, role: accountRole(user) }, "auth.login", user.username, `${clientIp(req)} · SSO`);
       res.redirect(302, returnTo);
     } catch (err) {
       ssoBack(res, err);
@@ -681,14 +821,118 @@ export function createHubApp({
     }
   });
 
+  /**
+   * The hub's destructive RPCs (DESTRUCTIVE_HUB_RPCS): each checks the caller, then hands back the change itself, so an
+   * agent's call is checked and held as a proposal (pending_approval) and the approver's runs the very same change.
+   */
+  const hubChanges: Record<DestructiveHubRpc, (i: Record<string, unknown>, actor: Actor, user: UserInfo | undefined) => () => Promise<unknown> | unknown> = {
+    "tokens.revoke": (i, actor, user) => {
+      if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
+      const info = tokens.get(String(i.id ?? ""));
+      if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
+      const hubAdmin = actor.role === "admin" && !actor.access;
+      if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
+      return () => {
+        tokens.revoke(info.id);
+        hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
+        return { revoked: true };
+      };
+    },
+    "users.trash": (i, actor) => userLifecycle("users.trash", i, actor),
+    "users.purge": (i, actor) => userLifecycle("users.purge", i, actor),
+    "users.inviteRevoke": (i, actor) => {
+      assertHubAdmin(actor);
+      return () => {
+        const revoked = users.revokeInvite(String(i.inviteId ?? ""));
+        hive.audit(actor, "users.inviteRevoke", revoked.id, revoked.role, { key: "audit.inviteRevoked" });
+        return revoked;
+      };
+    },
+    "webhooks.remove": (i, actor) => {
+      assertHubAdmin(actor);
+      if (!webhooks) throw new HiveError("bad_request", "Unknown method webhooks.remove");
+      return () => {
+        const target = webhooks.store.get(Number(i.id));
+        const removed = webhooks.store.remove(Number(i.id));
+        if (target && removed) hive.audit(actor, "webhooks.remove", target.name, target.kind);
+        return { removed };
+      };
+    },
+    // Writes a whole project's rows back into the live hub, so an agent's call waits for a person like a delete does.
+    "backups.restoreProject": (i, actor) => {
+      assertHubAdmin(actor);
+      if (!hub) throw new HiveError("bad_request", "Unknown method backups.restoreProject");
+      const name = String(i.name ?? "");
+      const project = String(i.project ?? "");
+      // Typed by hand on the page, as for projects.delete: a restore writes hundreds of rows into the live hub.
+      if (i.confirm !== project) throw new HiveError("bad_request", `Confirm with the project's name: ${project}.`, { key: "errors.projectConfirm", vars: { project } });
+      return () => hub.restoreProject(name, project, actor);
+    },
+    "hub.cleanup": (_i, actor) => {
+      assertHubAdmin(actor);
+      if (!hub) throw new HiveError("bad_request", "Unknown method hub.cleanup");
+      return async () => {
+        const r = await hub.cleanup();
+        const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
+        hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
+        return r;
+      };
+    },
+  };
+  /** users.trash and users.purge; users.restore takes the same checks but loses nothing, so it stays a direct RPC. */
+  const userLifecycle = (method: "users.trash" | "users.restore" | "users.purge", i: Record<string, unknown>, actor: Actor) => {
+    assertHubAdmin(actor);
+    const id = String(i.id ?? "");
+    const target = id ? users.get(id) : null;
+    if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+    if (target.hubRole === "owner") assertMayGrant(actor, "owner");
+    if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
+    return () => {
+      if (method === "users.purge") users.purge(id);
+      const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
+      const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
+      hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
+      return method === "users.purge" ? { id, purged: true } : updated;
+    };
+  };
+  // A person approving the proposal runs the change as themselves: their own rights are checked again, not the agent's.
+  for (const method of DESTRUCTIVE_HUB_RPCS) {
+    hive.onApprovedAction(method, async (input, approver) =>
+      await hubChanges[method](input, approver, approver.account ? users.byUsername(approver.account) ?? undefined : undefined)());
+  }
+
   app.post("/api/rpc", auth, rpcJson, async (req, res) => {
     try {
       const { method, input } = (req.body ?? {}) as { method?: unknown; input?: unknown };
       const i = (input ?? {}) as Record<string, unknown>;
       const actor = actorOf(res);
       const user = userOf(res);
+      if (actor.chatReply !== undefined && (!isMethod(method) || !CHAT_RPC.has(method)))
+        throw new HiveError("forbidden", "A chat credential can call leader methods only.");
       // Web-only RPCs (tokens, releases, account settings) do not pass through SqliteHive.call.
-      if ((actor.runCredential || actor.mcpCredential) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // A chat reply's token is an agent's too: it must not reach tokens.create or any other web-only RPC (spec 76, P0-1).
+      if ((actor.runCredential || actor.mcpCredential || actor.chatReply !== undefined) && !isMethod(method)) throw new HiveError("forbidden", "An agent credential can call agent methods only.");
+      // Every web-only RPC has a level here; one not listed is refused rather than falling through (spec 76, P0-4).
+      if (!isMethod(method)) {
+        const level = typeof method === "string" ? WEB_RPC[method] ?? (method.startsWith("terminal.") ? "own" : undefined) : undefined;
+        if (!level) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
+        if (level === "hubAdmin") requireHubAdmin(res);
+        if (level === "hubAdmin" && WEB_RPC_AUDITED.has(method as string)) {
+          const send = res.json.bind(res);
+          res.json = ((body: unknown) => {
+            if (res.statusCode < 400 && !(body && typeof body === "object" && "error" in body)) hive.audit(actor, method as string, String(i.id ?? i.version ?? i.name ?? "—"));
+            return send(body);
+          }) as typeof res.json;
+        }
+      }
+
+      // An agent's call (even on an admin token) waits for a person; nothing runs until one approves its proposal.
+      if (isDestructiveHubRpc(method)) {
+        const change = hubChanges[method](i, actor, user);
+        if (isAgentCaller(actor)) throw hive.holdForApproval(method, i, actor);
+        res.json({ result: await change() });
+        return;
+      }
 
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
@@ -701,26 +945,16 @@ export function createHubApp({
         return;
       }
       if (method === "tokens.create") {
+        if (actor.role === "agent" || actor.role === "viewer") throw new HiveError("forbidden", "Only a person can create tokens.");
         const role = (i.role as Role | undefined) ?? "agent";
         const hubAdmin = actor.role === "admin" && !actor.access;
         // An account's grants do not let a read-only credential mint a credential with write access.
-        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : actor.role === "viewer" ? ["viewer"] : ["viewer", "agent"];
+        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : ["viewer", "agent"];
         if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
         if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
         const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
         hive.audit(actor, "tokens.create", created.info.name, created.info.role, { key: `role.${created.info.role}` });
         res.json({ result: created });
-        return;
-      }
-      if (method === "tokens.revoke") {
-        if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
-        const info = tokens.get(String(i.id ?? ""));
-        if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
-        const hubAdmin = actor.role === "admin" && !actor.access;
-        if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
-        tokens.revoke(info.id);
-        hive.audit(actor, "tokens.revoke", info.name, info.role, { key: `role.${info.role}` });
-        res.json({ result: { revoked: true } });
         return;
       }
 
@@ -754,20 +988,30 @@ export function createHubApp({
       }
 
       // Trang Hub (roadmap 22n): hub admins only.
-      if (method === "hub.info" || method === "hub.backup" || method === "hub.cleanup") {
+      if (method === "hub.info" || method === "hub.backup") {
         requireHubAdmin(res);
         if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "hub.info") res.json({ result: await hub.info() });
-        else if (method === "hub.cleanup") {
-          const r = await hub.cleanup();
-          const freed = (r.releases?.bytes ?? 0) + r.artifacts.bytes + Math.max(0, r.db.before - r.db.after);
-          hive.audit(actor, "hub.cleanup", `${(freed / 1e6).toFixed(0)} MB`, `${r.releases?.versions.length ?? 0} builds · ${r.artifacts.removed} artifacts`);
-          res.json({ result: r });
-        } else {
-          const r = await hub.backup();
+        else {
+          const r = await hub.backup("manual", actor.name);
           hive.audit(actor, "hub.backup", path.basename(r.file), r.removed.length ? `− ${r.removed.length}` : "");
           res.json({ result: { file: path.basename(r.file), removed: r.removed.length, files: r.files?.copied ?? null } });
         }
+        return;
+      }
+
+      // Snapshots (ADM-backup-restore): hub admins only, and only names of the backup folder's own snapshots.
+      if (typeof method === "string" && method.startsWith("backups.")) {
+        requireHubAdmin(res);
+        if (!hub) throw new HiveError("bad_request", `Unknown method ${method}`);
+        const name = String(i.name ?? "");
+        if (method === "backups.list") res.json({ result: hub.backups() });
+        else if (method === "backups.pin" || method === "backups.unpin") {
+          const entry = hub.pin(name, method === "backups.pin", actor.name);
+          hive.audit(actor, method, entry.name, entry.expiresAt ?? "", { key: method === "backups.pin" ? "audit.backupPinned" : "audit.backupUnpinned" });
+          res.json({ result: entry });
+        } else if (method === "backups.projects") res.json({ result: hub.projects(name) });
+        else throw new HiveError("bad_request", `Unknown method ${method}`);
         return;
       }
 
@@ -816,11 +1060,6 @@ export function createHubApp({
           const saved = webhooks.store.save(i as unknown as WebhookInput);
           hive.audit(actor, "webhooks.save", saved.name, `${saved.kind} · ${saved.events.join(", ")}`);
           res.json({ result: saved });
-        } else if (method === "webhooks.remove") {
-          const target = webhooks.store.get(Number(i.id));
-          const removed = webhooks.store.remove(Number(i.id));
-          if (target && removed) hive.audit(actor, "webhooks.remove", target.name, target.kind);
-          res.json({ result: { removed } });
         } else if (method === "webhooks.test") {
           res.json({ result: await webhooks.dispatcher.test(Number(i.id)) });
         } else {
@@ -867,33 +1106,51 @@ export function createHubApp({
         if (method === "users.list") {
           res.json({ result: users.list() });
         } else if (method === "users.create") {
-          const created = users.create({ username: String(i.username ?? ""), displayName: String(i.displayName ?? ""), admin: i.admin === true });
-          hive.audit(actor, "users.create", created.user.username, created.user.admin ? "admin" : "member", { key: created.user.admin ? "role.admin" : "role.member" });
+          const hubRole = readRole(i.hubRole, i.admin === true ? "admin" : "member");
+          assertMayGrant(actor, hubRole);
+          const created = users.create({ username: String(i.username ?? ""), displayName: String(i.displayName ?? ""), hubRole });
+          hive.audit(actor, "users.create", created.user.username, created.user.hubRole, { key: `role.${created.user.hubRole}` });
           res.json({ result: created });
         } else if (method === "users.update") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+          const hubRole = i.hubRole === undefined ? undefined : readRole(i.hubRole, "member");
+          // An owner is touched by owners only; nobody hands out a role above their own.
+          if (target.hubRole === "owner") assertMayGrant(actor, "owner");
+          if (hubRole) assertMayGrant(actor, hubRole);
+          if (typeof i.admin === "boolean" && i.admin && !target.admin) assertMayGrant(actor, "admin");
           const updated = users.update(id, {
             displayName: typeof i.displayName === "string" ? i.displayName : undefined,
             admin: typeof i.admin === "boolean" ? i.admin : undefined,
+            hubRole,
             disabled: typeof i.disabled === "boolean" ? i.disabled : undefined,
           });
           const changes = [
-            updated.admin !== target.admin ? (updated.admin ? "cấp admin" : "bỏ admin") : "",
+            updated.hubRole !== target.hubRole ? `${target.hubRole} → ${updated.hubRole}` : "",
             updated.disabled !== target.disabled ? (updated.disabled ? "khoá" : "mở khoá") : "",
           ].filter(Boolean);
           // The admin page changes one thing at a time; the key names the first change.
           const key =
-            updated.admin !== target.admin
-              ? updated.admin
-                ? "audit.adminGranted"
-                : "audit.adminRevoked"
+            updated.hubRole !== target.hubRole
+              ? "audit.hubRole"
               : updated.disabled !== target.disabled
                 ? updated.disabled
                   ? "audit.disabled"
                   : "audit.enabled"
                 : "audit.renamed";
-          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key });
+          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(key === "audit.hubRole" ? { vars: { from: target.hubRole, to: updated.hubRole } } : {}) });
           res.json({ result: updated });
+        } else if (method === "users.restore") {
+          res.json({ result: userLifecycle(method, i, actor)() });
+        } else if (method === "users.inviteList") {
+          res.json({ result: users.listInvites() });
+        } else if (method === "users.inviteCreate") {
+          const bound = typeof i.userId === "string" && i.userId ? users.get(i.userId) : null;
+          if (typeof i.userId === "string" && i.userId && !bound) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
+          const hubRole = bound ? bound.hubRole : readRole(i.hubRole, "member");
+          assertMayGrant(actor, hubRole);
+          const made = users.createInvite({ role: hubRole, days: typeof i.days === "number" ? i.days : undefined, userId: bound?.id, createdBy: actor.account ?? actor.name });
+          hive.audit(actor, "users.inviteCreate", bound?.username ?? made.invite.id, hubRole, { key: "audit.inviteCreated", vars: { role: hubRole } });
+          res.json({ result: made });
         } else if (method === "users.setGrants") {
           if (!target) throw new HiveError("not_found", "Không có tài khoản này.", { key: "errors.userNotFound" });
           const updated = users.setGrants(id, (i.grants ?? {}) as Record<string, unknown>, "shared" in i ? i.shared : undefined);
@@ -953,6 +1210,31 @@ export function createHubApp({
       }
       if (method === "chat.poll") {
         res.json({ result: withGrants(await hive.call(method, input as never, actor)) });
+        return;
+      }
+      const requestId = req.get("x-hive-idempotency");
+      if (requestId && (method === "tasks.update" || method === "runs.report")) {
+        if (!actor.tokenId || !/^[0-9a-f-]{36}$/i.test(requestId)) throw new HiveError("bad_request", "Invalid idempotency key.");
+        const key = `${actor.tokenId}:${requestId}`;
+        const digest = createHash("sha256").update(JSON.stringify({ method, input })).digest("hex");
+        const saved = hive.db.prepare("SELECT digest, result FROM rpc_idempotency WHERE key = ?").get(key) as { digest: string; result: string } | undefined;
+        if (saved) {
+          if (saved.digest !== digest) throw new HiveError("conflict", "Idempotency key reused with different input.");
+          res.json({ result: JSON.parse(saved.result) });
+          return;
+        }
+        let pending = pendingReports.get(key);
+        if (pending && pending.digest !== digest) throw new HiveError("conflict", "Idempotency key reused with different input.");
+        if (!pending) {
+          const request = hive.call(method, input as never, actor).then((result) => {
+            hive.db.prepare("INSERT OR IGNORE INTO rpc_idempotency VALUES (?, ?, ?)").run(key, digest, JSON.stringify(result));
+            return result;
+          });
+          pending = { digest, request };
+          pendingReports.set(key, pending);
+          void request.finally(() => pendingReports.delete(key)).catch(() => undefined);
+        }
+        res.json({ result: await pending.request });
         return;
       }
       res.json({ result: await hive.call(method, input as never, actor) });
@@ -1058,6 +1340,26 @@ export function createHubApp({
       found.body.pipe(res);
     });
   }
+
+  // A snapshot to take away (ADM-backup-restore): streamed, since a hub's database runs to gigabytes. Hub admins only.
+  app.get("/api/backups/:name", auth, (req, res) => {
+    try {
+      requireHubAdmin(res);
+      if (!hub) throw new HiveError("not_found", "Backups are off.", { key: "errors.backupOff" });
+      const file = hub.file(String(req.params.name ?? ""));
+      res.set({
+        "content-type": "application/vnd.sqlite3",
+        "content-length": String(statSync(file).size),
+        "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-store",
+      });
+      hive.audit(actorOf(res), "backups.download", path.basename(file));
+      createReadStream(file).on("error", (err) => res.destroy(err)).pipe(res);
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
 
   // Chat attachments (roadmap 17g): the bytes go over plain HTTP, not JSON-RPC. A file is uploaded first, then sent
   // with chat.send; whoever sees the project's chats reads it (people by their session, machines by their token).
