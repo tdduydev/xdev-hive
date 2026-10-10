@@ -1,7 +1,7 @@
 import type { DeployLog } from "#web/deploy-log.ts";
 // Trang Hub (docs/design/2026-09-redesign, xDev Hive Web Admin; roadmap 22n): what the hub is and how it is doing, for
 // hub admins, and a backup made on request.
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { HiveError, type Actor, type BackupEntry, type BackupList, type BackupProject, type BackupReason, type HubCleanup, type HubInfo, type ProjectRestored } from "@xdev-hive/core";
 import type { SqliteHive } from "@xdev-hive/core/node";
@@ -18,6 +18,7 @@ import {
   type FilesBackupResult,
   type PinPolicy,
 } from "./backup.ts";
+import { repoVersion } from "./build-info.ts";
 import type { UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
 
@@ -36,18 +37,12 @@ export interface HubInfoOptions {
   trustProxy?: boolean;
   /** The commit the deploy built (HIVE_COMMIT). */
   commit?: string | null;
+  /** HIVE_BUILD_VERSION / HIVE_BUILD_DATE of the image (build-info.ts); null on a build without them. */
+  buildVersion?: string | null;
+  buildDate?: string | null;
   now?: () => Date;
 }
 
-/** The version the repo is at: the desktop app's, which every roadmap item bumps. */
-function repoVersion(): string {
-  try {
-    const file = new URL("../../desktop/package.json", import.meta.url);
-    return String((JSON.parse(readFileSync(file, "utf8")) as { version?: string }).version ?? "?");
-  } catch {
-    return "?";
-  }
-}
 
 const size = (file: string) => (existsSync(file) ? statSync(file).size : 0);
 const SNAPSHOT = /^hub-.*\.db$/;
@@ -79,6 +74,8 @@ export class HubInfoSource {
     return {
       version: this.#version,
       commit: o.commit ?? null,
+      buildVersion: o.buildVersion ?? null,
+      buildDate: o.buildDate ?? null,
       node: process.version,
       container: existsSync("/.dockerenv"),
       startedAt: this.#startedAt.toISOString(),

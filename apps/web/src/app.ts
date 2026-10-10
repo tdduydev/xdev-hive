@@ -46,6 +46,7 @@ import {
   type ChatRequest,
   type AppRollout,
   type UpdateReport,
+  type HubBuild,
 } from "@xdev-hive/core";
 import { TerminalStore, type SqliteHive, type TerminalMachineIdentity } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "@xdev-hive/mcp";
@@ -87,6 +88,8 @@ export interface HubAppOptions {
   alerts?: AlertStore;
   /** Trang Hub (roadmap 22n): what the hub is, and a backup on request. */
   hub?: HubInfoSource;
+  /** The image's version and build date for /api/health (build-info.ts); left out, health says only ok. */
+  build?: HubBuild;
   /** Remote terminal (spec 69): HIVE_REMOTE_TERMINAL=1. Off by default. */
   remoteTerminal?: boolean;
   /** A browser-socket relay to use instead of the built-in one (tests of the ticket check). */
@@ -242,6 +245,7 @@ export function createHubApp({
   autoReleaseProject,
   alerts,
   hub,
+  build,
   remoteTerminal = false,
   terminalRelay,
   terminalIdentity,
@@ -564,8 +568,9 @@ export function createHubApp({
     return user;
   };
 
+  // Unauthenticated: version, commit and build date only, so the status bar can show them before and after sign-in.
   app.get("/api/health", (_req, res) => {
-    res.json({ result: { ok: true } });
+    res.json({ result: build ? { ok: true, version: build.version, commit: build.commit, buildVersion: build.buildVersion, buildDate: build.buildDate } : { ok: true } });
   });
 
   app.post("/api/login", json, (req, res) => {
