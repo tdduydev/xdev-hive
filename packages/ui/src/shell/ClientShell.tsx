@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Layers3, LogOut, Menu, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, UserRound, X } from "lucide-react";
+import { ChevronDown, Ellipsis, Layers3, LogOut, Menu, MessageSquare, Moon, PanelLeft, Plus, Search, Sun, UserRound, X } from "lucide-react";
 import { cn } from "cn";
 import type { Me } from "@xdev-hive/core";
 import type { HiveClient } from "#ui/client.ts";
@@ -35,12 +35,26 @@ export interface NavEntry {
 }
 
 export interface NavGroup {
-  /** null: the first items, above any heading. */
+  /** null: no heading (the top entry, or a quiet group under a divider). */
   label: string | null;
   items: NavEntry[];
+  /** Pages folded behind a "Thêm" row: opened now and then, so they stay out of the daily path. */
+  more?: { label: string; items: NavEntry[] };
+  /** Drawn under a divider, dimmer: running the hub is not the day's work (operations). */
+  quiet?: boolean;
 }
 
 const SIDEBAR_KEY = "hive-sidebar";
+const MORE_KEY = "hive-nav-more";
+
+/** Whether this viewer left "Thêm" open; per browser, a convenience only, so blocked storage just means closed. */
+function readMore(): boolean {
+  try {
+    return localStorage.getItem(MORE_KEY) === "open";
+  } catch {
+    return false;
+  }
+}
 
 function readSidebar(): boolean {
   try {
@@ -135,7 +149,22 @@ function ClientFrame({
   const hubBuild = useQuery(async () => (client.build ? client.build().catch(() => null) : null), [client, link.state === "ok"]);
   const build = hubBuild.data ? buildText(hubBuild.data, activeIntl(), t) : null;
 
-  const items = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  // Folded pages still answer ⌘1–6 and the palette: folding hides a row, not a page.
+  const items = useMemo(() => groups.flatMap((g) => [...g.items, ...(g.more?.items ?? [])]), [groups]);
+  const [moreRemembered, setMoreRemembered] = useState(readMore);
+  const toggleMore = useCallback((open: boolean) => {
+    setMoreRemembered(open);
+    try {
+      localStorage.setItem(MORE_KEY, open ? "open" : "closed");
+    } catch {
+      // Not remembered: it opens closed next time.
+    }
+  }, []);
+  // Opening a folded page (a link, ⌘K, Back) unfolds "Thêm" so the highlighted entry is in sight; the viewer can fold it again.
+  const currentFolded = groups.some((g) => g.more?.items.some((item) => item.id === current));
+  useEffect(() => {
+    if (currentFolded) setMoreRemembered(true);
+  }, [currentFolded, current]);
   const go = useCallback(
     (id: string) => {
       window.location.hash = `#/${id}`;
@@ -232,42 +261,68 @@ function ClientFrame({
       {!rail ? <div className="workspace-new-work"><Button variant="solid" size="md" type="button" data-new-work-open={!narrow || undefined} onClick={() => setNewTask(true)} className="w-full">{t("shell.assignAgent")}</Button></div> : null}
       {/* data-nav-list: the smoke shot of the menu checks this is not scrolling (roadmap 39f). */}
       <div data-nav-list className="hive-sidebar-list flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {groups.map((g, gi) => (
-          <div key={g.label ?? `g${gi}`} className="hive-nav-group flex flex-col">
-            {g.label && !rail ? <div className="hive-nav-heading">{g.label}</div> : null}
-            {g.items.map((item) => {
-              const on = item.id === current;
-              const Icon = item.icon;
-              return (
-                <a
-                  key={item.id}
-                  href={`#/${item.id}`}
-                  onClick={() => narrow && setSidebar(false)}
-                  aria-current={on ? "page" : undefined}
-                  title={item.shortcut ? t("shell.shortcut", { label: item.label, key: item.shortcut }) : item.label}
-                  className={cn(
-                    "hive-nav-item flex max-md:min-h-11 shrink-0 items-center outline-none focus-visible:focus-ring active:bg-pressed",
-                    rail && "relative justify-center px-0",
-                    on ? "hive-nav-active" : "text-fg-secondary hover:bg-hover",
-                  )}
-                >
-                  <Icon aria-hidden="true" className={cn("size-4 shrink-0", on ? "text-fg-brand" : "text-fg-muted")} />
-                  <span className={rail ? "sr-only" : "min-w-0 flex-1 truncate"}>{item.label}</span>
-                  {item.badge && item.badge.count > 0 ? (
-                    <span
-                      className={cn(
-                        "hive-nav-count inline-grid place-items-center rounded-full",
-                        rail && "absolute right-0 top-0",
-                        item.badge.strong ? "hive-nav-count-strong" : "text-fg-muted",
-                      )}
-                    >{item.badge.count}</span>
-                  ) : null}
-                  {!rail && item.shortcut ? <kbd className="hive-nav-shortcut">⌘{item.shortcut}</kbd> : null}
-                </a>
-              );
-            })}
-          </div>
-        ))}
+        {groups.map((g, gi) => {
+          const entry = (item: NavEntry) => {
+            const on = item.id === current;
+            const Icon = item.icon;
+            return (
+              <a
+                key={item.id}
+                href={`#/${item.id}`}
+                onClick={() => narrow && setSidebar(false)}
+                aria-current={on ? "page" : undefined}
+                title={item.shortcut ? t("shell.shortcut", { label: item.label, key: item.shortcut }) : item.label}
+                className={cn(
+                  "hive-nav-item flex max-md:min-h-11 shrink-0 items-center outline-none focus-visible:focus-ring active:bg-pressed",
+                  rail && "relative justify-center px-0",
+                  on ? "hive-nav-active" : "text-fg-secondary hover:bg-hover",
+                )}
+              >
+                <Icon aria-hidden="true" className={cn("size-4 shrink-0", on ? "text-fg-brand" : "text-fg-muted")} />
+                <span className={rail ? "sr-only" : "min-w-0 flex-1 truncate"}>{item.label}</span>
+                {item.badge && item.badge.count > 0 ? (
+                  <span
+                    className={cn(
+                      "hive-nav-count inline-grid place-items-center rounded-full",
+                      rail && "absolute right-0 top-0",
+                      item.badge.strong ? "hive-nav-count-strong" : "text-fg-muted",
+                    )}
+                  >{item.badge.count}</span>
+                ) : null}
+                {!rail && item.shortcut ? <kbd className="hive-nav-shortcut">⌘{item.shortcut}</kbd> : null}
+              </a>
+            );
+          };
+          const more = g.more && g.more.items.length ? g.more : null;
+          const open = !!more && moreRemembered;
+          const moreId = `hive-nav-more-${gi}`;
+          return (
+            <div key={g.label ?? `g${gi}`} className={cn("hive-nav-group flex flex-col", g.quiet && "hive-nav-group-quiet")}>
+              {g.label && !rail ? <div className="hive-nav-heading">{g.label}</div> : null}
+              {g.items.map(entry)}
+              {more ? (
+                <>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={moreId}
+                    title={more.label}
+                    onClick={() => toggleMore(!open)}
+                    className={cn(
+                      "hive-nav-item hive-nav-more flex max-md:min-h-11 shrink-0 cursor-pointer items-center text-left text-fg-secondary outline-none hover:bg-hover focus-visible:focus-ring active:bg-pressed",
+                      rail && "relative justify-center px-0",
+                    )}
+                  >
+                    <Ellipsis aria-hidden="true" className="size-4 shrink-0 text-fg-muted" />
+                    <span className={rail ? "sr-only" : "min-w-0 flex-1 truncate"}>{more.label}</span>
+                    {!rail ? <ChevronDown aria-hidden="true" className={cn("hive-nav-more-chevron size-4 shrink-0 text-fg-muted", open && "rotate-180")} /> : null}
+                  </button>
+                  {open ? <div id={moreId} className="hive-nav-more-list flex flex-col">{more.items.map(entry)}</div> : null}
+                </>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
       <div className={cn("hive-sidebar-account flex shrink-0 items-center gap-1", rail && "flex-col")}>
         {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} connected={link.state === "ok"} onNavigate={() => narrow && setSidebar(false)} build={build} />}

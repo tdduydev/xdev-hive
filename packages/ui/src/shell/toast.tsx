@@ -8,6 +8,8 @@ export interface ToastOptions {
   undo?: () => void;
   /** Errors stay until dismissed. */
   tone?: "info" | "error";
+  /** How long it shows, in ms; an undo window states its own so the button never outlives what it can undo. */
+  duration?: number;
 }
 
 type Show = (text: string, options?: ToastOptions) => void;
@@ -32,7 +34,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     if (!toast || toast.tone === "error") return;
     const timer = setInterval(() => {
       if (!paused.current) setToast((cur) => (cur?.id === toast.id ? undefined : cur));
-    }, HIDE_MS);
+    }, toast.duration ?? HIDE_MS);
     return () => clearInterval(timer);
   }, [toast]);
 
@@ -45,6 +47,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <div
           key={toast.id}
           role={toast.tone === "error" ? "alert" : "status"}
+          // Polite: the person keeps typing or moving through a list while it is read out; it never takes focus.
+          aria-live={toast.tone === "error" ? "assertive" : "polite"}
           onMouseEnter={() => (paused.current = true)}
           onMouseLeave={() => (paused.current = false)}
           className="fixed top-[120px] left-4 right-4 z-400 flex md:top-16 md:right-4 md:left-auto md:max-w-[min(420px,calc(100%-32px))] animate-xd-in items-center gap-2.5 rounded-md bg-inverse py-2 pr-2 pl-3.5 text-[13px]/[18px] font-medium text-fg-inverse shadow-e4"
@@ -55,8 +59,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               className="h-[26px] cursor-pointer rounded-sm px-2.5 text-xs font-bold underline outline-none hover:bg-white/10 focus-visible:focus-ring"
               onClick={() => {
-                toast.undo?.();
+                // Hidden first: an undo that reports back ("Đã hoàn tác") shows its own toast, which must not be cleared.
                 setToast(undefined);
+                toast.undo?.();
               }}
             >
               {t("toast.undo")}

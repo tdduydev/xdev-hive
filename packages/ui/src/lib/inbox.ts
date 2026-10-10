@@ -351,26 +351,50 @@ export function shortAgo(iso: string, now: number, t: (key: "inbox.ago.now" | "i
   return t("inbox.ago.d", { n: Math.floor(h / 24) });
 }
 
-/** Hôm nay's three design groups (72c): what to approve, what to fix, the machine. */
-export const TODAY_GROUPS = ["approve", "fix", "machine"] as const;
-export type TodayGroup = (typeof TODAY_GROUPS)[number];
+/**
+ * Hôm nay's three sections, by what the person does with an item:
+ * - decide ("Để bạn quyết"): someone waits on a human yes/no. review, plan, proposal, gate, leader, request (an
+ *   install a hub admin asked this machine for), machine (a tool to install), memory (an entry to approve),
+ *   conflict (two entries that disagree) and cleanup (the hub's suggested memory clean-up).
+ * - fix ("Lỗi cần xử lý"): something broke or stopped and stays so until someone acts. ci (red pipeline), agentHold
+ *   (an agent that could not start), waitingRun (a run asking a question or stuck on CI), hubIssue, alert and
+ *   releaseFailure.
+ * - fyi ("Để biết"): the rest, worth knowing but already moving without the person: a red pipeline an agent is
+ *   fixing right now, a run waiting for its quota to come back, and an auto-release that only logged a warning.
+ * One function so the list, its counts and the tests agree.
+ */
+export const INBOX_SECTIONS = ["decide", "fix", "fyi"] as const;
+export type InboxSection = (typeof INBOX_SECTIONS)[number];
 
-export function todayGroup(item: InboxItem): TodayGroup {
+export function inboxSection(item: InboxItem): InboxSection {
   switch (item.kind) {
-    case "machine":
+    case "review":
+    case "plan":
+    case "proposal":
+    case "gate":
+    case "leader":
     case "request":
-      return "machine";
-    case "ci":
-    case "waitingRun":
-    case "agentHold":
+    case "machine":
+    case "memory":
     case "conflict":
-    case "alert":
-    case "hubIssue":
+    case "cleanup":
+      return "decide";
+    case "ci":
+      return item.run.ciFix && (item.run.status === "running" || item.run.status === "queued") ? "fyi" : "fix";
+    case "waitingRun":
+      return item.reason === "quota" ? "fyi" : "fix";
     case "releaseFailure":
+      return item.task.id.startsWith("OPS-release-log-") ? "fyi" : "fix";
+    case "agentHold":
+    case "hubIssue":
+    case "alert":
       return "fix";
-    default:
-      return "approve";
   }
+}
+
+/** Every section in order, empty ones kept (each shows its own empty line); items keep the newest-first order. */
+export function groupSections(items: InboxItem[]): Array<{ section: InboxSection; items: InboxItem[] }> {
+  return INBOX_SECTIONS.map((section) => ({ section, items: items.filter((i) => inboxSection(i) === section) }));
 }
 
 /** The glow dot of a row, by what the item is (the design's violet / blue / red / amber). */
@@ -384,9 +408,4 @@ export function todayDot(item: InboxItem): TodayDot {
     case "alert": case "hubIssue": case "releaseFailure": return item.tone === "danger" ? "red" : "amber";
     default: return "amber";
   }
-}
-
-/** Items in the three design groups, each keeping the newest-first order they came in (as the design lists them). */
-export function groupToday(items: InboxItem[]): Array<{ group: TodayGroup; items: InboxItem[] }> {
-  return TODAY_GROUPS.map((group) => ({ group, items: items.filter((i) => todayGroup(i) === group) })).filter((g) => g.items.length);
 }

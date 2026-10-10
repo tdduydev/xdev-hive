@@ -25,15 +25,38 @@ export type WebPage =
   | "admin";
 
 /**
- * The menu in the order of the work: what waits for you, then the work from a feature to its runs, then what agents
- * read, then the project's settings, the machines and the hub's administration, each out of the main path.
- * Knowledge proposals live on their content pages (49f).
+ * One group of the web menu. `more` folds behind a "Thêm" row: pages people open now and then, kept out of the way so
+ * the daily ones stand out. `quiet` draws the group under a divider, dimmer and without a heading: running the hub and
+ * its machines is not the day's work.
  */
-export const WEB_MENU: Array<{ label: MessageKey | null; ids: WebPage[] }> = [
-  { label: "workspace.work", ids: ["today", "tasks", "chat", "pipeline", "features", "runs"] },
-  { label: "workspace.space", ids: ["docs", "memory", "skills", "artifacts", "history", "graph"] },
-  { label: "workspace.operations", ids: ["machines", "settings", "admin"] },
+export interface WebMenuGroup {
+  label: MessageKey | null;
+  ids: WebPage[];
+  more?: WebPage[];
+  quiet?: boolean;
+}
+
+/**
+ * The menu by job: what waits for the person alone at the top, then the work, the conversation, what agents read,
+ * and last the operations. Knowledge proposals live on their content pages (49f).
+ */
+export const WEB_MENU: WebMenuGroup[] = [
+  { label: null, ids: ["today"] },
+  { label: "nav.groupWork", ids: ["tasks", "runs", "pipeline", "features"] },
+  { label: "nav.groupTalk", ids: ["chat"] },
+  { label: "nav.groupKnowledge", ids: ["docs", "memory", "skills"], more: ["artifacts", "history", "graph"] },
+  { label: null, ids: ["machines", "settings", "admin"], quiet: true },
 ];
+
+/**
+ * WEB_MENU cut to the pages the person sees. A group whose pages are all hidden goes, and so does an empty "Thêm":
+ * a heading over nothing reads as a broken menu.
+ */
+export function webMenu(shown: ReadonlySet<WebPage>): Array<Required<WebMenuGroup>> {
+  return WEB_MENU.map((g) => ({ label: g.label, ids: g.ids.filter((id) => shown.has(id)), more: (g.more ?? []).filter((id) => shown.has(id)), quiet: !!g.quiet })).filter(
+    (g) => g.ids.length > 0 || g.more.length > 0,
+  );
+}
 
 /** ⌘1–5 on the web: Hôm nay, Chat, Task, Agent đang chạy, Tài liệu, the pages of a working day. */
 export const WEB_SHORTCUTS: Partial<Record<WebPage, string>> = { today: "1", chat: "2", tasks: "3", runs: "4", docs: "5" };

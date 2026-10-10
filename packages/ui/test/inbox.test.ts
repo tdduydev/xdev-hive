@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { may, permissionsOn, type ImplementationPlan, type Actor, type AgentRun, type ChatAction, type HubAlert, type HubInfo, type Memory, type Permission, type Proposal, type RunRecord, type SdlcGateRecord, type Task } from "@xdev-hive/core";
-import { buildInbox, groupInbox, groupToday, highestRole, inboxGroup, inboxProject, roleOfPermissions, shortAgo, todayDot } from "#ui/lib/inbox.ts";
+import { buildInbox, groupInbox, groupSections, highestRole, inboxGroup, inboxProject, inboxSection, roleOfPermissions, shortAgo, todayDot, type InboxItem, type InboxKind } from "#ui/lib/inbox.ts";
 
 const run = (over: Partial<AgentRun>): AgentRun => ({ id: "R-1", project: "demo", taskId: "T-1", createdAt: "2026-09-30T10:00:00Z", mrUrl: null, pipelineStatus: null, ...over }) as AgentRun;
 const memory = (over: Partial<Memory>): Memory => ({ id: 1, project: "demo", kind: "decision", content: "x", author: "a", status: "approved", createdAt: "2026-09-30T09:00:00Z", conflictsWith: [], ...over }) as Memory;
@@ -203,15 +203,40 @@ describe("plan approval inbox", () => {
   });
 });
 
-describe("Hôm nay design groups (72c)", () => {
-  it("puts approvals, fixes and machines in the design's three groups, newest first", () => {
+describe("Hôm nay sections", () => {
+  /** One item of a kind, with only what inboxSection reads. */
+  const of = (kind: InboxKind, extra: Record<string, unknown> = {}) => ({ kind, key: `${kind}:${JSON.stringify(extra)}`, tone: "info", at: "", scope: "", ...extra }) as unknown as InboxItem;
+  const failing = { run: run({ ciFix: null, status: "succeeded" } as Partial<AgentRun>) };
+
+  it("puts what waits on a human yes/no in Để bạn quyết", () => {
+    for (const kind of ["review", "plan", "proposal", "gate", "leader", "request", "machine", "memory", "conflict", "cleanup"] as const) assert.equal(inboxSection(of(kind)), "decide", kind);
+  });
+
+  it("puts what broke or stopped in Lỗi cần xử lý", () => {
+    assert.equal(inboxSection(of("ci", failing)), "fix");
+    assert.equal(inboxSection(of("agentHold")), "fix");
+    assert.equal(inboxSection(of("waitingRun", { reason: "question" })), "fix");
+    assert.equal(inboxSection(of("waitingRun", { reason: "ci" })), "fix");
+    assert.equal(inboxSection(of("hubIssue")), "fix");
+    assert.equal(inboxSection(of("alert")), "fix");
+    assert.equal(inboxSection(of("releaseFailure", { task: { id: "OPS-release-7" } })), "fix");
+  });
+
+  it("puts what already moves without the person in Để biết", () => {
+    const fixing = run({ status: "running", ciFix: { n: 1, max: 3, jobs: [] } } as unknown as Partial<AgentRun>);
+    assert.equal(inboxSection(of("ci", { run: fixing })), "fyi", "an agent is fixing the pipeline");
+    assert.equal(inboxSection(of("waitingRun", { reason: "quota" })), "fyi", "the run resumes when its quota is back");
+    assert.equal(inboxSection(of("releaseFailure", { task: { id: "OPS-release-log-7" } })), "fyi", "only a logged warning");
+  });
+
+  it("keeps all three sections in order, empty ones too, and the items' newest-first order", () => {
     const items = buildInbox({
       memory: [memory({ id: 1, status: "pending" }), memory({ id: 2, conflictsWith: [3] }), memory({ id: 3, conflictsWith: [2], createdAt: "2026-09-30T08:00:00Z" })],
-      setup: [{ id: "cli:codex", label: "Codex", state: "missing", detail: "", action: null } as never],
-      machine: "m1",
+      runs: [run({ id: "R-9", mrUrl: "https://git/mr/9", pipelineStatus: "failed" })],
     });
-    const groups = groupToday(items);
-    assert.deepEqual(groups.map((g) => [g.group, g.items.map((i) => i.kind)]), [["approve", ["memory"]], ["fix", ["conflict"]], ["machine", ["machine"]]]);
-    assert.deepEqual(groups.map((g) => todayDot(g.items[0]!)), ["blue", "amber", "amber"]);
+    const sections = groupSections(items);
+    assert.deepEqual(sections.map((g) => [g.section, g.items.map((i) => i.kind)]), [["decide", ["conflict", "memory"]], ["fix", ["ci"]], ["fyi", []]]);
+    assert.deepEqual(groupSections([]).map((g) => g.items.length), [0, 0, 0]);
+    assert.equal(todayDot(sections[1]!.items[0]!), "red");
   });
 });
