@@ -171,10 +171,18 @@ export interface HubCleanup {
   db: { before: number; after: number };
 }
 
-export interface HubInfo {
-  /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy said. */
+/** The image the hub runs (UI-hub-build-info); /api/health answers it to anyone, so nothing else goes in here. */
+export interface HubBuild {
+  /** The xDev Hive version the hub was built from (the app's version), and its commit when the deploy or image said. */
   version: string;
   commit: string | null;
+  /** HIVE_BUILD_VERSION, e.g. 0.158.0+6dc8d24; null on a build without it (local docker build, npm run dev). */
+  buildVersion: string | null;
+  /** HIVE_BUILD_DATE as ISO 8601 UTC; null when unknown. */
+  buildDate: string | null;
+}
+
+export interface HubInfo extends HubBuild {
   node: string;
   container: boolean;
   startedAt: string;

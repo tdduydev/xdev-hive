@@ -12,8 +12,9 @@ import { Button } from "#ui/components/ui/button.tsx";
 import { Sheet, SheetContent, SheetTitle } from "#ui/components/ui/sheet.tsx";
 import { ChatSessionProvider, useChatSession } from "#ui/components/ChatSession.tsx";
 import { LeaderChatPanel } from "#ui/shell/LeaderChatPanel.tsx";
-import { useHive } from "#ui/hooks.ts";
-import { useT } from "#ui/i18n/index.tsx";
+import { useHive, useQuery } from "#ui/hooks.ts";
+import { activeIntl, useT } from "#ui/i18n/index.tsx";
+import { buildText } from "#ui/lib/build-info.ts";
 import { toggleTheme, useTheme } from "#ui/lib/theme.ts";
 import { CommandPalette, type PaletteCommand } from "#ui/shell/CommandPalette.tsx";
 import { NewWorkDialog } from "#ui/shell/NewWorkDialog.tsx";
@@ -130,6 +131,9 @@ function ClientFrame({
   const link = useHubConnection(client, me);
   useDocOutbox(client, link.state === "ok");
   const hubHost = link.host || window.location.host;
+  // Asked again when the link comes back: a hub that went away may have been redeployed with another image.
+  const hubBuild = useQuery(async () => (client.build ? client.build().catch(() => null) : null), [client, link.state === "ok"]);
+  const build = hubBuild.data ? buildText(hubBuild.data, activeIntl(), t) : null;
 
   const items = useMemo(() => groups.flatMap((g) => g.items), [groups]);
   const go = useCallback(
@@ -266,7 +270,7 @@ function ClientFrame({
         ))}
       </div>
       <div className={cn("hive-sidebar-account flex shrink-0 items-center gap-1", rail && "flex-col")}>
-        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} connected={link.state === "ok"} onNavigate={() => narrow && setSidebar(false)} />}
+        {rail ? <button type="button" onClick={() => setSidebar(true)} aria-label={t("shell.account")} title={t("shell.account")} className="grid size-10 place-items-center rounded-md text-fg-secondary hover:bg-hover focus-visible:focus-ring"><UserRound className="size-4" aria-hidden="true" /></button> : <AccountMenu client={client} me={me} onSignOut={onSignOut} connected={link.state === "ok"} onNavigate={() => narrow && setSidebar(false)} build={build} />}
         {narrow || rail ? <Button variant="ghost" size="icon" className="max-md:size-11" onClick={() => toggleTheme(theme)} aria-label={t("theme.toggle")} title={t("theme.toggle")}>
           {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
         </Button> : null}
@@ -388,6 +392,8 @@ function ClientFrame({
             link.state === "ok" ? "bg-success-solid" : link.state === "unknown" ? "bg-neutral-solid" : "bg-warning-solid",
             { title: link.error ?? t("shell.hubTip", { host: hubHost }) },
           )}
+          {build ? <span className="min-w-0 flex-1" /> : null}
+          {build ? statusItem("build", build.label, null, { title: build.tip, mono: true }) : null}
         </footer>
       </div>
       {narrow ? (

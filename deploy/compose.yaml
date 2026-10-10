@@ -9,7 +9,13 @@
 # Doc images and files are kept in SeaweedFS below (roadmap 23c); HIVE_SEAWEEDFS_URL= (empty) keeps them in the database.
 services:
   hub:
-    build: ..
+    build:
+      context: ..
+      # What the Hub page and the status bar show as the build (deploy/update.sh sets them); empty: "dev build".
+      args:
+        HIVE_COMMIT: ${HIVE_COMMIT:-}
+        HIVE_BUILD_VERSION: ${HIVE_BUILD_VERSION:-}
+        HIVE_BUILD_DATE: ${HIVE_BUILD_DATE:-}
     restart: unless-stopped
     environment:
       # The public hostname. Empty only for a hub that lives on the LAN alone (compose.lan.yaml adds its
