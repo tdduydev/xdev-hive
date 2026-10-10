@@ -11,6 +11,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Badge, ErrorNote, Notice } from "#ui/components/common.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
+import { ForgeMissing } from "#ui/components/ForgeConnections.tsx";
 
 const STATE_TONE: Record<SystemInitItem["state"], string> = { added: "neutral", folder: "info", new: "ok", conflict: "danger", gone: "warn", unknown: "warn" };
 
@@ -207,6 +208,9 @@ function LinkGroup({ system, onSaved }: { system: HiveSystem; onSaved?: () => vo
   const [group, setGroup] = useState(system.name);
   const [plan, setPlan] = useState<SystemLinkPlan | null>(null);
   const action = useAction();
+  // Said before the preview fails on it: the token lives in Cài đặt máy, which this panel otherwise never mentions.
+  const settings = useQuery(() => desktop.settings(), [desktop]);
+  const connected = settings.data ? (forge === "github" ? settings.data.github.hasToken : Boolean(settings.data.gitlab.url && settings.data.gitlab.hasToken)) : true;
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3" data-system-link={system.name}>
       <div className="flex flex-wrap items-center gap-2">
@@ -215,6 +219,7 @@ function LinkGroup({ system, onSaved }: { system: HiveSystem; onSaved?: () => vo
         <Badge tone="warn">{t("systemGroup.noSource")}</Badge>
       </div>
       <p className="m-0 text-xs break-words text-muted-foreground">{t("systemGroup.linkHint")}</p>
+      {connected ? null : <ForgeMissing />}
       <form
         className="grid gap-3 sm:grid-cols-[auto_2fr_auto] sm:items-end"
         onSubmit={(e) => {

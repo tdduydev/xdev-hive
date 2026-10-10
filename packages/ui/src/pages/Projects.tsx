@@ -10,7 +10,6 @@ import {
   type DesktopProject,
   type DesktopSettings,
   type FileAction,
-  type GitLabCheck,
   type GitLabImportCandidate,
   type GitLabImportResult,
   type MrSettings,
@@ -31,6 +30,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#ui/components/common.tsx";
 import { OpenCli } from "#ui/components/OpenCli.tsx";
 import { canSetUpGroups, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
+import { ForgeCard, forgeConnected } from "#ui/components/ForgeConnections.tsx";
 import { formatTime, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { hostOf } from "#ui/shell/connection.tsx";
@@ -66,8 +66,8 @@ export function ProjectsPage() {
         <>
           <ConnectionCard settings={settings.data} onSaved={settings.reload} />
           <AdvancedCard settings={settings.data} onSaved={settings.reload} />
+          <ForgeCard settings={settings.data} onSaved={settings.reload} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
-          <GitHubCard settings={settings.data} onSaved={settings.reload} />
         </>
       ) : null}
     </Page>
@@ -580,11 +580,8 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
   const { client } = useHive();
   const t = useT();
   const g = settings.gitlab;
-  const [url, setUrl] = useState(g.url);
-  const [token, setToken] = useState("");
   const [mr, setMr] = useState<MrSettings>(g.mr);
   const [labels, setLabels] = useState(g.mr.labels.join(", "));
-  const [check, setCheck] = useState<GitLabCheck | null>(null);
   const [saved, setSaved] = useState(false);
   const action = useAction();
   const set = <K extends keyof MrSettings>(k: K, v: MrSettings[K]) => {
@@ -595,35 +592,22 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
   const save = () =>
     action.run(async () => {
       await client.desktop!.updateSettings({
-        gitlab: { url, token, mr: { ...mr, labels: labels.split(",").map((l) => l.trim()).filter(Boolean) } },
+        gitlab: { mr: { ...mr, labels: labels.split(",").map((l) => l.trim()).filter(Boolean) } },
       });
-      setToken("");
       setSaved(true);
       onSaved();
     });
 
   return (
-    <FoldCard name="gitlab" title="GitLab merge request" badge={<SetUpBadge on={Boolean(g.url && g.hasToken)} />}>
+    <FoldCard name="gitlab" title={t("forges.mrTitle")} badge={<SetUpBadge on={forgeConnected(settings) && g.mr.enabled} />}>
         <CardDescription className="break-words">
           {rich(t("projects.gitlabHint"), {
             branch: <code className={CODE}>ai/&lt;task&gt;</code>,
             merge: <code className={CODE}>/merge</code>,
           })}
         </CardDescription>
-        <div className={FORM_GRID}>
-          <Label htmlFor="gl-url">{t("projects.gitlabUrl")}</Label>
-          <Input id="gl-url" className="font-mono" placeholder="https://gitlab.example.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
-          <Label htmlFor="gl-token">Access token</Label>
-          <Input
-            id="gl-token"
-            className="font-mono"
-            type="password"
-            autoComplete="off"
-            placeholder={g.hasToken ? t("projects.savedKeep") : "glpat-… (scope api, write_repository)"}
-            value={token}
-            onChange={(e) => (setSaved(false), setToken(e.target.value))}
-          />
-        </div>
+        <p className="m-0 text-sm break-words text-muted-foreground">{t("projects.githubHint")}</p>
+        {forgeConnected(settings) ? null : <Notice tone="warn">{t("forges.mrNeedsConnection")}</Notice>}
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
           {t("projects.autoMr")}
@@ -699,84 +683,13 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
           <Button onClick={() => void save()} disabled={action.busy}>
             {t("projects.save")}
           </Button>
-          <Button
-            variant="outline"
-            disabled={action.busy || (!g.hasToken && !token)}
-            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitLab()))}
-          >
-            {t("projects.checkConnection")}
-          </Button>
           {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
         </div>
-        {check ? (
-          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
-            {check.message}
-          </Notice>
-        ) : null}
         <ErrorNote error={action.error} />
     </FoldCard>
   );
 }
 
-function GitHubCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
-  const { client } = useHive();
-  const t = useT();
-  const g = settings.github;
-  const [url, setUrl] = useState(g.url);
-  const [token, setToken] = useState("");
-  const [check, setCheck] = useState<GitLabCheck | null>(null);
-  const [saved, setSaved] = useState(false);
-  const action = useAction();
-
-  return (
-    <FoldCard name="github" title="GitHub pull request" badge={<SetUpBadge on={g.hasToken} />}>
-        <CardDescription className="break-words">{t("projects.githubHint")}</CardDescription>
-        <div className={FORM_GRID}>
-          <Label htmlFor="gh-url">{t("projects.githubUrl")}</Label>
-          <Input id="gh-url" className="font-mono" placeholder="https://github.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
-          <Label htmlFor="gh-token">Access token</Label>
-          <Input
-            id="gh-token"
-            className="font-mono"
-            type="password"
-            autoComplete="off"
-            placeholder={g.hasToken ? t("projects.savedKeep") : "github_pat_… (fine-grained)"}
-            value={token}
-            onChange={(e) => (setSaved(false), setToken(e.target.value))}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() =>
-              void action.run(async () => {
-                await client.desktop!.updateSettings({ github: { url, token } });
-                setToken("");
-                setSaved(true);
-                onSaved();
-              })
-            }
-            disabled={action.busy}
-          >
-            {t("projects.save")}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={action.busy || (!g.hasToken && !token)}
-            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitHub()))}
-          >
-            {t("projects.checkConnection")}
-          </Button>
-          {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
-        </div>
-        {check ? (
-          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
-            {check.message}
-          </Notice>
-        ) : null}
-        <ErrorNote error={action.error} />
-    </FoldCard>
-  );
-}
 
 function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved: () => void }) {
   const { client } = useHive();
