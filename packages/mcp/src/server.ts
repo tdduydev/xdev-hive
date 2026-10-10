@@ -149,6 +149,52 @@ const leanRun = (r: RunRecord): Record<string, unknown> => {
   }
   return out;
 };
+
+/** Roadmap 80c: what picking a doc needs; who saved it, when, its parent and mirror are for the web (doc_list full:true). */
+const leanDocRow = (d: Record<string, any>): Record<string, unknown> =>
+  dropEmpty({ key: d.key, title: d.title, version: d.version, paths: d.paths, ...(d.folder ? { folder: true } : {}) });
+
+const DOC_MAX_CHARS = 12_000;
+const headingsOf = (content: string): { line: number; level: number; title: string }[] => {
+  const out: { line: number; level: number; title: string }[] = [];
+  let fence = false;
+  content.split("\n").forEach((l, i) => {
+    if (/^\s*(```|~~~)/.test(l)) fence = !fence;
+    const m = !fence && /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l);
+    if (m) out.push({ line: i, level: m[1]!.length, title: m[2]! });
+  });
+  return out;
+};
+/**
+ * Roadmap 80c: doc_get without the whole page. section is a heading (its sub-headings come with it); otherwise the
+ * page is cut at maxChars on a line, and the heading list says what to ask for next. baseVersion stays for doc_propose.
+ */
+const leanDoc = (doc: Record<string, any>, section: string | undefined, maxChars: number): Record<string, unknown> => {
+  const content: string = doc.content ?? "";
+  const lines = content.split("\n");
+  const heads = headingsOf(content);
+  const list = heads.map((h) => `${"#".repeat(h.level)} ${h.title}`);
+  let body = content;
+  if (section) {
+    const want = section.replace(/^#+\s*/, "").trim().toLowerCase();
+    const at = heads.findIndex((h) => h.title.toLowerCase() === want) >= 0
+      ? heads.findIndex((h) => h.title.toLowerCase() === want)
+      : heads.findIndex((h) => h.title.toLowerCase().includes(want));
+    if (at < 0) return { ...dropEmpty({ ...doc, content: undefined }), content: "", sectionNotFound: section, headings: list, length: content.length };
+    const end = heads.slice(at + 1).find((h) => h.level <= heads[at]!.level);
+    body = lines.slice(heads[at]!.line, end ? end.line : lines.length).join("\n");
+  }
+  const out: Record<string, unknown> = { ...doc, content: body, length: content.length };
+  if (section) out.section = heads.find((h) => body.startsWith("#") && body.split("\n")[0]!.includes(h.title))?.title ?? section;
+  if (body.length > maxChars) {
+    const cut = body.slice(0, maxChars);
+    const nl = cut.lastIndexOf("\n");
+    out.content = nl > 0 ? cut.slice(0, nl) : cut;
+    out.truncated = true;
+  }
+  if (out.truncated || section) out.headings = list;
+  return out;
+};
 // Roadmap 37: the hub-wide leader works over every project at once, so nothing can be guessed from "the chat's project".
 const LEADER_HUB_INSTRUCTIONS = `
 This chat is the whole hub, not one project: read project_list first (every project with its tasks, runs, machines and systems), and alert_list
@@ -258,11 +304,18 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     "doc_list",
     {
       title: "List shared docs",
-      description: "List org-wide docs and this project's docs (key, title, version, paths: the globs a doc applies to, [] = whole repo). Use doc_get to read one.",
-      inputSchema: { project },
+      description: "List org-wide docs and this project's docs (key, title, version, paths: the globs a doc applies to, [] = whole repo). Use doc_get to read one. full: true gives every field the hub keeps (parent, mirror, who saved it, when).",
+      inputSchema: { project, full: z.boolean().optional().describe("Every field of every doc") },
       annotations: readOnly,
     },
-    async ({ project: p }) => run("docs.list", { project: p ?? (hubScope ? undefined : opts.defaultProject) }),
+    async ({ project: p, full }) => {
+      try {
+        const docs = await call("docs.list", { project: p ?? (hubScope ? undefined : opts.defaultProject) }, actor);
+        return json(full || !Array.isArray(docs) ? docs : docs.map(leanDocRow));
+      } catch (err) {
+        return failed(err);
+      }
+    },
   );
 
   server.registerTool(
@@ -270,15 +323,25 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
     {
       title: "Read a doc",
       description:
-        "Read the current content and version of a doc, e.g. org/agent-protocol or project/<project>/agents. [[slug]] links to another doc of the same space (or the team's), [[org/<slug>]] by key; images and files show as assets/<slug>/<name>: read them with doc_asset.",
-      inputSchema: { key: z.string() },
+        "Read the current content and version of a doc, e.g. org/agent-protocol or project/<project>/agents. [[slug]] links to another doc of the same space (or the team's), [[org/<slug>]] by key; images and files show as assets/<slug>/<name>: read them with doc_asset. " +
+        `A page over ${DOC_MAX_CHARS} characters comes cut on a line (truncated: true, length, headings): ask again with section (a heading, its sub-headings come with it) or full: true for all of it. version is the baseVersion for doc_propose.`,
+      inputSchema: {
+        key: z.string(),
+        section: z.string().optional().describe("A heading of the page: just that part"),
+        maxChars: z.number().int().min(500).optional().describe(`Cut the content at this many characters (default ${DOC_MAX_CHARS})`),
+        full: z.boolean().optional().describe("The whole page"),
+      },
       annotations: readOnly,
     },
     // A removed page (roadmap 38g) reads as gone: an agent must not work from a page the team took out.
-    async ({ key }) => {
-      const doc = await call("docs.get", { key }, actor);
-      if (doc?.removedAt) return { isError: true, content: [{ type: "text", text: `not_found: ${doc.key} was removed on ${doc.removedAt}` }] };
-      return run("docs.get", { key });
+    async ({ key, section, maxChars, full }) => {
+      try {
+        const doc = await call("docs.get", { key }, actor);
+        if (doc?.removedAt) return { isError: true, content: [{ type: "text", text: `not_found: ${doc.key} was removed on ${doc.removedAt}` }] };
+        return json(full || !doc ? doc : leanDoc(doc, section, maxChars ?? DOC_MAX_CHARS));
+      } catch (err) {
+        return failed(err);
+      }
     },
   );
 

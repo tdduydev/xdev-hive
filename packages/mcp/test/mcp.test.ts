@@ -355,6 +355,37 @@ describe("mcp tools", () => {
     t.diagnostic(`run_get: ${Buffer.byteLength(fullText)} B full, ${Buffer.byteLength(leanText)} B by default`);
   });
 
+  it("doc_list is short and doc_get cuts by section or maxChars (roadmap 80c)", async (t) => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const big = "# Tài liệu\n" + Array.from({ length: 40 }, (_, i) => `## Mục ${i}\n${"dòng nội dung\n".repeat(60)}### Con ${i}\nchi tiết ${i}\n`).join("");
+    await hive.call("docs.save", { key: "org/big", content: big }, admin);
+    const claude = await connect(hive);
+    const call = async (name: string, args: Record<string, unknown>) => text(await claude.callTool({ name, arguments: args }));
+    const leanList = await call("doc_list", {});
+    const fullList = await call("doc_list", { full: true });
+    const row = JSON.parse(leanList).find((d: { key: string }) => d.key === "org/big");
+    assert.deepEqual(Object.keys(row).sort(), ["key", "title", "version"]);
+    assert.ok(leanList.length < fullList.length, "lean list is shorter");
+
+    const cut = JSON.parse(await call("doc_get", { key: "org/big" }));
+    assert.equal(cut.truncated, true);
+    assert.equal(cut.length, big.length);
+    assert.ok(cut.content.length <= 12_000 && cut.version >= 1 && cut.headings.includes("## Mục 39"));
+    const small = JSON.parse(await call("doc_get", { key: "org/big", maxChars: 800 }));
+    assert.ok(small.content.length <= 800 && !small.content.endsWith("dòng nội dun"), "cut on a line");
+
+    const sec = JSON.parse(await call("doc_get", { key: "org/big", section: "Mục 3" }));
+    assert.ok(sec.content.startsWith("## Mục 3\n") && sec.content.includes("### Con 3") && !sec.content.includes("## Mục 4"));
+    assert.equal(sec.truncated, undefined);
+    const miss = JSON.parse(await call("doc_get", { key: "org/big", section: "Không có" }));
+    assert.equal(miss.sectionNotFound, "Không có");
+
+    const whole = JSON.parse(await call("doc_get", { key: "org/big", full: true }));
+    assert.equal(whole.content, big);
+    t.diagnostic(`doc_list ${leanList.length} B vs ${fullList.length} B; doc_get ${JSON.stringify(cut).length} B vs ${JSON.stringify(whole).length} B`);
+  });
+
   it("says whose task each one is, and keeps another machine's agent off it (roadmap 50)", async () => {
     const hive = new SqliteHive(":memory:");
     const admin = { name: "duy", role: "admin" as const };
