@@ -4,6 +4,8 @@ import { ChevronRight } from "lucide-react";
 import {
   PROJECT_NAME,
   TRANSFER_RESULTS,
+  memberPath,
+  mergeSource,
   suggestProjectKey,
   type DesktopProject,
   type DesktopSettings,
@@ -28,6 +30,7 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#ui/components/common.tsx";
 import { OpenCli } from "#ui/components/OpenCli.tsx";
+import { canSetUpGroups, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
 import { formatTime, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { hostOf } from "#ui/shell/connection.tsx";
@@ -904,7 +907,8 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   /** What a folder holds, as soon as it is picked or added: the suggestion comes before the error does. */
   const look = async (folder: string) => {
     const scan = await desktop.scanRepos(folder);
-    setFound(!scan.isGit && scan.repos.length ? scan : null);
+    // A repository holding other clones too: most likely a group's folder (GROUP-init-sync), offered the same way.
+    setFound(scan.repos.length ? scan : null);
     return scan;
   };
 
@@ -1084,6 +1088,19 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
               await look(found.root);
             }}
             onClose={() => setFound(null)}
+            onAddAnyway={
+              found.isGit
+                ? () =>
+                    void action.run(async () => {
+                      await desktop.addProject({ name, repo: found.root });
+                      setFound(null);
+                      setName("");
+                      setRepo("");
+                      onChanged();
+                    })
+                : undefined
+            }
+            canAddAnyway={nameValid && !action.busy}
           />
         ) : null}
         {result ? (
@@ -1137,8 +1154,11 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
  * below it as a project of its own, with the key and the target branch it would get, then all of them in one system
  * named after the folder. Repositories the app already has are listed but not offered again.
  */
-function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => Promise<void>; onClose: () => void }) {
+function SubRepos({ scan, onAdded, onClose, onAddAnyway, canAddAnyway = false }: { scan: RepoScan; onAdded: () => Promise<void>; onClose: () => void; onAddAnyway?: () => void; canAddAnyway?: boolean }) {
   const { client, bump, systems } = useHive();
+  // The group of a system with a source this folder looks like: by its name, or a repo where the group's tree puts one.
+  const group = systems.find((s) => s.source && (s.name === scan.system || s.source.members.some((m) => scan.repos.some((r) => r.rel.toLowerCase() === memberPath(s.source!.groupPath, m.pathWithNamespace).toLowerCase()))));
+  const [initOpen, setInitOpen] = useState(false);
   const t = useT();
   const desktop = client.desktop!;
   const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(scan.repos.filter((r) => r.state === "new").map((r) => [r.dir, true])));
@@ -1162,6 +1182,29 @@ function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => P
         </Button>
       </div>
       <p className="m-0 text-xs break-words text-muted-foreground">{t("projects.subReposHint", { path: scan.root })}</p>
+      {scan.isGit ? (
+        <Notice tone="warn" data-repo-holds-repos>
+          {t("systemGroup.repoHoldsRepos", { count: scan.repos.length })}
+          {onAddAnyway ? (
+            <div className="mt-2">
+              <Button size="sm" variant="ghost" data-add-anyway disabled={!canAddAnyway} onClick={onAddAnyway}>
+                {t("systemGroup.addAnyway")}
+              </Button>
+            </div>
+          ) : null}
+        </Notice>
+      ) : null}
+      {group && canSetUpGroups(desktop) ? (
+        <Notice tone="info" data-found-group={group.name}>
+          <span className="font-medium">{t("systemGroup.foundGroup", { system: group.name })}</span> {t("systemGroup.foundGroupHint")}
+          <div className="mt-2">
+            <Button size="sm" data-found-group-init={group.name} aria-expanded={initOpen} onClick={() => setInitOpen(!initOpen)}>
+              {t("systemGroup.initOnMachine")}
+            </Button>
+          </div>
+        </Notice>
+      ) : null}
+      {group && initOpen ? <SystemGroupPanel system={group} root={scan.root} onChanged={() => void onAdded()} /> : null}
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
@@ -1428,8 +1471,15 @@ export function GitLabImportCard({ settings, onChanged, forge = "gitlab" }: { se
                     ...listed.candidates.filter((c) => c.state === "added").map((c) => c.key),
                   ];
                   if (toSystem && joined.length && PROJECT_NAME.test(system)) {
-                    const before = systems.find((s) => s.name === system)?.projects ?? [];
-                    await client.call("systems.save", { name: system, projects: [...new Set([...before, ...joined])] });
+                    const prev = systems.find((s) => s.name === system);
+                    // The group behind the system (GROUP-init-sync): what another machine needs to set it up the same way.
+                    const keyOfRepo = (c: GitLabImportCandidate) => (c.state === "added" ? c.key : out.results.find((r) => r.ok && r.pathWithNamespace === c.repo.pathWithNamespace)?.key);
+                    const members = listed.candidates.flatMap((c) => {
+                      const project = keyOfRepo(c);
+                      return project ? [{ project, pathWithNamespace: c.repo.pathWithNamespace, sshUrl: c.repo.sshUrl, httpUrl: c.repo.httpUrl, defaultBranch: c.repo.defaultBranch }] : [];
+                    });
+                    const source = mergeSource(prev?.source, { forge, url: gh ? settings.github.url : settings.gitlab.url, groupPath: listed.group }, members);
+                    await client.call("systems.save", { name: system, projects: [...new Set([...(prev?.projects ?? []), ...joined])], ...(source ? { source } : {}) });
                   }
                   bump();
                   onChanged();

@@ -359,6 +359,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "system-docs": ["login-password"],
   "systems-outside": ["login-token", "system-docs"], // system-docs saves the system shop
   "system-member-health": ["login-token"],
+  "system-group-tree": ["login-token"],
   "project-archive-delete": ["login-token"],
   "scope-system-first": ["login-token"],
   "overview-by-system": ["login-token"],
@@ -3766,7 +3767,9 @@ async function main() {
     expect(!beat.error, `heartbeat: ${JSON.stringify(beat.error)}`);
     const tab = (current = tabs.admin);
     await tab.reload();
-    await tab.go("systems");
+    // #/systems opens Cài đặt service on its last tab; the Hệ thống tab's Sửa shows the Systems page.
+    await tab.go("settings?tab=systems");
+    await tab.click("button", "Sửa");
     const member = (p) => `[data-system="his"] [data-system-member="${p}"]`;
     await tab.waitFor("his-api reachable", (sel) => document.querySelector(sel)?.getAttribute("data-repo-state") === "reachable", member("his-api"));
     await tab.waitFor("his-portal not reachable on his-e2e, with what to do", (sel) => {
@@ -3780,6 +3783,45 @@ async function main() {
     }, member("his-lab"));
     await tab.shot(`${String(n).padStart(2, "0")}-system-member-health`);
     await rpc("systems.remove", { name: "his" });
+  });
+
+  // GROUP-init-sync: a system linked to its GitLab group keeps where each repo comes from, and every page shows its
+  // services in the group's tree (his › backend › his-service); a member archived on GitLab is marked, not dropped.
+  await step("system-group-tree", async () => {
+    const member = (project, path, state = "active") => ({ project, pathWithNamespace: `ehs/${path}`, sshUrl: `git@gitlab.example.test:ehs/${path}.git`, httpUrl: `https://gitlab.example.test/ehs/${path}.git`, defaultBranch: "main", state });
+    for (const p of ["ehs-api", "ehs-portal", "ehs-infa", "ehs-old"]) await rpc("tasks.create", { id: `${p.toUpperCase()}-1`, project: p, title: `Việc của ${p}` });
+    await rpc("systems.save", {
+      name: "ehs",
+      projects: ["ehs-api", "ehs-portal", "ehs-infa", "ehs-old"],
+      source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "ehs", syncedAt: null, members: [member("ehs-api", "his/backend/ehs-api"), member("ehs-portal", "his/frontend/ehs-portal"), member("ehs-infa", "deploy/ehs-infa"), member("ehs-old", "his/backend/ehs-old", "archived")] },
+    });
+    // The editor of the Systems page sends projects only: the source has to survive it.
+    await rpc("systems.save", { name: "ehs", projects: ["ehs-api", "ehs-portal", "ehs-infa", "ehs-old"] });
+    expect((await rpc("systems.list", {})).find((s) => s.name === "ehs")?.source?.members.length === 4, "the source was dropped by a save without one");
+    const tab = (current = tabs.admin);
+    await tab.eval(() => localStorage.removeItem("xdev-hive.scope"));
+    await tab.reload();
+    await tab.go("settings?tab=systems");
+    await tab.click("button", "Sửa");
+    await tab.waitFor("the group and its tree on the system's card", () => {
+      const card = document.querySelector('[data-system="ehs"]');
+      const folders = [...(card?.querySelectorAll("[data-system-folder]") ?? [])].map((f) => f.getAttribute("data-system-folder"));
+      return !!card?.querySelector('[data-system-source="ehs"]') && folders.join() === "deploy,his/backend,his/frontend" && card.querySelector('[data-system-folder="his/backend"]')?.textContent.includes("his › backend");
+    });
+    await tab.waitFor("ehs-old marked archived, still in the system", () => document.querySelector('[data-system="ehs"] [data-system-folder="his/backend"] [data-member-state="archived"]')?.closest("[data-system-member]")?.getAttribute("data-system-member") === "ehs-old");
+    await tab.eval(() => document.querySelector('[data-system="ehs"]')?.scrollIntoView({ block: "center" }));
+    await sleep(300);
+    await tab.shot(`${String(n).padStart(2, "0")}-system-group-tree`);
+    await openPicker();
+    await tab.click('[data-scope-toggle="ehs"]');
+    const order = await tab.waitFor("the picker in the group's tree", () => {
+      const rows = [...document.querySelectorAll('[data-scope-row="service"][data-scope-root="ehs"]')];
+      return rows.length === 4 && rows.map((r) => `${r.querySelector("[data-scope-folder]")?.getAttribute("data-scope-folder") ?? ""}:${r.textContent.split("›").at(-1).trim()}`);
+    });
+    expect(order.join() === "deploy:ehs-infa,his/backend:ehs-api,his/backend:ehs-old,his/frontend:ehs-portal", `picker order: ${order}`);
+    await tab.shot(`${String(n).padStart(2, "0")}-scope-picker-tree`);
+    await tab.reload();
+    await rpc("systems.remove", { name: "ehs" });
   });
 
   // Roadmap 47: a throwaway project is archived (it leaves every list and refuses writes), then deleted for good

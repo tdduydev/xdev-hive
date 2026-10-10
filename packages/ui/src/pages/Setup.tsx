@@ -1,10 +1,10 @@
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
 // Công cụ và dự án (docs/design/2026-09-redesign, xDev Hive Client): what the runner needs on this machine (the
 // agent CLIs, the hive-mcp command) and in each repo, with the install the app can do, and admins' install requests.
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { Fragment, useEffect, useMemo, useState, type ComponentType } from "react";
 import { FileText, GitBranch, ListChecks, Plug, RefreshCw, Sparkles, SquareTerminal, Terminal, Wrench } from "lucide-react";
 import { cn } from "cn";
-import { EMPTY_POLICY, requiredItemIds, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
+import { EMPTY_POLICY, requiredItemIds, systemFolders, type HiveSystem, type MachineCommand, type MachineToolView, type SetupItem, type SetupReport, type SetupState } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@xdev-hive/ui/components/ui/card";
 import { Empty, ErrorNote, Notice } from "#ui/components/common.tsx";
@@ -14,6 +14,7 @@ import { useT } from "#ui/i18n/index.tsx";
 import { GitLabCard, GitLabImportCard, ProjectsCard } from "#ui/pages/Projects.tsx";
 import { ToolCatalog } from "#ui/pages/Tools.tsx";
 import { hasNewer, needsSetup, setupGroups, setupOrder, installSetupSequence } from "#ui/lib/setup.ts";
+import { canSetUpGroups, missingHere, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
 
 const TONE: Record<SetupState, ChipKind> = { installed: "success", missing: "warning", outdated: "info", manual: "danger" };
 
@@ -27,6 +28,14 @@ function iconOf(id: string): ComponentType<{ className?: string }> {
   if (id.endsWith(":superpowers")) return Sparkles;
   if (id.endsWith(":speckit")) return ListChecks;
   return Wrench;
+}
+
+/** A system's cards under its group's subgroups (his › backend), in tree order; a system without a source: as they are. */
+function inTree<P extends { project: string }>(projects: P[], system: HiveSystem | undefined): Array<{ folder: string[]; projects: P[] }> {
+  if (!system?.source) return [{ folder: [], projects }];
+  // Inside a folder the cards keep their order (the ones that need setup first).
+  return systemFolders({ projects: projects.map((p) => p.project), source: system.source })
+    .map((f) => ({ folder: f.folder, projects: projects.filter((p) => f.projects.includes(p.project)) }));
 }
 
 export function SetupPage({ section, onChanged }: { section?: "machine" | "projects"; onChanged?: () => void } = {}) {
@@ -75,6 +84,12 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
     setReport(await desktop.setupStatus());
   };
   const missing = shown ? [...shown.machine, ...shown.projects.flatMap((p) => p.items)].filter(needsSetup).length : 0;
+  // A system's group on this machine (GROUP-init-sync): set up or linked from its section; a system none of whose repos
+  // is here yet still gets a section, so a new machine can set the group up from this page.
+  const groups = canSetUpGroups(desktop);
+  const [groupOpen, setGroupOpen] = useState<string | null>(null);
+  const local = useMemo(() => new Set((settings.data?.projects ?? []).map((p) => p.name)), [settings.data]);
+  const remoteOnly = groups ? systems.filter((s) => s.source && s.projects.every((p) => !local.has(p))).map((s) => ({ name: s.name, projects: [] as SetupReport["projects"] })) : [];
   const platform = info.data?.platform;
   const os = platform === "darwin" || platform === "win32" || platform === "linux" ? t(`setup.platform.${platform}`) : (platform ?? "");
 
@@ -142,13 +157,38 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
           {section !== "machine" && shown.projects.length === 0 ? (
             <Empty>{t("setup.noProjectsBelow")}</Empty>
           ) : null}
-          {setupGroups(shown.projects, systems).map((group) => (
+          {[...setupGroups(shown.projects, systems), ...(section !== "machine" ? remoteOnly : [])].map((group) => {
+            const system = systems.find((s) => s.name === group.name);
+            const missingCount = system ? missingHere(system, local) : 0;
+            return (
             <section key={group.name} data-setup-system={group.name} className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-[13px] font-semibold text-fg-strong">{group.name || t("setup.outsideSystems")}</h2>
-                {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {missingCount ? <Chip kind="warning">{t("systemGroup.missingHere", { count: missingCount })}</Chip> : null}
+                  {system && groups ? (
+                    <Button size="sm" variant={missingCount ? "default" : "ghost"} data-setup-group={group.name} aria-expanded={groupOpen === group.name} onClick={() => setGroupOpen(groupOpen === group.name ? null : group.name)}>
+                      {t(system.source ? "systemGroup.initOnMachine" : "systemGroup.link")}
+                    </Button>
+                  ) : null}
+                  {group.name && group.projects.some((p) => p.items.some(needsSetup)) ? <Button size="sm" variant="outline" disabled={busy || !group.projects.some((p) => p.items.some((i) => needsSetup(i) && i.action))} onClick={() => installAll(group.projects.map((p) => p.project))}>{t("setup.installSystem")}</Button> : null}
+                </div>
               </div>
-              {group.projects.map((p) => {
+              {system && groupOpen === group.name ? (
+                <SystemGroupPanel
+                  system={system}
+                  onChanged={() => {
+                    settings.reload();
+                    setReport(null);
+                    status.reload();
+                    onChanged?.();
+                  }}
+                />
+              ) : null}
+              {inTree(group.projects, system).map(({ folder, projects: inFolder }) => (
+              <Fragment key={folder.join("/")}>
+              {folder.length ? <h3 className="m-0 pt-1 font-mono text-xs font-medium text-fg-muted" data-setup-folder={folder.join("/")}>{folder.join(" › ")}</h3> : null}
+              {inFolder.map((p) => {
                 const count = p.items.filter(needsSetup).length;
                 const branch = settings.data?.projects.find((project) => project.name === p.project)?.targetBranch ?? "main";
                 const closed = gone.get(p.project);
@@ -194,8 +234,11 @@ export function SetupPage({ section, onChanged }: { section?: "machine" | "proje
                   </CardContent>
                 </Card>;
               })}
+              </Fragment>
+              ))}
             </section>
-          ))}
+            );
+          })}
         </>
       ) : null}
       {/* The repos on this machine (add, sync, open a CLI): what the checks above run on (roadmap 35a). */}
