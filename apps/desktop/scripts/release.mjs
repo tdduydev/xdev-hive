@@ -77,6 +77,9 @@ if (!dry && !hubOnly) {
     try { run("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], { cwd: repoRoot }); } catch { throw new Error("HEAD is not on origin/main."); }
   } else if (out("git", ["rev-parse", "HEAD"]) !== out("git", ["rev-parse", "origin/main"])) throw new Error("HEAD is not origin/main.");
   // A pushed tag v<version> is what triggers the CI release, so it already exists there.
+  if (inCI && process.env.GITHUB_EVENT_NAME === "push" && process.env.GITHUB_REF?.startsWith("refs/tags/") && process.env.GITHUB_REF !== `refs/tags/${tag}`) {
+    throw new Error(`Pushed tag ${process.env.GITHUB_REF} does not match package version ${tag}.`);
+  }
   const pushedTag = inCI && process.env.GITHUB_REF === `refs/tags/${tag}`;
   if (!pushedTag && out("git", ["tag", "--list", tag])) throw new Error(`Tag ${tag} exists: bump "version" in apps/desktop/package.json.`);
 }
