@@ -919,9 +919,12 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
   // Development mode: the hub serves its API without a built web client.
   const hub = spawn(process.execPath, ["src/server.ts"], {
     cwd: webDir,
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "ignore"],
     env: { ...process.env, NODE_ENV: "development", HIVE_PORT: String(port), HIVE_DB: path.join(work, "hub.db"), HIVE_BOOTSTRAP_TOKEN: bootstrap, HIVE_ADMIN_USER: "smoke" },
   });
+  // The first admin's temporary password: since spec 79a only that account's own sign-in reaches project settings.
+  let hubOut = "";
+  hub.stdout.on("data", (d) => (hubOut += d));
   let up = false;
   for (let i = 0; i < 150 && !up; i++) {
     up = await fetch(`http://127.0.0.1:${port}/api/health`).then((r) => r.ok, () => false);
@@ -973,7 +976,7 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     await shoot("hub-alias-projects", "projects", 3000, { HIVE_SMOKE_EXPECT: 'nav a[href="#/settings"][aria-current="page"] && [data-hub-link="connected"]' });
     // #/today lands on Máy này too: the start-*-today shots below click through it.
     // Công cụ & setup groups the machine's projects by the hub's system.
-    await new HubBackend(`http://127.0.0.1:${port}`, bootstrap).call("systems.save", { name: "hospital", projects: ["demo", "api"] }, { name: "smoke", role: "admin" });
+    await new HubBackend(`http://127.0.0.1:${port}`, await adminMachineToken(`http://127.0.0.1:${port}`, hubOut)).call("systems.save", { name: "hospital", projects: ["demo", "api"] }, { name: "smoke", role: "admin" });
     await setupCardShots("hub-");
     await startGuideShots("hub-");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
@@ -983,6 +986,19 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
   }
   hub.kill();
 }
+/** The smoke admin's desktop sign-in token: the bootstrap token is a member of no account since spec 79a. */
+async function adminMachineToken(hubUrl, hubOut) {
+  const temporary = /Temporary password[^\n]*\n\s*\n\s*(\S+)/.exec(hubOut)?.[1];
+  if (!temporary) throw new Error("hub mode: the hub printed no temporary password for the smoke admin");
+  const post = (url, body, headers = {}) => fetch(`${hubUrl}${url}`, { method: "POST", headers: { "content-type": "application/json", "x-hive-csrf": "1", ...headers }, body: JSON.stringify(body) });
+  const login = await post("/api/login", { username: "smoke", password: temporary });
+  const password = `smoke-${randomBytes(12).toString("hex")}!`;
+  const changed = await post("/api/password", { current: temporary, next: password }, { cookie: login.headers.get("set-cookie").split(";")[0] });
+  if (!changed.ok) throw new Error(`hub mode: smoke admin password: HTTP ${changed.status}`);
+  const device = await (await post("/api/device-token", { username: "smoke", password, name: "smoke-admin" })).json();
+  return device.result.token;
+}
+
 if (failures.length) {
   console.error(`smoke checks failed:\n  ${failures.join("\n  ")}`);
   process.exitCode = 1;

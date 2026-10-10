@@ -10,6 +10,7 @@ import { DeployLog } from "#web/deploy-log.ts";
 import { HubInfoSource } from "#web/hubinfo.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -25,7 +26,7 @@ async function serve(backup: { dir: string; hours: number; keep: number } | null
   hive.seed("hub", { hub: true });
   const tokens = new TokenStore(hive.db);
   const users = new UserStore(hive.db);
-  const admin = tokens.create("duy", "admin").token;
+  const admin = adminSession(users, "duy");
   const agent = tokens.create("duy-mbp", "agent").token;
   const deployLog = new DeployLog();
   deployLog.backup = backup ? "skipped" : "off";
@@ -36,10 +37,10 @@ async function serve(backup: { dir: string; hours: number; keep: number } | null
   await new Promise((r) => server.once("listening", r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const rpc = async (token: string, method: string, input?: unknown) => {
-    const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ method, input }) });
+    const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ method, input }) });
     return { status: res.status, body: (await res.json()) as { result?: any; error?: { key?: string } } };
   };
-  const get = (token: string, url: string) => fetch(`${base}${url}`, { headers: { authorization: `Bearer ${token}` } });
+  const get = (token: string, url: string) => fetch(`${base}${url}`, { headers: { ...authHeaders(token) } });
   // The hive too: Windows will not remove a folder whose database is still open.
   return { rpc, get, hive, admin, agent, dbPath, close: () => (server.close(), hive.close()) };
 }

@@ -166,15 +166,17 @@ const grantLabel = (g: Grant) => (grantRole(g) === "custom" ? [...grantPermissio
 const userOf = (res: Response) => res.locals.user as UserInfo | undefined;
 
 /**
- * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants), "own" (a person on their
- * own things, each handler checks the rest). A name not here is refused. Spec 76 P0-4.
+ * The web-only RPCs and who may call them: "hubAdmin" (a hub admin of no restricting grants, signed in on the page),
+ * "own" (a person on their own things, each handler checks the rest), "release" (a hub admin, or a token made for
+ * uploading desktop builds), "alerts" (a hub admin, or a machine token of one, for the desktop's notifications). A name
+ * not here is refused. Spec 76 P0-4, 79a.
  */
-export const WEB_RPC: Record<string, "hubAdmin" | "own"> = {
+export const WEB_RPC: Record<string, "hubAdmin" | "own" | "release" | "alerts"> = {
   "tokens.list": "own", "tokens.create": "own", "tokens.revoke": "own", "members.list": "own", "members.set": "own",
-  "releases.list": "hubAdmin", "releases.setRollout": "hubAdmin", "releases.notes": "hubAdmin",
+  "releases.list": "release", "releases.setRollout": "hubAdmin", "releases.notes": "release",
   "hub.info": "hubAdmin", "hub.backup": "hubAdmin", "hub.cleanup": "hubAdmin",
   "backups.list": "hubAdmin", "backups.pin": "hubAdmin", "backups.unpin": "hubAdmin", "backups.projects": "hubAdmin", "backups.restoreProject": "hubAdmin",
-  "alerts.list": "hubAdmin", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
+  "alerts.list": "alerts", "alerts.feed": "hubAdmin", "alerts.ack": "hubAdmin", "alerts.setRule": "hubAdmin",
   "automation.list": "hubAdmin", "automation.history": "hubAdmin", "automation.save": "hubAdmin", "automation.dryRun": "hubAdmin", "automation.retry": "hubAdmin",
   "webhooks.list": "hubAdmin", "webhooks.save": "hubAdmin", "webhooks.remove": "hubAdmin", "webhooks.test": "hubAdmin",
   "users.list": "hubAdmin", "users.create": "hubAdmin", "users.update": "hubAdmin", "users.setGrants": "hubAdmin", "users.resetPassword": "hubAdmin",
@@ -191,9 +193,31 @@ function requireHubAdmin(res: Response): void {
   assertHubAdmin(actorOf(res));
 }
 
-function assertHubAdmin(actor: Actor): void {
-  if (actor.role !== "admin" || actor.access) throw new HiveError("forbidden", "Chỉ admin của hub.", { key: "errors.hubAdminOnly" });
+/**
+ * A hub admin is a person at the hub's page (spec 79a): the session cookie is the only thing that sets humanSession,
+ * so no bearer of any kind passes, whatever its owner may do on the page. Told apart by the credential the hub
+ * verified, never by the source or agent headers a client sends.
+ */
+export function isHubAdmin(actor: Actor): boolean {
+  return actor.role === "admin" && !actor.access && !!actor.humanSession && !actor.tokenId &&
+    !actor.mcpCredential && !actor.runCredential && actor.chatReply === undefined;
 }
+
+function assertHubAdmin(actor: Actor): void {
+  if (!isHubAdmin(actor)) throw new HiveError("forbidden", "Chỉ admin của hub, đăng nhập trên trang của hub.", { key: "errors.hubAdminOnly" });
+}
+
+/**
+ * The most a token stands for: member. An admin's token (a machine's, a personal one, one the CLI made with no account)
+ * keeps that account's project rights but never the hub admin's (spec 79a).
+ */
+export const tokenRole = (role: Role): Role => (role === "admin" ? "member" : role);
+
+/** A plain token of a hub admin's account (no MCP, run or chat credential): it may list the open alerts, nothing more. */
+const machineReadsAlerts = (res: Response): boolean => {
+  const actor = actorOf(res);
+  return res.locals.hubAlerts === true && !!actor.tokenId && !actor.mcpCredential && !actor.runCredential && actor.chatReply === undefined;
+};
 
 const isDestructiveHubRpc = (method: unknown): method is DestructiveHubRpc => (DESTRUCTIVE_HUB_RPCS as readonly unknown[]).includes(method);
 
@@ -393,15 +417,22 @@ export function createHubApp({
     // Both are trusted only with a bearer paired to a registered machine.
     const machineSource = (actor: Actor): Actor => source.via === "desktop" &&
       (hive.isMachineActor(name, actor) || hive.isPairedDesktopToken(actor)) ? { ...actor, source } : actor;
-    // A token of no account (CI, the CLI's) stands for itself.
-    if (!who.ownerId) return machineSource({ name, role: who.role, tokenId: who.id, source: tokenSource, ...trail(who.name) });
+    // A token of no account (CI, the CLI's before 79a) stands for itself, as a member at most: the Tokens page warns of it.
+    if (!who.ownerId) return machineSource({ name, role: tokenRole(who.role), tokenId: who.id, source: tokenSource, ...trail(who.name) });
     const user = users.get(who.ownerId);
     if (!user || user.disabled) return null;
     res.locals.user = user;
-    // An account that lost admin keeps its old admin tokens only as a member.
-    const role: Role = capRole(who.role === "admin" && !user.admin ? "member" : who.role, user);
+    // A plain token of a hub admin may read the hub's alerts (the desktop notifies its person); a release token of one
+    // may upload builds. Both end the moment the account stops being an admin.
+    if (user.admin && !who.releaseUpload) res.locals.hubAlerts = true;
+    const releaseUpload = who.releaseUpload && user.admin ? { releaseUpload: true } : {};
+    const role: Role = capRole(tokenRole(who.role), user);
+    // An admin's desktop sign-in keeps the admin's reach on the projects, so the app's window works as before, but not
+    // the hub's admin pages. An admin token from before 79a is taken as such a sign-in: desktop sign-in made those. A
+    // member token made for a script stays cut to its role (spec 76 P0-3).
+    const allProjects = user.admin && role === "member" && (who.machine || who.role === "admin") ? { allProjects: true } : {};
     // A machine's Board runs count against this person's spending cap (roadmap 27b), and their agents act for them (27c).
-    return machineSource({ name, role, tokenId: who.id, access: users.access(user), source: tokenSource, ...trail(user.username), account: user.username });
+    return machineSource({ name, role, tokenId: who.id, access: users.access(user), source: tokenSource, ...trail(user.username), account: user.username, ...releaseUpload, ...allProjects });
   };
 
   /** Bearer token (agents, machines, CI) or the session cookie (people in the web hub). */
@@ -541,10 +572,11 @@ export function createHubApp({
   });
 
   const me = (res: Response): Me => {
-    const { name, role, access } = actorOf(res);
+    const { name, role, access, allProjects } = actorOf(res);
     const user = userOf(res);
     const sso = user && oidc ? { sso: { name: oidc.settings.name, linked: user.sso } } : {};
-    return { name, role, mode: "hub", ...(access ? { access } : {}), ...(user ? { user: publicUser(user) } : {}), ...sso };
+    const alerts = res.locals.hubAlerts && !isHubAdmin(actorOf(res)) ? { hubAlerts: true } : {};
+    return { name, role, mode: "hub", ...(access ? { access } : {}), ...(user ? { user: publicUser(user) } : {}), ...sso, ...alerts, ...(allProjects ? { allProjects: true } : {}) };
   };
 
   /** Checks a username/password pair with throttling per client address and username. */
@@ -665,7 +697,8 @@ export function createHubApp({
   /** A token for one machine of the account; signing in again from the same machine replaces the old one. */
   const machineToken = (user: UserInfo, rawName: unknown) => {
     const name = String(rawName ?? "").trim();
-    const created = tokens.create(name, accountRole(user), user.id);
+    // Stored as what it may do (spec 79a): an admin's machine is a member's, the admin pages are the hub's web page.
+    const created = tokens.create(name, tokenRole(accountRole(user)), user.id, { machine: true });
     const person: Actor = { name: user.username, role: accountRole(user), account: user.username };
     for (const old of tokens.list(user.id)) if (old.name === created.info.name && old.id !== created.info.id) {
       tokens.revoke(old.id);
@@ -835,7 +868,7 @@ export function createHubApp({
       if (actor.role === "viewer") throw new HiveError("forbidden", "Read-only credentials cannot revoke tokens.", { key: "errors.roleTooLow" });
       const info = tokens.get(String(i.id ?? ""));
       if (!info) throw new HiveError("not_found", "Token not found.", { key: "errors.tokenNotFound" });
-      const hubAdmin = actor.role === "admin" && !actor.access;
+      const hubAdmin = isHubAdmin(actor);
       if (!hubAdmin && (!user || info.ownerId !== user.id)) throw new HiveError("forbidden", "Chỉ thu hồi được token của bạn.", { key: "errors.revokeOwnOnly" });
       return () => {
         tokens.revoke(info.id);
@@ -924,7 +957,11 @@ export function createHubApp({
         const level = typeof method === "string" ? WEB_RPC[method] ?? (method.startsWith("terminal.") ? "own" : undefined) : undefined;
         if (!level) throw new HiveError("bad_request", `Unknown method ${String(method)}`);
         if (level === "hubAdmin") requireHubAdmin(res);
-        if (level === "hubAdmin" && WEB_RPC_AUDITED.has(method as string)) {
+        // Narrow ways in for a bearer (spec 79a): a release token reads and writes builds' notes, a machine token of a
+        // hub admin reads open alerts. Each is checked on the credential the hub verified, never on a header.
+        if (level === "release" && !actor.releaseUpload) requireHubAdmin(res);
+        if (level === "alerts" && !machineReadsAlerts(res)) requireHubAdmin(res);
+        if (level !== "own" && WEB_RPC_AUDITED.has(method as string)) {
           const send = res.json.bind(res);
           res.json = ((body: unknown) => {
             if (res.statusCode < 400 && !(body && typeof body === "object" && "error" in body)) hive.audit(actor, method as string, String(i.id ?? i.version ?? i.name ?? "—"));
@@ -943,7 +980,7 @@ export function createHubApp({
 
       // Tokens: admins see and manage all; a person their own (agent/viewer tokens for their machines and CI).
       if (method === "tokens.list") {
-        if (actor.role === "admin" && !actor.access) {
+        if (isHubAdmin(actor)) {
           res.json({ result: tokens.list() });
           return;
         }
@@ -953,14 +990,19 @@ export function createHubApp({
       }
       if (method === "tokens.create") {
         if (actor.role === "agent" || actor.role === "viewer") throw new HiveError("forbidden", "Only a person can create tokens.");
-        const role = (i.role as Role | undefined) ?? "agent";
-        const hubAdmin = actor.role === "admin" && !actor.access;
-        // An account's grants do not let a read-only credential mint a credential with write access.
-        const allowed: Role[] = hubAdmin ? TOKEN_ROLES : ["viewer", "agent"];
+        const releaseUpload = i.releaseUpload === true;
+        // A release token reads nothing else: it is made as a viewer, whatever role was asked for.
+        const role = releaseUpload ? "viewer" : (i.role as Role | undefined) ?? "agent";
+        const hubAdmin = isHubAdmin(actor);
+        // An account's grants do not let a read-only credential mint a credential with write access. No token is made
+        // admin any more (spec 79a): it would act as a member anyway.
+        const allowed: Role[] = hubAdmin ? TOKEN_ROLES.filter((r) => r !== "admin") : ["viewer", "agent"];
         if (!allowed.includes(role)) throw new HiveError("forbidden", `Bạn chỉ tạo được token vai trò ${allowed.join(", ")}.`, { key: "errors.tokenRoleNotAllowed", vars: { roles: allowed.join(", ") } });
-        if (!hubAdmin && !user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
-        const created = tokens.create(String(i.name ?? ""), role, user?.id ?? null);
-        hive.audit(actor, "tokens.create", created.info.name, created.info.role, { key: `role.${created.info.role}` });
+        if (releaseUpload && !hubAdmin) throw new HiveError("forbidden", "Chỉ admin của hub tạo được token tải bản app.", { key: "errors.hubAdminOnly" });
+        // Every new token has an owner: one of no account is what 79a takes away.
+        if (!user) throw new HiveError("forbidden", "Token không thuộc tài khoản nào.", { key: "errors.tokenNoAccount" });
+        const created = tokens.create(String(i.name ?? ""), role, user.id, { releaseUpload });
+        hive.audit(actor, "tokens.create", created.info.name, releaseUpload ? `${created.info.role} · release` : created.info.role, { key: `role.${created.info.role}` });
         res.json({ result: created });
         return;
       }
@@ -976,11 +1018,13 @@ export function createHubApp({
       }
       // App builds and their rollout: hub admins only.
       if (typeof method === "string" && method.startsWith("releases.")) {
-        requireHubAdmin(res);
+        if (WEB_RPC[method] !== "release" || !actor.releaseUpload) requireHubAdmin(res);
         if (!releases) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "releases.list") {
           // uploadPart: the hub takes a build in parts of at most this size (release.mjs asks before it sends parts).
-          res.json({ result: { releases: releases.list(), rollout: releases.rollout(), machines: releases.machines(), uploadPart: UPLOAD_PART_BYTES } });
+          // A release token sees the builds only: the machines and the rollout are the admin's page.
+          if (!isHubAdmin(actor)) res.json({ result: { releases: releases.list(), uploadPart: UPLOAD_PART_BYTES } });
+          else res.json({ result: { releases: releases.list(), rollout: releases.rollout(), machines: releases.machines(), uploadPart: UPLOAD_PART_BYTES } });
         } else if (method === "releases.setRollout") {
           const r = releases.setRollout(i as Partial<AppRollout>, actor.name);
           hive.audit(actor, "releases.setRollout", r.target ?? "—", `${r.percent}%${r.paused ? " · paused" : ""} · ${r.installWhen}${r.minVersion ? ` · min ${r.minVersion}` : ""}`);
@@ -1024,7 +1068,7 @@ export function createHubApp({
 
       // Cảnh báo (roadmap 22m): hub admins only.
       if (typeof method === "string" && method.startsWith("alerts.")) {
-        requireHubAdmin(res);
+        if (method !== "alerts.list" || !machineReadsAlerts(res)) requireHubAdmin(res);
         if (!alerts) throw new HiveError("bad_request", `Unknown method ${method}`);
         if (method === "alerts.list") res.json({ result: await alerts.list() });
         else if (method === "alerts.feed") res.json({ result: await alerts.feed(Math.min(100, Math.max(1, Number(i.limit ?? 40)))) });
@@ -1271,7 +1315,7 @@ export function createHubApp({
       for (const [k, u] of uploads) if (Date.now() - u.at > 3_600_000) drop(k);
       let tmp = releases.tmpFile();
       try {
-        requireHubAdmin(res);
+        if (!actorOf(res).releaseUpload) requireHubAdmin(res);
         let upload: { tmp: string; hash: Hash; next: number; parts: number } | null = null;
         if (id) {
           const part = Number(q("part"));

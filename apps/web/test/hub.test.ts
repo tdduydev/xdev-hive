@@ -12,6 +12,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -23,16 +24,19 @@ function testTmpDir(prefix: string): string {
 let base = "";
 let hive: SqliteHive;
 let close: () => void;
-const tok: Record<"admin" | "agent" | "viewer", string> = { admin: "", agent: "", viewer: "" };
+const tok: Record<"admin" | "machine" | "agent" | "viewer", string> = { admin: "", machine: "", agent: "", viewer: "" };
 
 before(async () => {
   hive = new SqliteHive(":memory:", { memoryRequiresApproval: true });
   hive.seed();
   const tokens = new TokenStore(hive.db);
-  tok.admin = tokens.create("duy", "admin").token;
+  const users = new UserStore(hive.db);
+  tok.admin = adminSession(users, "duy");
+  // What the desktop app and the transfer use: a token, a member at most since spec 79a.
+  tok.machine = tokens.create("duy", "member", users.byUsername("duy")!.id, { machine: true }).token;
   tok.agent = tokens.create("duy-macbook", "agent").token;
   tok.viewer = tokens.create("pm", "viewer").token;
-  const app = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1", "localhost"] });
+  const app = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1", "localhost"] });
   const server = app.listen(0, "127.0.0.1");
   await new Promise((r) => server.once("listening", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -45,7 +49,7 @@ async function rpc(token: string | null, method: string, input?: unknown, agent?
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...(token ? authHeaders(token) : {}),
       ...(agent ? { "x-hive-agent": agent } : {}),
       ...(idempotency ? { "x-hive-idempotency": idempotency } : {}),
     },
@@ -56,14 +60,14 @@ async function rpc(token: string | null, method: string, input?: unknown, agent?
 
 describe("hub REST", () => {
   it("deduplicates replayed task updates and rejects an id reused for another payload", async () => {
-    const capability = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.admin}` } });
+    const capability = await fetch(`${base}/api/me`, { headers: { ...authHeaders(tok.machine) } });
     assert.equal(capability.headers.get("x-hive-report-idempotency"), "1");
     const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    assert.equal((await rpc(tok.admin, "tasks.create", { id: "IDEMP-1", project: "app", title: "Replay" })).status, 200);
+    assert.equal((await rpc(tok.machine, "tasks.create", { id: "IDEMP-1", project: "app", title: "Replay" })).status, 200);
     const input = { id: "IDEMP-1", status: "review", note: "completed" };
-    assert.equal((await rpc(tok.admin, "tasks.update", input, "desktop", id)).status, 200);
-    assert.equal((await rpc(tok.admin, "tasks.update", input, "desktop", id)).status, 200);
-    assert.equal((await rpc(tok.admin, "tasks.update", { ...input, note: "different" }, "desktop", id)).status, 409);
+    assert.equal((await rpc(tok.machine, "tasks.update", input, "desktop", id)).status, 200);
+    assert.equal((await rpc(tok.machine, "tasks.update", input, "desktop", id)).status, 200);
+    assert.equal((await rpc(tok.machine, "tasks.update", { ...input, note: "different" }, "desktop", id)).status, 409);
     const rows = hive.db.prepare("SELECT id FROM audit WHERE action = 'tasks.update' AND target = 'IDEMP-1'").all();
     assert.equal(rows.length, 1);
   });
@@ -83,7 +87,7 @@ describe("hub REST", () => {
   });
 
   it("labels the actor with the agent name and token name", async () => {
-    const res = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "codex" } });
+    const res = await fetch(`${base}/api/me`, { headers: { ...authHeaders(tok.agent), "x-hive-agent": "codex" } });
     const body = (await res.json()) as { result: { name: string; role: string } };
     assert.deepEqual(body.result, { name: "codex@duy-macbook", role: "agent", mode: "hub" });
   });
@@ -92,7 +96,7 @@ describe("hub REST", () => {
     const write = (headers: Record<string, string>, content: string) =>
       fetch(`${base}/api/rpc`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${tok.agent}`, ...headers },
+        headers: { "content-type": "application/json", ...authHeaders(tok.agent), ...headers },
         body: JSON.stringify({ method: "memory.write", input: { project: "audit27c", kind: "gotcha", content } }),
       });
     const source = JSON.stringify({ via: "mcp", machine: "duy-mbp", run: "R-src001", task: "T-1" });
@@ -116,7 +120,7 @@ describe("hub REST", () => {
 
   it("keeps the machine part of long agent labels, so two machines on one token get different leases", async () => {
     const label = `${"p".repeat(40)}.${"m".repeat(24)}`;
-    const res = await fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": label } });
+    const res = await fetch(`${base}/api/me`, { headers: { ...authHeaders(tok.agent), "x-hive-agent": label } });
     assert.equal(((await res.json()) as { result: { name: string } }).result.name, `${label}@duy-macbook`);
   });
 
@@ -185,7 +189,7 @@ describe("hub as a backend", () => {
     const me = { name: "duy", role: "admin" as const };
     await local.call("docs.save", { key: "project/transfer/agents", content: "Dùng pnpm" }, me);
     await local.call("tasks.create", { id: "TR-1", project: "transfer", title: "Chuyển dữ liệu" }, me);
-    const hub = { backend: new HubBackend(base, tok.admin), actor: { name: "hive-transfer", role: "admin" as const }, label: "hub" };
+    const hub = { backend: new HubBackend(base, tok.machine), actor: { name: "hive-transfer", role: "admin" as const }, label: "hub" };
     const push = await transferHive({ backend: local, actor: me, label: "máy A" }, hub);
     assert.equal(push.counts.failed, 0, JSON.stringify(push.items));
     assert.equal(push.items.find((i) => i.key === "project/transfer/agents")?.result, "added");
@@ -206,13 +210,13 @@ describe("hub as a backend", () => {
 
     const res = await fetch(`${base}/api/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${tok.agent}`, "x-hive-source": JSON.stringify({ via: "web", machine: "duy-mbp" }) },
+      headers: { "content-type": "application/json", ...authHeaders(tok.agent), "x-hive-source": JSON.stringify({ via: "web", machine: "duy-mbp" }) },
       body: JSON.stringify({ method: "memory.write", input: { project: "app", kind: "context", content: "Claims to be the web page" } }),
     });
     assert.deepEqual(((await res.json()) as { result: { source: unknown } }).result.source, { via: "api", machine: "duy-mbp" });
 
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor", "x-hive-source": JSON.stringify({ via: "desktop", machine: "lan-pc" }) } },
+      requestInit: { headers: { ...authHeaders(tok.agent), "x-hive-agent": "cursor", "x-hive-source": JSON.stringify({ via: "desktop", machine: "lan-pc" }) } },
     });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
@@ -223,7 +227,7 @@ describe("hub as a backend", () => {
   });
 
   it("gives a viewer token the read-only MCP tools", async () => {
-    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.viewer}` } } });
+    const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { ...authHeaders(tok.viewer) } } });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
     assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), [
@@ -258,7 +262,7 @@ describe("hub as a backend", () => {
   it("lets a client narrow MCP to read-only and give a default project (container runs)", async () => {
     const connect = async (headers: Record<string, string>) => {
       const client = new Client({ name: "test", version: "0" });
-      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { authorization: `Bearer ${tok.agent}`, ...headers } } }));
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { ...authHeaders(tok.agent), ...headers } } }));
       return client;
     };
     const ro = await connect({ "x-hive-readonly": "1", "x-hive-project": "app" });
@@ -298,7 +302,7 @@ describe("hub as a backend", () => {
 
   it("speaks MCP over Streamable HTTP", async () => {
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${tok.agent}`, "x-hive-agent": "cursor" } },
+      requestInit: { headers: { ...authHeaders(tok.agent), "x-hive-agent": "cursor" } },
     });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
