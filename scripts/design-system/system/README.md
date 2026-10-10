@@ -75,7 +75,8 @@ The library is shadcn/ui (Radix) restyled by the cosmic layer, in `@xdev-hive/ui
 
 ## Iconography
 
-- **Lucide** (`lucide-react`), outline, round caps; default `icon-md` 16px, `icon-sm` 14 in dense rows, `icon-lg` 20 in headers. Colour follows `currentColor`.
+- **Lucide** (`lucide-react`), outline, 2px stroke, round caps; default `icon-md` 16px, `icon-sm` 14 in dense rows, `icon-lg` 20 in headers. Colour follows `currentColor`.
+- The full set is in this system: the Icons page under Foundations (search, click to copy the SVG) and `assets/Icons/lucide.json`. Use the current name, not an alias.
 - Icons accompany a label. Icon-only buttons carry an `aria-label` and a tooltip.
 - No emoji and no Unicode symbols as icons.
 
@@ -90,5 +91,5 @@ The library is shadcn/ui (Radix) restyled by the cosmic layer, in `@xdev-hive/ui
 - Tokens come from the effective cascade of `packages/ui-kit/src/tokens/*.css` (cosmic and Today layers over the 2026-09 colours). Gradients (`brand-gradient*`, `page-gradient`, `page-background`, `shell-backdrop`, `button-glass-overlay`) and motion durations/easings are not representable as tokens; they are described above.
 - Fonts are named as hosted faces (Inter, JetBrains Mono); no files are included because the repo only has per-subset @fontsource files.
 - `globals.css` also declares Be Vietnam Pro / Space Grotesk in a Tailwind `@theme` block, but the unlayered `typography.css` (Inter) overrides it; this system records Inter.
-- The 103-icon Lucide sprite from `docs/design/2026-09-redesign/assets/icons.svg` is not included.
+- Icons are the full set of the installed `lucide-react`, as one data file and a browsing page, not as one asset tile per icon. The older 103-icon sprite in `docs/design/2026-09-redesign/assets/` is not included.
 - Component bundle: 31 components from `packages/ui-kit` built with esbuild (React and ReactDOM as globals) and Tailwind v4; the app-level DataTable, ResponsiveTable, Sidebar, ScrollArea, Collapsible and ErrorBoundary are not included.

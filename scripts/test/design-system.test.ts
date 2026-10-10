@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { fileURLToPath } from "node:url";
+import { lucideSet, svgBody } from "../design-system/lucide.mjs";
 import { cascade, classify, contrast, stripDeclarations } from "../design-system/tokens.mjs";
 
 describe("design-system tokens", () => {
@@ -41,5 +43,17 @@ describe("design-system tokens", () => {
     );
     assert.equal(removed, 3);
     assert.equal(css, `@layer theme{:root,:host{--spacing:.25rem}}.a{color:var(--bg-canvas)}`);
+  });
+
+  it("writes Lucide nodes as SVG without React keys", () => {
+    const body = svgBody([["path", { d: "M5 12h14", key: "a" }], ["circle", { cx: 12, cy: 12, r: 10, key: "b" }]]);
+    assert.equal(body, `<path d="M5 12h14"/><circle cx="12" cy="12" r="10"/>`);
+  });
+
+  it("reads the installed Lucide set, every alias pointing at an icon", async () => {
+    const set = await lucideSet(fileURLToPath(new URL("../../packages/ui-kit/package.json", import.meta.url)));
+    assert.ok(Object.keys(set.icons).length > 1000);
+    assert.equal(set.icons.plus, `<path d="M5 12h14"/><path d="M12 5v14"/>`);
+    for (const [alias, name] of Object.entries(set.aliases)) assert.ok(set.icons[name], `${alias} → ${name}`);
   });
 });

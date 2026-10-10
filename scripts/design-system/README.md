@@ -1,7 +1,7 @@
 # Design system artifact
 
 Builds the files of the xDev Hive design system (a claude.ai Design System artifact) from `packages/ui-kit`:
-tokens, brand book, and the 31 components with live previews.
+tokens, brand book, the full Lucide icon set, and the 31 components with live previews.
 
 ```bash
 npm run design-system -- <out>
@@ -12,7 +12,8 @@ npm run design-system -- <out>
 | Path | From |
 |---|---|
 | `tokens.json` | `packages/ui-kit/src/tokens/*.css`, applied in `globals.css` import order (what the app renders); usage notes in `usage.mjs` |
-| `README.md`, `assets/*/README.md`, `components/Cover/preview.html`, `components/index.d.ts` | `system/`, copied as they are |
+| `README.md`, `assets/*/README.md`, `components/Cover/preview.html`, `components/Icons/preview.html`, `components/index.d.ts` | `system/`, copied with LF line ends |
+| `assets/Icons/lucide.json` | every icon of the installed `lucide-react` (`lucide.mjs`); the Icons page reads it |
 | `components/<Name>/preview.html`, `README.md` | `components.mjs` |
 | `components/bundle.js` | `entry.ts`, built by esbuild as one classic script that sets `window.XdevHive` and reads React from `window.React` |
 | `components/lib/*.js` | React and ReactDOM from `node_modules` as classic scripts (React 19 has no UMD build) |
