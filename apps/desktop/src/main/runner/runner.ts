@@ -2480,6 +2480,7 @@ export class Runner {
         attempt: run.attempt,
         previous: parent?.role === run.role && parent.profileId ? { profileId: parent.profileId, reason: parent.error ?? parent.status } : null,
         readOnly: profile.readOnly,
+        agentKind: profile.kind,
         ciFix: run.ciFix,
         candidate: candidate ? { n: candidate.n, of: candidate.of } : null,
         judge: run.bestOf?.n === 0 ? this.#judgeInput(run.bestOf) : null,

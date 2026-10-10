@@ -426,7 +426,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [x] **80b. run-get-lean**: `run_get` mặc định không kèm patch, log chỉ lấy đuôi; `full:true` để lấy hết.
   - [ ] **80c. doc-lean**: `doc_list` gọn; `doc_get` có `section` và `maxChars`.
   - [ ] **80d. run-toolset**: run task chỉ nhận tool cần dùng; bỏ `$schema`, rút mô tả tool dài.
-  - [ ] **80e. prompt-dedupe**: bỏ giao thức lặp trong prompt run, bỏ "đọc AGENTS.md trước", bỏ skill chỉ cho hub.
+  - [x] **80e. prompt-dedupe**: bỏ giao thức lặp trong prompt run, bỏ "đọc AGENTS.md trước", bỏ skill chỉ cho hub.
   - [ ] **80f. claude-settings-isolation**: run Claude không nạp plugin và skill của người dùng; phân loại bằng Codex tắt MCP và plugin.
   - [ ] **80g. leader-cache**: leader hub lấy project qua tool thay vì system prompt; lịch sử chat ngắn khi mở phiên mới.
   - [ ] **80h. task-token-budget**: trần token hoặc USD theo task, vượt thì dừng run.

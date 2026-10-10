@@ -868,7 +868,7 @@ describe("Runner", () => {
     const env = JSON.parse(args.at(-1)!).mcpServers["xdev-hive"].env;
     assert.equal(env.HIVE_AGENT, "claude-a");
     assert.deepEqual([env.HIVE_TASK, env.HIVE_RUN], ["T-1", runner.list()[0]!.id], "so the agent's writes carry its task and run");
-    assert.match(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
+    assert.doesNotMatch(calls()[0]!.prompt, /Read AGENTS\.md in the working copy first/);
   });
 
   it("puts Hive's context in the worktree of a branch that has none, and keeps it off the branch (roadmap 38a)", async () => {
@@ -2758,6 +2758,15 @@ describe("cross-review on another vendor", () => {
     assert.doesNotMatch(leaked, /ghp_c|manager for the/);
     const long = buildPrompt({ ...base, stepPrompt: { step: "dispatch", version: 1, text: "z".repeat(5000) } });
     assert.ok(long.length < 5000, "clipped to the step prompt's cap");
+  });
+
+  it("keeps run instructions short for auto-loading agents and omits the hub leader skill", () => {
+    const base = { project: "demo", taskId: "T-1", title: "x", note: null, role: "implement" as const, instructions: "", worktree: "/w", branch: "ai/T-1", baseSha: "abcdef0123", attempt: 1, previous: null, skills: [{ name: "hive-leader", path: ".claude/skills/hive-leader/SKILL.md", description: "Hub chat only" }], rules: [] };
+    for (const agentKind of ["claude", "codex"] as const) {
+      const prompt = buildPrompt({ ...base, agentKind });
+      assert.doesNotMatch(prompt, /Follow AGENTS\.md|hive-leader|memory_search/);
+    }
+    assert.match(buildPrompt({ ...base, agentKind: "gemini" }), /Follow AGENTS\.md/);
   });
 
   it("fills the step prompt's variables, and the Prompt tab's preview is the prompt buildPrompt gives (roadmap 72i)", () => {
