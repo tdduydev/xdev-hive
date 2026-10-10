@@ -6,7 +6,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { MANAGED_START, type Actor, type HiveBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim } from "#desktop/main/installer.ts";
+import { CODEGRAPH_MCP, installAgents, installCodexConfig, installShim, isRepoHooksPath } from "#desktop/main/installer.ts";
 import { branchPatchAsync, branchState, commitAll, commitAllAsync, ensureWorktree, ensureWorktreeAsync, remoteStart } from "#desktop/main/runner/worktree.ts";
 import { isGitRepoAsync, withGitWorktreeLock } from "#desktop/main/git.ts";
 import { proposeAgents, renderContext, syncProject } from "#desktop/main/sync.ts";
@@ -210,6 +210,24 @@ describe("installAgents", () => {
     const text = readFileSync(report.path, "utf8");
     assert.match(text, /ELECTRON_RUN_AS_NODE=1 exec '\/Applications\/xDev Hive.app\/Contents\/MacOS\/xDev Hive' '\/x\/hive-mcp.mjs' "\$@"/);
     assert.equal(statSync(report.path).mode & 0o111, 0o111);
+  });
+
+  it("treats an absolute core.hooksPath to the repo's .githooks as installed", () => {
+    const repo = gitRepo();
+    sh(repo, "git", ["config", "core.hooksPath", path.join(repo, ".githooks")]);
+    const actions = installAgents(repo, "demo", { home: tmp("home"), shim: SHIM });
+    assert.equal(actions.find((a) => a.file === "git config core.hooksPath")?.action, "unchanged");
+  });
+
+  it("recognises the repo's .githooks however core.hooksPath spells it", () => {
+    const repo = path.resolve("/work/Repo");
+    for (const value of [".githooks", "./.githooks", ".githooks/", path.join(repo, ".githooks")]) {
+      assert.equal(isRepoHooksPath(repo, value, "linux"), true, value);
+    }
+    assert.equal(isRepoHooksPath(repo, path.join(repo.toLowerCase(), ".githooks"), "darwin"), true);
+    assert.equal(isRepoHooksPath(repo, "", "linux"), false);
+    assert.equal(isRepoHooksPath(repo, ".husky", "linux"), false);
+    assert.equal(isRepoHooksPath(repo, path.resolve("/other/.githooks"), "linux"), false);
   });
 });
 
