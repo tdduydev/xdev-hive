@@ -35,3 +35,13 @@ jobs:
           else
             npm run release -w @xdev-hive/desktop
           fi
+      # What the signed app really carries: electron-builder warns about library validation on every ad-hoc build,
+      # whatever the entitlements, so the log has to show them to tell a real gap from that warning.
+      - name: Show macOS entitlements
+        if: always()
+        run: |
+          for app in apps/desktop/release/mac*/*.app; do
+            [ -d "$app" ] || continue
+            echo "== $app"
+            codesign -d --entitlements - --xml "$app" | plutil -convert xml1 -o - - | grep -E "<key>" || true
+          done
