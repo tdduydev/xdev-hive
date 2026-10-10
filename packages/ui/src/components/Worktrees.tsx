@@ -40,11 +40,11 @@ export function WorktreePanel({ machine }: { machine?: Machine }) {
   const report = access?.report;
   const expired = (c: { requestedAt: string }) => Date.now() - Date.parse(c.requestedAt) >= 24 * 60 * 60_000;
   const pending = new Set(access?.commands.filter(c => !c.completedAt && !expired(c)).flatMap(c => c.targets.map(e => e.path)) ?? []);
-  const deletable = (e: WorktreeEntry) => !e.active && !pending.has(e.path);
+  const deletable = (e: WorktreeEntry) => e.pushed === true && !e.active && !pending.has(e.path);
   const ask = (entries: WorktreeEntry[]) => { setAck(false); setConfirm(entries); };
   // Dọn ngay: what automatic cleanup would remove, now, even while it is switched off.
   const now = new Date();
-  const sweep = report?.entries.filter(e => deletable(e) && cleanupReason(e, report.cleanup, now, { now: true })) ?? [];
+  const sweep = report?.entries.filter(e => deletable(e) && cleanupReason(e, report.cleanup, now, { now: true, lowDisk: report.freeBytes !== null && report.freeBytes < report.cleanup.minFreeGb * 1024 ** 3 })) ?? [];
   const risky = confirm.some(e => e.dirty || e.merged !== true);
   const reload = () => setTick(v => v + 1);
   const remove = () => void action.run(async () => {
@@ -87,16 +87,17 @@ export function WorktreePanel({ machine }: { machine?: Machine }) {
       {[...new Set(report.entries.map(e => e.project))].sort().map(project => <section key={project} className="min-w-0">
         <h3 className="mb-2 break-all font-mono text-sm font-semibold">{project}</h3>
         <ResponsiveTable><TableHeader><ResponsiveTableRow>
-          <TableHead>{t("worktrees.task")}</TableHead><TableHead>{t("worktrees.branch")}</TableHead><TableHead>{t("worktrees.size")}</TableHead><TableHead>{t("worktrees.modified")}</TableHead><TableHead>{t("worktrees.changes")}</TableHead><TableHead>{t("worktrees.merged")}</TableHead><TableHead />
+          <TableHead>{t("worktrees.task")}</TableHead><TableHead>{t("worktrees.branch")}</TableHead><TableHead>{t("worktrees.pushed")}</TableHead><TableHead>{t("worktrees.size")}</TableHead><TableHead>{t("worktrees.modified")}</TableHead><TableHead>{t("worktrees.changes")}</TableHead><TableHead>{t("worktrees.merged")}</TableHead><TableHead />
         </ResponsiveTableRow></TableHeader><TableBody>{report.entries.filter(e => e.project === project).map(entry => <ResponsiveTableRow key={entry.path} data-worktree={entry.taskId}>
           <TableCell><div className="flex items-center gap-2">
             {access?.canManage ? <label className="flex min-h-11 min-w-11 items-center justify-center md:min-h-7 md:min-w-7"><input type="checkbox" aria-label={t("worktrees.select", { task: entry.taskId })} disabled={!deletable(entry) || action.busy} checked={selected.has(entry.path)} onChange={event => setSelected(old => { const next = new Set(old); if (event.target.checked) next.add(entry.path); else next.delete(entry.path); return next; })} /></label> : null}
             <span className="break-all font-mono text-xs">{entry.taskId}<span className="block font-sans text-fg-muted">{entry.taskStatus ? t(`taskStatus.${entry.taskStatus}`) : t("worktrees.unknown")}</span></span>
           </div></TableCell>
           <TableCell className="whitespace-normal"><span className="break-all font-mono text-xs">{entry.branch}</span><span className="block break-all text-xs text-fg-muted">{entry.path}</span></TableCell>
+          <TableCell>{t(entry.pushed === true ? "worktrees.pushedYes" : entry.pushed === false ? "worktrees.pushedNo" : "worktrees.unknown")}</TableCell>
           <TableCell>{size(entry.bytes)}{entry.error ? <span className="block text-xs text-fg-muted">{t("worktrees.measureFailed")}</span> : null}</TableCell>
           <TableCell>{formatTime(entry.modifiedAt)}</TableCell><TableCell>{bool(entry.dirty)}</TableCell><TableCell>{bool(entry.merged)}</TableCell>
-          <TableCell>{entry.active ? <span className="text-xs">{t("worktrees.active")}</span> : pending.has(entry.path) ? <span className="text-xs">{t("worktrees.pending")}</span> : access?.canManage ? <Button variant="outline" size="sm" className={CONTROL} disabled={action.busy} data-delete-worktree onClick={() => ask([entry])}>{t("worktrees.remove")}</Button> : null}</TableCell>
+          <TableCell>{entry.active ? <span className="text-xs">{t("worktrees.active")}</span> : pending.has(entry.path) ? <span className="text-xs">{t("worktrees.pending")}</span> : access?.canManage && deletable(entry) ? <Button variant="outline" size="sm" className={CONTROL} disabled={action.busy} data-delete-worktree onClick={() => ask([entry])}>{t("worktrees.remove")}</Button> : null}</TableCell>
         </ResponsiveTableRow>)}</TableBody></ResponsiveTable>
       </section>)}
       <CleanupSettings key={JSON.stringify(report.cleanup)} initial={report.cleanup} busy={action.busy} onSave={cleanup => void action.run(async () => {
