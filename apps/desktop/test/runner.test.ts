@@ -2774,13 +2774,13 @@ describe("cross-review on another vendor", () => {
     const stepPrompt = { step: "dispatch" as const, version: 2, text: "On {task.id} ({task.title}) in {service}, branch {branch}. Keep {unknown} and {task.x}." };
     const text = buildPrompt({ ...base, stepPrompt });
     assert.match(text, /On T-1 \(Add refunds\) in demo, branch ai\/T-1\. Keep \{unknown\} and \{task\.x\}\./);
-    for (const role of ["implement", "review"] as const) {
-      const layers = promptPreview({ role, project: "demo", task: { id: "T-1", title: "Add refunds", note: "Half done." }, branch: "ai/T-1", step: stepPrompt })!;
+    for (const role of ["implement", "review"] as const) for (const agentKind of ["codex", "claude", "gemini"] as const) {
+      const layers = promptPreview({ role, agentKind, project: "demo", task: { id: "T-1", title: "Add refunds", note: "Half done." }, branch: "ai/T-1", step: stepPrompt })!;
       // The repo's own files and the admin's words are the two layers the page cannot know: the run here has none.
       const joined = layers.filter((l) => l.text).map((l) => l.text).join("\n\n");
-      assert.equal(joined, buildPrompt({ ...base, role, stepPrompt }), `${role}: the preview is what the agent is told`);
+      assert.equal(joined, buildPrompt({ ...base, role, agentKind, stepPrompt }), `${role}/${agentKind}: the preview is what the agent is told`);
     }
-    assert.deepEqual(promptPreview({ role: "judge", project: "demo", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
+    assert.deepEqual(promptPreview({ role: "judge", agentKind: "codex", project: "demo", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
   });
 
   it("gives a flow task's run the prompt of its step, and goes on without it when the hub cannot say (roadmap 72i)", async () => {

@@ -2537,6 +2537,10 @@ async function main() {
         await tab.click('[data-pipeline-tab="prompt"]');
         await tab.click('[data-prompt-role="implement"]');
         await tab.waitFor("the roles, the layers and the final prompt", () => document.querySelectorAll("[data-prompt-role]").length === 6 && document.querySelectorAll("[data-prompt-layer]").length === 7 && !!document.querySelector("[data-prompt-final-text]"));
+        expect(await tab.eval(() => !document.querySelector("[data-prompt-final-text]").textContent.includes("Follow AGENTS.md")), "Codex preview omits AGENTS.md reminder");
+        await tab.eval(() => { const picker = document.querySelector("[data-prompt-agent-kind]"); picker.value = "gemini"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+        await tab.waitFor("Gemini preview reads AGENTS.md", () => document.querySelector("[data-prompt-final-text]")?.textContent.includes("Follow AGENTS.md"));
+        await tab.eval(() => { const picker = document.querySelector("[data-prompt-agent-kind]"); picker.value = "codex"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
         await tab.waitFor("the prompt tab", () => !!document.querySelector('[data-step-prompt="spec"] [data-step-prompt-text]') && document.querySelector('[data-step-prompt-unsaved]')?.getAttribute("data-step-prompt-unsaved") === "0");
         await tab.click("[data-step-prompt-text]");
         await tab.type("Nháp sẽ bị huỷ.");

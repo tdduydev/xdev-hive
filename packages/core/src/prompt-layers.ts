@@ -96,6 +96,8 @@ export function artifactLines(taskId: string, role: AgentRole): string[] {
 
 export interface PromptPreviewInput {
   role: PromptRole;
+  /** CLI kind selected for this sample; it controls the same frame condition as the runner. */
+  agentKind: string;
   project: string;
   task: { id: string; title: string; note: string | null };
   branch: string;
@@ -122,7 +124,7 @@ export function promptPreview(i: PromptPreviewInput): PromptLayer[] | null {
   const vars: StepPromptVars = { taskId: i.task.id, taskTitle: i.task.title, service: i.project, branch: i.branch };
   const block = stepPromptBlock(i.step, vars);
   return [
-    { id: "frame", text: frameLines({ project: i.project, taskId: i.task.id, title: i.task.title, role, worktree: "<working copy>", branch: i.branch, baseSha: "<base commit>" }).join("\n") },
+    { id: "frame", text: frameLines({ project: i.project, taskId: i.task.id, title: i.task.title, role, worktree: "<working copy>", branch: i.branch, baseSha: "<base commit>", agentKind: i.agentKind }).join("\n") },
     { id: "repo", text: null },
     { id: "artifacts", text: artifactLines(i.task.id, role).join("\n") },
     { id: "task", text: i.task.note ? ["Latest note on the task:", i.task.note].join("\n") : "" },

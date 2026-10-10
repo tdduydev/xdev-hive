@@ -130,13 +130,13 @@ describe("the layers of a run's prompt", () => {
     assert.ok(block && "lines" in block && block.lines[2]!.length === 3000);
   });
   it("lists the layers in the runner's order, with the step's own only where a run reads it", () => {
-    const layers = promptPreview({ role: "implement", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "ai/T-1", step: { step: "spec", version: 1, text: "Hi {task.id}" } })!;
+    const layers = promptPreview({ role: "implement", agentKind: "codex", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "ai/T-1", step: { step: "spec", version: 1, text: "Hi {task.id}" } })!;
     assert.deepEqual(layers.map((l) => l.id), [...PROMPT_LAYERS]);
     assert.ok(layers.find((l) => l.id === "step")!.text!.includes("Hi T-1"));
     assert.equal(layers.find((l) => l.id === "repo")!.text, null);
-    const held = promptPreview({ role: "review", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: { step: "review", version: 1, text: `ghp_${"a".repeat(36)}` } })!.find((l) => l.id === "step")!;
+    const held = promptPreview({ role: "review", agentKind: "gemini", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: { step: "review", version: 1, text: `ghp_${"a".repeat(36)}` } })!.find((l) => l.id === "step")!;
     assert.ok(held.skipped && held.text === "" && !JSON.stringify(held).includes("ghp_a"));
-    assert.equal(promptPreview({ role: "research", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
+    assert.equal(promptPreview({ role: "research", agentKind: "codex", project: "app", task: { id: "T-1", title: "x", note: null }, branch: "b", step: null }), null);
     assert.deepEqual(PROMPT_ROLES.flatMap((r) => r.steps).sort(), ["dispatch", "fix", "merge", "plan", "release", "review", "spec", "tasks", "test"], "every step belongs to one role");
   });
 });
