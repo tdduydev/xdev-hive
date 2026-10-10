@@ -293,6 +293,68 @@ describe("mcp tools", () => {
     assert.match(text(missing), /^not_found: Task T-9/);
   });
 
+  it("leaves done tasks, the project and empty fields out of the board unless asked (roadmap 80a)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    for (const id of ["T-1", "T-2", "T-3"]) await hive.call("tasks.create", { id, project: "app", title: id }, admin);
+    await hive.call("tasks.update", { id: "T-1", status: "done", note: "Xong: đã merge" }, admin);
+    await hive.call("tasks.update", { id: "T-2", status: "review", note: "Chờ review" }, admin);
+    const claude = await connect(hive, "claude@duy");
+    const list = async (args: Record<string, unknown>) =>
+      JSON.parse(text(await claude.callTool({ name: "task_list", arguments: args }))) as Array<Record<string, unknown>>;
+
+    const open = await list({});
+    assert.deepEqual(open.map((t) => t.id).sort(), ["T-2", "T-3"], "done is left out by default");
+    const t3 = open.find((t) => t.id === "T-3")!;
+    for (const key of ["project", "owner", "leaseUntil", "note", "platforms", "dependsOn", "waitingOn", "kind", "agent"]) assert.ok(!(key in t3), key);
+    assert.equal(open.find((t) => t.id === "T-2")!.note, "Chờ review", "an open task keeps its note");
+
+    const done = await list({ status: "done" });
+    assert.deepEqual(done.map((t) => [t.id, t.status, "note" in t]), [["T-1", "done", false]], "a done task comes without its note");
+    const all = await list({ includeDone: true });
+    assert.deepEqual(all.map((t) => t.id).sort(), ["T-1", "T-2", "T-3"]);
+    assert.ok(!("note" in all.find((t) => t.id === "T-1")!));
+
+    const full = await list({ full: true });
+    const whole = full.find((t) => t.id === "T-1")!;
+    assert.deepEqual([full.length, whole.project, whole.note, whole.owner], [3, "app", "Xong: đã merge", null], "full: the hub's record unchanged");
+  });
+
+  it("gives a run's log tail and patch summary, and everything with full (roadmap 80b)", async (t) => {
+    const hive = new SqliteHive(":memory:");
+    const mbp = { name: "runner.duy-mbp@duy-mbp", role: "agent" as const };
+    await hive.call("machines.heartbeat", { machine: "duy-mbp", instance: "a1b2c3d4", projects: ["app"], acceptsRuns: true }, mbp);
+    const log = Array.from({ length: 1500 }, (_, i) => `▶ bước ${i}: đọc file và chạy test`).join("\n") + "\n✓ KẾT QUẢ: xong";
+    const hunk = (f: string) => `diff --git a/${f} b/${f}\n--- a/${f}\n+++ b/${f}\n@@ -1 +1 @@\n-${"cũ ".repeat(2000)}\n+${"mới ".repeat(2000)}\n`;
+    const patch = ["src/a.ts", "src/b.ts", "docs/c.md"].map(hunk).join("");
+    const at = "2026-09-29T10:00:00.000Z";
+    const runs = [
+      { runId: "R-big", project: "app", taskId: "T-1", taskTitle: "Big", role: "implement" as const, status: "succeeded" as const, profileId: "claude-1", summary: "Done", log, patch, createdAt: at },
+      { runId: "R-small", project: "app", taskId: "T-2", taskTitle: "Small", role: "review" as const, status: "succeeded" as const, profileId: "claude-1", summary: "OK", log: "▶ Read\n✓ ok", createdAt: at },
+    ];
+    await hive.call("runs.push", { machine: "duy-mbp", runs }, mbp);
+    const claude = await connect(hive, "claude-1.duy-mbp@chat-lan");
+    const get = async (runId: string, full?: boolean) =>
+      text(await claude.callTool({ name: "run_get", arguments: { machineId: mbp.name, runId, ...(full ? { full } : {}) } }));
+
+    const leanText = await get("R-big");
+    const lean = JSON.parse(leanText);
+    assert.ok(!("patch" in lean), "no patch by default");
+    assert.deepEqual([lean.patchLength, lean.patchFiles], [patch.length, ["src/a.ts", "src/b.ts", "docs/c.md"]]);
+    assert.equal(lean.logTruncated, true);
+    assert.equal(lean.logLength, log.length);
+    assert.ok(lean.log.length <= 8_000 && lean.log.startsWith("▶ bước"), "the tail starts on a whole line");
+    assert.ok(lean.log.endsWith("✓ KẾT QUẢ: xong"), "the end of the log is kept");
+
+    const small = JSON.parse(await get("R-small"));
+    assert.deepEqual([small.log, "logTruncated" in small, "patchLength" in small], ["▶ Read\n✓ ok", false, false]);
+
+    const fullText = await get("R-big", true);
+    const whole = JSON.parse(fullText);
+    assert.deepEqual([whole.patch, whole.log.length > lean.log.length, "logTruncated" in whole], [patch, true, false]);
+    t.diagnostic(`run_get: ${Buffer.byteLength(fullText)} B full, ${Buffer.byteLength(leanText)} B by default`);
+  });
+
   it("says whose task each one is, and keeps another machine's agent off it (roadmap 50)", async () => {
     const hive = new SqliteHive(":memory:");
     const admin = { name: "duy", role: "admin" as const };
