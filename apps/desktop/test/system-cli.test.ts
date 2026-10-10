@@ -35,7 +35,8 @@ const notRepo = () => false;
 
 describe("a CLI over a whole system (GROUP-cli)", () => {
   it("the common folder of the repos, but never a drive's root or the home folder", () => {
-    const home = path.join(path.sep, "Users", "duy");
+    // resolve, not join: commonParent resolves its input, which on Windows puts the drive in front.
+    const home = path.resolve(path.sep, "Users", "duy");
     assert.equal(commonParent([path.join(home, "Codes", "ehs", "his", "a"), path.join(home, "Codes", "ehs", "deploy", "b")], home), path.join(home, "Codes", "ehs"));
     assert.equal(commonParent([path.join(home, "a"), path.join(home, "b")], home), null, "only the home folder");
     assert.equal(commonParent([path.join(path.sep, "a"), path.join(path.sep, "b")], home), null, "only the root");
