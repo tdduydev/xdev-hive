@@ -77,15 +77,28 @@ export async function inspectWorktree(project: DesktopProject, item: { path: str
   const ref = remote ?? await gitAsync(project.repo, ["rev-parse", "--verify", `refs/heads/${target}^{commit}`]).catch(() => null);
   const targetRef = mergeRef === undefined ? ref : mergeRef;
   const merged = targetRef ? await landed(project.repo, head, targetRef) : null;
-  // A tracking ref can be stale after a failed push; ask the configured remote for this exact branch head.
-  const pushed = await gitAsync(project.repo, ["ls-remote", "--heads", pushRemote, `refs/heads/${item.branch}`], { GIT_TERMINAL_PROMPT: "0" }, 10_000)
-    .then(output => output.split("\n").some(line => line.split("\t")[0] === head && line.endsWith(`refs/heads/${item.branch}`)), () => null);
+  const pushed = await pushedTo(project.repo, pushRemote, item.branch, head);
   return {
     ...item, project: project.name, head, fingerprint: hash(JSON.stringify([dir, item.branch, head, status, modifiedMs])),
     bytes, modifiedAt: new Date(modifiedMs).toISOString(), dirty: !!status, merged, pushed, active,
     taskStatus: task?.status ?? null, taskUpdatedAt: task?.updatedAt ?? null,
     error: bytes === null ? "worktrees.measureFailed" : null,
   };
+}
+
+/**
+ * A tracking ref can be stale after a failed push, and ls-remote on the remote name reads its fetch URL, while git
+ * pushes to remote.<name>.pushurl (every one of them) when set. So ask each push URL for this exact branch head:
+ * true only when all have it, null when one cannot be reached.
+ */
+async function pushedTo(repo: string, remote: string, branch: string, head: string): Promise<boolean | null> {
+  const urls = await gitAsync(repo, ["remote", "get-url", "--push", "--all", remote])
+    .then(out => out.split("\n").map(u => u.trim()).filter(Boolean), () => []);
+  if (!urls.length) return null;
+  const found = await Promise.all(urls.map(url =>
+    gitAsync(repo, ["ls-remote", "--heads", url, `refs/heads/${branch}`], { GIT_TERMINAL_PROMPT: "0" }, 10_000)
+      .then(output => output.split("\n").some(line => line.split("\t")[0] === head && line.endsWith(`refs/heads/${branch}`)), () => null)));
+  return found.includes(null) ? null : found.every(Boolean);
 }
 
 /**
