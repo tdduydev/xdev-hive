@@ -56,7 +56,7 @@ import { ChatGrants } from "./grants.ts";
 import { TerminalHub, type TerminalRelay } from "./terminal.ts";
 import { TerminalRelayHub, type RelayTimings } from "./terminal-relay.ts";
 import type { TokenStore } from "./tokens.ts";
-import { LoginThrottle, type UserInfo, type UserStore } from "./users.ts";
+import { LoginThrottle, revokedText, type Revoked, type UserInfo, type UserStore } from "./users.ts";
 import type { ReleaseStore } from "./releases.ts";
 import type { AlertStore } from "./alerts.ts";
 import type { HubInfoSource } from "./hubinfo.ts";
@@ -927,9 +927,11 @@ export function createHubApp({
     if (method === "users.trash" && target.username === actor.account) throw new HiveError("bad_request", "Không tự xoá chính mình.", { key: "errors.trashSelf" });
     return () => {
       if (method === "users.purge") users.purge(id);
-      const updated = method === "users.trash" ? users.trash(id) : method === "users.restore" ? users.restore(id) : target;
+      let revoked: Revoked | undefined;
+      const updated = method === "users.trash" ? users.trash(id, (r) => (revoked = r)) : method === "users.restore" ? users.restore(id) : target;
       const kind = method === "users.trash" ? "Trashed" : method === "users.restore" ? "Restored" : "Purged";
-      hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
+      if (revoked) hive.audit(actor, method, target.username, `trashed · ${revokedText(revoked)}`, { key: "audit.userTrashedRevoked", vars: { ...revoked } });
+      else hive.audit(actor, method, target.username, kind.toLowerCase(), { key: `audit.user${kind}` });
       return method === "users.purge" ? { id, purged: true } : updated;
     };
   };
@@ -1167,15 +1169,16 @@ export function createHubApp({
           if (target.hubRole === "owner") assertMayGrant(actor, "owner");
           if (hubRole) assertMayGrant(actor, hubRole);
           if (typeof i.admin === "boolean" && i.admin && !target.admin) assertMayGrant(actor, "admin");
+          let revoked: Revoked | undefined;
           const updated = users.update(id, {
             displayName: typeof i.displayName === "string" ? i.displayName : undefined,
             admin: typeof i.admin === "boolean" ? i.admin : undefined,
             hubRole,
             disabled: typeof i.disabled === "boolean" ? i.disabled : undefined,
-          });
+          }, (r) => (revoked = r));
           const changes = [
             updated.hubRole !== target.hubRole ? `${target.hubRole} → ${updated.hubRole}` : "",
-            updated.disabled !== target.disabled ? (updated.disabled ? "khoá" : "mở khoá") : "",
+            updated.disabled !== target.disabled ? (updated.disabled ? `khoá · ${revokedText(revoked!)}` : "mở khoá") : "",
           ].filter(Boolean);
           // The admin page changes one thing at a time; the key names the first change.
           const key =
@@ -1183,10 +1186,11 @@ export function createHubApp({
               ? "audit.hubRole"
               : updated.disabled !== target.disabled
                 ? updated.disabled
-                  ? "audit.disabled"
+                  ? "audit.disabledRevoked"
                   : "audit.enabled"
                 : "audit.renamed";
-          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(key === "audit.hubRole" ? { vars: { from: target.hubRole, to: updated.hubRole } } : {}) });
+          const vars: Record<string, string | number> | undefined = key === "audit.hubRole" ? { from: target.hubRole, to: updated.hubRole } : key === "audit.disabledRevoked" ? { ...revoked! } : undefined;
+          hive.audit(actor, "users.update", updated.username, changes.join(", ") || "sửa tên", { key, ...(vars ? { vars } : {}) });
           res.json({ result: updated });
         } else if (method === "users.restore") {
           res.json({ result: userLifecycle(method, i, actor)() });

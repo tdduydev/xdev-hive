@@ -27,6 +27,7 @@ import {
   type Memory,
   type Method,
   type MethodInput,
+  type RunRecord,
   type Task,
 } from "@xdev-hive/core";
 import { z } from "zod";
@@ -110,6 +111,43 @@ const shortTask = (t: Task): Omit<Task, "agent" | "kind" | "size" | "risk" | "cl
     ...(t.note && t.note.length > NOTE_IN_LIST ? { note: t.note.slice(0, NOTE_IN_LIST), noteTruncated: true as const } : {}),
     ...(agent ? { agent: agent.profileId ? `${agent.machine}/${agent.profileId}` : agent.machine } : {}),
   };
+};
+/** Null, "", [] and {} tell an agent nothing a missing key does not, and on a 100-task board they add up (roadmap 80a). */
+const dropEmpty = (o: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) =>
+    v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0) &&
+    !(typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0)));
+/**
+ * Roadmap 80a: the board as task_list gives it by default. The project is the one asked for, so repeating it on every
+ * row only costs tokens; a done task's note is history for task_get or task_notes, not something to pick work by.
+ * Trimmed here rather than in tasks.list so the web and desktop keep the whole record, and so it works with any hub.
+ */
+const leanTask = (t: Task, project: string): Record<string, unknown> => {
+  const { project: own, note, noteTruncated, ...rest } = shortTask(t);
+  return dropEmpty({ ...rest, ...(own !== project ? { project: own } : {}), ...(t.status !== "done" ? { note, noteTruncated } : {}) });
+};
+
+/** Roadmap 80b: a log's end is where the result and the error are; 8 KB is a few hundred lines. */
+const LOG_TAIL = 8_000;
+const PATCH_FILES = 50;
+/**
+ * A run as run_get gives it by default: the patch (up to 400 KB) replaced by its size and the files it touches, and
+ * only the end of the log. Done here, not in runs.get, because the web's run page shows the whole patch and log.
+ */
+const leanRun = (r: RunRecord): Record<string, unknown> => {
+  const { log, patch, ...rest } = r;
+  const out: Record<string, unknown> = { ...rest };
+  if (log !== undefined && log.length > LOG_TAIL) {
+    const tail = log.slice(-LOG_TAIL);
+    // Start on a whole line, so the first thing the agent reads is not half a word.
+    const nl = tail.indexOf("\n");
+    Object.assign(out, { log: nl >= 0 && nl < 500 ? tail.slice(nl + 1) : tail, logTruncated: true, logLength: log.length });
+  } else if (log !== undefined) out.log = log;
+  if (patch) {
+    const files = [...patch.matchAll(/^diff --git a\/(.+?) b\//gm)].map((m) => m[1]!);
+    Object.assign(out, { patchLength: patch.length, patchFiles: files.slice(0, PATCH_FILES), ...(files.length > PATCH_FILES ? { patchFileCount: files.length } : {}) });
+  }
+  return out;
 };
 // Roadmap 37: the hub-wide leader works over every project at once, so nothing can be guessed from "the chat's project".
 const LEADER_HUB_INSTRUCTIONS = `
@@ -460,14 +498,23 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
         "List tasks on the shared board for a project, optionally filtered by status. dependsOn: tasks that must be done first; waitingOn: those still open. " +
         "agent: the agent the task is for, as machine/plan — the hub starts it there by itself, and nobody else takes it. " +
         `The whole board is long: for what to work on next use task_next, and for one part of it status ("todo", "doing", "review"). ` +
-        `Each note is cut to ${NOTE_IN_LIST} characters (noteTruncated: true when it was): task_get reads one task with its whole note, full: true the whole board with every note.`,
-      inputSchema: { project, status: z.enum(TASK_STATUSES).optional(), full: z.boolean().optional().describe("Whole notes, not cut") },
+        `Done tasks are left out unless you ask: status "done", or includeDone: true; they come without a note. Rows leave out project and empty fields. ` +
+        `Each note is cut to ${NOTE_IN_LIST} characters (noteTruncated: true when it was): task_get reads one task with its whole note, full: true the whole board (done included) with every field and note.`,
+      inputSchema: {
+        project,
+        status: z.enum(TASK_STATUSES).optional(),
+        includeDone: z.boolean().optional().describe("Also list done tasks"),
+        full: z.boolean().optional().describe("Every task and field as the hub has it, whole notes"),
+      },
       annotations: readOnly,
     },
-    withProject(async ({ project: p, status, full }) => {
+    withProject(async ({ project: p, status, includeDone, full }) => {
       try {
         const tasks = await call("tasks.list", { project: p, status }, actor);
-        return json(full ? tasks : tasks.map(shortTask));
+        if (full) return json(tasks);
+        // Most of a long-lived board is done (66 of 109 measured), and an agent picks work from what is open.
+        const shown = status || includeDone ? tasks : tasks.filter((t) => t.status !== "done");
+        return json(shown.map((t) => leanTask(t, p)));
       } catch (err) {
         return failed(err);
       }
@@ -554,11 +601,20 @@ export function createHiveMcpServer(backend: HiveBackend, actor: Actor, opts: Hi
       title: "Read an agent run",
       description:
         "One run from run_list (machineId and runId as listed) with the end of its log: the agent's steps and result, secrets hidden. " +
-        "An old run keeps its summary for good but not its log: logPrunedAt says when log and patch were dropped (empty log, patch null).",
-      inputSchema: { machineId: z.string(), runId: z.string() },
+        `By default the log is its last ${LOG_TAIL / 1000} KB (logTruncated: true and logLength when cut) and the patch is left out: patchLength and patchFiles say what it changed. ` +
+        "full: true gives the whole stored log and the patch. " +
+        "An old run keeps its summary for good but not its log: logPrunedAt says when log and patch were dropped (empty log, no patch).",
+      inputSchema: { machineId: z.string(), runId: z.string(), full: z.boolean().optional().describe("The whole stored log and the patch") },
       annotations: readOnly,
     },
-    async ({ machineId, runId }) => run("runs.get", { machineId, runId }),
+    async ({ machineId, runId, full }) => {
+      try {
+        const got = await call("runs.get", { machineId, runId }, actor);
+        return json(full || !got ? got : leanRun(got));
+      } catch (err) {
+        return failed(err);
+      }
+    },
   );
 
   server.registerTool(

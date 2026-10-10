@@ -151,6 +151,22 @@ function installPreCommit(repo: string, apply: boolean): FileAction {
   return writeIfChanged(file, PRE_COMMIT, ".githooks/pre-commit", 0o755, apply);
 }
 
+/**
+ * Whether a core.hooksPath value already points at this repo's .githooks. Some machines set it
+ * as an absolute path (or "./.githooks"), which is the same folder; treating that as a foreign
+ * hook kept the agents item from ever showing as installed.
+ */
+export function isRepoHooksPath(repo: string, value: string, platform: NodeJS.Platform = process.platform): boolean {
+  if (!value) return false;
+  const expanded = value === "~" || value.startsWith("~/") ? path.join(os.homedir(), value.slice(1)) : value;
+  const norm = (p: string) => {
+    const out = path.resolve(p);
+    // Windows and default macOS file systems ignore case, so "/Users/Admin" is the same folder.
+    return platform === "win32" || platform === "darwin" ? out.toLowerCase() : out;
+  };
+  return norm(path.resolve(repo, expanded)) === norm(path.join(repo, ".githooks"));
+}
+
 function configureHooksPath(repo: string, apply: boolean): FileAction {
   const label = "git config core.hooksPath";
   if (!isGitRepo(repo)) return { file: label, action: "skipped", note: tr("fileNote.notGitRepo") };
@@ -160,7 +176,7 @@ function configureHooksPath(repo: string, apply: boolean): FileAction {
   } catch {
     // not set
   }
-  if (current === ".githooks") return { file: label, action: "unchanged" };
+  if (isRepoHooksPath(repo, current)) return { file: label, action: "unchanged" };
   if (current) return { file: label, action: "skipped", note: tr("fileNote.hooksPathSet", { current }) };
   if (apply) git(repo, ["config", "core.hooksPath", ".githooks"]);
   return { file: label, action: "updated", note: ".githooks" };
