@@ -1,7 +1,7 @@
 // Máy & agent (72g): the pieces of the design's machine card (system block, plan tile with its quota rings).
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
-import type { MachineSystem, ReportedProfile } from "@xdev-hive/core";
+import type { MachineDisk, MachineSystem, ReportedProfile } from "@xdev-hive/core";
 import { cn } from "cn";
 import { cosmicAssets } from "#ui/assets/cosmic.ts";
 import { useI18n, useT } from "#ui/i18n/index.tsx";
@@ -18,16 +18,27 @@ const OS_TAG: Record<MachineSystem["os"], { label: string; bg: string; fg: strin
 const level = (p: number) => (p >= 90 ? "var(--accent-red)" : p >= 75 ? "var(--accent-amber)" : "var(--accent-green)");
 const numColor = (p: number) => (p >= 90 ? "var(--num-danger)" : p >= 75 ? "var(--num-warn)" : "var(--text-strong)");
 
+/** At or above this a disk row turns to a warning (spec 79o), the same line the gauges turn red at. */
+export const DISK_WARN = 90;
+
+/** The machine's disks in the order it listed them, the worktree disk first; empty for an app older than 79o. */
+export function machineDisks(s: MachineSystem): MachineDisk[] {
+  const list = (s.disks ?? []).filter((d) => d.totalBytes > 0).slice(0, 16);
+  return [...list.filter((d) => d.worktree), ...list.filter((d) => !d.worktree)];
+}
+
 /** The OS, hardware and CPU/RAM/disk of the machine, from what the machine reported (never filled in). */
 export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
   const t = useT();
   const os = OS_TAG[s.os];
+  const disks = machineDisks(s);
   const bytes = (n: number) => `${Number((n / (n >= 1e12 ? 1e12 : 1e9)).toFixed(1))} ${n >= 1e12 ? "TB" : "GB"}`;
   const uptime = s.uptimeSeconds == null ? s.uptime : t(s.uptimeSeconds >= 86400 ? "agentMap.uptimeDays" : s.uptimeSeconds >= 3600 ? "agentMap.uptimeHours" : "agentMap.uptimeMinutes", { count: Math.floor(s.uptimeSeconds / (s.uptimeSeconds >= 86400 ? 86400 : s.uptimeSeconds >= 3600 ? 3600 : 60)) });
   const rows = [
     { label: t("agentMap.cpu"), ...s.cpu, detail: s.cpu?.cores == null ? s.cpu?.detail : t(s.cpu.load == null ? "agentMap.cpuCores" : "agentMap.cpuLoad", { count: s.cpu.cores, load: s.cpu.load?.toFixed(1) ?? "" }) },
     { label: t("agentMap.ram"), ...s.ram, detail: s.ram?.usedBytes == null || s.ram.totalBytes == null ? s.ram?.detail : `${Number((s.ram.usedBytes / (s.ram.totalBytes >= 1e12 ? 1e12 : 1e9)).toFixed(1))} / ${bytes(s.ram.totalBytes)}` },
-    { label: t("agentMap.disk"), ...s.disk, detail: s.disk?.freeBytes == null || s.disk.totalBytes == null ? s.disk?.detail : t("agentMap.diskFree", { free: bytes(s.disk.freeBytes), total: bytes(s.disk.totalBytes) }) },
+    // An app that lists every disk gets one row each below; only an older app's single disk stays a gauge here.
+    ...(disks.length ? [] : [{ label: t("agentMap.disk"), ...s.disk, detail: s.disk?.freeBytes == null || s.disk.totalBytes == null ? s.disk?.detail : t("agentMap.diskFree", { free: bytes(s.disk.freeBytes), total: bytes(s.disk.totalBytes) }) }]),
   ].filter((r): r is { label: string; percent: number; detail: string } => r.percent !== undefined);
   return (
     <div className="flex flex-col gap-3 rounded-[16px] bg-sunken p-[14px] shadow-[var(--ring-glass)]">
@@ -40,7 +51,7 @@ export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
         {uptime ? <span className="text-[11px]/4 font-semibold whitespace-nowrap text-[color:var(--text-faint)]">{uptime}</span> : null}
       </div>
       {rows.length ? (
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className={cn("grid gap-2.5", disks.length ? "grid-cols-2" : "grid-cols-3")}>
           {rows.map((r) => (
             <div key={r.label} className="flex min-w-0 flex-col gap-1.5">
               <div className="flex items-baseline gap-1.5">
@@ -49,6 +60,25 @@ export function MachineSystemBlock({ system: s }: { system: MachineSystem }) {
               </div>
               <div className="h-[5px] overflow-hidden rounded-full bg-[var(--track)]"><div className="h-full rounded-full" style={{ width: `${r.percent}%`, background: level(r.percent) }} /></div>
               <span title={r.detail} className="text-[12px]/[16px] font-medium text-fg-muted md:truncate md:text-[11px]/[15px]">{r.detail}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {disks.length ? (
+        <div className="flex flex-col gap-2" data-disks aria-label={t("agentMap.disks")}>
+          {disks.map((d) => (
+            <div key={d.mount} className="flex min-w-0 flex-col gap-1" data-disk={d.mount} data-disk-warn={d.percent >= DISK_WARN || undefined}>
+              <div className="flex min-w-0 items-baseline gap-1.5">
+                <span title={d.label ? `${d.mount} · ${d.label}` : d.mount} className="min-w-0 truncate text-[12px]/4 font-semibold">
+                  {d.mount}{d.label ? <span className="font-medium text-fg-muted"> · {d.label}</span> : null}
+                </span>
+                {d.worktree ? <span className="shrink-0 rounded-[5px] bg-[var(--track)] px-1.5 text-[10px]/4 font-semibold text-fg-muted" data-disk-worktree>{t("agentMap.diskWorktree")}</span> : null}
+                <span className="flex-1" />
+                <span className="shrink-0 text-[11px]/4 font-medium whitespace-nowrap text-fg-muted">{t("agentMap.diskUsed", { used: bytes(d.totalBytes - d.freeBytes), total: bytes(d.totalBytes) })}</span>
+                <span className="w-9 shrink-0 text-right text-[13px]/none font-bold" style={{ color: numColor(d.percent) }}>{d.percent}%</span>
+              </div>
+              <div className="h-[5px] overflow-hidden rounded-full bg-[var(--track)]"><div className="h-full rounded-full" style={{ width: `${d.percent}%`, background: level(d.percent) }} /></div>
+              {d.percent >= DISK_WARN ? <span className="text-[11px]/[15px] font-medium" style={{ color: "var(--num-danger)" }}>{t("agentMap.diskFull", { free: bytes(d.freeBytes) })}</span> : null}
             </div>
           ))}
         </div>

@@ -1684,7 +1684,7 @@ function registerIpc(): void {
   handle("hive:me", me);
   // The OS version is Electron's (macOS 15.4, a Windows build), not os.release(), which on a Mac is the Darwin kernel's.
   handle("desktop:appInfo", () => ({ version: app.getVersion(), platform: process.platform, osVersion: process.getSystemVersion() }));
-  handle("desktop:machineStats", () => machineStats(path.dirname(configPath())));
+  handle("desktop:machineStats", () => machineStats(path.dirname(configPath()), undefined, config.runner.worktreeRoot ?? path.join(path.dirname(configPath()), "worktrees")));
   handle("desktop:hubStatus", () => ({ mode: config.mode, url: config.hub.url, ...runner.hubState() }));
   handle("desktop:updateStatus", () => ({ ...updater.status(), ...idleUpdate?.status() }));
   handle("desktop:installUpdate", () => installAndRestart());

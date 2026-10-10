@@ -946,7 +946,8 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     // Run trên máy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
     // Connected (roadmap 39d): Cài đặt máy is one line about the hub, the account and this machine, with no form.
     const pages = [
-      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="app"] && [data-card="hub"]'],
+      // 79o: every disk of the machine running the smoke, one row each.
+      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="resources"] [data-disk] && [data-card="app"] && [data-card="hub"]'],
       // 72e: the page opens on its list; a run's detail waits for a click (runs-list above checks it).
       ["runs", "runs", '[data-run-status="succeeded"]'],
       ["agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
