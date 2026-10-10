@@ -14,8 +14,9 @@ export async function allInboxSources(client: Pick<HiveClient, "call">, filter: 
     }
   }
   const [tasks, runs] = await Promise.all([read("tasks"), includeRuns ? read("runs") : Promise.resolve({ runs: [] })]);
-  // Review tasks bring their newest run (for Merge MR); a waiting run can be the same record.
-  const byId = new Map([...tasks.runs, ...runs.runs].map((r) => [`${r.machineId}/${r.runId}`, r]));
+  // Review tasks bring their newest run (for Merge MR); a waiting run can be the same record. Without hub runs a merge
+  // has no machine to go to, so those runs stay out too.
+  const byId = new Map([...(includeRuns ? tasks.runs : []), ...runs.runs].map((r) => [`${r.machineId}/${r.runId}`, r]));
   return { tasks: tasks.tasks, runs: [...byId.values()] };
 }
 
