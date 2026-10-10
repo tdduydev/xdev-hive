@@ -38,8 +38,8 @@ describe("setting a system's group up on a machine", () => {
       ["infa", path.join("deploy", "infa"), "new"],
       ["svc-core", path.join("his", "backend", "svc-core"), "new"],
       ["svc-core-old", path.join("his", "backend", "svc-core-old"), "new"],
-      ["svc-portal", path.join("his", "frontend", "svc-portal"), "new"],
       ["admin-portal-v2", path.join("his", "frontend", "admin-portal-v2"), "new"],
+      ["svc-portal", path.join("his", "frontend", "svc-portal"), "new"],
       ["ui-component", path.join("his", "frontend", "ui-component"), "new"],
       ["login-theme", path.join("iam", "login-theme"), "new"],
     ]);
@@ -135,7 +135,7 @@ describe("syncing a system with its group", () => {
     const repos = [...customer.map((m) => repo(m.pathWithNamespace)), repo("customer-ai/his/backend/his-gateway")];
     const projects: DesktopProject[] = [{ name: "svc-core", repo: "/nowhere", gitlabProject: "customer-ai/his/backend/svc-core" }];
     const linked = linkSource(system(["svc-core", "infa", "legacy"], null), "gitlab", `https://${HOST}`, "customer-ai", repos, projects, () => null, [], NOW);
-    assert.deepEqual(linked.matched, ["svc-core", "infa"]);
+    assert.deepEqual(linked.matched, ["infa", "svc-core"]);
     assert.deepEqual(linked.unmatched, ["legacy"]);
     assert.ok(linked.added.includes("his-gateway") && linked.added.includes("svc-portal"));
     assert.ok(linked.projects.includes("legacy"), "an unmatched project stays in the system");
