@@ -421,6 +421,24 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **79m. auto-merge-on-approve**: task ngoài flow có review approve và CI xanh thì tự merge, rồi done.
   - [ ] **79n. auto-rollout**: bản app mới nhận đủ file thì tự thành bản đích (phần trăm, cài khi rảnh).
   - [ ] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
+- **80. tokens-plugins-path** (hỏi 10/10: "nghiên cứu cách tối ưu token tối đa nhất", "thêm sơ đồ kiểu code-modernization trong client vs admin", "với kho plugin thêm này vô đi https://github.com/anthropics/claude-plugins-official"). Spec: [specs/80-tokens-plugins-path.md](specs/80-tokens-plugins-path.md). Người dùng chọn 10/10: token thì nghiên cứu + spec + task; kho plugin duyệt trong danh mục tool; sơ đồ là đường đi của task.
+  - [ ] **80a. task-list-lean**: `task_list` mặc định bỏ task done, `project` và trường rỗng; note chỉ cho task chưa xong.
+  - [ ] **80b. run-get-lean**: `run_get` mặc định không kèm patch, log chỉ lấy đuôi; `full:true` để lấy hết.
+  - [ ] **80c. doc-lean**: `doc_list` gọn; `doc_get` có `section` và `maxChars`.
+  - [ ] **80d. run-toolset**: run task chỉ nhận tool cần dùng; bỏ `$schema`, rút mô tả tool dài.
+  - [ ] **80e. prompt-dedupe**: bỏ giao thức lặp trong prompt run, bỏ "đọc AGENTS.md trước", bỏ skill chỉ cho hub.
+  - [ ] **80f. claude-settings-isolation**: run Claude không nạp plugin và skill của người dùng; phân loại bằng Codex tắt MCP và plugin.
+  - [ ] **80g. leader-cache**: leader hub lấy project qua tool thay vì system prompt; lịch sử chat ngắn khi mở phiên mới.
+  - [ ] **80h. task-token-budget**: trần token hoặc USD theo task, vượt thì dừng run.
+  - [ ] **80i. plugin-source-model**: trường `pluginSource`, ghim SHA 40 ký tự, plugin chỉ cho Claude.
+  - [ ] **80j. plugin-index**: hub lưu kho được phép và bản cache `marketplace.json` theo commit.
+  - [ ] **80k. plugin-browser**: khu Kho plugin trong trang Tool: duyệt, tìm, lọc, chi tiết, ghim.
+  - [ ] **80l. plugin-install**: app ghi kho cục bộ `xdev-hive`, cài, kiểm, cập nhật plugin đã ghim.
+  - [ ] **80m. superpowers-repin**: ghim superpowers theo SHA thật (6.4.1).
+  - [ ] **80n. task-path-model**: method `tasks.path` tính các bước của task từ audit, run, gate.
+  - [ ] **80o. task-path-web**: component `TaskPath` trong chi tiết task trên hub, có bản mobile.
+  - [ ] **80p. task-path-pipeline**: thanh đếm task theo bước trên Pipeline cho mọi task.
+  - [ ] **80q. task-path-desktop**: bản gọn trong chi tiết run và Inspector trên desktop.
 
 ## Sửa lỗi
 
