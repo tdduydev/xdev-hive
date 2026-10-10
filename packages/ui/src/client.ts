@@ -50,7 +50,8 @@ export interface HiveClient {
   /** Hub only: API tokens for people and agents. */
   tokens?: {
     list(): Promise<TokenInfo[]>;
-    create(name: string, role: Role): Promise<{ token: string; info: TokenInfo }>;
+    /** releaseUpload: a hub admin's token for release.mjs, which uploads desktop builds only (spec 79a). */
+    create(name: string, role: Role, opts?: { releaseUpload?: boolean }): Promise<{ token: string; info: TokenInfo }>;
     revoke(id: string): Promise<void>;
   };
   /** Hub, signed in with an account: the person's own password. */
@@ -225,7 +226,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
     me: () => request<Me>("/api/me"),
     tokens: {
       list: () => rpc<TokenInfo[]>("tokens.list"),
-      create: (name, role) => rpc<{ token: string; info: TokenInfo }>("tokens.create", { name, role }),
+      create: (name, role, opts) => rpc<{ token: string; info: TokenInfo }>("tokens.create", { name, role, ...(opts?.releaseUpload ? { releaseUpload: true } : {}) }),
       revoke: async (id) => {
         await rpc("tokens.revoke", { id });
       },

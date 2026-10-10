@@ -11,7 +11,9 @@
 // The builds also go to the hub, which hands them to machines as updates (roadmap 22i; admins pick the version on
 // Phiên bản app), by one of:
 //   HIVE_RELEASE_SSH=hub-server (the hub's host; [HIVE_RELEASE_SSH_CONTAINER], default xdev-hive-hub-1): over SSH, no token
-//   HIVE_RELEASE_HUB=https://hive.example and HIVE_RELEASE_TOKEN=<a hub admin's token>: the HTTP upload
+//   HIVE_RELEASE_HUB=https://hive.example and HIVE_RELEASE_TOKEN=<a release token>: the HTTP upload. Since spec 79a no
+//     admin token works here: a hub admin makes one on the Tokens page ("tải bản app") or with
+//     `npm run token -w @xdev-hive/web -- create <name> <admin username> release`; it uploads builds and notes only.
 // Either may sit in ~/.config/xdev-hive/release.env (KEY=VALUE, chmod 600) instead of the shell.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";

@@ -87,7 +87,13 @@ async function runOnce(out) {
     process.exit(1);
   }
 
-  const seeded = await seed(base, admin);
+  // The first admin's temporary password, as the hub prints it at its first start (spec 79a: the admin signs in).
+  const adminPassword = /Temporary password[^\n]*\n\s*\n\s*(\S+)/.exec(hubLog)?.[1];
+  if (!adminPassword) {
+    console.error(`the hub printed no temporary password for the admin:\n${hubLog}`);
+    process.exit(1);
+  }
+  const seeded = await seed(base, admin, adminPassword);
   const terminal = !only || only.split(",").some(step => step.startsWith("terminal-")) ? await terminalFixture() : null;
   const resultFile = path.join(out, "result.json");
   rmSync(resultFile, { force: true });

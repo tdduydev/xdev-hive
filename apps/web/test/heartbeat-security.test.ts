@@ -5,6 +5,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const now = "2026-10-07T06:00:00.000Z";
 const until = "2026-10-07T07:00:00.000Z";
@@ -26,14 +27,14 @@ function setup() {
   const stranger = tokens.create("stranger-device", "agent", other.id).token;
   const human = tokens.create("owner-web", "member", owner.id).token;
   const otherHuman = tokens.create("other-web", "member", other.id).token;
-  const admin = tokens.create("hub-admin", "admin").token;
+  const admin = adminSession(users, "hub-admin");
   const legacy = tokens.create("legacy-agent", "agent").token;
   const app = createHubApp({ hive, tokens, users });
   // Exercise the real Bearer authentication and RPC handler without a socket or a live hub.
   const router = (app as unknown as { router: { stack: Array<{ route?: { path: string; stack: Array<{ handle: RequestHandler }> } }> } }).router;
   const route = router.stack.find((layer) => layer.route?.path === "/api/rpc")!.route!;
   const rpc = async (credential: string, method: string, input: unknown, label?: string) => {
-    const headers: Record<string, string> = { authorization: `Bearer ${credential}`, ...(label ? { "x-hive-agent": label } : {}) };
+    const headers: Record<string, string> = { ...authHeaders(credential), ...(label ? { "x-hive-agent": label } : {}) };
     const req = { method: "POST", body: { method, input }, get: (key: string) => headers[key] };
     let status = 200, body: any, authenticated = false;
     const res = { locals: {}, status: (n: number) => { status = n; return res; }, json: (v: unknown) => { body = v; return res; } };

@@ -6,6 +6,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp, WEB_RPC } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { LoginThrottle, UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 let base = "";
 let close: (() => void) | undefined;
@@ -41,7 +42,7 @@ type Answer = { status: number; body: { result?: any; error?: { code: string; me
 async function agent(method: string, input: unknown): Promise<Answer> {
   const res = await fetch(`${base}/api/rpc`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}`, "x-hive-agent": "claude-code", "x-hive-source": JSON.stringify({ via: "mcp" }) },
+    headers: { "content-type": "application/json", ...authHeaders(adminToken), "x-hive-agent": "claude-code", "x-hive-source": JSON.stringify({ via: "mcp" }) },
     body: JSON.stringify({ method, input }),
   });
   return { status: res.status, body: await res.json() as Answer["body"] };
@@ -70,26 +71,37 @@ describe("destructive calls of agents on the hub (ADM)", () => {
     for (const m of DESTRUCTIVE_HUB_RPCS) assert.ok(m in WEB_RPC, `${m} is no hub RPC`);
   });
 
-  it("holds an agent's projects.delete on an admin token until a person approves it", async () => {
-    const held = await agent("projects.delete", { project: "customer", confirm: "customer" });
+  // Spec 79a: the incident's machine token is an owner's, yet it acts as a member, so projects.delete is not within
+  // its reach at all: refused outright, no proposal for a person to approve by mistake.
+  it("refuses an agent's projects.delete on an admin's machine token, with no proposal", async () => {
+    const before = hive.db.prepare("SELECT COUNT(*) AS n FROM proposals").get() as { n: number };
+    const refused = await agent("projects.delete", { project: "customer", confirm: "customer" });
+    assert.equal(refused.status, 403);
+    assert.equal((hive.db.prepare("SELECT COUNT(*) AS n FROM proposals").get() as { n: number }).n, before.n);
+    const rpc = await person();
+    assert.equal((await rpc("tasks.list", { project: "customer" })).body.result.length, 1, "nothing deleted");
+  });
+
+  it("holds an agent's docs.remove until a person approves it", async () => {
+    const rpc = await person();
+    assert.equal((await rpc("docs.save", { key: "project/scratch/old", content: "# old" })).status, 200);
+    const held = await agent("docs.remove", { key: "project/scratch/old" });
     assert.equal(held.status, 202);
     assert.equal(held.body.error?.code, "pending_approval");
     assert.equal(held.body.error?.key, "errors.pendingApproval");
     const id = Number(held.body.error?.vars?.id);
     assert.match(held.body.error!.message, new RegExp(`đã gửi đề xuất #${id}, chờ duyệt`));
-
-    const rpc = await person();
-    assert.equal((await rpc("tasks.list", { project: "customer" })).body.result.length, 1, "nothing deleted");
+    assert.equal((await rpc("docs.get", { key: "project/scratch/old" })).status, 200, "nothing removed yet");
     const approved = await rpc("proposals.approve", { id });
     assert.equal(approved.body.result?.status, "approved", JSON.stringify(approved.body));
-    assert.deepEqual((await rpc("tasks.list", { project: "customer" })).body.result, []);
-    const line = (await rpc("admin.audit", {})).body.result.find((a: { action: string }) => a.action === "projects.delete");
+    const line = (await rpc("admin.audit", {})).body.result.find((a: { action: string }) => a.action === "docs.remove");
     assert.equal(line.actor, "boss");
     assert.equal(line.agent, "claude-code@mac-mini-1", "the incident's session name");
   });
 
-  it("holds an agent's token revoke and runs it once approved", async () => {
-    const victim = tokens.create("ci", "agent", null);
+  it("holds an agent's revoke of its owner's token and runs it once approved", async () => {
+    const owner = users.list().find((u) => u.username === "boss")!;
+    const victim = tokens.create("ci", "agent", owner.id);
     const held = await agent("tokens.revoke", { id: victim.info.id });
     assert.equal(held.status, 202);
     assert.ok(tokens.verify(victim.token), "still valid while it waits");
@@ -102,12 +114,18 @@ describe("destructive calls of agents on the hub (ADM)", () => {
     assert.match(line.agent ?? "", /^claude-code@/);
   });
 
+  it("refuses an agent on an admin's token the revoke of someone else's token", async () => {
+    const other = tokens.create("ci-other", "agent", null);
+    assert.equal((await agent("tokens.revoke", { id: other.info.id })).status, 403);
+    assert.ok(tokens.verify(other.token));
+  });
+
   it("still refuses an agent what its token may not do, before any proposal", async () => {
     const before = hive.db.prepare("SELECT COUNT(*) AS n FROM proposals").get() as { n: number };
     const viewer = tokens.create("reader", "viewer", null).token;
     const res = await fetch(`${base}/api/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${viewer}`, "x-hive-agent": "claude" },
+      headers: { "content-type": "application/json", ...authHeaders(viewer), "x-hive-agent": "claude" },
       body: JSON.stringify({ method: "users.purge", input: { id: "nobody" } }),
     });
     assert.equal(res.status, 403);

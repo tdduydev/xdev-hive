@@ -1,14 +1,30 @@
 // What the e2e pages start from: people with their roles, pages to edit and draw, and work waiting for approval.
 const PASSWORD = "blue-comb-2026!";
 
-export async function seed(base, admin) {
+/** A credential's headers: the admin's page session ("hive_session=…", spec 79a) or a bearer token. */
+export const authHeaders = (credential) =>
+  credential.startsWith("hive_session=") ? { cookie: credential, "x-hive-csrf": "1" } : { authorization: `Bearer ${credential}` };
+
+/**
+ * adminPassword: the temporary password the hub printed for HIVE_ADMIN_USER. Since spec 79a no token administers the
+ * hub, so the seed signs the admin in like a person and hands the session on as `admin`; `machine` is that admin's
+ * desktop sign-in, for the calls a runner makes.
+ */
+export async function seed(base, bootstrap, adminPassword) {
   const rpc = async (token, method, input = {}) => {
-    const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ method, input }) });
+    const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ method, input }) });
     const j = await r.json();
     if (j.error) throw new Error(`seed ${method}: ${j.error.message}`);
     return j.result;
   };
   const post = (url, body, headers = {}) => fetch(`${base}${url}`, { method: "POST", headers: { "content-type": "application/json", "x-hive-csrf": "1", ...headers }, body: JSON.stringify(body) });
+  const firstLogin = await post("/api/login", { username: "duy", password: adminPassword });
+  if (!firstLogin.ok) throw new Error(`seed admin sign-in: ${firstLogin.status}`);
+  const adminChanged = await post("/api/password", { current: adminPassword, next: PASSWORD }, { cookie: firstLogin.headers.get("set-cookie").split(";")[0] });
+  if (!adminChanged.ok) throw new Error(`seed admin password: ${adminChanged.status}`);
+  const admin = adminChanged.headers.get("set-cookie").split(";")[0];
+  const machine = (await (await post("/api/device-token", { username: "duy", password: PASSWORD, name: "duy-e2e" })).json()).result.token;
+  if (!bootstrap) throw new Error("seed: the hub's bootstrap token is missing");
 
   const page = (key, title, content) => rpc(admin, "docs.save", { key, title, content, baseVersion: 0 });
   await page("project/demo/huong-dan", "Hướng dẫn", "# Hướng dẫn\n\nCài đặt bằng npm ci.\n");
@@ -65,5 +81,5 @@ export async function seed(base, admin) {
   });
   if (!asAgent.ok) throw new Error(`seed agent memory: ${asAgent.status}`);
   await rpc(admin, "memory.setCleanup", { project: "payment", enabled: true });
-  return { people, proposals, memory };
+  return { admin, adminPassword: PASSWORD, machine, people, proposals, memory };
 }

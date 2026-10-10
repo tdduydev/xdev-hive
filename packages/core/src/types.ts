@@ -48,6 +48,16 @@ export interface Actor {
   /** Verified MCP credential, including interactive sessions that have no assigned run. */
   mcpCredential?: boolean;
   /**
+   * Set only by the hub for a token a hub admin made to upload desktop builds (spec 79a), while its owner is still an
+   * admin: it reaches releases.list, releases.notes and the upload, nothing else of the hub's admin pages.
+   */
+  releaseUpload?: boolean;
+  /**
+   * Set only by the hub for a member token of a hub admin's account (spec 79a): the token is no hub admin, yet on the
+   * projects it keeps what its owner may do there, every permission, as any account's token keeps that account's grants.
+   */
+  allProjects?: boolean;
+  /**
    * Set only by the hub's cookie middleware: the id of the person's browser session (its stored hash, never the
    * cookie). A remote terminal opens for this alone (spec 69), not for any bearer, whatever its role.
    */

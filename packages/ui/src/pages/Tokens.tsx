@@ -16,8 +16,9 @@ export function TokensPage() {
   const t = useT();
   const tokens = client.tokens!;
   const hubAdmin = me.role === "admin" && !me.access;
-  // A person creates agent/viewer tokens for their own CI and scripts; machines get theirs at desktop sign-in.
-  const roles: Role[] = hubAdmin ? TOKEN_ROLES : ["agent", "viewer"];
+  // A person creates agent/viewer tokens for their own CI and scripts; machines get theirs at desktop sign-in. No token
+  // is admin (spec 79a): a hub admin may add a member token, or a release token for release.mjs.
+  const roles: Array<Role | "release"> = hubAdmin ? [...TOKEN_ROLES.filter((r) => r !== "admin"), "release"] : ["agent", "viewer"];
   const list = useQuery(() => tokens.list(), [tokens]);
   const owners = useQuery(async () => (hubAdmin && client.users ? await client.users.list() : []), [client, hubAdmin]);
   const ownerName = new Map((owners.data ?? []).map((u) => [u.id, u.username]));
@@ -29,7 +30,7 @@ export function TokensPage() {
     byToken.set(name, [...(byToken.get(name) ?? []), { machine: m.machine, online: m.online }]);
   }
   const [name, setName] = useState("");
-  const [role, setRole] = useState<Role>("agent");
+  const [role, setRole] = useState<Role | "release">("agent");
   const [created, setCreated] = useState<{ name: string; token: string } | null>(null);
   const action = useAction();
 
@@ -46,7 +47,7 @@ export function TokensPage() {
             onSubmit={(e) => {
               e.preventDefault();
               void action.run(async () => {
-                const res = await tokens.create(name.trim(), role);
+                const res = role === "release" ? await tokens.create(name.trim(), "viewer", { releaseUpload: true }) : await tokens.create(name.trim(), role);
                 setCreated({ name: res.info.name, token: res.token });
                 setName("");
                 list.reload();
@@ -60,10 +61,10 @@ export function TokensPage() {
               onChange={(e) => setName(e.target.value)}
               aria-label={t("tokens.name")}
             />
-            <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)} aria-label={t("tokens.role")}>
+            <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role | "release")} aria-label={t("tokens.role")}>
               {roles.map((r) => (
                 <NativeSelectOption key={r} value={r}>
-                  {t(`tokenRole.${r}`)}
+                  {r === "release" ? t("tokens.releaseRole") : t(`tokenRole.${r}`)}
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -115,11 +116,26 @@ export function TokensPage() {
                 <TableRow key={tok.id}>
                   <TableCell className="font-medium">{tok.name}</TableCell>
                   <TableCell>
-                    <Badge tone={STATUS_TONE[tok.role]}>{t(`role.${tok.role}`)}</Badge>
+                    <div className="flex flex-wrap items-center gap-1">
+                      {tok.releaseUpload ? (
+                        <Badge tone="running">{t("tokens.releaseBadge")}</Badge>
+                      ) : (
+                        // An admin token acts as a member (spec 79a): the badge says what it can do, not what was stored.
+                        <Badge tone={STATUS_TONE[tok.role === "admin" ? "member" : tok.role]}>{t(`role.${tok.role === "admin" ? "member" : tok.role}`)}</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   {hubAdmin ? (
                     <TableCell className="font-mono text-xs">
-                      {tok.ownerId ? `@${ownerName.get(tok.ownerId) ?? tok.ownerId}` : <span className="text-muted-foreground">{t("tokens.noOwner")}</span>}
+                      {tok.ownerId ? (
+                        `@${ownerName.get(tok.ownerId) ?? tok.ownerId}`
+                      ) : (
+                        <span className="flex flex-col items-start gap-1" data-token-ownerless>
+                          <span className="text-muted-foreground">{t("tokens.noOwner")}</span>
+                          <Badge tone="warn">{t("tokens.ownerlessBadge")}</Badge>
+                          <span className="font-sans text-muted-foreground">{t("tokens.ownerlessHint")}</span>
+                        </span>
+                      )}
                     </TableCell>
                   ) : null}
                   <TableCell>
