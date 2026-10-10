@@ -63,6 +63,27 @@ describe("docs", () => {
     assert.deepEqual(docs.map((d) => [d.key, d.version]), [["org/agent-protocol", 1]]);
   });
 
+  it("upgrades only the old task claim rule in an already seeded protocol", async () => {
+    const hive = new SqliteHive(":memory:");
+    hive.seed();
+    const current = (await hive.call("docs.get", { key: "org/agent-protocol" }, viewer))!;
+    const oldRule = "2. Chỉ làm task đã `task_claim` thành công. Làm trên branch/worktree riêng `ai/<task-id>`.";
+    const newRule = "2. Phiên tương tác/leader nhận task bằng `task_claim` trước khi làm; run được runner giao task sẵn. Làm trên branch/worktree riêng `ai/<task-id>`.";
+    await hive.call("docs.save", { key: current.key, content: current.content.replace(newRule, oldRule) + "\nLocal convention." }, admin);
+    hive.db.prepare("UPDATE hive_meta SET value = '2' WHERE key = 'seed_version'").run();
+    hive.seed();
+    hive.seed();
+    const upgraded = (await hive.call("docs.get", { key: current.key }, viewer))!;
+    assert.equal(upgraded.version, 3, "upgrade is applied once");
+    assert.match(upgraded.content, /run được runner giao task sẵn/);
+    assert.match(upgraded.content, /Local convention\./);
+
+    await hive.call("docs.save", { key: current.key, content: "Custom protocol" }, admin);
+    hive.db.prepare("UPDATE hive_meta SET value = '2' WHERE key = 'seed_version'").run();
+    hive.seed();
+    assert.equal((await hive.call("docs.get", { key: current.key }, viewer))!.content, "Custom protocol", "custom rules are not overwritten");
+  });
+
   it("gives a hub the chat leader's skill; a hub seeded before gets it once, and one removed stays removed", async () => {
     const hub = new SqliteHive(":memory:");
     hub.seed("hub", { hub: true });

@@ -4,7 +4,7 @@
 // prompt as a sample task would get it, built by the same code as the runner's (core/prompt-layers.ts).
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { PROMPT_LAYERS, PROMPT_ROLES, PROMPT_ROLES_WIRED, STEP_PROMPT_MAX, STEP_PROMPT_VARS, promptPreview, type PromptLayerId, type PromptRole, type SdlcGate } from "@xdev-hive/core";
+import { AGENT_KINDS, PROMPT_LAYERS, PROMPT_ROLES, PROMPT_ROLES_WIRED, STEP_PROMPT_MAX, STEP_PROMPT_VARS, promptPreview, type AgentKind, type PromptLayerId, type PromptRole, type SdlcGate } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { Tag } from "@xdev-hive/ui/components/ui/primitives";
@@ -32,6 +32,7 @@ export function PromptTab({ project }: { project: string }) {
   const action = useAction();
   const editable = can(project, "contextEdit");
   const [role, setRole] = useState<PromptRole>("implement");
+  const [agentKind, setAgentKind] = useState<AgentKind>("codex");
   const [stepOf, setStepOf] = useState<Partial<Record<PromptRole, SdlcGate>>>({});
   const [open, setOpen] = useState<Partial<Record<PromptLayerId, boolean>>>({ step: true });
   // A draft is kept per step, so going to another role and back does not lose what was typed.
@@ -72,7 +73,7 @@ export function PromptTab({ project }: { project: string }) {
     requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(at + v.length, at + v.length); });
   };
 
-  const layers = promptPreview({ role, project, task: sample, branch: `ai/${sample.id}`, step: step ? { step, version: saved?.version ?? 0, text: draft } : null });
+  const layers = promptPreview({ role, agentKind, project, task: sample, branch: `ai/${sample.id}`, step: step ? { step, version: saved?.version ?? 0, text: draft } : null });
   const stepName = step ? t(`sdlc.gate.${step}`) : "";
   const placeholder: Partial<Record<PromptLayerId, string>> = { repo: t("stepPrompt.repoSample"), admin: t("stepPrompt.adminSample") };
   const segs = (layers ?? []).flatMap((l) => l.text === "" ? [] : [{ id: l.id, text: l.text ?? placeholder[l.id] ?? "", real: l.text !== null }]);
@@ -137,6 +138,7 @@ export function PromptTab({ project }: { project: string }) {
     </div>
     <div className="pf-prompt-layers">
       <span className="pf-prompt-intro">{t("stepPrompt.intro")}</span>
+      <label className="pf-preview-agent">{t("stepPrompt.previewAgent")} <select data-prompt-agent-kind value={agentKind} onChange={(e) => setAgentKind(e.target.value as AgentKind)}>{AGENT_KINDS.map((kind) => <option key={kind} value={kind}>{t(`agentKind.${kind}`)}</option>)}</select></label>
       {layers ? layers.map((l) => {
         const isStep = l.id === "step";
         const isOpen = !!open[l.id];

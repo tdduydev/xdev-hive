@@ -28,6 +28,7 @@ export interface PromptContext {
   previous: { profileId: string; reason: string } | null;
   /** The profile is read-only: the agent has Hive's read tools only. */
   readOnly?: boolean;
+  agentKind?: AgentKind;
   /** The run fixes a failed MR pipeline. */
   ciFix?: CiFix | null;
   /** A best-of-n candidate: n of `of`. */
@@ -92,7 +93,8 @@ export function buildPrompt(c: PromptContext): string {
     }
     lines.push(
       "",
-      "Read AGENTS.md in the working copy first for the project's conventions. Read the candidates with git diff, git log and git show.",
+      ...(c.agentKind === "claude" || c.agentKind === "codex" ? [] : ["Follow AGENTS.md in the working copy for project conventions."]),
+      "Read the candidates with git diff, git log and git show.",
       "Judge correctness first, then tests, then how well each does what the task asks and follows the conventions, then size and risk.",
       "Do not check out another branch, change files or commit here, and do not change the task status: the app keeps the chosen branch as it is.",
       STEER_PROMPT,
@@ -112,7 +114,7 @@ export function buildPrompt(c: PromptContext): string {
   lines.push(...referenceLines(c.references ?? [], c.project));
   const skills = c.skills ?? (c.worktree ? loadWorktreeSkills(c.worktree) : []);
   const rules = c.rules ?? (c.worktree ? loadWorktreeRules(c.worktree) : []);
-  lines.push(...skillAndRuleLines(skills, rules));
+  lines.push(...skillAndRuleLines(skills.filter((skill) => skill.name !== "hive-leader"), rules));
   // The judge keeps nothing: the branch it picks is the work.
   if (c.artifacts && !c.judge) lines.push("", ...artifactLines(c.taskId, c.role));
   if (c.note) lines.push("", "Latest note on the task:", c.note);

@@ -39,25 +39,28 @@ export interface FrameContext {
   baseSha: string;
   /** The profile is read-only: the agent has Hive's read tools only. */
   readOnly?: boolean;
+  /** Claude and Codex load AGENTS.md themselves. */
+  agentKind?: string;
   /** A best-of-n candidate: n of `of`. */
   candidate?: { n: number; of: number } | null;
 }
 
-/** The opening of a run's prompt (not the judge's): the task, the working copy and the protocol the agent follows. */
+/** The opening of a run's prompt (not the judge's): task and run-specific handoff. */
 export function frameLines(c: FrameContext): string[] {
   const lines: string[] = [];
+  const readAgents = c.agentKind === "claude" || c.agentKind === "codex" ? [] : ["Follow AGENTS.md in the working copy for project conventions and the Hive agent protocol."];
   if (c.role === "review") {
     lines.push(
       `Review the work for task ${c.taskId} of project "${c.project}" (xDev Hive): ${c.title}`,
       "",
       `Working copy: ${c.worktree} (branch ${c.branch}). See the change with: git diff ${c.baseSha}...HEAD`,
       "",
-      "Read AGENTS.md in the working copy first for the project's conventions.",
+      ...readAgents,
       "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
       "fix only small, obvious mistakes. End your report with exactly one standalone line: `Verdict: approve` if no findings block the review, or `Verdict: changes` if changes are needed. Put findings before that line.",
       c.readOnly
         ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
-        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not call task_claim or task_update: the task is not yours, the implementer's run keeps it.",
+        : "Do not call task_claim or task_update: the implementer owns this task. Record reusable lessons in the handoff.",
     );
     return lines;
   }
@@ -70,29 +73,15 @@ export function frameLines(c: FrameContext): string[] {
   if (c.role === "plan") {
     lines.push("", "This is a planning run: write the plan to docs/plans/" + c.taskId + ".md. Do not implement yet.");
   }
+  lines.push("", ...readAgents);
   if (c.readOnly) {
-    lines.push(
-      "",
-      "Read AGENTS.md in the working copy first and follow its conventions. xDev Hive is read-only for this run " + `(project key "${c.project}"):`,
-      "1. memory_search and doc_get for context before changing code.",
-      "2. You cannot write memory, propose doc changes or update the task. End with a note for the task instead:",
-      "   what changed, what is left, how to verify, risks, and any decision or gotcha worth sharing.",
-      "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md.",
-      "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-    );
+    lines.push("xDev Hive is read-only for this run. Do not change task status; include decisions and gotchas in your handoff note.");
+  } else if (c.candidate) {
+    lines.push("This is a candidate run. Do not call task_update; include what changed, verification, and risks in your handoff note.");
   } else {
-    lines.push(
-      "",
-      "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
-      "1. memory_search for context before changing code.",
-      "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
-      "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
-      c.candidate
-        ? `4. Do not call task_update: this run is one of several candidates (see below). End with a note instead: what changed, what is left, how to verify, risks.`
-        : `4. When done, task_update ${c.taskId} to "review" with a note: what changed, what is left, how to verify, risks.`,
-      "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-    );
+    lines.push(`At handoff, call task_update ${c.taskId} to "review" with a note covering changes, verification, and risks.`);
   }
+  lines.push("Do not push. Uncommitted changes are committed to this branch for you when you exit.");
   return lines;
 }
 
@@ -107,6 +96,8 @@ export function artifactLines(taskId: string, role: AgentRole): string[] {
 
 export interface PromptPreviewInput {
   role: PromptRole;
+  /** CLI kind selected for this sample; it controls the same frame condition as the runner. */
+  agentKind: string;
   project: string;
   task: { id: string; title: string; note: string | null };
   branch: string;
@@ -133,7 +124,7 @@ export function promptPreview(i: PromptPreviewInput): PromptLayer[] | null {
   const vars: StepPromptVars = { taskId: i.task.id, taskTitle: i.task.title, service: i.project, branch: i.branch };
   const block = stepPromptBlock(i.step, vars);
   return [
-    { id: "frame", text: frameLines({ project: i.project, taskId: i.task.id, title: i.task.title, role, worktree: "<working copy>", branch: i.branch, baseSha: "<base commit>" }).join("\n") },
+    { id: "frame", text: frameLines({ project: i.project, taskId: i.task.id, title: i.task.title, role, worktree: "<working copy>", branch: i.branch, baseSha: "<base commit>", agentKind: i.agentKind }).join("\n") },
     { id: "repo", text: null },
     { id: "artifacts", text: artifactLines(i.task.id, role).join("\n") },
     { id: "task", text: i.task.note ? ["Latest note on the task:", i.task.note].join("\n") : "" },

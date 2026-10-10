@@ -79,7 +79,7 @@ import { assertNoHidden, stripHidden } from "./hidden.ts";
 import { type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
 import { assertNoSecret, findSecret, redactLines, redactUrlCredentials } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
-import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
+import { OLD_TASK_CLAIM_RULE, RUN_TASK_CLAIM_RULE, SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
 import { MODEL_TIERS, DEFAULT_MODEL_CELLS, DEFAULT_MODEL_ROUTER, selectModel, type ModelProject, type ModelRouterSettings, type ModelSelection, type ModelTier } from "./model-router.ts";
 import {
@@ -3285,6 +3285,13 @@ export class SqliteHive implements HiveBackend {
     const had = stored ? num(Number(stored.value)) : count > 0 ? 1 : 0;
     if (had >= SEED_VERSION) return;
     this.#tx(() => {
+      if (had > 0 && had < 3) {
+        const protocol = this.#getDoc("org/agent-protocol");
+        if (protocol && !protocol.removedAt && protocol.content.includes(OLD_TASK_CLAIM_RULE)) {
+          this.#writeDoc("org/agent-protocol", protocol.content.replace(OLD_TASK_CLAIM_RULE, RUN_TASK_CLAIM_RULE),
+            { note: "Seed v3: clarify task claim for assigned runs" }, author);
+        }
+      }
       for (const d of SEED_DOCS) {
         if ((d.since ?? 1) <= had || (d.hubOnly && !opts.hub)) continue;
         if (this.db.prepare("SELECT 1 FROM docs WHERE key = ?").get(d.key)) continue;
