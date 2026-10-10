@@ -4,6 +4,7 @@
 // instructions) that builds the front matter.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseDocKey, parseSkill, SKILL_DESCRIPTION_MAX, SKILL_NAME, skillDocKey, stripHidden, type Proposal } from "@xdev-hive/core";
+import { cn } from "cn";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
@@ -13,7 +14,7 @@ import { Diff } from "#ui/components/Diff.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, ListItem, ListPane, PaneEmpty } from "#ui/components/panes.tsx";
+import { KvRows, PaneEmpty } from "#ui/components/panes.tsx";
 import { errorMessage, formatTime, useAction, useCan, useHive, useHashParam, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { emptyState } from "#ui/lib/empty.ts";
@@ -24,6 +25,7 @@ import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 
 const NEW = "new";
+
 
 export function SkillsPage() {
   const { client, scope, projects } = useHive();
@@ -65,8 +67,10 @@ export function SkillsPage() {
     if (current) created.current = null;
     if (!list.data || selected === NEW || current || (selected && selected === created.current)) return;
     if (mobileDetail.mobile) return;
+    // A ?skill= link is picked by the effect above in the same pass; the first skill would replace it.
+    if (wanted && skills.some((s) => s.key === wanted)) return;
     setSelected(skills[0]?.key ?? null);
-  }, [list.data, selected, current, skills]);
+  }, [list.data, selected, current, skills, wanted]);
   const reload = () => setTick((n) => n + 1);
 
   const [unused, setUnused] = useState(false);
@@ -76,86 +80,79 @@ export function SkillsPage() {
   const empty = emptyState({ loaded: Boolean(list.data), total: skills.length, shown: shown.length, query: needle });
   // The first skill is the thing to do when there is none: the same button as the toolbar's, where the eye already is.
   const firstSkill = owners.length ? (
-    <Button size="sm" data-empty-action onClick={() => pick(NEW)}>
+    <Button variant="glass" size="sm" data-empty-action onClick={() => pick(NEW)}>
       {t("skills.newFirst")}
     </Button>
   ) : null;
+  const showing = mobileDetail.mobile ? mobileDetail.value : selected;
+  const orphans = proposals.filter((p) => !shown.some((s) => s.key === p.docKey));
 
   return (
-    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
-      <ListPane
-        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
-        label={t("nav.skills")}
-        head={
-          <div className="flex gap-1.5">
-            <Input className="h-7 min-w-0 flex-1 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("skills.search")} aria-label={t("skills.search")} />
-            {owners.length ? (
-              <Button size="sm" variant="outline" onClick={() => pick(NEW)}>
-                {t("skills.new")}
-              </Button>
-            ) : null}
-          </div>
-        }
-      >
+    <div className="flex flex-wrap items-start gap-4 px-7 py-4" data-skills-page>
+      <div className={cn("flex max-w-full flex-[1_1_300px] flex-col gap-1 rounded-[24px] bg-[var(--surface-1)] px-2 py-3 shadow-[var(--ring-glass)]", mobileDetail.showingDetail && "max-md:hidden")} aria-label={t("nav.skills")}>
+        <div className="flex gap-1.5 px-1 pb-1">
+          <Input controlSize="sm" className="min-w-0 flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("skills.search")} aria-label={t("skills.search")} />
+          {owners.length ? (
+            <Button variant="glass" size="sm" onClick={() => pick(NEW)}>
+              {t("skills.new")}
+            </Button>
+          ) : null}
+        </div>
         <ErrorNote error={list.error} />
-        <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-xs">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 px-2 text-[var(--text-muted)] [font:var(--design-caption)]">
           <input type="checkbox" checked={unused} onChange={(e) => setUnused(e.target.checked)} />
           {t("skills.unused")}
         </label>
-        {project ? <p className="m-0 px-2 pt-1 pb-2 text-[11px]/4 text-fg-muted">{t("skills.effectiveFor", { project })}</p> : null}
-        {proposals.length ? (
-          <a className="mx-1 mb-1 rounded-sm bg-warning-soft px-2 py-1.5 text-xs text-fg-strong no-underline hover:underline" href="#/skills?tab=pending">
-            {t("skills.pendingNotice", { count: proposals.length })} {t("skills.openProposals")}
+        {project ? <p className="m-0 px-2 pt-1 pb-2 text-[var(--text-muted)] [font:var(--design-caption)]">{t("skills.effectiveFor", { project })}</p> : null}
+        {/* Proposals on skills the list does not show (a new skill proposed, or one the filters hide) have no pill to open them by. */}
+        {orphans.length ? (
+          <a className="mx-1 mb-1 rounded-[8px] bg-[var(--status-warning-bg)] px-2 py-1.5 text-[var(--status-warning-fg)] no-underline [font:var(--design-caption)] hover:underline" href="#/skills?tab=pending">
+            {t("skills.pendingNotice", { count: orphans.length })} {t("skills.openProposals")}
           </a>
         ) : null}
-        {shown.length ? <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
-          {shown.map((s) => {
-            const pending = proposals.filter((p) => p.docKey === s.key).length;
-            return (
-              <ListItem
-                key={s.key}
-                mono
-                selected={s.key === selected}
+        {shown.map((s) => {
+          const waiting = proposals.filter((p) => p.docKey === s.key).length;
+          const on = s.key === showing;
+          // Template: "Chung", "Riêng web · thay skill chung" in violet, and the shadowed team skill faded with its own line.
+          const tag = [s.project ? t("skills.privateTo", { project: s.project }) : t("skills.shared"), s.overrides ? t("skills.overrides") : s.overridden ? t("skills.overridden") : null].filter(Boolean).join(" · ");
+          return (
+            <div key={s.key} className="relative">
+              <button
+                type="button"
+                aria-pressed={on}
+                data-pane-item
                 onClick={() => pick(s.key)}
-                title={s.name}
-                dim={s.overridden}
-                chip={
-                  pending ? (
-                    <Chip kind="warning" small>
-                      {t("skills.pendingCount", { count: pending })}
-                    </Chip>
-                  ) : s.overrides ? (
-                    <Chip kind="info" small>
-                      {t("skills.overrides")}
-                    </Chip>
-                  ) : s.overridden ? (
-                    <Chip kind="neutral" small>
-                      {t("skills.overridden")}
-                    </Chip>
-                  ) : s.project ? (
-                    <Chip kind="info" small>
-                      {t("skills.projectChip")}
-                    </Chip>
-                  ) : null
-                }
-                sub={s.description || t("skills.noDescription")}
-                meta={<span className="flex flex-col gap-1">
-                  <span>{s.project ?? t("common.sharedTeam")} · {formatTime(s.updatedAt)}</span>
-                  <span className="grid grid-cols-2 gap-2 font-sans text-xs">
-                    <span>{t("skills.runs30d")}<br /><strong>{s.usage?.runs30d ?? "—"}</strong></span>
-                    <span>{t("skills.lastUsed")}<br />{s.usage?.lastUsedAt ? formatTime(s.usage.lastUsedAt) : t("skills.neverUsed")}</span>
-                  </span>
-                </span>}
-              />
-            );
-          })}
-        </ul> : null}
-        {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
-        {empty ? <PaneEmpty>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
-      </ListPane>
-      <div className={mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden min-w-0 flex-1 flex-col md:flex" : "flex min-w-0 flex-1 flex-col"}>
+                className={cn(
+                  "flex w-full cursor-pointer flex-col gap-1 rounded-[16px] border-0 px-[14px] py-3 text-left font-[inherit] text-[var(--text-strong)] hover:bg-[var(--glass-bg)]",
+                  on ? "bg-[var(--tint-violet-soft)] shadow-[var(--ring-violet)]" : "bg-transparent shadow-none",
+                  s.overridden && "opacity-45",
+                )}
+              >
+                <span className={cn("text-[13px]/[18px] font-semibold [overflow-wrap:anywhere] [font-family:var(--font-code-design)]", waiting && "pr-20")}>{s.name}</span>
+                <span className="text-pretty text-[var(--text-secondary)] [font:var(--design-caption)]">
+                  {s.overridden ? t("skills.sharedOf", { name: s.name }) : s.description || t("skills.noDescription")}
+                </span>
+                <span className={cn("[font:var(--design-micro)]", s.overridden ? "text-[var(--text-faint)]" : s.project ? "text-[var(--violet-soft)]" : "text-[var(--text-muted)]")}>{tag}</span>
+              </button>
+              {/* A link beside the button, not inside it: it opens the skill's proposals, where the old "Chờ duyệt" tab was. */}
+              {waiting ? (
+                <a
+                  href={`#/skills?tab=pending&doc=${encodeURIComponent(s.key)}`}
+                  data-skill-proposals={s.key}
+                  aria-label={t("skills.openProposalsOf", { count: waiting, name: s.name })}
+                  className="absolute top-3 right-[14px] inline-flex h-5 items-center rounded-full bg-[var(--tint-violet)] px-2 text-[var(--violet-soft)] no-underline [font:var(--design-micro)] hover:underline focus-visible:focus-ring max-md:before:absolute max-md:before:-inset-3"
+                >
+                  {t("skills.proposalCount", { count: waiting })}
+                </a>
+              ) : null}
+            </div>
+          );
+        })}
+        {empty ? <PaneEmpty action={empty === "none" ? firstSkill : null}>{t(empty === "none" ? "skills.none" : "skills.noMatch")}</PaneEmpty> : null}
+      </div>
+      <div className={cn("flex min-w-0 flex-[999_1_480px] flex-col gap-4 rounded-[24px] bg-[var(--surface-1)] p-6 shadow-[var(--ring-glass)]", mobileDetail.mobile && !mobileDetail.showingDetail && "max-md:hidden")}>
         {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
-        {(mobileDetail.mobile ? mobileDetail.value : selected) === NEW ? (
+        {showing === NEW ? (
           <NewSkill
             owners={owners}
             defaultOwner={project && owners.includes(project) ? project : (owners[0] ?? "")}
@@ -170,8 +167,8 @@ export function SkillsPage() {
         ) : current ? (
           <SkillEditor key={current.key} skill={current} proposals={proposals.filter((p) => p.docKey === current.key)} onSaved={reload} />
         ) : (
-          <div className="grid flex-1 place-items-center p-6">
-            {empty === "none" ? <PaneEmpty action={firstSkill}>{t("skills.none")}</PaneEmpty> : list.data ? <span className="text-[13px] text-fg-muted">{t("skills.pick")}</span> : null}
+          <div className="grid place-items-center p-6">
+            {empty === "none" ? null : list.data ? <span className="text-[13px] text-[var(--text-muted)]">{t("skills.pick")}</span> : null}
           </div>
         )}
       </div>
@@ -179,7 +176,7 @@ export function SkillsPage() {
   );
 }
 
-/** Name, description and instructions of a skill; `nameLocked` for one that exists (its key holds the name). */
+/** Name, description and instructions of a skill, laid out as the template's form; `nameLocked` for one that exists (its key holds the name). */
 function SkillFields({
   parts,
   onChange,
@@ -194,57 +191,50 @@ function SkillFields({
   idPrefix: string;
 }) {
   const t = useT();
+  const label = "text-[13px]/[18px] font-semibold";
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start sm:gap-x-3">
-        <Label htmlFor={`${idPrefix}-name`} className="text-xs text-muted-foreground sm:pt-2">
+    <>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-name`} className={label}>
           {t("skills.name")}
         </Label>
-        <div className="flex min-w-0 flex-col gap-1">
-          <Input
-            id={`${idPrefix}-name`}
-            className="font-mono"
-            value={parts.name}
-            readOnly={readOnly || nameLocked}
-            placeholder="review-pr"
-            onChange={(e) => onChange({ ...parts, name: e.target.value.trim().toLowerCase() })}
-          />
-          {nameLocked ? null : <p className="text-xs text-muted-foreground">{t("skills.nameHint")}</p>}
-        </div>
+        <Input id={`${idPrefix}-name`} value={parts.name} readOnly={readOnly || nameLocked} placeholder="review-pr" onChange={(e) => onChange({ ...parts, name: e.target.value.trim().toLowerCase() })} />
+        {nameLocked ? null : <p className="m-0 text-[var(--text-muted)] [font:var(--design-caption)]">{t("skills.nameHint")}</p>}
       </div>
-      <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-start sm:gap-x-3">
-        <Label htmlFor={`${idPrefix}-description`} className="text-xs text-muted-foreground sm:pt-2">
-          {t("skills.description")}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-description`} className={cn("flex", label)}>
+          <span className="flex-1">{t("skills.descriptionLabel")}</span>
+          <span className="tabular-nums text-[var(--text-muted)] [font:var(--design-caption)]">
+            {parts.description.length}/{SKILL_DESCRIPTION_MAX}
+          </span>
         </Label>
-        <div className="flex min-w-0 flex-col gap-1">
-          <Textarea
-            id={`${idPrefix}-description`}
-            className="min-h-16 resize-y"
-            value={parts.description}
-            readOnly={readOnly}
-            maxLength={SKILL_DESCRIPTION_MAX}
-            placeholder={t("skills.descriptionPlaceholder")}
-            onChange={(e) => onChange({ ...parts, description: e.target.value.replace(/\s*\n\s*/g, " ") })}
-          />
-          <p className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-            <span>{t("skills.descriptionHint")}</span>
-            <span className="tabular-nums">
-              {parts.description.length}/{SKILL_DESCRIPTION_MAX}
-            </span>
-          </p>
-        </div>
+        <Textarea
+          id={`${idPrefix}-description`}
+          rows={3}
+          className="min-h-0 resize-y rounded-[14px] border-0 bg-[var(--surface-sunken)] px-[14px] py-3 text-[var(--text-strong)] shadow-[var(--ring-glass)] outline-none [font:var(--design-body-sm)]"
+          value={parts.description}
+          readOnly={readOnly}
+          maxLength={SKILL_DESCRIPTION_MAX}
+          placeholder={t("skills.descriptionPlaceholder")}
+          onChange={(e) => onChange({ ...parts, description: e.target.value.replace(/\s*\n\s*/g, " ") })}
+        />
       </div>
-      <Textarea
-        className="min-h-72 resize-y font-mono text-sm leading-relaxed field-sizing-fixed md:text-sm"
-        value={parts.body}
-        readOnly={readOnly}
-        spellCheck={false}
-        aria-label={t("skills.body")}
-        placeholder={t("skills.bodyPlaceholder")}
-        onChange={(e) => onChange({ ...parts, body: e.target.value })}
-      />
-      {parts.extra.length ? <p className="font-mono text-xs break-all text-muted-foreground">{t("skills.extra", { keys: parts.extra.join(" · ") })}</p> : null}
-    </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`${idPrefix}-body`} className={label}>
+          {t("skills.body")}
+        </Label>
+        <Textarea
+          id={`${idPrefix}-body`}
+          className="min-h-[8rem] resize-y rounded-[14px] border-0 bg-[var(--code-well)] px-4 py-3.5 text-[12.5px]/[21px] font-medium text-[var(--code-well-fg)] shadow-[var(--ring-glass)] outline-none field-sizing-content [overflow-wrap:anywhere] whitespace-pre-wrap [font-family:var(--font-code-design)] md:text-[12.5px]"
+          value={parts.body}
+          readOnly={readOnly}
+          spellCheck={false}
+          placeholder={t("skills.bodyPlaceholder")}
+          onChange={(e) => onChange({ ...parts, body: e.target.value })}
+        />
+      </div>
+      {parts.extra.length ? <p className="m-0 text-xs break-all text-[var(--text-muted)] [font-family:var(--font-code-design)]">{t("skills.extra", { keys: parts.extra.join(" · ") })}</p> : null}
+    </>
   );
 }
 
@@ -257,7 +247,6 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
   const stored = doc.data?.content ?? "";
   const [parts, setParts] = useState<SkillParts>(() => splitSkill(""));
   const [note, setNote] = useState("");
-  const [editing, setEditing] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
   const action = useAction();
   useEffect(() => {
@@ -293,7 +282,7 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
         bump();
       }
       setNote("");
-      setEditing(false);
+      setShowDiff(false);
       onSaved();
     });
 
@@ -303,118 +292,66 @@ function SkillEditor({ skill, proposals, onSaved }: { skill: ListedSkill; propos
       toast(t("skills.wroteRepo", { name: skill.name, projects: repos.join(", ") }));
     });
 
+  const editable = canEdit || canPropose;
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <DetailHeader
-        mono
-        chips={
-          <>
-            <Chip kind={skill.project ? "info" : "neutral"}>{skill.project ? t("skills.project", { project: skill.project }) : t("inbox.shared")}</Chip>
-            {skill.overrides ? <Chip kind="info">{t("skills.overrides")}</Chip> : null}
-            {skill.overridden ? <Chip kind="neutral">{t("skills.overridden")}</Chip> : null}
-          </>
-        }
-        when={doc.data ? `v${doc.data.version} · ${doc.data.updatedBy} · ${formatTime(doc.data.updatedAt)}` : undefined}
-        title={skill.name}
-      />
-      <DetailBody>
-        {skill.usage ? <SkillUsage skill={skill} /> : null}
-        {skill.overrides ? <Notice tone="info">{t("skills.overridesHint")}</Notice> : null}
-        {skill.overridden ? <Notice tone="info">{t("skills.overriddenHint")}</Notice> : null}
-        {unchecked ? <Notice tone="warn">{t("skills.noFrontMatter")}</Notice> : null}
-        {proposals.length ? (
-          <div className="flex flex-col gap-1.5 rounded-md border border-warning-line bg-warning-soft p-3">
-            <span className="text-xs font-semibold text-fg-strong">{t("skills.pendingTitle")}</span>
-            {proposals.map((p) => (
-              <a key={p.id} href="#/skills?tab=pending" className="text-xs text-fg-strong [overflow-wrap:anywhere] hover:underline">
-                #{p.id} · {p.reason} · {p.author} · {formatTime(p.createdAt)}
-              </a>
-            ))}
-          </div>
+    <>
+      {skill.overrides ? <Notice tone="info">{t("skills.overridesHint")}</Notice> : null}
+      {skill.overridden ? <Notice tone="info">{t("skills.overriddenHint")}</Notice> : null}
+      {unchecked ? <Notice tone="warn">{t("skills.noFrontMatter")}</Notice> : null}
+      {proposals.length ? (
+        <div className="flex flex-col gap-1.5 rounded-[12px] bg-[var(--status-warning-bg)] p-3">
+          <span className="text-xs font-semibold text-[var(--status-warning-fg)]">{t("skills.pendingTitle")}</span>
+          {proposals.map((p) => (
+            <a key={p.id} href={`#/skills?tab=pending&doc=${encodeURIComponent(p.docKey)}`} className="text-xs text-[var(--status-warning-fg)] [overflow-wrap:anywhere] hover:underline">
+              #{p.id} · {p.reason} · {p.author} · {formatTime(p.createdAt)}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      <ErrorNote error={doc.error} />
+      {doc.loading ? <p className="m-0 text-[13px] text-[var(--text-muted)]">{t("common.loading")}</p> : null}
+      {/* Marked once SKILL.md has loaded: the desktop smoke checks the skill's content is on the page, not the empty form. */}
+      <div data-skill-doc={doc.data ? "" : undefined} className="flex flex-col gap-4">
+        <SkillFields parts={parts} onChange={setParts} readOnly={!editable} nameLocked idPrefix={`skill-${skill.key}`} />
+      </div>
+      {editable && dirty ? (
+        <>
+          <Input placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} aria-label={t("docs.note")} />
+          <HiddenChars
+            fields={[
+              { label: t("skills.description"), text: parts.description },
+              { label: t("skills.body"), text: parts.body },
+              { label: t("docs.note"), text: note },
+            ]}
+            onStrip={() => (setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) }), setNote(stripHidden(note)))}
+          />
+          {showDiff ? <Diff before={stored} after={content} /> : null}
+        </>
+      ) : null}
+      <ErrorNote error={action.error} />
+      <div className="flex flex-wrap items-center gap-2.5">
+        {editable ? (
+          <Button variant="solid" size="md" onClick={() => { if (dirty) void send(canEdit ? "save" : "propose"); }} disabled={action.busy}>
+            {action.busy ? (canEdit ? t("docs.saving") : t("docs.sending")) : canEdit ? t("skills.save") : t("docs.propose")}
+          </Button>
         ) : null}
-        <ErrorNote error={doc.error} />
-        {editing ? (
-          <>
-            <SkillFields parts={parts} onChange={setParts} readOnly={!canEdit && !canPropose} nameLocked idPrefix={`skill-${skill.key}`} />
-            <Input
-              placeholder={canEdit ? t("docs.notePlaceholder") : t("docs.reasonPlaceholder")}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              aria-label={t("docs.note")}
-            />
-            <HiddenChars
-              fields={[
-                { label: t("skills.description"), text: parts.description },
-                { label: t("skills.body"), text: parts.body },
-                { label: t("docs.note"), text: note },
-              ]}
-              onStrip={() => (setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) }), setNote(stripHidden(note)))}
-            />
-            {dirty && showDiff ? <Diff before={stored} after={content} /> : null}
-          </>
-        ) : (
-          <>
-            {/* Until docs.get answers, a skill still loading looked exactly like one with nothing in it: say "Đang tải…"
-                and leave the file out, rather than "(chưa có mô tả)" over an empty SKILL.md (roadmap 39h). */}
-            <p className="m-0 text-sm/[22px] text-pretty text-fg-primary">
-              {doc.loading ? t("common.loading") : parts.description || skill.description || t("skills.noDescription")}
-            </p>
-            <KvRows
-              rows={[
-                [t("knowledge.applies"), parts.description || skill.description || t("skills.noDescription")],
-                [t("knowledge.overridesBy"), skill.overridesBy.length ? skill.overridesBy.join(", ") : "—"],
-                [t("knowledge.modified"), `${skill.updatedBy} · ${formatTime(skill.updatedAt)}`],
-                [t("skills.writeTo"), `.claude/skills/${skill.name}/SKILL.md`, true],
-                [t("skills.scopeLabel"), skill.project ? t("skills.syncProject", { name: skill.name, project: skill.project }) : t("skills.syncShared", { name: skill.name })],
-              ]}
-            />
-            {doc.data ? (
-              <div data-skill-doc className="overflow-hidden rounded-md border border-line-subtle bg-code">
-                <div className="flex h-7 items-center border-b border-line-subtle px-3 font-mono text-[11px]/none font-medium text-fg-muted">SKILL.md</div>
-                <pre tabIndex={0} className="m-0 max-h-[60vh] overflow-auto px-3 py-2.5 font-mono text-xs/[19px] whitespace-pre-wrap text-code-fg outline-none focus-visible:focus-ring [overflow-wrap:anywhere]">{stored || "—"}</pre>
-              </div>
-            ) : null}
-          </>
-        )}
-        <ErrorNote error={action.error} />
-      </DetailBody>
-      <DetailFooter foot={!canEdit && !canPropose ? t("skills.viewOnly") : undefined}>
-        {canEdit || canPropose ? (
-          editing ? (
-            <>
-              <Button size="sm" onClick={() => void send(canEdit ? "save" : "propose")} disabled={!dirty || action.busy}>
-                {action.busy ? (canEdit ? t("docs.saving") : t("docs.sending")) : canEdit ? t("docs.saveAs", { version: (doc.data?.version ?? 0) + 1 }) : t("docs.propose")}
-              </Button>
-              {dirty ? (
-                <Button size="sm" variant="ghost" onClick={() => setShowDiff((v) => !v)} aria-pressed={showDiff}>
-                  {showDiff ? t("docs.hideChanges") : t("docs.showChanges")}
-                </Button>
-              ) : null}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setParts(splitSkill(stored));
-                  setNote("");
-                  setEditing(false);
-                }}
-              >
-                {t("common.cancel")}
-              </Button>
-            </>
-          ) : (
-            <Button size="sm" onClick={() => setEditing(true)} disabled={!doc.data}>
-              {t("skills.edit")}
-            </Button>
-          )
-        ) : null}
-        {desktop && !editing ? (
-          <Button size="sm" variant="outline" disabled={action.busy || !repos.length} title={repos.length ? repos.join(", ") : t("skills.writeRepoNone")} onClick={writeRepos}>
+        <Button variant="glass" size="md" onClick={() => setShowDiff((v) => !v)} aria-pressed={showDiff}>
+          {t("skills.changes")}
+        </Button>
+        {desktop ? (
+          <Button variant="glass" size="md" disabled={action.busy || !repos.length} title={repos.length ? repos.join(", ") : t("skills.writeRepoNone")} onClick={writeRepos}>
             {t("skills.writeRepo")}
           </Button>
         ) : null}
-      </DetailFooter>
-    </div>
+        <span className="flex-1" />
+        <span className="text-[var(--text-muted)] [font:var(--design-caption)]">{!editable ? t("skills.viewOnly") : t("skills.syncInto", { name: skill.name })}</span>
+      </div>
+      <KvRows rows={[
+        [t("knowledge.applies"), parts.description || skill.description || t("skills.noDescription")],
+        [t("knowledge.modified"), `${skill.updatedBy} · ${formatTime(skill.updatedAt)}`],
+      ]} />
+      {skill.usage ? <SkillUsage skill={skill} /> : null}
+    </>
   );
 }
 
@@ -440,56 +377,54 @@ function NewSkill({
   const problem = !parts.name ? null : !key ? t("skills.nameHint") : taken.has(key) ? t("skills.exists", { key }) : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <DetailHeader title={t("skills.newTitle")} />
-      <DetailBody>
-        <div className="grid gap-2 sm:grid-cols-[110px_1fr] sm:items-center sm:gap-x-3">
-          <Label htmlFor="new-skill-owner" className="text-xs text-muted-foreground">
-            {t("skills.owner")}
-          </Label>
-          <NativeSelect id="new-skill-owner" wrapperClassName="w-full" value={owner} onChange={(e) => setOwner(e.target.value)}>
-            {owners.map((o) => (
-              <NativeSelectOption key={o || "shared"} value={o}>
-                {o || t("common.sharedTeam")}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </div>
-        <SkillFields parts={parts} onChange={setParts} readOnly={false} nameLocked={false} idPrefix="new-skill" />
-        {problem ? <p className="m-0 text-xs text-danger">{problem}</p> : null}
-        <HiddenChars
-          fields={[
-            { label: t("skills.description"), text: parts.description },
-            { label: t("skills.body"), text: parts.body },
-          ]}
-          onStrip={() => setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) })}
-        />
-        <ErrorNote error={action.error} />
-      </DetailBody>
-      <DetailFooter>
-          <Button
-            size="sm"
-            disabled={!key || Boolean(problem) || !parts.description.trim() || action.busy}
-            onClick={() =>
-              void action.run(async () => {
-                const content = buildSkill(parts);
-                try {
-                  parseSkill(content);
-                } catch (err) {
-                  throw new Error(errorMessage(err));
-                }
-                await client.call("docs.save", { key: key!, content, baseVersion: 0 });
-                onCreated(key!);
-              })
-            }
-          >
-            {action.busy ? t("docs.saving") : t("skills.create")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onCancel}>
-            {t("common.cancel")}
-          </Button>
-      </DetailFooter>
-    </div>
+    <>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="new-skill-owner" className="text-[13px]/[18px] font-semibold">
+          {t("skills.owner")}
+        </Label>
+        <NativeSelect id="new-skill-owner" wrapperClassName="w-full" value={owner} onChange={(e) => setOwner(e.target.value)}>
+          {owners.map((o) => (
+            <NativeSelectOption key={o || "shared"} value={o}>
+              {o || t("common.sharedTeam")}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
+      </div>
+      <SkillFields parts={parts} onChange={setParts} readOnly={false} nameLocked={false} idPrefix="new-skill" />
+      {problem ? <p className="m-0 text-xs text-[var(--status-danger-fg)]">{problem}</p> : null}
+      <HiddenChars
+        fields={[
+          { label: t("skills.description"), text: parts.description },
+          { label: t("skills.body"), text: parts.body },
+        ]}
+        onStrip={() => setParts({ ...parts, description: stripHidden(parts.description), body: stripHidden(parts.body) })}
+      />
+      <ErrorNote error={action.error} />
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Button
+          variant="solid"
+          size="md"
+          disabled={!key || Boolean(problem) || !parts.description.trim() || action.busy}
+          onClick={() =>
+            void action.run(async () => {
+              const content = buildSkill(parts);
+              try {
+                parseSkill(content);
+              } catch (err) {
+                throw new Error(errorMessage(err));
+              }
+              await client.call("docs.save", { key: key!, content, baseVersion: 0 });
+              onCreated(key!);
+            })
+          }
+        >
+          {action.busy ? t("docs.saving") : t("skills.create")}
+        </Button>
+        <Button variant="glass" size="md" onClick={onCancel}>
+          {t("common.cancel")}
+        </Button>
+      </div>
+    </>
   );
 }
 

@@ -119,7 +119,10 @@ function ScopeOption({ row, heading, index, active, selected, open, searching, o
     {heading === "recent" || heading === "systems" ? <div className="px-2 pt-2 pb-1 text-xs font-semibold text-fg-muted">{t(heading === "recent" ? "scope.recent" : "scope.systems")}</div> : null}
     <div className={cn("flex items-center rounded-sm hover:bg-hover", active && "bg-hover")} data-scope-row={row.root ? (row.depth === 0 ? "root" : "service") : undefined} data-scope-root={row.root?.name} data-scope-virtual={row.root?.virtual ? "" : undefined} onMouseEnter={onHover}>
       <button type="button" role="option" aria-selected={selected} data-picker-index={index} onClick={onChoose} className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-2 py-1.5 text-left text-sm text-fg-primary outline-none", row.depth === 1 && "pl-8", row.scope.kind === "project" && "font-mono text-xs")}>
-        <span className="w-4 shrink-0 text-fg-brand">{selected && <Check className="size-4" />}</span><span className="min-w-0 flex-1 truncate">{row.label}</span>
+        <span className="w-4 shrink-0 text-fg-brand">{selected && <Check className="size-4" />}</span>{row.folder ? (
+          // The subgroups give way before the service's own name does.
+          <span className="flex min-w-0 flex-1" data-scope-folder={row.folder.join("/")}><span className="min-w-0 truncate text-fg-muted">{row.folder.join(" › ")} ›&nbsp;</span><span className="max-w-full shrink-0 truncate">{row.label}</span></span>
+        ) : <span className="min-w-0 flex-1 truncate">{row.label}</span>}
       </button>
       {system ? <button type="button" tabIndex={-1} aria-expanded={open} disabled={searching} aria-label={t(open ? "scope.collapse" : "scope.expand", { system: system.name })} title={t(open ? "scope.collapse" : "scope.expand", { system: system.name })} onClick={onToggle} data-scope-toggle={system.name} className="mr-1 flex h-6 shrink-0 cursor-pointer items-center justify-center gap-1 rounded-xs max-md:min-w-11 px-1.5 font-mono text-[11px]/none text-fg-muted hover:bg-selected hover:text-fg-strong disabled:cursor-default disabled:hover:bg-transparent">
         {system.services.length}<ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />

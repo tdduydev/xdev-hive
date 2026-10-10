@@ -1,9 +1,12 @@
+import { fetchTaskBranch, prepareTaskBranchMerge, pushTaskBranch } from "#desktop/main/runner/branch-remote.ts";
+import { SystemSampler } from "#desktop/main/runner/system.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type GateHeartbeatReply, type ResearchJob } from "@xdev-hive/core";
+import { researchSchema, stepPromptBlock, type GateHeartbeatReply, type ResearchJob, type MachineSystem, type RunStepPrompt } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
-import { pruneRunLogs } from "#desktop/main/runner/run-logs.ts";
+import { pruneRunLogs, readLegacyRunLogTail, readRunLogTail, redactedMarker } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
+import { PROJECT_NAME, type MachineProjectCommand } from "@xdev-hive/core";
 import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
 import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
 import { ProfileModels, unsupportedModel } from "#desktop/main/runner/models.ts";
@@ -26,10 +29,12 @@ import { installAntigravityMcp, SHIM_NAME } from "#desktop/main/installer.ts";
 import { kiloPaths, KiloStream } from "#desktop/main/runner/kilo.ts";
 import { agyError, AGY_LIMIT_PATTERN } from "./antigravity.ts";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { execFileCli, spawnCli } from "#desktop/main/spawn-cli.ts";
+import { createHash, randomBytes } from "node:crypto";
 import { Writable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 import { appendFileSync, closeSync, createWriteStream, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { stat as statAsync } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -41,6 +46,7 @@ import {
   ARTIFACT_DIR,
   effectivePolicy,
   HiveError,
+  HubBackend,
   issueRunCredential,
   revokeRunCredential,
   MAX_CANDIDATES,
@@ -90,6 +96,7 @@ import {
   type RunRequest,
   type RunRequestError,
   type SetupReport,
+  type RepoAccessReport,
   type TeamPolicy,
   type RunnerSettings,
   type RunStatus,
@@ -99,7 +106,7 @@ import {
   type UpdateOffer,
 } from "@xdev-hive/core";
 import { tr } from "#desktop/main/i18n.ts";
-import { git, gitAsync, isGitRepo } from "#desktop/main/git.ts";
+import { gitAsync, gitErrorText, gitOutputAsync, isGitRepoAsync } from "#desktop/main/git.ts";
 import { NO_FEATURES, repoFeatures } from "#desktop/main/installer.ts";
 import { codexHome } from "./login.ts";
 import { renderContext, type WorktreeRule, type WorktreeSkill } from "#desktop/main/sync.ts";
@@ -123,6 +130,7 @@ import {
   parsePick,
   policyBlocks,
   policyLine,
+  promptOnStdin,
   ranOn,
   routeProfile,
   withoutFlags,
@@ -145,15 +153,17 @@ import { pickWithReason, takesRole, waitingReason, type ProfileLoad, type RunNee
 import { ACTIVE, RunStore } from "./store.ts";
 import {
   branchFor,
-  branchState,
+  branchStateAsync,
   candidateName,
-  commitAll,
+  commitAllAsync,
   branchPatch,
-  ensureWorktree,
+  branchPatchAsync,
+  ensureWorktreeAsync,
   hasBranch,
+  hasBranchAsync,
   remoteStart,
-  removeWorktree,
-  resetTo,
+  removeWorktreeAsync,
+  resetToAsync,
   type Worktree,
 } from "./worktree.ts";
 
@@ -183,7 +193,7 @@ export interface RunnerHost {
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
-  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; repoHealth?: RepoAccessReport[]; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
@@ -199,6 +209,11 @@ export interface RunnerHost {
   /** Persist a web approval before the runner records its receipt or starts work with it. */
   applyToolTrust?(trust: Record<string, string>): void;
   applyWorktreeCleanup?(cleanup: WorktreeReport["cleanup"]): void;
+  /**
+   * Adds or drops a project in the app config as a hub admin asked (ADM-machine-projects); never throws, the result
+   * says why it failed. Left out: the app does not report its repos, and the hub offers no such command.
+   */
+  applyProjectCommand?(command: MachineProjectCommand): Promise<{ id: string; ok: boolean; error: string | null }>;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -257,6 +272,8 @@ export interface RunnerOptions {
   tickMs?: number;
   /** Hub mode: how often to report runs and refresh shared quota cooldowns. */
   heartbeatMs?: number;
+  /** Hub mode: how often to measure CPU, RAM and disk for the machine card, apart from the heartbeat. */
+  systemMs?: number;
   /** Hub mode: how often to push runs that changed (status, current step, the end of the log) for the web. */
   pushMs?: number;
   /** Hub mode, taking runs from the hub: how often to ask for chat replies to write (0: only at heartbeats). */
@@ -294,12 +311,21 @@ export interface RunnerOptions {
   sync?: (project: DesktopProject) => Promise<SyncReport>;
 }
 
-function appendRedactedRunLog(file: string, text: string): void {
-  appendFileSync(file, redactLines(stripHidden(text)));
+const appendedLogRedactors = new Map<string, SecretRedactor>();
+export function appendRedactedRunLog(file: string, text: string): void {
+  const fresh = !existsSync(file);
+  let redactor = appendedLogRedactors.get(file);
+  if (!redactor) { redactor = new SecretRedactor(); appendedLogRedactors.set(file, redactor); }
+  appendFileSync(file, redactor.write(stripHidden(text)));
+  if (fresh) writeFileSync(redactedMarker(file), "");
 }
 
 /** The sink sees only complete, redacted lines, including the final unterminated line. */
 export function redactedRunLog(file: string): Writable {
+  if (!existsSync(file)) {
+    appendFileSync(file, "");
+    writeFileSync(redactedMarker(file), "");
+  }
   const sink = createWriteStream(file, { flags: "a" });
   const redactor = new SecretRedactor();
   const decoder = new StringDecoder("utf8");
@@ -344,6 +370,12 @@ function stopLive(live: Live): void {
   killTree(live.child);
   // Same environment as the run's docker (DOCKER_HOST, contexts…).
   if (live.container) spawn(live.container.docker, ["kill", live.container.name], { env: live.container.env, stdio: "ignore", windowsHide: true }).on("error", () => undefined);
+}
+
+export function backgroundDelay(interval: number, failures: number, random = Math.random): number {
+  if (!failures) return interval;
+  const base = Math.min(60_000, Math.max(1_000, interval / 2) * 2 ** Math.min(failures - 1, 8));
+  return Math.round(base * (0.75 + random() * 0.5));
 }
 
 type Outcome =
@@ -423,18 +455,14 @@ function latestCandidates(group: AgentRun[]): AgentRun[] {
   return [...by.values()].sort((a, b) => a.bestOf!.n - b.bestOf!.n);
 }
 
-function tryGit(cwd: string, args: string[]): string | null {
-  try {
-    return git(cwd, args);
-  } catch {
-    return null;
-  }
-}
+const tryGitAsync = (cwd: string, args: string[]): Promise<string | null> => gitOutputAsync(cwd, args).catch(() => null);
 
 
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : String(err);
 
 export class Runner {
+  #stopped = false;
+  #flushingReports = false;
   readonly store: RunStore;
   readonly #host: RunnerHost;
   /** CLIs being upgraded (roadmap 33): their profiles take no new run until it is done. */
@@ -475,8 +503,12 @@ export class Runner {
   #worktreeBusy = new Set<string>();
   #worktreeMaintenance = 0;
   #runLogsPrunedAt = 0;
+  #logCache = new Map<string, { size: number; mtimeMs: number; text: string }>();
   #worktreeCommandQueue: Promise<void> = Promise.resolve();
   #worktreeCommandsActive = 0;
+  /** Project commands run one after another, apart from the heartbeat: a clone may take minutes. */
+  #projectCommandQueue: Promise<void> = Promise.resolve();
+  #projectCommandsTaken = new Set<string>();
   #worktreeCleanupJob: Promise<void> | null = null;
   #worktreeJobs = new Set<Promise<WorktreeCommand["results"]>>();
   #worktreeTimer: NodeJS.Timeout | undefined;
@@ -485,6 +517,7 @@ export class Runner {
   #interval: NodeJS.Timeout | undefined;
   #mergeQueue = new MergeQueueRunner();
   #heartbeatTimer: NodeJS.Timeout | undefined;
+  #systemTimer: NodeJS.Timeout | undefined;
   #pushTimer: NodeJS.Timeout | undefined;
   #chatTimer: NodeJS.Timeout | undefined;
   /** Writes the web chat's replies (see chat.ts). */
@@ -496,6 +529,7 @@ export class Runner {
   #assistTimer: NodeJS.Timeout | undefined;
   /** The hub does not know chat.poll yet: heartbeats bring the chat replies instead. */
   #chatPollOff = false;
+  #chatPollPending = false;
   #hubState: { ok: boolean | null; checkedAt: string | null; lastOkAt: string | null; code: string | null; error: string | null } = {
     ok: null,
     checkedAt: null,
@@ -512,6 +546,7 @@ export class Runner {
   readonly #answers = new Map<number, { status: "accepted" | "rejected"; runId: string | null; error: RunRequestError | null }>();
   /** Where a queued best-of-n candidate's branch came from (see remoteStart), for its log. */
   readonly #startNotes = new Map<string, string>();
+  readonly #mergeNotes = new Map<string, string>();
   /** How often a run went back to the queue because the remote could not be reached (see FETCH_TRIES). */
   readonly #fetchFails = new Map<string, number>();
   /** Why tick() took the profile it did (roadmap 24c), for the head of the run's log. */
@@ -536,6 +571,7 @@ export class Runner {
       now: () => new Date(),
       tickMs: 5000,
       heartbeatMs: 30_000,
+      systemMs: 30_000,
       pushMs: 5000,
       chatPollMs: 3000,
       chatProgressMs: 2000,
@@ -614,32 +650,65 @@ export class Runner {
   }
 
   start(): void {
+    this.#stopped = false;
+    if (this.#host.backend() instanceof HubBackend) {
+      const hub = this.#host.backend() as HubBackend;
+      hub.setQuitQueue((id, method, input, actor) => this.store.queueHubReport(id, method, input, actor));
+      void this.flushHubReports().catch(() => undefined);
+    }
     // A group whose running candidate was lost with the app would otherwise wait forever.
     const stalled = new Map(this.store.active().filter((r) => r.status === "running" && r.bestOf).map((r) => [r.bestOf!.group, r.id]));
     this.store.failInterrupted(this.#iso());
     for (const id of stalled.values()) this.#track(this.#bestOfNext(this.store.get(id)!).catch(() => undefined));
     this.#interval = setInterval(() => void this.tick(), this.#opts.tickMs);
     this.#interval.unref();
-    // A hub that is down shows up on every other call too; the heartbeat just tries again next time.
-    const beat = () => void this.beat();
-    this.#heartbeatTimer = setInterval(beat, this.#opts.heartbeatMs);
-    this.#heartbeatTimer.unref();
+    // Measured on its own timer so a slow statfs or OS command never delays the heartbeat (same as R-77b).
+    const measure = () => { if (this.#host.mode() === "hub") void this.sampleSystem(); };
+    this.#systemTimer = setInterval(measure, this.#opts.systemMs);
+    this.#systemTimer.unref();
+    measure();
+    this.#scheduleBackground(this.#opts.heartbeatMs, async () => {
+      await this.beat();
+      if (this.#hubState.ok === false) throw new Error("Heartbeat failed");
+    }, (timer) => { this.#heartbeatTimer = timer; });
     this.#worktreeTimer = setInterval(() => {
       if (this.#host.mode() === "local") void this.cleanWorktrees().catch(() => undefined);
     }, 60_000);
     this.#worktreeTimer.unref();
-    this.#pushTimer = setInterval(() => void this.pushRuns().catch(() => undefined), this.#opts.pushMs);
-    this.#pushTimer.unref();
+    this.#scheduleBackground(this.#opts.pushMs, () => this.pushRuns(), (timer) => { this.#pushTimer = timer; });
     if (this.#opts.chatPollMs > 0) {
-      this.#chatTimer = setInterval(() => void this.pollChats().catch(() => undefined), this.#opts.chatPollMs);
-      this.#chatTimer.unref();
+      this.#scheduleBackground(this.#opts.chatPollMs, () => this.pollChats(), (timer) => { this.#chatTimer = timer; });
     }
     if (this.#opts.assistPollMs > 0) {
-      this.#assistTimer = setInterval(() => void this.pollAssists().catch(() => undefined), this.#opts.assistPollMs);
-      this.#assistTimer.unref();
+      this.#scheduleBackground(this.#opts.assistPollMs, () => this.pollAssists(), (timer) => { this.#assistTimer = timer; });
     }
-    beat();
     void this.tick();
+  }
+
+  #scheduleBackground(interval: number, task: () => Promise<unknown>, remember: (timer: NodeJS.Timeout) => void): void {
+    let failures = 0;
+    const run = async () => {
+      try { await task(); failures = 0; }
+      catch { failures++; }
+      if (this.#stopped) return;
+      const timer = setTimeout(run, backgroundDelay(interval, failures));
+      timer.unref();
+      remember(timer);
+    };
+    void run();
+  }
+
+  async flushHubReports(): Promise<void> {
+    const backend = this.#host.backend();
+    if (!(backend instanceof HubBackend) || this.#flushingReports) return;
+    this.#flushingReports = true;
+    try {
+      for (const report of this.store.pendingHubReports()) {
+        if (report.method !== "tasks.update" && report.method !== "runs.report") continue;
+        await backend.replayReport(report.id, report.method, report.input as never, report.actor as Actor);
+        this.store.ackHubReport(report.id);
+      }
+    } finally { this.#flushingReports = false; }
   }
 
   /** How the last heartbeat went (hub mode): the interface shows a lost connection from it. */
@@ -654,6 +723,7 @@ export class Runner {
     try {
       await this.heartbeat();
       this.#hubState = { ok: true, checkedAt: at, lastOkAt: at, code: null, error: null };
+      void this.flushHubReports().catch(() => undefined);
     } catch (err) {
       const { code, message } = toErrorPayload(err);
       this.#hubState = { ...this.#hubState, ok: false, checkedAt: at, code, error: message.slice(0, 300) };
@@ -689,7 +759,7 @@ export class Runner {
       const profile = this.#host.profiles().find((p) => p.id === r.profileId);
       return Date.parse(r.startedAt ?? r.createdAt) + (r.timeoutMinutes ?? profile?.timeoutMinutes ?? 60) * 60_000;
     });
-    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
+    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#projectCommandsTaken.size > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
     return {
       busy: running.length > 0 || this.#inflight.size > 0 || auxiliary,
       // The chat has a 20-minute limit; final commit/report and sync get a bounded grace when no run remains.
@@ -699,10 +769,12 @@ export class Runner {
 
   /** Cancels running agents and waits for their bookkeeping (commit, Hive update) to finish. */
   async stop(): Promise<void> {
+    this.#stopped = true;
     this.#mergeQueue.stop();
     this.#updateDrain = true;
     clearInterval(this.#interval);
     clearInterval(this.#heartbeatTimer);
+    clearInterval(this.#systemTimer);
     clearInterval(this.#worktreeTimer);
     clearInterval(this.#pushTimer);
     clearInterval(this.#chatTimer);
@@ -712,7 +784,7 @@ export class Runner {
     this.#assists.stop();
     this.#memoryCleanup.stop();
     this.#autoRelease.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, this.#projectCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -808,6 +880,12 @@ export class Runner {
     const active = this.store.activeForTask(req.project, req.taskId);
     if (active) throw new HiveError("conflict", `Task ${req.taskId} đang có run ${active.id} (${active.status}).`, { key: "errors.taskHasRun", vars: { id: req.taskId, run: active.id } });
     const previous = this.store.lastWithWorktree(req.project, req.taskId);
+    const hubRuns = this.#host.mode() === "hub" ? await this.#host.backend().call("runs.list", { project: req.project, taskId: req.taskId, limit: 200 }, this.#runnerActor()) : [];
+    // Unselected candidates are evidence, not the branch an ordinary follow-up should resume.
+    const candidatePrefix = `${branchFor(req.taskId)}+c`;
+    const remoteRun = hubRuns.find(r => r.pushed && r.branch?.startsWith("ai/") && r.headSha &&
+      !(r.branch.startsWith(candidatePrefix) && /^\d+$/.test(r.branch.slice(candidatePrefix.length))));
+
     if (count > 1) return await this.#enqueueCandidates(req, project, task, count, previous, extra.requestedBy ?? null, extra.plan ?? null);
     const run = this.store.insert(
       {
@@ -824,9 +902,9 @@ export class Runner {
         plan: extra.plan ?? null,
         reviewAfter: extra.plan?.phase === "plan" ? false : req.reviewAfter ?? false,
         // Ordinary dispatch keeps main's fresh-start behavior after a merged branch was cleaned up.
-        branch: !extra.redispatch && previous?.branch && hasBranch(project.repo, previous.branch) ? previous.branch : null,
+        branch: !extra.redispatch ? remoteRun?.branch ?? (previous?.branch && await hasBranchAsync(project.repo, previous.branch) ? previous.branch : null) : null,
         redispatch: extra.redispatch ?? null,
-        baseSha: extra.redispatch ? extra.redispatch.baseSha : previous?.baseSha ?? null,
+        baseSha: extra.redispatch ? extra.redispatch.baseSha : remoteRun?.baseSha ?? previous?.baseSha ?? null,
         ciFix: extra.ciFix ?? null,
         requestedBy: extra.requestedBy ?? null,
         selection: req.selection ?? null,
@@ -841,19 +919,31 @@ export class Runner {
 
   /** Candidates start together from the task branch (or HEAD), each on its own branch and worktree. */
   async #enqueueCandidates(req: StartRunRequest, project: DesktopProject, task: Task, count: number, previous: AgentRun | null, requestedBy: string | null, plan: RunPlan | null = null): Promise<AgentRun> {
-    if (!isGitRepo(project.repo)) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
+    if (!(await isGitRepoAsync(project.repo))) throw new HiveError("bad_request", `${project.repo} không phải git repo`, { key: "errors.notGitRepo", vars: { path: project.repo } });
     const branch = branchFor(req.taskId);
-    const tip = tryGit(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    let tip = await tryGitAsync(project.repo, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+    const remote = project.git?.remote ?? "origin";
+    let taskRemoteSha: string | null = null;
+    if ((await gitOutputAsync(project.repo, ["remote"])).split("\n").includes(remote)) {
+      const fetched = await fetchTaskBranch(project.repo, branch, remote);
+      taskRemoteSha = fetched.sha;
+      if (fetched.sha) {
+        if (tip) {
+          try { await gitAsync(project.repo, ["merge-base", "--is-ancestor", tip, fetched.sha]); tip = fetched.sha; }
+          catch { await gitAsync(project.repo, ["merge-base", "--is-ancestor", fetched.sha, tip]); }
+        } else tip = fetched.sha;
+      }
+    }
     // No task branch yet: the candidates start from the target branch as the remote has it now.
-    const start = tip ? null : await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs });
+    const start = tip ? null : await remoteStart(project.repo, project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote: project.git?.remote });
     // Every candidate's branch is cut here, before any of them is queued, so there is no tick to try again at:
     // the ask fails instead of putting the whole group on a base that may be days behind (BUG-stale-base).
     if (start?.error) {
       const vars = { remote: start.remote!, tries: this.#opts.fetchRetryMs.length + 1, reason: start.error };
       throw new HiveError("unavailable", tr("errors.fetchFailed", vars), { key: "errors.fetchFailed", vars });
     }
-    const from = tip ?? git(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
-    const baseSha = tip ? (previous?.baseSha ?? git(project.repo, ["merge-base", "HEAD", branch])) : from;
+    const from = tip ?? await gitOutputAsync(project.repo, ["rev-parse", start?.ref ?? "HEAD"]);
+    const baseSha = tip ? (previous?.baseSha ?? await gitOutputAsync(project.repo, ["merge-base", "HEAD", tip])) : from;
     const group = `B-${randomBytes(3).toString("hex")}`;
     const now = this.#iso();
     const runs = Array.from({ length: count }, (_, i) =>
@@ -868,7 +958,7 @@ export class Runner {
           instructions: (req.instructions ?? "").slice(0, 4000),
           reviewAfter: req.reviewAfter ?? false,
           baseSha,
-          bestOf: { group, n: i + 1, of: count, from, pick: null, reason: null },
+          bestOf: { group, n: i + 1, of: count, from, taskRemoteSha, pick: null, reason: null },
           plan,
           preferKind: req.preferKind ?? null,
           allowedAgentKinds: req.allowedAgentKinds ?? null,
@@ -900,7 +990,7 @@ export class Runner {
     let check = this.#steerSupport.get(bin);
     if (!check) {
       check = new Promise<boolean>((resolve) => {
-        execFile(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(bin, ["--help"], { env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && /--input-format/.test(stdout) && /stream-json/.test(stdout));
         });
       });
@@ -915,7 +1005,7 @@ export class Runner {
     if (!check) {
       check = new Promise<boolean>((resolve) => {
         const probe = gemini ? geminiLaunch(bin, ["--help"], env) : { bin, args: ["exec", "resume", "--help"], env };
-        execFile(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
+        execFileCli(probe.bin, probe.args, { env: probe.env, timeout: 5000, maxBuffer: 256 * 1024, windowsHide: true }, (err, stdout) => {
           resolve(!err && (gemini ? /--resume/.test(stdout) && /stream-json/.test(stdout) : /resume/.test(stdout) && /SESSION_ID/i.test(stdout)));
         });
       });
@@ -986,7 +1076,7 @@ export class Runner {
   }
 
   list(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
-    return this.store.list({ ...filter, includeDiffSummaries: false }).map((r) => {
+    return this.store.listForDesktop(filter).map((r) => {
       // Run lists cross IPC often; the full snapshot is fetched only by diff(id).
       delete r.diffPatch;
       if (r.status === "queued") return { ...r, error: this.#waiting.get(r.id) ?? r.error };
@@ -1021,6 +1111,30 @@ export class Runner {
     return (size > maxBytes ? `${tr("runNote.logClipped")}\n` : "") + tail.toString("utf8");
   }
 
+  /** Renderer and hub polling use only the suffix; the cache avoids reopening an unchanged log. */
+  async logRecent(id: string, maxBytes = 200_000): Promise<string> {
+    const file = this.#logPath(id);
+    const key = `${id}:${maxBytes}`;
+    try {
+      const stat = await statAsync(file);
+      const cached = this.#logCache.get(key);
+      if (cached?.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.text;
+      const result = await statAsync(redactedMarker(file)).then(
+        () => readRunLogTail(file, maxBytes),
+        (err: NodeJS.ErrnoException) => {
+          if (err.code === "ENOENT") return readLegacyRunLogTail(file, maxBytes);
+          throw err;
+        },
+      );
+      this.#logCache.set(key, result);
+      if (this.#logCache.size > 128) this.#logCache.delete(this.#logCache.keys().next().value!);
+      return result.text;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") { this.#logCache.delete(key); return ""; }
+      throw err;
+    }
+  }
+
   /** What the run changed, as a unified diff from its base ("" when nothing, or its worktree and branch are gone). */
   diff(id: string): string {
     const run = this.store.get(id);
@@ -1032,8 +1146,17 @@ export class Runner {
     return repo && hasBranch(repo, run.branch!) ? branchPatch(repo, run.baseSha, `refs/heads/${run.branch}`) : "";
   }
 
+  async diffAsync(id: string): Promise<string> {
+    const run = this.store.get(id);
+    if (run?.diffPatch != null) return run.diffPatch;
+    if (!run?.baseSha) return "";
+    if (run.worktree && existsSync(run.worktree)) return branchPatchAsync(run.worktree, run.baseSha);
+    const repo = run.branch ? this.#host.projects().find((p) => p.name === run.project)?.repo : undefined;
+    return repo && await hasBranchAsync(repo, run.branch!) ? branchPatchAsync(repo, run.baseSha, `refs/heads/${run.branch}`) : "";
+  }
+
   /** The patch the hub gets with a run: when the run ended (once), and while it runs at most once a minute. */
-  #patchFor(r: AgentRun): string | undefined {
+  async #patchFor(r: AgentRun): Promise<string | undefined> {
     const done = r.status !== "queued" && r.status !== "running";
     const last = this.#patched.get(r.id);
     const key = `${r.status}:${r.commits}`;
@@ -1041,7 +1164,7 @@ export class Runner {
     if (r.status === "queued") return undefined;
     let text: string;
     try {
-      text = redactLines(stripHidden(this.diff(r.id)));
+      text = redactLines(stripHidden(await this.diffAsync(r.id)));
     } catch {
       return undefined;
     }
@@ -1065,12 +1188,12 @@ export class Runner {
     return this.#keep(run, tr("bestOf.byHand", { user: this.#opts.user }), null);
   }
 
-  removeWorktree(id: string): AgentRun {
+  async removeWorktree(id: string): Promise<AgentRun> {
     const run = this.store.get(id);
     if (!run?.worktree) throw new HiveError("not_found", "Run không có worktree.", { key: "errors.runNoWorktree" });
     if (this.store.activeForTask(run.project, run.taskId)) throw new HiveError("conflict", "Task đang có run hoạt động.", { key: "errors.taskActiveRun" });
     const project = this.#project(run.project);
-    if (existsSync(run.worktree)) removeWorktree(project.repo, run.worktree);
+    if (existsSync(run.worktree)) await removeWorktreeAsync(project.repo, run.worktree);
     return run;
   }
 
@@ -1144,6 +1267,13 @@ export class Runner {
       throw new HiveError("not_found", `Không có profile ${profileId}.`, { key: "errors.profileNotFound", vars: { id: profileId } });
     }
     this.store.resetStats(profileId, this.#opts.now().toISOString());
+  }
+
+  #systemSampler = new SystemSampler();
+
+  /** Takes a fresh CPU/RAM/disk sample for the next heartbeat. */
+  sampleSystem(): Promise<MachineSystem | undefined> {
+    return this.#systemSampler.refresh(this.#worktreeRoot());
   }
 
   #worktreeRoot(): string {
@@ -1266,6 +1396,21 @@ export class Runner {
     try { await next; } finally { this.#worktreeCommandsActive--; }
   }
 
+  /** Queued behind each other and never awaited by the heartbeat; the result goes with the heartbeat after it ends. */
+  #takeProjectCommands(commands: MachineProjectCommand[]): void {
+    const apply = this.#host.applyProjectCommand;
+    if (!apply) return;
+    for (const command of commands) {
+      if (this.#projectCommandsTaken.has(command.id) || this.store.projectResult(command.id)) continue;
+      this.#projectCommandsTaken.add(command.id);
+      this.#projectCommandQueue = this.#projectCommandQueue.then(async () => {
+        try { this.store.recordProjectResult(await apply(command)); }
+        catch (err) { this.store.recordProjectResult({ id: command.id, ok: false, error: errorMessage(err).slice(0, 1000) }); }
+        finally { this.#projectCommandsTaken.delete(command.id); }
+      });
+    }
+  }
+
   async cleanWorktrees(): Promise<void> {
     if (this.#updateDrain) return;
     if (this.#worktreeCleanupJob) return this.#worktreeCleanupJob;
@@ -1335,6 +1480,7 @@ export class Runner {
     await this.cleanWorktrees();
     const worktrees = await this.worktrees();
     const worktreeResults = this.store.worktreeResults();
+    const projectResults = this.store.projectResults();
     const deliveredMessages = this.store.steeringAcks();
     const appliedToolApprovals = this.store.toolApprovalAcks();
     const res = await this.#host
@@ -1345,14 +1491,21 @@ export class Runner {
           machine: this.#host.machine(),
           instance: this.#instance,
           version: this.#opts.version,
+          system: this.#systemSampler.latest,
           runs,
           costs,
           deliveredMessages,
           worktrees,
           worktreeResults,
+          // Only from an app that can take the commands: the hub reads a reported list as "supports them".
+          ...(this.#host.applyProjectCommand ? { repos: this.#host.projects().filter((p) => PROJECT_NAME.test(p.name) && p.repo.length <= 2000).slice(0, 200).map((p) => ({ project: p.name, path: p.repo })), projectResults } : {}),
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
+          gitPush: Object.fromEntries(this.#host.projects().map(p => {
+            const last = this.store.list({ project: p.name, limit: 200 }).find(r => r.pushed != null);
+            return [p.name, last?.pushed !== false || !last.pushError];
+          })),
           // Older hubs reject pending work when intake goes off; hold it locally until they understand this flag.
           acceptsRuns: this.#host.settings().acceptHubRuns && (!this.#updateDrain || !this.#supportsUpdateDrain),
           updateDraining: this.#updateDrain && this.#host.settings().acceptHubRuns,
@@ -1367,6 +1520,7 @@ export class Runner {
     this.store.ackSteering(deliveredMessages);
     this.store.ackToolApprovals(appliedToolApprovals);
     this.store.ackWorktreeResults(worktreeResults.map(r => r.id));
+    if (this.#host.applyProjectCommand) this.store.ackProjectResults(projectResults.map(r => r.id));
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -1412,6 +1566,8 @@ export class Runner {
       this.store.recordToolApproval(approval.id);
     }
     await this.#applyWorktreeCommands(res.worktreeCommands ?? []);
+    // A hub older than them sends none.
+    this.#takeProjectCommands(res.projectCommands ?? []);
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     if (!this.#updateDrain) this.#takeSyncs(update.syncCommands);
@@ -1522,6 +1678,8 @@ export class Runner {
   async pollChats(): Promise<number> {
     const hub = this.#host.mode() === "hub";
     if (this.#updateDrain || (hub && !this.#host.settings().acceptHubRuns) || this.#chatPollOff) return 0;
+    if (this.#chatPollPending) return 0;
+    this.#chatPollPending = true;
     try {
       const requests = await this.#host.backend().call("chat.poll", {}, this.#runnerActor());
       if (this.#updateDrain) return 0;
@@ -1530,6 +1688,8 @@ export class Runner {
     } catch (err) {
       if (err instanceof HiveError && err.code === "bad_request" && /unknown method/i.test(err.message)) this.#chatPollOff = true;
       throw err;
+    } finally {
+      this.#chatPollPending = false;
     }
   }
 
@@ -1663,17 +1823,24 @@ export class Runner {
       let patches = 0;
       for (const r of recent) {
         if (r.diffSummaryFor) continue;
-        const log = this.#logTail(r.id);
+        const done = r.status !== "queued" && r.status !== "running";
+        const metadataKey = createHash("sha256").update(JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits,
+          mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null,
+          r.headSha, r.startSha, r.remoteSha, r.pushed, r.pushError, r.summary, r.error, r.finishedAt,
+          r.costUsd, r.plan, r.instructions])).digest("hex");
+        // Once a finished snapshot reached the hub, later polls (including after restart) need no log I/O.
+        if (done && (this.#pushed.get(r.id) === metadataKey || this.store.pushedMetadataKey(r.id) === metadataKey)) continue;
+        const log = await this.#logTail(r.id);
         // A few patches per push keep the request small; the others go with the next ones.
-        const patch = patches < 3 ? this.#patchFor(r) : undefined;
+        const patch = patches < 3 ? await this.#patchFor(r) : undefined;
         if (patch !== undefined) patches++;
-        const key = JSON.stringify([r.status, r.activity ?? null, r.finishing ?? false, r.mrUrl, r.commits, log.length, log.slice(-200), mrOf(r), r.compression ?? null, r.skills ?? [], r.model ?? null, r.effort ?? null, r.diffReview ?? null]);
+        const key = done ? metadataKey : JSON.stringify([metadataKey, log.length, log.slice(-200)]);
         if (this.#pushed.get(r.id) !== key || patch !== undefined) changed.push({ run: r, key, log, ...(patch !== undefined ? { patch } : {}) });
         if (changed.length === 20) break;
       }
       if (!changed.length) return 0;
       const clip = (s: string | null, n: number) => (s === null ? null : s.length > n ? `${s.slice(0, n - 1)}…` : s);
-      await this.#host.backend().call(
+      try { await this.#host.backend().call(
         "runs.push",
         {
           machine: this.#host.machine(),
@@ -1691,6 +1858,7 @@ export class Runner {
             error: clip(r.error, 2000),
             branch: r.branch,
             baseSha: r.baseSha,
+            startSha: r.startSha, remoteSha: r.remoteSha, pushed: r.pushed, pushError: r.pushError,
             // Legacy local records may hold a short SHA; never present that as an exact evidence revision.
             headSha: r.headSha && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(r.headSha) ? r.headSha : null,
             instructions: r.instructions,
@@ -1719,8 +1887,17 @@ export class Runner {
           })),
         },
         this.#runnerActor(),
-      );
-      for (const c of changed) this.#pushed.set(c.run.id, c.key);
+      ); } catch (err) {
+        for (const c of changed) if (c.patch !== undefined) this.#patched.delete(c.run.id);
+        throw err;
+      }
+      for (const c of changed) {
+        const done = c.run.status !== "queued" && c.run.status !== "running";
+        // A finished run still owes a patch if this batch exhausted the patch quota.
+        if (done && this.#patched.get(c.run.id)?.key !== `${c.run.status}:${c.run.commits}`) continue;
+        this.#pushed.set(c.run.id, c.key);
+        if (done) this.store.markPushed(c.run.id, c.key);
+      }
       return changed.length;
     } finally {
       this.#pushing = false;
@@ -1763,8 +1940,8 @@ export class Runner {
   }
 
   /** The last lines of a run's log for the hub: no colour codes or hidden characters, secret-looking lines replaced. */
-  #logTail(id: string, lines = 200, bytes = 48_000): string {
-    const text = this.log(id, bytes)
+  async #logTail(id: string, lines = 200, bytes = 48_000): Promise<string> {
+    const text = (await this.logRecent(id, bytes))
       .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
       .split("\n");
     return redactLines(stripHidden(text.slice(-lines).join("\n"))).slice(-58_000);
@@ -2056,6 +2233,22 @@ export class Runner {
   }
 
   /**
+   * The prompt the project's manager wrote for the SDLC step this run is in (roadmap 72i). A hub without it, or one that
+   * fails, costs the run nothing: it goes on without, and the log says so.
+   */
+  async #stepPrompt(backend: HiveBackend, actor: Actor, run: AgentRun): Promise<{ prompt: RunStepPrompt | null; note: string | null }> {
+    if (run.role === "research" || run.bestOf?.n === 0) return { prompt: null, note: null };
+    try {
+      const prompt = await backend.call("sdlc.runPrompt", { project: run.project, taskId: run.taskId, role: run.role }, actor);
+      const block = stepPromptBlock(prompt);
+      if (block && "skipped" in block) return { prompt: null, note: `step prompt not used: ${block.skipped}` };
+      return { prompt, note: prompt ? `step prompt: ${prompt.step} v${prompt.version}` : null };
+    } catch (err) {
+      return { prompt: null, note: `step prompt not read: ${(err as Error).message}` };
+    }
+  }
+
+  /**
    * Puts the project's Hive context in the worktree before the agent starts (roadmap 38a), so every role reads the
    * current AGENTS.md, rules and skills even when the target branch has none of them. The files are the app's, not
    * the branch's: `wt.context` keeps them out of the run's commit. A hub that fails or is slow is not worth losing
@@ -2122,7 +2315,7 @@ export class Runner {
       const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
       // A candidate has its own; the judge reads the candidates' branches from the task's.
       const candidate = run.bestOf && run.bestOf.n > 0 ? run.bestOf : null;
-      const branch = run.branch ?? branchFor(run.taskId);
+      const branch = run.branch ?? branchFor(candidate ? candidateName(run.taskId, candidate.n) : run.taskId);
       const name = run.role === "research" ? `research-${run.id}` : candidate ? candidateName(run.taskId, candidate.n) : branch.slice(3);
       // A task without its branch yet starts from the target branch as the remote has it now; an existing branch
       // (a follow-up, a review, the kept candidate) goes on from its own history.
@@ -2133,7 +2326,14 @@ export class Runner {
       const pickNote = this.#pickNotes.get(run.id) ?? null;
       this.#pickNotes.delete(run.id);
       const resuming = !!run.branch && !run.branch.endsWith(`+${run.id}`);
-      const fresh = run.role !== "research" && !candidate && (!hasBranch(project.repo, branch) || (run.redispatch?.continueBranch && run.redispatch.crossMachine)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs }) : null;
+      const remote = project.git?.remote ?? "origin";
+      const hasRemote = (await gitOutputAsync(project.repo, ["remote"])).split("\n").includes(remote);
+      let taskRemote: Awaited<ReturnType<typeof fetchTaskBranch>> | null = null;
+      if (run.role !== "research" && run.bestOf?.n !== 0 && hasRemote) {
+        try { taskRemote = await fetchTaskBranch(project.repo, branch, remote); }
+        catch (err) { await this.#waitForRemote(run, profile, remote, gitErrorText(err)); return; }
+      }
+      const fresh = run.role !== "research" && !candidate && !taskRemote?.ref && !(await hasBranchAsync(project.repo, branch)) ? await remoteStart(project.repo, resuming ? branch : project.targetBranch, { retryMs: this.#opts.fetchRetryMs, remote }) : null;
       if (resuming && fresh && !fresh.ref) throw new HiveError("conflict", `Cannot retrieve branch ${branch}. Commit WIP and push it on the previous machine first.`, { key: "errors.redispatchUnavailable", vars: { branch } });
       // The checkout here may be days behind the remote (BUG-stale-base): rather than let the agent work on code
       // that old, the run goes back to the queue and tries again at the next tick, then fails.
@@ -2141,27 +2341,39 @@ export class Runner {
         await this.#waitForRemote(run, profile, fresh.remote!, fresh.error);
         return;
       }
+      run = this.store.update(run.id, { remoteSha: taskRemote?.sha ?? null });
       const startNote = fresh?.note ?? queuedNote;
-      wt = ensureWorktree(
+      wt = await ensureWorktreeAsync(
         project.repo,
         path.join(root, project.name, name),
         run.taskId,
         run.baseSha,
-        candidate ? { branch: branchFor(name), from: candidate.from } : run.role === "research" ? { branch: `research/${run.id}`, from: "HEAD" } : { branch, start: fresh?.ref ?? undefined },
+        candidate ? { branch: branchFor(name), from: taskRemote?.sha ?? candidate.from } : run.role === "research" ? { branch: `research/${run.id}`, from: "HEAD" } : { branch, start: taskRemote?.ref ?? fresh?.ref ?? undefined },
       );
       // A local copy may lag behind the other machine's WIP. Fast-forward only: divergent work stays intact.
-      if (run.redispatch?.crossMachine && run.redispatch.continueBranch && fresh?.ref) await gitAsync(wt.path, ["merge", "--ff-only", fresh.ref]);
+      if (taskRemote?.ref) {
+        try {
+          const moved = prepareTaskBranchMerge(wt.path, taskRemote.ref);
+          if (moved.length) this.#mergeNotes.set(run.id, `Untracked files preserved before branch fast-forward: ${moved.join(", ")}`);
+          wt.copied.push(...moved);
+          await gitAsync(wt.path, ["merge", "--ff-only", taskRemote.ref]);
+        }
+        catch (err) { wt = null; throw err; }
+      }
+      if (run.redispatch?.headSha) await gitAsync(wt.path, ["merge-base", "--is-ancestor", run.redispatch.headSha, "HEAD"]);
+      run = this.store.update(run.id, { startSha: await gitOutputAsync(wt.path, ["rev-parse", "HEAD"]), remoteSha: taskRemote?.sha ?? null, pushed: false, pushError: null });
       // A branch fetched on another machine starts at its WIP tip, but the diff still starts at the old base.
       if (resuming && run.baseSha) {
-        if (!tryGit(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`])) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
+        if (!(await tryGitAsync(wt.path, ["rev-parse", "--verify", `${run.baseSha}^{commit}`]))) throw new HiveError("conflict", `Cannot retrieve base for ${branch}.`, { key: "errors.redispatchUnavailable", vars: { branch } });
         wt.baseSha = run.baseSha;
       } else if (resuming) {
-        wt.baseSha = git(project.repo, ["merge-base", project.targetBranch ?? "HEAD", wt.branch]);
+        wt.baseSha = await gitOutputAsync(project.repo, ["merge-base", project.targetBranch ?? "HEAD", wt.branch]);
       }
       const backend = this.#host.backend();
       const actor = this.#actor(profile);
       const task = await this.#task(backend, actor, run);
       run = this.store.update(run.id, { worktree: wt.path, branch: wt.branch, baseSha: wt.baseSha, taskTitle: task.title });
+      await this.pushRuns();
       if (this.#host.mode() === "hub") {
         parentHub = this.#containerHub();
         if (!parentHub) throw new Error("Hub run needs a machine credential.");
@@ -2175,6 +2387,7 @@ export class Runner {
       // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
       // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
       const context = await this.#writeContext(backend, actor, run.project, wt);
+      const step = await this.#stepPrompt(backend, actor, run);
       // Old code a task has to read (roadmap 38h): other checkouts of this machine, read-only for the run.
       const references = resolveReferences(run.role === "research" ? (JSON.parse(run.instructions) as ResearchJob).projects.filter(p => p !== run.project) : project.references, this.#host.projects());
       const referenceLine = describeReferences(references);
@@ -2220,7 +2433,7 @@ export class Runner {
         } }), { mode: 0o600 });
       }
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
-      const hookLines: string[] = [];
+      const hookLines: string[] = step.note ? [step.note] : [];
       let hooks: ClaudeHookRun | null = null;
       let codexRtk: CodexRtkRun | null = null;
       if (tools.hooks?.length && run.role !== "research" && run.plan?.phase !== "plan") {
@@ -2274,6 +2487,7 @@ export class Runner {
         rules: context.rules,
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
         artifacts: this.#host.mode() === "hub",
+        stepPrompt: step.prompt,
       });
       writeSteer(wt.path, run.id, []);
       if (profile.kind === "opencode") {
@@ -2392,7 +2606,7 @@ export class Runner {
               runId: run.id,
               worktree: wt.path,
               writable: runDir ? [runDir] : [],
-              gitDir: git(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+              gitDir: await gitOutputAsync(wt.path, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
               env: {
                 ...agentEnv,
                 ...hubMcpEnv(hub, this.#mcpRun(profile, run), profile.kind, cmd.env?.OPENCODE_CONFIG_CONTENT),
@@ -2475,11 +2689,13 @@ export class Runner {
             let agyFailure: string | null = null;
             let modelRejected = false;
             const launch = !box && profile.kind === "gemini" ? geminiLaunch(bin, cmd.args, env) : { bin, args: box ? box.args : cmd.args, env };
-            const child = spawn(launch.bin, launch.args, {
+            // Per launch, not on cmd: the resume branches below rebuild args from initialArgs, which keep the prompt.
+            const sent = !box && process.platform === "win32" && /\.(cmd|bat)$/i.test(launch.bin) ? promptOnStdin(profile.kind, launch.args, cmd.stdin) : { args: launch.args, stdin: cmd.stdin };
+            const child = spawnCli(launch.bin, sent.args, {
               cwd: wt.path,
               env: launch.env,
               detached: process.platform !== "win32",
-              stdio: [cmd.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
+              stdio: [sent.stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
               windowsHide: true,
             });
             const live: Live = { child, log, deadline, cancelled: false, timedOut: false, ...(box ? { container: { docker: bin, name: box.name, env } } : {}) };
@@ -2497,7 +2713,7 @@ export class Runner {
                 child.stdin.write(claudeUserMessage(text), (err) => err ? reject(err) : resolve());
               });
               child.stdin?.write(cmd.stdin!);
-            } else if (cmd.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(cmd.stdin); }
+            } else if (sent.stdin !== null) { child.stdin?.on("error", () => undefined); child.stdin?.end(sent.stdin); }
 
             const decode = { out: new StringDecoder("utf8"), err: new StringDecoder("utf8") };
             const lastLine = (text: string) => {
@@ -2734,7 +2950,7 @@ export class Runner {
       const hostEnv = Object.fromEntries(Object.entries(this.#host.env()).filter(([k]) => !k.startsWith("ELECTRON_")));
       const classifyEnv = { ...hostEnv, ...expandEnv(run.diffSummaryFor ? routed.env : profile.env) };
       for (let modelRetry = 0; ; modelRetry++) {
-        const child = spawn(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+        const child = spawnCli(bin, cmd.args, { cwd: dir, env: classifyEnv, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
         const live: Live = { child, deadline: Date.now() + CLASSIFY_TIMEOUT_MS, cancelled: false, timedOut: false };
         this.#live.set(run.id, live);
         let output = "";
@@ -2834,6 +3050,13 @@ export class Runner {
       await this.#finish(run, profile, wt, outcome);
     } finally {
       this.#finishing.delete(run.id);
+      if (run.bestOf) {
+        await this.#bestOfNext(this.store.get(run.id)!).catch((err: unknown) => {
+          const now = this.store.get(run.id)!;
+          this.store.update(run.id, { error: [now.error, `best-of-n: ${(err as Error).message}`].filter(Boolean).join(" · ") });
+        });
+        void this.tick();
+      }
       // The web sees the end (summary, commits, MR) now rather than at the next push.
       this.#track(
         this.pushRuns()
@@ -2926,7 +3149,16 @@ export class Runner {
     if (run.plan?.phase === "plan") {
       const text = outcome.kind === "exit" ? redactLines(stripHidden((outcome.usage?.text ?? outcome.stdout).trim())).slice(0, PLAN_MAX) : "";
       if (status === "succeeded" && !text) { status = "failed"; error = tr("runNote.planEmpty"); }
-      const done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
+      let done = this.store.update(run.id, { status, error, exitCode, summary, plan: { ...run.plan, text: status === "succeeded" ? text : null }, ...usage, finishedAt: now.toISOString() });
+      if (wt && run.branch?.startsWith("ai/")) {
+        const state = await branchStateAsync(wt.path, wt.baseSha);
+        done = this.store.update(run.id, state);
+        if (state.headSha) {
+          const project = this.#project(run.project);
+          const result = await pushTaskBranch(project.repo, run.branch, state.headSha, run.remoteSha ?? null, project.git?.remote ?? "origin");
+          done = this.store.update(run.id, { ...result, ...(result.pushed ? { remoteSha: state.headSha } : {}) });
+        }
+      }
       // Saving outside the checkout preserves CLI read-only mode and keeps plans out of code commits.
       if (status === "succeeded") writeFileSync(path.join(this.#opts.dataDir, "runs", `${run.id}.plan.md`), text);
       this.#opts.onEvent?.({ type: "finished", run: done });
@@ -2939,21 +3171,28 @@ export class Runner {
     // The judge changes nothing: what it left is dropped when the kept candidate replaces the branch.
     if (wt && existsSync(wt.path) && run.bestOf?.n !== 0) {
       const label = run.role === "review" ? "review" : status === "succeeded" ? "work" : "wip";
-      const c = commitAll(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, [...wt.copied, ...(wt.context ?? [])], wt.toolDirs);
+      const c = await commitAllAsync(wt.path, `ai(${run.taskId}): ${label} by ${profile.id}\n\nRun ${run.id}, attempt ${run.attempt}, status ${status}`, [...wt.copied, ...(wt.context ?? [])], wt.toolDirs);
       if (c.error) {
         error = [error, `commit: ${c.error}`].filter(Boolean).join(" · ");
         // Its work is in the worktree, not on the branch: an MR or review would show nothing, so it did not succeed.
         if (status === "succeeded") status = "failed";
       }
-      ({ commits, headSha } = branchState(wt.path, wt.baseSha));
+      ({ commits, headSha } = await branchStateAsync(wt.path, wt.baseSha));
     }
 
     const continuation = outcome.kind === "exit" && outcome.timedOut
       ? tr("runNote.continueFrom", { branch: run.branch ?? "—", commit: headSha ?? "—", activity: run.continuation ?? "—" }) : null;
-    const done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation, ...usage, finishedAt: now.toISOString() });
+    const mergeNote = this.#mergeNotes.get(run.id);
+    this.#mergeNotes.delete(run.id);
+    let done = this.store.update(run.id, { status, error, exitCode, summary, commits, headSha, continuation: [mergeNote, continuation].filter(Boolean).join("\n") || null, ...usage, finishedAt: now.toISOString() });
+    if (wt && run.bestOf?.n !== 0 && headSha && run.branch?.startsWith("ai/")) {
+      const project = this.#project(run.project);
+      const result = await pushTaskBranch(project.repo, run.branch, headSha, run.remoteSha ?? null, project.git?.remote ?? "origin");
+      done = this.store.update(run.id, { ...result, ...(result.pushed ? { remoteSha: headSha } : {}) });
+    }
     if (wt && run.role === "implement" && ["succeeded", "failed", "cancelled"].includes(status) && this.#opts.diffReview !== false) {
       try {
-        const patch = redactLines(stripHidden(this.diff(done.id)));
+        const patch = redactLines(stripHidden(await this.diffAsync(done.id)));
         this.store.update(done.id, { diffPatch: patch });
         // Local runs and projects with routing disabled still use the hub's configured light row.
         const selection = run.selection?.diffReview ?? diffReviewSelection(await this.#host.backend().call("modelRouter.get", {}, this.#runnerActor()).catch(() => undefined));
@@ -3020,12 +3259,7 @@ export class Runner {
       );
       this.#opts.onEvent?.({ type: "rotated", run: done, next });
     } else if (run.bestOf) {
-      // The group decides what comes next, once every candidate is done.
-      await this.#bestOfNext(this.store.get(run.id)!).catch((err: unknown) => {
-        const now = this.store.get(run.id)!;
-        this.store.update(run.id, { error: [now.error, `best-of-n: ${(err as Error).message}`].filter(Boolean).join(" · ") });
-      });
-      void this.tick();
+      // #complete chooses once all uploads/reporting finish; another candidate may still need to queue a retry.
       return;
     } else if (status === "succeeded" && run.reviewAfter && run.role !== "review") {
       next = this.store.insert(
@@ -3064,7 +3298,7 @@ export class Runner {
   async #bestOfNext(run: AgentRun): Promise<void> {
     const b = run.bestOf!;
     const group = this.store.group(b.group);
-    if (group.some((r) => r.bestOf!.pick !== null) || group.some((r) => ACTIVE.includes(r.status))) return;
+    if (group.some((r) => r.bestOf!.pick !== null) || group.some((r) => ACTIVE.includes(r.status) || this.#finishing.has(r.id))) return;
     const finals = latestCandidates(group);
     const done = finals.filter((c) => c.status === "succeeded");
     const judge = group.filter((r) => r.bestOf!.n === 0).at(-1) ?? null;
@@ -3120,8 +3354,8 @@ export class Runner {
     const project = this.#project(chosen.project);
     const root = this.#host.settings().worktreeRoot ?? path.join(this.#opts.dataDir, "worktrees");
     const from = chosen.branch ?? branchFor(candidateName(chosen.taskId, b.n));
-    const wt = ensureWorktree(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
-    resetTo(wt.path, wt.branch, `refs/heads/${from}`);
+    const wt = await ensureWorktreeAsync(project.repo, path.join(root, project.name, chosen.taskId), chosen.taskId, chosen.baseSha);
+    await resetToAsync(wt.path, wt.branch, `refs/heads/${from}`);
     // After the reset: `git clean` takes the context with everything else untracked, and a review may follow here.
     await this.#writeContext(this.#host.backend(), this.#runnerActor(), chosen.project, wt);
     this.store.setPick(b.group, b.n, reason);
@@ -3130,7 +3364,7 @@ export class Runner {
     for (const c of this.store.group(b.group)) {
       if (!c.worktree || c.bestOf!.n === 0) continue;
       try {
-        if (existsSync(c.worktree)) removeWorktree(project.repo, c.worktree, true);
+        if (existsSync(c.worktree)) await removeWorktreeAsync(project.repo, c.worktree, true);
       } catch (err) {
         notes.push((err as Error).message);
       }
@@ -3139,9 +3373,21 @@ export class Runner {
     let kept = this.store.update(chosen.id, {
       branch: wt.branch,
       worktree: wt.path,
-      ...branchState(wt.path, wt.baseSha),
+      ...await branchStateAsync(wt.path, wt.baseSha),
       ...(notes.length ? { error: notes.join(" · ") } : {}),
     });
+    if (kept.headSha) {
+      try {
+        const remote = project.git?.remote ?? "origin";
+        // Refreshing the lease here could silently authorize overwriting work pushed while the candidates ran.
+        const expected = b.taskRemoteSha ?? null;
+        kept = this.store.update(kept.id, { remoteSha: expected });
+        const result = await pushTaskBranch(project.repo, wt.branch, kept.headSha!, expected, remote);
+        kept = this.store.update(kept.id, { ...result, ...(result.pushed ? { remoteSha: kept.headSha } : {}) });
+      } catch (err) {
+        kept = this.store.update(kept.id, { pushed: false, pushError: redactLines(stripHidden(toErrorPayload(err).message)).slice(0, 4000) });
+      }
+    }
     const task = await this.#groupTask(kept, b.group);
     if (task) {
       const by = judge ? `, giám khảo ${judge.profileId ?? "?"} (run ${judge.id})` : "";

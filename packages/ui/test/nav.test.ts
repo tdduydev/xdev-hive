@@ -59,7 +59,7 @@ describe("web menu by job (roadmap 49b)", () => {
   });
 
   it("puts the hub admin's jobs in Quản trị's tabs, leaving out what an older hub lacks", () => {
-    assert.deepEqual(adminTabs(caps), ["ops", "users", "policy", "tools", "budgets", "alerts", "audit", "webhooks", "versions", "hub"]);
+    assert.deepEqual(adminTabs(caps), ["ops", "users", "roles", "org", "policy", "tools", "budgets", "alerts", "audit", "webhooks", "versions", "hub"]);
     assert.deepEqual(adminTabs({ ...caps, users: false, alerts: false, webhooks: false, releases: false, hub: false }), ["ops", "policy", "tools", "budgets", "audit"]);
   });
 

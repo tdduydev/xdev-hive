@@ -1,0 +1,82 @@
+import * as React from "react"
+import { type VariantProps } from "class-variance-authority"
+import { cn } from "cn"
+import { ToggleGroup as ToggleGroupPrimitive } from "radix-ui"
+
+import { toggleVariants } from "@xdev-hive/ui-kit/components/ui/toggle"
+
+const ToggleGroupContext = React.createContext<
+  VariantProps<typeof toggleVariants> & {
+    spacing?: number
+  }
+>({
+  size: "default",
+  variant: "default",
+  spacing: 0,
+})
+
+function ToggleGroup({
+  className,
+  variant,
+  size,
+  spacing = 0,
+  children,
+  ...props
+}: React.ComponentProps<typeof ToggleGroupPrimitive.Root> &
+  VariantProps<typeof toggleVariants> & {
+    spacing?: number
+  }) {
+  return (
+    <ToggleGroupPrimitive.Root
+      data-slot="toggle-group"
+      data-variant={variant}
+      data-size={size}
+      data-spacing={spacing}
+      style={{ "--gap": spacing } as React.CSSProperties}
+      className={cn(
+        "group/toggle-group flex w-fit items-center gap-[--spacing(var(--gap))] rounded-md data-[variant=outline]:gap-0.5 data-[variant=outline]:border data-[variant=outline]:border-line-subtle data-[variant=outline]:bg-sunken data-[variant=outline]:p-0.5",
+        className
+      )}
+      {...props}
+    >
+      <ToggleGroupContext.Provider value={{ variant, size, spacing }}>
+        {children}
+      </ToggleGroupContext.Provider>
+    </ToggleGroupPrimitive.Root>
+  )
+}
+
+function ToggleGroupItem({
+  className,
+  children,
+  variant,
+  size,
+  ...props
+}: React.ComponentProps<typeof ToggleGroupPrimitive.Item> &
+  VariantProps<typeof toggleVariants>) {
+  const context = React.useContext(ToggleGroupContext)
+
+  return (
+    <ToggleGroupPrimitive.Item
+      data-slot="toggle-group-item"
+      data-variant={context.variant || variant}
+      data-size={context.size || size}
+      data-spacing={context.spacing}
+      className={cn(
+        toggleVariants({
+          variant: context.variant || variant,
+          size: context.size || size,
+        }),
+        "w-auto min-w-0 shrink-0 px-2.5 focus:z-10 focus-visible:z-10",
+        "data-[variant=outline]:rounded-sm data-[variant=outline]:border-0 data-[variant=outline]:bg-transparent data-[variant=outline]:data-[size=default]:h-7 data-[variant=outline]:data-[size=sm]:h-6 data-[variant=outline]:hover:bg-hover data-[variant=outline]:data-[state=on]:bg-surface data-[variant=outline]:data-[state=on]:font-semibold data-[variant=outline]:data-[state=on]:text-fg-strong data-[variant=outline]:data-[state=on]:shadow-e1",
+        "data-[variant=default]:data-[spacing=0]:rounded-none data-[variant=default]:data-[spacing=0]:first:rounded-l-md data-[variant=default]:data-[spacing=0]:last:rounded-r-md",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </ToggleGroupPrimitive.Item>
+  )
+}
+
+export { ToggleGroup, ToggleGroupItem }

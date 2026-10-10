@@ -4,6 +4,8 @@ import {
   type DesktopBridge,
   type HiveErrorCode,
   type Grant,
+  type HubInvite,
+  type HubRole,
   type HubUser,
   type Me,
   type Method,
@@ -22,6 +24,10 @@ import {
   type HubAlert,
   type HubCleanup,
   type HubInfo,
+  type BackupEntry,
+  type BackupList,
+  type BackupProject,
+  type ProjectRestored,
 } from "@xdev-hive/core";
 import { newTerminalSocket, type TerminalApi } from "#ui/lib/terminal-client.ts";
 
@@ -59,8 +65,18 @@ export interface HiveClient {
   /** Hub only, for hub admins: accounts and their per-project grants. */
   users?: {
     list(): Promise<HubUser[]>;
-    create(input: { username: string; displayName?: string; admin?: boolean }): Promise<{ user: HubUser; password: string }>;
-    update(id: string, patch: { displayName?: string; admin?: boolean; disabled?: boolean }): Promise<HubUser>;
+    create(input: { username: string; displayName?: string; admin?: boolean; hubRole?: HubRole }): Promise<{ user: HubUser; password: string }>;
+    update(id: string, patch: { displayName?: string; admin?: boolean; hubRole?: HubRole; disabled?: boolean }): Promise<HubUser>;
+    /** Thùng rác (R-72l): trash disables and signs the account out, restore brings it back, purge deletes it for good (trash only). */
+    trash(id: string): Promise<HubUser>;
+    restore(id: string): Promise<HubUser>;
+    purge(id: string): Promise<void>;
+    /** Sign-up links: one use, they expire. The secret comes back once, in `token`. */
+    invites: {
+      list(): Promise<HubInvite[]>;
+      create(input: { hubRole: HubRole; days?: number; userId?: string }): Promise<{ invite: HubInvite; token: string }>;
+      revoke(inviteId: string): Promise<HubInvite>;
+    };
     /** shared: the Chung grant (null: from projects); left out, it stays as it is. */
     setGrants(id: string, grants: Record<string, Grant>, shared?: Grant | null): Promise<HubUser>;
     resetPassword(id: string): Promise<string>;
@@ -97,6 +113,17 @@ export interface HiveClient {
     /** "Dọn dữ liệu": old app builds, old artifacts of done tasks, then VACUUM. */
     cleanup(): Promise<HubCleanup>;
   };
+  /** Hub only, for hub admins: the snapshots, their pins, and a project copied back out of one (ADM-backup-restore). */
+  backups?: {
+    list(): Promise<BackupList>;
+    pin(name: string): Promise<BackupEntry>;
+    unpin(name: string): Promise<BackupEntry>;
+    projects(name: string): Promise<BackupProject[]>;
+    /** `confirm`: the project's name typed again. */
+    restoreProject(name: string, project: string, confirm: string): Promise<ProjectRestored>;
+    /** Where the browser downloads it with its session. */
+    href(name: string): string;
+  };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
   /** Web hub, signed in with an account: files attached to chat messages (roadmap 17g). */
@@ -122,13 +149,17 @@ async function hubRequest<T>(baseUrl: string, path: string, body: unknown, token
     credentials: "same-origin",
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : { "x-hive-csrf": "1" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
   return hubResult<T>(res);
 }
 
 /** The hub's answer, or its error with the key the UI translates. */
 async function hubResult<T>(res: Response): Promise<{ status: number; result: T }> {
-  const json = (await res.json().catch(() => null)) as {
+  const json = (await res.json().catch((err: unknown) => {
+    if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) throw err;
+    return null;
+  })) as {
     result?: T;
     error?: { code?: string; message?: string; key?: string; vars?: Record<string, string | number> };
   } | null;
@@ -140,6 +171,16 @@ async function hubResult<T>(res: Response): Promise<{ status: number; result: T 
   return { status: res.status, result: json.result as T };
 }
 
+/** A sign-up link's page: what the link gives, or the hub's refusal when it is used up, expired or revoked. */
+export async function peekInvite(token: string, baseUrl = ""): Promise<{ role: HubRole; username: string | null; expiresAt: string }> {
+  return (await hubRequest<{ role: HubRole; username: string | null; expiresAt: string }>(baseUrl, "/api/invite/peek", { token })).result;
+}
+
+/** Uses a sign-up link: the hub makes the account (or sets the invited one's password) and signs the browser in. */
+export async function acceptInvite(input: { token: string; username?: string; displayName?: string; password: string }, baseUrl = ""): Promise<Me> {
+  return (await hubRequest<Me>(baseUrl, "/api/invite/accept", input)).result;
+}
+
 /** Username + password sign-in: the hub sets an HttpOnly session cookie. */
 export async function signIn(username: string, password: string, baseUrl = ""): Promise<Me> {
   return (await hubRequest<Me>(baseUrl, "/api/login", { username, password })).result;
@@ -148,6 +189,17 @@ export async function signIn(username: string, password: string, baseUrl = ""): 
 /** What the sign-in page offers besides a password: the hub's OpenID Connect provider, if any. */
 export async function signInProviders(baseUrl = ""): Promise<{ oidc: { name: string } | null }> {
   return (await hubRequest<{ oidc: { name: string } | null }>(baseUrl, "/api/auth/providers", undefined)).result;
+}
+
+/** A hub started for setup (roadmap 75): whether it waits for it, which settings the environment holds, and the rest's values. */
+export type HubSetupState = { pending: false } | { pending: true; locked: string[]; defaults: Record<string, string> };
+
+export async function hubSetupState(baseUrl = ""): Promise<HubSetupState> {
+  return (await hubRequest<HubSetupState>(baseUrl, "/api/setup", undefined)).result;
+}
+
+export async function saveHubSetup(input: { code: string; admin: { username: string; password: string }; values: Record<string, string> }, baseUrl = ""): Promise<void> {
+  await hubRequest(baseUrl, "/api/setup", input);
 }
 
 export async function signOut(baseUrl = ""): Promise<void> {
@@ -203,6 +255,16 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       update: (id, patch) => rpc<HubUser>("users.update", { id, ...patch }),
       setGrants: (id, grants, shared) => rpc<HubUser>("users.setGrants", { id, grants, ...(shared === undefined ? {} : { shared }) }),
       resetPassword: async (id) => (await rpc<{ password: string }>("users.resetPassword", { id })).password,
+      trash: (id) => rpc<HubUser>("users.trash", { id }),
+      restore: (id) => rpc<HubUser>("users.restore", { id }),
+      purge: async (id) => {
+        await rpc("users.purge", { id });
+      },
+      invites: {
+        list: () => rpc<HubInvite[]>("users.inviteList"),
+        create: (input) => rpc<{ invite: HubInvite; token: string }>("users.inviteCreate", input),
+        revoke: (inviteId) => rpc<HubInvite>("users.inviteRevoke", { inviteId }),
+      },
     },
     members: {
       list: (project) => rpc<ProjectMember[]>("members.list", { project }),
@@ -219,6 +281,14 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       info: () => rpc<HubInfo>("hub.info"),
       backup: () => rpc<{ file: string; removed: number; files: number | null }>("hub.backup"),
       cleanup: () => rpc<HubCleanup>("hub.cleanup"),
+    },
+    backups: {
+      list: () => rpc<BackupList>("backups.list"),
+      pin: (name) => rpc<BackupEntry>("backups.pin", { name }),
+      unpin: (name) => rpc<BackupEntry>("backups.unpin", { name }),
+      projects: (name) => rpc<BackupProject[]>("backups.projects", { name }),
+      restoreProject: (name, project, confirm) => rpc<ProjectRestored>("backups.restoreProject", { name, project, confirm }),
+      href: (name) => `${baseUrl}/api/backups/${encodeURIComponent(name)}`,
     },
     alerts: {
       list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),
@@ -243,6 +313,7 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
               const query = `project=${encodeURIComponent(project)}&name=${encodeURIComponent(file.name)}`;
               const res = await fetch(`${baseUrl}/api/chat/files?${query}`, {
                 method: "POST",
+                signal: AbortSignal.timeout(45_000),
                 credentials: "same-origin",
                 headers: { "content-type": file.type || "application/octet-stream", "x-hive-csrf": "1" },
                 body: file,

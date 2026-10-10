@@ -55,7 +55,8 @@ it("uses bucket IDs or group names and windows, leaving invalid or missing quota
 
 it("never invokes /usage on old or unknown agy versions, including sign-in checks", async () => {
   const bin = testTmpDir(path.join(os.tmpdir(), "hive-agy-version-"));
-  const agy = path.join(bin, "agy");
+  // Windows: resolveBin only takes a PATHEXT name; the file never runs, `run` is faked.
+  const agy = path.join(bin, process.platform === "win32" ? "agy.cmd" : "agy");
   writeFileSync(agy, "#!/bin/sh\nexit 0\n"); chmodSync(agy, 0o755);
   for (const version of ["agy 1.1.10", "not a version", "1.1.11-beta.1"]) {
     const calls: string[][] = [];

@@ -1,39 +1,29 @@
 // Phiên bản app (docs/design/2026-09-redesign, xDev Hive Web Admin): which desktop build machines should run, how
 // fast it rolls out, how they install it, and the builds the hub holds (roadmap 22i).
 import { useMemo, useState, type ReactNode } from "react";
-import { cn } from "cn";
 import { compareVersions, INSTALL_WHEN, type AppRollout, type MachineUpdate } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
-import { Switch } from "@xdev-hive/ui/components/ui/switch";
-import { DataTable, type Column } from "#ui/components/DataTable.tsx";
+import { SegmentedTabs, Toggle } from "@xdev-hive/ui/components/ui/primitives";
 import { Empty, ErrorNote } from "#ui/components/common.tsx";
 import { Chip, type ChipKind } from "#ui/components/panes.tsx";
 import { DocMarkdown } from "#ui/components/DocMarkdown.tsx";
 import { formatTime, useAction, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
+import { AdminCards, AdminStats, AdminTable, type AdminCard, type AdminRow, type AdminTone } from "./cosmic.tsx";
 
+const TONE: Record<ChipKind, AdminTone> = { success: "ok", running: "run", info: "info", danger: "bad", warning: "warn", neutral: "neutral" };
 const COLORS = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 
-function Pills<T extends string | number>({ value, options, onPick, disabled }: { value: T; options: Array<[T, ReactNode]>; onPick: (v: T) => void; disabled?: boolean }) {
+function Pills<T extends string | number>({ label, value, options, onPick, disabled }: { label: string; value: T; options: Array<[T, ReactNode]>; onPick: (v: T) => void; disabled?: boolean }) {
+  const byKey = new Map(options.map(([v]) => [String(v), v]));
   return (
-    <div className="flex flex-wrap gap-1">
-      {options.map(([v, label]) => (
-        <button
-          key={String(v)}
-          type="button"
-          disabled={disabled}
-          aria-pressed={value === v}
-          onClick={() => value !== v && onPick(v)}
-          className={cn(
-            "h-7 cursor-pointer rounded-full border px-3 text-xs font-semibold outline-none focus-visible:focus-ring disabled:cursor-default",
-            value === v ? "border-line-selected bg-selected text-selected-fg" : "border-line-default bg-surface text-fg-secondary hover:text-fg-strong",
-          )}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <SegmentedTabs
+      label={label}
+      value={String(value)}
+      items={options.map(([v, l]) => ({ value: String(v), label: typeof l === "string" ? l : String(v), disabled }))}
+      onChange={(k) => k !== String(value) && onPick(byKey.get(k)!)}
+    />
   );
 }
 
@@ -78,20 +68,64 @@ export function OpsVersions() {
     if (m.state === "failed") return { label: t("ops.versions.state.failed"), kind: "danger" };
     return { label: target ? t("ops.versions.state.idle") : t("ops.versions.state.none"), kind: "neutral" };
   };
-  const columns: Array<Column<MachineUpdate>> = [
-    { key: "machine", label: t("ops.versions.col.machine"), width: "minmax(180px,1fr)", mono: true, strong: true, render: (m) => m.machine, sortValue: (m) => m.machine },
-    { key: "current", label: t("ops.versions.col.current"), width: "110px", mono: true, render: (m) => m.current, sortValue: (m) => m.current },
-    { key: "target", label: t("ops.versions.col.target"), width: "110px", mono: true, render: () => target ?? "—" },
-    { key: "state", label: t("ops.versions.col.state"), width: "160px", render: (m) => <div className="flex min-w-0 flex-col gap-1"><Chip kind={stateOf(m).kind}>{stateOf(m).label}</Chip>{m.error ? <span className="whitespace-normal break-words text-xs/4 text-danger" role="status">{m.error}</span> : null}</div>, title: (m) => m.error ?? undefined },
-    { key: "seen", label: t("ops.versions.col.seen"), width: "130px", align: "right", render: (m) => formatTime(m.updatedAt), sortValue: (m) => m.updatedAt },
-  ];
-
+  const rows: AdminRow[] = machines.map((m) => {
+    const st = stateOf(m);
+    return {
+      key: m.machineId,
+      cells: [
+        { text: m.machine, mono: true, strong: true },
+        { text: m.current, mono: true },
+        { text: target ?? "—", mono: true },
+        { text: st.label, tone: TONE[st.kind], sub: m.error ?? undefined, title: m.error ?? undefined },
+        { text: formatTime(m.updatedAt), mono: true },
+      ],
+      sort: [m.machine, m.current, target ?? "", st.label, m.updatedAt],
+      search: `${m.machine} ${m.current} ${st.label} ${m.error ?? ""}`,
+      tags: { state: st.kind, current: m.current },
+    };
+  });
+  const versionOptions = counts.map(([v]) => ({ value: v, label: v }));
   if (!client.releases) return null;
+  const cards: AdminCard[] = releases.map((r) => ({
+    key: r.version,
+    title: <span className="font-mono">{r.version}</span>,
+    side: `${r.channel} · ${formatTime(r.createdAt)}`,
+    tone: r.version === target ? "run" : r.channel === "stable" ? "ok" : "warn",
+    body: (
+      <div className="flex flex-col gap-2">
+        {r.version === target ? <span><Chip kind="info">{t("ops.versions.isTarget")}</Chip></span> : null}
+        {r.notes ? (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-fg-muted">{t("ops.versions.notes")}</summary>
+            <div className="mt-2 max-h-60 overflow-y-auto [&_p]:text-[13px]">
+              <DocMarkdown text={r.notes} />
+            </div>
+          </details>
+        ) : null}
+        <div className="flex flex-wrap gap-1">
+          {r.files.map((f) => (
+            <span key={f.id} title={`${f.sha256} · ${(f.size / 1e6).toFixed(0)} MB`} className="rounded-xs border border-line-subtle bg-sunken px-1.5 py-0.5 font-mono text-[11px] text-fg-secondary">
+              {f.platform}-{f.arch}.{f.kind}
+            </span>
+          ))}
+        </div>
+      </div>
+    ),
+    ...(r.version !== target && r.channel === "stable" ? { action: { label: t("ops.versions.setTarget"), disabled: action.busy || !r.files.length, onClick: () => save({ target: r.version, paused: false }) } } : {}),
+  }));
   return (
-    <div className="flex flex-col gap-4">
+    <div className="cx-ops-stack">
       <ErrorNote error={data.error ?? action.error} />
+      <AdminStats
+        stats={[
+          { key: "target", label: t("ops.versions.rollout"), value: <span className="font-mono">{target ?? "—"}</span>, note: rollout?.paused ? t("ops.versions.paused") : target ? t("ops.versions.channel", { channel: releases.find((r) => r.version === target)?.channel ?? "stable" }) : t("ops.versions.noTarget"), tone: rollout?.paused ? "warn" : target ? "run" : "neutral" },
+          { key: "current", label: t("ops.versions.state.current"), value: `${onTarget}/${machines.length}`, note: t("ops.versions.noun"), tone: target && onTarget === machines.length ? "ok" : "info" },
+          { key: "moving", label: t("adminOps.versions.moving"), value: machines.filter((m) => m.state === "downloading" || m.state === "ready" || m.state === "installing").length, note: t("adminOps.versions.movingNote"), tone: "info" },
+          { key: "failed", label: t("ops.versions.state.failed"), value: machines.filter((m) => m.state === "failed").length, tone: machines.some((m) => m.state === "failed") ? "bad" : "ok" },
+        ]}
+      />
       {rollout ? (
-        <section className="flex flex-col gap-3.5 rounded-[14px] border border-line-default bg-surface p-4">
+        <section className="cx-ops-panel">
           <div className="flex flex-wrap items-baseline gap-3">
             <span className="text-xs text-fg-muted">{t("ops.versions.rollout")}</span>
             <span className="font-mono text-2xl font-bold text-fg-strong">{target ?? "—"}</span>
@@ -108,20 +142,21 @@ export function OpsVersions() {
             </span>
           </div>
           <Row label={t("ops.versions.percent")}>
-            <Pills value={rollout.percent} disabled={action.busy} onPick={(percent) => save({ percent })} options={[10, 25, 50, 75, 100].map((p) => [p, `${p}%`])} />
-            <Button size="sm" variant="outline" disabled={action.busy || !target} onClick={() => save({ paused: !rollout.paused })}>
+            <Pills label={t("ops.versions.percent")} value={rollout.percent} disabled={action.busy} onPick={(percent) => save({ percent })} options={[10, 25, 50, 75, 100].map((p) => [p, `${p}%`])} />
+            <Button size="sm" variant="glass" disabled={action.busy || !target} onClick={() => save({ paused: !rollout.paused })}>
               {rollout.paused ? t("ops.versions.resume") : t("ops.versions.pause")}
             </Button>
           </Row>
           <Row label={t("ops.versions.autoDownload")}>
-            <Switch checked={rollout.autoDownload} disabled={action.busy} onCheckedChange={(v) => save({ autoDownload: v })} aria-label={t("ops.versions.autoDownload")} />
+            <Toggle checked={rollout.autoDownload} disabled={action.busy} onChange={(e) => save({ autoDownload: e.target.checked })} aria-label={t("ops.versions.autoDownload")} />
             <span className="text-xs text-fg-muted">{rollout.autoDownload ? t("ops.versions.on") : t("ops.versions.off")}</span>
           </Row>
           <Row label={t("ops.versions.installWhen")}>
-            <Pills value={rollout.installWhen} disabled={action.busy} onPick={(installWhen) => save({ installWhen })} options={INSTALL_WHEN.map((w) => [w, t(`ops.versions.when.${w}`)])} />
+            <Pills label={t("ops.versions.installWhen")} value={rollout.installWhen} disabled={action.busy} onPick={(installWhen) => save({ installWhen })} options={INSTALL_WHEN.map((w) => [w, t(`ops.versions.when.${w}`)])} />
           </Row>
           <Row label={t("ops.versions.minVersion")}>
             <Pills
+              label={t("ops.versions.minVersion")}
               value={rollout.minVersion ?? ""}
               disabled={action.busy}
               onPick={(v) => save({ minVersion: v || null })}
@@ -131,8 +166,8 @@ export function OpsVersions() {
         </section>
       ) : null}
       {counts.length ? (
-        <section className="flex flex-col gap-2.5 rounded-[14px] border border-line-default bg-surface p-4">
-          <h2 className="m-0 text-sm font-semibold text-fg-strong">{t("ops.versions.distribution")}</h2>
+        <section className="cx-ops-panel">
+          <h2 className="cx-ops-h">{t("ops.versions.distribution")}</h2>
           <div className="flex h-3.5 overflow-hidden rounded-full bg-sunken">
             {counts.map(([v, n], i) => (
               <span key={v} title={`${v}: ${n}`} className={COLORS[i % COLORS.length]} style={{ width: `${(n / machines.length) * 100}%` }} />
@@ -141,51 +176,30 @@ export function OpsVersions() {
           <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
             {counts.map(([v, n], i) => (
               <span key={v} className="flex items-center gap-1.5">
-                <span className={cn("size-2 rounded-xs", COLORS[i % COLORS.length])} />
+                <span className={`size-2 rounded-xs ${COLORS[i % COLORS.length]}`} />
                 <span className="font-mono text-fg-strong">{v}</span> {n}
               </span>
             ))}
           </div>
         </section>
       ) : null}
-      {machines.length ? <DataTable responsive rows={machines} columns={columns} rowKey={(m) => m.machineId} noun={t("ops.versions.noun")} searchText={(m) => `${m.machine} ${m.current}`} maxHeight="52vh" /> : null}
-      <h2 className="m-0 mt-1 text-sm font-semibold text-fg-strong">{t("ops.versions.releases")}</h2>
+      {machines.length ? (
+        <AdminTable
+          cols={[t("ops.versions.col.machine"), t("ops.versions.col.current"), t("ops.versions.col.target"), t("ops.versions.col.state"), t("ops.versions.col.seen")]}
+          grid="minmax(180px,1fr) 110px 110px minmax(160px,1fr) 150px"
+          minWidth={760}
+          rows={rows}
+          searchable
+          noun={t("ops.versions.noun")}
+          filters={[
+            { key: "current", label: t("ops.versions.col.current"), options: versionOptions },
+            { key: "state", label: t("ops.versions.col.state"), options: (["success", "running", "info", "danger", "neutral"] as const).filter((k) => machines.some((m) => stateOf(m).kind === k)).map((k) => ({ value: k, label: t(`ops.versions.stateKind.${k}`) })) },
+          ]}
+        />
+      ) : null}
+      <h2 className="cx-ops-h">{t("ops.versions.releases")}</h2>
       {data.data && !releases.length ? <Empty>{t("ops.versions.noReleases")}</Empty> : null}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,340px),1fr))] items-start gap-3">
-        {releases.map((r) => (
-          <section key={r.version} className="flex flex-col gap-2.5 rounded-xl border border-line-default bg-surface p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-base font-bold text-fg-strong">{r.version}</span>
-              <Chip kind={r.channel === "stable" ? "success" : "warning"}>{r.channel}</Chip>
-              <span className="text-xs text-fg-muted">{formatTime(r.createdAt)}</span>
-              <span className="ml-auto">
-                {r.version === target ? (
-                  <Chip kind="info">{t("ops.versions.isTarget")}</Chip>
-                ) : r.channel === "stable" ? (
-                  <Button size="xs" variant="outline" disabled={action.busy || !r.files.length} onClick={() => save({ target: r.version, paused: false })}>
-                    {t("ops.versions.setTarget")}
-                  </Button>
-                ) : null}
-              </span>
-            </div>
-            {r.notes ? (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-fg-muted">{t("ops.versions.notes")}</summary>
-                <div className="mt-2 max-h-60 overflow-y-auto [&_p]:text-[13px]">
-                  <DocMarkdown text={r.notes} />
-                </div>
-              </details>
-            ) : null}
-            <div className="flex flex-wrap gap-1">
-              {r.files.map((f) => (
-                <span key={f.id} title={`${f.sha256} · ${(f.size / 1e6).toFixed(0)} MB`} className="rounded-xs border border-line-subtle bg-sunken px-1.5 py-0.5 font-mono text-[11px] text-fg-secondary">
-                  {f.platform}-{f.arch}.{f.kind}
-                </span>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+      <AdminCards cards={cards} />
     </div>
   );
 }

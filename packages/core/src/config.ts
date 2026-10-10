@@ -12,6 +12,7 @@ import type { HiveBackend } from "./methods.ts";
 import { SqliteHive } from "./sqlite.ts";
 
 export const projectSchema = z.object({
+  git: z.object({ remote: z.string().regex(/^[\w.-]{1,50}$/).default("origin") }).optional(),
   autoRelease: z.object({
     appRollout: z.boolean().default(false),
     prepare: z.array(z.string().min(1)).min(1).max(40),
@@ -67,6 +68,13 @@ export const configSchema = z.object({
   toolTrust: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)).default({}),
   gitlab: gitlabSettingsSchema.default(gitlabSettingsSchema.parse({})),
   github: githubSettingsSchema.default(githubSettingsSchema.parse({})),
+  /**
+   * Systems whose group this machine set up (GROUP-init-sync), by name: the root folder of the group's tree, and the
+   * members it has already seen. The sync clones only members new to it, so a repo someone removed here stays removed.
+   */
+  systemRoots: z
+    .record(z.string().regex(PROJECT_NAME), z.object({ root: z.string().min(1).max(2000), seen: z.array(z.string().regex(PROJECT_NAME)).max(500).default([]) }))
+    .default({}),
 });
 
 export type HiveConfig = z.output<typeof configSchema>;

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, useReactFlow, ReactFlowProvider, type NodeProps, type Node, type NodeChange, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import type { Machine, ProjectSummary, QuotaCooldown, RunRequest, SdlcFlowTask, SdlcGateRecord, Task, TaskAgentQueueItem } from "@xdev-hive/core";
+import { Button } from "#ui/components/ui/button.tsx";
+import { NativeSelect, NativeSelectOption } from "#ui/components/ui/native-select.tsx";
 import { Badge, ErrorNote, STATUS_TONE } from "#ui/components/common.tsx";
 import { useAction, useCan, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey } from "#ui/i18n/index.tsx";
@@ -271,7 +273,7 @@ function GraphBody() {
   const onDragStop = useCallback((_: unknown, node: Node) => {
     if (layer === "agent" && node.type === "agentTask") {
       const task = (node.data as AgentData).graph.task;
-      const centre = { x: node.position.x + (node.width ?? 228) / 2, y: node.position.y + (node.height ?? 94) / 2 };
+      const centre = { x: node.position.x + (node.width ?? 190) / 2, y: node.position.y + (node.height ?? 94) / 2 };
       const hit = reactFlow.getNodes().find((candidate) => candidate.type === "profile" && centre.x >= candidate.position.x && centre.x <= candidate.position.x + (candidate.width ?? 236) && centre.y >= candidate.position.y && centre.y <= candidate.position.y + (candidate.height ?? 116));
       const destination = hit && (hit.data as AgentData).graph;
       if (task && destination?.machine && canAssign(task, destination.machine)) { assign(task, destination.machine, destination.profileId ?? null); setDragging({}); return; }
@@ -293,7 +295,7 @@ function GraphBody() {
       <div className="graph-layers" role="group" aria-label={t("graph.layers")}>
         {([["task", "Task"], ["agent", "Agent"], ["sdlc", "SDLC"], ["system", t("graph.system")]] as const).map(([id, name]) => {
           const off = scope.kind === "all" ? id !== "system" : id === "system" && scope.kind !== "system";
-          return <button type="button" key={id} aria-pressed={layer === id} data-graph-layer={id} disabled={off} title={off ? t(scope.kind === "all" ? "graph.pickProject" : "graph.systemHint") : undefined} onClick={() => setLayer(id)}>{name}</button>;
+          return <Button type="button" size="sm" variant={layer === id ? "solid" : "glass"} key={id} aria-pressed={layer === id} data-graph-layer={id} disabled={off} title={off ? t(scope.kind === "all" ? "graph.pickProject" : "graph.systemHint") : undefined} onClick={() => setLayer(id)}>{name}</Button>;
         })}
       </div>
       <div className="graph-tools">
@@ -301,12 +303,12 @@ function GraphBody() {
           <label><input type="checkbox" checked={oldDone} onChange={(e) => setOldDone(e.target.checked)} />{t("graph.hideOldDone")}</label>
           <label><input type="checkbox" checked={onlyOpen} onChange={(e) => setOpenOnly(e.target.checked)} />{t("graph.openOnly")}</label>
           <label><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} disabled={!me.user} />{t("graph.mine")}</label>
-          <select aria-label={t("graph.byAgent")} value={agent} onChange={(e) => setAgent(e.target.value)}><option value="">{t("graph.allAgents")}</option>{agents.map((name) => <option key={name}>{name}</option>)}</select>
+          <NativeSelect aria-label={t("graph.byAgent")} value={agent} onChange={(e) => setAgent(e.target.value)} className="h-[34px] text-[13px]"><NativeSelectOption value="">{t("graph.allAgents")}</NativeSelectOption>{agents.map((name) => <NativeSelectOption key={name}>{name}</NativeSelectOption>)}</NativeSelect>
         </div> : null}
         <div className="graph-actions">
-          <button type="button" onClick={() => void reactFlow.fitView(FIT)}>{t("graph.fit")}</button>
-          <button type="button" onClick={reset}>{t("graph.reset")}</button>
-          <a href="#/tasks">{t("graph.list")}</a>
+          <Button type="button" size="sm" variant="glass" onClick={() => void reactFlow.fitView(FIT)}>{t("graph.fit")}</Button>
+          <Button type="button" size="sm" variant="glass" onClick={reset}>{t("graph.reset")}</Button>
+          <Button size="sm" variant="glass" asChild><a href="#/tasks">{t("graph.list")}</a></Button>
         </div>
       </div>
     </div>
@@ -324,6 +326,7 @@ function GraphBody() {
       </ReactFlow>
     </div>
     </div>
+    <ul className="graph-legend"><li>{t("graph.legendSolid")}</li><li>{t("graph.legendDashed")}</li></ul>
     {asking ? <div className="graph-picker" role="dialog" aria-label={t("graph.changes")} onKeyDown={(e) => { if (e.key === "Escape") setAsking(null); }}><strong>{asking.taskId} · {t(`sdlc.gate.${asking.gate}`)}</strong><label>{t("flow.notePlaceholder")}<textarea autoFocus data-graph-change-note rows={3} maxLength={2000} value={changeNote} onChange={(e) => setChangeNote(e.target.value)} /></label><div><button type="button" onClick={() => setAsking(null)}>{t("graph.cancel")}</button><button type="button" data-graph-send-changes disabled={!changeNote.trim() || action.busy} onClick={() => decide(asking, "changes", changeNote)}>{t("graph.changes")}</button></div></div> : null}
     {picked ? <div className="graph-picker" role="dialog" aria-label={t("graph.chooseAgent")} onKeyDown={(e) => { if (e.key === "Escape") setPicked(null); }}><strong>{picked.id} · {picked.title}</strong><label>{t("graph.chooseAgent")}<select autoFocus data-graph-agent-select value={target} onChange={(e) => setTarget(e.target.value)}><option value="">{t("assignment.choose")}</option>{(machines.data ?? []).filter((machine) => canAssign(picked, machine)).flatMap((machine) => [<option key={`${machine.id}:any`} value={JSON.stringify([machine.id, null])}>{machine.machine} · {t("assignment.any")}</option>, ...machine.profiles.filter((profile) => profile.enabled).map((profile) => <option key={`${machine.id}:${profile.id}`} value={JSON.stringify([machine.id, profile.id])}>{machine.machine} · {profile.label}</option>)])}</select></label><div><button type="button" onClick={() => setPicked(null)}>{t("graph.cancel")}</button><button type="button" data-graph-assign disabled={!target || action.busy} onClick={() => { const [id, profileId] = JSON.parse(target) as [string, string | null]; const machine = machines.data?.find((item) => item.id === id); if (machine) assign(picked, machine, profileId); }}>{t("graph.assign")}</button></div></div> : null}
   </div>;

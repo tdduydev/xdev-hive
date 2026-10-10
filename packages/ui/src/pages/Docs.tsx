@@ -6,8 +6,10 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import {
   BookOpen,
   Bold,
+  Bot,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
   Code,
   FileText,
   Folder,
@@ -29,6 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { DOC_ASSET_MAX_BYTES, docLinkRefs, isContextDoc, keyPrefix, parseDocKey, resolveDocLink, stripHidden, systemOf, systemOwner, type Doc, type DocSummary, type DocVersion, type HiveSystem } from "@xdev-hive/core";
+import { Badge } from "@xdev-hive/ui/components/ui/badge";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -57,6 +60,29 @@ const wholeRepo = (key: string) => /^project\/[^/]+\/(agents|decisions)$/.test(k
 
 /** The slug part of a new page's key (core keys.ts); skills are made on the Skill page. */
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
+
+/** The chips above the tree: each counts what the list really holds. */
+type DocFilter = "all" | "pending" | "agents" | "rule" | "skill" | "recent" | "mine";
+const FILTER_IDS: DocFilter[] = ["all", "pending", "agents", "rule", "skill", "recent", "mine"];
+const FILTER_LABEL = {
+  all: "docs.filterAll",
+  pending: "docs.filterPending",
+  agents: "docs.filterAgents",
+  rule: "docs.filterRule",
+  skill: "docs.filterSkill",
+  recent: "docs.filterRecent",
+  mine: "docs.filterMine",
+} as const;
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+const isSkillKey = (key: string) => /(^|\/)skills\//.test(key);
+const FILTERS: Record<Exclude<DocFilter, "all">, (d: DocSummary, pending: ReadonlySet<string>, mine: ReadonlySet<string | undefined>) => boolean> = {
+  pending: (d, pending) => pending.has(d.key),
+  agents: (d) => d.includeInAgents,
+  rule: (d) => d.paths.length > 0,
+  skill: (d) => isSkillKey(d.key),
+  recent: (d) => Date.now() - Date.parse(d.updatedAt) < WEEK_MS,
+  mine: (d, _p, mine) => mine.has(d.updatedBy),
+};
 
 /** A folder shows this many pages until "Xem thêm". */
 const FOLDER_PAGE = 12;
@@ -190,6 +216,8 @@ export function DocsPage() {
   const [treeOpen, setTreeOpen] = useState(false);
   const mobileDetail = useMobileDetail("doc");
   const pick = (key: string | null) => {
+    // The tree lists every space: the one holding the page drives creating and moving.
+    if (key) setSpaceId(spaceIdOf(key));
     setSelected(key);
     setTreeOpen(false);
     if (mobileDetail.mobile) mobileDetail.navigate(key);
@@ -275,26 +303,37 @@ export function DocsPage() {
   const prefixes = useMemo(() => owners.map(docPrefix), [owners]);
   const inSpace = useCallback((key: string) => prefixes.some((p) => key.startsWith(p)), [prefixes]);
   // Pages made here and not saved yet sit in the tree with their draft.
-  const unsaved = useMemo(
-    () =>
-      Object.entries(drafts)
-        .filter(([k, d]) => inSpace(k) && d.baseVersion === 0 && !titles.has(k))
-        .map(([key, d]) => ({ key, title: d.title, parent: d.parent ?? null })),
-    [drafts, inSpace, titles],
+  const treeOf = useCallback(
+    (sp: Space) => {
+      const label = t("docs.skillsFolder");
+      const prefs = spaceOwners(sp).map(docPrefix);
+      const unsaved = Object.entries(drafts)
+        .filter(([k, d]) => prefs.some((x) => k.startsWith(x)) && d.baseVersion === 0 && !titles.has(k))
+        .map(([key, d]) => ({ key, title: d.title, parent: d.parent ?? null }));
+      if (!sp.services) return buildTree(sp.docs, unsaved, label);
+      const own = (owner: string | null) => (d: { key: string }) => docOwner(d.key) === owner;
+      return systemTree(
+        sp.docs.filter(own(sp.owner)),
+        unsaved.filter(own(sp.owner)),
+        sp.services.map((p) => ({ project: p, docs: sp.docs.filter(own(p)), extra: unsaved.filter(own(p)) })),
+        label,
+      );
+    },
+    [drafts, titles, t],
   );
-  const tree = useMemo(() => {
-    const label = t("docs.skillsFolder");
-    if (!space?.services) return buildTree(space?.docs ?? [], unsaved, label);
-    const own = (owner: string | null) => (d: { key: string }) => docOwner(d.key) === owner;
-    return systemTree(
-      space.docs.filter(own(space.owner)),
-      unsaved.filter(own(space.owner)),
-      space.services.map((p) => ({ project: p, docs: space.docs.filter(own(p)), extra: unsaved.filter(own(p)) })),
-      label,
-    );
-  }, [space, unsaved, t]);
+  // The design lists every space in one tree (Chung, systems, services); the one holding the open page drives creating and moving.
+  const sections = useMemo(() => spaces.map((sp) => ({ sp, tree: treeOf(sp) })), [spaces, treeOf]);
+  const tree = useMemo(() => sections.find((x) => x.sp.id === space?.id)?.tree ?? [], [sections, space]);
   const nodes = useMemo(() => flatten(tree), [tree]);
-  const removedHere = useMemo(() => (removed.data ?? []).filter((d) => docOwner(d.key) === (space?.owner ?? null)), [removed.data, space]);
+  const allNodes = useMemo(() => sections.flatMap((x) => flatten(x.tree)), [sections]);
+  const spaceTitle = (sp: Space) => (sp.id === "shared" ? t("docs.sharedSection") : sp.id.startsWith("project:") ? t("docs.serviceSpace", { project: sp.label }) : sp.label);
+  const removedHere = useMemo(() => {
+    const mine = new Set(spaces.flatMap(spaceOwners));
+    return (removed.data ?? []).filter((d) => mine.has(docOwner(d.key)));
+  }, [removed.data, spaces]);
+  // Proposals waiting for review mark their page (a dot in the tree, a chip on the page); a reader without the right sees none.
+  const pending = useQuery(() => client.call("proposals.list", { status: "pending" }).catch(() => []), [client]);
+  const pendingKeys = useMemo(() => new Set((pending.data ?? []).map((p) => p.docKey)), [pending.data]);
 
   // Keep the selection inside the space: the first page of the space when it falls out.
   useEffect(() => {
@@ -309,12 +348,75 @@ export function DocsPage() {
   const isOpen = (n: TreeNode, depth: number) => open[n.key] ?? (selTrail.has(n.key) || (depth === 0 && n.folder));
 
   const needle = fold(q.trim());
-  const hits = useMemo(() => (needle ? nodes.filter((n) => (n.doc || !n.folder) && fold(`${n.title} ${n.key}`).includes(needle)) : []), [nodes, needle]);
+  const { me } = useHive();
+  const [filter, setFilter] = useState<DocFilter>("all");
+  const [searchIn, setSearchIn] = useState<"title" | "content">("title");
+  const mineNames = useMemo(() => new Set([me.name, me.user?.username, me.user?.displayName].filter(Boolean)), [me]);
+  const passes = useCallback(
+    (d?: DocSummary) => {
+      if (filter === "all") return true;
+      if (!d) return false;
+      if (filter === "pending") return pendingKeys.has(d.key);
+      if (filter === "agents") return d.includeInAgents;
+      if (filter === "rule") return d.paths.length > 0;
+      if (filter === "skill") return isSkillKey(d.key);
+      if (filter === "recent") return Date.now() - Date.parse(d.updatedAt) < WEEK_MS;
+      return mineNames.has(d.updatedBy);
+    },
+    [filter, pendingKeys, mineNames],
+  );
+  const filterCounts = useMemo(() => {
+    const all = sections.flatMap((x) => x.sp.docs);
+    const count = (f: DocFilter) => (f === "all" ? allNodes.length : all.filter((d) => FILTERS[f](d, pendingKeys, mineNames)).length);
+    return Object.fromEntries(FILTER_IDS.map((f) => [f, count(f)])) as Record<DocFilter, number>;
+  }, [sections, allNodes, pendingKeys, mineNames]);
+  // A page's text is not in the list: read the pages once a content search starts, and keep them by version.
+  const [bodies, setBodies] = useState<Record<string, string>>({});
+  const bodyKey = (d: DocSummary) => `${d.key}@${d.version}`;
+  const contentSearch = searchIn === "content" && needle.length > 1;
+  useEffect(() => {
+    if (!contentSearch) return;
+    const want = sections.flatMap((x) => x.sp.docs).filter((d) => !(bodyKey(d) in bodies));
+    if (!want.length) return;
+    let live = true;
+    void Promise.all(
+      want.map((d) =>
+        client.call("docs.get", { key: d.key }).then(
+          (x) => [bodyKey(d), x?.content ?? ""] as const,
+          () => [bodyKey(d), ""] as const,
+        ),
+      ),
+    ).then((rows) => live && setBodies((b) => ({ ...b, ...Object.fromEntries(rows) })));
+    return () => {
+      live = false;
+    };
+  }, [contentSearch, sections, bodies, client]);
+  const contentHits = useMemo(() => {
+    if (!contentSearch) return [];
+    return sections.flatMap((x) =>
+      x.sp.docs
+        .filter((d) => passes(d))
+        .flatMap((d) => {
+          const text = bodies[bodyKey(d)] ?? "";
+          const at = fold(text).indexOf(needle);
+          return at < 0 ? [] : [{ doc: d, space: x.sp.label, pre: (at > 40 ? "…" : "") + text.slice(Math.max(0, at - 40), at), hit: text.slice(at, at + needle.length), post: `${text.slice(at + needle.length, at + needle.length + 60)}…` }];
+        }),
+    );
+  }, [contentSearch, sections, bodies, needle, passes]);
+  const filtering = filter !== "all" || needle !== "";
+  // A node shows when it passes (title/key and chip) or when something below it does.
+  const matches = useCallback(
+    (n: TreeNode): boolean =>
+      ((!needle || searchIn === "content" || fold(`${n.title} ${n.key}`).includes(needle)) && passes(n.doc ?? undefined) && (filter === "all" || Boolean(n.doc))) || n.children.some(matches),
+    [needle, searchIn, passes, filter],
+  );
+  const hits = useMemo(() => (needle && !contentSearch ? allNodes.filter((n) => (n.doc || !n.folder) && matches(n)) : []), [allNodes, needle, contentSearch, matches]);
+  const shown = useMemo(() => (filtering ? allNodes.filter((n) => (n.doc || !n.folder) && matches(n)).length : 0), [filtering, allNodes, matches]);
 
   // Where the person may make pages in this space; the first is where new ones go (the system's, roadmap 40c).
   const writable = owners.filter((o) => allow(o, "docEdit"));
   const canCreateHere = writable.length > 0;
-  const empty = emptyState({ loaded: !list.loading, total: nodes.length, shown: needle ? hits.length : nodes.length, query: needle });
+  const empty = emptyState({ loaded: !list.loading, total: allNodes.length, shown: contentSearch ? contentHits.length : filtering ? shown : allNodes.length, query: needle || (filter !== "all" ? filter : "") });
   const taken = (key: string) => titles.has(key) || Boolean(drafts[key]);
   const slugFor = (c: Creating) => c.slug ?? freeSlug(docPrefix(c.owner), slugify(c.title), taken);
   const startCreate = (kind: Creating["kind"], parent: string | null) => {
@@ -363,9 +465,20 @@ export function DocsPage() {
     const expanded = isOpen(n, depth);
     const virtual = !n.doc && n.folder;
     const openable = !virtual;
-    const Icon = n.folder || kids ? (expanded ? FolderOpen : Folder) : FileText;
+    const Icon = isSkillKey(n.key) ? Sparkles : n.doc?.includeInAgents ? Bot : n.folder || kids ? (expanded ? FolderOpen : Folder) : FileText;
     return (
-      <div key={n.key} data-service-group={isServiceGroup(n) ? n.title : undefined} className="group relative flex items-center" style={{ paddingLeft: depth * 14 }}>
+      <div
+        key={n.key}
+        data-service-group={isServiceGroup(n) ? n.title : undefined}
+        className={cn(
+          "group relative flex h-8 max-md:min-h-11 items-center rounded-[10px] pr-1.5 hover:bg-(--glass-bg)",
+          on && "bg-[color-mix(in_srgb,var(--accent-violet)_14%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-violet)_40%,transparent)]",
+        )}
+        style={{ paddingLeft: 4 + depth * 16 }}
+      >
+        {Array.from({ length: depth }, (_, d) => (
+          <span key={d} aria-hidden className="absolute top-0 bottom-0 w-px bg-(--border-subtle)" style={{ left: 13 + d * 16 }} />
+        ))}
         <button
           type="button"
           tabIndex={kids ? 0 : -1}
@@ -373,9 +486,9 @@ export function DocsPage() {
           aria-expanded={kids ? expanded : undefined}
           aria-label={expanded ? t("docs.collapse", { title: n.title }) : t("docs.expand", { title: n.title })}
           onClick={() => setOpen((o) => ({ ...o, [n.key]: !expanded }))}
-          className={cn("grid size-6 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-muted hover:text-fg-strong outline-none focus-visible:focus-ring", !kids && "invisible")}
+          className={cn("grid size-6 max-md:size-11 shrink-0 cursor-pointer place-items-center rounded-md border-0 bg-transparent p-0 text-fg-strong opacity-60 outline-none hover:bg-(--glass-hover) focus-visible:focus-ring", !kids && "invisible")}
         >
-          {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+          {expanded ? <ChevronDown className="size-[13px]" /> : <ChevronRight className="size-[13px]" />}
         </button>
         <button
           type="button"
@@ -385,18 +498,19 @@ export function DocsPage() {
           onClick={() => (openable ? pick(n.key) : setOpen((o) => ({ ...o, [n.key]: !expanded })))}
           title={n.key}
           className={cn(
-            "flex h-[30px] max-md:min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-sm pr-2 pl-1 text-left text-[13px]/none outline-none focus-visible:focus-ring",
-            on ? "bg-surface font-semibold text-fg-strong shadow-e1" : "text-fg-primary hover:bg-hover",
-            n.folder && !on && "font-semibold text-fg-secondary",
+            "flex h-full min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent px-1 text-left text-[13px]/none outline-none focus-visible:focus-ring rounded-[10px]",
+            on ? "font-semibold text-fg-strong" : "font-medium text-fg-secondary",
           )}
         >
-          <Icon className={cn("size-3.5 shrink-0", n.folder || kids ? "text-fg-brand" : "text-fg-muted")} />
+          <Icon className={cn("size-3.5 shrink-0", on ? "opacity-95" : "opacity-50")} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate">{n.title}</span>
-            {path ? <span className="truncate text-[11px]/none font-normal text-fg-muted">{path}</span> : null}
+            {path ? <span className="truncate text-[11px]/none font-normal text-(--text-muted)">{path}</span> : null}
           </span>
+          {n.doc && pendingKeys.has(n.key) ? <span title={t("docs.pendingDot")} className="size-1.5 shrink-0 rounded-full bg-(--accent-violet) shadow-[0_0_8px_var(--accent-violet)]" /> : null}
           {drafts[n.key] ? <span title={n.doc ? t("docs.draftLocal") : t("docs.unsavedPage")} className="size-1.5 shrink-0 rounded-full bg-warning-solid" /> : null}
-          {kids && !expanded ? <span className="text-[11px]/none font-normal text-fg-muted">{n.children.length}</span> : null}
+          {n.doc?.mirror ? <span className="text-[11px]/4 font-semibold text-(--text-muted)">{t("docs.mirrorTag")}</span> : null}
+          {kids && !expanded ? <span className="text-[11px]/4 font-semibold text-(--text-muted)">{n.children.length}</span> : null}
         </button>
         {n.doc && !virtual && !path && writable.includes(docOwner(n.key)) ? (
           <button
@@ -404,7 +518,7 @@ export function DocsPage() {
             aria-label={t("docs.addUnder", { title: n.title })}
             title={t("docs.addUnder", { title: n.title })}
             onClick={() => startCreate("page", n.key)}
-            className="md:absolute right-1 hidden size-6 max-md:static max-md:grid max-md:size-11 cursor-pointer place-items-center rounded-xs bg-surface text-fg-muted shadow-e1 outline-none group-hover:grid hover:text-fg-strong focus-visible:grid focus-visible:focus-ring group-focus-within:grid"
+            className="md:absolute right-1 hidden size-6 max-md:static max-md:grid max-md:size-11 cursor-pointer place-items-center rounded-md border-0 bg-(--surface-3) text-fg-muted outline-none group-hover:grid hover:text-fg-strong focus-visible:grid focus-visible:focus-ring group-focus-within:grid"
           >
             <Plus className="size-3.5" />
           </button>
@@ -413,247 +527,317 @@ export function DocsPage() {
     );
   };
   // Native disclosure lists allow row actions without the composite tree keyboard contract.
-  const branch = (list: TreeNode[], depth: number): ReactNode => list.length ? (
-    <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
-      {list.map((n) => {
-        const expanded = n.children.length > 0 && isOpen(n, depth);
-        const all = more[n.key] || n.children.length <= FOLDER_PAGE + 2;
-        return (
-          <li key={n.key}>
-            {row(n, depth)}
-            {expanded ? <>
-              {branch(all ? n.children : n.children.slice(0, FOLDER_PAGE), depth + 1)}
-              {!all ? <button type="button" onClick={() => setMore((m) => ({ ...m, [n.key]: true }))}
-                style={{ paddingLeft: (depth + 1) * 14 + 26 }}
-                className="flex h-7 max-md:min-h-11 cursor-pointer items-center gap-1.5 rounded-sm text-left text-xs font-medium text-fg-link outline-none hover:bg-hover focus-visible:focus-ring">
-                <Plus className="size-3" />{t("docs.showMore", { count: n.children.length - FOLDER_PAGE })}
-              </button> : null}
-            </> : null}
-          </li>
-        );
-      })}
-    </ul>
-  ) : null;
+  const branch = (list: TreeNode[], depth: number): ReactNode => {
+    const shownList = filtering ? list.filter(matches) : list;
+    return shownList.length ? (
+      <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
+        {shownList.map((n) => {
+          const expanded = n.children.length > 0 && (filtering || isOpen(n, depth));
+          const all = filtering || more[n.key] || n.children.length <= FOLDER_PAGE + 2;
+          return (
+            <li key={n.key}>
+              {row(n, depth)}
+              {expanded ? <>
+                {branch(all ? n.children : n.children.slice(0, FOLDER_PAGE), depth + 1)}
+                {!all ? <button type="button" onClick={() => setMore((m) => ({ ...m, [n.key]: true }))}
+                  style={{ paddingLeft: (depth + 1) * 16 + 30 }}
+                  className="flex h-7 max-md:min-h-11 cursor-pointer items-center gap-1.5 rounded-[10px] border-0 bg-transparent text-left text-xs font-medium text-fg-link outline-none hover:bg-(--glass-bg) focus-visible:focus-ring">
+                  <Plus className="size-3" />{t("docs.showMore", { count: n.children.length - FOLDER_PAGE })}
+                </button> : null}
+              </> : null}
+            </li>
+          );
+        })}
+      </ul>
+    ) : null;
+  };
 
   const parentTitle = creating?.parent ? (nodes.find((n) => n.key === creating.parent)?.title ?? creating.parent) : null;
   const active = mobileDetail.mobile ? mobileDetail.value : selected;
   const selectedNode = active ? nodes.find((n) => n.key === active) : undefined;
+  const glassIconButton = "grid size-[34px] shrink-0 cursor-pointer place-items-center rounded-[10px] border-0 bg-(--glass-bg) p-0 text-fg-strong shadow-[var(--ring-glass)] outline-none hover:bg-(--glass-hover) focus-visible:focus-ring";
+  const microLabel = "text-[11px]/4 font-semibold";
 
   return (
-    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
+    <div className="mobile-master-detail flex flex-wrap items-start gap-4">
       {treeOpen && mobileDetail.showingDetail ? <button type="button" aria-label={t("common.close")} onClick={() => setTreeOpen(false)} className="fixed inset-0 z-30 bg-black/40 md:hidden" /> : null}
-      <div className={cn("min-w-0 flex-1 flex-col border-r border-line-subtle bg-subtle md:flex md:min-w-[200px] md:flex-none md:shrink md:basis-[260px]", mobileDetail.showingDetail ? treeOpen ? "fixed inset-y-0 left-0 z-40 flex w-[min(340px,85vw)]" : "hidden" : "flex")}>
-        <div className="flex shrink-0 flex-col gap-2 border-b border-line-subtle px-3 py-2.5">
-          {spaces.length <= 3 ? (
-            <Seg
-              label={t("docs.list")}
-              value={space?.id ?? ""}
-              options={spaces.map((s) => [s.id, s.label])}
-              onChange={(v) => {
-                setSpaceId(v);
-                pick(null);
-                setCreating(null);
-              }}
-            />
-          ) : (
-            <NativeSelect
-              size="sm"
-              wrapperClassName="w-full"
-              className="font-mono"
-              value={space?.id ?? ""}
-              onChange={(e) => {
-                setSpaceId(e.target.value);
-                pick(null);
-                setCreating(null);
-              }}
-              aria-label={t("docs.list")}
-            >
-              {spaces.map((s) => (
-                <NativeSelectOption key={s.id} value={s.id}>
-                  {s.label} ({s.docs.length})
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          )}
-          {/* The page's own button goes at the right of its toolbar, as on Spec, Skill and Memory (roadmap 39h). */}
-          <div className="flex items-center gap-1.5">
-            <Input className="h-7 min-w-0 flex-1 text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("docs.search")} aria-label={t("docs.search")} />
-            {canCreateHere && !creating ? (
-              <>
-                <Button size="icon-sm" variant="ghost" aria-label={t("docs.newFolder")} title={t("docs.newFolder")} onClick={() => startCreate("folder", null)}>
-                  <FolderPlus />
-                </Button>
-                <Button size="sm" variant="outline" className="shrink-0" onClick={() => startCreate("page", selectedNode?.folder ? selectedNode.key : null)}>
-                  {t("docs.newPage")}
-                </Button>
-              </>
-            ) : null}
+      <div className={cn("max-w-full min-w-0 flex-[1_1_240px] flex-col gap-2.5 rounded-[24px] bg-(--surface-1) px-2 py-3 shadow-[var(--ring-glass)] md:flex", mobileDetail.showingDetail ? treeOpen ? "fixed inset-y-0 left-0 z-40 flex w-[min(340px,85vw)] overflow-y-auto" : "hidden" : "flex")}>
+        <div className="flex items-center gap-1.5 px-1">
+          <div className="min-w-0 flex-1">
+            <Input controlSize="sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("docs.searchPlaceholder")} aria-label={t("docs.search")} />
           </div>
-          {/* The form opens right under the button that opened it, not at the far end of the pane. */}
-          {creating ? (
-            <div className="flex flex-col gap-1.5 rounded-md border border-line-selected bg-surface p-2">
-              <span className="text-[11px]/4 font-semibold text-fg-muted">
-                {creating.kind === "folder"
-                  ? parentTitle
-                    ? t("docs.newFolderIn", { parent: parentTitle })
-                    : t("docs.newFolderTop", { space: ownerName(creating.owner, t("inbox.shared")) })
-                  : parentTitle
-                    ? t("docs.newPageIn", { parent: parentTitle })
-                    : t("docs.newPageTop", { space: ownerName(creating.owner, t("inbox.shared")) })}
-              </span>
-              {writable.length > 1 ? (
-                <NativeSelect
-                  size="sm"
-                  wrapperClassName="w-full"
-                  value={creating.owner ?? ""}
-                  title={t("docs.placeInHint")}
-                  aria-label={t("docs.placeIn")}
-                  data-doc-owner
-                  onChange={(e) => {
-                    const owner = e.target.value;
-                    // A parent of another owner cannot hold the page: it goes to the top of the one picked.
-                    setCreating({ ...creating, owner, parent: creating.parent !== null && docOwner(creating.parent) === owner ? creating.parent : null });
-                  }}
-                >
-                  {writable.map((o) => (
-                    <NativeSelectOption key={o ?? ""} value={o ?? ""}>
-                      {t("docs.placeIn")}: {ownerName(o, t("inbox.shared"))}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              ) : null}
-              <Input
-                autoFocus
-                className="h-7 text-xs"
-                placeholder={creating.kind === "folder" ? t("docs.folderPlaceholder") : t("docs.pagePlaceholder")}
-                value={creating.title}
-                aria-invalid={newError ? true : undefined}
-                onChange={(e) => setCreating({ ...creating, title: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") doCreate();
-                  if (e.key === "Escape") setCreating(null);
-                }}
-                aria-label={t("docs.docTitle")}
-              />
-              {creating.slug !== null ? (
-                <Input
-                  className="h-7 font-mono text-xs"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  value={creating.slug}
-                  onChange={(e) => setCreating({ ...creating, slug: e.target.value.toLowerCase() })}
-                  onKeyDown={(e) => e.key === "Enter" && doCreate()}
-                  aria-label={t("docs.slug")}
-                />
-              ) : null}
-              <span className="flex items-center gap-1.5 font-mono text-[11px] break-all text-fg-muted">
-                <span className="min-w-0 flex-1" data-new-doc-key>
-                  {docPrefix(creating.owner) + (slugFor(creating) || `<${t("docs.slugPlaceholder")}>`)}
-                </span>
-                {creating.slug === null ? (
-                  <button type="button" onClick={() => setCreating({ ...creating, slug: slugFor(creating) })} className="cursor-pointer font-sans text-fg-link hover:underline">
-                    {t("docs.editSlug")}
-                  </button>
-                ) : null}
-              </span>
-              <ErrorNote error={newError ?? create.error} />
-              <div className="flex justify-end gap-1.5">
-                <Button size="xs" variant="ghost" onClick={() => setCreating(null)}>
-                  {t("docs.cancelNew")}
-                </Button>
-                <Button size="xs" onClick={doCreate} disabled={!creating.title.trim() || create.busy}>
-                  {t("docs.create")}
-                </Button>
-              </div>
-            </div>
+          <button type="button" title={t("docs.collapseAll")} aria-label={t("docs.collapseAll")} onClick={() => setOpen(Object.fromEntries(allNodes.map((n) => [n.key, false])))} className={glassIconButton}>
+            <ChevronsDownUp className="size-[15px] opacity-60" />
+          </button>
+          {canCreateHere && !creating ? (
+            <button type="button" title={t("docs.newPage")} aria-label={t("docs.newPage")} data-doc-new onClick={() => startCreate("page", selectedNode?.folder ? selectedNode.key : null)} className={glassIconButton}>
+              <Plus className="size-[15px] opacity-60" />
+            </button>
           ) : null}
         </div>
-        <div role="region" data-doc-list aria-label={t("docs.list")} className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto p-1.5">
+        <div className="flex flex-col gap-1.5 px-1">
+          <div role="group" aria-label={t("docs.filterLabel")} className="flex flex-wrap gap-1">
+            {FILTER_IDS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={filter === f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  "inline-flex h-[26px] cursor-pointer items-center gap-[5px] rounded-lg border-0 px-[9px] text-[11.5px]/none font-semibold outline-none hover:text-fg-strong focus-visible:focus-ring",
+                  filter === f
+                    ? "bg-[color-mix(in_srgb,var(--accent-violet)_18%,transparent)] text-fg-strong shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--accent-violet)_45%,transparent)]"
+                    : "bg-[color-mix(in_srgb,var(--text-strong)_5%,transparent)] text-fg-secondary",
+                )}
+              >
+                {t(FILTER_LABEL[f])}
+                <span className="font-medium text-(--text-muted)">{filterCounts[f]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs/[18px] font-medium text-(--text-muted)">{t("docs.searchIn")}</span>
+            <div role="radiogroup" aria-label={t("docs.searchIn")} className="flex gap-0.5 rounded-full bg-sunken p-[3px] shadow-[var(--ring-glass)]">
+              {(["title", "content"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="radio"
+                  aria-checked={searchIn === v}
+                  onClick={() => setSearchIn(v)}
+                  className={cn("h-[22px] cursor-pointer rounded-full border-0 px-[9px] text-[11px]/none font-semibold outline-none focus-visible:focus-ring", searchIn === v ? "bg-(--glass-hover) text-fg-strong" : "bg-transparent text-fg-muted")}
+                >
+                  {t(v === "title" ? "docs.searchTitle" : "docs.searchContent")}
+                </button>
+              ))}
+            </div>
+            <span className="flex-1" />
+            <span className="text-xs/[18px] font-medium text-fg-muted">{contentSearch ? t("docs.results", { count: contentHits.length }) : filtering ? t("docs.pageCount", { count: shown }) : ""}</span>
+          </div>
+        </div>
+        {/* The form opens right under the button that opened it, not at the far end of the pane. */}
+        {creating ? (
+          <div className="mx-1 flex flex-col gap-1.5 rounded-[14px] bg-sunken p-2 shadow-[var(--ring-glass-strong)]">
+            <div role="radiogroup" aria-label={t("docs.docTitle")} className="flex gap-0.5 self-start rounded-full bg-(--glass-bg) p-[3px]">
+              {(["page", "folder"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="radio"
+                  aria-checked={creating.kind === k}
+                  data-new-kind={k}
+                  onClick={() => setCreating({ ...creating, kind: k })}
+                  className={cn("h-[22px] cursor-pointer rounded-full border-0 px-[9px] text-[11px]/none font-semibold outline-none focus-visible:focus-ring", creating.kind === k ? "bg-(--glass-hover) text-fg-strong" : "bg-transparent text-fg-muted")}
+                >
+                  {t(k === "page" ? "docs.newPage" : "docs.newFolder")}
+                </button>
+              ))}
+            </div>
+            <span className={cn(microLabel, "text-fg-muted")}>
+              {creating.kind === "folder"
+                ? parentTitle
+                  ? t("docs.newFolderIn", { parent: parentTitle })
+                  : t("docs.newFolderTop", { space: ownerName(creating.owner, t("inbox.shared")) })
+                : parentTitle
+                  ? t("docs.newPageIn", { parent: parentTitle })
+                  : t("docs.newPageTop", { space: ownerName(creating.owner, t("inbox.shared")) })}
+            </span>
+            {writable.length > 1 ? (
+              <NativeSelect
+                size="sm"
+                wrapperClassName="w-full"
+                value={creating.owner ?? ""}
+                title={t("docs.placeInHint")}
+                aria-label={t("docs.placeIn")}
+                data-doc-owner
+                onChange={(e) => {
+                  const owner = e.target.value;
+                  // A parent of another owner cannot hold the page: it goes to the top of the one picked.
+                  setCreating({ ...creating, owner, parent: creating.parent !== null && docOwner(creating.parent) === owner ? creating.parent : null });
+                }}
+              >
+                {writable.map((o) => (
+                  <NativeSelectOption key={o ?? ""} value={o ?? ""}>
+                    {t("docs.placeIn")}: {ownerName(o, t("inbox.shared"))}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            ) : null}
+            <Input
+              autoFocus
+              controlSize="sm"
+              className="text-xs"
+              placeholder={creating.kind === "folder" ? t("docs.folderPlaceholder") : t("docs.pagePlaceholder")}
+              value={creating.title}
+              aria-invalid={newError ? true : undefined}
+              onChange={(e) => setCreating({ ...creating, title: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") doCreate();
+                if (e.key === "Escape") setCreating(null);
+              }}
+              aria-label={t("docs.docTitle")}
+            />
+            {creating.slug !== null ? (
+              <Input
+                controlSize="sm"
+                className="font-mono text-xs"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={creating.slug}
+                onChange={(e) => setCreating({ ...creating, slug: e.target.value.toLowerCase() })}
+                onKeyDown={(e) => e.key === "Enter" && doCreate()}
+                aria-label={t("docs.slug")}
+              />
+            ) : null}
+            <span className="flex items-center gap-1.5 font-mono text-[11px] break-all text-fg-muted">
+              <span className="min-w-0 flex-1" data-new-doc-key>
+                {docPrefix(creating.owner) + (slugFor(creating) || `<${t("docs.slugPlaceholder")}>`)}
+              </span>
+              {creating.slug === null ? (
+                <button type="button" onClick={() => setCreating({ ...creating, slug: slugFor(creating) })} className="cursor-pointer border-0 bg-transparent font-sans text-fg-link hover:underline">
+                  {t("docs.editSlug")}
+                </button>
+              ) : null}
+            </span>
+            <ErrorNote error={newError ?? create.error} />
+            <div className="flex justify-end gap-1.5">
+              <Button size="xs" variant="ghost" onClick={() => setCreating(null)}>
+                {t("docs.cancelNew")}
+              </Button>
+              <Button size="xs" onClick={doCreate} disabled={!creating.title.trim() || create.busy}>
+                {t("docs.create")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+        {contentSearch && contentHits.length ? (
+          <div className="flex flex-col gap-0.5">
+            {contentHits.map((h) => (
+              <button
+                key={h.doc.key}
+                type="button"
+                data-doc-item
+                onClick={() => pick(h.doc.key)}
+                className={cn(
+                  "flex cursor-pointer flex-col gap-[3px] rounded-xl border-0 px-2.5 py-[9px] text-left font-[inherit] text-fg-strong outline-none hover:bg-(--glass-bg) focus-visible:focus-ring",
+                  h.doc.key === selected ? "bg-[color-mix(in_srgb,var(--accent-violet)_14%,transparent)]" : "bg-transparent",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-[12.5px]/[17px] font-semibold">
+                  <span className="min-w-0 flex-1 truncate">{h.doc.title}</span>
+                  <span className="text-[11px]/4 font-semibold text-(--text-muted)">{h.space}</span>
+                </span>
+                <span className="text-[11.5px]/4 font-medium text-fg-muted [text-wrap:pretty]">
+                  {h.pre}
+                  <mark className="rounded-[3px] bg-[color-mix(in_srgb,var(--accent-violet)_35%,transparent)] px-0.5 text-fg-strong">{h.hit}</mark>
+                  {h.post}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div role="region" data-doc-list aria-label={t("docs.list")} className="flex flex-col gap-px">
           <ErrorNote error={list.error} />
-          {needle ? hits.length ? <ul role="list" className="m-0 list-none p-0">{hits.map((n) => <li key={n.key}>{row(n, 0, n.path.join(" / ") || undefined)}</li>)}</ul> : null : branch(tree, 0)}
+          {contentSearch ? null : needle ? (
+            hits.length ? <ul role="list" className="m-0 list-none p-0">{hits.map((n) => <li key={n.key}>{row(n, 0, n.path.join(" / ") || undefined)}</li>)}</ul> : null
+          ) : (
+            sections.map(({ sp, tree: spTree }) => {
+              const body = branch(spTree, 0);
+              // A filter hides the spaces it leaves empty, as in the design.
+              if (filtering && !body) return null;
+              return (
+                <div key={sp.id} className="flex flex-col" data-doc-group={sp.id}>
+                  <span className="flex items-center gap-2 px-2.5 pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">
+                    <span className="flex-1">{spaceTitle(sp)}</span>
+                    <span>{sp.docs.length}</span>
+                  </span>
+                  {body}
+                </div>
+              );
+            })
+          )}
           {/* The button for an empty space sits in the wide pane on the right, so the narrow tree keeps the sentence alone. */}
           {empty ? <PaneEmpty>{t(empty === "none" ? "docs.none" : "docs.noMatch")}</PaneEmpty> : null}
         </div>
-        <div className="flex shrink-0 flex-col gap-1.5 border-t border-line-subtle px-3 py-2">
-          <span className="text-[11px] text-fg-muted">{t("docs.pageCount", { count: space?.docs.length ?? 0 })}</span>
-          {removedHere.length ? (
-            <div className="flex flex-col gap-1" data-docs-removed>
-              <button
-                type="button"
-                data-docs-removed-toggle
-                aria-expanded={showRemoved}
-                onClick={() => setShowRemoved((v) => !v)}
-                className="flex cursor-pointer items-center gap-1 text-[11px] text-fg-muted outline-none hover:text-fg-strong focus-visible:focus-ring"
-              >
-                {showRemoved ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-                {t("docs.removedCount", { count: removedHere.length })}
-              </button>
-              {showRemoved
-                ? removedHere.map((d) => (
-                    <div key={d.key} className="flex items-center gap-1.5 pl-4">
-                      <span title={`${d.key} · ${d.removedBy ?? ""}`} className="min-w-0 flex-1 truncate text-[11px] text-fg-muted line-through">
-                        {d.title}
-                      </span>
-                      {allow(docOwner(d.key), isContextDoc(d.key, d) ? "contextEdit" : "docEdit") ? (
-                        <button
-                          type="button"
-                          data-doc-restore={d.key}
-                          disabled={restore.busy}
-                          onClick={() =>
-                            void restore.run(async () => {
-                              await client.call("docs.restore", { key: d.key });
-                              toast(t("docs.restored", { doc: d.title }));
-                              removed.reload();
-                              list.reload();
-                            })
-                          }
-                          className="shrink-0 cursor-pointer text-[11px] text-fg-link outline-none hover:underline focus-visible:focus-ring disabled:cursor-default"
-                        >
-                          {t("docs.restore")}
-                        </button>
-                      ) : null}
-                    </div>
-                  ))
-                : null}
-              <ErrorNote error={restore.error} />
-            </div>
-          ) : null}
+        <div className="mt-1 flex flex-col gap-0.5 pt-2.5 shadow-[inset_0_1px_0_var(--border-subtle)]" data-docs-removed>
+          <button
+            type="button"
+            data-docs-removed-toggle
+            aria-expanded={showRemoved}
+            onClick={() => setShowRemoved((v) => !v)}
+            className="flex h-8 cursor-pointer items-center gap-2 rounded-[10px] border-0 bg-transparent px-2.5 text-[13px]/none font-medium text-fg-muted outline-none hover:bg-(--glass-bg) focus-visible:focus-ring"
+          >
+            <Trash2 className="size-3.5 opacity-45" />
+            <span className="flex-1 text-left">{t("docs.removedTrash", { count: removedHere.length })}</span>
+          </button>
+          {showRemoved
+            ? removedHere.map((d) => (
+                <div key={d.key} className="flex h-8 items-center gap-2 pr-1.5 pl-[30px] text-[12.5px]/none font-medium text-(--text-muted)">
+                  <span title={`${d.key} · ${d.removedBy ?? ""}`} className="min-w-0 flex-1 truncate line-through">
+                    {d.title}
+                  </span>
+                  {allow(docOwner(d.key), isContextDoc(d.key, d) ? "contextEdit" : "docEdit") ? (
+                    <button
+                      type="button"
+                      data-doc-restore={d.key}
+                      disabled={restore.busy}
+                      onClick={() =>
+                        void restore.run(async () => {
+                          await client.call("docs.restore", { key: d.key });
+                          toast(t("docs.restored", { doc: d.title }));
+                          removed.reload();
+                          list.reload();
+                        })
+                      }
+                      className="h-6 shrink-0 cursor-pointer rounded-full border-0 bg-(--glass-bg) px-2 text-[11px]/4 font-semibold text-fg-strong shadow-[var(--ring-glass)] outline-none hover:bg-(--glass-hover) focus-visible:focus-ring disabled:cursor-default"
+                    >
+                      {t("docs.restore")}
+                    </button>
+                  ) : null}
+                </div>
+              ))
+            : null}
+          <ErrorNote error={restore.error} />
         </div>
       </div>
-      <div className={cn("min-w-0 flex-1 flex-col", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
-        {mobileDetail.showingDetail ? <div className="flex items-center"><MobileBack onClick={() => pick(null)} /><Button variant="ghost" className="min-h-10" onClick={() => setTreeOpen(true)}>{t("docs.list")}</Button></div> : null}
-        {active ? (
-          <DocView
-            key={active}
-            docKey={active}
-            canEdit={allow(docOwner(active), isContextDoc(active, (list.data ?? []).find((d) => d.key === active)) ? "contextEdit" : "docEdit")}
-            canPropose={allow(docOwner(active), "docPropose")}
-            draft={drafts[active] ?? null}
-            setDraft={(d) => setDraft(active, d)}
-            onSaved={list.reload}
-            tree={tree}
-            titles={titles}
-            spaceLabel={ownerName(docOwner(active), t("inbox.shared"))}
-            onPick={pick}
-            onNew={(parent) => startCreate("page", parent)}
-            spaces={spaces}
-            onMoved={(key) => {
-              // The list has not caught up with the new key yet: keep it selected until it does, as for a new folder.
-              justMade.current = key;
-              setSpaceId(spaceIdOf(key));
-              setSelected(key);
-              if (mobileDetail.mobile) mobileDetail.navigate(key);
-              list.reload();
-            }}
-            onRemoved={() => {
-              setSelected(null);
-              if (mobileDetail.mobile) mobileDetail.navigate(null);
-              setShowRemoved(true);
-              removed.reload();
-              list.reload();
-            }}
-          />
-        ) : (
+      {mobileDetail.showingDetail ? <div className="flex basis-full flex-wrap items-center"><MobileBack onClick={() => pick(null)} /><Button variant="ghost" className="min-h-10" onClick={() => setTreeOpen(true)}>{t("docs.list")}</Button></div> : null}
+      {active ? (
+        <DocView
+          key={active}
+          docKey={active}
+          canEdit={allow(docOwner(active), isContextDoc(active, (list.data ?? []).find((d) => d.key === active)) ? "contextEdit" : "docEdit")}
+          canPropose={allow(docOwner(active), "docPropose")}
+          draft={drafts[active] ?? null}
+          setDraft={(d) => setDraft(active, d)}
+          onSaved={() => {
+            list.reload();
+            pending.reload();
+          }}
+          tree={tree}
+          titles={titles}
+          spaceLabel={ownerName(docOwner(active), t("inbox.shared"))}
+          onPick={pick}
+          onNew={(parent) => startCreate("page", parent)}
+          spaces={spaces}
+          pendingCount={(pending.data ?? []).filter((p) => p.docKey === active).length}
+          onMoved={(key) => {
+            // The list has not caught up with the new key yet: keep it selected until it does, as for a new folder.
+            justMade.current = key;
+            setSpaceId(spaceIdOf(key));
+            setSelected(key);
+            if (mobileDetail.mobile) mobileDetail.navigate(key);
+            list.reload();
+          }}
+          onRemoved={() => {
+            setSelected(null);
+            if (mobileDetail.mobile) mobileDetail.navigate(null);
+            setShowRemoved(true);
+            removed.reload();
+            list.reload();
+          }}
+        />
+      ) : (
+        <div className={cn("min-w-0 flex-[999_1_440px] flex-col rounded-[24px] bg-(--surface-1) shadow-[var(--ring-glass)]", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden md:flex" : "flex")}>
           <div className="grid flex-1 place-items-center p-6">
             {empty === "none" ? (
               <PaneEmpty
@@ -671,8 +855,8 @@ export function DocsPage() {
               <span className="text-[13px] text-fg-muted">{t("docs.pick")}</span>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -708,6 +892,7 @@ function DocView({
   onPick,
   onNew,
   spaces,
+  pendingCount,
   onMoved,
   onRemoved,
 }: {
@@ -724,6 +909,8 @@ function DocView({
   onNew: (parent: string) => void;
   /** The spaces this scope shows: where the page may be sent (roadmap 38g). */
   spaces: Space[];
+  /** Proposals waiting for review on this page. */
+  pendingCount: number;
   onMoved: (key: string) => void;
   onRemoved: () => void;
 }) {
@@ -1133,9 +1320,71 @@ function DocView({
       </div>
     );
 
+  // Reading is the article of the design; every other state (editing, a version, the changes, a side panel) keeps the working layout.
+  if (!editing && compare === null && !showDiff && panel === null) {
+    const toc = headings(work.content);
+    const back = links.data?.back ?? [];
+    const crumb = "cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-fg-muted hover:text-fg-strong";
+    return (
+      <>
+        <article className="flex min-w-0 flex-[999_1_440px] flex-col gap-[18px] rounded-[24px] bg-(--surface-1) px-[clamp(20px,3vw,40px)] pt-8 pb-10 shadow-[var(--ring-glass)]">
+          <div className="flex flex-col gap-2.5">
+            <nav aria-label={t("docs.breadcrumb")} className="flex flex-wrap items-center gap-1.5 text-xs/[18px] font-medium text-fg-muted">
+              <span className="text-fg-muted">{spaceLabel}</span>
+              <span className="opacity-40">/</span>
+              {path.slice(0, -1).map((n) => (
+                <span key={n.key} className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => n.doc && onPick(n.key)} className={crumb}>
+                    {n.title}
+                  </button>
+                  <span className="opacity-40">/</span>
+                </span>
+              ))}
+              <span title={docKey} className="ml-1.5 font-mono text-[11.5px]/none font-medium text-(--text-muted)">
+                {docKey}
+              </span>
+            </nav>
+            <h2 className="m-0 text-[30px]/[38px] font-bold tracking-[-0.3px] text-fg-strong [text-wrap:pretty]">{work.title || current?.title || docKey}</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              {current ? <Badge>{t("docs.editedBy", { version: current.version, by: current.updatedBy, when: formatTime(current.updatedAt) })}</Badge> : null}
+              {!current && draft ? <Badge tone="warning">{t("docs.unsavedPage")}</Badge> : null}
+              {current?.includeInAgents ? <Badge tone="green">{t("docs.inAgents")}</Badge> : null}
+              {current?.paths?.length ? <Badge tone="blue" title={current.paths.join(", ")}>{t("docs.pathsApply", { paths: current.paths.join(", ") })}</Badge> : null}
+              {pendingCount ? <Badge tone="violet">{t("docs.pendingChip", { count: pendingCount })}</Badge> : null}
+              {current?.mirror ? <Badge tone="blue" title={t("docs.mirrorHint", { from: current.mirror.from, commit: current.mirror.commit })}>{t("docs.mirrorSource")}</Badge> : null}
+              {draft?.queued ? <Badge tone="warning" title={t("docs.queuedHint")}>{t("docs.queued")}</Badge> : null}
+              {images ? <Badge>{t("docs.imagesChip", { count: images })}</Badge> : null}
+              {broken ? <Badge tone="danger">{t("docs.brokenChip", { count: broken })}</Badge> : null}
+              {back.length ? <Badge asChild><a href={docHref(docKey, "read")}>{t("docs.backlinksChip", { count: back.length })}</a></Badge> : null}
+              <span className="flex-1" />
+              {current ? <Button size="sm" variant="ghost" onClick={() => setPanel("history")}>{t("docs.history")}</Button> : null}
+              {current ? <Button size="sm" variant="ghost" asChild><a href={docHref(docKey, "read")} title={t("docs.openReader")}>{t("docs.reader")}</a></Button> : null}
+              {writer ? <Button size="sm" variant="glass" data-doc-edit onClick={() => { setMode("edit"); setCompare(null); }}>{t("docs.modeEdit")}</Button> : null}
+            </div>
+          </div>
+          <div className="h-px bg-(--border-subtle)" />
+          {(doc.error ?? action.error) ? <ErrorNote error={doc.error ?? action.error} /> : null}
+          {work.content.trim() ? <DocMarkdown text={work.content} doc={context} /> : children.length || node?.folder ? null : <p className="m-0 text-[15px]/6 text-fg-muted">{t("docs.empty")}</p>}
+          {children.length || (node?.folder && canEdit) ? <ChildPages nodes={children} onPick={onPick} onNew={canEdit && node?.doc ? () => onNew(docKey) : undefined} /> : null}
+          {!writer ? <p className="m-0 text-xs/[18px] text-fg-muted">{t("docs.viewOnly")}</p> : null}
+        </article>
+        <aside className="flex flex-[1_1_180px] flex-col gap-1.5 px-1 py-2">
+          <span className="pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">{t("docs.onThisPage")}</span>
+          {toc.map((h) => (
+            <span key={h} className="py-[3px] pl-2.5 text-xs/[18px] font-medium text-fg-secondary shadow-[inset_1px_0_0_color-mix(in_srgb,var(--text-strong)_10%,transparent)]">{h}</span>
+          ))}
+          <span className="pt-[18px] pb-1 text-[11px]/4 font-semibold tracking-[0.5px] text-(--text-muted) uppercase">{t("docs.linksTo")}</span>
+          {back.map((b) => (
+            <a key={b.key} href={docHref(b.key)} title={b.snippet} className="text-xs/[18px] font-medium text-fg-link hover:underline">{b.title || titles.get(b.key) || b.key}</a>
+          ))}
+        </aside>
+      </>
+    );
+  }
+
   const chip = "inline-flex h-5 items-center rounded-xs px-[7px] text-[11px]/none font-semibold whitespace-nowrap";
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-[999_1_520px] flex-col overflow-hidden rounded-[24px] bg-(--surface-1) shadow-[var(--ring-glass-strong)]">
       <div className="flex min-h-[44px] shrink-0 flex-wrap items-center gap-2 border-b border-line-subtle px-4 py-2">
         <nav aria-label={t("docs.breadcrumb")} className="flex min-w-0 items-center gap-1 text-xs/none">
           <span className="shrink-0 font-mono font-medium text-fg-muted">{spaceLabel}</span>
@@ -1401,27 +1650,36 @@ function DocView({
   );
 }
 
+/** The h2/h3 lines of a page, outside code fences: "Trên trang này". */
+function headings(md: string): string[] {
+  let fenced = false;
+  const out: string[] = [];
+  for (const line of md.split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    else if (!fenced) {
+      const m = /^#{2,3}\s+(.+?)\s*#*$/.exec(line);
+      if (m) out.push(m[1]!);
+    }
+  }
+  return out;
+}
+
 /** The pages under this one (a folder's content). */
 export function ChildPages({ nodes, onPick, onNew }: { nodes: TreeNode[]; onPick?: (key: string) => void; onNew?: () => void }) {
   const t = useT();
   return (
-    <section className="flex flex-col gap-2">
-      <h2 className="m-0 type-caption text-fg-muted">{t("docs.childPages", { count: nodes.length })}</h2>
+    <section className="mt-2 flex flex-col gap-2">
+      <h2 className="m-0 text-[13px]/[18px] font-semibold text-fg-strong">{t("docs.childPages", { count: nodes.length })}</h2>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-2">
         {nodes.map((n) => {
           const Icon = n.folder || n.children.length ? Folder : FileText;
           const inner = (
             <>
-              <Icon className={cn("size-4 shrink-0", n.folder || n.children.length ? "text-fg-brand" : "text-fg-muted")} />
-              <span className="flex min-w-0 flex-col gap-0.5">
-                <span className="truncate text-[13px] font-medium text-fg-strong">{n.title}</span>
-                <span className="truncate text-[11px] text-fg-muted">
-                  {n.children.length ? t("docs.pageCount", { count: n.children.length }) : n.doc ? `v${n.doc.version} · ${formatTime(n.doc.updatedAt)}` : ""}
-                </span>
-              </span>
+              <Icon className="size-3.5 shrink-0 opacity-50" />
+              <span className="min-w-0 truncate">{n.title}</span>
             </>
           );
-          const cls = "flex min-w-0 cursor-pointer items-center gap-2.5 rounded-md border border-line-subtle bg-surface px-3 py-2.5 text-left outline-none hover:border-line-default hover:bg-hover focus-visible:focus-ring";
+          const cls = "flex min-w-0 cursor-pointer items-center gap-2 rounded-[14px] border-0 bg-sunken px-3.5 py-3 text-left text-[13px]/[18px] font-medium text-fg-strong shadow-[var(--ring-glass)] outline-none hover:shadow-[var(--ring-glass-strong)] focus-visible:focus-ring";
           return onPick ? (
             <button key={n.key} type="button" onClick={() => onPick(n.key)} className={cls}>
               {inner}
@@ -1436,7 +1694,7 @@ export function ChildPages({ nodes, onPick, onNew }: { nodes: TreeNode[]; onPick
           <button
             type="button"
             onClick={onNew}
-            className="flex cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-line-control px-3 py-2.5 text-xs font-medium text-fg-secondary outline-none hover:text-fg-strong focus-visible:focus-ring"
+            className="flex cursor-pointer items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-line-control bg-transparent px-3.5 py-3 text-xs font-medium text-fg-secondary outline-none hover:text-fg-strong focus-visible:focus-ring"
           >
             <Plus className="size-3.5" />
             {t("docs.addChild")}

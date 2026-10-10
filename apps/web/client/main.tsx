@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { createHttpClient, HiveApp, I18nProvider, Login, signIn, signInProviders, signOut, useT, type MessageKey } from "@xdev-hive/ui";
+import { createHttpClient, HubSetup, hubSetupState, I18nProvider, InviteAccept, inviteTokenFromHash, Login, signIn, signInProviders, signOut, useT, type HubSetupState, type MessageKey } from "@xdev-hive/ui";
+import { WebApp } from "./WebApp.tsx";
 import "@xdev-hive/ui/globals.css";
 
 // People sign in with username + password (HttpOnly session cookie). An API token pasted at sign-in
@@ -98,7 +99,29 @@ function Root() {
     return null;
   }, [session]);
 
+  const [inviteToken, setInviteToken] = useState(() => inviteTokenFromHash(window.location.hash));
+  useEffect(() => {
+    const on = () => setInviteToken(inviteTokenFromHash(window.location.hash));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+
   if (session.kind === "checking") return null;
+  // A sign-up link works for someone not signed in; a browser already signed in goes on to the app as before.
+  if (!client && inviteToken) {
+    return (
+      <InviteAccept
+        token={inviteToken}
+        onDone={() => {
+          window.location.hash = "#/";
+          setSession({ kind: "cookie" });
+        }}
+        onBack={() => {
+          window.location.hash = "#/";
+        }}
+      />
+    );
+  }
   if (!client) {
     return (
       <Login
@@ -127,7 +150,7 @@ function Root() {
           </button>
         </div>
       ) : null}
-      <HiveApp
+      <WebApp
         client={client}
         onSignOut={() => {
           const wasCookie = session.kind === "cookie";
@@ -140,10 +163,21 @@ function Root() {
   );
 }
 
+/** A hub started for setup (roadmap 75) shows its setup page before anything else; a hub from before it has no endpoint. */
+function Start() {
+  const [setup, setSetup] = useState<HubSetupState | null>(null);
+  useEffect(() => {
+    hubSetupState().then(setSetup, () => setSetup({ pending: false }));
+  }, []);
+  if (!setup) return null;
+  if (setup.pending) return <HubSetup locked={setup.locked} defaults={setup.defaults} onDone={() => setSetup({ pending: false })} />;
+  return <Root />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <I18nProvider>
-      <Root />
+      <Start />
     </I18nProvider>
   </StrictMode>,
 );

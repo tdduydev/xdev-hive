@@ -12,6 +12,7 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/mcp/package.json packages/mcp/
 COPY packages/ui/package.json packages/ui/
+COPY packages/ui-kit/package.json packages/ui-kit/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 RUN npm ci --workspace @xdev-hive/web --include-workspace-root --no-audit --no-fund
@@ -30,6 +31,7 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/mcp/package.json packages/mcp/
 COPY packages/ui/package.json packages/ui/
+COPY packages/ui-kit/package.json packages/ui-kit/
 COPY apps/web/package.json apps/web/
 COPY apps/desktop/package.json apps/desktop/
 RUN npm ci --omit=dev --workspace @xdev-hive/web --include-workspace-root --no-audit --no-fund && npm cache clean --force
@@ -37,7 +39,7 @@ RUN npm ci --omit=dev --workspace @xdev-hive/web --include-workspace-root --no-a
 COPY packages/core/src packages/core/src
 COPY packages/mcp/src packages/mcp/src
 # Webhook messages use the interface's translations (no React in there).
-COPY packages/ui/src/i18n packages/ui/src/i18n
+COPY packages/ui-kit/src/i18n packages/ui-kit/src/i18n
 COPY apps/web/src apps/web/src
 COPY --from=build /app/apps/web/dist apps/web/dist
 # Both exist in the image so new named volumes start out owned by `node` (uid 1000).

@@ -17,6 +17,7 @@ Người dùng: "chưa thấy giống với giao diện thiết kế, có thể 
 - **Ảnh tham chiếu:** `docs/design/hive-2026-10/shots/<trang>-1440.png` (1440×900, tối). Đầy đủ cho today, tasks, chat, pipeline, features, runs, docs, memory, skills, machines. Panel chi tiết của *Hôm nay* chưa hiện. Artifact, Lịch sử, Sơ đồ, Cài đặt service, Quản trị, Terminal, Bắt đầu chỉ có khung, vì dữ liệu của chúng nằm trong phần bị cắt. Với các trang này, dựng theo markup trong template.
 - **Số đo lấy đúng từ style inline của template:** px, khoảng cách, bo góc, cỡ và độ đậm chữ, màu, đổ bóng, ring. Chuyển các giá trị này sang token hoặc lớp Tailwind, nhưng giữ nguyên số đo. Không làm tròn sang thang có sẵn nếu lệch, không tự đổi bố cục, không thêm hay bớt khối. Thiếu token thì thêm token.
 - **Cách so:** dùng cùng dữ liệu mẫu (fixture có dữ liệu giống thiết kế, ví dụ seed demo trong e2e), chụp trang ở 1440×900 tối, đặt cạnh ảnh tham chiếu (`*-compare.png`), và sửa tới khi bố cục, vị trí, kích thước và màu trùng. Chỗ được khác chỉ là dữ liệu thật khác dữ liệu mẫu. Mỗi chỗ còn khác phải ghi vào note bàn giao kèm lý do.
+- **Ghép ảnh so sánh không cần PIL hay ImageMagick** (Mac mini không có). Viết một file HTML gồm hai `<img>` (`file:///…/ours.png` và `file:///…/design.png`), mỗi ảnh rộng 50%, nền đen. Chụp bằng `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars --window-size=2880,900 --screenshot=<trang>-compare.png file:///…/cmp.html`. Shell chưa gộp thì cắt vùng nội dung (CSS `object-fit`/`object-position`, hoặc chụp riêng phần tử `main`).
 - **Asset và icon đúng như thiết kế:** Lucide (tên icon ở `navDef` và trong template), ảnh hành tinh làm avatar theo loại gói (claude = violet, codex = green, gemini = blue).
 
 ## Đọc thiết kế thế nào
@@ -40,9 +41,13 @@ Người dùng: "chưa thấy giống với giao diện thiết kế, có thể 
 ## Cách làm
 
 - Token: ánh xạ vào token ngữ nghĩa có sẵn trong `packages/ui/src/tokens/` (`[data-theme="dark"]` lấy đúng giá trị thiết kế). Thêm token mới khi cần: ring kính, glow, radius card/pill, nền sao. Không viết màu cứng trong component. Bản sáng: cùng tên token với giá trị sáng (nền gần trắng, ring tối mờ, giữ tím làm màu chính), contrast WCAG AA.
+
+Ngoại lệ tương phản được người dùng chấp nhận (9/10): giữ nguyên màu nhấn trắng trên tím `#7B61FF` (~4,2:1), trắng trên xanh `#18A0FB` (~2,76:1), và chữ brand `#9580FF` trên nền chọn `#38343F` (~3,93:1) của bản tối để khớp thiết kế. E2E/axe chỉ loại đúng ba cặp màu này khi theme là dark; các lỗi tương phản khác vẫn làm bước kiểm tra đỏ. Bản sáng không có ngoại lệ và phải đạt WCAG AA.
 - Component dùng chung trong `packages/ui` (Button, Card, Tag/Chip, Badge, Input, Toggle, SegmentedTabs, ListRow, StatTile, EmptyState…) theo thiết kế. Trang dùng lại component, không chép style inline của template.
 - Chữ trên giao diện vào `packages/ui/src/i18n/locales/vi.ts` (gốc) và `en.ts`.
-- Dữ liệu và quyền giữ như hiện tại: thiết kế chỉ là dữ liệu mẫu. Trang có trong thiết kế mà chưa có API (ví dụ một số con số) thì hiện phần có dữ liệu thật và ghi vào note bàn giao, không bịa số.
+- Dữ liệu và quyền giữ như hiện tại: thiết kế chỉ là dữ liệu mẫu, không bịa số.
+- **Không bỏ tính năng đang có.** Thiết kế không vẽ một chức năng hiện có (ô tìm, bộ lọc, chế độ xem khác, hành động) thì vẫn giữ nó, đặt vào chỗ hợp lý và làm theo ngôn ngữ thiết kế. e2e của tính năng đó phải đạt như trên main.
+- **Tính năng mới trong thiết kế thì làm luôn** (người dùng, 9/10: "có tính năng mới thì làm tính năng đó luôn"). Nút, hành động, bộ lọc hay số liệu nào có trong thiết kế mà Hive chưa có, task của trang đó làm cả phần dưới: method trong core, quyền, MCP nếu hợp, migration nếu cần, có test. Ví dụ: "Reset tuần" trên thẻ gói, CPU/RAM/ổ đĩa của máy, phiên bản artifact, phím J/K/E trên Hôm nay, "Chuyển thành chung" cho memory, "Đổi gói" cho run lỗi. Tính năng quá lớn cho một run (hệ thống mới, nhiều màn) thì tạo task con `R-72<x>-<slug>` bằng `propose_task`/`task_create`, ghi rõ vào note bàn giao, và trang hiện phần đã có.
 - Mobile: mỗi trang chạy được ở 390 px (sidebar thành ngăn kéo, bảng thành danh sách). Thiết kế chỉ có desktop, nên mobile suy ra theo cùng ngôn ngữ.
 - App desktop dùng chung shell web, nên làm ở `packages/ui` là cả hai cùng đổi.
 

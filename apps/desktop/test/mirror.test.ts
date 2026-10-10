@@ -6,7 +6,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import type { Actor } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { mirrorDocs, mirrors } from "#desktop/main/mirror.ts";
+import { mirrorDocs, mirrors, mirrorsAsync } from "#desktop/main/mirror.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -73,6 +73,15 @@ describe("mirroring the repo's docs into Hive (roadmap 26)", () => {
     assert.equal((await mirrorDocs(new SqliteHive(":memory:"), admin, { name: "demo", repo: plain.repo }, { fetch: false })).commit, null);
     const gone = repoWith({ ".xdev-hive/docs.json": JSON.stringify({ docs: [{ file: "docs/gone.md", key: "gone" }] }), "README.md": "# Demo\n" });
     assert.deepEqual((await mirrorDocs(new SqliteHive(":memory:"), admin, { name: "demo", repo: gone.repo }, { fetch: false })).missing, ["docs/gone.md"]);
+  });
+
+  it("mirrors from a project path inside its Git repository", async () => {
+    const { repo } = repoWith({ ".xdev-hive/docs.json": CONFIG, "README.md": "# Demo\n\n## Chạy\n\ntext\n" });
+    const nested = path.join(repo, "src"); mkdirSync(nested);
+    assert.equal(await mirrorsAsync(nested), true);
+    const hive = new SqliteHive(":memory:");
+    try { assert.ok((await mirrorDocs(hive, admin, { name: "demo", repo: nested }, { fetch: false })).changed.length > 0); }
+    finally { hive.close(); }
   });
 });
 

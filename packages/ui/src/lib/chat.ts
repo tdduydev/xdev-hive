@@ -83,6 +83,12 @@ export const actionTask = (a: Pick<ChatAction, "kind" | "input">): string | null
   a.kind === "run.dispatch" ? String(a.input.taskId) : a.kind === "task.create" || a.kind === "task.update" || a.kind === "task.classify" ? String(a.input.id) : null;
 
 /** Badge tone of an action's status. */
+/** The `chat.kindLabel.*` key of the small label above a proposed action; kinds without one read as an install. */
+export const ACTION_KIND_KEY: Record<string, string> = {
+  "research.start": "research", "plan.create": "plan", "task.create": "taskCreate", "task.update": "taskUpdate", "task.classify": "taskClassify",
+  "run.dispatch": "runDispatch", "run.cancel": "runCancel", "run.merge": "runMerge", "machine.profile": "profile", "agent.policy": "policy",
+  "agents.stop": "stop", "agents.resume": "resume", "tool.enable": "tool",
+};
 export const ACTION_TONE: Record<string, string> = { proposed: "warn", done: "ok", failed: "danger", dismissed: "neutral" };
 
 /** A file's size for people: 820 B, 12 KB, 1.4 MB. */

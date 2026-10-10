@@ -1,5 +1,5 @@
 // Minimal GitHub REST (and one GraphQL call) client for pull requests. github.com or GitHub Enterprise Server.
-import { GITHUB_URL, HiveError, type HiveErrorCode, type PipelineStatus } from "@xdev-hive/core";
+import { GITHUB_URL, HiveError, type GitLabGroupRepo, type HiveErrorCode, type PipelineStatus } from "@xdev-hive/core";
 import type { FetchLike } from "#desktop/main/gitlab/client.ts";
 
 export interface GitHubRepo {
@@ -7,6 +7,18 @@ export interface GitHubRepo {
   default_branch: string | null;
   owner: { login: string };
   html_url: string;
+  archived?: boolean;
+}
+
+/** A repository in an owner listing. */
+interface RawOwnerRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  default_branch?: string | null;
+  ssh_url: string;
+  clone_url: string;
+  archived?: boolean;
 }
 
 export interface GitHubPull {
@@ -159,6 +171,30 @@ export class GitHubClient {
 
   user(): Promise<{ login: string; name: string | null }> {
     return this.#rest("GET", "/user");
+  }
+
+  /**
+   * Every repository of an organization or a user, archived ones left out (roadmap 74a), in the import's shape.
+   * The token's own account goes through /user/repos, because /users/{login}/repos leaves out its private ones.
+   */
+  async ownerRepos(owner: string): Promise<GitLabGroupRepo[]> {
+    const me = (await this.user()).login;
+    let base: string;
+    if (me.toLowerCase() === owner.toLowerCase()) base = "/user/repos?affiliation=owner";
+    else {
+      const who = await this.#rest<{ type?: string }>("GET", `/users/${encodeURIComponent(owner)}`);
+      base = who.type === "Organization" ? `/orgs/${encodeURIComponent(owner)}/repos?type=all` : `/users/${encodeURIComponent(owner)}/repos?type=owner`;
+    }
+    const out: GitLabGroupRepo[] = [];
+    for (let page = 1; page <= 50; page++) {
+      const batch = await this.#rest<RawOwnerRepo[]>("GET", `${base}&sort=full_name&per_page=100&page=${page}`);
+      for (const r of batch) {
+        if (r.archived) continue;
+        out.push({ id: r.id, name: r.name, pathWithNamespace: r.full_name, defaultBranch: r.default_branch ?? null, sshUrl: r.ssh_url, httpUrl: r.clone_url });
+      }
+      if (batch.length < 100) break;
+    }
+    return out;
   }
 
   /** `repo` is owner/name. */

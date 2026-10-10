@@ -12,8 +12,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import os from "node:os";
 import path from "node:path";
 import electron from "electron";
-import { HubBackend } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
+import { HubBackend } from "@xdev-hive/core";
+import { DESK_MENU } from "../src/renderer/desk-nav.ts";
 import { RunStore } from "../src/main/runner/store.ts";
 import { resetText } from "../src/main/runner/usage.ts";
 import { startMockGitLab } from "../test/fixtures/mock-gitlab.ts";
@@ -40,15 +41,25 @@ execFileSync("git", ["init", "-q", "--bare", "-b", "main", origin]);
 git("remote", "add", "origin", origin);
 git("push", "-q", "origin", "main");
 const token = "mock-gitlab-smoke-token";
-const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
+const gitlab = ["setup-guide", "run-steer", "idle-update", "worktrees", "chat-everywhere", "shell", "opencode", "vibe", "acceptance-evidence"].includes(process.env.HIVE_SMOKE_ONLY)
   ? { base: "", close: async () => {} }
   : await startMockGitLab(token);
 
 const fake = path.join(appDir, "test", "fixtures", "fake-agent.mjs");
 const shellWord = (value) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+// A fake CLI that runs the fake agent with these variables. Windows: a .cmd beside the sh script, since the app
+// starts only PATHEXT names there (resolveBin turns `fake-cli` into `fake-cli.cmd`).
+const fakeCli = (file, env = {}) => {
+  const exports = Object.entries(env).map(([k, v]) => `export ${k}=${shellWord(v)}\n`).join("");
+  writeFileSync(file, `#!/bin/sh\n${exports}exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+  if (process.platform === "win32") {
+    const sets = Object.entries(env).map(([k, v]) => `set "${k}=${v}"\r\n`).join("");
+    writeFileSync(`${file}.cmd`, `@echo off\r\n${sets}"${process.execPath}" "${fake}" %*\r\n`);
+  }
+};
 // A wrapper as the CLI, so sign-in checks (`<bin> auth status --json`) reach the fake agent as well.
 const cli = path.join(work, "fake-cli");
-writeFileSync(cli, `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+fakeCli(cli);
 // Quota with resets ahead of the smoke's own clock (roadmap 52): /usage's text for Claude, and a Codex session file as
 // Codex writes it, so codex-plus shows these numbers and not this machine's real ~/.codex.
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -74,20 +85,13 @@ writeFileSync(path.join(smokeHome, ".gemini/settings.json"), JSON.stringify({ se
 writeFileSync(path.join(smokeHome, ".gemini/oauth_creds.json"), JSON.stringify({ refresh_token: "fake-fixture" }));
 const agyBin = path.join(work, "agy-bin");
 mkdirSync(agyBin, { recursive: true });
-writeFileSync(path.join(agyBin, "agy"), `#!/bin/sh
-export FAKE_AGY=1 FAKE_AGY_VERSION='agy 1.2.17' FAKE_LOGIN=out
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
-writeFileSync(path.join(agyBin, "gemini"), `#!/bin/sh
-export FAKE_GEMINI=1
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
-writeFileSync(path.join(agyBin, "kilo"), `#!/bin/sh
-export FAKE_MODE=kilo-ok
-exec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"
-`, { mode: 0o755 });
+fakeCli(path.join(agyBin, "agy"), { FAKE_AGY: "1", FAKE_AGY_VERSION: "agy 1.2.17", FAKE_LOGIN: "out" });
+fakeCli(path.join(agyBin, "gemini"), { FAKE_GEMINI: "1" });
+fakeCli(path.join(agyBin, "kilo"), { FAKE_MODE: "kilo-ok" });
 const agent = (id, kind, priority, mode, label, extra = {}) => ({
-  id, label, kind, bin: cli, args: ["{prompt}"], env: { FAKE_MODE: mode },
+  // Windows: the .cmd fake runs through cmd.exe, which cannot carry the multi-line prompt; `-p {prompt}` (the real
+  // Claude profile's form) lets the runner send it on stdin instead.
+  id, label, kind, bin: cli, args: process.platform === "win32" && kind === "claude" ? ["-p", "{prompt}"] : ["{prompt}"], env: { FAKE_MODE: mode },
   enabled: true, priority, roles: ["plan", "implement", "review"], maxConcurrent: 1, cooldownMinutes: 60, timeoutMinutes: 5,
   ...extra,
 });
@@ -186,7 +190,7 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
   db.close();
   const store = new RunStore(path.join(work, "runs.db"));
   const run = store.insert({ project, taskId, taskTitle: "Nghiệm thu revision code", role: "implement", attempt: 1, maxAttempts: 1 }, new Date().toISOString());
-  store.update(run.id, { status: "succeeded", headSha: "c".repeat(40), branch: source.specBranch, finishedAt: new Date().toISOString() });
+  store.update(run.id, { status: "succeeded", startSha: "a".repeat(40), headSha: "c".repeat(40), pushed: true, pushError: null, branch: source.specBranch, finishedAt: new Date().toISOString() });
   store.db.close();
   for (const phone of [false, true]) {
     await shoot(phone ? "acceptance-mobile" : "acceptance-desktop", `specs?project=${project}&dir=${source.specDir}&branch=ai%2F${taskId}`, 2500, {
@@ -197,8 +201,36 @@ if (process.env.HIVE_SMOKE_ONLY === "acceptance-evidence") {
     });
     await shoot(phone ? "run-revision-mobile" : "run-revision-desktop", `runs?run=${run.id}`, 2500, {
       ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
-      HIVE_SMOKE_EXPECT: "[data-run-head-sha]",
-      HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
+      HIVE_SMOKE_EXPECT: "[data-run-head-sha] && [data-run-push-state] && [data-run-start-sha]",
+      HIVE_SMOKE_ASSERT: `document.querySelector('[data-run-head-sha]')?.textContent.includes('${"c".repeat(40)}') && document.querySelector('[data-run-push-state]')?.textContent.includes('Đã đẩy nhánh') && document.documentElement.scrollWidth <= innerWidth` + (phone ? ` && document.querySelector('[data-run-heading]').getBoundingClientRect().width >= innerWidth - 48 && document.querySelector('[data-run-heading] h2').getBoundingClientRect().height <= 60` : ""),
+    });
+  }
+  await gitlab.close();
+  process.exit(0);
+}
+
+if (process.env.HIVE_SMOKE_ONLY === "shell") {
+  for (const theme of ["dark", "light"]) {
+    const common = { HIVE_SMOKE_THEME: theme, HIVE_SMOKE_SIZE: "1440x900", HIVE_SMOKE_SIDEBAR: "open" };
+    await shoot(`shell-${theme}`, "today", 1500, {
+      ...common,
+      HIVE_SMOKE_EXPECT: ".hive-sidebar-toggle && .hive-status-footer",
+      HIVE_SMOKE_ASSERT: [
+        'document.querySelector("#hive-navigation").getBoundingClientRect().width === 252',
+        'document.querySelector(".hive-main-topbar").getBoundingClientRect().height === 72',
+        '[...document.querySelectorAll(".hive-nav-item")].every(el => el.getBoundingClientRect().height === 36)',
+        'document.querySelectorAll(".hive-nav-heading").length === 3',
+        'document.querySelector(".hive-status-footer").getBoundingClientRect().height === 26',
+        'document.documentElement.scrollWidth <= innerWidth',
+      ].join(" && "),
+    });
+    await shoot(`shell-${theme}-rail`, "today", 1500, {
+      ...common, HIVE_SMOKE_CLICK: ".hive-sidebar-toggle", HIVE_SMOKE_EXPECT: ".hive-sidebar-rail",
+      HIVE_SMOKE_ASSERT: 'document.querySelector(".hive-sidebar-rail").getBoundingClientRect().width === 64 && document.querySelector(".hive-sidebar-toggle").getBoundingClientRect().width > 0',
+    });
+    await shoot(`shell-${theme}-drawer`, "today", 1500, {
+      ...common, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_CLICK: ".hive-mobile-nav button", HIVE_SMOKE_EXPECT: ".hive-navigation-drawer #hive-navigation",
+      HIVE_SMOKE_ASSERT: '(() => { const r = document.querySelector(".hive-navigation-drawer").getBoundingClientRect(); return Math.abs(r.x) < 1 ? r.right <= innerWidth - 47 : false; })() && [...document.querySelectorAll(".hive-navigation-drawer button, .hive-navigation-drawer a")].every(el => { const r = el.getBoundingClientRect(); return r.width >= 44 ? r.height >= 44 : false; })',
     });
   }
   await gitlab.close();
@@ -253,6 +285,14 @@ async function setupCardShots(prefix = "") {
       HIVE_SMOKE_ASSERT: 'document.querySelectorAll("[data-setup-project]").length === 3',
     };
     await shoot(`${prefix}setup-cards-${state}`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, ...checks });
+    if (!process.env.HIVE_SMOKE_BEFORE && process.env.HIVE_SMOKE_ONLY === "setup-cards") {
+      // A system linked to its group: the cards under its subgroups, and the group's set-up with lab still to clone.
+      await shoot(`${prefix}setup-cards-${state}-group`, "setup", 3500, {
+        HIVE_SMOKE_SETUP_REPORT: fixture,
+        HIVE_SMOKE_CLICK: '[data-setup-group="hospital"]',
+        HIVE_SMOKE_EXPECT: '[data-setup-system="hospital"] [data-setup-folder="his/backend"] && [data-setup-system="hospital"] [data-system-group="hospital"] [data-group-item="lab"][data-group-state="new"] && [data-system-group="hospital"] [data-group-item="demo"][data-group-state="added"]',
+      });
+    }
     if (!process.env.HIVE_SMOKE_BEFORE) {
       await shoot(`${prefix}setup-cards-${state}-details`, "setup", 2500, { HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_CLICK: '[data-project-checks="demo"] > summary', ...checks });
       await shoot(`${prefix}setup-cards-${state}-mobile`, "setup", 2500, {
@@ -281,8 +321,12 @@ async function startGuideShots(prefix = "") {
     if (state === "ready") extra.HIVE_SMOKE_EXPECT += ' && [data-start-step="agents"][data-state="done"]';
     if (state === "new") extra.HIVE_SMOKE_HASH = "";
     await shoot(`${prefix}start-${state}`, "start", 4000, extra);
+    // The size the design's reference shot is taken at (docs/design/hive-2026-10/shots/start-1440.png), to compare side by side.
+    if (state === "half") await shoot(`${prefix}start-half-1440`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "1440x900" });
     if (state === "new") await shoot(`${prefix}start-new-mobile`, "start", 4000, { ...extra, HIVE_SMOKE_SIZE: "390x844", HIVE_SMOKE_ASSERT: 'document.documentElement.scrollWidth <= window.innerWidth && Array.from(document.querySelectorAll("[data-start-step] > div > div > button")).every(b => b.getBoundingClientRect().height >= 44)' });
-    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: state === "ready" ? '!!document.querySelector("[data-today-summary]")' : 'Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent))' });
+
+    await shoot(`${prefix}start-${state}-today`, "start", 4000, { HIVE_SMOKE_CLICK: "[data-start-today]", HIVE_SMOKE_SETUP_REPORT: fixture, HIVE_SMOKE_EXPECT: prefix ? 'a[href="#/machine"][aria-current="page"]' : 'a[href="#/today"][aria-current="page"]', HIVE_SMOKE_ASSERT: `Array.from(document.querySelectorAll("button")).some(b => /Bắt đầu|chưa sẵn sàng|getting started|not ready/.test(b.textContent)) === ${state !== "ready"}` });
+
   }
   writeFileSync(file, before);
 }
@@ -390,7 +434,13 @@ if (process.env.HIVE_SMOKE_ONLY === "setup-guide") {
 }
 if (process.env.HIVE_SMOKE_ONLY === "setup-cards") {
   const local = new SqliteHive(path.join(work, "local.db"));
-  await local.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, admin);
+  // GROUP-init-sync: hospital mirrors a GitLab group; lab is a member this machine has no repo for yet.
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/hospital/${p}`, sshUrl: `git@gitlab.example.test:fis/hospital/${p}.git`, httpUrl: `https://gitlab.example.test/fis/hospital/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", {
+    name: "hospital",
+    projects: ["demo", "api", "lab"],
+    source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/hospital", syncedAt: null, members: [member("demo", "his/backend/demo"), member("api", "his/api"), member("lab", "his/backend/lab")] },
+  }, admin);
   local.close();
   await setupCardShots();
   await gitlab.close();
@@ -477,6 +527,18 @@ await startGuideShots();
 
 const failures = [];
 
+if (process.env.HIVE_SMOKE_ONLY === "repos-forge") {
+  const local = new SqliteHive(path.join(work, "local.db"));
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [{ project: "demo", pathWithNamespace: "fis/ehs/his/demo", sshUrl: "git@gitlab.example.test:fis/ehs/his/demo.git", httpUrl: "https://gitlab.example.test/fis/ehs/his/demo.git", defaultBranch: "main" }] } }, admin);
+  local.close();
+  await systemReposShot();
+  await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
+  await gitlab.close();
+  if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
+  console.log(`repos-forge screenshots in ${out}`);
+  process.exit(0);
+}
+
 // Roadmap 39h: Skill and Memory with nothing in them yet — before the skills below are seeded, and before a run is
 // queued, so the pages are quiet. EXPECT asserts the empty state's button is really there, not only in the picture.
 for (const page of ["skills", "memory"]) await shoot(`${page}-empty`, page, 1500, { HIVE_SMOKE_EXPECT: "[data-empty-action]" });
@@ -502,9 +564,15 @@ new RunStore(path.join(work, "runs.db")).insert(
 
 // Roadmap 39f: Board is the Task page now and Tool a part of Dự án & công cụ, so those two shots load the address
 // each page had before and check where it landed. HIVE_SMOKE_VIEW keeps the Task page on the board whatever view the
-// machine's localStorage remembers.
+// machine's localStorage remembers. The board shot also waits for the T-001 run queued above to hand the task to
+// review: the shot ends the app at once, and a run that finished just before it would keep T-001 claimed, which
+// the today and runs-list shots below rely on not being the case.
 for (const [name, page, delay, extra] of [
-  ["board", "board", 6000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"][aria-current="page"] && [data-task-view="kanban"][aria-checked="true"]' }],
+  ["board", "board", 6000, {
+    HIVE_SMOKE_VIEW: "kanban",
+    HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"][aria-current="page"] && [data-task-view="kanban"][aria-checked="true"]',
+    HIVE_SMOKE_ASSERT: '[...document.querySelectorAll(\'[data-column="review"] [role="button"]\')].some((card) => card.textContent.includes("T-001"))',
+  }],
   ["runs", "runs", 3000],
   ["setup", "setup", 4000],
   // Same wait as the setup shot above: the address lands there, and its checks take a moment.
@@ -513,15 +581,14 @@ for (const [name, page, delay, extra] of [
   // The Skills panel must have the skill's SKILL.md on screen, not only its frame (roadmap 39h: blank in the 3/10 shot).
   ["skills", "skills", 1500, { HIVE_SMOKE_EXPECT: "[data-skill-doc]" }],
 ]) await shoot(name, page, delay, extra ?? {});
-// The menu of this mode at 1440×900 (roadmap 39f): twelve entries and Chat (48), none of them Board, Tool or Đợt
-// chạy, and the list fits without scrolling.
+// Cosmic's three groups may scroll; the last entry must remain reachable above the fixed account card.
 await shoot("local-nav", "today", 3000, {
   HIVE_SMOKE_SIZE: "1440x900",
   HIVE_SMOKE_SIDEBAR: "open",
   HIVE_SMOKE_EXPECT: 'nav a[href="#/tasks"] && nav a[href="#/chat"] && nav a[href="#/runs"] && nav a[href="#/setup"] && nav a[href="#/systems"]',
   HIVE_SMOKE_ABSENT: 'nav a[href="#/board"] && nav a[href="#/tools"] && nav a[href="#/batches"] && nav a[href="#/machines"]',
   HIVE_SMOKE_ASSERT:
-    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight; })()',
+    'document.querySelectorAll("[data-nav-list] a").length === 13 && (() => { const l = document.querySelector("[data-nav-list]"); const last = [...l.querySelectorAll("a")].at(-1); l.scrollTop = l.scrollHeight; const r = last.getBoundingClientRect(); const bounds = l.getBoundingClientRect(); return r.top >= bounds.top ? r.bottom <= bounds.bottom + 1 : false; })()',
 });
 // This machine's own chat (roadmap 48): a thread in the local database whose leader proposed a task, waiting for
 // Xác nhận / Bỏ qua. The reply is written here as the app's runner would report it, so no Claude plan is used.
@@ -576,6 +643,9 @@ await shoot("local-task-list", "tasks", 3000, { HIVE_SMOKE_VIEW: "list", HIVE_SM
   const limited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(4));
   store.update(limited.id, { status: "rate_limited", profileId: "codex-plus", startedAt: hoursAgo(4), finishedAt: hoursAgo(3.5), costReported: 1 });
   store.resetStats("codex-plus", hoursAgo(30));
+  // The quota screenshot asserts the warning on claude-max-1, so seed a real hit for that same profile.
+  const claudeLimited = store.insert({ project: "demo", taskId: "T-900", taskTitle: "Token mẫu", role: "implement", attempt: 1, maxAttempts: 1 }, hoursAgo(2));
+  store.update(claudeLimited.id, { status: "rate_limited", profileId: "claude-max-1", startedAt: hoursAgo(2), finishedAt: hoursAgo(1.5), costReported: 1 });
   store.setCooldown("claude-max-1", new Date(Date.now() + 100 * 60_000).toISOString(), "You've hit your usage limit");
   store.setResume("codex-plus", { until: new Date(Date.now() + 120 * 60_000).toISOString(), at: hoursAgo(0.2), by: "an" });
   store.db.close();
@@ -663,8 +733,9 @@ writeFileSync(
 await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"] && [data-project-tools]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
-// The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
-await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
+// The GitLab/GitHub connection (GROUP-repos-forge), opened by the link a group panel gives: GitLab set (the mock),
+// GitHub not yet. The MR/PR options stay in the card below it.
+await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
 await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // A folder that is no repository but holds some (roadmap 38d): Chọn thư mục offers each repository under it with its
@@ -696,16 +767,17 @@ await shoot("today", "today", 4000);
 await shoot("board-run", "board", 3000, { HIVE_SMOKE_VIEW: "kanban", HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"] && [data-run-here]' });
 
 // The Board at the two widths it has to work at (roadmap 39g). At 1100 there is no room for five columns, so Xong
-// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 the three columns
-// with work in them are open, Bị chặn too (T-003 waits for T-002), and only the empty Xong stays a rail.
+// and Bị chặn are rails with their count and the board fits without scrolling sideways; at 1440 all five columns
+// are open, the empty Xong too (72d, docs/design/hive-2026-10 tasks-1440): an empty column no longer folds.
 await shoot("board-1100", "board", 5000, {
   HIVE_SMOKE_SIZE: "1100x800",
   HIVE_SMOKE_EXPECT: '[data-board-fit="narrow"] && [data-column-rail="done"] && [data-column-rail="blocked"] && [data-profile-chip]',
 });
 await shoot("board-1440", "board", 5000, {
   HIVE_SMOKE_SIZE: "1440x820",
-  HIVE_SMOKE_EXPECT: '[data-board-fit="wide"] && [data-column-rail="done"]',
-  HIVE_SMOKE_ABSENT: '[data-column-rail="blocked"]',
+  HIVE_SMOKE_EXPECT:
+    '[data-board-fit="wide"] && [data-column="todo"] && [data-column="doing"] && [data-column="review"] && [data-column="blocked"] && [data-column="done"]',
+  HIVE_SMOKE_ABSENT: "[data-column-rail]",
 });
 
 // Best-of-n (roadmap 12): the container Codex stays out of it, since this machine may have no Docker, and so does
@@ -761,9 +833,10 @@ await shoot("runs-log", "runs", 3000, {
 }
 
 // The Docs page in the app (goals QA-2): the diagram is drawn under the app's CSP, and Sửa opens the Tiptap editor.
+// Sửa is the reading header's button now (72f); the mode switch only shows once the page is being edited.
 const soDo = `docs?doc=${encodeURIComponent("project/demo/so-do")}`;
 await shoot("docs-mermaid", soDo, 2500, { HIVE_SMOKE_EXPECT: '[data-mermaid] [role="img"] svg' });
-await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: '[role="radio"][data-value="edit"]', HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
+await shoot("docs-editor", soDo, 2500, { HIVE_SMOKE_CLICK: "[data-doc-edit]", HIVE_SMOKE_EXPECT: '.ProseMirror && .ProseMirror [data-mermaid] [role="img"] svg' });
 // Đồng bộ on the Projects page mirrors the README's sections into Hive (roadmap 26).
 // Waits for the sync's own report: the sync takes about a second, and the DB check below must come after it.
 await shoot("projects-mirror", "setup", 4000, { HIVE_SMOKE_CLICK: '[data-sync-project="demo"]', HIVE_SMOKE_SCROLL: '[data-sync-project="demo"]', HIVE_SMOKE_EXPECT: '[data-project-result="demo"]' });
@@ -787,11 +860,38 @@ await shoot("agents-cli", "agents", 2000, {
   if (!script.includes(repo)) failures.push(`open-cli: the script of claude-max-1 does not start in ${repo}`);
   if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_AGENT !== "claude-max-1") failures.push(`open-cli: mcp.json is ${JSON.stringify(mcp)}`);
 }
+// GROUP-cli: a CLI over a whole system, from its section on Service & công cụ. ehs-smoke has demo here and lab nowhere:
+// the script adds demo's repo, Hive's server is the system's, and the context goes to the app's folder for the system
+// (one repo here: its working tree must not get it), with lab listed as missing.
+{
+  const local = new SqliteHive(path.join(work, "local.db"));
+  const member = (project, p) => ({ project, pathWithNamespace: `fis/ehs/${p}`, sshUrl: `git@gitlab.example.test:fis/ehs/${p}.git`, httpUrl: `https://gitlab.example.test/fis/ehs/${p}.git`, defaultBranch: "main" });
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo", "lab"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [member("demo", "his/demo"), member("lab", "his/lab")] } }, admin);
+  local.close();
+}
+await shoot("setup-system-cli", "setup", 3000, {
+  HIVE_SMOKE_CLICK: '[data-open-system-cli-button="claude-max-1:ehs-smoke"]',
+  HIVE_SMOKE_SCROLL: '[data-open-system-cli="ehs-smoke"]',
+  HIVE_SMOKE_EXPECT: '[data-system-cli-opened="ehs-smoke"] && [data-setup-system="ehs-smoke"] [data-setup-folder="his"]',
+});
+{
+  const dir = path.join(work, "cli", "claude-max-1");
+  const files = existsSync(dir) ? readdirSync(dir) : [];
+  const script = files.filter((f) => f.startsWith("cli.")).map((f) => readFileSync(path.join(dir, f), "utf8")).join("\n");
+  const mcp = files.includes("mcp-system-ehs-smoke.json") ? JSON.parse(readFileSync(path.join(dir, "mcp-system-ehs-smoke.json"), "utf8")) : null;
+  const session = path.join(work, "systems", "ehs-smoke");
+  const context = existsSync(path.join(session, "AGENTS.md")) ? readFileSync(path.join(session, "AGENTS.md"), "utf8") : "";
+  if (!script.includes("--add-dir") || !script.includes(repo)) failures.push(`system-cli: the script does not add ${repo}: ${script.slice(0, 400)}`);
+  if (mcp?.mcpServers?.["xdev-hive"]?.env?.HIVE_SYSTEM !== "ehs-smoke" || mcp.mcpServers["xdev-hive"].env.HIVE_PROJECT) failures.push(`system-cli: mcp is ${JSON.stringify(mcp)}`);
+  if (!context.includes("Hive system: `ehs-smoke`") || !context.includes("- `lab`")) failures.push(`system-cli: context is ${context.slice(0, 400)}`);
+  if (existsSync(path.join(repo, "AGENTS.md")) && readFileSync(path.join(repo, "AGENTS.md"), "utf8").includes("Hive system: `ehs-smoke`")) failures.push("system-cli: the context went into demo's repo");
+}
+await systemReposShot();
 // One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
 mkdirSync(accountBin);
-for (const name of ["claude", "codex"]) writeFileSync(path.join(accountBin, name), `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(fake)} "$@"\n`, { mode: 0o755 });
+for (const name of ["claude", "codex"]) fakeCli(path.join(accountBin, name));
 const withBin = { PATH: `${accountBin}${path.delimiter}${process.env.PATH}` };
 for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login"], ["codex", "CODEX_HOME", "login"]]) {
   await shoot(`agents-account-${kind}`, "agents", 2000, { ...withBin, HIVE_SMOKE_CLICK: `[data-add-profile] && [data-add-account="${kind}"] && form:has(#acc-label) button[type="submit"]` });
@@ -832,91 +932,51 @@ for (const [kind, dirEnv, login] of [["claude", "CLAUDE_CONFIG_DIR", "auth login
     const file = path.join(work, "config.json");
     const local = readFileSync(file, "utf8");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
-    // Task is in the menu again as this machine's Board (roadmap 44); #/board is only an old address of it.
-    // Chat is in it since roadmap 48, the hub's threads.
-    const webPages = ["board", "docs", "memory", "proposals", "skills", "specs", "batches", "machines", "members", "tokens", "systems", "tools", "admin"];
+    // Roadmap 76h: on a hub the app is this machine's work only (Máy này, Gói agent, Run trên máy, Worktree, Công cụ &
+    // setup, Cài đặt máy); Task, Tài liệu, Chat, Quản trị… are buttons that open the hub's web. Their old addresses are
+    // not menu entries here, and #/projects is Cài đặt máy now.
+    const webPages = ["today", "board", "tasks", "chat", "docs", "memory", "proposals", "skills", "specs", "batches", "machines", "members", "tokens", "systems", "tools", "admin", "projects"];
+    const absent = [...webPages.map((p) => `nav a[href="#/${p}"]`), "[data-ask-leader]", "[data-new-work-open]"].join(" && ");
+    // The menu fits the 1100×720 window without scrolling, and the page does not overflow sideways.
+    const fits =
+      'document.documentElement.scrollWidth <= window.innerWidth && (() => { const l = document.querySelector("[data-nav-list]"); return l.scrollHeight <= l.clientHeight + 1; })()';
+    const web = ["today", "tasks", "chat", "docs", "admin"].map((id) => `nav a[data-open-web="${id}"][target="_blank"]`).join(" && ");
+    const nav = DESK_MENU.map((id) => `nav a[href="#/${id}"]`).join(" && ");
     // hub-agents also proves the 39c table in hub mode: here three subscriptions are off, so only the fold shows them.
-    // Lượt chạy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
-    // Connected (roadmap 39d): Cài đặt is one line about the hub, the account and this machine, with no form.
-    const absent = webPages.map((p) => `nav a[href="#/${p}"]`).join(" && ");
+    // Run trên máy has the same shape in hub mode, and only this machine's runs in it (roadmap 35a, 39e).
+    // Connected (roadmap 39d): Cài đặt máy is one line about the hub, the account and this machine, with no form.
     const pages = [
-      ["hub-today", "today"],
-      ["hub-runs", "runs", '[data-run-tab="summary"][aria-selected="true"]'],
-      ["hub-agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
-      ["hub-setup", "setup"],
-      ["hub-projects", "projects", '[data-hub-link="connected"]'],
+      ["machine", "machine", '[data-machine-page] [data-card="resources"] [data-meter] && [data-card="app"] && [data-card="hub"]'],
+      // 72e: the page opens on its list; a run's detail waits for a click (runs-list above checks it).
+      ["runs", "runs", '[data-run-status="succeeded"]'],
+      ["agents", "agents", '[data-off-group] && [data-profile="claude-max-1"] [role="meter"]'],
+      ["worktrees", "worktrees", "[data-worktree-panel]"],
+      ["setup", "setup", ""],
+      ["settings", "settings", '[data-hub-link="connected"]'],
     ];
-    for (const [name, page, also] of pages) {
-      await shoot(name, page, 3000, { HIVE_SMOKE_EXPECT: also ? `[data-open-web] && ${also}` : "[data-open-web]", HIVE_SMOKE_ABSENT: absent });
-    }
-    // Roadmap 44: the Board of the projects with a repo here. The hub also has a project this machine does not clone,
-    // which the picker leaves out (it is on the web, behind Mở trên web).
-    const api = new HubBackend(`http://127.0.0.1:${port}`, bootstrap);
-    const seeder = { name: "smoke", role: "admin" };
-    await api.call("systems.save", { name: "hospital", projects: ["demo", "api"] }, seeder);
-    await setupCardShots("hub-");
-    await startGuideShots("hub-");
-    await api.call("tasks.create", { id: "T-001", project: "demo", title: "Thêm trang cài đặt workspace" }, seeder);
-    await api.call("tasks.create", { id: "T-002", project: "demo", title: "Sửa lỗi phân trang danh sách" }, seeder);
-    await api.call("tasks.update", { id: "T-002", status: "doing" }, seeder);
-    await api.call("tasks.create", { id: "T-003", project: "demo", title: "Viết test cho API đăng nhập", dependsOn: ["T-002"] }, seeder);
-    await api.call("tasks.create", { id: "O-001", project: "other", title: "Việc của máy khác" }, seeder);
-    const board = 'nav a[href="#/tasks"][aria-current="page"] && [data-open-web-board] && section[aria-label="Chưa làm"] [role="button"]';
-    await shoot("hub-board", "tasks", 4000, {
-      HIVE_SMOKE_EXPECT: `[data-open-web] && ${board}`,
-      HIVE_SMOKE_ABSENT: `${absent} && option[value="other"] && [data-task-view]`,
-    });
-    // The old address lands on it too, and a card opens its panel with the run form of this machine.
-    await shoot("hub-board-task", "board", 4000, {
-      HIVE_SMOKE_CLICK: 'section[aria-label="Chưa làm"] [role="button"]',
-      HIVE_SMOKE_EXPECT: `${board} && aside[aria-label^="T-00"]`,
-    });
-    // Roadmap 48: the hub's chat in the app. Another machine of the team holds a thread (the web sees the same), and
-    // Chat mới says this machine does not take runs from the hub yet, with the switch to turn it on.
-    await api.call(
-      "machines.heartbeat",
-      {
-        machine: "box", instance: randomBytes(8).toString("hex"), version: "0.130.0", projects: ["demo"], acceptsRuns: true, runs: [], costs: [],
-        profiles: [{ id: "claude-1", label: "Claude", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0 }],
-      },
-      { name: "runner.box", role: "agent" },
-    );
-    const box = (await api.call("machines.list", {}, seeder)).find((m) => m.machine === "box");
-    const hubThread = box ? (await api.call("chat.send", { project: "demo", machineId: box.id, text: "Tuần này còn task nào chưa ai nhận?" }, seeder)).thread.id : 0;
-    if (!box) failures.push("hub chat: the hub lists no machine box");
-    await shoot("hub-chat", `chat?thread=${hubThread}`, 3000, {
-      HIVE_SMOKE_EXPECT: `[data-open-web] && nav a[href="#/chat"][aria-current="page"] && [data-chat-thread="${hubThread}"] && button[aria-current="true"]`,
-      HIVE_SMOKE_ABSENT: absent,
-    });
-    await shoot("hub-chat-new", "chat", 3000, {
-      HIVE_SMOKE_CLICK: "[data-chat-new]",
-      HIVE_SMOKE_EXPECT: '[data-open-web] && [data-chat-here="off"] button && a[href="#/agents"] && #chat-project option[value="*"]',
-      HIVE_SMOKE_ABSENT: absent,
-    });
-    // Roadmap 37b: the app reads the hub-wide thread too; RPC substitutes for the machine's leader.
-    if (box) {
-      const sent = await api.call("chat.send", { project: "*", machineId: box.id, text: "Điều phối mọi service" }, seeder);
-      const boxActor = { name: "runner.box", role: "agent" };
-      const request = (await api.call("chat.poll", {}, boxActor)).find((r) => r.replyId === sent.reply.id);
-      if (!request?.grant) failures.push("hub-wide chat: no reply grant");
-      else {
-        const leader = new HubBackend(`http://127.0.0.1:${port}`, request.grant);
-        await leader.call("chat.propose", { action: { kind: "task.create", project: "demo", id: "HUB-37B", title: "Việc từ leader toàn hub", dependsOn: [] }, reason: "Điều phối service" }, boxActor);
-        await leader.call("chat.propose", { action: { kind: "machine.profile", machine: box.machine, profileId: "claude-1", enabled: true }, reason: "Gói của máy" }, boxActor);
-        await api.call("chat.finish", { replyId: sent.reply.id, status: "done", text: "Đề xuất theo service và máy." }, boxActor);
-        for (const phone of [false, true]) await shoot(`hub-chat-all${phone ? "-mobile" : ""}`, `chat?thread=${sent.thread.id}`, 3000, {
-          ...(phone ? { HIVE_SMOKE_SIZE: "390x844" } : {}),
-          HIVE_SMOKE_EXPECT: `[data-chat-thread="${sent.thread.id}"] [data-action-project="demo"] && [data-action-project="*"]`,
-          HIVE_SMOKE_ASSERT: '/Toàn hub|Whole hub/.test(document.body.innerText) && document.documentElement.scrollWidth <= window.innerWidth',
+    // Every page of the machine in both themes, at the window the app opens in.
+    for (const theme of ["dark", "light"]) {
+      for (const [name, page, also] of pages) {
+        await shoot(`hub-${name}-${theme}`, page, 3000, {
+          HIVE_SMOKE_THEME: theme,
+          HIVE_SMOKE_SIZE: "1100x720",
+          HIVE_SMOKE_SIDEBAR: "open",
+          HIVE_SMOKE_EXPECT: [`nav a[href="#/${page}"][aria-current="page"]`, "[data-desktop-shell]", nav, web, also].filter(Boolean).join(" && "),
+          HIVE_SMOKE_ABSENT: absent,
+          HIVE_SMOKE_ASSERT: fits,
         });
       }
     }
-    // A machine with no project: the Board says where to add one.
-    writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, "utf8")), projects: [] }, null, 2));
-    await shoot("hub-board-empty", "tasks", 3000, { HIVE_SMOKE_EXPECT: '[data-board-empty] a[href="#/setup"]' });
+    // Old addresses land on the page that took them over.
+    await shoot("hub-alias-projects", "projects", 3000, { HIVE_SMOKE_EXPECT: 'nav a[href="#/settings"][aria-current="page"] && [data-hub-link="connected"]' });
+    // #/today lands on Máy này too: the start-*-today shots below click through it.
+    // Công cụ & setup groups the machine's projects by the hub's system.
+    await new HubBackend(`http://127.0.0.1:${port}`, bootstrap).call("systems.save", { name: "hospital", projects: ["demo", "api"] }, { name: "smoke", role: "admin" });
+    await setupCardShots("hub-");
+    await startGuideShots("hub-");
     writeFileSync(file, JSON.stringify({ ...JSON.parse(local), mode: "hub", hub: { url: `http://127.0.0.1:${port}`, token: bootstrap } }, null, 2));
     // Đổi kết nối brings the sign-in form back over that summary.
-    await shoot("hub-projects-change", "projects", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
+    await shoot("hub-settings-change", "settings", 3000, { HIVE_SMOKE_CLICK: "[data-hub-change]", HIVE_SMOKE_EXPECT: '[data-hub-link="changing"] && [data-connect-browser]' });
     writeFileSync(file, local);
   }
   hub.kill();
@@ -941,3 +1001,31 @@ console.log(`mock GitLab MRs: ${gitlab.mrs.map((m) => `!${m.iid} "${m.title}" ${
 for (const b of ["ai/T-001", "ai/T-002"]) console.log(`origin has ${b}: ${execFileSync("git", ["-C", origin, "branch", "--list", b], { encoding: "utf8" }).trim() || "no"}`);
 await gitlab.close();
 console.log(`screenshots in ${out}\ndata in ${work}`);
+
+// GROUP-repos-forge: the repos of ehs-smoke on this machine (the system is saved by the GROUP-cli shot,
+// or by HIVE_SMOKE_ONLY=repos-forge). demo tracks origin/main and the remote moved on by a
+// commit, so Fetch tất cả finds it behind and Pull tất cả fast-forwards it; afterwards demo and origin go back to
+// where they were, for the shots after this one.
+async function systemReposShot() {
+  const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  git("branch", "-q", "--set-upstream-to=origin/main", "main");
+  const mover = path.join(work, "origin-mover");
+  execFileSync("git", ["clone", "-q", origin, mover], { stdio: "ignore" });
+  const inMover = (...args) => execFileSync("git", args, { cwd: mover, stdio: "ignore" });
+  inMover("config", "user.email", "smoke@example.com");
+  inMover("config", "user.name", "Smoke");
+  writeFileSync(path.join(mover, "upstream.txt"), "from someone else\n");
+  inMover("add", "upstream.txt");
+  inMover("commit", "-qm", "upstream");
+  inMover("push", "-q", "origin", "HEAD:main");
+  await shoot("setup-system-repos", "setup", 3000, {
+    HIVE_SMOKE_CLICK: '[data-system-repos-toggle="ehs-smoke"] && [data-repos-fetch] && [data-repos-pull-all]',
+    HIVE_SMOKE_SCROLL: '[data-system-repos="ehs-smoke"]',
+    HIVE_SMOKE_EXPECT: '[data-repos-summary] && [data-repo-row="demo"] [data-repo-result="pulled"] && [data-repo-row="demo"] [data-repo-branch]',
+  });
+  const pulled = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: repo, encoding: "utf8" }).trim();
+  if (pulled !== "upstream") failures.push(`system-repos: demo's HEAD is "${pulled}", not the remote's commit`);
+  git("reset", "-q", "--hard", before);
+  git("push", "-q", "-f", "origin", `${before}:main`);
+  git("branch", "-q", "--unset-upstream", "main");
+}

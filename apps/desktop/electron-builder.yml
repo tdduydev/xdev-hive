@@ -24,6 +24,9 @@ mac:
   category: public.app-category.developer-tools
   # Ad-hoc signature until there is a Developer ID: Apple Silicon refuses an app whose bundle seal is broken.
   identity: "-"
+  # Same file for the app and its helpers: each loads Electron's frameworks, which ad-hoc signing leaves without a Team ID.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
   # npmRebuild compiles node-pty's build/ for each arch. The package's own prebuilds include darwin-x64, and Intel code
   # inside the arm64 bundle made macOS ask an M1 without Rosetta to install it on first launch.
   files:
@@ -41,8 +44,6 @@ nsis:
 linux:
   # The default comes from the package name (@xdev-hive/desktop), which is not a valid file name.
   executableName: xdev-hive
-  files:
-    - "!**/node-pty/build/**"
   target:
     - target: AppImage
       arch: [x64, arm64]
