@@ -16,8 +16,9 @@ Volume=/srv/hive/data:/data:Z
 Volume=/srv/hive/backups:/data/backups:Z
 Network=hive.network
 PublishPort=0.0.0.0:@PORT@:7788
-# The image's own check, spelled out: Podman keeps HEALTHCHECK only for Docker-format images.
-HealthCmd=node -e "fetch('http://127.0.0.1:7788/api/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+# The image's own check, spelled out: Podman keeps HEALTHCHECK only for Docker-format images. A script, not
+# node -e "…": Quadlet drops the closing quote of a quoted command.
+HealthCmd=node /app/apps/web/src/healthcheck.ts
 HealthStartPeriod=60s
 HealthInterval=30s
 HealthTimeout=5s

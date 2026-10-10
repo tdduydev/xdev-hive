@@ -64,6 +64,8 @@ on_error() {
   exit 1
 }
 trap 'on_error $LINENO' ERR
+# systemctl stop of a deploy in progress (or Ctrl-C): the same way back.
+trap 'on_error signal' TERM INT
 
 record_failure() {
   local stage=$1 why=$2 manual=${3:-}
@@ -204,7 +206,11 @@ if [ "$schema_after" = "$schema_before" ]; then
   fi
 else
   # Clients may have written with the new schema already: no automatic restore over their data.
-  record_failure start "passed the trial but not the real start; schema $schema_before → $schema_after, left to systemd" \
-    "hive-rollback --previous --restore-backup $backup --accept-data-loss (writes since the deploy are lost; a snapshot of them is taken first)"
+  if [ -n "$backup" ]; then
+    manual="hive-rollback --previous --restore-backup $backup --accept-data-loss (writes since the deploy are lost; a snapshot of them is taken first)"
+  else
+    manual="first deploy, nothing to go back to: see journalctl -u hive-hub, fix, then hive-deploy --force"
+  fi
+  record_failure start "passed the trial but not the real start; schema $schema_before → $schema_after, left to systemd" "$manual"
 fi
 exit 1

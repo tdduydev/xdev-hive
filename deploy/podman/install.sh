@@ -45,5 +45,6 @@ fi
 
 systemctl daemon-reload
 systemctl start hive-network.service hive-seaweedfs.service
-systemctl enable --now hive-deploy.timer
-echo "installed. Next: edit /etc/xdev-hive/hub.env, then run hive-deploy (or wait for the timer) and hive-status."
+# Enabled for boot, not started: the first deploy waits until hub.env holds the real settings.
+systemctl enable hive-deploy.timer
+echo "installed. Next: edit /etc/xdev-hive/hub.env, run hive-deploy, then systemctl start hive-deploy.timer."
