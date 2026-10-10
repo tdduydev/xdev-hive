@@ -47,7 +47,7 @@ export class TokenStore {
     if (!this.#db.prepare("SELECT 1 FROM hub_tokens WHERE hash = ?").get(sha256(token))) this.#insert(token, name, role, null);
   }
 
-  verify(token: string): { id: string; name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null } } | null {
+  verify(token: string): { id: string; name: string; role: Role; ownerId: string | null; run?: { project: string; task: string; run: string; machine: string; readOnly: boolean }; mcp?: { project: string | null; system: string | null } } | null {
     const scoped = this.#db.prepare(`SELECT r.*, p.name, p.owner_id FROM run_credentials r
       JOIN hub_tokens p ON p.id = r.parent_id
       JOIN machines m ON m.id = 'runner.' || r.machine || '@' || p.name AND m.token_id = p.id
@@ -62,7 +62,7 @@ export class TokenStore {
     if (mcp) return {
       id: String(mcp.parent_id), name: String(mcp.name), role: mcp.read_only || mcp.role === "viewer" ? "viewer" : "agent",
       ownerId: mcp.owner_id == null ? null : String(mcp.owner_id),
-      mcp: { project: mcp.project == null ? null : String(mcp.project) },
+      mcp: { project: mcp.project == null ? null : String(mcp.project), system: mcp.system == null ? null : String(mcp.system) },
     };
     const row = this.#db.prepare("SELECT * FROM hub_tokens WHERE hash = ?").get(sha256(token)) as Row | undefined;
     if (!row) return null;
@@ -74,14 +74,17 @@ export class TokenStore {
     return { id: String(row.id), name: String(row.name), role: row.role as Role, ownerId: row.owner_id == null ? null : String(row.owner_id) };
   }
 
-  /** Interactive MCP sessions also exchange the machine token, rather than use it for agent RPCs. */
-  issueMcp(parentToken: string, project: string | null, readOnly: boolean): string {
+  /**
+   * Interactive MCP sessions also exchange the machine token, rather than use it for agent RPCs. `system`: a CLI opened
+   * on a whole system (GROUP-cli) reaches that system's projects; project and system never come together.
+   */
+  issueMcp(parentToken: string, project: string | null, readOnly: boolean, system: string | null = null): string {
     const parent = this.#db.prepare("SELECT id, role FROM hub_tokens WHERE hash = ?").get(sha256(parentToken)) as Row | undefined;
     if (!parent) throw new HiveError("forbidden", "A machine credential is required.");
     const token = `hivemcp_${randomBytes(32).toString("base64url")}`;
     this.#db.prepare("DELETE FROM mcp_credentials WHERE expires_at <= ?").run(new Date().toISOString());
-    this.#db.prepare("INSERT INTO mcp_credentials(hash, parent_id, project, expires_at, read_only) VALUES (?, ?, ?, ?, ?)")
-      .run(sha256(token), String(parent.id), project, new Date(Date.now() + 60 * 60_000).toISOString(), readOnly || parent.role === "viewer" ? 1 : 0);
+    this.#db.prepare("INSERT INTO mcp_credentials(hash, parent_id, project, system, expires_at, read_only) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(sha256(token), String(parent.id), project, system, new Date(Date.now() + 60 * 60_000).toISOString(), readOnly || parent.role === "viewer" ? 1 : 0);
     return token;
   }
 

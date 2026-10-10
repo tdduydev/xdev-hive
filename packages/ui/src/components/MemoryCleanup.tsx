@@ -38,13 +38,13 @@ export function MemoryCleanupSettings() {
   </CardContent></Card>;
 }
 
-export function MemoryCleanupProposals() {
+export function MemoryCleanupProposals({ className = "p-4 md:p-6" }: { className?: string }) {
   const { client, scope } = useHive();
   const t = useT();
   const [history, setHistory] = useState(false);
   const list = useQuery(() => client.call("memory.cleanupProposals", scopeProject(scope) ? { project: scopeProject(scope)! } : {}), [client, scope]);
   const rows = (list.data ?? []).filter((p) => inScope(scope, p.project) && (history || p.status === "pending" || p.status === "conflict"));
-  return <div className="flex min-w-0 flex-col gap-3 p-4 md:p-6" data-memory-cleanup-proposals>
+  return <div className={`flex min-w-0 flex-col gap-3 ${className}`} data-memory-cleanup-proposals>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-base font-semibold">{t("cleanup.proposals")}</h2>
       <Button className="max-md:min-h-11" variant="outline" aria-pressed={history} onClick={() => setHistory(!history)}>{t(history ? "knowledge.pending" : "proposals.seeAll")}</Button>
@@ -70,7 +70,7 @@ function CleanupCard({ proposal: p, onChanged }: { proposal: MemoryCleanupPropos
     <p className="break-words text-sm font-semibold">{p.reason}</p>
     <p className="text-xs text-fg-muted">{t("cleanup.source", { id: p.runId })} · {formatTime(p.createdAt)}{p.reviewer ? ` · ${p.reviewer} · ${formatTime(p.decidedAt)}` : ""}</p>
     {p.status === "conflict" ? <Notice tone="warn">{t("cleanup.conflict")}</Notice> : null}
-    {p.entries.map((m) => <div key={m.id} className="min-w-0 rounded-md border border-line-subtle p-3"><span className="text-xs text-fg-muted">#{m.id} · {t(`memoryKind.${m.kind}`)} · {m.author} · {formatTime(m.createdAt)}</span><p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>{m.stale ? <Badge tone="warn">{t("memory.filter.stale")}</Badge> : null}{m.review ? <Notice tone="warn">{t("memory.filter.review")}</Notice> : null}{m.files.length ? <p className="break-words font-mono text-xs text-fg-muted">{m.files.map((f) => f.path).join(", ")}</p> : null}</div>)}
+    {p.entries.map((m) => <div key={m.id} className="min-w-0 rounded-md border border-line-subtle p-3"><span className="text-xs text-fg-muted">#{m.id} · {t(`memoryKind.${m.kind}`)} · {m.author} · {formatTime(m.createdAt)}</span><p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>{m.stale ? <Badge tone="warn">{t("memory.staleTag")}</Badge> : null}{m.review ? <Notice tone="warn">{t("memory.filter.review")}</Notice> : null}{m.files.length ? <p className="break-words font-mono text-xs text-fg-muted">{m.files.map((f) => f.path).join(", ")}</p> : null}</div>)}
     {p.kind === "merge" ? <Diff before={p.entries.map((m) => m.content).join("\n\n")} after={p.content!} /> : null}
     {manage ? <div className="flex flex-wrap gap-2"><Button className="max-md:min-h-11" data-cleanup-approve disabled={action.busy} onClick={() => decide(true)}>{t("proposals.approve")}</Button><Button className="max-md:min-h-11" data-cleanup-reject variant="outline" disabled={action.busy} onClick={() => decide(false)}>{t("proposals.reject")}</Button></div> : null}
     <ErrorNote error={action.error} />

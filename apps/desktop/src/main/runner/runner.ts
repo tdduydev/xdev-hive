@@ -2,10 +2,11 @@ import { fetchTaskBranch, prepareTaskBranchMerge, pushTaskBranch } from "#deskto
 import { SystemSampler } from "#desktop/main/runner/system.ts";
 import { opencodeEnv } from "#desktop/main/runner/opencode.ts";
 import { researchProfile, researchPrompt, researchResult, restrictResearchCommand } from "#desktop/main/runner/research.ts";
-import { researchSchema, type GateHeartbeatReply, type ResearchJob, type MachineSystem } from "@xdev-hive/core";
+import { researchSchema, stepPromptBlock, type GateHeartbeatReply, type ResearchJob, type MachineSystem, type RunStepPrompt } from "@xdev-hive/core";
 import { deleteWorktree, freeBytes, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
 import { pruneRunLogs, readLegacyRunLogTail, readRunLogTail, redactedMarker } from "#desktop/main/runner/run-logs.ts";
 import { cleanupReason, worktreeCleanupSchema, type WorktreeCommand, type WorktreeReport, type WorktreeTarget, type WorktreeLog } from "@xdev-hive/core";
+import { PROJECT_NAME, type MachineProjectCommand } from "@xdev-hive/core";
 import { AutoReleaseWorker } from "#desktop/main/runner/auto-release.ts";
 import { MergeQueueRunner } from "#desktop/main/runner/merge-queue.ts";
 import { ProfileModels, unsupportedModel } from "#desktop/main/runner/models.ts";
@@ -95,6 +96,7 @@ import {
   type RunRequest,
   type RunRequestError,
   type SetupReport,
+  type RepoAccessReport,
   type TeamPolicy,
   type RunnerSettings,
   type RunStatus,
@@ -191,7 +193,7 @@ export interface RunnerHost {
   /** Base env for agent processes (login-shell PATH etc.). */
   env(): NodeJS.ProcessEnv;
   /** What the heartbeat tells the hub besides runs: the last setup check and this machine's profiles. */
-  report?(): { setup?: { checkedAt: string; report: SetupReport }; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
+  report?(): { setup?: { checkedAt: string; report: SetupReport }; repoHealth?: RepoAccessReport[]; profiles?: ReportedProfile[]; runnerSettings?: MachineRunnerSettings };
   /** The last sign-in check of a profile's CLI (see login.ts). */
   login?(profileId: string): LoginStatus | undefined;
   /** The profile's plan usage from the same check. */
@@ -207,6 +209,11 @@ export interface RunnerHost {
   /** Persist a web approval before the runner records its receipt or starts work with it. */
   applyToolTrust?(trust: Record<string, string>): void;
   applyWorktreeCleanup?(cleanup: WorktreeReport["cleanup"]): void;
+  /**
+   * Adds or drops a project in the app config as a hub admin asked (ADM-machine-projects); never throws, the result
+   * says why it failed. Left out: the app does not report its repos, and the hub offers no such command.
+   */
+  applyProjectCommand?(command: MachineProjectCommand): Promise<{ id: string; ok: boolean; error: string | null }>;
 }
 
 /** What the hub sent back on the last heartbeat. */
@@ -499,6 +506,9 @@ export class Runner {
   #logCache = new Map<string, { size: number; mtimeMs: number; text: string }>();
   #worktreeCommandQueue: Promise<void> = Promise.resolve();
   #worktreeCommandsActive = 0;
+  /** Project commands run one after another, apart from the heartbeat: a clone may take minutes. */
+  #projectCommandQueue: Promise<void> = Promise.resolve();
+  #projectCommandsTaken = new Set<string>();
   #worktreeCleanupJob: Promise<void> | null = null;
   #worktreeJobs = new Set<Promise<WorktreeCommand["results"]>>();
   #worktreeTimer: NodeJS.Timeout | undefined;
@@ -749,7 +759,7 @@ export class Runner {
       const profile = this.#host.profiles().find((p) => p.id === r.profileId);
       return Date.parse(r.startedAt ?? r.createdAt) + (r.timeoutMinutes ?? profile?.timeoutMinutes ?? 60) * 60_000;
     });
-    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
+    const auxiliary = this.#chats.active > 0 || this.#assists.busy || this.#memoryCleanup.profileId !== null || this.#syncs.size > 0 || this.#intakePending > 0 || this.#mergeQueue.busy || this.#autoRelease.busy || this.#worktreeBusy.size > 0 || this.#worktreeScan !== null || this.#worktreeCommandsActive > 0 || this.#projectCommandsTaken.size > 0 || this.#worktreeCleanupJob !== null || this.#worktreeJobs.size > 0;
     return {
       busy: running.length > 0 || this.#inflight.size > 0 || auxiliary,
       // The chat has a 20-minute limit; final commit/report and sync get a bounded grace when no run remains.
@@ -774,7 +784,7 @@ export class Runner {
     this.#assists.stop();
     this.#memoryCleanup.stop();
     this.#autoRelease.stop();
-    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
+    await Promise.allSettled([...this.#inflight, this.#chats.settle(), this.#assists.settle(), this.#memoryCleanup.settle(), this.#mergeQueue.settle(), this.#autoRelease.settle(), this.settleSyncs(), this.#worktreeCommandQueue, this.#projectCommandQueue, ...this.#worktreeJobs, ...(this.#worktreeCleanupJob ? [this.#worktreeCleanupJob] : []), ...(this.#worktreeScan ? [this.#worktreeScan] : [])]);
   }
 
   /** Resolves once nothing is running and no queued run can start. For tests and graceful quit. */
@@ -1386,6 +1396,21 @@ export class Runner {
     try { await next; } finally { this.#worktreeCommandsActive--; }
   }
 
+  /** Queued behind each other and never awaited by the heartbeat; the result goes with the heartbeat after it ends. */
+  #takeProjectCommands(commands: MachineProjectCommand[]): void {
+    const apply = this.#host.applyProjectCommand;
+    if (!apply) return;
+    for (const command of commands) {
+      if (this.#projectCommandsTaken.has(command.id) || this.store.projectResult(command.id)) continue;
+      this.#projectCommandsTaken.add(command.id);
+      this.#projectCommandQueue = this.#projectCommandQueue.then(async () => {
+        try { this.store.recordProjectResult(await apply(command)); }
+        catch (err) { this.store.recordProjectResult({ id: command.id, ok: false, error: errorMessage(err).slice(0, 1000) }); }
+        finally { this.#projectCommandsTaken.delete(command.id); }
+      });
+    }
+  }
+
   async cleanWorktrees(): Promise<void> {
     if (this.#updateDrain) return;
     if (this.#worktreeCleanupJob) return this.#worktreeCleanupJob;
@@ -1455,6 +1480,7 @@ export class Runner {
     await this.cleanWorktrees();
     const worktrees = await this.worktrees();
     const worktreeResults = this.store.worktreeResults();
+    const projectResults = this.store.projectResults();
     const deliveredMessages = this.store.steeringAcks();
     const appliedToolApprovals = this.store.toolApprovalAcks();
     const res = await this.#host
@@ -1471,6 +1497,8 @@ export class Runner {
           deliveredMessages,
           worktrees,
           worktreeResults,
+          // Only from an app that can take the commands: the hub reads a reported list as "supports them".
+          ...(this.#host.applyProjectCommand ? { repos: this.#host.projects().filter((p) => PROJECT_NAME.test(p.name) && p.repo.length <= 2000).slice(0, 200).map((p) => ({ project: p.name, path: p.repo })), projectResults } : {}),
           appliedToolApprovals,
           toolStates: (this.#tools?.entries ?? []).map((e) => ({ id: e.id, hash: toolHash(e), trust: trustOf(e, this.#host.toolTrust?.() ?? {}) })),
           projects: this.#host.projects().map((p) => p.name),
@@ -1492,6 +1520,7 @@ export class Runner {
     this.store.ackSteering(deliveredMessages);
     this.store.ackToolApprovals(appliedToolApprovals);
     this.store.ackWorktreeResults(worktreeResults.map(r => r.id));
+    if (this.#host.applyProjectCommand) this.store.ackProjectResults(projectResults.map(r => r.id));
     this.store.markCostsReported(finished.map((r) => r.id));
     const next = new Map(res.cooldowns.map((c) => [c.account, c]));
     // Cleared on the hub before it ended (someone pressed "Hết nghỉ"): end the local rest it came from too.
@@ -1537,6 +1566,8 @@ export class Runner {
       this.store.recordToolApproval(approval.id);
     }
     await this.#applyWorktreeCommands(res.worktreeCommands ?? []);
+    // A hub older than them sends none.
+    this.#takeProjectCommands(res.projectCommands ?? []);
     this.#archivedProjects = update.archivedProjects ?? [];
     this.#opts.onHub?.(update);
     if (!this.#updateDrain) this.#takeSyncs(update.syncCommands);
@@ -2202,6 +2233,22 @@ export class Runner {
   }
 
   /**
+   * The prompt the project's manager wrote for the SDLC step this run is in (roadmap 72i). A hub without it, or one that
+   * fails, costs the run nothing: it goes on without, and the log says so.
+   */
+  async #stepPrompt(backend: HiveBackend, actor: Actor, run: AgentRun): Promise<{ prompt: RunStepPrompt | null; note: string | null }> {
+    if (run.role === "research" || run.bestOf?.n === 0) return { prompt: null, note: null };
+    try {
+      const prompt = await backend.call("sdlc.runPrompt", { project: run.project, taskId: run.taskId, role: run.role }, actor);
+      const block = stepPromptBlock(prompt);
+      if (block && "skipped" in block) return { prompt: null, note: `step prompt not used: ${block.skipped}` };
+      return { prompt, note: prompt ? `step prompt: ${prompt.step} v${prompt.version}` : null };
+    } catch (err) {
+      return { prompt: null, note: `step prompt not read: ${(err as Error).message}` };
+    }
+  }
+
+  /**
    * Puts the project's Hive context in the worktree before the agent starts (roadmap 38a), so every role reads the
    * current AGENTS.md, rules and skills even when the target branch has none of them. The files are the app's, not
    * the branch's: `wt.context` keeps them out of the run's commit. A hub that fails or is slow is not worth losing
@@ -2340,6 +2387,7 @@ export class Runner {
       // The branch may carry no Hive context at all (a repo whose context MR is not merged), and the prompt tells
       // every role to read AGENTS.md: put the current one in the worktree, outside the branch.
       const context = await this.#writeContext(backend, actor, run.project, wt);
+      const step = await this.#stepPrompt(backend, actor, run);
       // Old code a task has to read (roadmap 38h): other checkouts of this machine, read-only for the run.
       const references = resolveReferences(run.role === "research" ? (JSON.parse(run.instructions) as ResearchJob).projects.filter(p => p !== run.project) : project.references, this.#host.projects());
       const referenceLine = describeReferences(references);
@@ -2385,7 +2433,7 @@ export class Runner {
         } }), { mode: 0o600 });
       }
       // Catalog hooks (roadmap 28d), before the prompt, which tells the agent about RTK when it is on.
-      const hookLines: string[] = [];
+      const hookLines: string[] = step.note ? [step.note] : [];
       let hooks: ClaudeHookRun | null = null;
       let codexRtk: CodexRtkRun | null = null;
       if (tools.hooks?.length && run.role !== "research" && run.plan?.phase !== "plan") {
@@ -2439,6 +2487,7 @@ export class Runner {
         rules: context.rules,
         // Only a hub keeps what the run makes; on a local hive the folder would fill up for nothing.
         artifacts: this.#host.mode() === "hub",
+        stepPrompt: step.prompt,
       });
       writeSteer(wt.path, run.id, []);
       if (profile.kind === "opencode") {

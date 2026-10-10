@@ -8,6 +8,8 @@ export interface GitLabProject {
   path_with_namespace: string;
   default_branch: string | null;
   web_url: string;
+  /** A member gone from the group listing is told apart from a deleted one by this (GROUP-init-sync). */
+  archived?: boolean;
 }
 
 /** A project in a group listing (`simple=true`). */

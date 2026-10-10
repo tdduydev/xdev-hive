@@ -2,7 +2,8 @@ import { existsSync, lstatSync, mkdirSync, renameSync, rmSync, writeFileSync } f
 import path from "node:path";
 
 export const STEER_FILE = ".xdev-hive/steer.md";
-export const STEER_PROMPT = "Read .xdev-hive/steer.md after each step and before your final report for additional instructions from the person directing this run. Apply new messages in order, once each. Do not edit or commit that file.";
+// The words live in core: the Prompt tab shows them as the last layer of a run's prompt.
+export { STEER_PROMPT } from "@xdev-hive/core";
 
 export const STEER_RESUME_PROMPT = "Additional instructions arrived while you were working. Read .xdev-hive/steer.md and apply messages you have not handled yet, in order. Keep work already done and do not repeat completed instructions. Then finish the original task and report the result.";
 

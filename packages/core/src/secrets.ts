@@ -20,6 +20,15 @@ export function redactLines(text: string): string {
   return stream.write(text) + stream.end();
 }
 
+/**
+ * The user and password of every URL in the text dropped (`https://oauth2:glpat…@host/x` → `https://host/x`): git
+ * prints the remote as configured, and a remote cloned with a token in it carries one that matches no pattern above
+ * when it is a password rather than a forge token.
+ */
+export function redactUrlCredentials(text: string): string {
+  return text.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@'"]+@/gi, "$1");
+}
+
 /** Holds incomplete lines so a credential split between chunks never reaches a log. */
 export class SecretRedactor {
   #pending = "";

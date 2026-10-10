@@ -7,6 +7,7 @@ export interface GitHubRepo {
   default_branch: string | null;
   owner: { login: string };
   html_url: string;
+  archived?: boolean;
 }
 
 /** A repository in an owner listing. */

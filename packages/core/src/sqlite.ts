@@ -4,6 +4,8 @@ import { historyRows } from "#core/history-store.ts";
 import type { HistoryEntry } from "#core/history.ts";
 import { researchSchema, type Research, type ResearchInput, type ResearchJob } from "#core/research.ts";
 import type { WorktreeReport, WorktreeCommand, MachineWorktrees } from "#core/worktrees.ts";
+import { PROJECT_COMMAND_TTL_MS, type MachineProjectCommand, type MachineProjects, type MachineRepo } from "#core/machine-projects.ts";
+import { parseSystemSource, type SystemSource } from "#core/system-source.ts";
 import { AutoReleaseStore } from "#core/auto-release-store.ts";
 import { GateStore } from "#core/gate-store.ts";
 import { isTerminalHuman } from "#core/terminal.ts";
@@ -62,6 +64,9 @@ import {
   authorize,
   chatPlanSchema,
   type ChatPlan,
+  DESTRUCTIVE_METHODS,
+  isAgentCaller,
+  isMethod,
   parseInput,
   type HiveBackend,
   type Method,
@@ -71,7 +76,8 @@ import {
 } from "./methods.ts";
 import { fuseRanks, similarity, type Embedder } from "./embed.ts";
 import { assertNoHidden, stripHidden } from "./hidden.ts";
-import { assertNoSecret, findSecret, redactLines } from "./secrets.ts";
+import { type RunStepPrompt, type StepPrompt, type StepPromptVersion } from "./step-prompt.ts";
+import { assertNoSecret, findSecret, redactLines, redactUrlCredentials } from "./secrets.ts";
 import { isAgentActor, MR_WATCHER, parseSource, principalOf, type WriteSource } from "./source.ts";
 import { SEED_DOCS, SEED_VERSION } from "./seed.ts";
 import { planSpecTasks, specStage, specStepInstructions, specTaskPrefix, specTasks, specTitle, type SpecFeature, type SpecFeatureDetail, type SpecFiles, type SpecStep } from "./speckit.ts";
@@ -141,7 +147,9 @@ import type {
   MemoryFile,
   MemoryReview,
   MemorySearchInfo,
+  BackupProject,
   ProjectDeleted,
+  ProjectRestored,
   ProjectState,
   ProjectSummary,
   ProjectSyncState,
@@ -175,6 +183,9 @@ import type {
   ToolApproval,
   ToolView,
   HiveSystem,
+  RepoAccessReport,
+  SystemMemberHealth,
+  SystemMemberMachine,
   RetiredProject,
 } from "./types.ts";
 
@@ -864,6 +875,27 @@ const MIGRATIONS: string[] = [
   `ALTER TABLE tasks ADD COLUMN platforms TEXT NOT NULL DEFAULT '[]';
    ALTER TABLE machines ADD COLUMN platform TEXT;`,
   `ALTER TABLE machines ADD COLUMN system TEXT;`,
+  // The prompt of each SDLC step per project (72i), one row per saved version: the latest is the one runs get, the
+  // earlier ones are the history. A cleared prompt is a version with empty text, so who cleared it is on record.
+  `
+  CREATE TABLE sdlc_step_prompts(
+    project TEXT NOT NULL, step TEXT NOT NULL, version INTEGER NOT NULL, text TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+    PRIMARY KEY(project, step, version));
+  `,
+  // ADM-machine-projects: the app's own project list with folders, and the add/remove orders a hub admin sends it.
+  `
+  ALTER TABLE machines ADD COLUMN repos TEXT;
+  CREATE TABLE machine_project_commands(
+    id TEXT PRIMARY KEY, machine_id TEXT NOT NULL REFERENCES machines(id) ON DELETE CASCADE,
+    command TEXT NOT NULL, completed_at TEXT, ok INTEGER, error TEXT);
+  CREATE INDEX machine_project_pending ON machine_project_commands(machine_id, completed_at);
+  `,
+  // ADM-member-repo-health: each repo's last git ls-remote on the machine, as JSON RepoAccessReport[].
+  `ALTER TABLE machines ADD COLUMN repo_health TEXT;`,
+  // GROUP-init-sync: the forge group a system mirrors and each member's path and clone URLs, as JSON SystemSource.
+  `ALTER TABLE systems ADD COLUMN source TEXT;`,
+  // GROUP-cli: an MCP credential for a person's CLI opened on a whole system: the system's projects, not one of them.
+  `ALTER TABLE mcp_credentials ADD COLUMN system TEXT;`,
 ];
 
 function browserSeedSql(): string {
@@ -1257,6 +1289,7 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
   "tasks.unassign": (i) => ({ target: i.id, detail: "bỏ gán agent", text: { key: "audit.taskUnassign" } }),
   "machines.remove": (i) => ({ target: i.id }),
   "machines.manageWorktrees": (i, o: WorktreeCommand) => ({ target: i.machineId, detail: JSON.stringify({ targets: o.targets.map(t => `${t.project}/${t.path}`), force: o.force, cleanup: o.cleanup }) }),
+  "machines.projectCommand": (i, o: MachineProjectCommand) => ({ target: i.machine, detail: JSON.stringify({ op: o.op, project: o.project, repo: o.repo, gitlabProject: o.gitlabProject, cloneUrl: o.cloneUrl }) }),
   "machines.approveTool": (i, o: ToolApproval) => ({ target: `${i.machineId}/${o.toolId}`, detail: o.hash, text: { key: "audit.toolApproved", vars: { tool: o.toolId, hash: o.hash } } }),
   "machines.setRunner": (i) => ({ target: i.machineId, detail: JSON.stringify(i.settings) }),
   "machines.setProfile": (i, o: Machine) => {
@@ -1266,7 +1299,11 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     return { target: `${o.machine}/${i.profileId}`, detail: parts, text: { key, vars: { profile: i.profileId, priority: i.priority ?? "" } } };
   },
   "cooldowns.clear": (i) => ({ target: i.account }),
-  "systems.save": (i, o: HiveSystem) => ({ target: i.name, detail: o.projects.join(", "), text: { key: "audit.system", vars: { projects: o.projects.join(", ") } } }),
+  "systems.save": (i, o: HiveSystem) => ({
+    target: i.name,
+    detail: [o.projects.join(", "), i.source === undefined ? "" : i.source ? `source ${i.source.forge}:${i.source.groupPath} (${i.source.members.length})` : "source removed"].filter(Boolean).join(" · "),
+    text: { key: "audit.system", vars: { projects: o.projects.join(", ") } },
+  }),
   "systems.remove": (i) => ({ target: i.name }),
   "projects.archive": (i) => ({ target: i.project, detail: "lưu trữ", text: { key: "audit.projectArchived" } }),
   "projects.restore": (i) => ({ target: i.project, detail: "khôi phục", text: { key: "audit.projectRestored" } }),
@@ -1304,6 +1341,10 @@ const AUDITED: Partial<Record<Method, (input: any, output: any) => { target: str
     const summary = gateSummary(i.settings.gates);
     return { target: i.project, detail: summary, text: { key: "audit.sdlcProject", vars: { summary } } };
   },
+  "sdlc.setPrompt": (i: { project: string; step: string; text: string }, o: StepPrompt) => ({
+    target: `${i.project}/${i.step}`,
+    detail: i.text.trim() ? `prompt bước ${i.step}: phiên bản ${o.version}` : `xoá prompt bước ${i.step}`,
+  }),
   "agentPolicy.set": (i: { project: string | null; policy: Partial<AgentPolicy> | null }) => {
     const target = i.project ?? "hub";
     if (!i.policy) return { target, detail: "bỏ chính sách agent", text: { key: "audit.agentPolicyCleared" } };
@@ -1504,6 +1545,7 @@ const PROJECT_WRITES: Partial<Record<Method, "project" | "task" | "thread" | "do
   "chat.rename": "thread",
   "chat.configure": "thread",
   "sdlc.setProject": "project",
+  "sdlc.setPrompt": "project",
   "tools.setProject": "project",
   "agentPolicy.set": "project",
   "modelRouter.set": "project",
@@ -1820,9 +1862,14 @@ const toCommand = (r: Row): MachineCommand => ({
 const toSystem = (r: Row): HiveSystem => ({
   name: str(r.name),
   projects: JSON.parse(str(r.projects)) as string[],
+  source: parseSystemSource(strOrNull(r.source)),
   updatedAt: str(r.updated_at),
   updatedBy: str(r.updated_by),
 });
+
+/** What a reader may see of a source: the members of projects hidden from them name repos they must not learn of. */
+const systemSourceFor = (source: SystemSource | null | undefined, visible: (project: string) => boolean): SystemSource | null =>
+  source ? { ...source, members: source.members.filter((m) => visible(m.project)) } : null;
 
 /** A project list filter as bound to `json_each`: null when there is none. */
 const listParam = (projects: string[] | undefined) => (projects ? JSON.stringify(projects) : null);
@@ -1959,9 +2006,10 @@ export interface SqliteHiveOptions {
   /**
    * A snapshot of the whole hub, as the Hub page's "Backup ngay" makes one (roadmap 47): projects.delete takes one
    * before it deletes anything, and gives up when it cannot. Without this, deleting a project is refused — a deletion
-   * nobody can undo is not worth taking on trust.
+   * nobody can undo is not worth taking on trust. `project`: the one about to go, so the hub can pin that snapshot
+   * out of the rotation (ADM-backup-restore).
    */
-  backup?: (() => Promise<{ file: string }>) | null;
+  backup?: ((why: { project: string }) => Promise<{ file: string }>) | null;
   /** HIVE_GATE_JOBS=1 (spec 69h1 §9). Off: no gate job is created, approved or taken; reading and stopping still work. */
   gateJobs?: boolean;
 }
@@ -2008,6 +2056,8 @@ export class SqliteHive implements HiveBackend {
   readonly db: DatabaseSync;
   readonly #opts: Required<SqliteHiveOptions>;
   readonly #handlers: Handlers;
+  /** How the hub runs each of its own destructive RPCs once a person approves it (DESTRUCTIVE_HUB_RPCS). */
+  readonly #approvedActions = new Map<string, (input: Record<string, unknown>, approver: Actor) => Promise<unknown>>();
   readonly #machineIdentityReady: boolean;
   /** Staged migration fixtures still create tasks before platform routing is installed. */
   readonly #taskPlatformsReady: boolean;
@@ -2075,9 +2125,66 @@ export class SqliteHive implements HiveBackend {
     const handler = this.#handlers[method] as (i: ParsedInput<M>, a: Actor) => MethodOutput[M] | Promise<MethodOutput[M]>;
     this.#check(method, parsed as ParsedInput<Method>, actor);
     this.#assertProjectOpen(method, parsed as ParsedInput<Method>);
+    // After the checks: only a call the agent was allowed to make becomes a proposal, so none can flood the queue.
+    if ((DESTRUCTIVE_METHODS as readonly Method[]).includes(method) && isAgentCaller(actor))
+      throw this.holdForApproval(method, parsed as Record<string, unknown>, actor, this.#destructiveProject(method, parsed as ParsedInput<Method>));
     const output = this.#hideArchived(method, parsed as ParsedInput<Method>, this.#filter(method, await handler(parsed, actor), actor));
     this.#report(method, parsed, output, actor);
     return output;
+  }
+
+  /**
+   * Keeps a destructive call of an agent as an operation proposal instead of running it (DESTRUCTIVE_METHODS) and
+   * returns the pending_approval error to throw. The hub calls it for its own RPCs (DESTRUCTIVE_HUB_RPCS) too.
+   */
+  holdForApproval(method: string, input: Record<string, unknown>, actor: Actor, project: string | null = null): HiveError {
+    const content = JSON.stringify({ method, project, input }, null, 2);
+    assertNoSecret(content, "Proposed operation");
+    const docKey = `${project ? `project/${project}` : "org"}/${CLI_ACTION_SLUG_PREFIX}${randomUUID().replace(/-/g, "")}`;
+    const reason = `${actor.agent ?? actor.name}: ${method}`.slice(0, 500);
+    const id = num(this.db.prepare(
+      `INSERT INTO proposals(doc_key, base_version, content, reason, author, source, on_behalf, created_at)
+       VALUES (?, 0, ?, ?, ?, ?, ?, ?)`,
+    ).run(docKey, content, reason, actor.name, sourceJson(actor.source), actor.onBehalf ?? null, this.#now()).lastInsertRowid);
+    const proposal = this.#getProposal(id);
+    this.audit(actor, "proposals.create", docKey, `đề xuất #${id} · ${method}`, { key: "audit.proposal", vars: { id } });
+    try {
+      this.#opts.onEvent({ type: "proposal.created", project, proposal });
+    } catch {
+      // a listener must never fail the call
+    }
+    return new HiveError(
+      "pending_approval",
+      `đã gửi đề xuất #${id}, chờ duyệt. ${method} needs a person to approve proposal #${id} on the hub's Proposals page; nothing was done yet, do not retry.`,
+      { key: "errors.pendingApproval", vars: { id, method } },
+    );
+  }
+
+  /** How the hub runs one of its own RPCs (DESTRUCTIVE_HUB_RPCS) when a person approves its proposal. */
+  onApprovedAction(method: string, run: (input: Record<string, unknown>, approver: Actor) => Promise<unknown>): void {
+    this.#approvedActions.set(method, run);
+  }
+
+  /**
+   * Which project a held call is for, so that project's reviewers see it. A whole project's fate (archive, delete) and
+   * the hub's own lists are the hub's: an archived project's proposals are hidden, and a deleted one's go with it.
+   */
+  #destructiveProject(method: Method, i: ParsedInput<Method>): string | null {
+    const row = (sql: string, id: unknown) => strOrNull((this.db.prepare(sql).get(id as never) as Row | undefined)?.project);
+    const real = (p: string | null) => (p && this.#projectNames().includes(p) ? p : null);
+    switch (method) {
+      case "docs.remove":
+      case "docs.assetRemove":
+        return real(parseDocKey((i as { key: string }).key).project ?? null);
+      case "memory.remove":
+        return real(row("SELECT project FROM memory WHERE id = ?", (i as { id: number }).id));
+      case "artifacts.remove":
+        return real(row("SELECT project FROM artifacts WHERE id = ?", (i as { id: number }).id));
+      case "chat.delete":
+        return real(row("SELECT project FROM chat_threads WHERE id = ?", (i as { threadId: number }).threadId));
+      default:
+        return null;
+    }
   }
 
   /** The owner pinned with the machine's token, or null while no token is pinned (spec 69: a heartbeat never changes it). */
@@ -2550,6 +2657,13 @@ export class SqliteHive implements HiveBackend {
       case "sdlc.flowTasks":
         if (i.project) this.#need(actor, i.project, "view", `Project ${i.project}`);
         return;
+      case "sdlc.prompts":
+      case "sdlc.promptHistory":
+      case "sdlc.runPrompt":
+        return this.#need(actor, i.project, "view", `Project ${i.project}`);
+      // The text is read by every run of the step, as a doc agents read is.
+      case "sdlc.setPrompt":
+        return this.#need(actor, i.project, "contextEdit", `Project ${i.project}`);
       // A flow makes its task and queues its runs.
       case "specs.runStep":
         this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
@@ -2694,9 +2808,13 @@ export class SqliteHive implements HiveBackend {
         return this.#need(actor, i.project, "taskManage", `Project ${i.project}`);
       case "systems.save":
       case "systems.remove": {
-        // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage.
-        const before = this.#system(i.name)?.projects ?? [];
-        for (const p of new Set([...before, ...((i.projects as string[] | undefined) ?? [])])) this.#need(actor, p, "projectSettings", `Project ${p}`);
+        // Every project it has and gets: a system never takes in, or drops, a project its editor does not manage. The
+        // source's members count too, since a member names where that project's repo is cloned from on every machine.
+        const before = this.#system(i.name);
+        const source = (i as { source?: SystemSource | null }).source;
+        const members = (s: SystemSource | null | undefined) => (s?.members ?? []).map((m) => m.project);
+        const all = [...(before?.projects ?? []), ...((i.projects as string[] | undefined) ?? []), ...(source !== undefined ? [...members(before?.source), ...members(source)] : [])];
+        for (const p of new Set(all)) this.#need(actor, p, "projectSettings", `Project ${p}`);
         return;
       }
       case "tasks.setDeps": {
@@ -2900,8 +3018,10 @@ export class SqliteHive implements HiveBackend {
       // Only the projects it may see; a system of none of them is not shown at all.
       case "systems.list":
         return (out as HiveSystem[])
-          .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)) }))
+          .map((s) => ({ ...s, projects: s.projects.filter((p) => visible(p)), source: systemSourceFor(s.source, visible) }))
           .filter((s) => s.projects.length > 0) as MethodOutput[M];
+      case "systems.repoHealth":
+        return (out as SystemMemberHealth[]).filter((h) => visible(h.project)) as MethodOutput[M];
       case "agents.paused":
       case "agents.resume":
         return this.#pausedFor(out as AgentsPaused, actor) as MethodOutput[M];
@@ -3014,8 +3134,10 @@ export class SqliteHive implements HiveBackend {
 
   /** Records an admin action (also used by the hub for token changes, which live outside the method table). */
   audit(actor: Actor, action: string, target: string, detail = "", text?: ErrorText): void {
-    // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column.
-    const agent = isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
+    // The desktop window sends a label too ("desktop"): only an agent's goes in the agent column. A call a person
+    // approved has the agent that proposed it there, beside the approver in the actor column.
+    const agent = actor.approvedProposal ? actor.approvedProposal.author : isAgentActor(actor) ? (actor.agent ?? actor.name) : null;
+    if (actor.approvedProposal) detail = `${detail ? `${detail} · ` : ""}#${actor.approvedProposal.id} ${actor.approvedProposal.author}`;
     // Source-less writes also seed historical schemas in migration tests, before the source column exists.
     this.db
       .prepare(`INSERT INTO audit(at, actor, action, target, detail, detail_key, detail_vars, agent, on_behalf, run${actor.source ? ", source" : ""}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${actor.source ? ", ?" : ""})`)
@@ -4061,6 +4183,20 @@ export class SqliteHive implements HiveBackend {
   }
 
   /**
+   * The error for a credential bound to an archived or deleted project, or null while it is in use. Its scope is that
+   * one project, so without this every list it reads is filtered down to nothing and the hub looks empty (incident
+   * 2026-10-09). Who and when are in the message: the person fixing .mcp.json needs to know whom to ask.
+   */
+  closedProject(project: string): HiveError | null {
+    const row = this.db.prepare(`SELECT state, at, "by" FROM project_states WHERE project = ?`).get(project) as Row | undefined;
+    if (!row) return null;
+    const deleted = str(row.state) === "deleted";
+    const vars = { project, by: str(row.by), at: str(row.at) };
+    return new HiveError("conflict", `Project ${project} was ${deleted ? "deleted" : "archived"} by ${vars.by} at ${vars.at}.`,
+      { key: deleted ? "errors.projectDeleted" : "errors.projectArchived", vars });
+  }
+
+  /**
    * Refuses a write to an archived or deleted project. Reads stay open on purpose: a hub admin has to be able to look
    * through what is in the archive before restoring it or deciding to delete it.
    */
@@ -4157,7 +4293,9 @@ export class SqliteHive implements HiveBackend {
         return (out as Machine[]).map((m) => ({ ...m, runs: m.runs.filter((r) => shown(r.project)), projects: m.projects.filter(shown) })) as MethodOutput[M];
       // A system keeps its name even when every service of it was archived: its own docs and memory are still there.
       case "systems.list":
-        return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown) })) as MethodOutput[M];
+        return (out as HiveSystem[]).map((s) => ({ ...s, projects: s.projects.filter(shown), source: systemSourceFor(s.source, shown) })) as MethodOutput[M];
+      case "systems.repoHealth":
+        return (out as SystemMemberHealth[]).filter((h) => shown(h.project)) as MethodOutput[M];
       default:
         return output;
     }
@@ -4307,6 +4445,219 @@ export class SqliteHive implements HiveBackend {
     // The headstone, last: the name does not come back to life because a machine still reports the repo.
     this.#setProjectState(project, "deleted", by);
     return { rows, files };
+  }
+
+  // ── a deleted project back from a snapshot (ADM-backup-restore) ────────────
+
+  #projectRowsIn(project: string, tables = this.#projectTables()): string[] {
+    return tables.filter((t) => this.db.prepare(`SELECT 1 FROM "${t}" WHERE project = ? LIMIT 1`).get(project));
+  }
+
+  /** The projects a hub snapshot holds, with what it has of each, and whether the live hub has rows under that name. */
+  backupProjects(file: string): BackupProject[] {
+    const src = new DatabaseSync(file, { readOnly: true });
+    try {
+      const tables = this.#projectTables();
+      const found = new Map<string, BackupProject>();
+      for (const [table, field] of [["tasks", "tasks"], ["docs", "docs"], ["memory", "memory"], ["run_records", "runs"]] as const) {
+        if (!src.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)) continue;
+        for (const r of src.prepare(`SELECT project, COUNT(*) AS n FROM ${table} GROUP BY project`).all() as Row[]) {
+          const project = r.project;
+          // sys:<name> holds a system's own pages (and hub docs none), which projects.delete never takes.
+          if (typeof project !== "string" || !PROJECT_NAME.test(project)) continue;
+          const entry = found.get(project) ?? { project, tasks: 0, docs: 0, memory: 0, runs: 0, live: this.#projectRowsIn(project, tables).length > 0 };
+          entry[field] = num(r.n);
+          found.set(project, entry);
+        }
+      }
+      return [...found.values()].sort((a, b) => a.project.localeCompare(b.project));
+    } finally {
+      src.close();
+    }
+  }
+
+  /**
+   * Copies a project back out of a hub snapshot (opened read-only) in one transaction: the rows projects.delete takes,
+   * then the lists and settings that named it, then the headstone comes off. Refused while the live hub has any row of
+   * the project, since a restore never merges. `files` reads a stored doc file from the backup folder, to put back in
+   * the store the deletion took it out of.
+   */
+  async restoreProject(file: string, project: string, actor: Actor, files?: (sha: string) => Uint8Array | null): Promise<ProjectRestored> {
+    if (!PROJECT_NAME.test(project)) throw new HiveError("bad_request", `Not a project name: ${project}.`);
+    const backup = path.basename(file);
+    const src = new DatabaseSync(file, { readOnly: true });
+    let restored: { rows: Record<string, number>; stored: string[] };
+    try {
+      restored = this.#tx(() => {
+        const r = this.#restoreProject(src, project);
+        const total = Object.values(r.rows).reduce((a, b) => a + b, 0);
+        this.audit(actor, "backups.restoreProject", project, `${total} dòng · backup ${backup}`, { key: "audit.projectRestoredBackup", vars: { rows: total, backup } });
+        return r;
+      });
+    } finally {
+      src.close();
+    }
+    // After the commit, like the deletion's file removal: the store is not part of the transaction. A file not found
+    // costs a page its image, which is no reason to undo the rows.
+    let put = 0;
+    let missing = 0;
+    const store = this.#opts.blobs;
+    if (store) {
+      for (const sha of restored.stored) {
+        const bytes = files?.(sha) ?? null;
+        if (!bytes || createHash("sha256").update(bytes).digest("hex") !== sha) {
+          missing++;
+          continue;
+        }
+        try {
+          await store.put(sha, bytes, "application/octet-stream");
+          put++;
+        } catch {
+          missing++;
+        }
+      }
+    }
+    return { project, backup, rows: restored.rows, files: { restored: put, missing } };
+  }
+
+  #restoreProject(src: DatabaseSync, project: string): { rows: Record<string, number>; stored: string[] } {
+    const db = this.db;
+    const busy = this.#projectRowsIn(project);
+    if (busy.length) {
+      throw new HiveError("conflict", `Project ${project} has data in ${busy.join(", ")}: a restore never merges.`, {
+        key: "errors.restoreHasData",
+        vars: { project, tables: busy.join(", ") },
+      });
+    }
+    // Rows go in table by table, so a child may land before its parent: the foreign keys are checked at COMMIT.
+    db.exec("PRAGMA defer_foreign_keys = ON");
+    const srcTables = new Set((src.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as Row[]).map((r) => str(r.name)));
+    const columns = (conn: DatabaseSync, table: string) => (conn.prepare(`PRAGMA table_info("${table}")`).all() as Row[]).map((c) => str(c.name));
+    const both = (table: string) => srcTables.has(table) && this.#hasTable(table);
+
+    // Table → conditions on the snapshot (?1: the project), the mirror of what #deleteProject deletes. An older
+    // snapshot may lack a table or a column a later migration added: those are left to the live schema's defaults.
+    const base = new Map<string, string[]>();
+    const add = (table: string, cond: string) => {
+      if (both(table)) base.set(table, [...(base.get(table) ?? []), cond]);
+    };
+    for (const table of this.#projectTables()) if (srcTables.has(table) && columns(src, table).includes("project")) add(table, "project = ?1");
+    const docKeys = "(SELECT key FROM docs WHERE project = ?1)";
+    const taskIds = "(SELECT id FROM tasks WHERE project = ?1)";
+    for (const [table, column] of [["doc_versions", "key"], ["proposals", "doc_key"], ["doc_assets", "doc_key"], ["doc_assists", "doc_key"]] as const) add(table, `${column} IN ${docKeys}`);
+    add("task_deps", `task_id IN ${taskIds} OR depends_on IN ${taskIds}`);
+    add("task_classify_runs", `task_id IN ${taskIds}`);
+    add("run_group_items", "group_id IN (SELECT id FROM run_groups WHERE project = ?1)");
+    add("merge_batch_items", "batch_id IN (SELECT id FROM merge_batches WHERE project = ?1)");
+    add("settings", "key = 'mergeQueue:' || ?1");
+
+    // Rows the deletion took by ON DELETE CASCADE (a thread's messages, a memory's vector): no project column says
+    // whose they are, only the foreign key to a parent that is being copied back.
+    const foreignKeys = (table: string) => {
+      const groups = new Map<number, { parent: string; from: string[]; to: string[] }>();
+      for (const fk of src.prepare(`PRAGMA foreign_key_list("${table}")`).all() as Row[]) {
+        const g = groups.get(num(fk.id)) ?? { parent: str(fk.table), from: [], to: [] };
+        g.from.push(str(fk.from));
+        g.to.push(fk.to == null ? "" : str(fk.to));
+        groups.set(num(fk.id), g);
+      }
+      return [...groups.values()].filter((g) => !g.to.includes(""));
+    };
+    const memo = new Map<string, string[]>();
+    const conditions = (table: string, path: string[]): string[] => {
+      const known = memo.get(table);
+      if (known) return known;
+      const out = [...(base.get(table) ?? [])];
+      for (const fk of foreignKeys(table)) {
+        if (fk.parent === table || path.includes(fk.parent) || !both(fk.parent)) continue;
+        const parent = conditions(fk.parent, [...path, table]);
+        if (!parent.length) continue;
+        const cols = (list: string[]) => `(${list.map((c) => `"${c}"`).join(", ")})`;
+        out.push(`${cols(fk.from)} IN (SELECT ${fk.to.map((c) => `"${c}"`).join(", ")} FROM "${fk.parent}" WHERE ${parent.map((c) => `(${c})`).join(" OR ")})`);
+      }
+      memo.set(table, out);
+      return out;
+    };
+    // The project's own tables first: task_deps below checks that both of its tasks are there.
+    const order = [...base.keys(), ...[...srcTables].filter((t) => !base.has(t) && this.#hasTable(t))];
+
+    const rows: Record<string, number> = {};
+    const count = (table: string, n = 1) => {
+      if (n) rows[table] = (rows[table] ?? 0) + n;
+    };
+    const taskThere = db.prepare("SELECT 1 FROM tasks WHERE id = ?");
+    for (const table of order) {
+      const conds = conditions(table, []);
+      if (!conds.length) continue;
+      const live = new Set(columns(db, table));
+      const cols = columns(src, table).filter((c) => live.has(c));
+      const list = cols.map((c) => `"${c}"`).join(", ");
+      const insert = db.prepare(`INSERT INTO "${table}" (${list}) VALUES (${cols.map(() => "?").join(", ")})`);
+      const select = src.prepare(`SELECT ${list} FROM "${table}" WHERE ${conds.map((c) => `(${c})`).join(" OR ")}`);
+      // Exact integers: an id past 2^53 must not come back as a different one.
+      select.setReadBigInts(true);
+      let n = 0;
+      for (const r of select.all(project) as Row[]) {
+        // A dependency on a task of another project that is gone since: the deletion dropped it both ways round.
+        if (table === "task_deps" && !(taskThere.get(r.task_id as string) && taskThere.get(r.depends_on as string))) continue;
+        try {
+          insert.run(...(cols.map((c) => r[c]) as never[]));
+        } catch (err) {
+          // Most likely an id the live hub gave to a new row after the deletion: copying it over would merge two rows.
+          throw new HiveError("conflict", `Cannot restore ${project}: ${table} ${(err as Error).message}`, { key: "errors.restoreConflict", vars: { project, table } });
+        }
+        n++;
+      }
+      count(table, n);
+    }
+
+    // Lists that only name the project: back where the snapshot had it, on the rows the live hub still has.
+    for (const [table, key] of [["machines", "id"], ["systems", "name"], ["hub_webhooks", "id"]] as const) {
+      if (!both(table)) continue;
+      for (const r of src.prepare(`SELECT ${key} AS k, projects FROM ${table}`).all() as Row[]) {
+        if (!(JSON.parse(str(r.projects ?? "[]")) as string[]).includes(project)) continue;
+        const now = db.prepare(`SELECT projects FROM ${table} WHERE ${key} = ?`).get(r.k as string) as Row | undefined;
+        const list = now ? (JSON.parse(str(now.projects ?? "[]")) as string[]) : null;
+        if (!list || list.includes(project)) continue;
+        db.prepare(`UPDATE ${table} SET projects = ? WHERE ${key} = ?`).run(JSON.stringify(table === "systems" ? [...list, project].sort() : [...list, project]), r.k as string);
+        count(`${table}.projects`);
+      }
+    }
+    const setting = (conn: DatabaseSync, key: string): any => {
+      const row = conn.prepare("SELECT value FROM settings WHERE key = ?").get(key) as Row | undefined;
+      return row ? JSON.parse(str(row.value)) : undefined;
+    };
+    const save = (key: string, value: unknown) => {
+      db.prepare("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, JSON.stringify(value));
+      count(`settings.${key}`);
+    };
+    for (const key of ["policy", "agentPolicy", "sdlcPolicy"]) {
+      const was = setting(src, key)?.projects?.[project];
+      const now = setting(db, key);
+      // Only into a record the live hub has: a missing one is the defaults, which one project entry would not be.
+      if (was === undefined || !now?.projects || project in now.projects) continue;
+      now.projects[project] = was;
+      save(key, now);
+    }
+    const budgets = (setting(src, "budgets") ?? []) as Budget[];
+    const liveBudgets = (setting(db, "budgets") ?? []) as Budget[];
+    const ids = new Set(liveBudgets.map(budgetId));
+    const back = budgets.filter((b) => b.scope.kind === "project" && b.scope.project === project && !ids.has(budgetId(b)));
+    if (back.length) save("budgets", [...liveBudgets, ...back]);
+
+    db.prepare("DELETE FROM project_states WHERE project = ?").run(project);
+    const stored = BLOB_TABLES.filter((t) => this.#hasTable(t)).flatMap((t) =>
+      (
+        db
+          .prepare(
+            t === "doc_assets"
+              ? "SELECT DISTINCT sha256 FROM doc_assets WHERE stored IS NOT NULL AND sha256 IS NOT NULL AND doc_key IN (SELECT key FROM docs WHERE project = ?)"
+              : "SELECT DISTINCT sha256 FROM artifacts WHERE stored IS NOT NULL AND sha256 IS NOT NULL AND project = ?",
+          )
+          .all(project) as Row[]
+      ).map((r) => str(r.sha256)),
+    );
+    return { rows, stored: [...new Set(stored)] };
   }
 
   #budgets(): Budget[] {
@@ -5354,6 +5705,37 @@ export class SqliteHive implements HiveBackend {
   }
 
   // ── flows through the gates (roadmap 34b) ─────────────────────────────────
+
+  /** The latest version of each step's prompt; a step never written is version 0 with no text. */
+  #stepPrompts(project: string): StepPrompt[] {
+    const rows = this.db
+      .prepare("SELECT p.step, p.version, p.text, p.created_by, p.created_at FROM sdlc_step_prompts p WHERE p.project = ? AND p.version = (SELECT MAX(version) FROM sdlc_step_prompts WHERE project = p.project AND step = p.step)")
+      .all(project) as Row[];
+    const byStep = new Map(rows.map((r) => [str(r.step), r]));
+    return SDLC_GATES.map((step): StepPrompt => {
+      const r = byStep.get(step);
+      return r ? { step, text: str(r.text), version: num(r.version), updatedBy: str(r.created_by), updatedAt: str(r.created_at) } : { step, text: "", version: 0, updatedBy: null, updatedAt: null };
+    });
+  }
+
+  /**
+   * The step a run of the task is in: a flow's Spec Kit run (or the check of its gate) is that gate's step; a flow task's
+   * first run builds it (dispatch), a later one fixes it, its review is the review. Outside a flow there is no step: the
+   * gates apply to the engine's flows only (spec 34).
+   */
+  #runStep(project: string, taskId: string, role: AgentRole): SdlcGate | null {
+    const flow = this.#flowRow(taskId);
+    if (flow && str(flow.project) === project) {
+      const step = str(flow.step) as FlowStep;
+      return step in STEP_GATE ? STEP_GATE[step as keyof typeof STEP_GATE] : null;
+    }
+    const ft = this.#flowTaskRow(taskId);
+    if (!ft || str(ft.project) !== project) return null;
+    if (role === "review") return "review";
+    if (role !== "implement") return null;
+    const stage = str(ft.stage);
+    return stage === "fix" || stage === "fixnext" ? "fix" : stage === "build" || stage === "queued" ? "dispatch" : null;
+  }
 
   #flowRow(taskId: string): Row | null {
     return (this.db.prepare("SELECT * FROM sdlc_flows WHERE task_id = ?").get(taskId) as Row | undefined) ?? null;
@@ -6924,6 +7306,26 @@ export class SqliteHive implements HiveBackend {
       .map(r => ({ ...JSON.parse(str(r.command)), completedAt: strOrNull(r.completed_at), results: JSON.parse(str(r.results)) }));
   }
 
+  #projectCommands(machineId: string, pending = false): MachineProjectCommand[] {
+    const rows = pending
+      ? this.db.prepare("SELECT * FROM machine_project_commands WHERE machine_id = ? AND completed_at IS NULL AND json_extract(command, '$.requestedAt') > ? ORDER BY rowid LIMIT 100").all(machineId, this.#now(-PROJECT_COMMAND_TTL_MS / 60_000))
+      : this.db.prepare("SELECT * FROM machine_project_commands WHERE machine_id = ? ORDER BY rowid DESC LIMIT 50").all(machineId);
+    return (rows as Row[]).map((r) => ({
+      ...(JSON.parse(str(r.command)) as MachineProjectCommand),
+      completedAt: strOrNull(r.completed_at),
+      ok: r.ok == null ? null : num(r.ok) === 1,
+      error: strOrNull(r.error),
+    }));
+  }
+
+  /**
+   * A machine's app config holds every project of its user, folders included, so neither reading nor changing it is a
+   * project right: a hub admin only, as a person (no agent, run or MCP credential acting with an admin token).
+   */
+  #needMachineConfigAdmin(actor: Actor): void {
+    if (!this.#mayApproveTool(actor, null)) throw new HiveError("forbidden", "Only a hub admin manages a machine's projects.", { key: "errors.hubAdminOnly" });
+  }
+
   #machineWorktrees(machineId: string, actor: Actor): MachineWorktrees {
     const r = this.db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
     if (!r) throw new HiveError("not_found", "Machine not found.", { key: "errors.machineNotFound", vars: { machine: machineId } });
@@ -7609,13 +8011,19 @@ export class SqliteHive implements HiveBackend {
       "proposals.approve": async ({ id }, actor) => {
         const pending = this.#getProposal(id);
         if (isCliActionProposalKey(pending.docKey)) {
-          const action = JSON.parse(pending.content) as { method: Method; input: Record<string, unknown> };
+          const action = JSON.parse(pending.content) as { method: string; input: Record<string, unknown> };
+          // Checked before the proposal is marked: an operation nobody can run stays pending instead of failing.
+          const external = isMethod(action.method) ? undefined : this.#approvedActions.get(action.method);
+          if (!isMethod(action.method) && !external) throw new HiveError("bad_request", `This hub cannot run ${action.method}.`);
           this.#tx(() => {
             if (this.#getProposal(id).status !== "pending") throw new HiveError("bad_request", `Proposal #${id} is already decided.`);
             db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run(actor.name, this.#now(), id);
           });
+          // The approver's rights run it; the audit line also names the agent that asked (Actor.approvedProposal).
+          const approver: Actor = { ...actor, approvedProposal: { id, author: pending.author } };
           try {
-            await this.call(action.method, action.input as never, actor);
+            if (external) await external(action.input, approver);
+            else await this.call(action.method as Method, action.input as never, approver);
             db.prepare("UPDATE proposals SET status = 'approved' WHERE id = ? AND status = 'executing'").run(id);
           } catch (error) {
             db.prepare("UPDATE proposals SET status = 'conflict', review_note = ? WHERE id = ?").run(String((error as Error).message ?? error).slice(0, 500), id);
@@ -8344,7 +8752,7 @@ export class SqliteHive implements HiveBackend {
         return batch;
       }),
 
-      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, terminal, gate }, actor) =>
+      "machines.heartbeat": ({ machine, instance, version, platform, runs, setup, system, profiles, projects, repoHealth, acceptsRuns, gitPush, maxParallel, runnerSettings, updateDraining, gateRunner, costs, deliveredMessages, toolStates, appliedToolApprovals, worktrees, worktreeResults, repos, projectResults, terminal, gate }, actor) =>
         this.#tx(() => {
           this.#bindMachine(actor, machine);
           // Drop out-of-scope reports without taking the whole machine offline; grants can change between beats.
@@ -8388,6 +8796,14 @@ export class SqliteHive implements HiveBackend {
           for (const result of worktreeResults) db.prepare("UPDATE machine_worktree_commands SET completed_at = ?, results = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
             .run(now, JSON.stringify(result.results), result.id, actor.name);
           db.prepare("DELETE FROM machine_worktree_commands WHERE completed_at < ?").run(this.#now(-30 * 24 * 60));
+          // Kept with the hub's deleted projects too (unlike `projects` below): those are the ones the web offers to drop.
+          if (repos) db.prepare("UPDATE machines SET repos = ? WHERE id = ?").run(JSON.stringify(repos.filter((r) => sees(actor, r.project))), actor.name);
+          // Only an app that reports its repos takes project commands, so an older app's beat never touches their table.
+          if (repos) {
+            for (const result of projectResults) db.prepare("UPDATE machine_project_commands SET completed_at = ?, ok = ?, error = ? WHERE id = ? AND machine_id = ? AND completed_at IS NULL")
+              .run(now, result.ok ? 1 : 0, result.ok ? null : result.error, result.id, actor.name);
+            db.prepare("DELETE FROM machine_project_commands WHERE completed_at < ? OR json_extract(command, '$.requestedAt') < ?").run(this.#now(-30 * 24 * 60), this.#now(-30 * 24 * 60));
+          }
           if (toolStates) db.prepare("UPDATE machines SET tool_states = ? WHERE id = ?").run(JSON.stringify(toolStates), actor.name);
           // Written every beat: a machine that turned the terminal off, or went back to an app without it, is off now.
           db.prepare("UPDATE machines SET terminal_capability = ? WHERE id = ?").run(terminal ? JSON.stringify(terminal) : null, actor.name);
@@ -8401,6 +8817,15 @@ export class SqliteHive implements HiveBackend {
           const allowedProjects = reportedProjects.filter((p) => sees(actor, p));
           const archivedProjects = allowedProjects.filter((p) => hidden.has(p));
           db.prepare("UPDATE machines SET projects = ? WHERE id = ?").run(JSON.stringify(allowedProjects.filter((p) => !hidden.has(p))), actor.name);
+          if (repoHealth) {
+            // Only repos the machine keeps on the hub; the detail redacted again here, since an older or tampered app
+            // may send a remote with its token in it, and every reader of the system would see it.
+            const kept = new Set(allowedProjects.filter((p) => !hidden.has(p)));
+            const health: RepoAccessReport[] = repoHealth.filter((h) => kept.has(h.project)).map((h) => ({
+              ...h, detail: h.detail === null ? null : redactLines(redactUrlCredentials(h.detail)).slice(0, 300),
+            }));
+            db.prepare("UPDATE machines SET repo_health = ? WHERE id = ?").run(JSON.stringify(health), actor.name);
+          }
           db.prepare("UPDATE machines SET gate_runner = ? WHERE id = ?").run(gateRunner ? 1 : 0, actor.name);
           // A downgraded app must lose the capability too; a previous report cannot promise it still applies patches.
           db.prepare("UPDATE machines SET runner_settings = ? WHERE id = ?").run(runnerSettings ? JSON.stringify(runnerSettings) : null, actor.name);
@@ -8504,6 +8929,7 @@ export class SqliteHive implements HiveBackend {
             agentPolicy: this.#machineAgentPolicy(actor),
             tools,
             worktreeCommands: this.#worktreeCommands(actor.name, true),
+            projectCommands: repos ? this.#projectCommands(actor.name, true) : [],
             toolApprovals: (db.prepare("SELECT a.* FROM machine_tool_approvals a JOIN tools t ON t.id = a.tool_id WHERE a.machine_id = ? AND a.applied_at IS NULL").all(actor.name) as Row[])
               .map((a) => { const { appliedAt: _appliedAt, ...approval } = this.#toolApproval(a); return approval; })
               .filter((a) => tools.entries.some((e) => e.id === a.toolId && toolHash(e) === a.hash)),
@@ -9863,6 +10289,35 @@ export class SqliteHive implements HiveBackend {
         return command;
       }),
 
+      "machines.projects": (_input, actor) => {
+        this.#needMachineConfigAdmin(actor);
+        const states = this.#projectStates();
+        return (db.prepare("SELECT id, machine, repos FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r): MachineProjects => ({
+          machineId: str(r.id),
+          machine: str(r.machine),
+          supported: r.repos != null,
+          repos: (r.repos == null ? [] : JSON.parse(str(r.repos)) as MachineRepo[]).map((x) => ({ ...x, state: states.get(x.project)?.state ?? null })),
+          commands: this.#projectCommands(str(r.id)),
+        }));
+      },
+      "machines.projectCommand": ({ machine, ...order }, actor) => this.#tx(() => {
+        this.#needMachineConfigAdmin(actor);
+        const row = db.prepare("SELECT id, repos FROM machines WHERE id = ?").get(this.#machineByRef(machine).id) as Row;
+        const machineId = str(row.id);
+        if (row.repos == null) throw new HiveError("bad_request", "Update the app to manage its projects from the hub.", { key: "errors.machineAppTooOld", vars: { machine: machineId } });
+        if (order.op === "add") {
+          // Only a project the hub knows and still uses: adding a deleted name would only bring its warning back.
+          if (!this.#projectNames().includes(order.project)) throw new HiveError("not_found", `No project ${order.project}.`, { key: "errors.notFound" });
+          if (this.#projectState(order.project)) throw this.#projectGone(order.project);
+        }
+        const open = this.#projectCommands(machineId, true).find((c) => c.project === order.project);
+        if (open) throw new HiveError("conflict", `A command for ${order.project} is still waiting for ${machineId}.`, { key: "errors.projectCommandOpen", vars: { project: order.project } });
+        const command: MachineProjectCommand = { id: randomUUID(), ...order, requestedBy: actor.account ?? actor.name, requestedAt: this.#now(), completedAt: null, ok: null, error: null };
+        const { completedAt: _c, ok: _o, error: _e, ...stored } = command;
+        db.prepare("INSERT INTO machine_project_commands(id, machine_id, command) VALUES (?, ?, ?)").run(command.id, machineId, JSON.stringify(stored));
+        return command;
+      }),
+
       "machines.tools": ({ machineId }, actor) => this.#machineToolAccess(machineId, actor),
       "machines.repair": ({ machineId, tokenId }, actor) => this.#tx(() => {
         const row = db.prepare("SELECT * FROM machines WHERE id = ?").get(machineId) as Row | undefined;
@@ -10108,6 +10563,31 @@ export class SqliteHive implements HiveBackend {
         return this.#sdlcView();
       },
 
+      "sdlc.prompts": ({ project }) => this.#stepPrompts(project),
+      "sdlc.promptHistory": ({ project, step, limit }) =>
+        (db.prepare("SELECT version, text, created_by, created_at FROM sdlc_step_prompts WHERE project = ? AND step = ? ORDER BY version DESC LIMIT ?").all(project, step, limit) as Row[]).map(
+          (r): StepPromptVersion => ({ version: num(r.version), text: str(r.text), by: str(r.created_by), at: str(r.created_at) }),
+        ),
+      "sdlc.setPrompt": ({ project, step, text, baseVersion }, actor) =>
+        this.#tx(() => {
+          const body = text.trim();
+          // What every run of the step is told: no hidden characters, no credentials (as docs agents read).
+          assertNoHidden(body, "Prompt");
+          assertNoSecret(body, "Prompt");
+          const now = this.#stepPrompts(project).find((p) => p.step === step)!;
+          // The text is the same: no new version, so the history is only real changes.
+          if (now.version === baseVersion && now.text === body) return now;
+          if (now.version !== baseVersion) {
+            throw new HiveError("conflict", `The ${step} prompt is at version ${now.version}, not ${baseVersion}: read it again.`, { key: "errors.promptVersionConflict", vars: { step, version: now.version } });
+          }
+          db.prepare("INSERT INTO sdlc_step_prompts(project, step, version, text, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(project, step, now.version + 1, body, actor.name, this.#now());
+          return this.#stepPrompts(project).find((p) => p.step === step)!;
+        }),
+      "sdlc.runPrompt": ({ project, taskId, role }) => {
+        const step = this.#runStep(project, taskId, role);
+        const p = step ? this.#stepPrompts(project).find((x) => x.step === step) : null;
+        return p && p.text ? ({ step: p.step, version: p.version, text: p.text } satisfies RunStepPrompt) : null;
+      },
       "sdlc.gates": ({ project, projects, taskId, status, limit, beforeId, since }) =>
         (
           db
@@ -10416,11 +10896,34 @@ export class SqliteHive implements HiveBackend {
 
       "systems.list": () => (db.prepare("SELECT * FROM systems ORDER BY name").all() as Row[]).map(toSystem),
 
-      "systems.save": ({ name, projects }, actor) => {
+      "systems.repoHealth": () => {
+        const members = [...new Set((db.prepare("SELECT projects FROM systems").all() as Row[]).flatMap((r) => JSON.parse(str(r.projects)) as string[]))].sort();
+        const machines = (db.prepare("SELECT * FROM machines ORDER BY last_seen DESC").all() as Row[]).map((r) => ({
+          machine: this.#toMachine(r),
+          health: new Map((JSON.parse(str(r.repo_health ?? "[]")) as RepoAccessReport[]).map((h) => [h.project, h])),
+        }));
+        return members.map((project): SystemMemberHealth => {
+          const having = machines.filter((m) => m.machine.projects.includes(project)).map(({ machine, health }): SystemMemberMachine => {
+            const h = health.get(project);
+            return { machineId: machine.id, machine: machine.machine, online: machine.online, status: h?.status ?? null, checkedAt: h?.checkedAt ?? null, head: h?.head ?? null, detail: h?.detail ?? null };
+          });
+          // One machine that reaches it is enough to work on it; the others' failures are still listed for their owners.
+          const state = having.length === 0 ? "no_machine"
+            : having.some((m) => m.status === "ok") ? "reachable"
+            : having.some((m) => m.status !== null) ? "unreachable"
+            : "unchecked";
+          return { project, state, machines: having };
+        });
+      },
+
+      "systems.save": ({ name, projects, source }, actor) => {
+        // Left out, the source stays as it was: the editors that only change the projects never send one.
+        const keep = source === undefined;
         db.prepare(
-          `INSERT INTO systems(name, projects, updated_by, updated_at) VALUES (?, ?, ?, ?)
-           ON CONFLICT(name) DO UPDATE SET projects = excluded.projects, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-        ).run(name, JSON.stringify([...new Set(projects)].sort()), actor.name, this.#now());
+          `INSERT INTO systems(name, projects, source, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(name) DO UPDATE SET projects = excluded.projects, updated_by = excluded.updated_by, updated_at = excluded.updated_at,
+             source = CASE WHEN ? THEN systems.source ELSE excluded.source END`,
+        ).run(name, JSON.stringify([...new Set(projects)].sort()), source ? JSON.stringify(source) : null, actor.name, this.#now(), keep ? 1 : 0);
         return this.#system(name)!;
       },
 
@@ -10462,7 +10965,7 @@ export class SqliteHive implements HiveBackend {
         if (!backup) throw new HiveError("conflict", "Backups are off: set HIVE_BACKUP_DIR.", { key: "errors.backupOff" });
         // Nothing goes until the whole hub is in a snapshot: it is the only way back from here. A backup that fails
         // throws out of the call, before a single row is touched.
-        const snapshot = await backup();
+        const snapshot = await backup({ project });
         const { rows, files } = this.#tx(() => this.#deleteProject(project, actor.name));
         // Outside the transaction: the file store is not part of it. A file left behind costs disk, a missing one costs
         // a page, so a failure here is only counted — the rows are already gone either way.
