@@ -158,12 +158,13 @@ export async function revokeRunCredential(hub: { url: string; token: string }, m
   });
 }
 
-export async function issueMcpCredential(hub: { url: string; token: string }, project: string | undefined, readOnly: boolean): Promise<string> {
+/** `system`: a CLI opened on a whole system (GROUP-cli) gets that system's projects instead of one project. */
+export async function issueMcpCredential(hub: { url: string; token: string }, project: string | undefined, readOnly: boolean, system?: string): Promise<string> {
   const url = hub.url.replace(/\/+$/, "");
   const res = await reach(url, `${url}/api/mcp-credentials`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${hub.token}` },
-    body: JSON.stringify({ project, readOnly }),
+    body: JSON.stringify({ project, readOnly, ...(system && !project ? { system } : {}) }),
   });
   const body = (await hubBody(res, url)) as { result?: { token?: string }; error?: { message?: string; key?: string; vars?: unknown } } | null;
   // The key and vars travel too: the MCP tells an archived or deleted project apart from any other refusal by them.

@@ -19,13 +19,13 @@ export interface McpHubBackend extends HiveBackend {
 }
 
 /** Keep the machine token on the exchange path; agent RPCs use only an expiring MCP credential. */
-export function mcpHubBackend(hub: { url: string; token: string }, project: string | undefined, readOnly: boolean): McpHubBackend {
+export function mcpHubBackend(hub: { url: string; token: string }, project: string | undefined, readOnly: boolean, system?: string): McpHubBackend {
   let current: HubBackend | undefined;
   let refreshAt = 0;
   let pending: Promise<void> | undefined;
   const ready = async () => {
     if (!current || Date.now() >= refreshAt) {
-      pending ??= issueMcpCredential(hub, project, readOnly).then((token) => {
+      pending ??= issueMcpCredential(hub, project, readOnly, system).then((token) => {
         current = new HubBackend(hub.url, token);
         refreshAt = Date.now() + 55 * 60_000;
       }).finally(() => { pending = undefined; });

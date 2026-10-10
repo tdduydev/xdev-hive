@@ -2104,6 +2104,11 @@ unsaved: "{count} thay đổi chưa lưu", noChanges: "Chưa có thay đổi", c
     rolesPhase: { going: "Bước {n}/{total}", done: "Xong chuỗi", stopped: "Đã dừng" },
   },
   openCli: {
+    openSystem: "Mở {cli} cho hệ thống",
+    openedSystem: "Đã mở terminal: {profile} cho hệ thống {system} tại {cwd}, thấy {repos} repo. Phiên này là của bạn, không phải run: không theo chính sách agent và không tính vào trần chi tiêu.",
+    openedSystemBypass: "Đã mở terminal: {profile} cho hệ thống {system} tại {cwd}, thấy {repos} repo, bỏ qua hỏi quyền: CLI tự chạy lệnh và sửa file không hỏi. Phiên này là của bạn, không phải run.",
+    systemMissing: "Máy này chưa có {count} repo: {projects}. Dùng Init group trên máy này để clone theo cây.",
+    noDirFlag: "{cli} không có cờ thêm thư mục: chỉ thấy thư mục làm việc và các repo nằm dưới nó.",
     open: "Mở {cli}",
     profile: "Gói",
     project: "Service",

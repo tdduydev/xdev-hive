@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("hive", {
     systemSync: (system: string) => invoke("desktop:systemSync", system),
     systemsOnMachine: () => invoke("desktop:systemsOnMachine"),
     systemForget: (system: string) => invoke("desktop:systemForget", system),
+    openSystemCli: (id: string, system: string, opts?: { bypass?: boolean }) => invoke("desktop:openSystemCli", id, system, opts),
     addProjects: (items: unknown) => invoke("desktop:addProjects", items),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),

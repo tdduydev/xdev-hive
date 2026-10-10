@@ -48,6 +48,9 @@ import {
   type SystemPlan,
   type SystemSource,
   type SystemSyncReport,
+  type SystemCliOpened,
+  type Doc,
+  agentsDocKey,
   type LoginHow,
   type NewAccount,
   type MachineCommand,
@@ -101,7 +104,7 @@ import { MergeRequester, mrLabel, type MrHost } from "./gitlab/mr.ts";
 import { branchFor } from "#desktop/main/runner/worktree.ts";
 import { cleanupNote, mrPollDelay, MrWatcher, type MrChange } from "./gitlab/watch.ts";
 import { CiFixer } from "./gitlab/ci-fix.ts";
-import { installAgents, installCodexConfig, installShim, repoFeatures, shimTarget } from "./installer.ts";
+import { hiveMcpServerAt, installAgents, installCodexConfig, installShim, MCP_NAME, repoFeatures, shimTarget } from "./installer.ts";
 import { windowsUserPath } from "./winpath.ts";
 import { toolViews } from "./runner/tools.ts";
 import { expandEnv, expandHome, resolveBin } from "./runner/command.ts";
@@ -124,7 +127,8 @@ import { checkCitations } from "./citations.ts";
 import { proposeAgents, syncProject, type SyncOptions } from "./sync.ts";
 import { mirrorDocs, mirrorsAsync } from "./mirror.ts";
 import { pushSpecs } from "./specs.ts";
-import { cliCommand } from "./cli-open.ts";
+import { cliCommand, EXTRA_DIR_ARGS } from "./cli-open.ts";
+import { renderSystemContext, repoRole, systemWorkspace, writeSystemContext } from "#desktop/main/system-cli.ts";
 import { openInTerminal } from "./terminal.ts";
 import { AlertWatch, fetchAlerts, noticeText, type AlertNotice } from "./alert-notify.ts";
 import { applyProfileChanges, applyRunnerChange } from "./profile-changes.ts";
@@ -811,6 +815,75 @@ function openCli(id: string, name: string, opts?: { bypass?: boolean }): { opene
   const file = openInTerminal(command, { dir, which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) });
   if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
   return { opened: true };
+}
+
+/**
+ * The system's docs and the team's that every agent reads, and each repo's first line of its own AGENTS doc, for the
+ * context of a system's session. A hub that does not answer leaves them out: the session still opens.
+ */
+async function systemContextDocs(system: HiveSystem, projects: string[]): Promise<{ docs: { system: Doc[]; org: Doc[] }; roles: Record<string, string> }> {
+  const empty = { docs: { system: [], org: [] }, roles: {} };
+  const any = projects[0] ?? system.projects[0];
+  if (!any) return empty;
+  try {
+    const wanted = async (scope: "system" | "org", prefix: string) => {
+      const list = (await backend.call("docs.list", { project: any, scope }, actor())).filter((d) => d.key.startsWith(prefix) && d.includeInAgents && !d.paths?.length);
+      return (await Promise.all(list.map((d) => backend.call("docs.get", { key: d.key }, actor())))).filter((d): d is Doc => d !== null);
+    };
+    const [sys, org] = await Promise.all([wanted("system", `system/${system.name}/`), wanted("org", "org/")]);
+    const roles = Object.fromEntries(await Promise.all(projects.map(async (p) => [p, repoRole(await backend.call("docs.get", { key: agentsDocKey(p) }, actor()).catch(() => null))] as const)));
+    return { docs: { system: sys, org }, roles };
+  } catch {
+    return empty;
+  }
+}
+
+/**
+ * A profile's CLI over every repo of a system on this machine (GROUP-cli): started in the group's root (or the app's
+ * own folder for the system), each repo added with the CLI's flag, Hive's server scoped to the system. Repos missing
+ * here are named in the context and on the page; they never stop it from opening.
+ */
+async function openSystemCli(id: string, name: string, opts?: { bypass?: boolean }): Promise<SystemCliOpened> {
+  const profile = config.agents.find((a) => a.id === id);
+  if (!profile) throw new HiveError("not_found", `Không có profile ${id}.`, { key: "errors.profileNotFound", vars: { id } });
+  if (logins.get(id)?.loggedIn === false) throw new HiveError("conflict", tr("desktop.cliSignedOut", { profile: id }), { key: "desktop.cliSignedOut", vars: { profile: id } });
+  const pathEnv = agentEnv().PATH ?? "";
+  const bin = resolveBin(expandHome(profile.bin), pathEnv);
+  if (!bin) throw new HiveError("not_found", tr("desktop.cliNotFound", { bin: profile.bin }), { key: "desktop.cliNotFound", vars: { bin: profile.bin } });
+  const system = await hubSystem(name);
+  const ws = systemWorkspace(system, config.projects, {
+    root: config.systemRoots[system.name]?.root ?? null,
+    home: os.homedir(),
+    sessionDir: path.join(path.dirname(configPath()), "systems", system.name),
+    insideRepo: (dir) => isGitRepo(dir),
+  });
+  const { docs, roles } = await systemContextDocs(system, ws.repos.map((r) => r.project));
+  const shim = shimPath();
+  writeSystemContext(ws.cwd, renderSystemContext(system, ws, docs, roles), {
+    mcpServers: { [MCP_NAME]: { ...hiveMcpServerAt(shim, profile.id, ""), env: { HIVE_AGENT: profile.id, HIVE_SYSTEM: system.name } } },
+  });
+  const dir = path.join(path.dirname(configPath()), "cli", profile.id);
+  const mcpFile = path.join(dir, `mcp-system-${system.name}.json`);
+  const { command, mcpConfig } = cliCommand(profile, {
+    project: ws.repos[0]?.project ?? system.projects[0] ?? system.name,
+    repo: ws.cwd,
+    bin,
+    path: process.platform === "win32" ? null : pathEnv,
+    shim,
+    mcpFile,
+    title: `xDev Hive: ${tr("desktop.cliTitle", { profile: profile.id, project: system.name })}`,
+    done: tr("desktop.cliDone"),
+    bypass: opts?.bypass === true,
+    system: system.name,
+    extraDirs: ws.repos.map((r) => r.dir),
+  });
+  if (mcpConfig) {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(mcpFile, mcpConfig, { mode: 0o600 });
+  }
+  const file = openInTerminal(command, { dir, which: (b) => resolveBin(b, pathEnv), ...(smokeShot ? { run: () => undefined } : {}) });
+  if (!file) throw new HiveError("not_found", tr("desktop.noTerminal"), { key: "desktop.noTerminal" });
+  return { opened: true, cwd: ws.cwd, repos: ws.repos.length, missing: ws.missing.map((m) => m.project), dirsSupported: Boolean(EXTRA_DIR_ARGS[profile.kind]) };
 }
 
 /** One project at a time; a project whose check fails (no repo, no access) does not stop the others. */
@@ -1627,6 +1700,7 @@ function registerIpc(): void {
   handle("desktop:setProfileToken", setProfileToken);
   handle("desktop:openSetupToken", openSetupToken);
   handle("desktop:openCli", openCli);
+  handle("desktop:openSystemCli", openSystemCli);
   handle("desktop:startRun", (req: StartRunRequest) => runner.enqueue(req));
   handle("desktop:runs", (filter?: { project?: string; limit?: number }) => runner.list(filter));
   handle("desktop:runs-count", (filter?: { project?: string; projects?: string[] }) => runner.store.countActive(filter));

@@ -2099,6 +2099,11 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     rolesPhase: { going: "Step {n}/{total}", done: "Chain done", stopped: "Stopped" },
   },
   openCli: {
+    openSystem: "Open {cli} for the system",
+    openedSystem: "Terminal opened: {profile} for system {system} in {cwd}, with {repos} repos. This session is yours, not a run: agent policy and spending caps do not apply.",
+    openedSystemBypass: "Terminal opened: {profile} for system {system} in {cwd}, with {repos} repos, skipping permission prompts: the CLI runs commands and edits files without asking. This session is yours, not a run.",
+    systemMissing: "{count} repos are not on this machine: {projects}. Set up the group on this machine to clone them in its tree.",
+    noDirFlag: "{cli} has no flag for more folders: it sees the working folder and the repos under it only.",
     open: "Open {cli}",
     profile: "Profile",
     project: "Service",
