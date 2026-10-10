@@ -276,7 +276,7 @@ The hub reads `HIVE_*` environment variables. With Docker Compose, put them in t
 | `HIVE_GATE_JOBS` | off | `1` enables gate jobs; each machine still declares its own templates |
 | `HIVE_LOG_REPEAT_THRESHOLD` | `10` | Repeats of the same error within an hour before an alert opens |
 
-`compose.yaml` also reads `HIVE_HTTP_BIND` and `HIVE_HTTP_PORT` (default `0.0.0.0:7788`) for the published port, and `HIVE_SEAWEEDFS_IMAGE` to override the SeaweedFS image.
+`compose.yaml` also reads `HIVE_HTTP_BIND` and `HIVE_HTTP_PORT` (default `0.0.0.0:7788`) for the published port, and `HIVE_SEAWEEDFS_IMAGE` / `HIVE_CADDY_IMAGE` to override the SeaweedFS and Caddy images (by default the ones rebuilt with a current Go and scanned by `.github/workflows/deps-images.yml`).
 
 ## Deployment
 

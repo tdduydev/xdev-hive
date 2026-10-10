@@ -59,7 +59,7 @@ services:
   # Doc images and files (roadmap 23c): master, volume server and filer in one process. Only the hub reaches it, on this
   # compose network (nothing is published); the hub uses the filer's HTTP API on 8888.
   seaweedfs:
-    image: ${HIVE_SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.48}
+    image: ${HIVE_SEAWEEDFS_IMAGE:-ghcr.io/tdduydev/xdev-hive-seaweedfs:4.48}
     restart: unless-stopped
     command: server -dir=/data -filer -ip=127.0.0.1 -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
     volumes:
@@ -86,7 +86,7 @@ services:
       - "11434"
 
   caddy:
-    image: caddy:2
+    image: ${HIVE_CADDY_IMAGE:-ghcr.io/tdduydev/xdev-hive-caddy:2.11.7}
     restart: unless-stopped
     depends_on: [hub]
     ports:
