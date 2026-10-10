@@ -9,7 +9,7 @@
 // Not written: project/design-system.json and the logo/illustration uploads; the artifact keeps those
 // (README.md beside this script says how to publish).
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,7 +112,14 @@ export async function build(out) {
   const components = join(project, "components");
   rmSync(project, { recursive: true, force: true });
   mkdirSync(components, { recursive: true });
-  cpSync(join(here, "system"), project, { recursive: true });
+  // Text with LF: a Windows checkout (core.autocrlf) has CRLF, and the artifact would show every line changed.
+  for (const entry of readdirSync(join(here, "system"), { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const from = join(entry.parentPath, entry.name);
+    const to = join(project, from.slice(join(here, "system").length));
+    mkdirSync(dirname(to), { recursive: true });
+    writeFileSync(to, readFileSync(from, "utf8").replace(/\r\n/g, "\n"));
+  }
 
   const { tokens, missing } = buildTokens(repoRoot, { ...gitInfo(), colorUsage, shadowUsage: SHADOW_USAGE, families: FAMILIES });
   if (missing.length) console.warn(`tokens without a usage note or value (add them to usage.mjs): ${missing.join(", ")}`);
