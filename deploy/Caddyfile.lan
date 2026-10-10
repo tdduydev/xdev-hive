@@ -60,7 +60,7 @@ http://:7780 {
 	import ca
 	@page {
 		method GET HEAD
-		not path /api/* /mcp /mcp/*
+		not path /api/* /mcp /mcp/* /ca.crt /ca.sha256
 		expression `"{$HIVE_LAN_HTTP_REDIRECT:1}" == "1"`
 	}
 	redir @page https://{host}:{$HIVE_LAN_HTTPS_PORT:7743}{uri} 307
