@@ -410,6 +410,47 @@ describe("mcp tools", () => {
     assert.equal(partial.section, "Setup advanced");
   });
 
+  it("doc_get preserves literal trailing hashes in section titles (roadmap 80c)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const content = ["# Doc", "## C#", "C# body", "## F# ###  ", "F# body", "## Other", "other body"].join("\n");
+    await hive.call("docs.save", { key: "org/hashes", content }, admin);
+    const claude = await connect(hive);
+    const get = async (section: string) => JSON.parse(text(await claude.callTool({ name: "doc_get", arguments: { key: "org/hashes", section } })));
+
+    const csharp = await get("C#");
+    assert.equal(csharp.section, "C#");
+    assert.equal(csharp.content, "## C#\nC# body");
+    assert.deepEqual(csharp.headings, ["# Doc", "## C#", "## F#", "## Other"]);
+    const fsharp = await get("F#");
+    assert.equal(fsharp.section, "F#");
+    assert.equal(fsharp.content, "## F# ###  \nF# body");
+  });
+
+  it("doc_get finds headings indented up to three spaces and ends preceding sections there (roadmap 80c)", async () => {
+    const hive = new SqliteHive(":memory:");
+    const admin = { name: "duy", role: "admin" as const };
+    const content = [
+      "# Doc", "## Before", "before body", " ## One", "one body", "  ## Two", "two body",
+      "   ## Three", "three body", "    ## Code", "still three body", "## After", "after body",
+    ].join("\n");
+    await hive.call("docs.save", { key: "org/indented", content }, admin);
+    const claude = await connect(hive);
+    const get = async (section: string) => JSON.parse(text(await claude.callTool({ name: "doc_get", arguments: { key: "org/indented", section } })));
+
+    const before = await get("Before");
+    assert.equal(before.content, "## Before\nbefore body");
+    assert.deepEqual(before.headings, ["# Doc", "## Before", "## One", "## Two", "## Three", "## After"]);
+    for (const [section, body] of [
+      ["One", " ## One\none body"], ["Two", "  ## Two\ntwo body"],
+      ["Three", "   ## Three\nthree body\n    ## Code\nstill three body"],
+    ] as const) {
+      const doc = await get(section);
+      assert.equal(doc.section, section);
+      assert.equal(doc.content, body);
+    }
+  });
+
   it("says whose task each one is, and keeps another machine's agent off it (roadmap 50)", async () => {
     const hive = new SqliteHive(":memory:");
     const admin = { name: "duy", role: "admin" as const };

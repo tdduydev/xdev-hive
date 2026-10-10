@@ -170,7 +170,8 @@ const headingsOf = (content: string): { line: number; level: number; title: stri
       fence = { ch: f[1]![0]!, len: f[1]!.length };
       return;
     }
-    const m = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(l);
+    // Closing hashes need preceding whitespace; otherwise they belong to the title, as in "C#".
+    const m = /^ {0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(l);
     if (m) out.push({ line: i, level: m[1]!.length, title: m[2]! });
   });
   return out;
