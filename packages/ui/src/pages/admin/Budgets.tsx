@@ -1,8 +1,6 @@
-import { ResponsiveGridRow, ResponsiveTableFrame } from "#ui/components/ResponsiveTable.tsx";
 // Trần chi tiêu (roadmap 27b) on the Costs page: one row per cap with what its day or month used, and for a hub admin
 // the way to add, change or remove one. budgets.set replaces the whole list, so every save sends all of them.
 import { useState } from "react";
-import { cn } from "cn";
 import { BUDGET_PERIODS, type Budget, type BudgetPeriod, type BudgetUsage } from "@xdev-hive/core";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Input } from "@xdev-hive/ui/components/ui/input";
@@ -10,6 +8,7 @@ import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/na
 import { Empty, ErrorNote } from "#ui/components/common.tsx";
 import { formatUsd, useAction, useHive, useProjects, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
+import { AdminCards, AdminStats, toneForRatio, usedPercent, type AdminCard } from "./cosmic.tsx";
 
 type Kind = Budget["scope"]["kind"];
 
@@ -50,21 +49,6 @@ const plain = (b: BudgetUsage): Budget => ({ scope: b.scope, period: b.period, l
 const scopeLabel = (t: TFunction, b: Budget) =>
   b.scope.kind === "project" ? t("budgets.scope.project", { name: b.scope.project }) : b.scope.kind === "user" ? t("budgets.scope.user", { name: b.scope.user }) : t("budgets.scope.hub");
 
-function UsedBar({ used, limit, label }: { used: number; limit: number; label: string }) {
-  const pct = Math.max(0, Math.round((used / limit) * 100));
-  return (
-    <span className="flex items-center gap-2">
-      <span className="relative h-[6px] min-w-0 md:min-w-24 flex-1 rounded-full bg-sunken">
-        <span
-          className={cn("absolute inset-y-0 left-0 rounded-full", pct >= 100 ? "bg-danger-solid" : pct >= 70 ? "bg-warning-solid" : "bg-primary")}
-          style={{ width: `${Math.min(100, pct)}%` }}
-        />
-      </span>
-      <span className="shrink-0 font-mono text-[11px] text-fg-secondary">{label}</span>
-    </span>
-  );
-}
-
 export function BudgetsCard({ tick }: { tick: number }) {
   const { client, me } = useHive();
   const t = useT();
@@ -92,8 +76,8 @@ export function BudgetsCard({ tick }: { tick: number }) {
   const ready = toBudget(draft);
 
   const form = (id: string) => (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line-default bg-sunken p-2.5">
-      <label className="flex flex-col gap-1 text-xs text-fg-muted">
+    <div className="cx-ops-panel cx-ops-form">
+      <label className="cx-ops-field">
         {t("budgets.scopeLabel")}
         <NativeSelect size="sm" value={draft.kind} onChange={(e) => setDraft({ ...draft, kind: e.target.value as Kind, name: "" })}>
           {(["project", "user", "hub"] as const).map((k) => (
@@ -104,7 +88,7 @@ export function BudgetsCard({ tick }: { tick: number }) {
         </NativeSelect>
       </label>
       {draft.kind === "project" ? (
-        <label className="flex flex-col gap-1 text-xs text-fg-muted">
+        <label className="cx-ops-field">
           {t("budgets.kind.project")}
           <NativeSelect size="sm" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })}>
             <NativeSelectOption value="">—</NativeSelectOption>
@@ -116,12 +100,12 @@ export function BudgetsCard({ tick }: { tick: number }) {
           </NativeSelect>
         </label>
       ) : draft.kind === "user" ? (
-        <label className="flex flex-col gap-1 text-xs text-fg-muted">
+        <label className="cx-ops-field">
           {t("budgets.kind.user")}
-          <Input className="h-7 w-36 text-xs" value={draft.name} placeholder={t("budgets.userPlaceholder")} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          <Input controlSize="sm" className="w-36" value={draft.name} placeholder={t("budgets.userPlaceholder")} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
         </label>
       ) : null}
-      <label className="flex flex-col gap-1 text-xs text-fg-muted">
+      <label className="cx-ops-field">
         {t("budgets.periodLabel")}
         <NativeSelect size="sm" value={draft.period} onChange={(e) => setDraft({ ...draft, period: e.target.value as BudgetPeriod })}>
           {BUDGET_PERIODS.map((p) => (
@@ -131,78 +115,88 @@ export function BudgetsCard({ tick }: { tick: number }) {
           ))}
         </NativeSelect>
       </label>
-      <label className="flex flex-col gap-1 text-xs text-fg-muted">
+      <label className="cx-ops-field">
         {t("budgets.usdLabel")}
-        <Input className="h-7 w-24 text-xs" inputMode="decimal" value={draft.usd} placeholder="—" onChange={(e) => setDraft({ ...draft, usd: e.target.value })} />
+        <Input controlSize="sm" className="w-24" inputMode="decimal" value={draft.usd} placeholder="—" onChange={(e) => setDraft({ ...draft, usd: e.target.value })} />
       </label>
-      <label className="flex flex-col gap-1 text-xs text-fg-muted">
+      <label className="cx-ops-field">
         {t("budgets.runsLabel")}
-        <Input className="h-7 w-20 text-xs" inputMode="numeric" value={draft.runs} placeholder="—" onChange={(e) => setDraft({ ...draft, runs: e.target.value })} />
+        <Input controlSize="sm" className="w-20" inputMode="numeric" value={draft.runs} placeholder="—" onChange={(e) => setDraft({ ...draft, runs: e.target.value })} />
       </label>
       <Button
         size="sm"
+        variant="solid"
         disabled={action.busy || !ready}
         onClick={() => ready && save(id === "new" ? [...rows.map(plain), ready] : rows.map((r) => (r.id === id ? ready : plain(r))))}
       >
         {t("budgets.save")}
       </Button>
-      <Button size="sm" variant="outline" disabled={action.busy} onClick={() => setEditing(null)}>
+      <Button size="sm" variant="ghost" disabled={action.busy} onClick={() => setEditing(null)}>
         {t("budgets.cancel")}
       </Button>
-      <span className="basis-full text-[11px] text-fg-muted">{t("budgets.formHint")}</span>
+      <span className="cx-ops-hint basis-full">{t("budgets.formHint")}</span>
     </div>
   );
 
+  const cards: AdminCard[] = rows.map((b) => {
+    const pcts = [usedPercent(b.used.usd, b.limit.usd), usedPercent(b.used.runs, b.limit.runs)].filter((p): p is number => p !== null);
+    return {
+      key: b.id,
+      title: scopeLabel(t, b),
+      side: t(`budgets.period.${b.period}`),
+      tone: toneForRatio(b.ratio),
+      bar: pcts.length ? Math.max(...pcts) : null,
+      body: (
+        <>
+          {b.limit.usd !== undefined ? <div>{`${formatUsd(b.used.usd)} / ${formatUsd(b.limit.usd)}`}</div> : null}
+          {b.limit.runs !== undefined ? <div>{t("budgets.runsUsed", { used: b.used.runs, limit: b.limit.runs })}</div> : null}
+          {b.ratio >= 1 ? <div className="text-danger">{t("budgets.full")}</div> : null}
+        </>
+      ),
+      ...(hubAdmin
+        ? {
+            action: { label: t("budgets.edit"), disabled: action.busy || editing !== null, onClick: () => start(b.id, toDraft(b)) },
+            extra: (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={action.busy || editing !== null}
+                onClick={() => {
+                  if (window.confirm(t("budgets.confirmRemove", { scope: scopeLabel(t, b) }))) save(rows.filter((r) => r.id !== b.id).map(plain));
+                }}
+              >
+                {t("budgets.remove")}
+              </Button>
+            ),
+          }
+        : {}),
+    };
+  });
+  const full = rows.filter((b) => b.ratio >= 1).length;
+  const near = rows.filter((b) => b.ratio >= 0.7 && b.ratio < 1).length;
+
   return (
-    <ResponsiveTableFrame className="flex min-w-0 flex-col gap-3 rounded-[14px] border border-line-default bg-surface p-4">
-      <div className="flex flex-wrap items-baseline gap-2">
-        <h2 className="m-0 text-sm/5 font-semibold text-fg-strong">{t("budgets.title")}</h2>
-        <span className="text-xs text-fg-muted">{t("budgets.hint")}</span>
+    <div className="cx-ops-stack">
+      <AdminStats
+        stats={[
+          { key: "caps", label: t("adminOps.budgets.caps"), value: rows.length, tone: "info" },
+          { key: "full", label: t("adminOps.budgets.full"), value: full, note: t("adminOps.budgets.fullNote"), tone: full ? "bad" : "ok" },
+          { key: "near", label: t("adminOps.budgets.near"), value: near, note: t("adminOps.budgets.nearNote"), tone: near ? "warn" : "ok" },
+        ]}
+      />
+      <div className="cx-ops-toolbar !mb-0">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5"><h2 className="cx-ops-h">{t("budgets.title")}</h2><span className="cx-ops-hint">{t("budgets.hint")}</span></div>
         {hubAdmin && editing !== "new" ? (
-          <Button className="ml-auto" size="xs" variant="outline" onClick={() => start("new", EMPTY)}>
+          <Button size="sm" variant="glass" onClick={() => start("new", EMPTY)}>
             {t("budgets.add")}
           </Button>
         ) : null}
       </div>
       <ErrorNote error={list.error ?? action.error} />
       {list.data && !rows.length && editing !== "new" ? <Empty>{t("budgets.none")}</Empty> : null}
-      {rows.map((b) =>
-        editing === b.id ? (
-          <div key={b.id}>{form(b.id)}</div>
-        ) : (
-          <ResponsiveGridRow labels={[t("budgets.scopeLabel"), t("budgets.title"), null]} key={b.id} className="grid grid-cols-[minmax(140px,1fr)_minmax(200px,2fr)_auto] items-center gap-3 border-b border-line-default pb-2.5 last:border-b-0 last:pb-0">
-            <div className="flex min-w-0 flex-col">
-              <span className="truncate text-[13px] font-medium text-fg-strong">{scopeLabel(t, b)}</span>
-              <span className="text-xs text-fg-muted">{t(`budgets.period.${b.period}`)}</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              {b.limit.usd !== undefined ? <UsedBar used={b.used.usd} limit={b.limit.usd} label={`${formatUsd(b.used.usd)} / ${formatUsd(b.limit.usd)}`} /> : null}
-              {b.limit.runs !== undefined ? <UsedBar used={b.used.runs} limit={b.limit.runs} label={t("budgets.runsUsed", { used: b.used.runs, limit: b.limit.runs })} /> : null}
-              {b.ratio >= 1 ? <span className="text-xs text-danger">{t("budgets.full")}</span> : null}
-            </div>
-            {hubAdmin ? (
-              <div className="flex gap-1.5">
-                <Button size="xs" variant="outline" disabled={action.busy || editing !== null} onClick={() => start(b.id, toDraft(b))}>
-                  {t("budgets.edit")}
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  disabled={action.busy || editing !== null}
-                  onClick={() => {
-                    if (window.confirm(t("budgets.confirmRemove", { scope: scopeLabel(t, b) }))) save(rows.filter((r) => r.id !== b.id).map(plain));
-                  }}
-                >
-                  {t("budgets.remove")}
-                </Button>
-              </div>
-            ) : (
-              <span />
-            )}
-          </ResponsiveGridRow>
-        ),
-      )}
       {editing === "new" ? form("new") : null}
-    </ResponsiveTableFrame>
+      {editing && editing !== "new" ? form(editing) : null}
+      <AdminCards cards={cards} />
+    </div>
   );
 }

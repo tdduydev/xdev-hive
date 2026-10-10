@@ -91,6 +91,7 @@ describe("an unreachable hub", () => {
   it("is a HiveError unavailable on the desktop, a TypeError from fetch on the web", () => {
     assert.ok(isUnreachable(new HiveError("unavailable", "Cannot reach the hub")));
     assert.ok(isUnreachable(new TypeError("Failed to fetch")));
+    assert.ok(isUnreachable(new DOMException("timed out", "TimeoutError")));
     assert.ok(!isUnreachable(new HiveError("conflict", "stale")));
     assert.ok(!isUnreachable(new Error("boom")));
     assert.ok(!isUnreachable(null));

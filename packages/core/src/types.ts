@@ -9,6 +9,7 @@ import type { WriteSource } from "./source.ts";
 import type { MapPhase } from "./mapreduce.ts";
 import type { TaskKind, TaskRisk, TaskSize } from "./task-classify.ts";
 import type { RoleStep } from "./roles.ts";
+import type { SystemSource } from "./system-source.ts";
 
 /** member: a person's hub account (what it may do comes from its per-project grants). */
 export type Role = "viewer" | "agent" | "member" | "admin";
@@ -51,6 +52,11 @@ export interface Actor {
    * cookie). A remote terminal opens for this alone (spec 69), not for any bearer, whatever its role.
    */
   humanSession?: string;
+  /**
+   * Set only by core while it runs an approved operation proposal: the audit line of that call then names the agent
+   * that asked for it beside the person who approved it.
+   */
+  approvedProposal?: { id: number; author: string };
 }
 
 export interface DocSummary {
@@ -176,7 +182,18 @@ export interface HubInfo {
   deployLog?: DeployLogInfo;
   db: { path: string; bytes: number; walBytes: number; counts: Record<"docs" | "memory" | "tasks" | "runs" | "machines" | "users", number> };
   /** null: HIVE_BACKUP_DIR is not set. */
-  backup: { dir: string; hours: number; keep: number; last: string | null; count: number } | null;
+  backup: {
+    dir: string;
+    hours: number;
+    keep: number;
+    last: string | null;
+    count: number;
+    /** The pin policy (ADM-backup-restore, see BackupList) and the snapshots it protects now. */
+    pinDays: number;
+    pinMaxBytes: number;
+    pinned: number;
+    pinnedBytes: number;
+  } | null;
   search: { mode: "keyword" | "hybrid"; model: string | null; url: string | null; indexed: number; total: number; lastError: string | null };
   /** Doc files (roadmap 23c): in the database, or in a store (SeaweedFS) with `inDb` still to move there. */
   files: { store: string | null; where: string | null; count: number; bytes: number; inDb: number; lastError: string | null };
@@ -226,7 +243,7 @@ export interface DocVersion {
   createdAt: string;
 }
 
-export const PROPOSAL_STATUSES = ["pending", "approved", "rejected", "conflict"] as const;
+export const PROPOSAL_STATUSES = ["pending", "executing", "approved", "rejected", "conflict"] as const;
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 export interface Proposal {
@@ -307,6 +324,8 @@ export interface MemoryReview {
 
 export const TASK_STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_PLATFORMS = ["windows", "linux", "mac"] as const;
+export type TaskPlatform = (typeof TASK_PLATFORMS)[number];
 
 /**
  * The agent a task is *for* (roadmap 50), apart from `owner`, which says who took it: the hub queues the run itself as
@@ -335,6 +354,8 @@ export interface Task {
   id: string;
   project: string;
   title: string;
+  /** Empty means any machine OS. */
+  platforms: TaskPlatform[];
   kind: TaskKind | null;
   size: TaskSize | null;
   risk: TaskRisk | null;
@@ -640,8 +661,55 @@ export interface ToolStatus {
 export interface HiveSystem {
   name: string;
   projects: string[];
+  /**
+   * The forge group it mirrors, with each member's path and clone URLs (GROUP-init-sync); null: put together by hand.
+   * The hub always sends it; optional for the systems pages and tests build without one.
+   */
+  source?: SystemSource | null;
   updatedAt: string;
   updatedBy: string;
+}
+
+/**
+ * What `git ls-remote` against a project's remote told one machine. `no_access_or_missing` is its own value because
+ * GitLab ("The project you were looking for could not be found or you don't have permission to view it") and GitHub
+ * ("Repository not found") answer a repo the account may not see exactly like one that does not exist, so as not to
+ * leak that it exists: the machine cannot tell the two apart, and calling it either would send people the wrong way.
+ * `no_access`: the credentials themselves were refused. `not_found`: git says there is no repository there at all.
+ */
+export const REPO_ACCESS_STATUSES = ["ok", "no_access", "no_access_or_missing", "not_found", "network", "error"] as const;
+export type RepoAccessStatus = (typeof REPO_ACCESS_STATUSES)[number];
+
+/** One project's check as a machine sends it at heartbeat; `detail` is git's last words with credentials taken out. */
+export interface RepoAccessReport {
+  project: string;
+  status: RepoAccessStatus;
+  checkedAt: string;
+  /** The remote's HEAD when reachable. */
+  head: string | null;
+  detail: string | null;
+}
+
+/** A member of a system as one machine that has its repo sees it; status null: an app too old to check. */
+export interface SystemMemberMachine {
+  machineId: string;
+  machine: string;
+  online: boolean;
+  status: RepoAccessStatus | null;
+  checkedAt: string | null;
+  head: string | null;
+  detail: string | null;
+}
+
+/**
+ * A system member's repo across the machines (systems.repoHealth). reachable: some machine reached it ·
+ * unreachable: every machine that checked failed · unchecked: machines have it but none checked yet ·
+ * no_machine: no machine has registered the repo, so nobody has ever cloned it.
+ */
+export interface SystemMemberHealth {
+  project: string;
+  state: "reachable" | "unreachable" | "unchecked" | "no_machine";
+  machines: SystemMemberMachine[];
 }
 
 /**
@@ -678,6 +746,60 @@ export interface ProjectDeleted {
   /** Table → rows deleted, tables that had none left out. */
   rows: Record<string, number>;
   files: { removed: number; failed: number };
+}
+
+/**
+ * Why a hub snapshot was made (ADM-backup-restore): at start, on the schedule, on request ("Backup ngay" or the CLI),
+ * or right before projects.delete took a project away. null: a snapshot from before the reason was written down.
+ */
+export type BackupReason = "start" | "scheduled" | "manual" | `delete:${string}`;
+
+/** One snapshot in HIVE_BACKUP_DIR (backups.list). */
+export interface BackupEntry {
+  name: string;
+  createdAt: string;
+  bytes: number;
+  reason: BackupReason | null;
+  /** Pinned snapshots are left out of the HIVE_BACKUP_KEEP rotation until `expiresAt`. */
+  pinned: boolean;
+  pinnedAt: string | null;
+  pinnedBy: string | null;
+  /** When the pin stops protecting it (HIVE_BACKUP_PIN_DAYS after pinnedAt); null: pinned for good, or not pinned. */
+  expiresAt: string | null;
+}
+
+/** The backup folder and its policy, as the Hub page shows it. */
+export interface BackupList {
+  dir: string;
+  /** Unpinned snapshots kept by the rotation. */
+  keep: number;
+  /** Days a pin protects a snapshot; 0 = until someone unpins it. */
+  pinDays: number;
+  /** Most bytes the pinned snapshots may take before another pin by hand is refused; 0 = no cap. */
+  pinMaxBytes: number;
+  pinnedBytes: number;
+  backups: BackupEntry[];
+}
+
+/** A project a snapshot holds (backups.projects), and whether the live hub has data under that name now. */
+export interface BackupProject {
+  project: string;
+  tasks: number;
+  docs: number;
+  memory: number;
+  runs: number;
+  /** The live hub has rows of it: restoring is refused, since a restore never merges. */
+  live: boolean;
+}
+
+/** What backups.restoreProject copied back from a snapshot. */
+export interface ProjectRestored {
+  project: string;
+  backup: string;
+  /** Table → rows copied back, tables that had none left out. */
+  rows: Record<string, number>;
+  /** Doc files the rows keep in the store: put back from the backup folder, or not found there. */
+  files: { restored: number; missing: number };
 }
 
 /**
@@ -1398,6 +1520,8 @@ export interface MachineRunnerSettings {
   maxParallel: number;
   mrEnabled: boolean;
   mrWhen: "after_review" | "after_success";
+  /** Absent on older desktop apps, which still accept the other runner settings. */
+  acceptHubRuns?: boolean;
 }
 export interface RunnerChange {
   settings: Partial<MachineRunnerSettings>;
@@ -1405,11 +1529,27 @@ export interface RunnerChange {
   requestedAt: string;
 }
 
+/**
+ * What a machine last reported for its system card (spec 72g). Missing measurements stay absent.
+ */
+export interface MachineSystem {
+  os: "macos" | "ubuntu" | "windows" | "linux";
+  osName: string;
+  hardware: string;
+  uptime?: string;
+  uptimeSeconds?: number;
+  cpu?: { percent: number; detail: string; cores?: number; load?: number };
+  ram?: { percent: number; detail: string; usedBytes?: number; totalBytes?: number };
+  disk?: { percent: number; detail: string; freeBytes?: number; totalBytes?: number };
+}
+
 /** A desktop runner as the hub last heard from it. */
 export interface Machine {
   /** Hub actor of the heartbeat: `runner.<machine>@<token>`. */
   id: string;
   machine: string;
+  /** null for a runner that has not reported an OS yet. */
+  platform?: TaskPlatform | null;
   version: string;
   lastSeen: string;
   /** Heard from in the last 2 minutes. */
@@ -1432,6 +1572,7 @@ export interface Machine {
   owner: string | null;
   /** Profile changes asked for on the web that the machine has not reported yet (roadmap 18d). */
   profileChanges: ProfileChange[];
+  system?: MachineSystem;
 }
 
 /**

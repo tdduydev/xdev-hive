@@ -46,6 +46,7 @@ export async function terminalFixture() {
   const cap = { protocol: 1, enabled: true, projects: ["demo"], platforms: ["linux"], auditReady: true, guiReady: true, osUser: "synthetic-os-user" };
   const beat = () => rpc("machines.heartbeat", { machine: "terminal-fixture", instance: "eeee0069", version: "0.146.2", projects: ["demo"], terminal: cap });
   app.post("/__terminal/opt-out", async (_req, res) => { cap.enabled = false; await beat(); res.json({ ok: true }); });
+  app.post("/__terminal/opt-in", async (_req, res) => { cap.enabled = true; await beat(); res.json({ ok: true }); });
   const admin = tokens.create("fixture-admin", "admin", created.user.id).token;
   await rpc("docs.save", { key: "project/demo/guide", title: "Fixture", content: "Synthetic terminal fixture", baseVersion: 0 }, admin);
   await rpc("tasks.create", { id: "TERM-1", project: "demo", title: "Terminal fixture task" }, admin);

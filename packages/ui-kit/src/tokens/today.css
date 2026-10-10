@@ -1,0 +1,15 @@
+/* Hôm nay (72c): values the design writes inline that no semantic token carries yet. Dark values are the design's. */
+:root,[data-theme]{
+--text-faint:#6B6677;--accent-amber:#B7791F;
+--today-row-selected-bg:rgba(123,97,255,.14);--today-row-selected-ring:inset 0 0 0 1px rgba(123,97,255,.45);
+--today-banner-bg:rgba(123,97,255,.1);--today-banner-ring:inset 0 0 0 1px rgba(123,97,255,.35);--today-banner-glow:0 0 24px rgba(123,97,255,.5);
+--today-kv-gap:rgba(35,28,55,.06);--today-rule:rgba(35,28,55,.06);--today-chip-hover:var(--glass-bg);
+--diff-add-bg:rgba(46,196,124,.1);--diff-del-bg:rgba(232,86,86,.1);--diff-add-fg:#137A48;--diff-del-fg:#B82F2F;--diff-ctx-fg:var(--text-secondary);
+--mark-ok:#137A48;--mark-bad:#B82F2F;--mark-skip:var(--text-muted);
+}
+[data-theme="dark"]{
+--text-faint:rgba(255,255,255,.43);--accent-amber:#F5B544;
+--today-kv-gap:rgba(255,255,255,.06);--today-rule:rgba(255,255,255,.06);
+--diff-add-fg:#8BE3B6;--diff-del-fg:#F2A0A0;--diff-ctx-fg:#BDBDC0;
+--mark-ok:#2EC47C;--mark-bad:#E85656;--mark-skip:#A9A9A9;
+}

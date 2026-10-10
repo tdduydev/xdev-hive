@@ -3,34 +3,32 @@
 // stdout is the MCP channel, so all logging goes to stderr.
 import os from "node:os";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { agentActorName, agentSource, configIssueText, HubBackend, readConfig, readRun, resolveBackend, type Actor } from "@xdev-hive/core/node";
+import { configIssueText, HubBackend, readConfig, resolveBackend } from "@xdev-hive/core/node";
 import { createHiveMcpServer } from "./server.ts";
 import { mcpHubBackend } from "#mcp/hub-backend.ts";
+import { stdioActor } from "#mcp/stdio-actor.ts";
 
 const { config, issues } = readConfig();
 for (const issue of issues) console.error(`[xdev-hive] config.json ${configIssueText(issue)}`);
 if (config.mode === "hub" && process.env.HIVE_RUN && !process.env.HIVE_RUN_TOKEN)
   throw new Error("A hub run requires its own credential.");
 // The runner's credential takes precedence over the machine credential in config.json.
+const mcpHub = config.mode === "hub" && !process.env.HIVE_RUN_TOKEN
+  // HIVE_SYSTEM: a CLI opened on a whole system (GROUP-cli); its tools take project on every call.
+  ? mcpHubBackend(config.hub, process.env.HIVE_PROJECT, process.env.HIVE_READONLY === "1", process.env.HIVE_PROJECT ? undefined : process.env.HIVE_SYSTEM)
+  : undefined;
 const backend = config.mode === "hub"
-  ? process.env.HIVE_RUN_TOKEN
-    ? new HubBackend(config.hub.url, process.env.HIVE_RUN_TOKEN)
-    : mcpHubBackend(config.hub, process.env.HIVE_PROJECT, process.env.HIVE_READONLY === "1")
+  ? mcpHub ?? new HubBackend(config.hub.url, process.env.HIVE_RUN_TOKEN!)
   : resolveBackend(config);
-const agent = (process.env.HIVE_AGENT ?? "agent").replace(/[^\w.-]/g, "").slice(0, 40) || "agent";
-const name = agentActorName(agent, config.mode, config.machine, os.userInfo().username);
-
-const source = agentSource(config.machine, process.env);
-// HIVE_RUN: set by the runner (installer.ts runMcpServers); on a hub it goes as x-hive-run, the audit log's run column.
-const run = readRun(process.env.HIVE_RUN);
-// On a hub, the hub decides the label and the account from the token; without one, this machine's user is the person.
-const local: Partial<Actor> = config.mode === "local" ? { agent, onBehalf: os.userInfo().username } : {};
-// HIVE_CHAT_REPLY: the app's leader chat in local mode (roadmap 48) writes that reply, so it gets the leader's
-// proposals instead of the board. On a hub the reply's token says so, never a variable.
-const chatReply = config.mode === "local" && /^[1-9]\d{0,15}$/.test(process.env.HIVE_CHAT_REPLY ?? "") ? Number(process.env.HIVE_CHAT_REPLY) : undefined;
 // HIVE_READONLY=1: set by the runner for profiles marked read-only.
 const readOnly = process.env.HIVE_READONLY === "1";
-const actor: Actor = { name, role: "agent", source, ...local, ...(run ? { run } : {}), ...(chatReply ? { chatReply } : {}) };
-const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly });
+const actor = stdioActor(config.mode, config.machine, os.userInfo().username, process.env);
+const server = createHiveMcpServer(backend, actor, { defaultProject: process.env.HIVE_PROJECT, readOnly, ...(process.env.HIVE_PROJECT || !process.env.HIVE_SYSTEM ? {} : { system: process.env.HIVE_SYSTEM }) });
 await server.connect(new StdioServerTransport());
-console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${name}`);
+console.error(`[xdev-hive] MCP ready (${config.mode} mode) as ${actor.name}`);
+// Not awaited: an unreachable hub must not hold up the agent's start. The tools explain the same thing on every call.
+if (mcpHub && process.env.HIVE_PROJECT) {
+  void mcpHub.check().then((closed) => {
+    if (closed) console.error(`[xdev-hive] WARNING: ${closed.message}`);
+  }, () => undefined);
+}

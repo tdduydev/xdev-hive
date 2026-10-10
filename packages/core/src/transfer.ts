@@ -156,7 +156,7 @@ export async function transferHive(from: TransferSide, to: TransferSide, opts: T
           : { result: "skipped", note: `id đã có ở ${to.label} với nội dung khác (${there.project}: ${there.title})` };
       }
       // What the task is goes with it (roadmap 54b); a source from before 54b has none, and the rules fill it there.
-      await dst("tasks.create", { id: t.id, project: t.project, title: t.title, ...(t.kind ? { kind: t.kind } : {}), ...(t.size ? { size: t.size } : {}), ...(t.risk ? { risk: t.risk } : {}) });
+      await dst("tasks.create", { id: t.id, project: t.project, title: t.title, platforms: t.platforms, ...(t.kind ? { kind: t.kind } : {}), ...(t.size ? { size: t.size } : {}), ...(t.risk ? { risk: t.risk } : {}) });
       added.push(t);
       const status = t.status === "doing" ? "todo" : t.status;
       const note = [t.note, t.status === "doing" ? `(Đang làm ở ${from.label} bởi ${t.owner ?? "?"} khi chuyển)` : ""].filter(Boolean).join("\n\n");

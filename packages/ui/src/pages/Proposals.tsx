@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Proposal } from "@xdev-hive/core";
+import { isCliActionProposalKey, isDestructive, type Proposal } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
 import { Button } from "@xdev-hive/ui/components/ui/button";
 import { Card, CardContent } from "@xdev-hive/ui/components/ui/card";
@@ -10,9 +10,9 @@ import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { Diff } from "#ui/components/Diff.tsx";
 import { Badge, Empty, ErrorNote, Notice, OwnerBadge, Page, PageHeader, STATUS_TONE } from "#ui/components/common.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { formatTime, hashParam, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT } from "#ui/i18n/index.tsx";
-import { runBulk, splitProposals } from "#ui/lib/bulk.ts";
+import { bulkSelectableProposals, runBulk, splitProposals } from "#ui/lib/bulk.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { knowledgeProposals } from "#ui/lib/knowledge.ts";
 import { docOwner, scopeLabel } from "#ui/lib/scope.ts";
@@ -34,11 +34,13 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
     [client, onlyPending],
   );
   // Shared-doc proposals show in every project's scope (see lib/scope.ts).
-  const proposals = list.data ? knowledgeProposals(list.data, scope, kind) : undefined;
+  // ?doc= narrows to one document's or skill's proposals (a skill's "N đề xuất" pill links here).
+  const only = kind ? hashParam("doc") : null;
+  const proposals = list.data ? knowledgeProposals(list.data, scope, kind).filter((p) => !only || p.docKey === only) : undefined;
   // Picks outside the view (another scope, decided meanwhile) simply drop out of what the bar acts on.
-  const selectable = (proposals ?? []).filter((p) => p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey)));
+  const selectable = bulkSelectableProposals(proposals ?? [], (p) => allow(docOwner(p.docKey), approvalOf(p.docKey)));
   const chosen = selectable.filter((p) => picked.has(p.id));
-  const label = (p: Proposal) => `#${p.id} ${p.docKey}`;
+  const label = (p: Proposal) => isCliActionProposalKey(p.docKey) ? t("proposals.operation", { id: p.id }) : `#${p.id} ${p.docKey}`;
   const finish = (text: string, trouble: boolean) => {
     toast(text, { tone: trouble ? "error" : "info" });
     setPicked(new Set());
@@ -70,7 +72,7 @@ export function ProposalsPage({ kind }: { kind?: "docs" | "skills" }) {
     <Page className="mobile-master-detail">
       <PageHeader
         title={t(kind ? "knowledge.pending" : "proposals.title")}
-        subtitle={t("proposals.subtitle")}
+        subtitle={t(kind ? "proposals.docSubtitle" : "proposals.subtitle")}
         actions={
           <ToggleGroup
             type="single"
@@ -148,14 +150,17 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
   const { client, bump } = useHive();
   const t = useT();
   const allow = useCan();
-  const [open, setOpen] = useState(p.status === "pending");
+  const operation = isCliActionProposalKey(p.docKey);
+  const [open, setOpen] = useState(p.status === "pending" && !operation);
+  const [reviewed, setReviewed] = useState(false);
   const [note, setNote] = useState("");
+  const method = operation ? (JSON.parse(p.content) as { method: string }).method : null;
   const current = useQuery(
-    () => (open ? client.call("docs.get", { key: p.docKey }) : Promise.resolve(undefined)),
+    () => (open && !operation ? client.call("docs.get", { key: p.docKey }) : Promise.resolve(undefined)),
     [client, p.docKey, open],
   );
   const action = useAction();
-  const stale = current.data !== undefined && (current.data?.version ?? 0) !== p.baseVersion;
+  const stale = !operation && current.data !== undefined && (current.data?.version ?? 0) !== p.baseVersion;
   const manage = p.status === "pending" && allow(docOwner(p.docKey), approvalOf(p.docKey));
   // A reviewer of docs sees why this one is not theirs to approve: it changes what agents read.
   const contextOnly = p.status === "pending" && !manage && approvalOf(p.docKey) === "contextEdit" && allow(docOwner(p.docKey), "docApprove");
@@ -175,24 +180,22 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
           <div className="flex flex-wrap items-start gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                {manage ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
+                {manage && !operation ? <Checkbox className="max-md:before:inset-[-13px]" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={t("bulk.pickItem", { id: p.id })} /> : null}
                 <Badge tone={STATUS_TONE[p.status]}>{t(`proposalStatus.${p.status}`)}</Badge>
                 <OwnerBadge owner={docOwner(p.docKey)} />
-                <span className="min-w-0 font-mono text-xs break-all">{p.docKey}</span>
-                <span className="text-xs text-muted-foreground">
-                  {t("proposals.basedOn", { id: p.id, version: p.baseVersion })}
-                </span>
+                <span className="min-w-0 font-mono text-xs break-all">{operation ? method : p.docKey}</span>
+                <span className="text-xs text-muted-foreground">{operation ? t("proposals.operation", { id: p.id }) : t("proposals.basedOn", { id: p.id, version: p.baseVersion })}</span>
               </div>
               <p className="font-semibold break-words">{p.reason}</p>
               <div className="text-xs text-muted-foreground">
                 {p.author} · {formatTime(p.createdAt)}
                 {sourceText(p.source)}
-                {p.reviewer && p.status !== "pending" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
+                {p.reviewer && p.status !== "pending" && p.status !== "executing" ? ` · ${t(`proposals.decided.${p.status}`, { who: p.reviewer, time: formatTime(p.decidedAt) })}` : ""}
               </div>
               {p.reviewNote ? <Notice tone="info">{p.reviewNote}</Notice> : null}
             </div>
-            <Button className="max-md:min-h-11" variant="ghost" onClick={() => setOpen(!open)} aria-expanded={open}>
-              {open ? t("proposals.hideChanges") : t("proposals.showChanges")}
+            <Button className="max-md:min-h-11" variant="ghost" onClick={() => { if (operation && !open) setReviewed(true); setOpen(!open); }} aria-expanded={open}>
+              {operation ? (open ? t("proposals.hideOperation") : t("proposals.showOperation")) : (open ? t("proposals.hideChanges") : t("proposals.showChanges"))}
             </Button>
           </div>
           {open ? (
@@ -203,7 +206,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
                 </Notice>
               ) : null}
               <ErrorNote error={current.error} />
-              {current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
+              {operation ? <>{method && isDestructive(method) ? <Notice tone="error" data-destructive-operation>{t("proposals.destructiveApproval", { method })}</Notice> : null}<Notice tone="warn">{t("proposals.operationApproval")}</Notice><pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs text-foreground">{p.content}</pre></> : current.loading ? <Empty>{t("common.loading")}</Empty> : <Diff before={current.data?.content ?? ""} after={p.content} />}
             </>
           ) : null}
           {contextOnly ? <p className="m-0 text-xs text-fg-muted">{t("proposals.needsContext")}</p> : null}
@@ -224,7 +227,7 @@ function ProposalCard({ proposal: p, onChanged, picked, onPick }: { proposal: Pr
               >
                 {t("proposals.reject")}
               </Button>
-              <Button className="max-md:min-h-11" onClick={() => decide("approve")} disabled={action.busy}>
+              <Button className="max-md:min-h-11" onClick={() => decide("approve")} disabled={action.busy || (operation && !reviewed)}>
                 {t("proposals.approve")}
               </Button>
             </div>

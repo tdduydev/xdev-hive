@@ -247,3 +247,14 @@ describe("chat helpers", () => {
     assert.doesNotMatch(html, /<img|evil\.test/, "no image from wherever the text points");
   });
 });
+
+describe("chat action labels (72h)", () => {
+  it("has a label in both languages for every kind the card names", async () => {
+    const { ACTION_KIND_KEY } = await import("#ui/lib/chat.ts");
+    const { vi } = await import("#ui/i18n/locales/vi.ts");
+    const { en } = await import("#ui/i18n/locales/en.ts");
+    for (const locale of [vi, en] as unknown as { chat: { kindLabel: Record<string, string> } }[]) {
+      for (const key of [...Object.values(ACTION_KIND_KEY), "install"]) assert.ok(locale.chat.kindLabel[key], key);
+    }
+  });
+});

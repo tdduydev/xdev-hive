@@ -94,3 +94,28 @@ describe("scope picker: systems first", () => {
     assert.deepEqual(rows("", [], ["all", "project:payment", "project:gone"]).filter((row) => row.section === "recent").map((row) => row.label), ["ban-hang › payment"]);
   });
 });
+
+describe("a system linked to its group (GROUP-init-sync)", () => {
+  const m = (project: string, path: string) => ({ project, pathWithNamespace: `ehospital-ai/${path}`, sshUrl: `git@gitlab.x:ehospital-ai/${path}.git`, httpUrl: `https://gitlab.x/ehospital-ai/${path}.git`, defaultBranch: "main", state: "active" as const });
+  const ehospital: HiveSystem = {
+    ...system("ehospital-ai", ["his-portal", "his-service", "infa", "keycloak-theme"]),
+    source: { forge: "gitlab", url: "https://gitlab.x", groupPath: "ehospital-ai", syncedAt: null, members: [m("his-service", "his/backend/his-service"), m("his-portal", "his/frontend/his-portal"), m("infa", "deploy/infa"), m("keycloak-theme", "keycloak-theme")] },
+  };
+
+  it("lists the services in the group's tree, each with its subgroups", () => {
+    const [root] = systemTree(ehospital.projects, [ehospital]);
+    assert.deepEqual(root!.services, ["keycloak-theme", "infa", "his-service", "his-portal"]);
+    const rows = scopeRows(ehospital.projects, [ehospital], "", [], new Set(["ehospital-ai"]));
+    assert.deepEqual(rows.filter((r) => r.depth === 1).map((r) => [r.label, r.folder?.join("/") ?? ""]), [
+      ["keycloak-theme", ""],
+      ["infa", "deploy"],
+      ["his-service", "his/backend"],
+      ["his-portal", "his/frontend"],
+    ]);
+  });
+
+  it("a system without a source keeps its order and has no folders", () => {
+    const [root] = systemTree(["demo", "thanh-toan"], [systems[0]!]);
+    assert.deepEqual([root!.services, root!.folders], [["thanh-toan", "demo"], undefined]);
+  });
+});

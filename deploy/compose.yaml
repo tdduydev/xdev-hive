@@ -23,6 +23,8 @@ services:
       HIVE_MEMORY_STALE_DAYS: ${HIVE_MEMORY_STALE_DAYS:-90}
       HIVE_BACKUP_HOURS: ${HIVE_BACKUP_HOURS:-24}
       HIVE_BACKUP_KEEP: ${HIVE_BACKUP_KEEP:-7}
+      HIVE_BACKUP_PIN_DAYS: ${HIVE_BACKUP_PIN_DAYS:-180}
+      HIVE_BACKUP_PIN_MAX_MB: ${HIVE_BACKUP_PIN_MAX_MB:-20480}
       # The commit the hub was built from, for its Hub page (deploy/update.sh sets it).
       HIVE_COMMIT: ${HIVE_COMMIT:-}
       HIVE_EMBED_URL: ${HIVE_EMBED_URL:-}

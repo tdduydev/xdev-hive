@@ -1,0 +1,68 @@
+/* Quản trị operations tabs (R-72l). Numbers are the inline styles of docs/design/hive-2026-10/xDev Hive.dc.html lines 1386–1435. */
+@layer components{
+:root,[data-theme]{--cx-tone-ok:var(--status-success-solid);--cx-tone-warn:var(--status-warning-solid);--cx-tone-bad:var(--status-danger-solid);--cx-tone-run:var(--accent-violet);--cx-tone-info:var(--status-info-solid);--cx-tone-neutral:var(--text-faint)}
+.cx-ops-dot{display:inline-block;flex-shrink:0;width:6px;height:6px;border-radius:50%;background:var(--dot,var(--cx-tone-neutral))}
+.cx-ops-dot-lg{width:8px;height:8px}
+.cx-ops-dot-glow{box-shadow:0 0 8px var(--dot,var(--cx-tone-neutral))}
+
+.cx-ops-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.cx-ops-stat{display:flex;flex-direction:column;gap:6px;min-width:0;padding:16px 18px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass);color:inherit;text-decoration:none}
+.cx-ops-stat[data-link]:hover{box-shadow:var(--ring-glass-strong)}
+.cx-ops-stat-label{display:flex;align-items:center;gap:8px;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-stat strong{font:700 28px/34px var(--font-sans);letter-spacing:-.4px;color:var(--text-strong);font-variant-numeric:tabular-nums}
+.cx-ops-stat-note{font:var(--design-caption);color:var(--text-secondary);overflow-wrap:anywhere}
+
+.cx-ops-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px;margin-bottom:16px}
+.cx-ops-card{display:flex;flex-direction:column;gap:12px;min-width:0;padding:18px 20px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass)}
+.cx-ops-card[data-dim]{opacity:.6}
+.cx-ops-card-head{display:flex;align-items:center;gap:8px;min-width:0}
+.cx-ops-card-title{flex:1;min-width:0;font:600 14px/20px var(--font-sans);color:var(--text-strong);overflow-wrap:anywhere}
+.cx-ops-card-side{font:var(--design-caption);color:var(--text-muted);text-align:right}
+.cx-ops-card-body{font:var(--design-body-sm);color:var(--text-secondary);text-wrap:pretty;overflow-wrap:anywhere}
+.cx-ops-bar{height:6px;border-radius:999px;background:var(--glass-bg);overflow:hidden}
+.cx-ops-bar>div{height:100%;border-radius:999px;background:var(--dot,var(--cx-tone-ok))}
+.cx-ops-card-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* A tab body: blocks space themselves, so their own bottom margin steps aside. */
+.cx-ops-stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.cx-ops-stack>*{margin-bottom:0}
+
+/* A section that holds a form or a free block: same glass as the cards. */
+.cx-ops-panel{display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:16px;padding:18px 20px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass)}
+.cx-ops-panel h2,.cx-ops-h{margin:0;font:600 14px/20px var(--font-sans);color:var(--text-strong)}
+.cx-ops-hint{font:var(--design-caption);color:var(--text-muted);text-wrap:pretty}
+.cx-ops-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px}
+.cx-ops-field{display:flex;flex-direction:column;gap:4px;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+
+.cx-ops-table{margin-bottom:16px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass);overflow-x:auto;max-width:100%}
+.cx-ops-table-head,.cx-ops-table-row{display:grid;gap:14px;align-items:center;padding:0 20px}
+.cx-ops-table-head{height:44px;font:var(--design-micro);letter-spacing:.5px;text-transform:uppercase;color:var(--text-faint);box-shadow:inset 0 -1px 0 var(--border-default)}
+.cx-ops-table-row{min-height:54px;padding-block:8px;box-shadow:inset 0 -1px 0 var(--border-subtle)}
+.cx-ops-table-row:hover{background:var(--glass-bg)}
+.cx-ops-cell{display:flex;align-items:center;gap:8px;min-width:0}
+.cx-ops-cell-text{display:flex;flex-direction:column;min-width:0}
+.cx-ops-cell-text>span{font:var(--design-body-sm);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cx-ops-cell-text>span[data-strong]{font-weight:600;color:var(--text-strong)}
+.cx-ops-cell-text>span[data-mono]{font-family:var(--font-mono);font-size:12px}
+.cx-ops-cell-text>small{font:500 11px/15px var(--font-sans);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cx-ops-row-actions{display:flex;justify-content:flex-end;gap:6px}
+.cx-ops-sort{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;gap:4px;max-width:100%;cursor:pointer;text-transform:inherit;letter-spacing:inherit}
+.cx-ops-sort:hover,.cx-ops-sort:focus-visible{color:var(--text-strong)}
+.cx-ops-sort:focus-visible{outline:2px solid var(--focus-ring,currentColor);outline-offset:2px;border-radius:4px}
+.cx-ops-sort[data-sort=asc]::after{content:"↑"}
+.cx-ops-sort[data-sort=desc]::after{content:"↓"}
+.cx-ops-count{margin-left:auto;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin:-4px 0 16px;font:var(--design-caption);color:var(--text-muted)}
+.cx-ops-pager>span{margin-right:auto}
+.cx-ops-table-empty{padding:18px 20px;font:var(--design-body-sm);color:var(--text-muted)}
+
+/* The DataTable that keeps search, filters, sorting and paging (audit, machines on Phiên bản) sits in the same glass. */
+.cx-ops-data{margin-bottom:16px;padding:12px;border-radius:20px;background:var(--surface-1);box-shadow:var(--ring-glass);min-width:0}
+
+@media(max-width:767px){
+.cx-ops-card-actions button,.cx-ops-row-actions button,.cx-ops-sort,.cx-ops-pager button,.cx-ops-toolbar button,.cx-ops-form button,.cx-ops-panel button{min-height:44px}
+.cx-ops-stat[data-link],.cx-ops-toolbar a{min-height:44px}
+.cx-ops-table-head,.cx-ops-table-row{padding-inline:16px}
+}
+}

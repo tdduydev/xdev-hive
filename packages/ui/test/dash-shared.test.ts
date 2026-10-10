@@ -54,3 +54,56 @@ describe("dashboard shared rules", () => {
     assert.match(html, /data-attention="offline"[^>]*>[\s\S]*Máy đang offline[\s\S]*<button type="button" disabled="">Đang kiểm tra<\/button>/);
   });
 });
+
+describe("cosmic primitives", () => {
+  it("renders theme variants without project metrics and labels native controls", async () => {
+    const { DashboardComponentsFixture } = await import("#ui/pages/DashboardComponentsFixture.tsx");
+    const html = renderToStaticMarkup(createElement(DashboardComponentsFixture));
+    assert.match(html, /data-cosmic-fixture="dark"/);
+    assert.match(html, /data-cosmic-fixture="light"/);
+    assert.equal((html.match(/data-variant="blue"/g) ?? []).length, 9);
+    assert.equal((html.match(/role="switch"/g) ?? []).length, 4);
+    assert.match(html, /aria-pressed="true"/);
+    assert.match(html, /không phải số liệu dự án/);
+  });
+  it("keeps primary defaults, link sizing and caller overrides", async () => {
+    const { Button } = await import("#ui/components/ui/button.tsx");
+    const { Input } = await import("#ui/components/ui/input.tsx");
+    const { Card } = await import("#ui/components/ui/card.tsx");
+    assert.match(renderToStaticMarkup(createElement(Button, null, "Save")), /data-variant="default"/);
+    const link = renderToStaticMarkup(createElement(Button, { variant: "link" }, "Open"));
+    assert.match(link, /h-auto/);
+    assert.doesNotMatch(link, /h-8/);
+    const props = { className: "h-6 rounded-md px-1" };
+    for (const element of [createElement(Button, props), createElement(Input, props), createElement(Card, props)]) {
+      const html = renderToStaticMarkup(element);
+      assert.match(html, /h-6 rounded-md px-1/);
+      assert.doesNotMatch(html, /rounded-\[(?:12|24|32)px\]/);
+    }
+  });
+  it("preserves disabled selectors and selected filter semantics", async () => {
+    const { SegmentedTabs, Switch } = await import("#ui/components/ui/primitives.tsx");
+    const html = renderToStaticMarkup(createElement(SegmentedTabs, {
+      label: "Status", items: [{ value: "all", label: "All" }, { value: "done", label: "Done", disabled: true }], value: "all", onChange: () => {},
+    }));
+    assert.match(html, /aria-label="Status"/);
+    assert.match(html, /aria-pressed="true"/);
+    assert.match(html, /disabled="" aria-pressed="false"/);
+    assert.match(renderToStaticMarkup(createElement(Switch, { disabled: true, defaultChecked: true }, "Notify")), /role="switch" checked=""/);
+  });
+  it("keeps a slotted glass link as one decorated anchor", async () => {
+    const { Button } = await import("#ui/components/ui/button.tsx");
+    const html = renderToStaticMarkup(createElement(Button, { variant: "glass", asChild: true }, createElement("a", { href: "#/tasks" }, "Open")));
+    assert.equal((html.match(/<a\b/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /<button/);
+    assert.match(html, /href="#\/tasks"/);
+    assert.match(html, /aria-hidden="true" class="cosmic-glass-overlay"/);
+    assert.match(html, /class="cosmic-button-content">Open<\/span>/);
+  });
+  it("renders a slotted badge as one anchor without the dot", async () => {
+    const { Badge } = await import("#ui/components/ui/badge.tsx");
+    const html = renderToStaticMarkup(createElement(Badge, { asChild: true }, createElement("a", { href: "#/docs" }, "2 links")));
+    assert.equal((html.match(/<a\b/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /cosmic-badge-dot/);
+  });
+});

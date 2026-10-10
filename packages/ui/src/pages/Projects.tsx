@@ -4,11 +4,12 @@ import { ChevronRight } from "lucide-react";
 import {
   PROJECT_NAME,
   TRANSFER_RESULTS,
+  memberPath,
+  mergeSource,
   suggestProjectKey,
   type DesktopProject,
   type DesktopSettings,
   type FileAction,
-  type GitLabCheck,
   type GitLabImportCandidate,
   type GitLabImportResult,
   type MrSettings,
@@ -28,6 +29,8 @@ import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
 import { Badge, Empty, ErrorNote, Notice, Page, PageHeader, StatusDot } from "#ui/components/common.tsx";
 import { OpenCli } from "#ui/components/OpenCli.tsx";
+import { canSetUpGroups, SystemGroupPanel } from "#ui/components/SystemGroup.tsx";
+import { ForgeCard, forgeConnected } from "#ui/components/ForgeConnections.tsx";
 import { formatTime, useAction, useHive, usePoll, useQuery } from "#ui/hooks.ts";
 import { rich, useT } from "#ui/i18n/index.tsx";
 import { hostOf } from "#ui/shell/connection.tsx";
@@ -63,8 +66,8 @@ export function ProjectsPage() {
         <>
           <ConnectionCard settings={settings.data} onSaved={settings.reload} />
           <AdvancedCard settings={settings.data} onSaved={settings.reload} />
+          <ForgeCard settings={settings.data} onSaved={settings.reload} />
           <GitLabCard settings={settings.data} onSaved={settings.reload} />
-          <GitHubCard settings={settings.data} onSaved={settings.reload} />
         </>
       ) : null}
     </Page>
@@ -577,11 +580,8 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
   const { client } = useHive();
   const t = useT();
   const g = settings.gitlab;
-  const [url, setUrl] = useState(g.url);
-  const [token, setToken] = useState("");
   const [mr, setMr] = useState<MrSettings>(g.mr);
   const [labels, setLabels] = useState(g.mr.labels.join(", "));
-  const [check, setCheck] = useState<GitLabCheck | null>(null);
   const [saved, setSaved] = useState(false);
   const action = useAction();
   const set = <K extends keyof MrSettings>(k: K, v: MrSettings[K]) => {
@@ -592,35 +592,22 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
   const save = () =>
     action.run(async () => {
       await client.desktop!.updateSettings({
-        gitlab: { url, token, mr: { ...mr, labels: labels.split(",").map((l) => l.trim()).filter(Boolean) } },
+        gitlab: { mr: { ...mr, labels: labels.split(",").map((l) => l.trim()).filter(Boolean) } },
       });
-      setToken("");
       setSaved(true);
       onSaved();
     });
 
   return (
-    <FoldCard name="gitlab" title="GitLab merge request" badge={<SetUpBadge on={Boolean(g.url && g.hasToken)} />}>
+    <FoldCard name="gitlab" title={t("forges.mrTitle")} badge={<SetUpBadge on={forgeConnected(settings) && g.mr.enabled} />}>
         <CardDescription className="break-words">
           {rich(t("projects.gitlabHint"), {
             branch: <code className={CODE}>ai/&lt;task&gt;</code>,
             merge: <code className={CODE}>/merge</code>,
           })}
         </CardDescription>
-        <div className={FORM_GRID}>
-          <Label htmlFor="gl-url">{t("projects.gitlabUrl")}</Label>
-          <Input id="gl-url" className="font-mono" placeholder="https://gitlab.example.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
-          <Label htmlFor="gl-token">Access token</Label>
-          <Input
-            id="gl-token"
-            className="font-mono"
-            type="password"
-            autoComplete="off"
-            placeholder={g.hasToken ? t("projects.savedKeep") : "glpat-… (scope api, write_repository)"}
-            value={token}
-            onChange={(e) => (setSaved(false), setToken(e.target.value))}
-          />
-        </div>
+        <p className="m-0 text-sm break-words text-muted-foreground">{t("projects.githubHint")}</p>
+        {forgeConnected(settings) ? null : <Notice tone="warn">{t("forges.mrNeedsConnection")}</Notice>}
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={mr.enabled} onCheckedChange={(v) => set("enabled", v === true)} />
           {t("projects.autoMr")}
@@ -696,84 +683,13 @@ export function GitLabCard({ settings, onSaved }: { settings: DesktopSettings; o
           <Button onClick={() => void save()} disabled={action.busy}>
             {t("projects.save")}
           </Button>
-          <Button
-            variant="outline"
-            disabled={action.busy || (!g.hasToken && !token)}
-            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitLab()))}
-          >
-            {t("projects.checkConnection")}
-          </Button>
           {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
         </div>
-        {check ? (
-          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
-            {check.message}
-          </Notice>
-        ) : null}
         <ErrorNote error={action.error} />
     </FoldCard>
   );
 }
 
-function GitHubCard({ settings, onSaved }: { settings: DesktopSettings; onSaved: () => void }) {
-  const { client } = useHive();
-  const t = useT();
-  const g = settings.github;
-  const [url, setUrl] = useState(g.url);
-  const [token, setToken] = useState("");
-  const [check, setCheck] = useState<GitLabCheck | null>(null);
-  const [saved, setSaved] = useState(false);
-  const action = useAction();
-
-  return (
-    <FoldCard name="github" title="GitHub pull request" badge={<SetUpBadge on={g.hasToken} />}>
-        <CardDescription className="break-words">{t("projects.githubHint")}</CardDescription>
-        <div className={FORM_GRID}>
-          <Label htmlFor="gh-url">{t("projects.githubUrl")}</Label>
-          <Input id="gh-url" className="font-mono" placeholder="https://github.com" value={url} onChange={(e) => (setSaved(false), setUrl(e.target.value))} />
-          <Label htmlFor="gh-token">Access token</Label>
-          <Input
-            id="gh-token"
-            className="font-mono"
-            type="password"
-            autoComplete="off"
-            placeholder={g.hasToken ? t("projects.savedKeep") : "github_pat_… (fine-grained)"}
-            value={token}
-            onChange={(e) => (setSaved(false), setToken(e.target.value))}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={() =>
-              void action.run(async () => {
-                await client.desktop!.updateSettings({ github: { url, token } });
-                setToken("");
-                setSaved(true);
-                onSaved();
-              })
-            }
-            disabled={action.busy}
-          >
-            {t("projects.save")}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={action.busy || (!g.hasToken && !token)}
-            onClick={() => void action.run(async () => setCheck(await client.desktop!.checkGitHub()))}
-          >
-            {t("projects.checkConnection")}
-          </Button>
-          {saved ? <span className="text-sm text-success">{t("agents.saved")}</span> : null}
-        </div>
-        {check ? (
-          <Notice tone={check.ok ? "ok" : "error"} className="whitespace-pre-wrap">
-            {check.message}
-          </Notice>
-        ) : null}
-        <ErrorNote error={action.error} />
-    </FoldCard>
-  );
-}
 
 function ProjectGitLab({ project, onSaved }: { project: DesktopProject; onSaved: () => void }) {
   const { client } = useHive();
@@ -904,7 +820,8 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
   /** What a folder holds, as soon as it is picked or added: the suggestion comes before the error does. */
   const look = async (folder: string) => {
     const scan = await desktop.scanRepos(folder);
-    setFound(!scan.isGit && scan.repos.length ? scan : null);
+    // A repository holding other clones too: most likely a group's folder (GROUP-init-sync), offered the same way.
+    setFound(scan.repos.length ? scan : null);
     return scan;
   };
 
@@ -1084,6 +1001,19 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
               await look(found.root);
             }}
             onClose={() => setFound(null)}
+            onAddAnyway={
+              found.isGit
+                ? () =>
+                    void action.run(async () => {
+                      await desktop.addProject({ name, repo: found.root });
+                      setFound(null);
+                      setName("");
+                      setRepo("");
+                      onChanged();
+                    })
+                : undefined
+            }
+            canAddAnyway={nameValid && !action.busy}
           />
         ) : null}
         {result ? (
@@ -1137,8 +1067,11 @@ export function ProjectsCard({ settings, onChanged }: { settings: DesktopSetting
  * below it as a project of its own, with the key and the target branch it would get, then all of them in one system
  * named after the folder. Repositories the app already has are listed but not offered again.
  */
-function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => Promise<void>; onClose: () => void }) {
+function SubRepos({ scan, onAdded, onClose, onAddAnyway, canAddAnyway = false }: { scan: RepoScan; onAdded: () => Promise<void>; onClose: () => void; onAddAnyway?: () => void; canAddAnyway?: boolean }) {
   const { client, bump, systems } = useHive();
+  // The group of a system with a source this folder looks like: by its name, or a repo where the group's tree puts one.
+  const group = systems.find((s) => s.source && (s.name === scan.system || s.source.members.some((m) => scan.repos.some((r) => r.rel.toLowerCase() === memberPath(s.source!.groupPath, m.pathWithNamespace).toLowerCase()))));
+  const [initOpen, setInitOpen] = useState(false);
   const t = useT();
   const desktop = client.desktop!;
   const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(scan.repos.filter((r) => r.state === "new").map((r) => [r.dir, true])));
@@ -1162,6 +1095,29 @@ function SubRepos({ scan, onAdded, onClose }: { scan: RepoScan; onAdded: () => P
         </Button>
       </div>
       <p className="m-0 text-xs break-words text-muted-foreground">{t("projects.subReposHint", { path: scan.root })}</p>
+      {scan.isGit ? (
+        <Notice tone="warn" data-repo-holds-repos>
+          {t("systemGroup.repoHoldsRepos", { count: scan.repos.length })}
+          {onAddAnyway ? (
+            <div className="mt-2">
+              <Button size="sm" variant="ghost" data-add-anyway disabled={!canAddAnyway} onClick={onAddAnyway}>
+                {t("systemGroup.addAnyway")}
+              </Button>
+            </div>
+          ) : null}
+        </Notice>
+      ) : null}
+      {group && canSetUpGroups(desktop) ? (
+        <Notice tone="info" data-found-group={group.name}>
+          <span className="font-medium">{t("systemGroup.foundGroup", { system: group.name })}</span> {t("systemGroup.foundGroupHint")}
+          <div className="mt-2">
+            <Button size="sm" data-found-group-init={group.name} aria-expanded={initOpen} onClick={() => setInitOpen(!initOpen)}>
+              {t("systemGroup.initOnMachine")}
+            </Button>
+          </div>
+        </Notice>
+      ) : null}
+      {group && initOpen ? <SystemGroupPanel system={group} root={scan.root} onChanged={() => void onAdded()} /> : null}
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-xs text-muted-foreground">
@@ -1273,16 +1229,22 @@ const parentDir = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$
 const IMPORT_TONE: Record<GitLabImportCandidate["state"], string> = { added: "neutral", folder: "info", conflict: "danger", new: "ok" };
 
 /**
- * A whole GitLab group at once (roadmap 19a): the repositories of the group and its subgroups, each with the project
- * key and folder it would get; the chosen ones are cloned (or their folder used) and added, with their GitLab path.
+ * A whole GitLab group at once (roadmap 19a), or a GitHub organization/user (74b): the repositories of the group and
+ * its subgroups, each with the project key and folder it would get; the chosen ones are cloned (or their folder used)
+ * and added, with their GitLab path or GitHub owner/repo.
  */
-export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSettings; onChanged: () => void }) {
+export function GitLabImportCard({ settings, onChanged, forge = "gitlab" }: { settings: DesktopSettings; onChanged: () => void; forge?: "gitlab" | "github" }) {
   const { client, bump, systems } = useHive();
   const t = useT();
   const desktop = client.desktop!;
+  const gh = forge === "github";
+  // GitLab keeps its ids (the smoke clicks them); the GitHub card beside it needs ids of its own.
+  const sfx = gh ? "-github" : "";
+  const list = (owner: string, baseDir: string) => (gh ? desktop.githubOwner({ owner, baseDir }) : desktop.gitlabGroup({ group: owner, baseDir }));
+  const field = gh ? "githubRepo" : "gitlabProject";
   // Where the projects so far are: their group and the folder they sit in, most likely where the rest go too.
-  const first = settings.projects.find((p) => p.gitlabProject?.includes("/"));
-  const [group, setGroup] = useState(first ? first.gitlabProject!.split("/").slice(0, -1).join("/") : "");
+  const first = settings.projects.find((p) => p[field]?.includes("/"));
+  const [group, setGroup] = useState(first ? first[field]!.split("/").slice(0, -1).join("/") : "");
   const [baseDir, setBaseDir] = useState(first ? parentDir(first.repo) : "~/Work");
   const [protocol, setProtocol] = useState<"ssh" | "https">("ssh");
   // The group's projects as one system (roadmap 19b), named after the group unless changed.
@@ -1303,8 +1265,8 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("projects.importTitle")}</CardTitle>
-        <CardDescription>{t("projects.importHint")}</CardDescription>
+        <CardTitle>{t(gh ? "projects.importGithubTitle" : "projects.importTitle")}</CardTitle>
+        <CardDescription>{t(gh ? "projects.importGithubHint" : "projects.importHint")}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <form
@@ -1312,7 +1274,7 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
           onSubmit={(e) => {
             e.preventDefault();
             void listing.run(async () => {
-              const candidates = await desktop.gitlabGroup({ group, baseDir });
+              const candidates = await list(group, baseDir);
               setListed({ group, candidates });
               setPicked(Object.fromEntries(candidates.filter((c) => c.state !== "added" && c.state !== "conflict").map((c) => [c.repo.pathWithNamespace, true])));
               setKeys({});
@@ -1321,13 +1283,13 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
           }}
         >
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-group">{t("projects.importGroup")}</Label>
-            <Input id="import-group" className="font-mono" placeholder="company/team" value={group} onChange={(e) => setGroup(e.target.value)} />
+            <Label htmlFor={`import-group${sfx}`}>{t(gh ? "projects.importOwner" : "projects.importGroup")}</Label>
+            <Input id={`import-group${sfx}`} className="font-mono" placeholder={gh ? "my-company" : "company/team"} value={group} onChange={(e) => setGroup(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-base">{t("projects.importBase")}</Label>
+            <Label htmlFor={`import-base${sfx}`}>{t("projects.importBase")}</Label>
             <div className="flex gap-1">
-              <Input id="import-base" className="min-w-0 font-mono" value={baseDir} onChange={(e) => setBaseDir(e.target.value)} />
+              <Input id={`import-base${sfx}`} className="min-w-0 font-mono" value={baseDir} onChange={(e) => setBaseDir(e.target.value)} />
               <Button
                 type="button"
                 variant="outline"
@@ -1343,18 +1305,18 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="import-protocol">{t("projects.importProtocol")}</Label>
-            <NativeSelect id="import-protocol" value={protocol} onChange={(e) => setProtocol(e.target.value as "ssh" | "https")}>
+            <Label htmlFor={`import-protocol${sfx}`}>{t("projects.importProtocol")}</Label>
+            <NativeSelect id={`import-protocol${sfx}`} value={protocol} onChange={(e) => setProtocol(e.target.value as "ssh" | "https")}>
               <NativeSelectOption value="ssh">SSH</NativeSelectOption>
               <NativeSelectOption value="https">HTTPS</NativeSelectOption>
             </NativeSelect>
           </div>
-          <Button id="import-list" type="submit" disabled={!group.trim() || !baseDir.trim() || listing.busy}>
+          <Button id={`import-list${sfx}`} type="submit" disabled={!group.trim() || !baseDir.trim() || listing.busy}>
             {t("projects.importList")}
           </Button>
         </form>
         <ErrorNote error={listing.error} />
-        {listed && !listed.candidates.length ? <Empty>{t("projects.importNone", { group: listed.group })}</Empty> : null}
+        {listed && !listed.candidates.length ? <Empty>{t(gh ? "projects.importGithubNone" : "projects.importNone", { group: listed.group })}</Empty> : null}
         {listed?.candidates.length ? (
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
@@ -1414,32 +1376,36 @@ export function GitLabImportCard({ settings, onChanged }: { settings: DesktopSet
               disabled={!chosen.length || bad.length > 0 || dupes.size > 0 || importing.busy}
               onClick={() =>
                 void importing.run(async () => {
-                  const out = await desktop.importGitlab({
-                    group: listed.group,
-                    protocol,
-                    items: chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir })),
-                  });
+                  const items = chosen.map((c) => ({ key: keyOf(c), pathWithNamespace: c.repo.pathWithNamespace, dir: c.dir }));
+                  const out = gh ? await desktop.importGithub({ owner: listed.group, protocol, items }) : await desktop.importGitlab({ group: listed.group, protocol, items });
                   setResults(out.results);
                   const joined = [
                     ...out.results.filter((r) => r.ok).map((r) => r.key),
                     ...listed.candidates.filter((c) => c.state === "added").map((c) => c.key),
                   ];
                   if (toSystem && joined.length && PROJECT_NAME.test(system)) {
-                    const before = systems.find((s) => s.name === system)?.projects ?? [];
-                    await client.call("systems.save", { name: system, projects: [...new Set([...before, ...joined])] });
+                    const prev = systems.find((s) => s.name === system);
+                    // The group behind the system (GROUP-init-sync): what another machine needs to set it up the same way.
+                    const keyOfRepo = (c: GitLabImportCandidate) => (c.state === "added" ? c.key : out.results.find((r) => r.ok && r.pathWithNamespace === c.repo.pathWithNamespace)?.key);
+                    const members = listed.candidates.flatMap((c) => {
+                      const project = keyOfRepo(c);
+                      return project ? [{ project, pathWithNamespace: c.repo.pathWithNamespace, sshUrl: c.repo.sshUrl, httpUrl: c.repo.httpUrl, defaultBranch: c.repo.defaultBranch }] : [];
+                    });
+                    const source = mergeSource(prev?.source, { forge, url: gh ? settings.github.url : settings.gitlab.url, groupPath: listed.group }, members);
+                    await client.call("systems.save", { name: system, projects: [...new Set([...(prev?.projects ?? []), ...joined])], ...(source ? { source } : {}) });
                   }
                   bump();
                   onChanged();
                   // What was added is listed as added now.
-                  setListed({ group: listed.group, candidates: await desktop.gitlabGroup({ group: listed.group, baseDir }) });
+                  setListed({ group: listed.group, candidates: await list(listed.group, baseDir) });
                 })
               }
             >
               {importing.busy ? t("projects.importRunning") : t("projects.importRun", { count: chosen.length })}
             </Button>
             <div className="flex items-center gap-2">
-              <Checkbox id="import-to-system" checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
-              <Label htmlFor="import-to-system" className="font-normal">
+              <Checkbox id={`import-to-system${sfx}`} checked={toSystem} onCheckedChange={(v) => setToSystem(v === true)} />
+              <Label htmlFor={`import-to-system${sfx}`} className="font-normal">
                 {t("projects.importToSystem")}
               </Label>
               <Input

@@ -9,16 +9,20 @@ import { Checkbox } from "@xdev-hive/ui/components/ui/checkbox";
 import { Input } from "@xdev-hive/ui/components/ui/input";
 import { Label } from "@xdev-hive/ui/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/components/ui/native-select";
+import { Tag } from "#ui/components/ui/primitives.tsx";
 import { Textarea } from "@xdev-hive/ui/components/ui/textarea";
 import { BulkBar, bulkSummary } from "#ui/components/BulkBar.tsx";
 import { ErrorNote, Notice } from "#ui/components/common.tsx";
+import { DetailDialog } from "#ui/components/DetailDialog.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
 import { HiddenChars } from "#ui/components/HiddenChars.tsx";
-import { Chip, DetailBody, DetailFooter, DetailHeader, FilterChips, KvRows, ListItem, ListPane, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
+import { MemoryCleanupProposals } from "#ui/components/MemoryCleanup.tsx";
+import { Chip, DetailBody, DetailFooter, DetailHeader, KvRows, PaneEmpty, type ChipKind } from "#ui/components/panes.tsx";
 import type { HiveClient } from "#ui/client.ts";
 import { formatTime, sourceText, useAction, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { runBulk, splitMemory } from "#ui/lib/bulk.ts";
+import { shortAgo } from "#ui/lib/inbox.ts";
 import { emptyState } from "#ui/lib/empty.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { defaultOwner, ownerName, scopeKey, type Scope } from "#ui/lib/scope.ts";
@@ -32,9 +36,10 @@ type Filter = "all" | "pending" | "conflict" | "review" | "stale";
 const FILTERS: Array<[Filter, (m: Memory) => boolean]> = [
   ["all", () => true],
   ["pending", (m) => m.status === "pending"],
-  ["conflict", (m) => m.conflictsWith.length > 0],
   ["review", (m) => m.review !== null],
-  ["stale", (m) => m.stale],
+  ["conflict", (m) => m.conflictsWith.length > 0],
+  // A replaced entry is done with: nothing to keep or remove, so not counted as stale.
+  ["stale", (m) => m.stale && m.supersededBy === null],
 ];
 
 /**
@@ -61,40 +66,71 @@ function loadMemory(client: HiveClient, scope: Scope, query: string) {
 /** The chip an entry shows: what needs doing first, or nothing when it is simply in use. */
 function stateOf(m: Memory, t: TFunction): { label: string; kind: ChipKind } | null {
   if (m.conflictsWith.length) return { label: t("memory.filter.conflict"), kind: "danger" };
-  if (m.status === "pending") return { label: t("memory.filter.pending"), kind: "warning" };
+  // Template colours: violet waiting for a person, amber for what may have drifted, red for a conflict.
+  if (m.status === "pending") return { label: t("memory.filter.pending"), kind: "info" };
   if (m.review) return { label: t("memory.filter.review"), kind: "warning" };
   if (m.supersededBy !== null) return { label: t("memory.replaced"), kind: "neutral" };
-  if (m.stale) return { label: t("memory.filter.stale"), kind: "neutral" };
+  if (m.stale) return { label: t("memory.staleTag"), kind: "warning" };
   return null;
 }
 
-export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
+type LabelTone = "violet" | "red" | "amber" | "grey";
+const labelClass: Record<LabelTone, string> = {
+  violet: "bg-[var(--chip-violet-bg)] text-[var(--chip-violet-fg)]",
+  red: "bg-[var(--chip-red-bg)] text-[var(--chip-red-fg)]",
+  amber: "bg-[var(--chip-amber-bg)] text-[var(--chip-amber-fg)]",
+  grey: "bg-[var(--chip-grey-bg)] text-[var(--chip-grey-fg)]",
+};
+const toneOf: Record<ChipKind, LabelTone> = { danger: "red", warning: "amber", neutral: "grey", info: "violet", success: "violet", running: "violet" };
+const CODE = "[font-family:var(--font-code-design)]";
+
+/** The card's labels: its state first, then what it replaces, then where it lives (template: "Chờ duyệt", "web"). */
+function labelsOf(m: Memory, t: TFunction): Array<{ text: string; tone: LabelTone }> {
+  const out: Array<{ text: string; tone: LabelTone }> = [];
+  const st = stateOf(m, t);
+  if (st) {
+    const text = m.conflictsWith.length ? `${st.label} #${m.conflictsWith[0]}` : m.supersededBy !== null ? t("memory.replacedBy", { id: m.supersededBy }) : st.label;
+    out.push({ text, tone: toneOf[st.kind] });
+  }
+  if (m.supersededBy === null) out.push({ text: ownerName(m.project, t("inbox.shared")), tone: "grey" });
+  if (m.supersedes !== null) out.push({ text: t("memory.replaces", { id: m.supersedes }), tone: "violet" });
+  return out;
+}
+
+/** `pendingFirst`: opened from a "waiting for approval" link (the old tab's address), so on the "Chờ duyệt" chip. */
+export function MemoryPage({ pendingFirst = false }: { pendingFirst?: boolean }) {
   const { client, scope, projects, systems } = useHive();
   const t = useT();
   const allow = useCan();
   const [query, setQuery] = useState("");
   const [submitted, setSubmitted] = useState("");
-  const [filter, setFilter] = useState<Filter>(pendingOnly ? "pending" : "all");
-  const [selected, setSelected] = useState<number | null>(null);
+  const [filter, setFilter] = useState<Filter>(pendingFirst ? "pending" : "all");
+  // null: nothing open; NEW: the "write memory" form; an id: that entry's detail. A popup from the tablet width up, as the grid has no
+  // side pane; on a phone a page of its own, kept in the address (?memory=) so Back returns to the list.
+  const [popup, setPopup] = useState<number | null>(null);
   const mobileDetail = useMobileDetail("memory");
-  const pick = (id: number | null) => {
-    setSelected(id);
-    if (mobileDetail.mobile) mobileDetail.navigate(id === null ? null : String(id));
+  const fromPhone = mobileDetail.value === "new" ? NEW : mobileDetail.value !== null && /^\d+$/.test(mobileDetail.value) ? Number(mobileDetail.value) : null;
+  const selected = mobileDetail.mobile ? fromPhone : popup;
+  const pick = (next: number | null) => {
+    if (mobileDetail.mobile) mobileDetail.navigate(next === null ? null : next === NEW ? "new" : String(next));
+    else setPopup(next);
   };
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const toast = useToast();
   const bulk = useAction();
+  const quick = useAction();
 
   const list = useQuery(() => loadMemory(client, scope, submitted), [client, scopeKey(scope), submitted]);
   // A hub from before this has no such method: the line just does not show.
   const search = useQuery(() => client.call("memory.searchInfo", {}), [client, list.data]);
   const rows = useMemo(() => list.data ?? [], [list.data]);
   const shown = rows.filter(FILTERS.find(([id]) => id === filter)![1]);
-  const active = mobileDetail.mobile ? (mobileDetail.value === null ? null : Number(mobileDetail.value)) : selected;
-  const current = active === NEW ? null : (rows.find((m) => m.id === active) ?? (mobileDetail.mobile ? null : shown[0] ?? null));
+  const current = selected === null || selected === NEW ? null : (rows.find((m) => m.id === selected) ?? null);
   useEffect(() => {
-    if (selected !== NEW && selected !== null && !rows.some((m) => m.id === selected)) setSelected(null);
-  }, [rows, selected]);
+    if (selected !== NEW && selected !== null && list.data && !rows.some((m) => m.id === selected)) pick(null);
+    // pick changes with every render; the list and the selection are what decide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, selected, list.data]);
 
   // New entries default to the scope: the system's own memory for a system and for a service of one (roadmap 40c), the
   // project of a repo in no system, Chung for the shared scope, the first project of all.
@@ -104,13 +140,13 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
   const empty = emptyState({ loaded: Boolean(list.data), total: rows.length, shown: shown.length, query: submitted, filtered: filter !== "all" });
   // Nothing written yet is the only case with something to do: the first entry, from the same button as the toolbar's.
   const firstEntry = canAdd ? (
-    <Button size="sm" data-empty-action onClick={() => pick(NEW)}>
+    <Button variant="glass" size="sm" data-empty-action onClick={() => pick(NEW)}>
       {t("memory.newFirst")}
     </Button>
   ) : null;
 
-  // Pending entries in the chip filter being viewed, of projects the person manages (as approving one by one).
-  const selectable = shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
+  // Pending entries of projects the person manages (as approving one by one), picked in bulk on the "Chờ duyệt" chip only.
+  const selectable = filter !== "pending" ? [] : shown.filter((m) => m.status === "pending" && allow(m.project, "memoryApprove"));
   const chosen = selectable.filter((m) => picked.has(m.id));
   const label = (m: Memory) => `#${m.id}`;
   const finish = (text: string, trouble: boolean) => {
@@ -138,95 +174,29 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
       finish(bulkSummary(t, "reject", r, label), r.failed.length > 0);
     });
   };
+  // The one button of a card (template): approve, keep, or open the conflict to choose.
+  const cardAction = (m: Memory): { text: string; run: () => void } | null => {
+    if (m.supersededBy !== null) return null;
+    const manage = allow(m.project, "memoryApprove");
+    if (m.conflictsWith.length) return manage ? { text: t("memory.choose"), run: () => pick(m.id) } : null;
+    if (m.status === "pending") return manage ? { text: t("memory.approve"), run: () => void quick.run(async () => { await client.call("memory.approve", { id: m.id }); toast(t("memory.approvedToast", { id: m.id })); list.reload(); }) } : null;
+    if (m.stale || m.review) return manage ? { text: m.review ? t("memory.stillTrue") : t("memory.keep"), run: () => void quick.run(async () => { await client.call("memory.keep", { id: m.id }); toast(t("memory.keptToast", { id: m.id })); list.reload(); }) } : null;
+    return null;
+  };
 
-  return (
-    <div className="mobile-master-detail flex h-full min-h-0 w-full bg-surface">
-      <ListPane
-        className={mobileDetail.showingDetail ? "hidden md:flex" : undefined}
-        label={t("nav.memory")}
-        head={
-          <>
-            <form
-              className="flex gap-1.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setSubmitted(query.trim());
-              }}
-            >
-              <Input className="h-7 min-w-0 flex-1 text-xs" placeholder={t("memory.searchPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t("memory.searchLabel")} />
-              {canAdd ? (
-                <Button type="button" size="sm" variant="outline" onClick={() => pick(NEW)}>
-                  {t("memory.newEntry")}
-                </Button>
-              ) : null}
-            </form>
-            <FilterChips
-              value={filter}
-              onChange={setFilter}
-              options={(pendingOnly ? FILTERS.filter(([id]) => id === "pending") : FILTERS).map(([id, test]) => ({ id, label: t(`memory.filter.${id}`), count: rows.filter(test).length }))}
-            />
-            {search.data?.mode === "hybrid" ? (
-              <p className={cn("m-0 text-[11px]/4", search.data.lastError ? "text-warning" : "text-fg-muted")}>
-                {search.data.lastError
-                  ? t("memory.searchEmbedError", { error: search.data.lastError })
-                  : t("memory.searchHybrid", { model: search.data.model ?? "", indexed: search.data.indexed, total: search.data.total })}
-              </p>
-            ) : null}
-            <BulkBar
-              selectable={selectable.length}
-              picked={chosen.length}
-              busy={bulk.busy}
-              onPickAll={() => setPicked(new Set(selectable.map((m) => m.id)))}
-              onClear={() => setPicked(new Set())}
-              onApprove={approveAll}
-              onReject={rejectAll}
-            />
-          </>
-        }
-      >
-        <ErrorNote error={list.error} />
-        <ErrorNote error={bulk.error} />
-        {shown.length ? <ul role="list" className="m-0 flex list-none flex-col gap-px p-0">
-          {shown.map((m) => {
-            const st = stateOf(m, t);
-            const pickable = m.status === "pending" && allow(m.project, "memoryApprove");
-            return (
-              <ListItem
-                key={m.id}
-                pick={
-                  pickable ? (
-                    <Checkbox
-                      className="size-6"
-                      checked={picked.has(m.id)}
-                      aria-label={t("bulk.pickItem", { id: m.id })}
-                      onCheckedChange={(v) =>
-                        setPicked((cur) => {
-                          const next = new Set(cur);
-                          if (v === true) next.add(m.id);
-                          else next.delete(m.id);
-                          return next;
-                        })
-                      }
-                    />
-                  ) : null
-                }
-                selected={m.id === current?.id}
-                onClick={() => pick(m.id)}
-                title={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
-                chip={st ? <Chip kind={st.kind} small>{st.label}</Chip> : null}
-                sub={<span className={cn(m.supersededBy !== null && "line-through")}>{m.content}</span>}
-                meta={`${ownerName(m.project, t("inbox.shared"))} · ${m.author}`}
-                dim={m.stale || m.supersededBy !== null}
-              />
-            );
-          })}
-        </ul> : null}
-        {/* The button for an empty list sits in the wide pane on the right, so the narrow list keeps the sentence alone. */}
-        {empty ? <PaneEmpty>{t(`memory.${empty}`)}</PaneEmpty> : null}
-      </ListPane>
-      <div className={mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden min-w-0 flex-1 flex-col md:flex" : "flex min-w-0 flex-1 flex-col"}>
-        {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
-        {active === NEW ? (
+  // "1 giờ trước" on a card (template); the detail keeps the exact time.
+  const ago = (iso: string) => {
+    // Past a month the template counts months ("3 tháng trước"): "92 ngày" is harder to read at a glance.
+    const months = Math.floor((Date.now() - Date.parse(iso)) / (30 * 86_400_000));
+    if (months >= 1) return t("memory.monthsAgo", { n: months });
+    const when = shortAgo(iso, Date.now(), t);
+    return when === t("inbox.ago.now") ? when : t("inbox.agoLong", { when });
+  };
+
+  const detailTitle = selected === NEW ? t("memory.newTitle") : current ? t("memory.detailTitle", { id: current.id }) : t("nav.memory");
+  const detail = (
+    <>
+      {selected === NEW ? (
           <AddMemory
             defaultOwner={defaultOwnerOf}
             projects={pool}
@@ -238,15 +208,140 @@ export function MemoryPage({ pendingOnly = false }: { pendingOnly?: boolean }) {
           />
         ) : current ? (
           <MemoryDetail key={current.id} memory={current} all={rows} onChanged={list.reload} onOpen={pick} />
-        ) : (
-          <div className="grid flex-1 place-items-center p-6">
-            {empty === "none" ? <PaneEmpty action={firstEntry}>{t("memory.none")}</PaneEmpty> : list.data ? <span className="text-[13px] text-fg-muted">{t("memory.pick")}</span> : null}
-          </div>
-        )}
+        ) : null}
+    </>
+  );
+  if (mobileDetail.showingDetail) {
+    return (
+      <div className="flex min-w-0 flex-col" data-memory-page>
+        <MobileBack onClick={() => pick(null)} />
+        <div className="flex min-h-0 flex-1 flex-col">{detail}</div>
       </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col px-7 py-4" data-memory-page>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setSubmitted(query.trim());
+          }}
+        >
+          <Input controlSize="sm" className="w-56 max-w-full" placeholder={t("memory.searchPlaceholder")} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t("memory.searchLabel")} />
+        </form>
+        {FILTERS.map(([id, test]) => (
+          <button key={id} type="button" className="cursor-pointer border-0 bg-transparent p-0" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+            <Tag active={filter === id}>{`${t(`memory.filter.${id}`)} · ${rows.filter(test).length}`}</Tag>
+          </button>
+        ))}
+        <span className="flex-1" />
+        {canAdd ? (
+          <Button variant="glass" size="sm" onClick={() => pick(NEW)}>
+            {t("memory.write")}
+          </Button>
+        ) : null}
+      </div>
+      {search.data?.mode === "hybrid" ? (
+        <p className={cn("m-0 mb-3 text-[11px]/4", search.data.lastError ? "text-warning" : "text-fg-muted")}>
+          {search.data.lastError ? t("memory.searchEmbedError", { error: search.data.lastError }) : t("memory.searchHybrid", { model: search.data.model ?? "", indexed: search.data.indexed, total: search.data.total })}
+        </p>
+      ) : null}
+      {/* What the "Chờ duyệt" tab held besides the entries: the cleanup run's merge and removal suggestions. */}
+      {filter === "pending" ? <MemoryCleanupProposals className="mb-4" /> : null}
+      <BulkBar selectable={selectable.length} picked={chosen.length} busy={bulk.busy} onPickAll={() => setPicked(new Set(selectable.map((m) => m.id)))} onClear={() => setPicked(new Set())} onApprove={approveAll} onReject={rejectAll} />
+      <ErrorNote error={list.error} />
+      <ErrorNote error={bulk.error ?? quick.error} />
+      {shown.length ? (
+        <ul role="list" className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-3 p-0">
+          {shown.map((m) => {
+            const files = m.files;
+            const act = cardAction(m);
+            const pickable = filter === "pending" && m.status === "pending" && allow(m.project, "memoryApprove");
+            const used = m.useCount ? t("memory.cardUsed", { count: m.useCount }) : ago(m.createdAt);
+            return (
+              <li
+                key={m.id}
+                data-memory-card={m.id}
+                onClick={() => pick(m.id)}
+                className={cn(
+                  "flex cursor-pointer flex-col gap-3 rounded-[20px] bg-[var(--surface-1)] p-[18px] shadow-[var(--ring-glass)]",
+                  m.conflictsWith.length > 0 && "shadow-[var(--ring-danger)]",
+                  (m.supersededBy !== null) && "opacity-[.55]",
+                )}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  {pickable ? (
+                    <Checkbox
+                      className="size-6"
+                      checked={picked.has(m.id)}
+                      aria-label={t("bulk.pickItem", { id: m.id })}
+                      onClick={(e) => e.stopPropagation()}
+                      onCheckedChange={(v) =>
+                        setPicked((cur) => {
+                          const next = new Set(cur);
+                          if (v === true) next.add(m.id);
+                          else next.delete(m.id);
+                          return next;
+                        })
+                      }
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    aria-label={t("memory.itemTitle", { id: m.id, kind: t(`memoryKind.${m.kind}`) })}
+                    onClick={(e) => { e.stopPropagation(); pick(m.id); }}
+                    className={cn("cursor-pointer border-0 bg-transparent p-0 text-[12px]/none font-semibold text-[var(--text-muted)]", CODE)}
+                  >
+                    #{m.id}
+                  </button>
+                  {labelsOf(m, t).map((lb) => (
+                    <span key={lb.text} className={cn("inline-flex h-5 items-center rounded-full px-2 [font:var(--design-micro)]", labelClass[lb.tone])}>
+                      {lb.text}
+                    </span>
+                  ))}
+                </div>
+                <p className={cn("m-0 text-pretty text-[var(--text-strong)] [font:var(--design-body-sm)]", m.supersededBy !== null && "line-through")}>{m.content}</p>
+                {m.review && files.length ? (
+                  <div className="flex flex-col gap-1 rounded-[12px] bg-[var(--surface-sunken)] px-3 py-2.5">
+                    {files.map((f) => {
+                      const changed = m.review!.changed.includes(f.path) || m.review!.missing.includes(f.path);
+                      return (
+                        <span key={f.path} className={cn("flex gap-2 text-[11.5px]/[18px] font-medium text-[var(--text-secondary)]", CODE)}>
+                          <span className={changed ? "text-[var(--mark-changed)]" : "text-[var(--mark-same)]"}>{changed ? "≠" : "="}</span>
+                          {f.path}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <div className="mt-auto flex items-center gap-2">
+                  <span className="flex-1 text-[var(--text-muted)] [font:var(--design-caption)]">
+                    {m.supersededBy !== null ? `${m.author} · ${ago(m.createdAt)}` : m.stale ? t("memory.cardUnusedDays", { days: Math.max(0, Math.floor((Date.now() - Date.parse(m.lastUsedAt ?? m.createdAt)) / 86_400_000)) }) : `${m.author} · ${used}`}
+                  </span>
+                  {act ? (
+                    <Button variant="glass" size="sm" disabled={quick.busy} onClick={(e) => { e.stopPropagation(); act.run(); }}>
+                      {act.text}
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {empty ? <PaneEmpty action={empty === "none" ? firstEntry : null}>{t(`memory.${empty}`)}</PaneEmpty> : null}
+      {mobileDetail.mobile ? null : (
+        <DetailDialog open={selected !== null} onClose={() => pick(null)} title={detailTitle} className="h-auto max-h-[85vh] w-[min(720px,calc(100%-2rem))]">
+          {detail}
+        </DetailDialog>
+      )}
     </div>
   );
 }
+
 
 function MemoryDetail({ memory: m, all, onChanged, onOpen }: { memory: Memory; all: Memory[]; onChanged: () => void; onOpen: (id: number) => void }) {
   const { client } = useHive();

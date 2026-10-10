@@ -1,10 +1,9 @@
 import { opencodeEnv, opencodePermissions, opencodeUserConfig } from "#desktop/main/runner/opencode.ts";
 import { kiloRunEnv } from "#desktop/main/runner/kilo.ts";
-import { STEER_PROMPT } from "#desktop/main/runner/steer.ts";
 // Builds the command line and prompt for one run.
 import os from "node:os";
 import path from "node:path";
-import { ARTIFACT_DIR, AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection } from "@xdev-hive/core";
+import { AUTONOMY_ARGS, AUTONOMY_FLAGS, autonomyOf, flagValue, lowerAutonomy, modelsFor, policySummary, type AgentKind, type AgentPolicy, type AgentProfile, type AgentRole, type Autonomy, type CiFix, toolArgv, type ToolEntry, type ModelSelection, type RunStepPrompt, STEER_PROMPT, artifactLines, frameLines, stepPromptBlock } from "@xdev-hive/core";
 import { fence } from "#desktop/main/gitlab/describe.ts";
 import { tr } from "#desktop/main/i18n.ts";
 import { MCP_NAME, NO_FEATURES, SHIM_NAME, mcpLaunch, runMcpServers, shimBinDir, type RepoFeatures } from "#desktop/main/installer.ts";
@@ -50,6 +49,8 @@ export interface PromptContext {
   rules?: WorktreeRule[] | null;
   /** Hub mode: files the agent leaves in ARTIFACT_DIR go to the hub when the run ends (roadmap 41c). */
   artifacts?: boolean;
+  /** What the project's manager wrote for the SDLC step this run is in (roadmap 72i); null outside a flow. */
+  stepPrompt?: RunStepPrompt | null;
 }
 
 export interface JudgeCandidate {
@@ -99,52 +100,8 @@ export function buildPrompt(c: PromptContext): string {
       "Winner: c<number>",
       "Reason: <one sentence>",
     );
-  } else if (c.role === "review") {
-    lines.push(
-      `Review the work for task ${c.taskId} of project "${c.project}" (xDev Hive): ${c.title}`,
-      "",
-      `Working copy: ${c.worktree} (branch ${c.branch}). See the change with: git diff ${c.baseSha}...HEAD`,
-      "",
-      "Read AGENTS.md in the working copy first for the project's conventions.",
-      "Look for bugs, regressions, missing tests and risky changes. Do not rewrite the feature;",
-      "fix only small, obvious mistakes. End your report with exactly one standalone line: `Verdict: approve` if no findings block the review, or `Verdict: changes` if changes are needed. Put findings before that line.",
-      c.readOnly
-        ? "xDev Hive is read-only for this run: put reusable lessons in your report. Do not change the task status."
-        : "Record reusable lessons with memory_write (xdev-hive MCP). Do not call task_claim or task_update: the task is not yours, the implementer's run keeps it.",
-    );
   } else {
-    lines.push(
-      `You are working on task ${c.taskId} of project "${c.project}" (xDev Hive).`,
-      `Task: ${c.title}`,
-      "",
-      `Working copy: ${c.worktree} (git worktree on branch ${c.branch}, based on ${c.baseSha.slice(0, 10)}). Stay inside it.`,
-    );
-    if (c.role === "plan") {
-      lines.push("", "This is a planning run: write the plan to docs/plans/" + c.taskId + ".md. Do not implement yet.");
-    }
-    if (c.readOnly) {
-      lines.push(
-        "",
-        "Read AGENTS.md in the working copy first and follow its conventions. xDev Hive is read-only for this run " + `(project key "${c.project}"):`,
-        "1. memory_search and doc_get for context before changing code.",
-        "2. You cannot write memory, propose doc changes or update the task. End with a note for the task instead:",
-        "   what changed, what is left, how to verify, risks, and any decision or gotcha worth sharing.",
-        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md.",
-        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-      );
-    } else {
-      lines.push(
-        "",
-        "Read AGENTS.md in the working copy first and follow its Agent protocol, using the xdev-hive MCP tools with project key " + `"${c.project}":`,
-        "1. memory_search for context before changing code.",
-        "2. memory_write for decisions, conventions and gotchas worth sharing with other agents.",
-        "3. Never edit AGENTS.md, CLAUDE.md or docs/decisions.md; use doc_get + doc_propose.",
-        c.candidate
-          ? `4. Do not call task_update: this run is one of several candidates (see below). End with a note instead: what changed, what is left, how to verify, risks.`
-          : `4. When done, task_update ${c.taskId} to "review" with a note: what changed, what is left, how to verify, risks.`,
-        "Do not push. Uncommitted changes are committed to this branch for you when you exit.",
-      );
-    }
+    lines.push(...frameLines(c));
   }
   if (c.contextFile) {
     lines.push(
@@ -157,14 +114,7 @@ export function buildPrompt(c: PromptContext): string {
   const rules = c.rules ?? (c.worktree ? loadWorktreeRules(c.worktree) : []);
   lines.push(...skillAndRuleLines(skills, rules));
   // The judge keeps nothing: the branch it picks is the work.
-  if (c.artifacts && !c.judge) {
-    lines.push(
-      "",
-      `A file worth keeping that is not code (a screenshot, a report, a measurement${c.role === "plan" ? ", the plan" : ""}): write it in ${ARTIFACT_DIR}/ of the working copy.`,
-      `That folder stays out of the commit; when this run ends the files go to xDev Hive, beside this run and task ${c.taskId}, and other agents read them with artifact_list and artifact_get.`,
-      "At most 20 files, 5 MB each; png, jpg, webp and pdf, or text as md, txt, json and log. Never put a secret in one.",
-    );
-  }
+  if (c.artifacts && !c.judge) lines.push("", ...artifactLines(c.taskId, c.role));
   if (c.note) lines.push("", "Latest note on the task:", c.note);
   if (c.previous) {
     lines.push(
@@ -187,6 +137,9 @@ export function buildPrompt(c: PromptContext): string {
     );
   }
   if (c.ciFix) lines.push("", ...ciFixLines(c.ciFix));
+  // After the protocol and before the admin's words: it adds to the step, and the run's own instructions still win.
+  const step = c.judge ? null : stepPromptBlock(c.stepPrompt, { taskId: c.taskId, taskTitle: c.title, service: c.project, branch: c.branch });
+  if (step && "lines" in step) lines.push("", ...step.lines);
   if (c.instructions.trim()) lines.push("", "Extra instructions from the admin:", c.instructions.trim());
   if (!c.judge) lines.push("", STEER_PROMPT);
   return lines.join("\n");

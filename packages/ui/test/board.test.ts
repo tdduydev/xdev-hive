@@ -14,12 +14,12 @@ describe("board columns", () => {
     assert.equal(fitsEveryColumn(0), true, "not measured yet: do not flash folded");
   });
 
-  it("folds Xong and Bị chặn when the board is narrow, and the empty ones at any width", () => {
+  it("folds Xong and Bị chặn when the board is narrow, and never because a column is empty", () => {
     const full = counts({ todo: 3, doing: 1, review: 2, blocked: 1, done: 9 });
     assert.deepEqual([...foldedColumns(1176, full, none)], []);
     assert.deepEqual([...foldedColumns(836, full, none)].sort(), ["blocked", "done"]);
-    assert.deepEqual([...foldedColumns(1176, counts({ todo: 3, blocked: 1 }), none)], ["done"]);
-    assert.deepEqual([...foldedColumns(1176, counts({ todo: 3 }), none)].sort(), ["blocked", "done"]);
+    assert.deepEqual([...foldedColumns(1176, counts({ todo: 3, blocked: 1 }), none)], []);
+    assert.deepEqual([...foldedColumns(1176, counts({ todo: 3 }), none)], []);
   });
 
   it("leaves open the column the reader opened, and never folds the work in front of them", () => {

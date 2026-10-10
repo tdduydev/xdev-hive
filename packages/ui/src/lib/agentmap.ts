@@ -20,6 +20,15 @@ export interface ProfileCard {
   restingUntil: string | null;
 }
 
+/** The pending hub intake value wins until the machine reports that it applied it. */
+export function hubIntakeControl(m: Pick<Machine, "runnerSettings" | "runnerChange" | "acceptsRuns">) {
+  return {
+    supported: typeof m.runnerSettings?.acceptHubRuns === "boolean",
+    value: m.runnerChange?.settings.acceptHubRuns ?? m.runnerSettings?.acceptHubRuns ?? m.acceptsRuns,
+    waiting: m.runnerChange?.settings.acceptHubRuns !== undefined,
+  };
+}
+
 const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : a > b ? a : b);
 
 export function profileCard(m: Pick<Machine, "online" | "runs">, p: ReportedProfile, cooldowns: QuotaCooldown[], now: number): ProfileCard {

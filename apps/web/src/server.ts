@@ -12,8 +12,12 @@
 //   HIVE_PUBLIC_URL=https://hive.xdev.asia (links in webhook messages; default: https:// + the first allowed host)
 //   HIVE_BOOTSTRAP_TOKEN=...            (fixed admin token for automated deploys)
 //   HIVE_ADMIN_USER=admin              (name of the first admin account, created with a temporary password)
+//   HIVE_SETUP=1                       (no account yet: a setup page and a code in the log instead of that admin,
+//     roadmap 75; its choices go to settings.json next to the database and fill the HIVE_* variables left unset)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
-//   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
+//   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7 unpinned;
+//     the ones made by hand or before a project deletion are pinned out of that count for HIVE_BACKUP_PIN_DAYS=180
+//     (0 = until unpinned), and pinning by hand stops at HIVE_BACKUP_PIN_MAX_MB=20480 of pinned snapshots)
 //   HIVE_OIDC_ISSUER=https://gitlab.example.com HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
 //     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
 //   HIVE_REMOTE_TERMINAL=1              (remote terminal, spec 69: off unless exactly 1; each machine still opts in locally)
@@ -28,6 +32,7 @@ import path from "node:path";
 import { HiveError, openAiEmbedder, terminalHubEnabled, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { allowedHostsFor, createHubApp, terminalUpgrade, type HubAppOptions } from "./app.ts";
+import { applySetupFile, readSetupFile, SetupGate } from "./hub-setup.ts";
 import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
 import { seaweedFromEnv } from "./seaweed.ts";
 import { OidcClient, oidcSettings } from "./oidc.ts";
@@ -46,6 +51,10 @@ const port = Number(process.env.HIVE_PORT ?? 7788);
 const host = process.env.HIVE_HOST ?? "127.0.0.1";
 const dbPath = path.resolve(process.env.HIVE_DB ?? path.join(root, "data", "hub.db"));
 const production = process.env.NODE_ENV === "production";
+// Before anything reads a HIVE_* setting: the setup page's choices fill what the environment leaves unset (roadmap 75).
+const setupPath = path.join(path.dirname(dbPath), "settings.json");
+const setupFile = readSetupFile(setupPath);
+const setupLocked = applySetupFile(process.env, setupFile);
 const backup = backupSettings(process.env);
 
 const logBackup = (when: string, take: () => BackupResult | null) => {
@@ -59,7 +68,7 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
   }
 };
 // Before opening the hub: the snapshot predates any schema migration this version runs.
-if (backup) logBackup("start", () => backupFile(dbPath, backup));
+if (backup) logBackup("start", () => backupFile(dbPath, { ...backup, reason: "start" }));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
 const runLogDays = Number(process.env.HIVE_RUN_LOG_DAYS ?? 30);
@@ -85,10 +94,11 @@ const hive = new SqliteHive(dbPath, {
   blobs,
   gateJobs: process.env.HIVE_GATE_JOBS === "1",
   // Deleting a project snapshots the whole hub first (roadmap 47), the same snapshot the Hub page's "Backup ngay"
-  // makes. With HIVE_BACKUP_DIR unset this throws errors.backupOff, and nothing is deleted.
-  backup: async () => {
+  // makes, pinned out of the rotation under the project's name. With HIVE_BACKUP_DIR unset this throws
+  // errors.backupOff, and nothing is deleted.
+  backup: async ({ project }) => {
     if (!hubInfo) throw new HiveError("conflict", "The hub is still starting up.", { key: "errors.backupOff" });
-    return hubInfo.backup();
+    return hubInfo.backup(`delete:${project}`);
   },
 });
 hive.seed("hub", { hub: true });
@@ -118,8 +128,23 @@ setInterval(learnRound, 60_000).unref();
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);
 if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");
-// No account yet (first run, or a hub from before accounts): an admin with a temporary password.
-if (users.count() === 0) {
+// No account yet on a hub started for setup (the root compose.yaml): the setup page creates the admin, with the code
+// printed here. Otherwise (deploy/compose.yaml, a hub from before accounts): an admin with a temporary password.
+let setup: SetupGate | undefined;
+if (users.count() === 0 && process.env.HIVE_SETUP === "1" && !setupFile?.done) {
+  setup = new SetupGate({
+    file: setupPath,
+    env: process.env,
+    locked: setupLocked,
+    users,
+    announce: (code) => console.log(`\n  Hub not set up yet: open its page in a browser and enter this setup code:\n\n  ${code}\n`),
+    // Docker's restart policy brings the hub back with the settings it just wrote.
+    onDone: () => {
+      console.log("[xdev-hive] setup saved, restarting to apply it");
+      setTimeout(() => process.exit(0), 300).unref();
+    },
+  });
+} else if (users.count() === 0) {
   const username = (process.env.HIVE_ADMIN_USER ?? "admin").trim().toLowerCase();
   const { password } = users.create({ username, displayName: "Admin", admin: true });
   console.log(`\n  First admin account: ${username}\n  Temporary password (shown once; the first sign-in asks for a new one):\n\n  ${password}\n`);
@@ -178,7 +203,7 @@ const logFiles = async (when: string) => {
 };
 if (backup) {
   setInterval(() => {
-    logBackup("scheduled", () => backupDatabase(hive.db, backup));
+    logBackup("scheduled", () => backupDatabase(hive.db, { ...backup, reason: "scheduled" }));
     void logFiles("scheduled");
   }, backup.hours * 3_600_000).unref();
 }
@@ -274,6 +299,7 @@ const hubApp = createHubApp({
     isMachineActor: (machineId, actor) => hive.isMachineActor(machineId, actor),
     pinnedOwner: (machineId) => hive.machinePinnedOwner(machineId),
   },
+  setup,
 });
 httpServer.on("request", hubApp);
 const upgradeTerminal = terminalUpgrade(hubApp);

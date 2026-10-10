@@ -4,12 +4,12 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { AGENT_TEMPLATES, worktreeCleanupSchema, type Actor, type RunnerSettings } from "@xdev-hive/core";
+import { AGENT_TEMPLATES, MANAGED_START, worktreeCleanupSchema, type Actor, type RunnerSettings } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { Runner, type RunnerHost } from "#desktop/main/runner/runner.ts";
 import { cleanupReason } from "@xdev-hive/core";
 import { deleteWorktree, inspectWorktree, registeredWorktrees } from "#desktop/main/runner/worktree-admin.ts";
-import { ensureWorktree, hasBranch } from "#desktop/main/runner/worktree.ts";
+import { ensureWorktree, hasBranch, renderedPathsAsync } from "#desktop/main/runner/worktree.ts";
 
 const admin: Actor = { name: "admin", role: "admin" };
 const git = (dir: string, ...args: string[]) => execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -122,6 +122,19 @@ describe("runner worktree administration", () => {
       assert.equal(entry.pushed, true);
       await deleteWorktree(project, f.root, entry, false);
       assert.equal(existsSync(f.wt.path), false);
+    } finally { f.close(); }
+  });
+
+
+  it("excludes rendered nested instructions from the async worktree status scan", async () => {
+    const f = await fixture();
+    try {
+      mkdirSync(path.join(f.wt.path, "docs"));
+      writeFileSync(path.join(f.wt.path, "docs", "AGENTS.md"), `${MANAGED_START}\nmanaged\n`);
+      const rendered = await renderedPathsAsync(f.wt.path);
+      assert.ok(rendered.includes("docs/AGENTS.md"), JSON.stringify({ rendered, listed: git(f.wt.path, "ls-files", "-co", "--exclude-standard", "--", ":(glob)**/AGENTS.md") }));
+      assert.equal((await f.runner.worktrees(true)).entries[0]?.dirty, false,
+        git(f.wt.path, "status", "--porcelain", "--", ".", ...rendered.map(p => `:(exclude)${p}`)));
     } finally { f.close(); }
   });
 

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
-import { HiveError, parseSkill, type Actor } from "#core/index.ts";
+import { HiveError, isCliActionProposalKey, parseSkill, type Actor } from "#core/index.ts";
 import { SqliteHive } from "#core/node.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
@@ -90,6 +93,42 @@ describe("docs", () => {
 });
 
 describe("proposals", () => {
+  it("approves a legacy document proposal whose slug starts with cli-action as a document", async () => {
+    const hive = new SqliteHive(":memory:");
+    const key = "project/app/cli-action-guide";
+    await hive.call("docs.save", { key, content: "old" }, admin);
+    // This proposal predates the reserved prefix check in proposals.create.
+    const result = hive.db.prepare(
+      "INSERT INTO proposals(doc_key, base_version, content, reason, author, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(key, 1, "new", "refresh guide", claude.name, new Date().toISOString());
+    const approved = await hive.call("proposals.approve", { id: Number(result.lastInsertRowid) }, admin);
+    assert.equal(approved.status, "approved");
+    assert.equal((await hive.call("docs.get", { key }, viewer))?.content, "new");
+  });
+
+  it("marks an interrupted operation as uncertain on reopening", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "hive-operation-"));
+    try {
+      const filename = path.join(dir, "hive.db");
+      const first = new SqliteHive(filename);
+      await first.call("tasks.create", { id: "seed", project: "app", title: "Seed" }, admin);
+      const actor: Actor = { name: "cli@owner", role: "member", mcpCredential: true, access: { projects: { app: "lead" } } };
+      const proposal = await first.call("proposals.create", { action: { method: "agents.stop", project: "app", input: { project: "app" } }, reason: "Maintenance" }, actor);
+      assert.equal(isCliActionProposalKey(proposal.docKey), true);
+      first.db.prepare("UPDATE proposals SET status = 'executing', reviewer = ?, decided_at = ? WHERE id = ?").run("duy", new Date().toISOString(), proposal.id);
+      first.db.close();
+
+      const reopened = new SqliteHive(filename);
+      const recovered = (await reopened.call("proposals.list", {}, admin)).find((p) => p.id === proposal.id)!;
+      assert.equal(recovered.status, "conflict");
+      assert.match(recovered.reviewNote ?? "", /interrupted/i);
+      await rejects(reopened.call("proposals.approve", { id: proposal.id }, { ...admin, humanSession: "session-admin" }), "bad_request");
+      reopened.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("applies an approved proposal as a new version credited to the agent", async () => {
     const hive = new SqliteHive(":memory:");
     await hive.call("docs.save", { key: "project/app/agents", content: "old" }, admin);

@@ -1,0 +1,93 @@
+/* Cosmic semantic layer; legacy names stay available to existing pages. */
+:root,[data-theme]{
+--surface-1:#FFFFFF;--surface-2:#F3F2F7;--surface-3:#EAE8F0;--surface-4:#DFDCE8;--surface-sunken:#F0EEF5;
+--bg-canvas:#F7F6FA;--bg-surface:var(--surface-1);--bg-raised:var(--surface-2);--bg-subtle:var(--surface-2);--bg-sunken:var(--surface-sunken);
+--text-strong:#211F28;--text-primary:#211F28;--text-secondary:#55515F;--text-muted:#686371;--text-faint:rgba(35,28,55,.62);
+--accent-violet:#7B61FF;--accent-blue:#18A0FB;--accent-green:#2EC47C;--accent-red:#E85656;
+--action-primary-bg:#6547E5;--action-primary-hover:#583BCF;--action-primary-active:#4B30B8;--action-primary-fg:#FFFFFF;
+--action-blue-bg:#0878BF;--action-blue-fg:#FFFFFF;--text-brand:#6547E5;--text-link:#6547E5;--text-link-hover:#4B30B8;
+--glass-bg:rgba(35,28,55,.06);--glass-hover:rgba(35,28,55,.12);--border-subtle:rgba(35,28,55,.08);--border-default:rgba(35,28,55,.16);--border-strong:rgba(35,28,55,.24);--border-control:#82798F;
+--state-selected-bg:#EAE4FF;--state-selected-fg:#583BCF;--state-selected-border:#6547E5;--focus-color:#6547E5;
+--status-success-fg:#137A48;--status-success-bg:#E1F5E9;--status-success-solid:var(--accent-green);
+--status-info-fg:#086CA9;--status-info-bg:#E0F1FD;--status-info-solid:var(--accent-blue);--status-running-fg:#086CA9;--status-running-bg:#E0F1FD;
+--status-danger-fg:#B82F2F;--status-danger-bg:#FCE6E6;--status-danger-solid:var(--accent-red);
+--status-warning-fg:#855500;--status-warning-bg:#FFF0D0;--status-warning-solid:#F5CD86;
+--status-neutral-fg:var(--text-secondary);--status-neutral-bg:var(--surface-2);
+--page-gradient:linear-gradient(135deg,#EFECF6 0%,#F7F6FA 32%);
+--ring-glass:inset 0 0 0 1px var(--border-subtle);--ring-glass-strong:inset 0 0 0 1px var(--border-default);
+--glow-violet:0 0 80px rgba(123,97,255,.2);--glow-blue:0 0 80px rgba(24,160,251,.2);
+--action-secondary-bg:var(--glass-bg);--action-secondary-hover:var(--glass-hover);--action-secondary-active:var(--surface-4);--action-secondary-fg:var(--text-primary);--action-secondary-border:var(--border-default);
+--action-ghost-hover:var(--glass-hover);--action-ghost-active:var(--glass-bg);
+--radius-card:24px;--radius-pill:32px;--radius-control:12px;--radius-chip:8px;
+--button-glass-bg:rgba(255,255,255,.55);--button-glass-overlay:linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.02));
+--button-glass-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(35,28,55,.14),inset 0 -7px 14px rgba(35,28,55,.08),0 7px 20px -4px rgba(35,28,55,.18);--button-text-shadow:none;
+--button-solid-shadow:0 8px 24px -8px rgba(123,97,255,.7);--button-blue-shadow:0 8px 24px -8px rgba(24,160,251,.7);--switch-thumb:#FFFFFF;--switch-thumb-shadow:0px 2px 4px 0px rgba(0,0,0,.32);
+--button-h-sm:34px;--button-h-md:46px;--button-h-lg:54px;
+--ease-standard:cubic-bezier(.22,1,.36,1);--duration-base:240ms;
+--board-column-bg:rgba(255,255,255,.6);--chip-bg:rgba(35,28,55,.06);--progress-track:rgba(35,28,55,.08);
+--pill-violet-bg:rgba(123,97,255,.14);--pill-violet-ring:rgba(101,71,229,.4);--pill-violet-fg:#583BCF;--pill-danger-bg:rgba(232,86,86,.12);--pill-danger-fg:#B82F2F;
+
+}
+[data-theme="dark"]{
+--button-glass-bg:rgba(24,23,28,.55);--button-glass-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 0 0 1px rgba(255,255,255,.14),inset 0 -7px 14px rgba(0,0,0,.28),0 7px 20px -4px rgba(0,0,0,.55);--button-text-shadow:0 1px 2px rgba(0,0,0,.55);
+--surface-1:#1D1C20;--surface-2:#242325;--surface-3:#29292B;--surface-4:#343236;--surface-sunken:#171619;
+--bg-canvas:#0E0E11;--text-strong:#FFFFFF;--text-primary:#FFFFFF;--text-secondary:#BDBDC0;--text-muted:#A9A9A9;--text-faint:rgba(255,255,255,.43);
+--action-primary-bg:#7B61FF;--action-primary-hover:#8D77FF;--action-primary-active:#6952DB;--action-blue-bg:#18A0FB;--action-blue-fg:#FFFFFF;
+--text-brand:#9580FF;--text-link:#9580FF;--text-link-hover:#FFFFFF;
+--glass-bg:rgba(255,255,255,.08);--glass-hover:rgba(255,255,255,.14);--border-subtle:rgba(255,255,255,.08);--border-default:rgba(255,255,255,.16);--border-strong:rgba(255,255,255,.24);--border-control:#77727F;
+--state-selected-bg:#38343F;--state-selected-fg:#FFFFFF;--state-selected-border:#9580FF;--focus-color:#9580FF;
+--status-success-fg:#2EC47C;--status-success-bg:#183529;--status-info-fg:#18A0FB;--status-info-bg:#172F40;--status-running-fg:#18A0FB;--status-running-bg:#172F40;
+--status-danger-fg:#F2A0A0;--status-danger-bg:#3A2023;--status-warning-fg:#F5CD86;--status-warning-bg:#382F1F;
+--page-gradient:linear-gradient(135deg,#1E1E20 0%,#0E0E11 32%);
+--board-column-bg:rgba(29,28,32,.6);--chip-bg:rgba(255,255,255,.06);--progress-track:rgba(255,255,255,.06);
+--pill-violet-bg:rgba(123,97,255,.16);--pill-violet-ring:rgba(123,97,255,.4);--pill-violet-fg:#9580FF;--pill-danger-bg:rgba(232,86,86,.14);--pill-danger-fg:#F08A8A;
+--glow-violet:0 0 80px rgba(123,97,255,.45);--glow-blue:0 0 80px rgba(24,160,251,.4);
+}
+@keyframes hivePulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){:root,[data-theme]{--duration-base:0ms}}
+:root,[data-theme]{
+--surface-violet:var(--state-selected-bg);--text-inverse:var(--bg-canvas);
+--border-selected:var(--state-selected-border);--state-hover:var(--glass-bg);--state-pressed:var(--glass-hover);
+--status-success-border:var(--border-default);--status-info-border:var(--border-default);--status-danger-border:var(--border-default);--status-warning-border:var(--border-default);--status-neutral-border:var(--border-default);--status-running-border:var(--border-default);
+--code-bg:var(--surface-sunken);--code-fg:var(--text-primary);--code-gutter:var(--text-muted);--code-line-hl:var(--surface-3);--code-selection:var(--state-selected-bg);
+--brand-gradient:linear-gradient(135deg,var(--accent-violet),var(--accent-blue));
+--star-1:rgba(70,54,112,.24);--star-2:rgba(70,54,112,.18);--star-3:rgba(70,54,112,.2);--star-4:rgba(70,54,112,.14);--star-5:rgba(70,54,112,.16);
+--page-background:radial-gradient(1px 1px at 22px 34px,var(--star-1),transparent 60%),radial-gradient(1px 1px at 140px 90px,var(--star-2),transparent 60%),radial-gradient(1px 1px at 210px 180px,var(--star-3),transparent 60%),radial-gradient(1px 1px at 80px 220px,var(--star-4),transparent 60%),radial-gradient(1.5px 1.5px at 260px 40px,var(--star-5),transparent 60%),var(--page-gradient);
+}
+[data-theme="dark"]{--surface-violet:#38343F;--star-1:rgba(255,255,255,.45);--star-2:rgba(255,255,255,.3);--star-3:rgba(255,255,255,.35);--star-4:rgba(255,255,255,.22);--star-5:rgba(255,255,255,.28)}
+/* Machines page (72g): measurements of the design's machine card that the shared layer lacked. */
+:root,[data-theme]{
+--track:rgba(35,28,55,.08);--glass-faint:rgba(35,28,55,.06);--accent-amber:#F5B544;
+--num-warn:var(--status-warning-fg);--num-danger:var(--status-danger-fg);
+--reset-bg:rgba(123,97,255,.18);--reset-ring:inset 0 0 0 1px rgba(123,97,255,.45);--reset-off-bg:rgba(35,28,55,.04);
+--ring-danger:inset 0 0 0 1px rgba(232,86,86,.35);--danger-panel-bg:rgba(232,86,86,.1);--danger-panel-ring:inset 0 0 0 1px rgba(232,86,86,.28);
+--os-mac-bg:rgba(35,28,55,.1);--os-mac-fg:#211F28;--os-ubuntu-bg:rgba(233,84,32,.2);--os-ubuntu-fg:#B33F12;--os-win-bg:rgba(24,160,251,.2);--os-win-fg:#086CA9;
+}
+[data-theme="dark"]{
+--track:rgba(255,255,255,.07);--glass-faint:rgba(255,255,255,.06);--reset-off-bg:rgba(255,255,255,.04);
+--os-mac-bg:rgba(255,255,255,.12);--os-mac-fg:#FFFFFF;--os-ubuntu-fg:#F7A27F;--os-win-fg:#8FD0FD;
+}
+/* Chat page (72h). */
+:root,[data-theme]{--chat-violet-tint:rgba(123,97,255,.08);--chat-violet-line:rgba(123,97,255,.3);--chat-violet-sel:rgba(123,97,255,.14);--chat-violet-sel-line:rgba(123,97,255,.45);--chat-user-bg:rgba(123,97,255,.22);--chat-divider:rgba(35,28,55,.06)}
+[data-theme="dark"]{--chat-divider:rgba(255,255,255,.06)}
+/* 72i: values the design templates use for Pipeline and Features that no earlier token carried. */
+:root,[data-theme]{--accent-violet-soft:#6547E5;--ds-body-sm:500 14px/22px var(--font-sans);--ds-caption:500 12px/18px var(--font-sans);--ds-micro:600 11px/16px var(--font-sans);
+--violet-tint:rgba(123,97,255,.14);--violet-tint-soft:rgba(123,97,255,.1);--ring-violet:inset 0 0 0 1px rgba(123,97,255,.5);--ring-violet-soft:inset 0 0 0 1px rgba(123,97,255,.45);--ring-violet-faint:inset 0 0 0 1px rgba(123,97,255,.35);
+--divider:rgba(35,28,55,.06);--hairline:inset 0 -1px 0 rgba(35,28,55,.06);--hairline-top:inset 0 1px 0 rgba(35,28,55,.06);--hairline-faint:inset 0 -1px 0 rgba(35,28,55,.04);--shadow-sticky:0px 8px 24px 0px rgba(35,28,55,.18);--surface-sticky:rgba(255,255,255,.94);--track-off:var(--glass-bg);--stage-done:#137A48;
+}
+[data-theme="dark"]{--divider:rgba(255,255,255,.06);--hairline:inset 0 -1px 0 rgba(255,255,255,.06);--hairline-top:inset 0 1px 0 rgba(255,255,255,.06);--hairline-faint:inset 0 -1px 0 rgba(255,255,255,.04);--shadow-sticky:0px 8px 24px 0px rgba(0,0,0,.5);--surface-sticky:rgba(36,35,37,.94);--accent-violet-soft:#9580FF;--stage-done:#8BE3B6}
+/* R-72l: tokens of the design the shared layer lacked (template: --color-text-faint, --color-violet-soft, --text-micro/caption/body-sm). */
+:root,[data-theme]{--violet-soft:#6547E5;--design-micro:600 11px/16px var(--font-sans);--design-caption:500 12px/18px var(--font-sans);--design-body-sm:500 14px/22px var(--font-sans)}
+[data-theme="dark"]{--violet-soft:#9580FF}
+/* R-72j: measures the Memory/Skill/Artifact template uses (text-micro/body-sm/caption of the design tokens differ from the legacy --type-* ones). */
+:root,[data-theme]{--font-code-design:'SF Mono',ui-monospace,Menlo,monospace;
+--tint-violet:rgba(123,97,255,.18);--tint-violet-soft:rgba(123,97,255,.14);
+--code-well:#F3F1FA;--code-well-fg:#3B2F8F;
+}
+[data-theme="dark"]{--code-well:#0B0B0D;--code-well-fg:#D9D6FF}
+/* Small label chips of the Memory/Skill cards (template: lb.bg / lb.color). */
+:root,[data-theme]{
+--chip-violet-bg:rgba(123,97,255,.14);--chip-violet-fg:#4B30B8;--chip-red-bg:rgba(232,86,86,.12);--chip-red-fg:#B82F2F;--chip-amber-bg:rgba(245,181,68,.22);--chip-amber-fg:#855500;--chip-grey-bg:rgba(35,28,55,.07);--chip-grey-fg:#55515F;
+--mark-changed:#855500;--mark-same:#137A48;
+}
+[data-theme="dark"]{--chip-violet-bg:rgba(123,97,255,.18);--chip-violet-fg:#B8A9FF;--chip-red-bg:rgba(232,86,86,.14);--chip-red-fg:#F2A0A0;--chip-amber-bg:rgba(245,181,68,.14);--chip-amber-fg:#F5CD86;--chip-grey-bg:rgba(255,255,255,.07);--chip-grey-fg:#BDBDC0;--mark-changed:#F5CD86;--mark-same:#8BE3B6}

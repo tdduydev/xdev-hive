@@ -9,7 +9,10 @@ import { tr } from "#desktop/main/i18n.ts";
 import type { UsageSample } from "./usage.ts";
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS run_push_state(id TEXT PRIMARY KEY, metadata_key TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_command_receipts(id TEXT PRIMARY KEY, results TEXT NOT NULL, acked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS project_command_receipts(id TEXT PRIMARY KEY, ok INTEGER NOT NULL, error TEXT, acked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS pending_hub_reports(id TEXT PRIMARY KEY, method TEXT NOT NULL, input TEXT NOT NULL, actor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS worktree_cleanup_log(id INTEGER PRIMARY KEY, entry TEXT NOT NULL);
 
 CREATE TABLE IF NOT EXISTS tool_approval_receipts(
@@ -117,7 +120,7 @@ function toRun(r: Row): AgentRun {
     worktree: s(r.worktree),
     branch: s(r.branch),
     baseSha: s(r.base_sha),
-    instructions: String(r.instructions),
+    instructions: String(r.instructions ?? ""),
     reviewAfter: Number(r.review_after) === 1,
     exitCode: r.exit_code == null ? null : Number(r.exit_code),
     summary: s(r.summary),
@@ -190,6 +193,29 @@ export class RunStore {
     for (const [name, ddl] of ADDED_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE runs ADD COLUMN ${name} ${ddl}`);
   }
 
+  pushedMetadataKey(id: string): string | null {
+    const row = this.db.prepare("SELECT metadata_key FROM run_push_state WHERE id = ?").get(id);
+    return row ? String(row.metadata_key) : null;
+  }
+
+  markPushed(id: string, key: string): void {
+    this.db.prepare("INSERT INTO run_push_state(id, metadata_key) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET metadata_key = excluded.metadata_key").run(id, key);
+  }
+
+  queueHubReport(id: string, method: string, input: unknown, actor: unknown): void {
+    this.db.prepare("INSERT OR IGNORE INTO pending_hub_reports VALUES (?, ?, ?, ?)").run(id, method, JSON.stringify(input), JSON.stringify(actor));
+  }
+
+  pendingHubReports(): Array<{ id: string; method: string; input: unknown; actor: unknown }> {
+    return (this.db.prepare("SELECT * FROM pending_hub_reports ORDER BY rowid").all() as Row[]).map((r) => ({
+      id: String(r.id), method: String(r.method), input: JSON.parse(String(r.input)), actor: JSON.parse(String(r.actor)),
+    }));
+  }
+
+  ackHubReport(id: string): void {
+    this.db.prepare("DELETE FROM pending_hub_reports WHERE id = ?").run(id);
+  }
+
   worktreeResult(id: string): WorktreeCommand["results"] | null {
     const r = this.db.prepare("SELECT results FROM worktree_command_receipts WHERE id = ?").get(id);
     return r ? JSON.parse(String(r.results)) : null;
@@ -202,6 +228,20 @@ export class RunStore {
   }
   ackWorktreeResults(ids: string[]): void {
     for (const id of ids) this.db.prepare("UPDATE worktree_command_receipts SET acked = 1 WHERE id = ?").run(id);
+  }
+  /** Project commands (ADM-machine-projects): kept until the hub heard the result, so a lost answer is not applied twice. */
+  projectResult(id: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM project_command_receipts WHERE id = ?").get(id);
+  }
+  recordProjectResult(result: { id: string; ok: boolean; error: string | null }): void {
+    this.db.prepare("INSERT OR IGNORE INTO project_command_receipts(id, ok, error) VALUES (?, ?, ?)").run(result.id, result.ok ? 1 : 0, result.error);
+  }
+  projectResults(): Array<{ id: string; ok: boolean; error: string | null }> {
+    return (this.db.prepare("SELECT id, ok, error FROM project_command_receipts WHERE acked = 0 LIMIT 100").all() as { id: string; ok: number; error: string | null }[])
+      .map((r) => ({ id: r.id, ok: r.ok === 1, error: r.error }));
+  }
+  ackProjectResults(ids: string[]): void {
+    for (const id of ids) this.db.prepare("UPDATE project_command_receipts SET acked = 1 WHERE id = ?").run(id);
   }
   logWorktree(entry: WorktreeLog): void {
     this.db.prepare("INSERT INTO worktree_cleanup_log(entry) VALUES (?)").run(JSON.stringify(entry));
@@ -346,6 +386,36 @@ export class RunStore {
         )
         .all(filter.project ?? null, filter.limit ?? 100, projects, filter.includeDiffSummaries === false ? 0 : 1) as Row[]
     ).map(toRun);
+  }
+
+  countActive(filter: { project?: string; projects?: string[] } = {}): { running: number; queued: number } {
+    const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
+    const rows = this.db.prepare(`SELECT status, COUNT(*) AS n FROM runs
+      WHERE status IN ('running', 'queued') AND diff_summary_for IS NULL
+      AND (?1 IS NULL OR project = ?1) AND (?2 IS NULL OR project IN (SELECT value FROM json_each(?2))) GROUP BY status`)
+      .all(filter.project ?? null, projects) as Row[];
+    return { running: Number(rows.find(r => r.status === "running")?.n ?? 0), queued: Number(rows.find(r => r.status === "queued")?.n ?? 0) };
+  }
+
+  /** IPC and runs.push need run metadata and retry instructions, never the potentially large unified patch. */
+  listForDesktop(filter: { project?: string; projects?: string[]; limit?: number } = {}): AgentRun[] {
+    const projects = Array.isArray(filter.projects) ? JSON.stringify(filter.projects.map(String)) : null;
+    const rows = this.db.prepare(`
+      SELECT id, project, task_id, task_title, role, status, profile_id, preferred_profile,
+        avoid_kinds, excluded_profiles, attempt, max_attempts, parent_run_id, worktree, branch,
+        base_sha, instructions, review_after, exit_code, summary, error, commits, head_sha, created_at,
+        started_at, finished_at, start_sha, remote_sha, pushed, push_error, mr_url, mr_iid,
+        mr_state, mr_draft, mr_note, cost_usd, input_tokens, output_tokens,
+        mr_status, pipeline_status, pipeline_url, mr_checked_at, ci_fix, best_of, requested_by,
+        cache_write_tokens, cache_read_tokens, prefer_kind, allowed_agent_kinds, skills,
+        compression, agent_kind, model, effort, selection, plan, diff_review,
+        timeout_minutes, continuation, redispatch
+      FROM runs WHERE (?1 IS NULL OR project = ?1)
+        AND (?3 IS NULL OR project IN (SELECT value FROM json_each(?3)))
+        AND diff_summary_for IS NULL
+      ORDER BY created_at DESC, rowid DESC LIMIT ?2
+    `).all(filter.project ?? null, filter.limit ?? 100, projects) as Row[];
+    return rows.map(toRun);
   }
 
   queued(): AgentRun[] {

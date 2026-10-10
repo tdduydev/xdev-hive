@@ -11,6 +11,7 @@ import { useT, type TFunction } from "#ui/i18n/index.tsx";
 import { activeIntl } from "#ui/i18n/translate.ts";
 import { useToast } from "#ui/shell/toast.tsx";
 import { ACTION_LABEL } from "#ui/pages/Admin.tsx";
+import { AdminCards, AdminStats, AdminTable, type AdminCard, type AdminRow } from "./cosmic.tsx";
 
 const SEV = {
   high: "bg-danger-soft text-danger border-danger-line",
@@ -160,6 +161,8 @@ export function EventFeed({ card }: { card: (title: string, action: React.ReactN
   );
 }
 
+const SEV_TONE = { high: "bad", medium: "warn", low: "neutral" } as const;
+
 /** Cảnh báo: every incident of the last week, and the rules. */
 export function OpsAlerts() {
   const { client } = useHive();
@@ -170,60 +173,61 @@ export function OpsAlerts() {
   const data = useQuery(async () => (client.alerts ? client.alerts.list() : null), [client, tick, n]);
   const [busy, setBusy] = useState<string | null>(null);
   if (!client.alerts) return null;
-  const all = [...(data.data?.open ?? []), ...(data.data?.recent ?? [])];
-  const section = "flex min-w-0 flex-col gap-1 rounded-[14px] border border-line-default bg-surface px-4 pt-3.5 pb-2";
-  return (
-    <ResponsiveTableFrame className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,460px),1fr))] items-start gap-4">
-      <ErrorNote error={data.error} />
-      <section className={section}>
-        <h2 className="m-0 pb-1 text-sm font-semibold text-fg-strong">{t("alerts.incidents")}</h2>
-        {data.data && !all.length ? <p className="m-0 py-2 text-[13px] text-fg-muted">{t("alerts.noneRecent")}</p> : null}
-        {all.map((a) => (
-          <AlertRow
-            key={a.id}
-            a={a}
-            t={t}
-            state={stateOf(t, a)}
-            onAck={a.resolvedAt ? undefined : () => void client.alerts!.ack(a.id).then(() => (toast(t("alerts.acked")), setN((v) => v + 1)))}
-          />
-        ))}
-      </section>
-      <section className={section}>
-        <div className="flex flex-col gap-0.5 pb-1">
-          <h2 className="m-0 text-sm font-semibold text-fg-strong">{t("alerts.rules")}</h2>
-          <span className="text-xs text-fg-muted">{t("alerts.rulesHint")}</span>
+  const open = data.data?.open ?? [];
+  const all = [...open, ...(data.data?.recent ?? [])];
+  const rules = data.data?.rules ?? [];
+  const ack = (a: HubAlert) => void client.alerts!.ack(a.id).then(() => (toast(t("alerts.acked")), setN((v) => v + 1)));
+  const toggle = (r: (typeof rules)[number]) => {
+    setBusy(r.rule);
+    void client
+      .alerts!.setRule(r.rule, !r.enabled)
+      .then(
+        (saved) => (toast(t("alerts.ruleSaved", { state: saved.enabled ? t("alerts.on").toLowerCase() : t("alerts.off").toLowerCase(), rule: t(`alerts.rule.${r.rule}.label`) })), setN((v) => v + 1)),
+        (err: unknown) => toast(errorMessage(err), { tone: "error" }),
+      )
+      .finally(() => setBusy(null));
+  };
+  const cards: AdminCard[] = all.map((a) => ({
+    key: String(a.id),
+    title: alertTitle(t, a),
+    side: a.resolvedAt ? t("alerts.ended", { time: formatTime(a.resolvedAt) }) : t("alerts.since", { time: formatTime(a.openedAt) }),
+    tone: a.resolvedAt ? "neutral" : SEV_TONE[a.severity],
+    dim: Boolean(a.resolvedAt),
+    body: (
+      <>
+        <div>{alertDetail(t, a)}</div>
+        <div className="cx-ops-hint">
+          {t(`alerts.severity.${a.severity}`)} · {stateOf(t, a)}
         </div>
-        {(data.data?.rules ?? []).map((r) => (
-          <ResponsiveGridRow primary={1} labels={[t("table.severity"), null, null]} key={r.rule} className="flex items-center gap-3 border-b border-line-subtle py-2.5 last:border-b-0">
-            <span className={cn("inline-flex h-5 w-12 shrink-0 items-center justify-center rounded-xs border text-[11px] font-semibold", SEV[r.severity])}>{t(`alerts.severity.${r.severity}`)}</span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="truncate text-[13px] font-medium text-fg-strong">{t(`alerts.rule.${r.rule}.label`)}</span>
-              <span className="truncate text-xs text-fg-muted">{t(`alerts.rule.${r.rule}.cond`)}</span>
-            </span>
-            <button
-              type="button"
-              aria-pressed={r.enabled}
-              disabled={busy === r.rule}
-              onClick={() => {
-                setBusy(r.rule);
-                void client
-                  .alerts!.setRule(r.rule, !r.enabled)
-                  .then(
-                    (saved) => (toast(t("alerts.ruleSaved", { state: saved.enabled ? t("alerts.on").toLowerCase() : t("alerts.off").toLowerCase(), rule: t(`alerts.rule.${r.rule}.label`) })), setN((v) => v + 1)),
-                    (err: unknown) => toast(errorMessage(err), { tone: "error" }),
-                  )
-                  .finally(() => setBusy(null));
-              }}
-              className={cn(
-                "h-7 min-w-[52px] cursor-pointer rounded-full border px-3 text-xs font-semibold outline-none focus-visible:focus-ring disabled:opacity-60",
-                r.enabled ? "border-fg-strong bg-fg-strong text-canvas" : "border-line-default text-fg-muted hover:text-fg-strong",
-              )}
-            >
-              {r.enabled ? t("alerts.on") : t("alerts.off")}
-            </button>
-          </ResponsiveGridRow>
-        ))}
-      </section>
-    </ResponsiveTableFrame>
+      </>
+    ),
+    ...(!a.resolvedAt && !a.ackedBy ? { action: { label: t("alerts.ack"), onClick: () => ack(a) } } : {}),
+  }));
+  const rows: AdminRow[] = rules.map((r) => ({
+    key: r.rule,
+    cells: [
+      { text: t(`alerts.severity.${r.severity}`), tone: SEV_TONE[r.severity] },
+      { text: t(`alerts.rule.${r.rule}.label`), sub: t(`alerts.rule.${r.rule}.cond`), strong: true },
+      { text: r.enabled ? t("alerts.on") : t("alerts.off"), tone: r.enabled ? "ok" : "neutral" },
+    ],
+    action: { label: r.enabled ? t("adminOps.alerts.turnOff") : t("adminOps.alerts.turnOn"), disabled: busy === r.rule, onClick: () => toggle(r) },
+  }));
+  return (
+    <div className="cx-ops-stack">
+      <ErrorNote error={data.error} />
+      <AdminStats
+        stats={[
+          { key: "open", label: t("alerts.open"), value: open.length, note: t("adminOps.alerts.openNote", { count: open.filter((a) => !a.ackedBy).length }), tone: open.length ? "warn" : "ok" },
+          { key: "high", label: t("adminOps.alerts.high"), value: open.filter((a) => a.severity === "high").length, note: t("adminOps.alerts.highNote"), tone: open.some((a) => a.severity === "high") ? "bad" : "ok" },
+          { key: "recent", label: t("alerts.incidents"), value: all.length, note: t("adminOps.alerts.recentNote"), tone: "info" },
+          { key: "rules", label: t("alerts.rules"), value: `${rules.filter((r) => r.enabled).length}/${rules.length}`, note: t("alerts.rulesHint"), tone: "run" },
+        ]}
+      />
+      <h2 className="cx-ops-h">{t("alerts.incidents")}</h2>
+      {data.data && !all.length ? <p className="cx-ops-hint m-0">{t("alerts.noneRecent")}</p> : null}
+      <AdminCards cards={cards} />
+      <h2 className="cx-ops-h">{t("alerts.rules")}</h2>
+      <AdminTable cols={[t("table.severity"), t("alerts.rules"), t("adminOps.alerts.state")]} grid="110px minmax(260px,1fr) 100px" minWidth={640} rows={rows} />
+    </div>
   );
 }

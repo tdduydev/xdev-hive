@@ -228,6 +228,9 @@ export const defaultRun: Run = (bin, args, { cwd, env, timeoutMs }) =>
 const describeFiles = (files: FileAction[]) =>
   files.map((f) => `${f.action.padEnd(9)} ${f.file}${f.note ? ` · ${f.note}` : ""}`).join("\n");
 
+// "removed" too: a leftover xdev-hive in .mcp.json still has to go, or the repo keeps a server that cannot start.
+const writes = (f: FileAction) => f.action === "created" || f.action === "updated" || f.action === "removed";
+
 /** Like an agent CLI's --version: a check that takes longer is stuck (asking for input, waiting on the network). */
 const TOOL_CHECK_MS = 15_000;
 
@@ -245,11 +248,21 @@ export class Setup {
   readonly #platform: NodeJS.Platform;
   /** The registry's newest version of each CLI package, and when it was looked up. */
   readonly #latest = new Map<string, { at: number; version: string | null }>();
+  #statusPending: Promise<SetupReport> | null = null;
+  #statusCached: { at: number; report: SetupReport } | null = null;
+  #statusGeneration = 0;
 
   constructor(host: SetupHost) {
     this.#host = host;
     this.#run = host.run ?? defaultRun;
     this.#platform = host.platform ?? process.platform;
+  }
+
+  /** Call when projects or the hub tool catalog changes outside an install. */
+  invalidateStatus(): void {
+    this.#statusGeneration++;
+    this.#statusCached = null;
+    this.#statusPending = null;
   }
 
   /** What installAgents needs to name this machine's shim and pick the launch form of each config. */
@@ -258,6 +271,21 @@ export class Setup {
   }
 
   async status(): Promise<SetupReport> {
+    if (this.#statusPending) return this.#statusPending;
+    if (this.#statusCached && Date.now() - this.#statusCached.at < 45_000) return this.#statusCached.report;
+    const generation = this.#statusGeneration;
+    const pending = this.#readStatus();
+    this.#statusPending = pending;
+    try {
+      const report = await pending;
+      if (generation === this.#statusGeneration) this.#statusCached = { at: Date.now(), report };
+      return report;
+    } finally {
+      if (this.#statusPending === pending) this.#statusPending = null;
+    }
+  }
+
+  async #readStatus(): Promise<SetupReport> {
     const pathEnv = await this.#host.pathEnv(true);
     const clis = await Promise.all(AGENT_CLIS.map((c) => this.#cli(c, pathEnv)));
     const specify = await this.#findSpecify(pathEnv);
@@ -283,6 +311,7 @@ export class Setup {
   }
 
   async install(id: string): Promise<SetupInstallResult> {
+    this.invalidateStatus();
     const pathEnv = await this.#host.pathEnv(true);
     const env = { ...this.#host.env(), PATH: pathEnv };
     let output: string;
@@ -327,12 +356,20 @@ export class Setup {
     } else {
       const { project, part } = this.#split(id);
       if (part === "agents") output = describeFiles(installAgents(project.repo, project.name, this.#agentOpts()));
-      else if (part === "codegraph-mcp") output = describeFiles([installCodegraphMcp(project.repo)]);
+      else if (part === "codegraph-mcp") {
+        // Windows: agents puts codegraph in ~/.claude.json only once .mcp.json lists it, so an agents item that was
+        // complete would read as missing again after this one; its local scope is brought along instead.
+        const agentsDone = this.#platform === "win32" && !installAgents(project.repo, project.name, this.#agentOpts(true)).some(writes);
+        const files = [installCodegraphMcp(project.repo)];
+        if (agentsDone) files.push(...installAgents(project.repo, project.name, this.#agentOpts()).filter(writes));
+        output = describeFiles(files);
+      }
       else if (part === "superpowers") output = describeFiles([enableSuperpowers(project.repo)]);
       else if (part === "codegraph-index") output = await this.#codegraphIndex(project, pathEnv, env);
       else if (part === "speckit") output = await this.#speckitRepoInstall(project, await this.#findSpecify(pathEnv), env);
       else throw notFound(id);
     }
+    this.invalidateStatus();
     return { item: await this.item(id), output };
   }
 
@@ -644,8 +681,7 @@ export class Setup {
       return [{ id: id("agents"), label: agentsLabel, state: "manual", detail: tr("errors.noFolder", { path: project.repo }), action: null }];
     }
     const plan = installAgents(project.repo, project.name, this.#agentOpts(true));
-    // "removed" too: a leftover xdev-hive in .mcp.json still has to go, or the repo keeps a server that cannot start.
-    const changes = plan.filter((f) => f.action === "created" || f.action === "updated" || f.action === "removed");
+    const changes = plan.filter(writes);
     const manual = plan.filter((f) => f.action === "skipped");
     const agents: SetupItem = changes.length
       ? { id: id("agents"), label: agentsLabel, state: "missing", detail: tr("setupItem.agentsWrites", { files: changes.map((f) => f.file).join(", ") }), action: tr("setupItem.installAgents") }
