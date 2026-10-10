@@ -1,7 +1,7 @@
 // The main process's own log (BUG-update-relaunch, 6/10): the runner Mac mini quit, installed the new build at quit and
 // stayed shut, and nothing said why it quit. Each start, each quit with its reason, crashed child processes, sleep and
 // wake, and every updater step go to a file the OS's usual place for logs, so the next report has something to read.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { redactLines } from "@xdev-hive/core";
 
@@ -51,9 +51,10 @@ export class MainLog {
 /**
  * Why the app is quitting. "user": the tray's or the menu's Quit (Cmd+Q). "shutdown": the computer shuts down,
  * restarts or logs out. "signal": SIGTERM/SIGINT/SIGHUP (kill, launchd, systemd). "update": a restart into a new build.
+ * "session": a move into another login session of the machine (session.ts), which starts the app there itself.
  * "unknown": anything else that quits the app, such as the Dock's Quit or an AppleScript quit on macOS.
  */
-export type QuitReason = "user" | "shutdown" | "signal" | "update" | "unknown";
+export type QuitReason = "user" | "shutdown" | "signal" | "update" | "session" | "unknown";
 
 /** The first cause wins: a shutdown that then quits the app is a shutdown, not an unknown quit. */
 export class QuitReasons {
@@ -78,38 +79,13 @@ export class QuitReasons {
 
 /**
  * The rollout installs the new build when the app quits: should the app start again once it is swapped in?
- * Rule: a machine that takes work (accepts the hub's runs, or still had runs running or queued) comes back, opened
- * hidden in the tray like a start with the computer, so the hub does not lose a runner until someone opens it by hand.
+ * Rule: a machine that takes work (accepts the hub's runs, or still had runs running or queued) comes back, its window
+ * as it was before the quit (window-state.ts), so the hub does not lose a runner until someone opens it by hand.
  * Never when the person chose Quit ("user": they want it closed) or the computer is shutting down ("shutdown": it
  * starts at sign-in if they asked for that, and an app opening mid-shutdown could hold the shutdown up). A machine
  * that takes no work stays shut, as before.
  */
 export function relaunchAfterQuitInstall(reason: QuitReason, takesWork: boolean): boolean {
-  if (reason === "user" || reason === "shutdown") return false;
+  if (reason === "user" || reason === "shutdown" || reason === "session") return false;
   return takesWork;
-}
-
-export const START_HIDDEN = "start-hidden";
-/** Long enough for a slow swap; short enough that a helper that failed never hides a window someone opens later. */
-const HIDDEN_FOR_MS = 10 * 60_000;
-
-/**
- * The relaunch after an install at quit opens hidden. The NSIS installer's --force-run cannot pass --hidden, so the
- * updater leaves a marker beside its downloads that the next start reads (and removes) instead, on every platform.
- */
-export function markStartHidden(updatesDir: string, now = Date.now()): void {
-  mkdirSync(updatesDir, { recursive: true });
-  writeFileSync(path.join(updatesDir, START_HIDDEN), String(now));
-}
-
-export function takeStartHidden(updatesDir: string, now = Date.now()): boolean {
-  const file = path.join(updatesDir, START_HIDDEN);
-  try {
-    if (!existsSync(file)) return false;
-    const at = Number(readFileSync(file, "utf8"));
-    rmSync(file, { force: true });
-    return Number.isFinite(at) && now - at >= 0 && now - at < HIDDEN_FOR_MS;
-  } catch {
-    return false;
-  }
 }

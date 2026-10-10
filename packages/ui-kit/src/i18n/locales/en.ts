@@ -4542,6 +4542,13 @@ unsaved: "{count} unsaved changes", noChanges: "No changes yet", cancel: "Cancel
     trayStartAtLogin: "Start with the computer (in the background)",
     trayHintTitle: "xDev Hive is still running",
     trayHint: "The app went to the system tray and still takes work on this machine. Click its icon to open it again; to quit, right-click → Quit.",
+    otherSessionTitle: "xDev Hive is running in another login session of this machine",
+    otherSessionBody: {
+      one: "{count} run is still running there, and moving now would cut it short. Choose Switch here: the app takes no new runs, waits for it to finish, then opens again in this session.",
+      other: "{count} runs are still running there, and moving now would cut them short. Choose Switch here: the app takes no new runs, waits for them to finish, then opens again in this session.",
+    },
+    otherSessionSwitch: "Switch here when the runs are done",
+    otherSessionClose: "Later",
     pendingProposals: { one: "{count} pending proposal", other: "{count} pending proposals" },
     pendingProposalsBody: { one: "{count} doc proposal is waiting for review", other: "{count} doc proposals are waiting for review" },
     sourceUnreachable: "cannot reach the data source",

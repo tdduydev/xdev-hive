@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "no
 import os from "node:os";
 import path from "node:path";
 import { after, describe, it } from "node:test";
-import { MainLog, mainLogDir, markStartHidden, QuitReasons, relaunchAfterQuitInstall, takeStartHidden, type QuitReason } from "#desktop/main/applog.ts";
+import { MainLog, mainLogDir, QuitReasons, relaunchAfterQuitInstall, type QuitReason } from "#desktop/main/applog.ts";
 
 const testTmpDirs = new Set<string>();
 function testTmpDir(prefix: string): string {
@@ -90,15 +90,8 @@ describe("relaunch after an install at quit", () => {
     for (const [reason, takesWork, want] of table) assert.equal(relaunchAfterQuitInstall(reason, takesWork), want, `${reason}, takes work ${takesWork}`);
   });
 
-  it("opens hidden through a marker read once, and only soon after the install", () => {
-    const dir = testTmpDir(path.join(os.tmpdir(), "hive-hidden-"));
-    const t0 = Date.parse("2026-10-06T03:28:00Z");
-    assert.equal(takeStartHidden(dir, t0), false, "no marker: a normal start");
-    markStartHidden(dir, t0);
-    assert.equal(takeStartHidden(dir, t0 + 5_000), true);
-    assert.equal(takeStartHidden(dir, t0 + 6_000), false, "read once: the next start shows its window");
-    markStartHidden(dir, t0);
-    assert.equal(takeStartHidden(dir, t0 + 11 * 60_000), false, "a helper that never relaunched must not hide a window opened later by hand");
+  it("never relaunches after a move to another session, which starts the app there itself", () => {
+    assert.equal(relaunchAfterQuitInstall("session", true), false);
   });
 });
 
