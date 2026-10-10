@@ -422,8 +422,8 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
   - [ ] **79n. auto-rollout**: bản app mới nhận đủ file thì tự thành bản đích (phần trăm, cài khi rảnh).
   - [ ] **79o. all-disks**: heartbeat và trang Máy hiện mọi ổ đĩa (`disks[]`), cảnh báo ổ trên 90%.
 - **80. tokens-plugins-path** (hỏi 10/10: "nghiên cứu cách tối ưu token tối đa nhất", "thêm sơ đồ kiểu code-modernization trong client vs admin", "với kho plugin thêm này vô đi https://github.com/anthropics/claude-plugins-official"). Spec: [specs/80-tokens-plugins-path.md](specs/80-tokens-plugins-path.md). Người dùng chọn 10/10: token thì nghiên cứu + spec + task; kho plugin duyệt trong danh mục tool; sơ đồ là đường đi của task.
-  - [ ] **80a. task-list-lean**: `task_list` mặc định bỏ task done, `project` và trường rỗng; note chỉ cho task chưa xong.
-  - [ ] **80b. run-get-lean**: `run_get` mặc định không kèm patch, log chỉ lấy đuôi; `full:true` để lấy hết.
+  - [x] **80a. task-list-lean**: `task_list` mặc định bỏ task done, `project` và trường rỗng; note chỉ cho task chưa xong.
+  - [x] **80b. run-get-lean**: `run_get` mặc định không kèm patch, log chỉ lấy đuôi; `full:true` để lấy hết.
   - [ ] **80c. doc-lean**: `doc_list` gọn; `doc_get` có `section` và `maxChars`.
   - [ ] **80d. run-toolset**: run task chỉ nhận tool cần dùng; bỏ `$schema`, rút mô tả tool dài.
   - [ ] **80e. prompt-dedupe**: bỏ giao thức lặp trong prompt run, bỏ "đọc AGENTS.md trước", bỏ skill chỉ cho hub.
