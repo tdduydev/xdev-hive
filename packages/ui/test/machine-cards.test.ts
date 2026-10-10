@@ -6,7 +6,7 @@ import type { MachineSystem, ReportedProfile } from "@xdev-hive/core";
 import { register } from "tsx/esm/api";
 
 register({ tsconfig: new URL("../tsconfig.json", import.meta.url).pathname });
-const { MachineSystemBlock, PlanTile } = await import("#ui/components/MachineCards.tsx");
+const { MachineSystemBlock, PlanTile, machineDisks } = await import("#ui/components/MachineCards.tsx");
 
 const profile = (over: Partial<ReportedProfile> = {}): ReportedProfile => ({ id: "claude-1", label: "claude-max-1", kind: "claude", enabled: true, account: null, installed: true, loggedIn: true, cooldownUntil: null, runs: 0, rateLimited: 0, ...over });
 
@@ -47,5 +47,34 @@ it("formats numeric system measurements in the viewer's language", async () => {
     setActiveLocale("en");
     html = renderToStaticMarkup(createElement(MachineSystemBlock, { system }));
     assert.match(html, /Up 6 days/); assert.match(html, /14 cores · load 10.1/); assert.match(html, /Free 420 GB \/ 1 TB/);
+  } finally { setActiveLocale("vi"); }
+});
+
+it("draws one row per disk, the worktree disk first and tagged, a full one warned (79o)", async () => {
+  const { setActiveLocale } = await import("#ui/i18n/translate.ts");
+  const system: MachineSystem = {
+    os: "windows", osName: "Windows 11", hardware: "PC",
+    disk: { percent: 31, detail: "", freeBytes: 345e9, totalBytes: 500e9 },
+    disks: [
+      { mount: "C:", label: "OS", totalBytes: 512e9, freeBytes: 20e9, percent: 96 },
+      { mount: "D:", label: "Data", totalBytes: 500e9, freeBytes: 345e9, percent: 31, worktree: true },
+    ],
+  };
+  assert.deepEqual(machineDisks(system).map((d) => d.mount), ["D:", "C:"]);
+  assert.deepEqual(machineDisks({ os: "linux", osName: "Linux", hardware: "x" }), []);
+  try {
+    setActiveLocale("vi");
+    const html = renderToStaticMarkup(createElement(MachineSystemBlock, { system }));
+    assert.equal(html.match(/data-disk="/g)?.length, 2);
+    assert.match(html, /data-disk="D:"[^>]*>.*?data-disk-worktree/);
+    assert.match(html, /data-disk="C:" data-disk-warn="true"/);
+    assert.match(html, /Sắp đầy: còn 20 GB/);
+    assert.doesNotMatch(html, /Còn 345 GB/, "the single disk gauge gives way to the list");
+    setActiveLocale("en");
+    assert.match(renderToStaticMarkup(createElement(MachineSystemBlock, { system })), /Almost full: 20 GB left/);
+    // An app older than 79o reports one disk: it stays the gauge it was.
+    const old = renderToStaticMarkup(createElement(MachineSystemBlock, { system: { ...system, disks: undefined } }));
+    assert.match(old, /Free 345 GB \/ 500 GB/);
+    assert.doesNotMatch(old, /data-disk=/);
   } finally { setActiveLocale("vi"); }
 });

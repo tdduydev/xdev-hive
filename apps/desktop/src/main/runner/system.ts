@@ -3,6 +3,7 @@ import path from "node:path";
 import { readFile, statfs } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import type { MachineSystem } from "@xdev-hive/core";
+import { DiskLister, diskLister, markWorktree } from "#desktop/main/runner/disks.ts";
 
 const percent = (used: number, total: number) => Math.round(Math.max(0, Math.min(100, used / total * 100)));
 const text = (value: string, max: number) => value.trim().slice(0, max);
@@ -30,6 +31,8 @@ function cpuTimes() {
 
 export class SystemSampler {
   #previous = cpuTimes();
+  readonly #disks: DiskLister;
+  constructor(disks: DiskLister = diskLister) { this.#disks = disks; }
   #identity?: Promise<Pick<MachineSystem, "os" | "osName" | "hardware">>;
   #refreshing: Promise<MachineSystem | undefined> | null = null;
   /** The last finished sample; the heartbeat sends this instead of waiting on statfs or the OS commands. */
@@ -87,7 +90,13 @@ export class SystemSampler {
       // The first beat can have no elapsed ticks: omit CPU rather than invent a utilization.
       ...(total > 0 && idle >= 0 && current.cpus.length ? { cpu: { percent: percent(total - idle, total), detail: "", cores: current.cpus.length, ...(os.platform() === "win32" ? {} : { load }) } } : {}),
       ...(totalBytes > 0 ? { ram: { percent: percent(usedBytes, totalBytes), detail: "", usedBytes, totalBytes } } : {}),
-      disk: await volume(path.resolve(root)),
+      ...await this.#volumes(path.resolve(root)),
     };
+  }
+
+  /** `disk` stays the worktree volume (the low-disk cleanup and older hubs read it); `disks` lists them all. */
+  async #volumes(root: string): Promise<Pick<MachineSystem, "disk" | "disks">> {
+    const [disk, all] = await Promise.all([volume(root), this.#disks.get()]);
+    return { disk, ...(all?.length ? { disks: markWorktree(all, root) } : {}) };
   }
 }
