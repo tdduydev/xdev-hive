@@ -1,0 +1,41 @@
+<!-- @dsCard height=288 -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap">
+<style>
+  html,body{margin:0;background:var(--bg-canvas)}
+  .cover{position:relative;width:960px;height:288px;overflow:hidden;background:var(--bg-canvas);font-family:var(--font-display, Inter, system-ui, sans-serif)}
+  svg{position:absolute;inset:0}
+  .violet{fill:var(--accent-violet)} .blue{fill:var(--accent-blue)} .tint{fill:var(--state-selected-bg)}
+  .surface{fill:var(--surface-4)} .green{fill:var(--accent-green)} .star{fill:var(--text-muted)} .star-on{fill:var(--bg-canvas)}
+  .card{rx:var(--radius-card)} .pill{rx:var(--radius-pill)} .chip{rx:var(--radius-chip)}
+  .text{position:absolute;left:48px;bottom:40px;max-width:440px}
+  h1{margin:0;font-size:80px;line-height:.95;font-weight:600;letter-spacing:-0.02em;color:var(--text-strong)}
+  p{margin:16px 0 0;font-size:14px;line-height:22px;color:var(--text-muted)}
+</style>
+<div class="cover">
+  <svg width="960" height="288" viewBox="0 0 960 288" aria-hidden="true">
+    <!-- blocks: accent-violet 208×216 (card), accent-blue 232×64 (pill), state-selected-bg 152×120 (card), surface-4 96×64 (pill), accent-green 32×32 disc
+         arrangement: staggered stack right of x=520; violet slab bleeds off the top, blue pill bleeds off the right edge
+         pattern: the cosmic star field (README: "sparse star field, 1–1.5px dots on a 300px tile") — 22 dots on a space-6 (24px) grid, ground cut out of the violet slab
+         steps and radii: space-4 16 / space-6 24 gaps; radius-card 24, radius-pill 32, radius-full disc -->
+    <rect class="violet card" x="528" y="-24" width="208" height="216"/>
+    <rect class="blue pill" x="752" y="40" width="232" height="64"/>
+    <rect class="tint card" x="752" y="120" width="152" height="120"/>
+    <rect class="surface pill" x="576" y="208" width="96" height="64"/>
+    <circle class="green" cx="936" cy="216" r="16"/>
+    <g class="star-on">
+      <circle cx="576" cy="48" r="2"/><circle cx="648" cy="24" r="1.5"/><circle cx="696" cy="96" r="2"/>
+      <circle cx="600" cy="144" r="1.5"/><circle cx="672" cy="168" r="2"/><circle cx="552" cy="120" r="1.5"/>
+    </g>
+    <g class="star">
+      <circle cx="504" cy="72" r="1.5"/><circle cx="504" cy="216" r="2"/><circle cx="768" cy="24" r="1.5"/>
+      <circle cx="864" cy="24" r="2"/><circle cx="936" cy="144" r="1.5"/><circle cx="720" cy="240" r="2"/>
+      <circle cx="792" cy="264" r="1.5"/><circle cx="888" cy="264" r="2"/>
+      <circle cx="528" cy="264" r="1.5"/><circle cx="696" cy="216" r="1.5"/><circle cx="912" cy="120" r="1.5"/>
+      <circle cx="744" cy="192" r="1.5"/>
+    </g>
+  </svg>
+  <div class="text">
+    <h1>xDev Hive</h1>
+    <p>Projects, AI coding agents and shared knowledge in one hub.</p>
+  </div>
+</div>

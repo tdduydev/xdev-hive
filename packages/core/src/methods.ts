@@ -621,6 +621,15 @@ export const schemas = {
       cpu: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), cores: z.number().int().min(1).max(65536).optional(), load: z.number().min(0).max(1e6).optional() }).optional(),
       ram: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), usedBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
       disk: z.object({ percent: z.number().min(0).max(100), detail: z.string().max(300), freeBytes: z.number().min(0).max(1e18).optional(), totalBytes: z.number().positive().max(1e18).optional() }).optional(),
+      /** Spec 79o. A list this hub cannot read is dropped rather than failing the beat that carries it. */
+      disks: z.array(z.object({
+        mount: z.string().min(1).max(300),
+        label: z.string().max(200).optional(),
+        totalBytes: z.number().positive().max(1e18),
+        freeBytes: z.number().min(0).max(1e18),
+        percent: z.number().min(0).max(100),
+        worktree: z.boolean().optional(),
+      })).max(16).optional().catch(undefined),
     }).optional(),
     profiles: z.array(reportedProfile).max(50).optional(),
     worktrees: worktreeReportSchema.optional(),
