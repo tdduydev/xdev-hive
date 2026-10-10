@@ -511,6 +511,7 @@ export const schemas = {
       contradicts: id.optional(),
     })
     .refine((m) => [m.project !== undefined, m.shared, m.system !== undefined].filter(Boolean).length === 1, "memory needs a project, a system, or shared: true (one of them)"),
+  "memory.share": z.object({ id }),
   "memory.approve": z.object({ id }),
   /** Settles a conflict: keep this entry (the other is replaced by it), the other, or both (no conflict after all). */
   "memory.resolve": z.object({ id, other: id, keep: z.enum(["this", "other", "both"]) }),
@@ -562,6 +563,7 @@ export const schemas = {
     id: taskId,
     leaseMinutes: z.number().int().min(5).max(24 * 60).default(120),
   }),
+  "tasks.requestChanges": z.object({ id: taskId, note: z.string().trim().min(1).max(2000) }),
   "tasks.update": z.object({
     id: taskId,
     priority: z.number().int().min(0).max(100).optional(),
@@ -847,6 +849,8 @@ export const schemas = {
    */
   "runs.steer": z.object({ machineId: z.string().min(1).max(200), runId, text: z.string().trim().min(1).max(8000) }),
   "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId }),
+  "runs.ciPolicy": z.object({ project, mrUrl: z.string().url().max(2000) }),
+  "runs.stopCi": z.object({ project, mrUrl: z.string().url().max(2000) }),
   /**
    * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
    * run. The machine does it with its own GitLab or GitHub token at its next heartbeat; only one that takes runs from the hub.
@@ -1363,6 +1367,7 @@ export interface MethodOutput {
   "memory.search": Memory[];
   "memory.list": Memory[];
   "memory.write": Memory;
+  "memory.share": Memory;
   "memory.approve": Memory;
   "memory.resolve": Memory;
   "memory.keep": Memory;
@@ -1377,6 +1382,7 @@ export interface MethodOutput {
   "tasks.setDeps": Task;
   "tasks.next": Task[];
   "tasks.claim": { claimed: boolean; task: Task | null };
+  "tasks.requestChanges": Task;
   "tasks.update": Task;
   "tasks.classify": Task;
   "tasks.classifyConfig": { project: string; enabled: boolean }[];
@@ -1473,6 +1479,8 @@ export interface MethodOutput {
   "runs.get": RunRecord | null;
   "runs.cancel": RunRecord;
   "runs.steer": RunMessage;
+  "runs.ciPolicy": { fixCi: boolean };
+  "runs.stopCi": { fixCi: boolean };
   "runs.merge": RunRecord;
   "runs.mergeResult": RunRecord;
   "runs.timeoutSettings": RunTimeoutSettings;
@@ -1643,6 +1651,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "memory.search": "viewer",
   "memory.list": "viewer",
   "memory.write": "agent",
+  "memory.share": "agent",
   "memory.approve": "agent",
   "memory.resolve": "agent",
   "memory.keep": "agent",
@@ -1657,6 +1666,7 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "tasks.setDeps": "agent",
   "tasks.next": "viewer",
   "tasks.claim": "agent",
+  "tasks.requestChanges": "agent",
   "tasks.update": "agent",
   "tasks.classify": "agent",
   "tasks.classifyConfig": "viewer",
@@ -1703,6 +1713,8 @@ export const METHOD_ROLES: Record<Method, Role> = {
   "runs.get": "viewer",
   "runs.cancel": "agent",
   "runs.steer": "agent",
+  "runs.ciPolicy": "viewer",
+  "runs.stopCi": "agent",
   "runs.merge": "agent",
   "runs.mergeResult": "agent",
   // Also "manage" on the project: a project manager, never an agent token.
