@@ -93,6 +93,7 @@ Deploy lần đầu rồi xem trạng thái:
 ```bash
 sudo hive-deploy
 sudo hive-status
+sudo systemctl start hive-deploy.timer     # từ giờ tự cập nhật theo tag prod
 journalctl -u hive-hub | grep -i code     # mã một lần của trang thiết lập (HIVE_SETUP=1)
 ```
 
