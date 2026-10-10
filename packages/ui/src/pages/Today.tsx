@@ -1,13 +1,15 @@
 import { ReviewArtifacts } from "#ui/components/Artifacts.tsx";
-import { confirmTaskClose } from "#ui/lib/task-close.ts";
+import { taskCloseWarning } from "#ui/lib/task-close.ts";
 import { useChatPageContext } from "#ui/components/ChatSession.tsx";
 import { useStartStatus } from "#ui/pages/Start.tsx";
 import { knowledgeHref } from "#ui/lib/knowledge.ts";
-// Hôm nay (docs/design/hive-2026-10, template dòng 108–230): a card of what needs the person on the left, the
-// selected item with its actions on the right. J / K move, ↵ runs the first button, E marks it seen.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+// Hôm nay (docs/design/hive-2026-10, template dòng 108–230): what needs the person on the left in three sections
+// (lib/inbox.ts inboxSection), the selected item with its actions on the right. J / K move, ↵ runs the main button,
+// E marks it seen. Nothing asks "are you sure": an action runs at once and, where it can be taken back, offers
+// Hoàn tác for a few seconds instead (see Detail).
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { visibleInterval } from "#ui/lib/visible-interval.ts";
-import { Copy, Info, TriangleAlert } from "lucide-react";
+import { CircleCheckBig, Copy, Ellipsis, Info, TriangleAlert } from "lucide-react";
 import { cn } from "cn";
 import { HUB_SCOPE, isCliActionProposalKey, type ChatAction, type Memory, type SdlcGateRecord } from "@xdev-hive/core";
 import { approvalOf } from "#ui/lib/permissions.ts";
@@ -16,14 +18,15 @@ import { requestErrorText } from "#ui/lib/runs.ts";
 import { ErrorNote } from "#ui/components/common.tsx";
 import { DesktopConfigIssues } from "#ui/components/ConfigIssues.tsx";
 import { MobileBack } from "#ui/components/MobileDetail.tsx";
-import { errorMessage, formatTime, hashParam, useCan, useHive, useQuery } from "#ui/hooks.ts";
+import { errorMessage, formatTime, useCan, useHive, useQuery } from "#ui/hooks.ts";
 import { useT, type MessageKey, type TFunction } from "#ui/i18n/index.tsx";
-import { groupToday, shortAgo, todayDot, type InboxDone, type InboxItem, type TodayDot } from "#ui/lib/inbox.ts";
+import { groupSections, shortAgo, todayDot, type InboxDone, type InboxItem, type InboxSection, type TodayDot } from "#ui/lib/inbox.ts";
 import { useMobileDetail } from "#ui/lib/mobile-detail.ts";
 import { docOwner, scopeProjects } from "#ui/lib/scope.ts";
 import { useInbox } from "#ui/shell/inbox.tsx";
 import { useToast } from "#ui/shell/toast.tsx";
 import { Button } from "@xdev-hive/ui/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@xdev-hive/ui/components/ui/dropdown-menu";
 import { cosmicAssets } from "#ui/assets/cosmic.ts";
 import { remainingSteps, type StartStep } from "#ui/lib/start.ts";
 import { alertDetail, alertTitle } from "#ui/pages/admin/Alerts.tsx";
@@ -40,7 +43,7 @@ const DOT: Record<TodayDot, string> = {
 const TONE_DOT: Record<InboxItem["tone"], TodayDot> = { danger: "red", warning: "amber", info: "blue" };
 
 function P({ children }: { children: ReactNode }) {
-  return <p className="m-0 max-w-[720px] text-[15px]/6 font-medium text-pretty whitespace-pre-wrap text-fg-secondary">{children}</p>;
+  return <p className="m-0 max-w-[720px] text-[15px]/6 font-medium text-pretty whitespace-pre-wrap text-fg-secondary [overflow-wrap:anywhere]">{children}</p>;
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
@@ -249,15 +252,65 @@ function scopeText(item: InboxItem, t: TFunction): string {
   return item.kind === "leader" && item.action.project === HUB_SCOPE ? t("chat.actionHub") : item.scope || t("inbox.shared");
 }
 
+/** How long Hoàn tác stays on screen, and how long a send without a hub-side undo is held back. */
+const UNDO_MS = 5000;
+
+/**
+ * Sends held back for their undo window, by inbox key. Module-level, not component state: leaving Hôm nay inside the
+ * window must still send, not drop the person's decision with the unmounted page.
+ */
+const held = new Map<string, { timer: ReturnType<typeof setTimeout>; send: () => void }>();
+
+/** Sends after UNDO_MS unless the returned cancel runs first; cancel says whether it was still in time. */
+function holdSend(key: string, send: () => Promise<void>, failed: (err: unknown) => void): () => boolean {
+  const run = () => {
+    held.delete(key);
+    send().catch(failed);
+  };
+  held.set(key, { timer: setTimeout(run, UNDO_MS), send: run });
+  return () => {
+    const h = held.get(key);
+    if (!h) return false;
+    clearTimeout(h.timer);
+    held.delete(key);
+    return true;
+  };
+}
+
+// Closing the tab inside the window sends at once: a decision the person made and did not undo must not be lost.
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    for (const h of [...held.values()]) {
+      clearTimeout(h.timer);
+      h.send();
+    }
+  });
+}
+
+type Undo = () => void | Promise<void>;
+
+const SECTION_ICON: Record<InboxSection, typeof Info> = { decide: CircleCheckBig, fix: TriangleAlert, fyi: Info };
+
 export function TodayInboxPage() {
   const inbox = useInbox();
   const t = useT();
   const [tab, setTab] = useState<"open" | "done">("open");
-  const [sel, setSel] = useState<string | null>(() => hashParam("item"));
-  const mobileDetail = useMobileDetail("item");
-  const pick = (key: string | null) => {
-    setSel(key);
-    if (mobileDetail.mobile) mobileDetail.navigate(key);
+  // The selection lives in the address (?item=…): a link opens the item, and on a phone Back returns to the list.
+  const route = useMobileDetail("item");
+  const mobile = route.mobile;
+  // Whether this page pushed the phone's detail entry: then its back control is the browser's Back, not a new entry.
+  const pushed = useRef(false);
+  const pick = (key: string | null, how: "open" | "move" = "open") => {
+    // On a desktop the selection is not a step of its own: replacing keeps Back leaving the inbox, as people expect.
+    const replace = !mobile || how === "move" || key === null;
+    if (mobile && !replace) pushed.current = true;
+    route.navigate(key, replace);
+  };
+  const back = () => {
+    if (pushed.current) {
+      pushed.current = false;
+      window.history.back();
+    } else route.navigate(null, true);
   };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -280,11 +333,11 @@ export function TodayInboxPage() {
     return [...unique.values()];
   }, [client, me, owners.join("\n"), now]);
   const pageItems = useMemo(() => [...inbox.items, ...(remoteSetup.data ?? []).filter(item => !inbox.done.some(done => done.key === item.key))], [inbox.items, inbox.done, remoteSetup.data]);
-  const groups = useMemo(() => groupToday(pageItems), [pageItems]);
-  // J / K and the first item follow the groups as shown, not the newest-first order they came in.
-  const list = useMemo(() => (tab === "open" ? groups.flatMap((g) => g.items) : []), [tab, groups]);
-  const selected = mobileDetail.mobile ? mobileDetail.value : sel;
-  const current = tab === "open" ? (list.find((i) => i.key === selected) ?? (mobileDetail.mobile ? null : list[0] ?? null)) : null;
+  const sections = useMemo(() => groupSections(pageItems), [pageItems]);
+  // J / K and the first item follow the sections as shown, not the newest-first order they came in.
+  const list = useMemo(() => (tab === "open" ? sections.flatMap((s) => s.items) : []), [tab, sections]);
+  const selected = route.value;
+  const current = tab === "open" ? (list.find((i) => i.key === selected) ?? (mobile ? null : list[0] ?? null)) : null;
   const contextTask = current?.kind === "review" || current?.kind === "agentHold" ? current.task
     : current?.kind === "plan" ? { id: current.plan.taskId, project: current.plan.project }
     : current?.kind === "gate" ? { id: current.gate.taskId, project: current.gate.project } : null;
@@ -292,23 +345,52 @@ export function TodayInboxPage() {
     : current?.kind === "waitingRun" ? { id: current.run.runId, project: current.run.project, link: `${current.run.machineId}/${current.run.runId}` } : null;
   useChatPageContext(contextRun ? { id: contextRun.id, project: contextRun.project, href: `#/runs?run=${encodeURIComponent(contextRun.link)}` }
     : contextTask ? { id: contextTask.id, project: contextTask.project, href: `#/tasks?task=${encodeURIComponent(contextTask.id)}` } : null);
-  const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === selected) ?? (mobileDetail.mobile ? null : inbox.done[0] ?? null)) : null;
+  const doneCurrent = tab === "done" ? (inbox.done.find((d) => d.key === selected) ?? (mobile ? null : inbox.done[0] ?? null)) : null;
+  // A link to a handled item opens the Đã xong tab, one to an open item the Đang chờ tab.
   useEffect(() => {
-    if (!mobileDetail.mobile || !mobileDetail.value) return;
-    if (inbox.done.some((d) => d.key === mobileDetail.value)) setTab("done");
-    else if (pageItems.some((i) => i.key === mobileDetail.value)) setTab("open");
-  }, [mobileDetail.mobile, mobileDetail.value, inbox.done, pageItems]);
+    if (!selected) return;
+    if (inbox.done.some((d) => d.key === selected)) setTab("done");
+    else if (pageItems.some((i) => i.key === selected)) setTab("open");
+  }, [selected, inbox.done, pageItems]);
 
   useEffect(() => {
     if (current) inbox.markRead(current.key);
   }, [current, inbox]);
 
-  // The action buttons of the item on screen, so ↵ can run the first one.
+  // The action buttons of the item on screen, so ↵ can run the main one.
   // Detail builds fresh closures each render. Publishing them into state feeds an endless parent/child render loop.
   const actions = useRef<Action[]>([]);
   const setActions = useCallback((next: Action[]) => { actions.current = next; }, []);
   const keys = useMemo(() => (tab === "open" ? list.map((i) => i.key) : inbox.done.map((d) => d.key)), [tab, list, inbox.done]);
   const selKey = current?.key ?? doneCurrent?.key ?? null;
+  // Held J (key repeat) fires faster than React renders: each press moves from the last press's row, not the last render's.
+  const selRef = useRef(selKey);
+  selRef.current = selKey;
+
+  const listPane = useRef<HTMLDivElement>(null);
+  const detailPane = useRef<HTMLDivElement>(null);
+  // The selected row stays in sight as J / K walk past the pane's edge; "nearest" leaves the list still when it is.
+  useEffect(() => {
+    if (!selKey || mobile) return;
+    listPane.current?.querySelector<HTMLElement>(`[data-inbox-key="${CSS.escape(selKey)}"]`)?.scrollIntoView({ block: "nearest" });
+    // A new item reads from its top, whatever the last one was scrolled to.
+    detailPane.current?.scrollTo({ top: 0 });
+  }, [selKey, mobile]);
+  // On a phone the list and the detail share the page's one scroll: the detail opens at its top and Back returns to
+  // the row the person left, not to wherever the detail was scrolled.
+  const listScroll = useRef(0);
+  const showingDetail = route.showingDetail;
+  useLayoutEffect(() => {
+    if (!mobile) return;
+    const main = document.getElementById("hive-main");
+    if (!main) return;
+    if (showingDetail) main.scrollTop = 0;
+    else main.scrollTop = listScroll.current;
+  }, [mobile, showingDetail]);
+  const open = (key: string) => {
+    if (mobile) listScroll.current = document.getElementById("hive-main")?.scrollTop ?? 0;
+    pick(key);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -318,17 +400,20 @@ export function TodayInboxPage() {
       if (el && (el.isContentEditable || el.closest('input, textarea, select, nav, [role="dialog"], [role="menu"]'))) return;
       if (document.querySelector('[role="dialog"]')) return;
       if (e.key === "Enter" && el?.closest('a, button, summary, [role="option"]')) return;
-      const i = selKey ? keys.indexOf(selKey) : -1;
+      // Arrows scroll the detail when the person is reading it; J / K move the selection from anywhere.
+      const arrows = !el || el === document.body || !!el.closest("[data-today-list]");
+      const i = selRef.current ? keys.indexOf(selRef.current) : -1;
       const k = e.key.toLowerCase();
       const move = (key: string) => {
-        pick(key);
+        selRef.current = key;
+        pick(key, "move");
         // Keep the listbox's active option and DOM focus together for keyboard and screen reader users.
-        if (!mobileDetail.mobile) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-inbox-key="${CSS.escape(key)}"]`)?.focus());
+        if (!mobile) requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-inbox-key="${CSS.escape(key)}"]`)?.focus());
       };
-      if (k === "j" || e.key === "ArrowDown") {
+      if (k === "j" || (arrows && e.key === "ArrowDown")) {
         e.preventDefault();
         if (keys[i + 1]) move(keys[i + 1]!);
-      } else if (k === "k" || e.key === "ArrowUp") {
+      } else if (k === "k" || (arrows && e.key === "ArrowUp")) {
         e.preventDefault();
         if (i > 0) move(keys[i - 1]!);
       } else if (k === "e" && current) {
@@ -346,33 +431,30 @@ export function TodayInboxPage() {
   const toast = useToast();
   const next = (key: string) => {
     const i = keys.indexOf(key);
-    pick(keys[i + 1] ?? keys[i - 1] ?? null);
+    pick(keys[i + 1] ?? keys[i - 1] ?? null, "move");
   };
-  const finish = (item: InboxItem, note: string, undoable = false) => {
+  const finish = (item: InboxItem, note: string, undo?: Undo) => {
     next(item.key);
     inbox.markDone({ key: item.key, kind: item.kind, tone: item.tone, title: titleOf(item, t), scope: scopeText(item, t), note });
-    toast(note, undoable ? { undo: () => inbox.reopen(item.key) } : undefined);
+    toast(note, undo ? {
+      duration: UNDO_MS,
+      undo: () => void Promise.resolve(undo()).catch((err: unknown) => toast(errorMessage(err), { tone: "error" })),
+    } : undefined);
   };
-  const seen = (item: InboxItem) => finish(item, t("inbox.seenNote"), true);
+  const seen = (item: InboxItem) => finish(item, t("inbox.seenNote"), () => inbox.reopen(item.key));
 
   const startStatus = useStartStatus();
   const [startDismissed, setStartDismissed] = useState(false);
   const startLeft = startStatus.data?.remaining ?? 0;
   const startNext = startStatus.data ? (Object.keys(startStatus.data.steps) as StartStep[]).find((k) => startStatus.data!.steps[k] === "todo") : undefined;
-  // Four numbers the inbox already holds (no figure of its own): what waits per group, and what this device settled.
-  const summary = [
-    ...groups.map(({ group, items }) => ({ id: group, dot: ({ approve: "violet", fix: "red", machine: "amber" } as const)[group], label: t(`inbox.page.group.${group}`), value: items.length, note: longAgo(items.at(-1)!.at, now, t) ? t("inbox.page.oldest", { when: longAgo(items.at(-1)!.at, now, t) }) : "", go: () => { setTab("open"); pick(items[0]!.key); } })),
-    { id: "done", dot: "blue" as const, label: t("inbox.page.tabDone"), value: inbox.done.length, note: t("inbox.page.thisDevice"), go: () => { setTab("done"); pick(null); } },
-  ];
-  const sub = t("inbox.page.sub");
+  const nothing = tab === "open" ? list.length === 0 : inbox.done.length === 0;
   return (
-    <div className="mobile-master-detail flex min-h-full w-full flex-col px-4 pt-6 pb-8 md:px-7">
+    <div data-today-page data-showing-detail={route.showingDetail || undefined} className="flex w-full min-w-0 flex-col gap-3 p-4 md:h-full md:min-h-0 md:p-6">
       <div data-today-reminders className="flex shrink-0 flex-col gap-3 empty:hidden [&:not(:has(>*))]:hidden">
         <DesktopConfigIssues />
       </div>
-      <p className="m-0 mb-5 max-w-[760px] text-[14px]/[22px] font-medium text-pretty text-fg-secondary">{sub}</p>
       {startLeft && !startDismissed ? (
-        <div className="mb-4 flex flex-wrap items-center gap-3.5 rounded-[20px] bg-(--today-banner-bg) py-3.5 pr-4 pl-[18px] shadow-[var(--today-banner-ring)]">
+        <div className="flex shrink-0 flex-wrap items-center gap-3.5 rounded-[20px] bg-(--today-banner-bg) py-3.5 pr-4 pl-[18px] shadow-[var(--today-banner-ring)]">
           <img src={cosmicAssets.planetViolet} alt="" className="size-[34px] rounded-full shadow-[var(--today-banner-glow)]" />
           <span className="flex min-w-[220px] flex-1 flex-col">
             <span className="text-[14px]/5 font-semibold">{t("inbox.page.startLeft", { count: startLeft })}</span>
@@ -382,26 +464,14 @@ export function TodayInboxPage() {
           <Button variant="ghost" size="sm" onClick={() => setStartDismissed(true)}>{t("inbox.page.startLater")}</Button>
         </div>
       ) : null}
-      <div data-today-summary className="mb-5 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3 max-md:grid-cols-2">
-        {summary.map((tile) => (
-          <button
-            key={tile.id}
-            type="button"
-            onClick={tile.go}
-            className="flex cursor-pointer flex-col gap-1.5 rounded-[20px] bg-(--surface-1) px-[18px] py-4 text-left text-fg-strong shadow-[var(--ring-glass)] outline-none hover:shadow-[var(--ring-glass-strong)] focus-visible:focus-ring"
-          >
-            <span className="flex items-center gap-2 text-xs/[18px] font-medium text-fg-muted">
-              <span className={cn("size-1.5 rounded-full", DOT[tile.dot])} />
-              {tile.label}
-            </span>
-            <span className="text-[30px]/9 font-bold tracking-[-0.4px]">{tile.value}</span>
-            <span className="text-xs/[18px] font-medium text-fg-secondary">{tile.note}</span>
-          </button>
-        ))}
-      </div>
-      <div className="flex flex-wrap items-start gap-4">
-        <div className={cn("max-w-full min-w-0 flex-[1_1_300px] flex-col overflow-hidden rounded-[24px] bg-(--surface-1) shadow-[var(--ring-glass)] max-md:w-full", mobileDetail.showingDetail ? "hidden" : "flex")}>
-          <div className="flex items-center gap-1.5 px-3.5 pt-3.5 pb-2.5">
+      {/* Two panes on a desktop, each its own single scroll region: the page itself never scrolls behind them. */}
+      <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-4 md:grid-cols-[minmax(280px,360px)_minmax(0,1fr)] xl:grid-cols-[400px_minmax(0,1fr)]">
+        <section
+          data-today-list
+          aria-label={t("inbox.listLabel")}
+          className={cn("min-h-0 min-w-0 flex-col rounded-[24px] bg-(--surface-1) shadow-[var(--ring-glass)]", route.showingDetail ? "hidden" : "flex")}
+        >
+          <div className="flex shrink-0 items-center gap-1.5 px-3.5 pt-3.5 pb-2.5 shadow-[inset_0_-1px_0_var(--today-rule)]">
             <div role="tablist" className="flex gap-1.5">
               {(
                 [
@@ -419,7 +489,7 @@ export function TodayInboxPage() {
                     setTab(k);
                     pick(null);
                   }}
-                  className="cosmic-tag cursor-pointer outline-none focus-visible:focus-ring"
+                  className="cosmic-tag min-h-11 cursor-pointer outline-none focus-visible:focus-ring md:min-h-0"
                 >
                   {label} · {n}
                 </button>
@@ -428,58 +498,84 @@ export function TodayInboxPage() {
             <span className="flex-1" />
             <span data-today-shortcuts data-inbox-role={inbox.role} className="hidden text-[11px]/4 font-semibold text-(--text-faint) md:inline">{t("inbox.page.keys")}</span>
           </div>
-          <div role="listbox" aria-label={t("inbox.listLabel")}>
-            {tab === "open"
-              ? groups.map(({ group, items }) => (
-                  <div key={group} role="group" aria-labelledby={`inbox-group-${group}`} data-inbox-group={group} className="flex flex-col">
-                    <div id={`inbox-group-${group}`} className="px-[18px] pt-3 pb-1.5 text-[11px]/4 font-semibold tracking-[0.6px] text-(--text-faint) uppercase">
-                      {t(`inbox.page.group.${group}`)} · {items.length}
-                    </div>
-                    {items.map((item) => (
+          <div ref={listPane} data-today-scroll className="min-h-0 flex-1 overscroll-contain pb-2.5 md:overflow-y-auto">
+            {nothing ? (
+              inbox.loading ? null : (
+                <div data-today-empty className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                  <CircleCheckBig aria-hidden="true" className="size-8 text-(--mark-ok)" />
+                  <p className="m-0 text-[15px]/6 font-semibold text-fg-strong">{tab === "open" ? t("inbox.page.empty") : t("inbox.page.doneEmpty")}</p>
+                  {tab === "open" ? <p className="m-0 max-w-[280px] text-[13px]/5 font-medium text-fg-muted">{t("inbox.page.emptyHint")}</p> : null}
+                </div>
+              )
+            ) : (
+              <div role="listbox" aria-label={t("inbox.listLabel")}>
+                {tab === "open"
+                  ? sections.map(({ section, items }) => {
+                      const Icon = SECTION_ICON[section];
+                      return (
+                        <div key={section} role="group" aria-labelledby={`inbox-section-${section}`} data-inbox-section={section} className="flex flex-col">
+                          {/* Sticky so the section of the row under the eye stays named while the list scrolls. */}
+                          <div id={`inbox-section-${section}`} className="sticky top-0 z-[1] flex items-center gap-2 bg-(--surface-1) px-[18px] pt-3.5 pb-2 text-[11px]/4 font-semibold tracking-[0.6px] text-fg-muted uppercase">
+                            <Icon aria-hidden="true" className={cn("size-3.5", section === "fix" ? "text-danger" : section === "decide" ? "text-fg-brand" : "text-fg-muted")} />
+                            <span className="min-w-0 flex-1">{t(`inbox.page.section.${section}`)}</span>
+                            <span className="rounded-full bg-(--glass-bg) px-2 py-0.5 text-[11px]/4 tracking-normal text-fg-strong tabular-nums">{items.length}</span>
+                          </div>
+                          {items.length ? items.map((item) => (
+                            <Row
+                              key={item.key}
+                              itemKey={item.key}
+                              on={item.key === current?.key}
+                              tabStop={item.key === (current?.key ?? list[0]?.key)}
+                              dot={todayDot(item)}
+                              title={titleOf(item, t)}
+                              scope={scopeText(item, t)}
+                              meta={metaOf(item, t)}
+                              age={shortAgo(item.at, now, t)}
+                              onPick={() => open(item.key)}
+                            />
+                          )) : (
+                            <div className="px-[18px] pb-2 text-[13px]/5 font-medium text-fg-muted">{t(`inbox.page.sectionEmpty.${section}`)}</div>
+                          )}
+                        </div>
+                      );
+                    })
+                  : inbox.done.map((d) => (
                       <Row
-                        key={item.key}
-                        itemKey={item.key}
-                        on={item.key === current?.key}
-                        tabStop={item.key === (current?.key ?? list[0]?.key)}
-                        dot={todayDot(item)}
-                        title={titleOf(item, t)}
-                        scope={scopeText(item, t)}
-                        meta={metaOf(item, t)}
-                        age={shortAgo(item.at, now, t)}
-                        onPick={() => pick(item.key)}
+                        key={d.key}
+                        itemKey={d.key}
+                        on={d.key === doneCurrent?.key}
+                        tabStop={d.key === (doneCurrent?.key ?? inbox.done[0]?.key)}
+                        dot={TONE_DOT[d.tone]}
+                        title={d.title}
+                        scope={d.scope}
+                        meta={d.note}
+                        age={shortAgo(d.at, now, t)}
+                        onPick={() => open(d.key)}
                       />
                     ))}
-                  </div>
-                ))
-              : inbox.done.map((d) => (
-                  <Row
-                    key={d.key}
-                    itemKey={d.key}
-                    on={d.key === doneCurrent?.key}
-                    tabStop={d.key === (doneCurrent?.key ?? inbox.done[0]?.key)}
-                    dot={TONE_DOT[d.tone]}
-                    title={d.title}
-                    scope={d.scope}
-                    meta={d.note}
-                    age={shortAgo(d.at, now, t)}
-                    onPick={() => pick(d.key)}
-                  />
-                ))}
-            {(tab === "open" ? list.length : inbox.done.length) === 0 && !inbox.loading ? (
-              <div className="px-6 py-10 text-center text-[14px]/[22px] font-medium text-fg-muted">{t("inbox.page.empty")}</div>
-            ) : null}
+              </div>
+            )}
           </div>
-          <div className="h-2.5" />
-        </div>
-        <div data-today-detail className={cn("min-w-0 flex-[999_1_440px] flex-col gap-3", mobileDetail.mobile && !mobileDetail.showingDetail ? "hidden" : "flex", !current && !doneCurrent && !mobileDetail.showingDetail && "md:hidden")}>
-          {mobileDetail.showingDetail ? <MobileBack onClick={() => pick(null)} /> : null}
+        </section>
+        <section
+          ref={detailPane}
+          data-today-detail
+          aria-label={current ? titleOf(current, t) : doneCurrent?.title ?? t("inbox.page.pickHint")}
+          className={cn("min-h-0 min-w-0 flex-col gap-3 md:overflow-y-auto md:overscroll-contain", mobile && !route.showingDetail ? "hidden" : "flex")}
+        >
+          {route.showingDetail ? <MobileBack onClick={back} /> : null}
           <ErrorNote error={inbox.error ?? remoteSetup.error} />
           {current ? (
             <Detail key={current.key} item={current} now={now} onActions={setActions} finish={finish} seen={seen} />
           ) : doneCurrent ? (
             <DoneDetail entry={doneCurrent} now={now} onReopen={() => inbox.reopen(doneCurrent.key)} />
+          ) : !mobile && !inbox.loading && !nothing ? (
+            // An empty list says so itself; this pane only asks for a pick when there is something to pick.
+            <div className="grid min-h-[240px] flex-1 place-items-center rounded-[24px] px-6 text-center text-[14px]/[22px] font-medium text-fg-muted shadow-[var(--ring-glass)]">
+              {t("inbox.page.pickHint")}
+            </div>
           ) : null}
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -500,29 +596,43 @@ function Row({ itemKey, on, tabStop, dot, title, scope, meta, age, onPick }: { i
         }
       }}
       className={cn(
-        "mx-2 grid cursor-pointer grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 rounded-[14px] px-2.5 py-3 text-left outline-none focus-visible:focus-ring",
-        on ? "bg-(--today-row-selected-bg) shadow-[var(--today-row-selected-ring)]" : "hover:bg-(--glass-bg)",
+        "relative mx-2 grid min-h-11 cursor-pointer touch-manipulation grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 rounded-[14px] px-2.5 py-3 text-left outline-none focus-visible:focus-ring",
+        on ? "bg-(--today-row-selected-bg) shadow-[var(--today-row-selected-ring)]" : "hover:bg-(--glass-bg) active:bg-(--glass-bg)",
       )}
     >
+      {/* The selected row has a bar at its edge too, so it is told apart without its tint. */}
+      {on ? <span aria-hidden="true" className="absolute top-2.5 bottom-2.5 left-0 w-[3px] rounded-full bg-(--accent-violet)" /> : null}
       <span className={cn("mt-1.5 size-2 rounded-full", DOT[dot])} />
       <span className="flex min-w-0 flex-col gap-[3px]">
-        <span className="text-[13.5px]/[19px] font-semibold text-pretty text-fg-strong">{title}</span>
+        <span className={cn("text-[13.5px]/[19px] text-pretty text-fg-strong [overflow-wrap:anywhere]", on ? "font-bold" : "font-semibold")}>{title}</span>
         <span className="truncate text-xs/[18px] font-medium text-fg-muted">
           {scope}
           {meta ? ` · ${meta}` : ""}
         </span>
       </span>
-      <span className="pt-0.5 text-[11px]/4 font-semibold text-(--text-faint)">{age}</span>
+      <span className="pt-0.5 text-[11px]/4 font-semibold text-(--text-faint) tabular-nums">{age}</span>
     </div>
   );
 }
 
 const VARIANT = { primary: "solid", secondary: "glass", ghost: "ghost", danger: "glass" } as const;
+/** Buttons shown beside the main one; the rest go behind "Thao tác khác" so the bar never wraps into a wall. */
+const VISIBLE_SECONDARY = 3;
 
-/** The design's detail card: pill and age, title, the item's blocks, then its buttons (the first runs on ↵). */
+/** The main action first: ↵ runs it, and it is the one drawn large. */
+function ordered(actions: Action[]): Action[] {
+  const main = actions.find((a) => a.kind === "primary") ?? actions[0];
+  return main ? [main, ...actions.filter((a) => a !== main)] : [];
+}
+
+/** The detail card: pill and age, title, the item's blocks, then its actions in a bar that stays in sight. */
 function DetailCard({ dot, kind, scope, when, title, children, actions, busy, foot }: { dot: TodayDot; kind: string; scope: string; when: string; title: string; children?: ReactNode; actions: Action[]; busy: boolean; foot?: string }) {
+  const t = useT();
+  const [main, ...rest] = ordered(actions);
+  const shown = rest.slice(0, VISIBLE_SECONDARY);
+  const overflow = rest.slice(VISIBLE_SECONDARY);
   return (
-    <div className="flex min-w-0 flex-col gap-5 rounded-[24px] bg-(--surface-1) px-4 pt-5 pb-5 shadow-[var(--ring-glass)] md:px-7 md:pt-6 md:pb-[26px] [&>header+p]:-mt-2.5">
+    <div className="flex min-w-0 flex-col gap-5 rounded-[24px] bg-(--surface-1) px-4 pt-5 shadow-[var(--ring-glass)] md:px-7 md:pt-6 [&>header+p]:-mt-2.5">
       <header className="flex flex-col gap-2.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-(--glass-bg) px-2.5 text-[11px]/4 font-semibold text-fg-secondary shadow-[var(--ring-glass)]">
@@ -534,12 +644,32 @@ function DetailCard({ dot, kind, scope, when, title, children, actions, busy, fo
         <h2 className="m-0 text-[24px]/8 font-bold tracking-[-0.2px] text-pretty text-fg-strong [overflow-wrap:anywhere]">{title}</h2>
       </header>
       {children}
-      <div data-today-actions className="flex flex-wrap items-center gap-2.5 pt-1">
-        {actions.map((a) => (
+      {/* Sticky: a long diff or log must not push the decision out of sight. */}
+      <div data-today-actions className="sticky bottom-0 z-[1] -mx-4 flex flex-wrap items-center gap-2.5 rounded-b-[24px] bg-(--surface-1) px-4 pt-3 pb-5 shadow-[0_-1px_0_var(--today-rule)] md:-mx-7 md:px-7 md:pb-6">
+        {main ? (
+          <Button variant={VARIANT[main.kind]} size="lg" disabled={busy} onClick={() => void main.run()} className="max-md:w-full">
+            {main.label}
+          </Button>
+        ) : null}
+        {shown.map((a) => (
           <Button key={a.label} variant={VARIANT[a.kind]} size="md" disabled={busy} onClick={() => void a.run()}>
             {a.label}
           </Button>
         ))}
+        {overflow.length ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="md" disabled={busy} aria-label={t("inbox.page.moreActions")} title={t("inbox.page.moreActions")}>
+                <Ellipsis aria-hidden="true" className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {overflow.map((a) => (
+                <DropdownMenuItem key={a.label} className="min-h-11" onSelect={() => void a.run()}>{a.label}</DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
         <span className="flex-1" />
         {foot ? <span className="hidden text-[11px]/4 font-semibold text-(--text-faint) md:inline">{foot}</span> : null}
       </div>
@@ -566,10 +696,11 @@ function Detail({
   item: InboxItem;
   now: number;
   onActions: (a: Action[]) => void;
-  finish: (item: InboxItem, note: string, undoable?: boolean) => void;
+  finish: (item: InboxItem, note: string, undo?: Undo) => void;
   seen: (item: InboxItem) => void;
 }) {
   const { client, bump, me } = useHive();
+  const toast = useToast();
   const inbox = useInbox();
   const t = useT();
   const allow = useCan();
@@ -580,24 +711,59 @@ function Detail({
   const [note, setNote] = useState("");
   const docKey = item.kind === "proposal" && !isCliActionProposalKey(item.proposal.docKey) ? item.proposal.docKey : null;
   const doc = useQuery(async () => (docKey ? client.call("docs.get", { key: docKey }) : null), [client, docKey]);
+  // What closing a review task now would leave behind, read up front so Chuyển sang Xong can run without asking.
+  const closeTask = item.kind === "review" && allow(item.task.project, "codeReview") ? item.task : null;
+  const closeWarning = useQuery(async () => (closeTask ? taskCloseWarning(client, closeTask, t) : null), [client, closeTask?.project, closeTask?.id, closeTask?.updatedAt]);
 
-  const act = (fn: () => Promise<string | null>): (() => Promise<void>) => async () => {
+  // Runs at once. A result with `undo` is an action the hub can take back: Hoàn tác calls it (see revert).
+  const act = (fn: () => Promise<string | { note: string; undo: Undo } | null>): (() => Promise<void>) => async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
-      const note = await fn();
-      if (note === null) return;
+      const result = await fn();
+      if (result === null) return;
       bump();
       inbox.reload();
-      finish(item, note);
+      if (typeof result === "string") finish(item, result);
+      else finish(item, result.note, result.undo);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
+  };
+  // Hoàn tác for an action the hub has an inverse for: call it, and the item is back in the list.
+  const revert = (inverse: () => Promise<unknown>): Undo => async () => {
+    await inverse();
+    inbox.reopen(item.key);
+    bump();
+    inbox.reload();
+    toast(t("inbox.page.undone"));
+  };
+  // For an action the hub cannot take back: it goes out after the undo window, and Hoàn tác inside it cancels the send.
+  const later = (note: string, send: () => Promise<unknown>) => () => {
+    if (inFlight.current) return;
+    const key = item.key;
+    const cancel = holdSend(key, async () => {
+      await send();
+      bump();
+      inbox.reload();
+    }, (err) => {
+      // The item comes back so the person sees it is not done, with what went wrong.
+      inbox.reopen(key);
+      toast(t("inbox.page.sendFailed", { error: errorMessage(err) }), { tone: "error" });
+    });
+    finish(item, note, () => {
+      if (!cancel()) {
+        toast(t("inbox.page.undoTooLate"));
+        return;
+      }
+      inbox.reopen(key);
+      toast(t("inbox.page.undone"));
+    });
   };
   const open = (url: string | null | undefined) => () => {
     if (url) window.open(url, "_blank", "noopener");
@@ -607,12 +773,9 @@ function Detail({
   };
   const seenAction = (label = t("inbox.seen")): Action => ({ label, kind: "ghost", run: () => seen(item) });
 
+  // Delayed send: the hub has no call that turns auto-fix back on for an MR, so Hoàn tác cancels before it goes out.
   const stopCi = (project: string, mrUrl: string | null): Action[] => mrUrl && allow(project, "runDispatch") ? [{
-    label: t("inbox.ci.stop"), kind: "ghost", run: act(async () => {
-      if (!window.confirm(t("inbox.ci.stopConfirm"))) return null;
-      await client.call("runs.stopCi", { project, mrUrl });
-      return t("inbox.ci.stopped");
-    }),
+    label: t("inbox.ci.stop"), kind: "ghost", run: later(t("inbox.ci.stopped"), () => client.call("runs.stopCi", { project, mrUrl })),
   }] : [];
 
   let body: ReactNode = null;
@@ -746,13 +909,18 @@ function Detail({
           <NoteField title={t("inbox.page.noteTitle")} value={note} onChange={setNote} placeholder={t("flow.notePlaceholder")} />
           <SectionTitle>{t("inbox.review.handoff")}</SectionTitle>
           <ReviewArtifacts project={task.project} taskId={task.id} note={task.note?.trim() || t("inbox.review.noNote")} />
+          {closeWarning.data ? (
+            <Note tone="warning">
+              <span data-close-warning className="whitespace-pre-line">{`${t("inbox.page.closeCheck")}: ${closeWarning.data}`}</span>
+            </Note>
+          ) : null}
         </>
       );
       const canMove = allow(task.project, "codeReview");
       actions = [
         ...(canMove && hubRun?.mrUrl && (!hubRun.mr?.status || hubRun.mr.status === "opened") && !hubRun.mr?.draft && hubRun.mr?.pipeline !== "failed" && hubRun.merge?.status !== "pending" ? [{
+          // Merge goes out at once, with no undo: a merged branch cannot be unmerged, and the person asked for it.
           label: t("inbox.review.merge"), kind: "primary" as const, run: act(async () => {
-            if (!window.confirm(t("inbox.review.mergeConfirm", { mr: hubRun.mrUrl! }))) return null;
             await client.call("runs.merge", { machineId: hubRun.machineId, runId: hubRun.runId });
             return t("inbox.review.mergeRequested");
           }),
@@ -769,15 +937,15 @@ function Detail({
               {
                 label: t("inbox.review.toDone"),
                 kind: "secondary" as const,
+                // Real undo: the hub takes the status back. What closing leaves behind shows above, not in a dialog.
                 run: act(async () => {
-                  if (!await confirmTaskClose(client, task, t)) return null;
                   await client.call("tasks.update", { id: task.id, status: "done" });
-                  return t("inbox.review.movedDone", { id: task.id });
+                  return { note: t("inbox.review.movedDone", { id: task.id }), undo: revert(() => client.call("tasks.update", { id: task.id, status: task.status })) };
                 }),
               },
             ]
           : []),
-        { label: t("inbox.review.markReviewed"), kind: "ghost", run: () => finish(item, t("inbox.review.reviewed", { id: task.id }), true) },
+        { label: t("inbox.review.markReviewed"), kind: "ghost", run: () => finish(item, t("inbox.review.reviewed", { id: task.id }), () => inbox.reopen(item.key)) },
       ];
       break;
     }
@@ -806,22 +974,11 @@ function Detail({
                 return t("inbox.memory.approved", { id: m.id });
               }),
             },
+            // Delayed send for both: the hub cannot make a shared entry a project's again, nor bring a removed one back.
             ...(m.project !== null && allow(null, "memoryApprove") ? [{
-              label: t("inbox.memory.share"), kind: "secondary" as const, run: act(async () => {
-                if (!window.confirm(t("inbox.memory.shareConfirm"))) return null;
-                await client.call("memory.share", { id: m.id });
-                return t("inbox.memory.shared", { id: m.id });
-              }),
+              label: t("inbox.memory.share"), kind: "secondary" as const, run: later(t("inbox.memory.shared", { id: m.id }), () => client.call("memory.share", { id: m.id })),
             }] : []),
-            {
-              label: t("inbox.memory.reject"),
-              kind: "ghost",
-              run: act(async () => {
-                if (!window.confirm(t("inbox.memory.removeConfirm", { id: m.id }))) return null;
-                await client.call("memory.remove", { id: m.id });
-                return t("inbox.memory.rejected", { id: m.id });
-              }),
-            },
+            { label: t("inbox.memory.reject"), kind: "ghost", run: later(t("inbox.memory.rejected", { id: m.id }), () => client.call("memory.remove", { id: m.id })) },
           ]
         : [seenAction()];
       break;
@@ -834,12 +991,8 @@ function Detail({
           <MemoryCard m={b} t={t} />
         </div>
       );
-      const resolve = (keep: "this" | "other" | "both", note: string) =>
-        act(async () => {
-          if (keep !== "both" && !window.confirm(t("inbox.conflict.confirm", { id: keep === "this" ? a.id : b.id, other: keep === "this" ? b.id : a.id }))) return null;
-          await client.call("memory.resolve", { id: a.id, other: b.id, keep });
-          return note;
-        });
+      // Delayed send: keeping one entry replaces the other for good, and the hub has no call that restores it.
+      const resolve = (keep: "this" | "other" | "both", note: string) => later(note, () => client.call("memory.resolve", { id: a.id, other: b.id, keep }));
       actions = allow(a.project, "memoryApprove")
         ? [
             { label: t("inbox.conflict.keep", { id: a.id }), kind: "primary", run: resolve("this", t("inbox.conflict.kept", { id: a.id, other: b.id })) },
@@ -854,10 +1007,10 @@ function Detail({
       body = <CodeBlock lang={s.id} text={s.detail} />;
       actions = [
         ...(item.machineId && me.role === "admin" && !me.access ? [{
+          // Real undo: the request waits for the machine's owner, and the hub cancels it while it is still pending.
           label: t("inbox.machine.installRemote"), kind: "primary" as const, run: act(async () => {
-            if (!window.confirm(t("inbox.machine.installConfirm", { machine: item.machine! }))) return null;
-            await client.call("admin.commandCreate", { machineId: item.machineId!, itemId: s.id });
-            return t("inbox.machine.installRequested", { machine: item.machine! });
+            const command = await client.call("admin.commandCreate", { machineId: item.machineId!, itemId: s.id });
+            return { note: t("inbox.machine.installRequested", { machine: item.machine! }), undo: revert(() => client.call("admin.commandCancel", { id: command.id })) };
           }),
         }] : []),
         ...(s.action && client.desktop
@@ -874,7 +1027,7 @@ function Detail({
             ]
           : []),
         ...(!item.machineId ? [{ label: t("inbox.machine.openSetup"), kind: "secondary" as const, run: go("#/setup") }] : []),
-        item.machineId ? { label: t("inbox.proposal.reject"), kind: "ghost", run: () => finish(item, t("inbox.machine.installDeclined", { label: s.label }), true) } : seenAction(t("inbox.machine.skip")),
+        item.machineId ? { label: t("inbox.proposal.reject"), kind: "ghost", run: () => finish(item, t("inbox.machine.installDeclined", { label: s.label }), () => inbox.reopen(item.key)) } : seenAction(t("inbox.machine.skip")),
       ];
       break;
     }
@@ -1006,7 +1159,7 @@ function Detail({
   }
 
   useEffect(() => {
-    onActions(busy ? [] : actions);
+    onActions(busy ? [] : ordered(actions));
     return () => onActions([]);
   });
 

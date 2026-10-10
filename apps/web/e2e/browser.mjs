@@ -96,8 +96,9 @@ class Tab {
   }
 
   activate() {
-    // A later person's window can cover this one in Xvfb and stop its compositor again.
-    if (process.platform === "linux") {
+    // A later person's window can cover this one in Xvfb and stop its compositor again. Windows does the same through
+    // native window occlusion: a covered tab then takes clicks and keys on a stale frame, and they reach nothing.
+    if (process.platform === "linux" || process.platform === "win32") {
       this.win.moveTop();
       this.win.focus();
       this.win.webContents.focus();
@@ -372,6 +373,7 @@ const NEEDS = process.env.HIVE_E2E_NEEDS ? JSON.parse(process.env.HIVE_E2E_NEEDS
   "task-note-history": ["lead-sees-members"],
   "today-web": ["lead-sees-members"],
   "today-actions": ["login-token", "today-web"], // the admin tab reviews what Lan's runner pushed
+  "today-scroll": ["login-token"],
   "features-page": ["login-password", "lead-sees-members"],
   "agent-map": ["lead-sees-members"],
   "machines-design": ["login-token", "lead-sees-members"],
@@ -482,10 +484,10 @@ async function main() {
     // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
     if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
-    // Roadmap 49b: one web shell, its menu by job; a hub admin's has Cài đặt service, Máy & agent and Quản trị after the work.
+    // One web shell, its menu by job: Hôm nay, Công việc, Trao đổi, Kiến thức, then the operations under a rule.
     // textContent, not innerText: group headings are uppercased by CSS (72b) and innerText returns the rendered case.
     const nav = await tab.waitFor("the admin's menu", () => document.querySelector("#hive-navigation")?.textContent.includes("Máy & agent") && document.querySelector("#hive-navigation").textContent);
-    for (const label of ["Làm việc", "Task", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
+    for (const label of ["Công việc", "Trao đổi", "Kiến thức", "Task", "Agent đang chạy", "Cài đặt service", "Quản trị"]) expect(nav.includes(label), `no ${label} in the admin's menu:\n${nav}`);
     // The Web Admin's old addresses open the tab that holds the page now.
     await tab.go("admin/queue");
     await tab.waitFor("#/admin/queue on Máy & agent › Hàng đợi", () =>
@@ -507,7 +509,7 @@ async function main() {
     expect(totals[3] === tasks.filter(task => task.status === "done").length, "done count differs from hub");
     await tab.shot("workspace-home-new");
     await tab.click('.workspace-metric[href*="section=inbox"]');
-    await tab.waitFor("existing inbox actions", () => !!document.querySelector(".workspace-inbox") && !!document.querySelector('[role="listbox"]'));
+    await tab.waitFor("existing inbox actions", () => !!document.querySelector(".workspace-inbox") && !!document.querySelector("[data-today-list]"));
     await tab.click(".workspace-back");
     await tab.waitFor("overview back", () => !!document.querySelector(".workspace-home"));
     await tab.go("pipeline");
@@ -1409,13 +1411,23 @@ async function main() {
   await step("nav-by-job", async () => {
     const menus = [
       // Quy trình (56a) is for whoever may view a project: Hoa views payment, so she reads it without Cài đặt service.
-      ["admin", tabs.admin, ["Hôm nay", "Task", "Chat", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
-      ["member", tabs.hoa, ["Hôm nay", "Task", "Quy trình", "Tính năng", "Lượt chạy", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
+      ["admin", tabs.admin, ["Hôm nay", "Task", "Agent đang chạy", "Quy trình", "Tính năng", "Chat", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent", "Cài đặt service", "Quản trị"]],
+      ["member", tabs.hoa, ["Hôm nay", "Task", "Agent đang chạy", "Quy trình", "Tính năng", "Tài liệu", "Memory", "Skill", "Artifact", "Lịch sử", "Sơ đồ", "Máy & agent"]],
     ];
     for (const [who, tab, want] of menus) {
       current = tab;
       await tab.go("today?section=inbox");
       if (mobile) await tab.click(`button[aria-label="Ẩn hoặc hiện thanh bên"]`);
+      // "Thêm" folds Artifact, Lịch sử and Sơ đồ; it remembers its state per browser, so open it whatever an earlier step left.
+      const more = 'nav [data-nav-list] button[aria-controls^="hive-nav-more-"]';
+      await tab.waitFor("the Thêm row", (more) => !!document.querySelector(more), more);
+      if (await tab.eval((more) => document.querySelector(more).getAttribute("aria-expanded") === "false", more)) {
+        const folded = await tab.eval(() => [...document.querySelectorAll("nav [data-nav-list] a")].length);
+        await tab.click(more);
+        await tab.waitFor("Thêm unfolded", (more, folded) => document.querySelector(more).getAttribute("aria-expanded") === "true" && document.querySelectorAll("nav [data-nav-list] a").length === folded + 3, more, folded);
+      }
+      // Operations sit under a rule with no heading, below the knowledge.
+      expect(await tab.eval(() => !!document.querySelector('nav [data-nav-list] .hive-nav-group-quiet a[href="#/machines"]')), `${who}: Máy & agent is in the quiet group`);
       const items = await tab.waitFor(`${who}'s menu`, () => {
         // The label is the link's first span; a count may follow it.
         const links = [...document.querySelectorAll("nav [data-nav-list] a")].map((a) => a.querySelector("span")?.textContent.trim());
@@ -4157,14 +4169,15 @@ async function main() {
     const tab = (current = tabs.lan);
     await tab.reload();
     await tab.go("today?section=inbox");
-    // 72c: the design's three groups: what to approve (the gate, the leader's proposal), then what to fix (the asking run).
-    const groups = await tab.waitFor("Hôm nay grouped as the design", () => {
-      const list = [...document.querySelectorAll("[data-inbox-group]")].map((g) => g.getAttribute("data-inbox-group"));
-      return list.includes("fix") && list.includes("approve") && list;
+    // Three sections by what the person does: decide (the gate, the leader's proposal), fix (the asking run), to know.
+    const groups = await tab.waitFor("Hôm nay in its three sections", () => {
+      const list = [...document.querySelectorAll("[data-inbox-section]")].map((g) => g.getAttribute("data-inbox-section"));
+      return list.length === 3 && list;
     });
-    expect(groups[0] === "approve" && groups.indexOf("fix") > 0, `groups: ${groups.join()}`);
-    const askedKey = await tab.waitFor("the asking run in Cần xử lý", () =>
-      document.querySelector('[data-inbox-group="fix"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(groups.join() === "decide,fix,fyi", `sections: ${groups.join()}`);
+    const askedKey = await tab.waitFor("the asking run in Lỗi cần xử lý", () =>
+      document.querySelector('[data-inbox-section="fix"] [data-inbox-key*="/R-today2:question:"]')?.getAttribute("data-inbox-key"));
+    expect(await tab.eval((id) => !!document.querySelector(`[data-inbox-section="decide"] [data-inbox-key="gate:${id}"]`), gate.id), "the gate waits in Để bạn quyết");
     expect(await tab.eval(() => !document.querySelector("[data-system-card]")), "Today must focus on inbox without system overview");
     expect(await tab.eval(() => (document.querySelector("[data-today-shortcuts]")?.getBoundingClientRect().height > 0) === (innerWidth >= 768)), "keyboard hints follow viewport");
     await tab.shot(`${String(n).padStart(2, "0")}-today-groups`);
@@ -4175,13 +4188,12 @@ async function main() {
     await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key="gate:${gate.id}"]`);
     expect(await tab.eval(() => {
+      // The decision stays in sight: the action bar is in the detail, inside the window, its main button large.
       const actions = document.querySelector("[data-today-actions]");
-      const content = actions?.previousElementSibling;
-      if (!content) return false;
-      // The design's card spaces its blocks 20px apart.
-      const gap = actions.getBoundingClientRect().top - content.getBoundingClientRect().bottom;
-      return gap >= 0 && gap <= 24 && !!actions.closest("[data-today-detail]");
-    }), "Today actions must immediately follow content in the detail card");
+      const r = actions?.getBoundingClientRect();
+      const main = actions?.querySelector('[data-slot="button"]')?.getBoundingClientRect();
+      return !!r && !!actions.closest("[data-today-detail]") && r.top >= 0 && r.bottom <= innerHeight + 1 && main.height >= 44;
+    }), "Today actions must stay visible in the detail card");
     await tab.shot(`${String(n).padStart(2, "0")}-today-gate`);
     await tab.click("button", "Duyệt, sang bước sau");
     await until("the spec gate passed from Hôm nay", async () => {
@@ -4236,9 +4248,12 @@ async function main() {
       }
     };
     const back = async (t) => { if (mobile && await t.eval(() => [...document.querySelectorAll("button")].some((x) => x.innerText.includes("Quay lại danh sách")))) await t.click("button", "Quay lại danh sách"); };
+    // Nothing on Hôm nay asks "are you sure": an action runs on the click, and window.confirm must never be called.
+    const noConfirm = (t) => t.eval(() => { window.__confirmCalls = 0; window.confirm = () => { window.__confirmCalls++; return true; }; });
+    const confirmCalls = (t) => t.eval(() => window.__confirmCalls ?? 0);
     const key = await tab.waitFor("review item from hub", () => document.querySelector('[data-inbox-key^="review:payment:TODAY-MERGE:"]')?.getAttribute("data-inbox-key"));
     await openRow(tab, key);
-    await tab.eval(() => { window.confirm = () => true; });
+    await noConfirm(tab);
     await tab.click("button", "Merge MR");
     await until("merge requested on runner", async () => (await rpc("runs.list", { project: "payment", taskId: "TODAY-MERGE" }))[0]?.merge?.status === "pending");
     await machineRpc("runs.mergeResult", { runId: "R-today-merge", ok: false, error: { message: "e2e: declined" } });
@@ -4260,9 +4275,13 @@ async function main() {
     await tab.go("today?section=inbox");
     const ciKey = await tab.waitFor("CI item", () => document.querySelector('[data-inbox-key*="/R-today-ci:ci:"]')?.getAttribute("data-inbox-key"));
     await openRow(tab, ciKey);
-    await tab.eval(() => { window.confirm = () => true; });
+    await noConfirm(tab);
     await tab.click("button", "Dừng tự sửa CI");
+    // Stopping CI has no hub-side inverse: it is held for the undo window, then sent.
+    expect((await rpc("runs.ciPolicy", { project: "payment", mrUrl: failedUrl })).fixCi, "stop CI waits out its undo window");
+    await sleep(5_000);
     await until("CI policy stopped", async () => !(await rpc("runs.ciPolicy", { project: "payment", mrUrl: failedUrl })).fixCi);
+    expect(await confirmCalls(tab) === 0, "stopping CI asked for confirmation");
     // J / K need two rows whatever earlier steps already handled.
     for (const content of ["Today J/K fixture one", "Today J/K fixture two"]) await rpc("memory.write", { project: "payment", kind: "convention", content }, people.minh.token);
     await tab.reload();
@@ -4290,19 +4309,129 @@ async function main() {
     await adminTab.go("today?section=inbox");
     await adminTab.waitFor("pending memory", id => !!document.querySelector(`[data-inbox-key="memory:${id}"]`), pending.id);
     await openRow(adminTab, `memory:${pending.id}`);
-    await adminTab.eval(() => { window.confirm = () => true; });
+    await noConfirm(adminTab);
     await adminTab.click("button", "Chuyển thành chung");
     await until("memory now shared", async () => (await rpc("memory.list", { project: null, limit: 500 })).some(m => m.id === pending.id && m.status === "approved"));
+    // Bỏ is held back too, and Hoàn tác inside the window keeps the entry: nothing reaches the hub.
+    const kept = await rpc("memory.write", { project: "payment", kind: "convention", content: "Today undo fixture" }, people.minh.token);
+    await adminTab.reload();
+    await adminTab.go("today?section=inbox");
+    await adminTab.waitFor("undo fixture", id => !!document.querySelector(`[data-inbox-key="memory:${id}"]`), kept.id);
+    await openRow(adminTab, `memory:${kept.id}`);
+    await adminTab.click("[data-today-actions] button", "Bỏ");
+    const toast = await adminTab.waitFor("the undo toast", () => {
+      const status = [...document.querySelectorAll('[role="status"]')].find((el) => el.textContent.includes("Hoàn tác"));
+      return status && { live: status.getAttribute("aria-live"), focus: status.contains(document.activeElement) };
+    });
+    expect(toast.live === "polite" && !toast.focus, `undo toast is polite and leaves focus: ${JSON.stringify(toast)}`);
+    await adminTab.click('[role="status"] button', "Hoàn tác");
+    await adminTab.waitFor("the entry back in the list", id => !!document.querySelector(`[data-inbox-key="memory:${id}"]`), kept.id);
+    await sleep(5_500);
+    expect((await rpc("memory.list", { project: "payment", limit: 500 })).some(m => m.id === kept.id), "Hoàn tác cancelled the removal");
     await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", projects: ["payment"], acceptsRuns: true, setup: { checkedAt: at, report: { machine: [{ id: "cli:codex", label: "Codex CLI", state: "missing", detail: "Codex CLI is missing", action: "Cài Codex" }], projects: [] } } });
     await adminTab.reload();
     await adminTab.go("today?section=inbox");
     const machineKey = await adminTab.waitFor("remote missing setup", () => [...document.querySelectorAll('[data-inbox-key^="machine:"]')].find(row => row.textContent.includes("Codex CLI"))?.getAttribute("data-inbox-key"));
     await openRow(adminTab, machineKey);
-    await adminTab.eval(() => { window.confirm = () => true; });
+    await noConfirm(adminTab);
     await adminTab.click("button", "Cài trên máy");
+    // The install request has a hub-side inverse, so it goes out on the click (Hoàn tác cancels it while pending).
     const commands = (await machineRpc("machines.heartbeat", { machine: "lan-mbp", instance: "e2e00001", projects: ["payment"] })).commands;
     expect(commands.some(command => command.itemId === "cli:codex"), "install reaches owner's heartbeat");
+    expect(await confirmCalls(adminTab) === 0, "Hôm nay asked for confirmation");
     await adminTab.shot(`${String(n).padStart(2, "0")}-today-actions`);
+  });
+
+  // Hôm nay with a long list: the page itself never scrolls on a desktop, the list pane does; the selection follows
+  // J / K into view and into the address, survives a reload, and the list keeps its place when a row goes. On a phone
+  // the page is the one scroll and Back returns to the row left.
+  await step("today-scroll", async () => {
+    const tab = (current = tabs.admin);
+    const fixtures = [];
+    for (let i = 0; i < 40; i++) fixtures.push(await rpc("memory.write", { project: "payment", kind: "convention", content: `Scroll fixture ${String(i).padStart(2, "0")}` }, people.minh.token));
+    try {
+      await tab.reload();
+      await tab.go("today?section=inbox");
+      await tab.waitFor("the long list", (n) => document.querySelectorAll('[data-inbox-section="decide"] [data-inbox-key^="memory:"]').length >= n, fixtures.length);
+      const layout = () => tab.eval(() => {
+        const main = document.querySelector("#hive-main");
+        const list = document.querySelector("[data-today-scroll]");
+        const detail = document.querySelector("[data-today-detail]");
+        return {
+          main: { scroll: main.scrollHeight, client: main.clientHeight, top: main.scrollTop },
+          list: { scroll: list.scrollHeight, client: list.clientHeight, top: list.scrollTop, overflow: getComputedStyle(list).overflowY },
+          detail: getComputedStyle(detail).overflowY,
+          page: document.documentElement.scrollWidth <= innerWidth + 1,
+        };
+      });
+      // A page function: waitFor runs it in the page until it returns something truthy.
+      const selectedInView = () => {
+        const row = document.querySelector('[data-inbox-key][aria-selected="true"]');
+        const pane = (innerWidth >= 768 ? document.querySelector("[data-today-scroll]") : document.querySelector("#hive-main")).getBoundingClientRect();
+        const r = row?.getBoundingClientRect();
+        return !!r && r.top >= pane.top - 1 && r.bottom <= pane.bottom + 1 && { key: row.getAttribute("data-inbox-key") };
+      };
+      const before = await layout();
+      expect(before.page, "no horizontal overflow");
+      if (!mobile) {
+        // The bug people hit: the old wrapper clipped the list with no scroll anywhere.
+        expect(before.main.scroll <= before.main.client + 1, `the page does not scroll behind the panes: ${JSON.stringify(before)}`);
+        expect(before.list.scroll > before.list.client + 100 && before.list.overflow === "auto", `the list pane scrolls: ${JSON.stringify(before)}`);
+        await tab.eval(() => { const row = document.querySelector("[data-inbox-key]"); row.click(); row.focus(); });
+        for (let i = 0; i < 25; i++) await tab.key("j");
+        const walked = await tab.waitFor("the selected row in view", selectedInView);
+        expect(decodeURIComponent(await tab.eval(() => location.hash)).includes(`item=${walked.key}`), "the selection is in the address");
+        const scrolled = await layout();
+        expect(scrolled.list.top > 0 && scrolled.main.top === 0, `J scrolled the list pane only: ${JSON.stringify(scrolled)}`);
+        await tab.shot(`${String(n).padStart(2, "0")}-today-scroll-desktop`);
+        // E takes the row out: the list stays where it was and the next row is selected, in view.
+        await tab.key("e");
+        await tab.waitFor("the row handled", (key) => !document.querySelector(`[data-inbox-key="${key}"]`), walked.key);
+        const after = await layout();
+        expect(Math.abs(after.list.top - scrolled.list.top) <= 80, `list kept its place: ${scrolled.list.top} -> ${after.list.top}`);
+        await tab.waitFor("the next row selected in view", selectedInView);
+        // Hoàn tác from the toast brings it back.
+        await tab.click('[role="status"] button', "Hoàn tác");
+        await tab.waitFor("the row back", (key) => !!document.querySelector(`[data-inbox-key="${key}"]`), walked.key);
+        // A deep link opens the item and scrolls its row into view.
+        const deep = fixtures[3].id;
+        await tab.go(`today?section=inbox&item=${encodeURIComponent(`memory:${deep}`)}`);
+        await tab.reload();
+        const linked = await tab.waitFor("the linked row selected and in view", selectedInView);
+        expect(linked.key === `memory:${deep}`, `deep link selects its item: ${linked.key}`);
+        expect(await tab.eval(() => document.querySelector("[data-today-detail] h2")?.textContent.includes("Scroll fixture 03")), "the detail is the linked item's");
+      } else {
+        // On a phone the page is the single scroll region: the list pane does not scroll on its own.
+        expect(before.list.scroll <= before.list.client + 1, `no nested scroll on a phone: ${JSON.stringify(before)}`);
+        expect(before.main.scroll > before.main.client, `the page scrolls the long list: ${JSON.stringify(before)}`);
+        const small = await tab.eval(() => [...document.querySelectorAll("[data-inbox-key]")].filter((el) => el.getBoundingClientRect().height < 44).length);
+        expect(small === 0, `${small} rows below 44px`);
+        await tab.eval(() => { document.querySelector("#hive-main").scrollTop = 900; });
+        await sleep(200);
+        const row = await tab.eval(() => {
+          const main = document.querySelector("#hive-main").getBoundingClientRect();
+          return [...document.querySelectorAll("[data-inbox-key]")].find((el) => { const r = el.getBoundingClientRect(); return r.top > main.top + 60 && r.bottom < main.bottom - 60; })?.getAttribute("data-inbox-key");
+        });
+        await tab.shot(`${String(n).padStart(2, "0")}-today-scroll-list`);
+        await tab.click(`[data-inbox-key="${row}"]`);
+        await tab.waitFor("the detail full width", () => {
+          const d = document.querySelector("[data-today-detail]").getBoundingClientRect();
+          return d.width > innerWidth - 40 && document.querySelector("#hive-main").scrollTop === 0;
+        });
+        await tab.shot(`${String(n).padStart(2, "0")}-today-scroll-detail`);
+        await tab.click("button", "Quay lại danh sách");
+        // Back lands on the row the person left, not at the top of the list.
+        await tab.waitFor("back on the list where it was", (row) => {
+          const main = document.querySelector("#hive-main");
+          const m = main.getBoundingClientRect();
+          const r = document.querySelector(`[data-inbox-key="${row}"]`)?.getBoundingClientRect();
+          // The tap itself may scroll the row into view first, so the place is the row's, not the number read before.
+          return !!r && r.top >= m.top && r.bottom <= m.bottom && main.scrollTop > 200;
+        }, row);
+      }
+    } finally {
+      for (const m of fixtures) await rpc("memory.remove", { id: m.id }).catch(() => undefined);
+    }
   });
 
   // Roadmap 49d: Tính năng, a board by step. A flow at its spec gate waits for Lan (lead), and only at a gate for Hoa
@@ -5718,31 +5847,34 @@ async function main() {
     await rpc("mergeQueue.configure", { project, config: { enabled: true, machineId: machine.id, commands: ["true"], waitMinutes: 0, mode: "push" } });
     await tab.go("tasks");
     await tab.go("today?section=inbox");
-    await tab.eval(() => {
-      window.__closeWarning = "";
-      window.confirm = (message) => { window.__closeWarning = message; return false; };
-    });
-    const tryClose = async (taskId) => {
+    await tab.eval(() => { window.confirm = () => { throw new Error("Hôm nay asked for confirmation"); }; });
+    const warningOf = async (taskId) => {
       await tab.click(`[data-inbox-key^="review:${project}:${taskId}:"]`);
-      await tab.eval(() => { window.__closeWarning = ""; });
-      await tab.click("button", "Chuyển sang Xong");
-      const warning = await tab.waitFor(`close warning for ${taskId}`, () => window.__closeWarning);
-      // Cancelling keeps the detail open; phones must return to the list before selecting another task.
+      const warning = await tab.waitFor(`close warning for ${taskId}`, (taskId) =>
+        document.querySelector("[data-today-detail] h2")?.textContent.includes(taskId) && document.querySelector("[data-close-warning]")?.textContent, taskId);
       if (mobile) await tab.click("button", "Quay lại danh sách");
       return warning;
     };
-    const warning = await tryClose("CLOSE-NO-REVIEW");
+    const warning = await warningOf("CLOSE-NO-REVIEW");
     expect(warning.includes("chưa có lượt review"), `close warning: ${warning}`);
-    expect((await rpc("tasks.list", { project, status: "review" })).some((task) => task.id === "CLOSE-NO-REVIEW"), "cancelled close changed the task status");
-    expect(await tab.eval(() => !!document.querySelector('[data-inbox-key^="review:inbox-source-e2e:CLOSE-NO-REVIEW:"]')), "cancelled close removed the review item");
-    const changes = await tryClose("CLOSE-CHANGES");
+    const changes = await warningOf("CLOSE-CHANGES");
     expect(changes.includes("cần sửa") && changes.includes("ai/CLOSE-CHANGES"), `rejected review warning: ${changes}`);
-    const queueHint = await tryClose("CLOSE-APPROVE");
+    const queueHint = await warningOf("CLOSE-APPROVE");
     expect(queueHint.includes("hàng chờ"), `approved queue hint: ${queueHint}`);
+    // Chuyển sang Xong runs on the click, the warning notwithstanding; Hoàn tác puts the task back in Review.
+    await tab.click(`[data-inbox-key^="review:${project}:CLOSE-NO-REVIEW:"]`);
+    await tab.click("[data-today-actions] button", "Chuyển sang Xong");
+    await until("closed without asking", async () => (await rpc("tasks.list", { project, status: "done" })).some((task) => task.id === "CLOSE-NO-REVIEW"));
+    await tab.click('[role="status"] button', "Hoàn tác");
+    await until("Hoàn tác reopened the review", async () => (await rpc("tasks.list", { project, status: "review" })).some((task) => task.id === "CLOSE-NO-REVIEW"));
+    await tab.waitFor("the review item back in the list", () => !!document.querySelector('[data-inbox-key^="review:inbox-source-e2e:CLOSE-NO-REVIEW:"]'));
+    if (mobile && await tab.eval(() => [...document.querySelectorAll("button")].some((x) => x.innerText.includes("Quay lại danh sách")))) await tab.click("button", "Quay lại danh sách");
     const batch = await machineRpc("mergeQueue.take", { project, instance });
     expect(batch?.items.some(item => item.taskId === "CLOSE-APPROVE"), "approved branch was not queued");
     await machineRpc("runs.push", { machine: "close-e2e", runs: [{ runId: "R-CLOSE-APPROVE-NO-BRANCH", project, taskId: "CLOSE-APPROVE", taskTitle: "CLOSE-APPROVE", role: "implement", status: "succeeded", branch: null, profileId: null, createdAt: new Date(Date.now() + 1000).toISOString() }] });
-    const approved = await tryClose("CLOSE-APPROVE");
+    await tab.go("tasks");
+    await tab.go("today?section=inbox");
+    const approved = await warningOf("CLOSE-APPROVE");
     expect(approved.includes("ai/CLOSE-APPROVE") && !approved.includes("hàng chờ"), `approved unmerged warning: ${approved}`);
     await machineRpc("mergeQueue.finish", { id: batch.id, instance, result: { status: "landed", sha: "b".repeat(40), step: "landed", outcomes: [{ taskId: "CLOSE-APPROVE", status: "included", sha: "a".repeat(40) }] } });
     // Reopen the fixture to exercise the close action after its branch has landed.
@@ -5750,10 +5882,11 @@ async function main() {
     await tab.go("tasks");
     await tab.go("today?section=inbox");
     await tab.click(`[data-inbox-key^="review:${project}:CLOSE-APPROVE:"]`);
-    await tab.eval(() => { window.__closeWarning = ""; });
-    await tab.click("button", "Chuyển sang Xong");
-    expect(await tab.eval(() => window.__closeWarning) === "", "landed branch still warned before close");
-    expect((await rpc("tasks.list", { project, status: "done" })).some(task => task.id === "CLOSE-APPROVE"), "landed branch did not close");
+    await tab.waitFor("the landed task's detail", () => document.querySelector("[data-today-detail] h2")?.textContent.includes("CLOSE-APPROVE"));
+    await sleep(500);
+    expect(await tab.eval(() => !document.querySelector("[data-close-warning]")), "landed branch still warned before close");
+    await tab.click("[data-today-actions] button", "Chuyển sang Xong");
+    await until("landed branch closed", async () => (await rpc("tasks.list", { project, status: "done" })).some(task => task.id === "CLOSE-APPROVE"));
   });
 
   const errors = Object.values(tabs).flatMap((t) => t.errors.map((e) => `${t.name}: ${e}`));

@@ -25,13 +25,13 @@ import {
   Terminal,
 } from "lucide-react";
 import { TooltipProvider } from "@xdev-hive/ui/components/ui/tooltip";
-import { missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
+import { isCliActionProposalKey, missingRequired, withSystemGrants, type Me, type ToolView } from "@xdev-hive/core";
 import { useT, type HiveClient, type MessageKey } from "@xdev-hive/ui";
 import { PageBoundary } from "@xdev-hive/ui/components/ErrorBoundary";
 import { TerminalProvider } from "@xdev-hive/ui/components/RemoteTerminal";
 import { HiveContext, hashParam, usePoll, useProjectList, useQuery, useRetiredProjects } from "@xdev-hive/ui/hooks";
 import { resolveHash } from "@xdev-hive/ui/lib/route";
-import { WEB_MENU, WEB_SHORTCUTS, webCaps, webPages } from "@xdev-hive/ui/lib/nav";
+import { WEB_SHORTCUTS, webCaps, webMenu, webPages, type WebPage } from "@xdev-hive/ui/lib/nav";
 import { readScope, resolveScope, scopeKey, scopeProject, scopeProjects, scopeTitle, writeScope, type Scope } from "@xdev-hive/ui/lib/scope";
 import { AppBoot } from "@xdev-hive/ui/shell/boot";
 import { ClientShell, type NavEntry, type NavGroup } from "@xdev-hive/ui/shell/ClientShell";
@@ -109,8 +109,6 @@ const PAGES: Record<PageId, { label: MessageKey; sub: MessageKey; icon: Icon; re
   device: { label: "nav.device", sub: "navSub.device", icon: Laptop, render: () => <DevicePage /> },
 };
 
-/** One shell for everyone, its menu by job since 49b (lib/nav.ts has it, with who sees what). */
-const GROUPS = WEB_MENU as Array<{ label: MessageKey | null; ids: PageId[] }>;
 const SHORTCUTS = WEB_SHORTCUTS as Partial<Record<PageId, string>>;
 /** Not in the sidebar, still in the command palette: Token moved to the account menu on the web (roadmap 49b). */
 const PALETTE_ONLY: PageId[] = ["start", "terminal", "overview", "tokens"];
@@ -200,6 +198,8 @@ function Workspace({ client, me, onSignOut }: { client: HiveClient; me: Me; onSi
   const openAlerts = adminAlerts.data?.open ?? [];
   const counts: Partial<Record<PageId, number>> = {
     today: inbox.items.length,
+    // Tài liệu counts the doc proposals the person may approve: the inbox already holds them, no extra request.
+    docs: inbox.items.filter((item) => item.kind === "proposal" && !isCliActionProposalKey(item.proposal.docKey)).length,
     // Máy & agent counts requests waiting, machines lacking something or twice; Quản trị the open alerts (49b).
     machines: (adminRequests.data ?? []).filter((r) => r.status === "pending").length + lacking + (adminMachines.data ?? []).filter((m) => m.duplicate).length,
     admin: openAlerts.length,
@@ -213,19 +213,23 @@ function Workspace({ client, me, onSignOut }: { client: HiveClient; me: Me; onSi
     return { scope: scopeKey(scope), ...result };
   }, [client, visible.has("runs"), scopeKey(scope), runTick, tick]);
   counts.runs = !activeRuns.error && activeRuns.data?.scope === scopeKey(scope) ? activeRuns.data.running : 0;
-  const label = (id: PageId): MessageKey => (id === "artifacts" ? "shell.artifacts" : PAGES[id].label);
-  const groups: NavGroup[] = GROUPS.map((g) => ({
+  // The sidebar names the runs entry by its job (Agent đang chạy); the page keeps the design's title "Lượt chạy" (72e).
+  const label = (id: PageId): MessageKey => (id === "artifacts" ? "shell.artifacts" : id === "runs" ? "nav.running" : PAGES[id].label);
+  const entry = (id: PageId): NavEntry => ({
+    id,
+    label: t(label(id)),
+    icon: PAGES[id].icon,
+    shortcut: SHORTCUTS[id],
+    // Only a count above zero shows (tab-badge): an empty badge is noise next to every quiet entry.
+    badge: counts[id] ? { count: counts[id]!, strong: strong(id) } : undefined,
+  });
+  // One shell for everyone, its menu by job (lib/nav.ts has the groups and who sees what).
+  const groups: NavGroup[] = webMenu(visible as ReadonlySet<string> as ReadonlySet<WebPage>).map((g) => ({
     label: g.label ? t(g.label) : null,
-    items: g.ids
-      .filter((id) => visible.has(id))
-      .map((id) => ({
-        id,
-        label: t(label(id)),
-        icon: PAGES[id].icon,
-        shortcut: SHORTCUTS[id],
-        badge: counts[id] ? { count: counts[id]!, strong: strong(id) } : undefined,
-      })),
-  })).filter((g) => g.items.length > 0);
+    items: (g.ids as PageId[]).map(entry),
+    more: g.more.length ? { label: t("nav.more"), items: (g.more as PageId[]).map(entry) } : undefined,
+    quiet: g.quiet,
+  }));
   const extraPages: NavEntry[] = PALETTE_ONLY.filter((id) => visible.has(id)).map((id) => ({ id, label: t(PAGES[id].label), icon: PAGES[id].icon }));
   const subtitle = current === "runs" ? t("navSub.running") : t(PAGES[current].sub);
   const hashQuery = new URLSearchParams(window.location.hash.split("?")[1]);
@@ -242,7 +246,6 @@ function Workspace({ client, me, onSignOut }: { client: HiveClient; me: Me; onSi
               groups={groups}
               extraPages={extraPages}
               current={current === "read" ? "docs" : current}
-              // The sidebar names the web's runs entry by its job; the page itself keeps the design's title "Lượt chạy" (72e).
               title={t(current === "runs" ? PAGES.runs.label : label(current))}
               scopeName={scope.kind === "system" || scope.kind === "project" ? scopeTitle(scope, systems) : null}
               subtitle={subtitle}

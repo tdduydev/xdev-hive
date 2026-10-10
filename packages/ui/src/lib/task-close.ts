@@ -4,6 +4,15 @@ import type { TFunction } from "#ui/i18n/index.tsx";
 
 /** Keep review and merge state visible when a person closes a task. */
 export async function confirmTaskClose(client: HiveClient, task: Task, t: TFunction): Promise<boolean> {
+  const warning = await taskCloseWarning(client, task, t);
+  return warning === null || window.confirm(`${t("tasks.closeWarning", { id: task.id })}\n\n${warning}`);
+}
+
+/**
+ * What closing the task now would leave behind (no approving review, a branch not merged, a merge queue that would
+ * take it), or null when nothing. Hôm nay shows it beside the button instead of asking after the click.
+ */
+export async function taskCloseWarning(client: HiveClient, task: Task, t: TFunction): Promise<string | null> {
   const runs = await client.call("runs.list", { project: task.project, taskId: task.id, limit: 200 });
   const latestReview = runs.find(run => run.role === "review");
   const branchRun = runs.find(run => !!run.branch);
@@ -13,12 +22,12 @@ export async function confirmTaskClose(client: HiveClient, task: Task, t: TFunct
   const mergedByMr = !!branchRun?.branch && runs.some(run => run.runId === branchRun.runId && run.machineId === branchRun.machineId
     && run.branch === branchRun.branch && (run.merge?.status === "merged" || run.mr?.status === "merged"));
   const unmerged = !!branchRun?.branch && !mergedInQueue && !mergedByMr;
-  if (latestReview?.verdict === "approve" && !unmerged) return true;
+  if (latestReview?.verdict === "approve" && !unmerged) return null;
   const reasons = [
     latestReview?.verdict !== "approve" ? t("tasks.closeReviewWarning", { verdict: latestReview?.verdict === "changes" ? t("tasks.closeReviewChanges") : t("tasks.closeNoReview") }) : "",
     unmerged ? t("tasks.closeBranchWarning", { branch: branchRun!.branch!, target: queue.config.target }) : "",
   ].filter(Boolean).join("\n\n");
   const queueHint = queue.config.enabled && queue.waiting.some(item => item.taskId === task.id && item.runId === branchRun?.runId && item.machineId === branchRun?.machineId)
     ? t("tasks.closeQueueHint") : "";
-  return window.confirm(`${t("tasks.closeWarning", { id: task.id })}\n\n${reasons}${queueHint ? `\n\n${queueHint}` : ""}`);
+  return `${reasons}${queueHint ? `\n\n${queueHint}` : ""}`;
 }

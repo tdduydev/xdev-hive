@@ -602,11 +602,15 @@
 .workspace-text-link{display:flex;align-items:center;gap:var(--space-2);color:var(--text-link);font:var(--type-label);min-height:var(--control-h-touch);margin-top:var(--space-2)}
 .workspace-shortcuts{display:flex;flex-direction:column;margin-top:var(--space-4)}
 .workspace-shortcuts a{display:flex;justify-content:space-between;gap:var(--space-3);align-items:center;padding-block:var(--space-3);min-height:var(--control-h-touch);color:var(--text-primary)}
-.workspace-inbox{display:flex;flex-direction:column;height:100%;min-height:0;padding:var(--space-6);gap:var(--space-4)}
-.workspace-inbox>.mobile-master-detail{border:1px solid var(--border-subtle);border-radius:var(--radius-xl);overflow:hidden;flex:1}
-.workspace-back{font:var(--type-label);color:var(--text-link);min-height:var(--control-h-touch);display:flex;align-items:center;flex-shrink:0}
+/* Hôm nay's inbox fills the main area exactly, so its two panes scroll on their own and the page never does. The old
+   wrapper clipped the page (overflow hidden on a box as tall as the screen): items below the fold could not be reached. */
+.workspace-inbox{display:flex;flex-direction:column;height:100%;min-height:0}
+.workspace-inbox>[data-today-page]{flex:1;padding-top:var(--space-2)}
+/* A phone's detail has its own "Quay lại danh sách"; a second way back above it reads as two different exits. */
+.workspace-inbox:has(>[data-today-page][data-showing-detail])>.workspace-back{display:none}
+.workspace-back{font:var(--type-label);color:var(--text-link);min-height:var(--control-h-touch);display:flex;align-items:center;flex-shrink:0;align-self:flex-start;padding:var(--space-2) var(--space-6) 0}
 @media(max-width:1100px){.workspace-columns{grid-template-columns:1fr}.workspace-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:767px){[data-workspace-web] .hive-topbar{min-height:var(--topbar-h);padding-inline:var(--space-3)}[data-workspace-web] .hive-page{padding:var(--space-6) var(--space-4)}[data-workspace-web] .hive-page-header h1{font:var(--type-display-md)}.workspace-metrics{gap:var(--space-3)}.workspace-metric,.workspace-panel{padding:var(--space-4)}.workspace-metric-label{align-items:start;flex-wrap:wrap}.workspace-columns{gap:var(--space-4)}.workspace-inbox{padding:var(--space-3)}.workspace-item [data-slot="button"]{min-height:44px;white-space:normal;height:auto}.workspace-item-heading{align-items:start}}
+@media(max-width:767px){[data-workspace-web] .hive-topbar{min-height:var(--topbar-h);padding-inline:var(--space-3)}[data-workspace-web] .hive-page{padding:var(--space-6) var(--space-4)}[data-workspace-web] .hive-page-header h1{font:var(--type-display-md)}.workspace-metrics{gap:var(--space-3)}.workspace-metric,.workspace-panel{padding:var(--space-4)}.workspace-metric-label{align-items:start;flex-wrap:wrap}.workspace-columns{gap:var(--space-4)}.workspace-inbox{height:auto}.workspace-back{padding-inline:var(--space-4)}.workspace-item [data-slot="button"]{min-height:44px;white-space:normal;height:auto}.workspace-item-heading{align-items:start}}
 .workspace-section-tabs{display:flex;gap:var(--space-2);padding:var(--space-4) var(--space-8) 0;flex-wrap:wrap}
 .workspace-section-tabs a{min-height:var(--control-h-touch);display:flex;align-items:center;padding:var(--space-3) var(--space-4);border-radius:var(--radius-full);color:var(--text-secondary);font:var(--type-label);border:1px solid var(--border-default);background:var(--bg-surface)}
 .workspace-section-tabs a[aria-current]{background:var(--state-selected-bg);color:var(--state-selected-fg);border-color:var(--border-selected)}
@@ -633,6 +637,14 @@
 .hive-nav-count:not(.hive-nav-count-strong){background:var(--shell-count-secondary);color:var(--text-strong)}
 /* The active step of the primary ramp: white on --primary is 4.2:1 in dark, too low for 11px text. */
 .hive-nav-count-strong{background:var(--action-primary-active);color:var(--action-primary-fg)}
+/* The web's current entry is told by more than its tint: a bar at its edge and a heavier label (nav-state-active).
+   Scoped to the web shell: the desktop app keeps its own menu as it is. */
+:is([data-workspace-web],.hive-navigation-drawer) .hive-nav-active{position:relative;font-weight:600}
+:is([data-workspace-web],.hive-navigation-drawer) .hive-nav-active::before{content:"";position:absolute;left:-6px;top:8px;bottom:8px;width:3px;border-radius:var(--radius-full);background:var(--action-primary-active)}
+/* Operations sit at the foot of the menu under a rule, dimmer: they are not the day's work (nav-hierarchy). */
+.hive-nav-group-quiet{margin-top:auto;padding-top:var(--space-3);border-top:1px solid var(--border-subtle)}
+.hive-nav-group-quiet .hive-nav-item:not(.hive-nav-active){color:var(--text-muted)}
+.hive-nav-more-chevron{transition:transform var(--duration-base) ease-out}
 :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-account{padding:10px;border:0;border-radius:14px;background:var(--bg-surface);box-shadow:var(--shell-ring)}
 .hive-shell .hive-main-topbar{height:72px;min-height:72px;gap:16px;padding:0 28px;background:transparent;border:0;box-shadow:var(--shell-divider)}
 .hive-topbar-title{min-width:160px}
@@ -649,7 +661,7 @@
   :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar{padding-bottom:max(14px,env(safe-area-inset-bottom))}
   :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar .hive-nav-item{min-height:44px;height:44px}
 }
-[data-workspace-web] .hive-sidebar:not(.hive-sidebar-rail) .hive-sidebar-list{gap:16px;margin:0 -6px;padding:0 6px}
+[data-workspace-web] .hive-sidebar:not(.hive-sidebar-rail) .hive-sidebar-list{gap:12px;margin:0 -6px;padding:0 6px}
 :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail{padding-inline:8px}
 :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail .hive-sidebar-scope{display:flex;justify-content:center}
 :is(.hive-shell,.hive-navigation-drawer) .hive-sidebar-rail .hive-sidebar-account{padding:4px}
