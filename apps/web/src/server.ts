@@ -43,6 +43,7 @@ import { Automation } from "./automation.ts";
 import { WebhookDispatcher, WebhookStore } from "./webhooks.ts";
 import { AlertStore } from "./alerts.ts";
 import { HubInfoSource } from "./hubinfo.ts";
+import { buildInfo } from "./build-info.ts";
 
 import { deployLog, hubLog } from "#web/deploy-log.ts";
 
@@ -266,6 +267,7 @@ if (production) {
   closeVite = () => vite.close();
 }
 
+const build = buildInfo(process.env);
 const hubApp = createHubApp({
   hive,
   tokens,
@@ -288,8 +290,11 @@ const hubApp = createHubApp({
     allowedHosts: allowedHosts ?? null,
     publicUrl,
     trustProxy: process.env.HIVE_TRUST_PROXY === "1",
-    commit: process.env.HIVE_COMMIT || null,
+    commit: build.commit,
+    buildVersion: build.buildVersion,
+    buildDate: build.buildDate,
   })),
+  build,
   oidc,
   autoReleaseProject: process.env.HIVE_AUTO_RELEASE_PROJECT,
   releases,
