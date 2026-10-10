@@ -6,6 +6,7 @@ import { after, describe, it } from "node:test";
 import { AGENT_TEMPLATES, type DesktopProject, type Doc, type HiveSystem } from "@xdev-hive/core";
 import { cliCommand, EXTRA_DIR_ARGS } from "#desktop/main/cli-open.ts";
 import { commonParent, contextIsOurs, renderSystemContext, repoRole, SYSTEM_CONTEXT_MARK, systemWorkspace, writeSystemContext } from "#desktop/main/system-cli.ts";
+import { terminalScript } from "#desktop/main/terminal.ts";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -35,7 +36,8 @@ const notRepo = () => false;
 
 describe("a CLI over a whole system (GROUP-cli)", () => {
   it("the common folder of the repos, but never a drive's root or the home folder", () => {
-    const home = path.join(path.sep, "Users", "duy");
+    // resolve, not join: commonParent resolves its input, which on Windows puts the drive in front.
+    const home = path.resolve(path.sep, "Users", "duy");
     assert.equal(commonParent([path.join(home, "Codes", "ehs", "his", "a"), path.join(home, "Codes", "ehs", "deploy", "b")], home), path.join(home, "Codes", "ehs"));
     assert.equal(commonParent([path.join(home, "a"), path.join(home, "b")], home), null, "only the home folder");
     assert.equal(commonParent([path.join(path.sep, "a"), path.join(path.sep, "b")], home), null, "only the root");
@@ -97,6 +99,9 @@ describe("a CLI over a whole system (GROUP-cli)", () => {
     assert.deepEqual(claude.command.args, ["--mcp-config", "/m.json", "--add-dir", "/ehs/his/backend/his-service", "--add-dir", "/ehs/deploy/infa"]);
     assert.deepEqual(JSON.parse(claude.mcpConfig!).mcpServers["xdev-hive"].env, { HIVE_AGENT: "claude-1", HIVE_SYSTEM: "ehospital-ai" }, "no HIVE_PROJECT: tools take project");
     assert.equal(claude.command.env.HIVE_PROJECT, undefined);
+    assert.deepEqual(claude.command.unsetEnv, ["HIVE_PROJECT"], "one inherited from the app's env is cleared");
+    assert.match(terminalScript("win32", claude.command).content, /^set "HIVE_PROJECT="\r$/m);
+    assert.equal(cliCommand({ ...AGENT_TEMPLATES.claude, id: "claude-1" }, { ...opts, system: undefined }).command.unsetEnv, undefined, "a project's session keeps its own");
     assert.equal(claude.command.cwd, "/ehs");
     const codex = cliCommand({ ...AGENT_TEMPLATES.codex, id: "codex-1" }, opts);
     assert.deepEqual(codex.command.args.slice(-4), ["--add-dir", "/ehs/his/backend/his-service", "--add-dir", "/ehs/deploy/infa"]);
