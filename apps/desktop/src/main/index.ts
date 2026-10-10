@@ -79,6 +79,11 @@ import {
   configSchema,
   githubSettingsSchema,
   gitlabSettingsSchema,
+  applyHubTls,
+  caFingerprint,
+  pinnedHubCa,
+  displayFingerprint,
+  hubFetch,
   localDbPath,
   pinMachine,
   resolveBackend,
@@ -88,6 +93,7 @@ import {
   projectSchema,
   type HiveConfig,
 } from "@xdev-hive/core/node";
+import { trustHub, upgradeHubToHttps, type ConfirmCa } from "./hub-trust.ts";
 import { GitHubClient } from "./github/client.ts";
 import { GitLabClient } from "./gitlab/client.ts";
 import { gitClone, importRepos, planImport, type LocalClone } from "./gitlab/import.ts";
@@ -225,11 +231,45 @@ const actor = (): Actor => {
   return config.mode === "hub" ? { name: "desktop", role: "admin", source } : { name: os.userInfo().username, role: "admin", source };
 };
 
+/** The user confirms a hub's CA by its SHA-256, which an admin can read to them from hive-status or /ca.sha256. */
+const confirmHubCa: ConfirmCa = async (hubUrl, sha256) => {
+  if (smokeShot) return false;
+  const { response } = await dialog.showMessageBox({
+    type: "question",
+    title: "xDev Hive",
+    message: tr("desktop.hubCaTitle", { url: hubUrl }),
+    detail: tr("desktop.hubCaDetail", { sha256: displayFingerprint(sha256) }),
+    buttons: [tr("desktop.hubCaTrust"), tr("desktop.hubCaCancel")],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  return response === 0;
+};
+
+let upgradeDeclined = false;
+/** A hub saved as http:// that now has an HTTPS port moves to it, token kept (OPS-lan-https). Tried at start and every 10 minutes. */
+async function upgradeHub(): Promise<void> {
+  if (config.mode !== "hub" || upgradeDeclined || !config.hub.url.startsWith("http:")) return;
+  try {
+    const hub = await upgradeHubToHttps(config.hub, confirmHubCa);
+    if (!hub) return;
+    const next: HiveConfig = structuredClone(config);
+    next.hub = hub;
+    persist(next);
+    mainLog.write(`hub: address moved to ${hub.url}`);
+  } catch (err) {
+    // Refused or unreachable: stay on http:// until the next start, do not ask again in this session.
+    upgradeDeclined = true;
+    mainLog.write(`hub: not moved to https: ${toErrorPayload(err).message}`);
+  }
+}
+
 function reload(): void {
   const read = readDesktopConfig(configPath(), (line) => mainLog.write(line), configIssues);
   configIssues = read.issues;
   if (!read.config) throw new Error(read.issues[0]?.message ?? "config.json cannot be read");
   config = read.config;
+  applyHubTls(config.hub);
   setMainLocale(config.locale);
   try {
     pinMachine(config);
@@ -326,6 +366,13 @@ async function updateSettings(patch: DesktopSettingsPatch): Promise<DesktopSetti
       throw new HiveError("bad_request", "Chế độ hub cần URL (http/https) và token.", { key: "errors.hubNeedsUrlToken" });
     }
     try {
+      // An address that changed does not keep the CA pinned for the old one.
+      // (sign-in pinned the new one in memory when the user confirmed it).
+      if (next.hub.url !== config.hub.url) {
+        const pem = pinnedHubCa(next.hub.url);
+        next.hub = { ...next.hub, ca: pem ?? "", caSha256: pem ? caFingerprint(pem) : "" };
+      }
+      next.hub = await trustHub(next.hub, confirmHubCa);
       await new HubBackend(next.hub.url, next.hub.token).me("desktop");
     } catch (err) {
       const reason = toErrorPayload(err).message;
@@ -341,6 +388,8 @@ async function hubSignIn(input: { hubUrl?: unknown; username?: unknown; password
   const username = String(input?.username ?? "").trim();
   const password = String(input?.password ?? "");
   if (!username || !password) throw new HiveError("bad_request", "Nhập tên đăng nhập và mật khẩu.", { key: "errors.credentialsRequired" });
+  // An https:// hub with a CA of its own: the user confirms it before anything (a password) is sent to it.
+  await trustHub({ url: hubUrl, token: "", ca: "", caSha256: "" }, confirmHubCa);
   let token: string;
   try {
     ({ token } = await requestDeviceToken(hubUrl, { username, password, machine: config.machine }));
@@ -358,6 +407,7 @@ let browserSignIn: AbortController | null = null;
 async function hubSignInBrowser(input: { hubUrl?: unknown }): Promise<DesktopSettings> {
   const hubUrl = String(input?.hubUrl ?? "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(hubUrl)) throw new HiveError("bad_request", "URL hub phải bắt đầu bằng http(s)://", { key: "errors.hubUrl" });
+  await trustHub({ url: hubUrl, token: "", ca: "", caSha256: "" }, confirmHubCa);
   browserSignIn?.abort();
   const controller = new AbortController();
   browserSignIn = controller;
@@ -1483,7 +1533,7 @@ function chatMachine(): Machine | null {
 async function chatUpload(project: unknown, name: unknown, bytes: unknown): Promise<ChatFile> {
   if (!(bytes instanceof Uint8Array)) throw new HiveError("bad_request", "No file.", { key: "errors.chatFileEmpty", vars: { name: String(name ?? "") } });
   const hub = hubAccess();
-  if (hub) return hubChatUpload(hub, actor().name, String(project ?? ""), String(name ?? "file"), bytes, gitlabFetch);
+  if (hub) return hubChatUpload(hub, actor().name, String(project ?? ""), String(name ?? "file"), bytes, hubFetch);
   if (!(backend instanceof SqliteHive)) throw new HiveError("bad_request", "No database for the chat's files.");
   return backend.putChatFile({ project: String(project ?? ""), name: String(name ?? "file"), bytes }, actor());
 }
@@ -2243,6 +2293,8 @@ if (!app.requestSingleInstanceLock()) {
       backend = resolveBackend(config);
       if (!smokeShot) void dialog.showMessageBox({ type: "error", title: "xDev Hive", message: tr("desktop.badConfig", { path: configPath(), reason }) });
     }
+    void upgradeHub();
+    setInterval(() => void upgradeHub(), 10 * 60_000).unref();
     mrHostRef = {
       gitlab: () => config.gitlab,
       github: () => config.github,

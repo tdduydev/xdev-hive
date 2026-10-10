@@ -15,6 +15,7 @@ echo "image:         ${image:-none}"
 echo "commit:        $(state_get status revision)"
 echo "built:         $(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.created"}}' "$image" 2>/dev/null)"
 echo "schema:        $(state_get status schema)"
+echo "lan https:     $(lan_https_check 2>/dev/null | sed 's/^/ok, root CA sha256 /' | grep . || echo 'not verifying, or no LAN port')"
 echo
 echo "== deploys"
 echo "last check:    $(state_get status last_check)"

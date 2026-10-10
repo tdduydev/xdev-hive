@@ -74,6 +74,8 @@ export interface HubAppOptions {
   ui?: { dir: string } | { middleware: RequestHandler };
   /** Behind a TLS proxy: trust X-Forwarded-Proto/-For (Secure cookies, sign-in throttling per client). */
   trustProxy?: boolean;
+  /** HIVE_LAN_HTTPS_PORT: the LAN's HTTPS port, told on /api/me. */
+  lanHttpsPort?: number | null;
   throttle?: LoginThrottle;
   /** Chat webhooks for hub events (hub admins manage them). */
   automation?: Automation;
@@ -262,6 +264,7 @@ export function createHubApp({
   allowedHosts,
   ui,
   trustProxy = false,
+  lanHttpsPort = null,
   throttle = new LoginThrottle(),
   automation,
   webhooks,
@@ -764,6 +767,8 @@ export function createHubApp({
 
   app.get("/api/me", authenticate({ cookie: true, allowPasswordChange: true }), (_req, res) => {
     res.setHeader("x-hive-report-idempotency", "1");
+    // A machine saved with http:// moves to https://<its host>:<this port> (core hub-tls.ts).
+    if (lanHttpsPort) res.setHeader("x-hive-lan-https-port", String(lanHttpsPort));
     res.json({ result: me(res) });
   });
 

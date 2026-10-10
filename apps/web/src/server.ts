@@ -277,6 +277,7 @@ const hubApp = createHubApp({
   allowedHosts,
   ui,
   trustProxy: process.env.HIVE_TRUST_PROXY === "1",
+  lanHttpsPort: /^\d{2,5}$/.test(process.env.HIVE_LAN_HTTPS_PORT ?? "") ? Number(process.env.HIVE_LAN_HTTPS_PORT) : null,
   automation,
   webhooks: { store: webhookStore, dispatcher },
   alerts,

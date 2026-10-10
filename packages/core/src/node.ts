@@ -15,3 +15,6 @@ export {
 } from "./terminal-recording.ts";
 export { TerminalProofs, newStepUpId, type TerminalStepUpContext } from "./terminal-proofs.ts";
 export { encodeWsClose, encodeWsFrame, WsPeer, WsReader, WS_OP, type WsMessage, type WsPeerOptions } from "./ws-codec.ts";
+export {
+  applyHubTls, caFingerprint, displayFingerprint, fetchHubCa, httpsUpgradeUrl, hubFetch, normalizeFingerprint, pinHubCa, pinnedHubCa,
+} from "./hub-tls.ts";

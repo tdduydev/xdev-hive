@@ -13,6 +13,7 @@ cat > deploy/.env <<'EOF'
 HIVE_LAN_HOSTS=<địa chỉ máy chủ>
 HIVE_LAN_BIND=<địa chỉ máy chủ>
 HIVE_LAN_PORT=7780
+HIVE_LAN_HTTPS_PORT=7743
 # COMPOSE_PROFILES=embed và HIVE_EMBED_URL=http://ollama:11434/v1 để tìm memory theo nghĩa
 EOF
 chmod 600 deploy/.env

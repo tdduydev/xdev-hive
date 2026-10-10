@@ -7,6 +7,7 @@ import { githubSettingsSchema } from "./github.ts";
 import { gitlabSettingsSchema } from "./gitlab.ts";
 import type { ConfigIssue } from "./bridge.ts";
 import { HubBackend } from "./hub-client.ts";
+import { applyHubTls } from "./hub-tls.ts";
 import { MACHINE_ID, machineIdFrom, PROJECT_NAME } from "./keys.ts";
 import type { HiveBackend } from "./methods.ts";
 import { SqliteHive } from "./sqlite.ts";
@@ -45,7 +46,16 @@ export const configSchema = z.object({
     .default(() => machineIdFrom(os.hostname())),
   /** Local SQLite file. Defaults to `local.db` next to config.json. */
   dbPath: z.string().nullable().default(null),
-  hub: z.object({ url: z.string().default(""), token: z.string().default("") }).default({ url: "", token: "" }),
+  hub: z
+    .object({
+      url: z.string().default(""),
+      token: z.string().default(""),
+      /** The hub's root CA (PEM) the user confirmed when pairing, for an https:// hub whose certificate is its own (OPS-lan-https). */
+      ca: z.string().max(20_000).default(""),
+      /** SHA-256 of that CA, hex: the pin. A `ca` that does not hash to it is ignored. */
+      caSha256: z.string().regex(/^([0-9a-f]{64})?$/).default(""),
+    })
+    .default({ url: "", token: "", ca: "", caSha256: "" }),
   projects: z.array(projectSchema).default([]),
   /** Interface language the desktop app last used (tray, notifications); the renderer sets it. */
   locale: z.string().max(16).default("vi"),
@@ -102,6 +112,7 @@ export function configIssueText(issue: ConfigIssue): string {
  */
 export function readConfig(file = configPath()): { config: HiveConfig; issues: ConfigIssue[] } {
   const { config, issues } = parseConfig(existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {});
+  applyHubTls(config.hub);
   return { config, issues };
 }
 

@@ -172,6 +172,12 @@ if compose up -d --no-build hub lan >/dev/null && wait_hub "$HIVE_HEALTH_TIMEOUT
     xargs -r docker rmi >/dev/null 2>&1 || true
   prune_snapshots "$target" "$HIVE_DEPLOY_BACKUP_KEEP" || true
   log "deployed $target (commit $revision, schema $schema_before → $schema_after)"
+  # A warning, not a rollback: the hub answers on its other ports, and the CA's volume is not in the image.
+  if fp=$(lan_https_check); then
+    [ -n "$fp" ] && log "LAN https ok (root CA sha256 $fp)"
+  else
+    log "WARNING: LAN https does not verify with its own CA (docs/deployment/lan-https.md)"
+  fi
   exit 0
 fi
 

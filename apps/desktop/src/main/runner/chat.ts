@@ -5,6 +5,7 @@
 // In local mode (roadmap 48) the chat is this machine's own: its database hands the replies, and the leader reaches it
 // through the app's hive-mcp shim, told which reply it writes so it gets the leader's proposals and not the board.
 import { spawnCli } from "#desktop/main/spawn-cli.ts";
+import { hubFetch } from "@xdev-hive/core/node";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -120,7 +121,7 @@ interface FetchedFile {
 /** The hub's file, read with the reply's token. */
 async function fetchBytes(url: string, token: string): Promise<Uint8Array> {
   const signal = AbortSignal.timeout(45_000);
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal });
+  const res = await hubFetch(url, { headers: { authorization: `Bearer ${token}` }, signal });
   if (!res.ok) throw new Error(`The hub answered ${res.status} for ${url}.`);
   return new Uint8Array(await res.arrayBuffer());
 }

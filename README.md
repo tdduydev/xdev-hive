@@ -253,6 +253,7 @@ The hub reads `HIVE_*` environment variables. With Docker Compose, put them in t
 | `HIVE_DB` | `apps/web/data/hub.db` (image: `/data/hub.db`) | SQLite database file |
 | `HIVE_ALLOWED_HOSTS` | loopback only when bound to loopback | Comma-separated `Host` header allow-list against DNS rebinding. Required with a public hostname or behind a reverse proxy |
 | `HIVE_LAN_HOSTS` | – | Extra LAN names and addresses the hub answers to (see `deploy/compose.lan.yaml`) |
+| `HIVE_LAN_HTTPS_PORT` | `7743` | HTTPS port of the LAN Caddy, with its own CA (see `docs/deployment/lan-https.md`) |
 | `HIVE_PUBLIC_URL` | `https://` + first allowed host | Base URL used in webhook links and the OIDC redirect URI |
 | `HIVE_SETUP` | – (`1` in `compose.yaml`) | With no accounts yet, show the setup page and log a setup code |
 | `HIVE_ADMIN_USER` | `admin` | First admin account, created with a temporary password when setup mode is off |

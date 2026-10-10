@@ -110,3 +110,21 @@ wait_hub() {
 
 # The commit an image says it was built from (hub-image.yml sets the label).
 revision_of() { docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null; }
+
+# The LAN HTTPS port (compose.lan.yaml) as a machine on the LAN sees it: the root CA the lan service serves must verify
+# the certificate it presents (curl --cacert). Prints the CA's SHA-256 on success. Nothing to check when there is no LAN port.
+lan_https_check() {
+  local host port ca
+  host=$(sed -n 's/^HIVE_LAN_HOSTS=//p' "$HIVE_REPO/deploy/.env" 2>/dev/null | tail -n 1 | tr ', ' '\n\n' | sed '/^$/d' | head -n 1)
+  [ -n "$host" ] || return 0
+  port=$(sed -n 's/^HIVE_LAN_HTTPS_PORT=//p' "$HIVE_REPO/deploy/.env" 2>/dev/null | tail -n 1)
+  port=${port:-7743}
+  ca=$(mktemp)
+  # --insecure only to read the public root certificate; the check itself is the second curl, with that CA as the only trust.
+  curl -fsS --max-time 10 --insecure "https://$host:$port/ca.crt" -o "$ca" &&
+    curl -fsS --max-time 10 --cacert "$ca" -o /dev/null "https://$host:$port/api/health" &&
+    grep -v -- '-----' "$ca" | base64 -d | sha256sum | cut -d' ' -f1
+  local rc=$?
+  rm -f "$ca"
+  return $rc
+}

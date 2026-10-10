@@ -1,11 +1,25 @@
-# The same hub on the LAN, over plain HTTP (roadmap 43): any Host on this port reaches it, the hub itself
-# checks the name against HIVE_ALLOWED_HOSTS + HIVE_LAN_HOSTS. The port here is the one inside the container;
-# compose.lan.yaml publishes it on ${HIVE_LAN_PORT:-7780} of the machine. http:// : no certificate, no ACME.
-http://:7780 {
+# The same hub on the LAN (roadmap 43), over HTTPS with Caddy's own CA (OPS-lan-https). The names and addresses
+# machines type come from HIVE_LAN_HOSTS; lan-entrypoint.sh turns them into HIVE_LAN_SITES (https://<host>:7743, …),
+# because a Caddyfile address carries its own port. `tls internal`: Caddy signs a certificate for each of them with a
+# root CA it keeps in /data (the lan-caddy-data volume), so the CA survives a deploy and machines trust it once.
+# The hub itself checks the Host against HIVE_ALLOWED_HOSTS + HIVE_LAN_HOSTS. Ports here are those inside the container;
+# compose.lan.yaml publishes 7743 on ${HIVE_LAN_HTTPS_PORT:-7743} and 7780 on ${HIVE_LAN_PORT:-7780}.
+{
+	# In a container there is no system trust store to install into, and no one to ask.
+	skip_install_trust
+	default_sni {$HIVE_LAN_DEFAULT_SNI}
+	pki {
+		ca local {
+			name xDev Hive LAN CA
+		}
+	}
+}
+
+(hub) {
 	# A machine on the LAN must not choose its own address or scheme: the hub trusts X-Forwarded-*
 	# (HIVE_TRUST_PROXY=1 in compose.yaml), so a made-up -For would get around the sign-in throttle of its
-	# real address, and -Proto: https would mark the session cookie Secure, which a http page never sends back.
-	# Dropped before the proxy, then set from the connection Caddy really has.
+	# real address, and -Proto: https on the plain port would mark the session cookie Secure, which a http page never
+	# sends back. Dropped before the proxy, then set from the connection Caddy really has.
 	request_header -X-Forwarded-For
 	request_header -X-Forwarded-Proto
 	request_header -X-Forwarded-Host
@@ -13,4 +27,42 @@ http://:7780 {
 		header_up X-Forwarded-For {remote_host}
 		header_up X-Forwarded-Proto {scheme}
 	}
+}
+
+(ca) {
+	# The root certificate, public by nature: a phone or a new machine downloads it to trust the hub. Compare its
+	# SHA-256 (hive-status, or /ca.sha256) with what the admin tells you before trusting it.
+	handle /ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition `attachment; filename="xdev-hive-ca.crt"`
+		file_server
+	}
+	handle /ca.sha256 {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.sha256
+		header Content-Type text/plain
+		file_server
+	}
+}
+
+{$HIVE_LAN_SITES} {
+	tls internal
+	import ca
+	import hub
+}
+
+# The old plain port. HIVE_LAN_HTTP_REDIRECT=1 (default) sends a browser page to HTTPS; /api and /mcp keep answering
+# here, because fetch drops the Authorization header on a redirect to another port and would break machines that
+# still have http:// saved until they switch (the hub tells them to). 0: no redirect at all.
+http://:7780 {
+	import ca
+	@page {
+		method GET HEAD
+		not path /api/* /mcp /mcp/*
+		expression `"{$HIVE_LAN_HTTP_REDIRECT:1}" == "1"`
+	}
+	redir @page https://{host}:{$HIVE_LAN_HTTPS_PORT:7743}{uri} 307
+	import hub
 }

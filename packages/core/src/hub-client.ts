@@ -172,13 +172,19 @@ export async function issueMcpCredential(hub: { url: string; token: string }, pr
   return body.result.token;
 }
 
+let doFetch: typeof fetch = (input, init) => fetch(input, init);
+/** hub-tls.ts swaps in a fetch that knows the pinned CAs of hubs with a certificate of their own. */
+export const useHubFetch = (f: typeof fetch): void => {
+  doFetch = f;
+};
+
 /**
  * fetch, with a hub that cannot be reached (refused, DNS, offline, TLS) as HiveError "unavailable": the desktop
  * shows it as a lost connection and keeps drafts to send later, instead of as a failed request.
  */
 async function reach(hub: string, url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(timeoutMs)]) });
+    return await doFetch(url, { ...init, signal: AbortSignal.any([...(init.signal ? [init.signal] : []), AbortSignal.timeout(timeoutMs)]) });
   } catch (err) {
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     const reason = cause?.code ?? cause?.message ?? (err instanceof Error ? err.message : String(err));
