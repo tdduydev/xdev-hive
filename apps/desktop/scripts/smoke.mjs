@@ -526,6 +526,18 @@ await startGuideShots();
 
 const failures = [];
 
+if (process.env.HIVE_SMOKE_ONLY === "repos-forge") {
+  const local = new SqliteHive(path.join(work, "local.db"));
+  await local.call("systems.save", { name: "ehs-smoke", projects: ["demo"], source: { forge: "gitlab", url: "https://gitlab.example.test", groupPath: "fis/ehs", syncedAt: null, members: [{ project: "demo", pathWithNamespace: "fis/ehs/his/demo", sshUrl: "git@gitlab.example.test:fis/ehs/his/demo.git", httpUrl: "https://gitlab.example.test/fis/ehs/his/demo.git", defaultBranch: "main" }] } }, admin);
+  local.close();
+  await systemReposShot();
+  await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
+  await gitlab.close();
+  if (failures.length) { console.error(failures.join("\n")); process.exit(1); }
+  console.log(`repos-forge screenshots in ${out}`);
+  process.exit(0);
+}
+
 // Roadmap 39h: Skill and Memory with nothing in them yet — before the skills below are seeded, and before a run is
 // queued, so the pages are quiet. EXPECT asserts the empty state's button is really there, not only in the picture.
 for (const page of ["skills", "memory"]) await shoot(`${page}-empty`, page, 1500, { HIVE_SMOKE_EXPECT: "[data-empty-action]" });
@@ -720,8 +732,9 @@ writeFileSync(
 await shoot("setup-tools", "setup", 4000, { HIVE_SMOKE_TOOLS: smokeTools, HIVE_SMOKE_EXPECT: '[data-hub-tools] && [data-setup-item="tool:rtk"] && [data-project-tools]' });
 // Another Claude account on this machine (roadmap 24b): the form, before the CLI's own sign-in opens.
 await shoot("agents-account", "agents", 1500, { HIVE_SMOKE_CLICK: '[data-add-profile] && [data-add-account="claude"]', HIVE_SMOKE_SCROLL: "#acc-label" });
-// The GitHub card (roadmap 13a), which 39d folds: its heading says Chưa cấu hình until the form below is filled in.
-await shoot("projects-github", "projects", 1500, { HIVE_SMOKE_CLICK: '[data-fold="github"]', HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: "#gh-url" });
+// The GitLab/GitHub connection (GROUP-repos-forge), opened by the link a group panel gives: GitLab set (the mock),
+// GitHub not yet. The MR/PR options stay in the card below it.
+await shoot("projects-forges", "projects?fold=forges", 1500, { HIVE_SMOKE_SCROLL: "#gh-url", HIVE_SMOKE_EXPECT: '[data-forge-card] && [data-forge="gitlab"] && #gh-url && [data-fold="gitlab"]' });
 // The repositories of the demo's GitLab group, with their keys and folders (roadmap 19a).
 await shoot("projects-import", "setup", 4000, { HIVE_SMOKE_CLICK: "#import-list", HIVE_SMOKE_SCROLL: "#import-group" });
 // A folder that is no repository but holds some (roadmap 38d): Chọn thư mục offers each repository under it with its
@@ -872,6 +885,7 @@ await shoot("setup-system-cli", "setup", 3000, {
   if (!context.includes("Hive system: `ehs-smoke`") || !context.includes("- `lab`")) failures.push(`system-cli: context is ${context.slice(0, 400)}`);
   if (existsSync(path.join(repo, "AGENTS.md")) && readFileSync(path.join(repo, "AGENTS.md"), "utf8").includes("Hive system: `ehs-smoke`")) failures.push("system-cli: the context went into demo's repo");
 }
+await systemReposShot();
 // One more account of each (roadmap 24b): its own sign-in folder, a sign-in script with the CLI's command, and no run
 // until it signs in. The CLIs are the fake one, so the check does not need Claude Code or Codex on the machine.
 const accountBin = path.join(work, "bin");
@@ -986,3 +1000,31 @@ console.log(`mock GitLab MRs: ${gitlab.mrs.map((m) => `!${m.iid} "${m.title}" ${
 for (const b of ["ai/T-001", "ai/T-002"]) console.log(`origin has ${b}: ${execFileSync("git", ["-C", origin, "branch", "--list", b], { encoding: "utf8" }).trim() || "no"}`);
 await gitlab.close();
 console.log(`screenshots in ${out}\ndata in ${work}`);
+
+// GROUP-repos-forge: the repos of ehs-smoke on this machine (the system is saved by the GROUP-cli shot,
+// or by HIVE_SMOKE_ONLY=repos-forge). demo tracks origin/main and the remote moved on by a
+// commit, so Fetch tất cả finds it behind and Pull tất cả fast-forwards it; afterwards demo and origin go back to
+// where they were, for the shots after this one.
+async function systemReposShot() {
+  const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+  git("branch", "-q", "--set-upstream-to=origin/main", "main");
+  const mover = path.join(work, "origin-mover");
+  execFileSync("git", ["clone", "-q", origin, mover], { stdio: "ignore" });
+  const inMover = (...args) => execFileSync("git", args, { cwd: mover, stdio: "ignore" });
+  inMover("config", "user.email", "smoke@example.com");
+  inMover("config", "user.name", "Smoke");
+  writeFileSync(path.join(mover, "upstream.txt"), "from someone else\n");
+  inMover("add", "upstream.txt");
+  inMover("commit", "-qm", "upstream");
+  inMover("push", "-q", "origin", "HEAD:main");
+  await shoot("setup-system-repos", "setup", 3000, {
+    HIVE_SMOKE_CLICK: '[data-system-repos-toggle="ehs-smoke"] && [data-repos-fetch] && [data-repos-pull-all]',
+    HIVE_SMOKE_SCROLL: '[data-system-repos="ehs-smoke"]',
+    HIVE_SMOKE_EXPECT: '[data-repos-summary] && [data-repo-row="demo"] [data-repo-result="pulled"] && [data-repo-row="demo"] [data-repo-branch]',
+  });
+  const pulled = execFileSync("git", ["log", "-1", "--format=%s"], { cwd: repo, encoding: "utf8" }).trim();
+  if (pulled !== "upstream") failures.push(`system-repos: demo's HEAD is "${pulled}", not the remote's commit`);
+  git("reset", "-q", "--hard", before);
+  git("push", "-q", "-f", "origin", `${before}:main`);
+  git("branch", "-q", "--unset-upstream", "main");
+}

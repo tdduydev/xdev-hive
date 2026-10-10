@@ -9,7 +9,7 @@ import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, Profile
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
 import type { SystemSource } from "./system-source.ts";
-import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { ChatFile, Machine, MachineCommand, Proposal, RepoAccessStatus, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -294,9 +294,9 @@ export interface DesktopSettings {
   configPath: string;
   dbPath: string;
   runner: RunnerSettings;
-  gitlab: { url: string; hasToken: boolean; mr: MrSettings };
+  gitlab: { url: string; hasToken: boolean; mr: MrSettings; use?: ForgeUse | null };
   /** Pull requests on GitHub; they follow the MR options in `gitlab.mr`. */
-  github: { url: string; hasToken: boolean };
+  github: { url: string; hasToken: boolean; use?: ForgeUse | null };
   /** Parts of config.json the app could not read at the last load (left out or defaulted); empty when it read all of it. */
   configIssues: ConfigIssue[];
 }
@@ -332,6 +332,61 @@ export interface GitLabCheck {
   ok: boolean;
   user: string | null;
   message: string;
+}
+
+/** When this machine's forge token last worked, and for whom (GROUP-repos-forge); kept beside config.json, never the token. */
+export interface ForgeUse {
+  /** The last time a check, a group read, a fetch or a pull with the token succeeded. */
+  at: string;
+  /** The account the last check answered with; null until one ran. */
+  user: string | null;
+  /** What used it last: `check`, `group`, `fetch` or `pull`. */
+  by: string;
+}
+
+/** Why a repo's Pull is not offered or was skipped (GROUP-repos-forge): the app only fast-forwards a clean checkout. */
+export type RepoPullBlock = "missing" | "detached" | "noUpstream" | "dirty" | "conflict" | "diverged" | "busy";
+
+/** One repo of a system on this machine, as its Repo screen shows it (GROUP-repos-forge). */
+export interface RepoStatusRow {
+  project: string;
+  repo: string;
+  /** The folder is there and is a repository. */
+  exists: boolean;
+  /** Null when HEAD is detached. */
+  branch: string | null;
+  /** `origin/main`; null when the branch tracks nothing. */
+  upstream: string | null;
+  /** Commits here not on the upstream, and there not here, as of the last fetch. */
+  ahead: number;
+  behind: number;
+  /** Changed, staged and untracked files. */
+  changes: number;
+  /** Files left in conflict by a merge or rebase. */
+  conflicts: number;
+  /** The remote's URL with any user and password left out. */
+  remote: string | null;
+  forge: "gitlab" | "github" | null;
+  /** The repo's page on its forge, when the remote is on a known host. */
+  webUrl: string | null;
+  /** Whether the remote answers this machine: from the last fetch here, else the 6-hourly ls-remote, else unchecked. */
+  access: RepoAccessStatus | "unchecked";
+  accessDetail: string | null;
+  /** When this screen last fetched it; null before. */
+  fetchedAt: string | null;
+  /** A run, the merge queue or a release working in the repo now. */
+  busy: "run" | "merge" | "release" | null;
+  /** Why Pull would skip it; null when a fast-forward is safe. */
+  block: RepoPullBlock | null;
+}
+
+export interface RepoPullResult {
+  project: string;
+  outcome: "pulled" | "upToDate" | "skipped" | "failed";
+  reason: RepoPullBlock | null;
+  /** git's last words when it failed, credentials left out. */
+  error: string | null;
+  row: RepoStatusRow;
 }
 
 export interface SetupInstallResult {
@@ -651,6 +706,10 @@ export interface DesktopBridge {
   systemsOnMachine?(): Promise<Record<string, SystemOnMachine>>;
   /** Stops syncing the system on this machine; its folders and projects stay. */
   systemForget?(system: string): Promise<void>;
+  /** Branch, ahead/behind, changes, remote and access of these projects' repos; fetch: ask each remote first (GROUP-repos-forge). */
+  repoStatus?(projects: string[], opts?: { fetch?: boolean }): Promise<RepoStatusRow[]>;
+  /** `git pull --ff-only` in each repo that is clean and only behind; the others are skipped with the reason. */
+  pullRepos?(projects: string[]): Promise<RepoPullResult[]>;
   /** A profile's CLI over every repo of a system on this machine (GROUP-cli); older apps have none. */
   openSystemCli?(profileId: string, system: string, opts?: { bypass?: boolean }): Promise<SystemCliOpened>;
   removeProject(name: string): Promise<DesktopSettings>;
