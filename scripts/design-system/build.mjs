@@ -4,6 +4,7 @@
 //   node scripts/design-system/build.mjs <out>
 //
 // Writes <out>/project/: tokens.json (from the token CSS), README.md and the other authored files of system/,
+// assets/Icons/lucide.json (the full Lucide set of the installed lucide-react),
 // and the live components: components/lib (React 19 as classic scripts), components/bundle.js
 // (window.XdevHive), components/bundle.css (Tailwind v4), and a preview.html + README.md per component.
 // Not written: project/design-system.json and the logo/illustration uploads; the artifact keeps those
@@ -14,6 +15,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { COMPONENTS, previewHtml, readmeMd } from "./components.mjs";
+import { lucideSet } from "./lucide.mjs";
 import { buildTokens, stripDeclarations, tokenNames } from "./tokens.mjs";
 import { colorUsage, FAMILIES, SHADOW_USAGE } from "./usage.mjs";
 
@@ -121,6 +123,10 @@ export async function build(out) {
     writeFileSync(to, readFileSync(from, "utf8").replace(/\r\n/g, "\n"));
   }
 
+  const lucide = await lucideSet(join(repoRoot, "packages/ui-kit/package.json"));
+  writeFileSync(join(project, "assets/Icons/lucide.json"), `${JSON.stringify(lucide)}
+`);
+
   const { tokens, missing } = buildTokens(repoRoot, { ...gitInfo(), colorUsage, shadowUsage: SHADOW_USAGE, families: FAMILIES });
   if (missing.length) console.warn(`tokens without a usage note or value (add them to usage.mjs): ${missing.join(", ")}`);
   writeFileSync(join(project, "tokens.json"), `${JSON.stringify(tokens, null, 2)}\n`);
@@ -140,6 +146,7 @@ export async function build(out) {
 
   const files = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).length;
   console.log(`${files(project)} files in ${project}`);
+  console.log(`icons: ${Object.keys(lucide.icons).length} Lucide ${lucide.version} (+${Object.keys(lucide.aliases).length} aliases)`);
   console.log(`tokens: ${tokens.color.tokens.length} colours, ${tokens.shadow.tokens.length} shadows (${tokens.meta.ref})`);
   console.log(`components: ${Object.keys(COMPONENTS).length}, bundle.js ${Math.round(bundle / 1024)} KB, bundle.css ${Math.round(css.size / 1024)} KB (${css.removed} token declarations left to tokens.css), React ${react}`);
   console.log(`index libraries: [{"name":"react","version":"${react}","global":"React","file":"components/lib/react.production.min.js"},{"name":"react-dom","version":"${react}","global":"ReactDOM","file":"components/lib/react-dom.production.min.js"}]`);
