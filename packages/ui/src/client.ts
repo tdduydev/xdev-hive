@@ -24,6 +24,10 @@ import {
   type HubAlert,
   type HubCleanup,
   type HubInfo,
+  type BackupEntry,
+  type BackupList,
+  type BackupProject,
+  type ProjectRestored,
 } from "@xdev-hive/core";
 import { newTerminalSocket, type TerminalApi } from "#ui/lib/terminal-client.ts";
 
@@ -108,6 +112,17 @@ export interface HiveClient {
     backup(): Promise<{ file: string; removed: number }>;
     /** "Dọn dữ liệu": old app builds, old artifacts of done tasks, then VACUUM. */
     cleanup(): Promise<HubCleanup>;
+  };
+  /** Hub only, for hub admins: the snapshots, their pins, and a project copied back out of one (ADM-backup-restore). */
+  backups?: {
+    list(): Promise<BackupList>;
+    pin(name: string): Promise<BackupEntry>;
+    unpin(name: string): Promise<BackupEntry>;
+    projects(name: string): Promise<BackupProject[]>;
+    /** `confirm`: the project's name typed again. */
+    restoreProject(name: string, project: string, confirm: string): Promise<ProjectRestored>;
+    /** Where the browser downloads it with its session. */
+    href(name: string): string;
   };
   /** Desktop only: local projects, sync and agent installers. */
   desktop?: DesktopBridge;
@@ -266,6 +281,14 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       info: () => rpc<HubInfo>("hub.info"),
       backup: () => rpc<{ file: string; removed: number; files: number | null }>("hub.backup"),
       cleanup: () => rpc<HubCleanup>("hub.cleanup"),
+    },
+    backups: {
+      list: () => rpc<BackupList>("backups.list"),
+      pin: (name) => rpc<BackupEntry>("backups.pin", { name }),
+      unpin: (name) => rpc<BackupEntry>("backups.unpin", { name }),
+      projects: (name) => rpc<BackupProject[]>("backups.projects", { name }),
+      restoreProject: (name, project, confirm) => rpc<ProjectRestored>("backups.restoreProject", { name, project, confirm }),
+      href: (name) => `${baseUrl}/api/backups/${encodeURIComponent(name)}`,
     },
     alerts: {
       list: () => rpc<{ open: HubAlert[]; recent: HubAlert[]; rules: AlertRuleState[] }>("alerts.list"),

@@ -13,7 +13,7 @@ import path from "node:path";
 import type { Role } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
 import { SHA256_HEX } from "@xdev-hive/core";
-import { backupFile, filesDir } from "./backup.ts";
+import { backupFile, DEFAULT_PIN_DAYS, filesDir } from "./backup.ts";
 import { seaweedFromEnv } from "./seaweed.ts";
 import { TokenStore } from "./tokens.ts";
 import { UserStore } from "./users.ts";
@@ -25,7 +25,9 @@ const [cmd, sub, arg, extra] = process.argv.slice(2);
 if (cmd === "backup") {
   const dir = path.resolve(sub ?? process.env.HIVE_BACKUP_DIR ?? path.join(path.dirname(dbPath), "backups"));
   try {
-    const r = backupFile(dbPath, { dir, keep: Number(arg ?? process.env.HIVE_BACKUP_KEEP ?? 7) });
+    // Asked for by hand, like "Backup ngay": pinned out of the rotation for the same days.
+    const pinDays = Number(process.env.HIVE_BACKUP_PIN_DAYS ?? DEFAULT_PIN_DAYS);
+    const r = backupFile(dbPath, { dir, keep: Number(arg ?? process.env.HIVE_BACKUP_KEEP ?? 7), reason: "manual", pin: true, pinDays, by: "cli" });
     if (!r) throw new Error(`No database at ${dbPath}`);
     console.log(`${r.file}${r.removed.length ? `\nremoved ${r.removed.join(", ")}` : ""}`);
   } catch (err) {

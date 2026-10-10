@@ -21,12 +21,32 @@ const tomlLiteral = (s: string) => {
   return `'${s}'`;
 };
 
+/**
+ * How each CLI is given folders beyond the one it starts in (GROUP-cli), as its own --help says (claude 2.1, codex, gemini
+ * and copilot as installed 10/10). The other CLIs have no such flag: they see the working folder and what is under it.
+ */
+export const EXTRA_DIR_ARGS: Partial<Record<AgentProfile["kind"], (dir: string) => string[]>> = {
+  claude: (dir) => ["--add-dir", dir],
+  codex: (dir) => ["--add-dir", dir],
+  copilot: (dir) => ["--add-dir", dir],
+  gemini: (dir) => ["--include-directories", dir],
+};
+
 export function cliCommand(
   profile: AgentProfile,
-  /** path: the PATH runs get; null keeps the terminal's own (cmd.exe inherits the app's env). shim: its full path. */
-  opts: { project: string; repo: string; bin: string; path: string | null; shim: string; mcpFile: string; title: string; done: string; bypass?: boolean },
+  /**
+   * path: the PATH runs get; null keeps the terminal's own (cmd.exe inherits the app's env). shim: its full path.
+   * system: a session over a whole system (GROUP-cli): Hive's server gets HIVE_SYSTEM instead of HIVE_PROJECT, and
+   * extraDirs are the system's repos, given with the CLI's own flag where it has one.
+   */
+  opts: { project: string; repo: string; bin: string; path: string | null; shim: string; mcpFile: string; title: string; done: string; bypass?: boolean; system?: string; extraDirs?: string[] },
 ): CliOpen {
-  const open = cliArgs(profile, opts);
+  const base = cliArgs(profile, opts);
+  const dirs = (opts.extraDirs ?? []).flatMap((dir) => EXTRA_DIR_ARGS[profile.kind]?.(dir) ?? []);
+  const withDirs = dirs.length ? { ...base, command: { ...base.command, args: [...base.command.args, ...dirs] } } : base;
+  // cmd.exe inherits the app's env, and the shim gives HIVE_PROJECT precedence over HIVE_SYSTEM: an app started from a
+  // shell that had one (an agent's session) would scope the system's session to that project.
+  const open = opts.system ? { ...withDirs, command: { ...withDirs.command, unsetEnv: [...(withDirs.command.unsetEnv ?? []), "HIVE_PROJECT"] } } : withDirs;
   if (!opts.bypass) return open;
   const extra = CLI_BYPASS_ARGS[profile.kind];
   // Refused, not ignored: a box ticked on a CLI with no checked flag would otherwise open a session that still asks.
@@ -35,7 +55,9 @@ export function cliCommand(
 }
 
 function cliArgs(profile: AgentProfile, opts: Parameters<typeof cliCommand>[1]): CliOpen {
-  const server = hiveMcpServer(profile.id, opts.project);
+  // A system's session reaches every project of it; its tools then take project on each call.
+  const hiveEnv = opts.system ? { HIVE_AGENT: profile.id, HIVE_SYSTEM: opts.system } : hiveMcpServer(profile.id, opts.project).env;
+  const server = { ...hiveMcpServer(profile.id, opts.project), env: hiveEnv };
   // PATH so the CLI finds the hive-mcp shim (and node) the way runs do: Terminal on macOS starts from the login
   // profile, whose PATH may lack them.
   const env: Record<string, string> = { ...loginDirEnv(profile), ...(opts.path ? { PATH: opts.path } : {}), ...server.env };
@@ -43,7 +65,7 @@ function cliArgs(profile: AgentProfile, opts: Parameters<typeof cliCommand>[1]):
   if (profile.kind === "claude") {
     // A file, not inline JSON: cmd.exe cannot carry the quotes of an inline value. The shim by full path, because a
     // terminal opened from the app does not always carry the PATH the app found (Windows: cmd.exe inherits its own).
-    const entry = hiveMcpServerAt(opts.shim, profile.id, opts.project);
+    const entry = { ...hiveMcpServerAt(opts.shim, profile.id, opts.project), env: hiveEnv };
     return { command: { ...base, args: ["--mcp-config", opts.mcpFile] }, mcpConfig: `${JSON.stringify({ mcpServers: { [MCP_NAME]: entry } }, null, 2)}\n` };
   }
   if (profile.kind === "vibe") {

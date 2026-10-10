@@ -15,7 +15,9 @@
 //   HIVE_SETUP=1                       (no account yet: a setup page and a code in the log instead of that admin,
 //     roadmap 75; its choices go to settings.json next to the database and fill the HIVE_* variables left unset)
 //   HIVE_TRUST_PROXY=1                 (behind a TLS proxy: Secure cookies, client address from X-Forwarded-For)
-//   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7)
+//   HIVE_BACKUP_DIR=/data/backups       (snapshot on start and every HIVE_BACKUP_HOURS=24, keep HIVE_BACKUP_KEEP=7 unpinned;
+//     the ones made by hand or before a project deletion are pinned out of that count for HIVE_BACKUP_PIN_DAYS=180
+//     (0 = until unpinned), and pinning by hand stops at HIVE_BACKUP_PIN_MAX_MB=20480 of pinned snapshots)
 //   HIVE_OIDC_ISSUER=https://gitlab.example.com HIVE_OIDC_CLIENT_ID=… HIVE_OIDC_CLIENT_SECRET=… HIVE_OIDC_NAME=GitLab
 //     (sign-in through an OpenID Connect provider; redirect URI: <HIVE_PUBLIC_URL>/api/auth/oidc/callback)
 //   HIVE_REMOTE_TERMINAL=1              (remote terminal, spec 69: off unless exactly 1; each machine still opts in locally)
@@ -66,7 +68,7 @@ const logBackup = (when: string, take: () => BackupResult | null) => {
   }
 };
 // Before opening the hub: the snapshot predates any schema migration this version runs.
-if (backup) logBackup("start", () => backupFile(dbPath, backup));
+if (backup) logBackup("start", () => backupFile(dbPath, { ...backup, reason: "start" }));
 
 const staleDays = Number(process.env.HIVE_MEMORY_STALE_DAYS ?? 90);
 const runLogDays = Number(process.env.HIVE_RUN_LOG_DAYS ?? 30);
@@ -92,10 +94,11 @@ const hive = new SqliteHive(dbPath, {
   blobs,
   gateJobs: process.env.HIVE_GATE_JOBS === "1",
   // Deleting a project snapshots the whole hub first (roadmap 47), the same snapshot the Hub page's "Backup ngay"
-  // makes. With HIVE_BACKUP_DIR unset this throws errors.backupOff, and nothing is deleted.
-  backup: async () => {
+  // makes, pinned out of the rotation under the project's name. With HIVE_BACKUP_DIR unset this throws
+  // errors.backupOff, and nothing is deleted.
+  backup: async ({ project }) => {
     if (!hubInfo) throw new HiveError("conflict", "The hub is still starting up.", { key: "errors.backupOff" });
-    return hubInfo.backup();
+    return hubInfo.backup(`delete:${project}`);
   },
 });
 hive.seed("hub", { hub: true });
@@ -200,7 +203,7 @@ const logFiles = async (when: string) => {
 };
 if (backup) {
   setInterval(() => {
-    logBackup("scheduled", () => backupDatabase(hive.db, backup));
+    logBackup("scheduled", () => backupDatabase(hive.db, { ...backup, reason: "scheduled" }));
     void logFiles("scheduled");
   }, backup.hours * 3_600_000).unref();
 }

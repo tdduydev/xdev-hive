@@ -19,7 +19,7 @@ import {
 } from "#ui/lib/nav.ts";
 import { canEditChatSettings } from "#ui/lib/permission-controls.ts";
 import { scopeProject } from "#ui/lib/scope.ts";
-import { MemoryCleanupSettings, MemoryCleanupProposals } from "#ui/components/MemoryCleanup.tsx";
+import { MemoryCleanupSettings } from "#ui/components/MemoryCleanup.tsx";
 import { MemoryPage } from "#ui/pages/Memory.tsx";
 import { DocsPage } from "#ui/pages/Docs.tsx";
 import { SkillsPage } from "#ui/pages/Skills.tsx";
@@ -197,25 +197,38 @@ export function RunsWorkPage() {
   return wanted === "batches" ? <BatchesPage /> : <RunsPage />;
 }
 
-/** Keeping proposals beside their content avoids a separate approval page and preserves its permission checks. */
+/**
+ * Keeping proposals beside their content avoids a separate approval page and preserves its permission checks. Docs keep the two
+ * tabs; Memory and Skill have none (template hive-2026-10): Memory's "Chờ duyệt" chip and a skill's "N đề xuất" pill lead to what
+ * the tab held, and the old ?tab=pending links still land there.
+ */
 export function KnowledgePage({ page }: { page: "docs" | "skills" | "memory" }) {
   const t = useT();
   const [wanted] = useHashParam("tab");
   const tab = wanted === "pending" ? "pending" : "content";
-  let body: ReactNode;
   if (page === "memory") {
-    body = tab === "pending" ? (
-      <div className="min-h-0 flex-1 overflow-auto">
-        <MemoryCleanupProposals />
-        <div className="h-[36rem]"><MemoryPage pendingOnly /></div>
-      </div>
-    ) : <MemoryPage />;
-  } else {
-    body = tab === "pending" ? <ProposalsPage kind={page} /> : page === "docs" ? <DocsPage /> : <SkillsPage />;
+    // Keyed by the address so a link to the pending view opens on that chip even when the page is already shown.
+    return <div className="flex min-h-0 flex-1 flex-col overflow-auto" data-knowledge-page={page}><MemoryPage key={tab} pendingFirst={tab === "pending"} /></div>;
+  }
+  if (page === "skills") {
+    return <div className="flex min-h-0 flex-1 flex-col" data-knowledge-page={page}>{tab === "pending" ? <SkillProposals /> : <SkillsPage />}</div>;
   }
   return (
     <PageTabs page={page} tabs={["content", "pending"]} current={tab} label={t("sections.tabs")} name={(id) => t(`knowledge.${id}`)}>
-      <div className="flex min-h-0 flex-1 flex-col" data-knowledge-page={page}>{body}</div>
+      <div className="flex min-h-0 flex-1 flex-col" data-knowledge-page={page}>{tab === "pending" ? <ProposalsPage kind={page} /> : <DocsPage />}</div>
     </PageTabs>
+  );
+}
+
+/** A skill's proposals, opened from its "N đề xuất" pill: the proposals page with a way back to the list. */
+function SkillProposals() {
+  const t = useT();
+  return (
+    <>
+      <a href="#/skills" className="mx-7 mt-4 inline-flex min-h-11 items-center self-start text-fg-link no-underline hover:underline md:min-h-0" data-skills-back>
+        ← {t("common.backToList")}
+      </a>
+      <ProposalsPage kind="skills" />
+    </>
   );
 }

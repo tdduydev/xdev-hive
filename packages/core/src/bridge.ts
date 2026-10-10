@@ -8,7 +8,8 @@ import type { ModelSelection } from "./model-router.ts";
 import type { AgentKind, AgentProfile, AgentRole, PlanUsage, PreferKind, ProfileResume, RunnerSettings, RunStatus } from "./agents.ts";
 import type { GitLabImportCandidate, GitLabImportResult, MrSettings, MrState, MrStatus, PipelineStatus } from "./gitlab.ts";
 import type { TransferReport } from "./transfer.ts";
-import type { ChatFile, Machine, MachineCommand, Proposal, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
+import type { SystemSource } from "./system-source.ts";
+import type { ChatFile, Machine, MachineCommand, Proposal, RepoAccessStatus, Role, RunMessage, RunCompression, SetupItem, SetupReport, TeamPolicy, TokenWindows, ToolHandler, ToolKind, WebhookEvent, WebhookKind } from "./types.ts";
 
 /**
  * A hub tool as the machine's Setup card shows it (roadmap 28b): what it will run here, for the user to allow.
@@ -194,10 +195,84 @@ export interface RepoCandidate {
 export interface RepoScan {
   root: string;
   isGit: boolean;
-  /** Empty when the folder is a repository itself, or when nothing was found under it. */
+  /** The repositories under it, also when it is one itself (a group's folder with `git init`); empty when none. */
   repos: RepoCandidate[];
   /** The system the repositories would go into: the folder's name, made to fit a system name. */
   system: string;
+}
+
+/** One member of a system as setting its group up on this machine treats it (GROUP-init-sync). */
+export interface SystemInitItem {
+  project: string;
+  pathWithNamespace: string | null;
+  /** Where the repo is or will be; null when there is nothing to clone. */
+  dir: string | null;
+  /**
+   * added: a project of this app already · folder: a clone of it is there, to register · new: to clone · conflict: the
+   * folder holds another repo or another project · gone: archived or no longer in the group · unknown: added to the
+   * system by hand, the hub has no URL for it.
+   */
+  state: "added" | "folder" | "new" | "conflict" | "gone" | "unknown";
+  /** The project that already has the folder, for a conflict. */
+  owner: string | null;
+}
+
+export interface SystemPlan {
+  system: string;
+  /** The root asked for, else the one this machine set the group up in, else where its members already are. */
+  root: string;
+  items: SystemInitItem[];
+  /** https when this machine has a token for the forge (no SSH key needed), else ssh. */
+  protocol: "ssh" | "https";
+  /** This machine has a token for the source's forge, so it can sync and clone over https. */
+  forgeReady: boolean;
+}
+
+/** A hand-made system matched to a forge group: what saving the source would change (shown before it is saved). */
+export interface SystemLinkPlan {
+  source: SystemSource;
+  projects: string[];
+  /** Projects of the system matched to a repo of the group. */
+  matched: string[];
+  /** Repos of the group no project matched: new members, with the key each would get. */
+  added: string[];
+  /** Projects of the system with no repo in the group: they stay in it, without a source. */
+  unmatched: string[];
+}
+
+export interface SystemSyncReport {
+  system: string;
+  at: string;
+  /** Repos new to the group, now projects of the system. */
+  added: string[];
+  /** Members archived or gone from the group since the last sync (their folders stay). */
+  gone: string[];
+  back: string[];
+  /** Members this machine cloned or registered in this round. */
+  cloned: string[];
+  failed: Array<{ project: string; error: string }>;
+  /** The source was saved to the hub (false: nothing changed, or the save was refused: see error). */
+  saved: boolean;
+  error: string | null;
+}
+
+/** A system whose group this machine set up: its root, and the last sync. */
+export interface SystemOnMachine {
+  root: string;
+  lastSync: SystemSyncReport | null;
+}
+
+/** What opening a CLI on a whole system did (GROUP-cli). */
+export interface SystemCliOpened {
+  opened: boolean;
+  /** Where the CLI started: the group's root, or the app's own folder for the system. */
+  cwd: string;
+  /** The system's repos this machine has, each given to the CLI. */
+  repos: number;
+  /** Projects of the system with no repo on this machine. */
+  missing: string[];
+  /** The CLI takes more folders (claude, codex, copilot: --add-dir; gemini: --include-directories). */
+  dirsSupported: boolean;
 }
 
 export interface RepoImportResult {
@@ -219,9 +294,9 @@ export interface DesktopSettings {
   configPath: string;
   dbPath: string;
   runner: RunnerSettings;
-  gitlab: { url: string; hasToken: boolean; mr: MrSettings };
+  gitlab: { url: string; hasToken: boolean; mr: MrSettings; use?: ForgeUse | null };
   /** Pull requests on GitHub; they follow the MR options in `gitlab.mr`. */
-  github: { url: string; hasToken: boolean };
+  github: { url: string; hasToken: boolean; use?: ForgeUse | null };
   /** Parts of config.json the app could not read at the last load (left out or defaulted); empty when it read all of it. */
   configIssues: ConfigIssue[];
 }
@@ -257,6 +332,61 @@ export interface GitLabCheck {
   ok: boolean;
   user: string | null;
   message: string;
+}
+
+/** When this machine's forge token last worked, and for whom (GROUP-repos-forge); kept beside config.json, never the token. */
+export interface ForgeUse {
+  /** The last time a check, a group read, a fetch or a pull with the token succeeded. */
+  at: string;
+  /** The account the last check answered with; null until one ran. */
+  user: string | null;
+  /** What used it last: `check`, `group`, `fetch` or `pull`. */
+  by: string;
+}
+
+/** Why a repo's Pull is not offered or was skipped (GROUP-repos-forge): the app only fast-forwards a clean checkout. */
+export type RepoPullBlock = "missing" | "detached" | "noUpstream" | "dirty" | "conflict" | "diverged" | "busy";
+
+/** One repo of a system on this machine, as its Repo screen shows it (GROUP-repos-forge). */
+export interface RepoStatusRow {
+  project: string;
+  repo: string;
+  /** The folder is there and is a repository. */
+  exists: boolean;
+  /** Null when HEAD is detached. */
+  branch: string | null;
+  /** `origin/main`; null when the branch tracks nothing. */
+  upstream: string | null;
+  /** Commits here not on the upstream, and there not here, as of the last fetch. */
+  ahead: number;
+  behind: number;
+  /** Changed, staged and untracked files. */
+  changes: number;
+  /** Files left in conflict by a merge or rebase. */
+  conflicts: number;
+  /** The remote's URL with any user and password left out. */
+  remote: string | null;
+  forge: "gitlab" | "github" | null;
+  /** The repo's page on its forge, when the remote is on a known host. */
+  webUrl: string | null;
+  /** Whether the remote answers this machine: from the last fetch here, else the 6-hourly ls-remote, else unchecked. */
+  access: RepoAccessStatus | "unchecked";
+  accessDetail: string | null;
+  /** When this screen last fetched it; null before. */
+  fetchedAt: string | null;
+  /** A run, the merge queue or a release working in the repo now. */
+  busy: "run" | "merge" | "release" | null;
+  /** Why Pull would skip it; null when a fast-forward is safe. */
+  block: RepoPullBlock | null;
+}
+
+export interface RepoPullResult {
+  project: string;
+  outcome: "pulled" | "upToDate" | "skipped" | "failed";
+  reason: RepoPullBlock | null;
+  /** git's last words when it failed, credentials left out. */
+  error: string | null;
+  row: RepoStatusRow;
 }
 
 export interface SetupInstallResult {
@@ -566,6 +696,23 @@ export interface DesktopBridge {
     results: GitLabImportResult[];
     settings: DesktopSettings;
   }>;
+  /** What setting a system's group up under a root would do (GROUP-init-sync); older apps have none of these. */
+  systemPlan?(input: { system: string; root?: string }): Promise<SystemPlan>;
+  /** Clones what the plan offers into the group's tree, registers each repo, and remembers the root for the sync. */
+  systemInit?(input: { system: string; root: string; protocol: "ssh" | "https" }): Promise<{ results: GitLabImportResult[]; settings: DesktopSettings }>;
+  /** Matches a system without a source to a forge group with this machine's token; the page saves it. */
+  systemLink?(input: { system: string; forge: "gitlab" | "github"; group: string }): Promise<SystemLinkPlan>;
+  /** Compares the system with its group now: new repos join, gone ones are marked, this machine clones its new members. */
+  systemSync?(system: string): Promise<SystemSyncReport>;
+  systemsOnMachine?(): Promise<Record<string, SystemOnMachine>>;
+  /** Stops syncing the system on this machine; its folders and projects stay. */
+  systemForget?(system: string): Promise<void>;
+  /** Branch, ahead/behind, changes, remote and access of these projects' repos; fetch: ask each remote first (GROUP-repos-forge). */
+  repoStatus?(projects: string[], opts?: { fetch?: boolean }): Promise<RepoStatusRow[]>;
+  /** `git pull --ff-only` in each repo that is clean and only behind; the others are skipped with the reason. */
+  pullRepos?(projects: string[]): Promise<RepoPullResult[]>;
+  /** A profile's CLI over every repo of a system on this machine (GROUP-cli); older apps have none. */
+  openSystemCli?(profileId: string, system: string, opts?: { bypass?: boolean }): Promise<SystemCliOpened>;
   removeProject(name: string): Promise<DesktopSettings>;
   pickFolder(): Promise<string | null>;
   syncProject(name: string): Promise<SyncReport>;
@@ -629,6 +776,8 @@ export interface DesktopBridge {
 
   /** What is installed on this machine and in each project repo. */
   setupStatus(): Promise<SetupReport>;
+  /** `git ls-remote` of every project now, for the hub's Systems page; an app before it has none. */
+  recheckRepos?(): Promise<void>;
   /** Installs one SetupItem (by id) and re-checks it. */
   installSetup(id: string): Promise<SetupInstallResult>;
   /** push: this machine's local database → hub · pull: hub → local database. Needs the hub URL and token. */
