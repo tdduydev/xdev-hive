@@ -23,6 +23,7 @@ import {
   type FeedEvent,
   type HubAlert,
   type HubCleanup,
+  type HubBuild,
   type HubInfo,
   type BackupEntry,
   type BackupList,
@@ -106,6 +107,8 @@ export interface HiveClient {
     ack(id: number): Promise<HubAlert>;
     setRule(rule: AlertRule, enabled: boolean): Promise<AlertRuleState>;
   };
+  /** Hub only, for anyone: the image the hub runs, from /api/health; null from a hub too old to say. */
+  build?(): Promise<HubBuild | null>;
   /** Hub only, for hub admins: the hub itself, and a backup on request (roadmap 22n). */
   hub?: {
     info(): Promise<HubInfo>;
@@ -276,6 +279,10 @@ export function createHttpClient({ baseUrl = "", token, onUnauthorized }: HttpCl
       notes: async (version, notes) => {
         await rpc("releases.notes", { version, notes });
       },
+    },
+    build: async () => {
+      const r = (await hubRequest<Partial<HubBuild> | null>(baseUrl, "/api/health", undefined)).result;
+      return r?.version ? { version: r.version, commit: r.commit ?? null, buildVersion: r.buildVersion ?? null, buildDate: r.buildDate ?? null } : null;
     },
     hub: {
       info: () => rpc<HubInfo>("hub.info"),

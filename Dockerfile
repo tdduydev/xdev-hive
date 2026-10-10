@@ -45,11 +45,15 @@ COPY packages/mcp/src packages/mcp/src
 COPY packages/ui-kit/src/i18n packages/ui-kit/src/i18n
 COPY apps/web/src apps/web/src
 COPY --from=build /app/apps/web/dist apps/web/dist
-# The commit the image was built from (hub-image.yml passes it), for the Hub page; a HIVE_COMMIT set at run time wins.
-ARG HIVE_COMMIT=
-ENV HIVE_COMMIT=${HIVE_COMMIT}
 # Both exist in the image so new named volumes start out owned by `node` (uid 1000).
 RUN mkdir -p /data/backups && chown -R node:node /data
+# What was built and when (hub-image.yml passes them), for the Hub page, the web's status bar and /api/health. Last,
+# since they change on every build: no layer above is rebuilt for them. A HIVE_COMMIT set at run time wins; compose sets
+# it, often to "", so HIVE_BUILD_COMMIT keeps the image's own. Left out (docker build, compose build) the hub says "dev build".
+ARG HIVE_COMMIT=
+ARG HIVE_BUILD_DATE=
+ARG HIVE_BUILD_VERSION=
+ENV HIVE_COMMIT=${HIVE_COMMIT}     HIVE_BUILD_COMMIT=${HIVE_COMMIT}     HIVE_BUILD_DATE=${HIVE_BUILD_DATE}     HIVE_BUILD_VERSION=${HIVE_BUILD_VERSION}
 USER node
 VOLUME /data
 EXPOSE 7788
