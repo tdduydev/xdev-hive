@@ -20,8 +20,11 @@ export interface AlertWatchOptions {
   now?: () => number;
 }
 
-/** Only a hub admin may read alerts.list; a restricted account is not one even with the admin role. */
-export const isHubAdmin = (me: Me): boolean => me.mode === "hub" && me.role === "admin" && !me.access;
+/**
+ * Only a hub admin may read alerts.list; a restricted account is not one even with the admin role. Since spec 79a the
+ * app's token is never an admin: the hub says hubAlerts when it belongs to one. An older hub still answers role admin.
+ */
+export const isHubAdmin = (me: Me): boolean => me.mode === "hub" && (me.hubAlerts === true || (me.role === "admin" && !me.access));
 
 export class AlertWatch {
   readonly #opts: AlertWatchOptions;

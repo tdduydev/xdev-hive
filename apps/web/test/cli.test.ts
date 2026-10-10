@@ -113,12 +113,29 @@ describe("hub CLI (node src/cli.ts)", () => {
     assert.match(missing.stderr, /No database/);
   });
 
+  // Spec 79a: no token of no account, no admin token, and a release token only for an admin's account.
+  it("token create needs an owner and never makes an admin token", async () => {
+    const db = path.join(tmp(), "hub.db");
+    assert.equal((await run(["user", "create", "lan"], { HIVE_DB: db })).code, 0);
+    assert.equal((await run(["user", "create", "duy", "admin"], { HIVE_DB: db })).code, 0);
+    const ownerless = await run(["token", "create", "ci"], { HIVE_DB: db });
+    assert.equal(ownerless.code, 1);
+    assert.match(ownerless.stderr, /needs an owner/);
+    assert.match((await run(["token", "create", "ci", "nobody"], { HIVE_DB: db })).stderr, /No active account/);
+    assert.match((await run(["token", "create", "ci", "duy", "admin"], { HIVE_DB: db })).stderr, /No token is admin/);
+    assert.match((await run(["token", "create", "rel", "lan", "release"], { HIVE_DB: db })).stderr, /not a hub admin/);
+    const release = await run(["token", "create", "rel", "duy", "release"], { HIVE_DB: db });
+    assert.equal(release.code, 0, release.stderr);
+    assert.match(release.stdout, /^rel \(release upload, owner duy, id .+\):/);
+  });
+
   it("token create prints a token the hub accepts", async () => {
     const db = path.join(tmp(), "hub.db");
-    const r = await run(["token", "create", "ci", "agent"], { HIVE_DB: db });
+    assert.equal((await run(["user", "create", "lan"], { HIVE_DB: db })).code, 0);
+    const r = await run(["token", "create", "ci", "lan", "agent"], { HIVE_DB: db });
     assert.equal(r.code, 0, r.stderr);
     const [head, token] = r.stdout.trim().split("\n");
-    assert.match(head!, /^ci \(agent, id .+\):$/);
+    assert.match(head!, /^ci \(agent, owner lan, id .+\):$/);
     assert.match(token!, /^hive_/);
 
     const hive = new SqliteHive(db);

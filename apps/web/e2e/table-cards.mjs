@@ -3,7 +3,7 @@ export async function tableCardsChecks({ tab, rpc, step, expect }) {
   const baseline = process.env.HIVE_E2E_TABLE_CARDS === "before";
   await rpc("webhooks.save", { name: `Mobile webhook ${"x".repeat(60)}`, kind: "slack", url: "https://hooks.slack.com/services/mobile/cards/example", events: ["run.failed", "alert.opened"], projects: ["payment"], locale: "vi", enabled: false });
   const { admin } = JSON.parse(process.env.HIVE_E2E_SEED);
-  const upload = await fetch(`${process.env.HIVE_E2E_BASE}/api/releases/upload?version=0.999.0&channel=stable&platform=mac&arch=arm64&kind=zip&name=mobile-fixture.zip`, { method: "POST", headers: { authorization: `Bearer ${admin}`, "content-type": "application/octet-stream" }, body: "e2e mobile release fixture" });
+  const upload = await fetch(`${process.env.HIVE_E2E_BASE}/api/releases/upload?version=0.999.0&channel=stable&platform=mac&arch=arm64&kind=zip&name=mobile-fixture.zip`, { method: "POST", headers: { cookie: admin, "x-hive-csrf": "1", "content-type": "application/octet-stream" }, body: "e2e mobile release fixture" });
   expect(upload.ok, "could not seed a release card");
   await rpc("releases.setRollout", { target: "0.999.0" });
   await rpc("tasks.create", { id: "MOBILE-CARD", project: "payment", title: `Mobile table ${"long-title-".repeat(20)}` });

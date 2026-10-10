@@ -8,6 +8,7 @@ import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { UserStore } from "#web/users.ts";
 import { eventMessage, urlHint, WebhookDispatcher, WebhookStore, webhookPayload } from "#web/webhooks.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 const admin: Actor = { name: "duy", role: "admin" };
 const claude: Actor = { name: "claude@duy", role: "agent" };
@@ -175,13 +176,14 @@ describe("webhook routes", () => {
   it("are for hub admins only, and never return a URL", async () => {
     const { hive, store, dispatcher } = setup();
     const tokens = new TokenStore(hive.db);
-    const adminToken = tokens.create("ops", "admin").token;
+    const users = new UserStore(hive.db);
+    const adminToken = adminSession(users, "ops");
     const agentToken = tokens.create("ci", "agent").token;
-    const server = createHubApp({ hive, tokens, users: new UserStore(hive.db), allowedHosts: ["127.0.0.1"], webhooks: { store, dispatcher } }).listen(0, "127.0.0.1");
+    const server = createHubApp({ hive, tokens, users, allowedHosts: ["127.0.0.1"], webhooks: { store, dispatcher } }).listen(0, "127.0.0.1");
     await new Promise((r) => server.once("listening", r));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const rpc = async (token: string, method: string, input: unknown = {}) => {
-      const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ method, input }) });
+      const res = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ method, input }) });
       return { status: res.status, text: await res.text() };
     };
     try {

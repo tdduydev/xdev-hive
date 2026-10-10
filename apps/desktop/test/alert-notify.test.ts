@@ -53,6 +53,8 @@ describe("alert notifications on the desktop (roadmap 22m-2)", () => {
     assert.equal(isHubAdmin({ ...admin, role: "member" }), false);
     assert.equal(isHubAdmin({ ...admin, access: { projects: {} } as unknown as Me["access"] }), false);
     assert.equal(isHubAdmin({ ...admin, mode: "local" }), false);
+    // Spec 79a: the app's token is a member's, and the hub says whether it belongs to a hub admin.
+    assert.equal(isHubAdmin({ ...admin, role: "member", hubAlerts: true }), true);
   });
 
   it("does not ask for alerts with a token that is not a hub admin's", async () => {

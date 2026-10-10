@@ -8,6 +8,7 @@ import { SqliteHive } from "@xdev-hive/core/node";
 import { createHubApp } from "#web/app.ts";
 import { TokenStore } from "#web/tokens.ts";
 import { LoginThrottle, UserStore } from "#web/users.ts";
+import { adminSession, authHeaders } from "./session.ts";
 
 let base = "";
 let close: () => void;
@@ -25,7 +26,7 @@ before(async () => {
   }
   const tokens = new TokenStore(hive.db);
   users = new UserStore(hive.db);
-  adminToken = tokens.create("ops", "admin").token;
+  adminToken = adminSession(users, "ops");
   temp.duy = users.create({ username: "duy", admin: true }).password;
   const lan = users.create({ username: "lan", displayName: "Lan" });
   temp.lan = lan.password;
@@ -117,14 +118,14 @@ describe("accounts", () => {
     const call = (method: string, input: unknown) =>
       fetch(`${base}/api/rpc`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${result.token}`, "x-hive-agent": "claude-1.lan-mbp" },
+        headers: { "content-type": "application/json", ...authHeaders(result.token), "x-hive-agent": "claude-1.lan-mbp" },
         body: JSON.stringify({ method, input }),
       }).then(async (r) => ({ status: r.status, body: (await r.json()) as { result?: any } }));
     assert.deepEqual((await call("tasks.list", {})).body.result.map((t: { id: string }) => t.id).sort(), ["app-1", "app-2"]);
 
     // Agents on that machine reach the hub over MCP with the same token and see the same.
     const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${result.token}`, "x-hive-agent": "codex" } },
+      requestInit: { headers: { ...authHeaders(result.token), "x-hive-agent": "codex" } },
     });
     const client = new Client({ name: "test", version: "0" });
     await client.connect(transport);
@@ -162,7 +163,7 @@ describe("accounts", () => {
     assert.equal((await lan.rpc("docs.list")).status, 401);
     const ci = await fetch(`${base}/api/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${own.body.result.token}` },
+      headers: { "content-type": "application/json", ...authHeaders(own.body.result.token) },
       body: JSON.stringify({ method: "docs.list", input: {} }),
     });
     assert.equal(ci.status, 401, "tokens of a disabled account stop working");
@@ -181,7 +182,7 @@ describe("accounts", () => {
 
     const legacy = await fetch(`${base}/api/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+      headers: { "content-type": "application/json", ...authHeaders(adminToken) },
       body: JSON.stringify({ method: "docs.list", input: {} }),
     });
     const keys = ((await legacy.json()) as { result: Array<{ key: string }> }).result.map((d) => d.key);

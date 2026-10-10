@@ -47,6 +47,13 @@ export interface Me {
   access?: Access;
   /** The hub signs people in through an OpenID Connect provider too (session of an account only). */
   sso?: { name: string; linked: boolean };
+  /**
+   * A machine token of a hub admin (spec 79a): it is no admin itself (role says member), but it may read the hub's open
+   * alerts, so the desktop app still notifies that person.
+   */
+  hubAlerts?: boolean;
+  /** A member token of a hub admin's account: every permission on the projects, none of the hub's admin (spec 79a). */
+  allProjects?: boolean;
 }
 
 export interface TokenInfo {
@@ -57,6 +64,8 @@ export interface TokenInfo {
   ownerId: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  /** Made by a hub admin for release.mjs: uploads desktop builds and their notes, nothing else (spec 79a). */
+  releaseUpload?: boolean;
 }
 
 /** A chat webhook as hub admins see it: the URL is a secret, so only a hint of it comes back. */

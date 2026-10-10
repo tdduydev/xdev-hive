@@ -24,7 +24,7 @@ it("bounds release upload streams, cleans oversized parts, and keeps small uploa
     const req = Object.assign(Readable.from(chunks), { query: { version: "0.142.0", platform: "linux", arch: "x64", kind: "AppImage", name: "audit.AppImage", ...extra } });
     let status = 200;
     let body: any;
-    const res = { locals: { actor: { name: "audit-admin", role: "admin" } }, status: (n: number) => { status = n; return res; }, json: (v: unknown) => { body = v; return res; } };
+    const res = { locals: { actor: { name: "audit-admin", role: "admin", humanSession: "audit" } }, status: (n: number) => { status = n; return res; }, json: (v: unknown) => { body = v; return res; } };
     await handle(req as unknown as Request, res as unknown as Response, () => {});
     return { status, body };
   };

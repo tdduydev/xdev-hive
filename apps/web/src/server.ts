@@ -31,7 +31,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { HiveError, openAiEmbedder, terminalHubEnabled, type HiveEvent } from "@xdev-hive/core";
 import { SqliteHive } from "@xdev-hive/core/node";
-import { allowedHostsFor, createHubApp, terminalUpgrade, type HubAppOptions } from "./app.ts";
+import { allowedHostsFor, createHubApp, terminalUpgrade, tokenRole, type HubAppOptions } from "./app.ts";
 import { applySetupFile, readSetupFile, SetupGate } from "./hub-setup.ts";
 import { backupDatabase, backupFile, backupFiles, backupSettings, type BackupResult } from "./backup.ts";
 import { seaweedFromEnv } from "./seaweed.ts";
@@ -128,7 +128,8 @@ setInterval(learnRound, 60_000).unref();
 
 const tokens = new TokenStore(hive.db);
 const users = new UserStore(hive.db);
-if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "admin");
+// The bootstrap token belongs to no account, so since spec 79a it acts as a member: it seeds projects, never administers.
+if (process.env.HIVE_BOOTSTRAP_TOKEN) tokens.ensure(process.env.HIVE_BOOTSTRAP_TOKEN, "bootstrap", "member");
 // No account yet on a hub started for setup (the root compose.yaml): the setup page creates the admin, with the code
 // printed here. Otherwise (deploy/compose.yaml, a hub from before accounts): an admin with a temporary password.
 let setup: SetupGate | undefined;
@@ -166,7 +167,8 @@ const automation = new Automation(hive, (owner) => {
     if (!token) return null;
     const user = token.ownerId ? users.get(token.ownerId) : null;
     if (token.ownerId && (!user || user.disabled)) return null;
-    return { name: token.name, tokenId: token.id, role: token.role === "admin" && user && !user.admin ? "member" : token.role,
+    // A rule a token owns runs as that token does on the hub (spec 79a): a member at most, never the hub admin.
+    return { name: token.name, tokenId: token.id, role: tokenRole(token.role),
       ...(user ? { account: user.username, access: users.access(user) } : {}) };
   }
   return null;

@@ -20,7 +20,10 @@ const width = Number(process.env.HIVE_E2E_W ?? 1440);
 const height = Number(process.env.HIVE_E2E_H ?? 900);
 if (!Number.isInteger(width) || width < 320 || !Number.isInteger(height) || height < 320) throw new Error("invalid HIVE_E2E_W/HIVE_E2E_H");
 const mobile = width < 768;
-const { admin, people, proposals, memory, terminal } = JSON.parse(process.env.HIVE_E2E_SEED);
+// admin: the hub admin's page session (spec 79a); machine: that admin's desktop token, for what a runner sends.
+const { admin, adminPassword, machine: adminMachine, people, proposals, memory, terminal } = JSON.parse(process.env.HIVE_E2E_SEED);
+const authHeaders = (credential) =>
+  credential.startsWith("hive_session=") ? { cookie: credential, "x-hive-csrf": "1" } : { authorization: `Bearer ${credential}` };
 
 app.commandLine.appendSwitch("force-device-scale-factor", "1");
 // Chromium's own warnings (task policy, sandbox) are not the test's.
@@ -30,7 +33,7 @@ app.dock?.hide();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function rpc(method, input = {}, token = admin) {
-  const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ method, input }) });
+  const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ method, input }) });
   const j = await r.json();
   if (j.error) throw new Error(`${method}: ${j.error.message}`);
   return j.result;
@@ -469,10 +472,12 @@ async function main() {
 
   await step("login-token", async () => {
     const tab = (current = tabs.admin = await Tab.open("admin"));
-    await tab.click("button", "Dùng token truy cập thay cho tài khoản");
-    await tab.click("#token");
-    await tab.type(admin);
-    await tab.click('button[type="submit"]');
+    // Spec 79a: a hub admin is a person signed in with the account; a token never administers.
+    await tab.click("#username");
+    await tab.type("duy");
+    await tab.click("#password");
+    await tab.type(adminPassword);
+    await tab.key("Enter");
     // The web opens on Hôm nay for everyone (roadmap 35b), hub admins included.
     await tab.waitFor("the admin's Hôm nay", () => document.querySelector('[data-shell-title]')?.textContent.includes("Hôm nay"));
     if (mobile) await tab.click('button[aria-label="Ẩn hoặc hiện thanh bên"]');
@@ -639,7 +644,7 @@ async function main() {
   await step("shell-run-count", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async input => {
-      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.shell-count" }, body: JSON.stringify({ method: "runs.push", input }) });
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.shell-count" }, body: JSON.stringify({ method: "runs.push", input }) });
       const j = await r.json();
       if (j.error) throw new Error(j.error.message);
     };
@@ -931,7 +936,7 @@ async function main() {
   await step("cosmic-tasks-board", async () => {
     const tab = (current = tabs.admin);
     // One card per column, each variant of the design: agents (planet + profile), the activity bar, a red "Chờ <id>" pill, a faded Xong.
-    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", version: "0.142.0", projects: ["payment"], acceptsRuns: true, profiles: ["claude", "codex"].map((id) => ({ id, label: id, kind: id, enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2, sessionPercent: 10, weekPercent: 10 })), runs: [] } }) });
+    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", version: "0.142.0", projects: ["payment"], acceptsRuns: true, profiles: ["claude", "codex"].map((id) => ({ id, label: id, kind: id, enabled: true, installed: true, loggedIn: true, account: null, cooldownUntil: null, runs: 0, rateLimited: 0, maxConcurrent: 2, sessionPercent: 10, weekPercent: 10 })), runs: [] } }) });
     const beatJson = await beat.json();
     if (beatJson.error) throw new Error(`board heartbeat: ${beatJson.error.message}`);
     const boardMachine = (await rpc("machines.list")).find((m) => m.machine === "board-e2e");
@@ -975,7 +980,7 @@ async function main() {
       await tab.eval(() => { document.documentElement.dataset.theme = "dark"; });
     } finally {
       // A screenshot fixture must not add capacity or receive batches in later steps.
-      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", projects: ["payment"], acceptsRuns: false } }) });
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.board-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "board-e2e", instance: "bd000001", projects: ["payment"], acceptsRuns: false } }) });
       const result = await response.json();
       expect(!result.error, `board cleanup: ${JSON.stringify(result.error)}`);
     }
@@ -1030,7 +1035,7 @@ async function main() {
   await step("a11y-run-status", async () => {
     const tab = (current = tabs.admin);
     const machineRpc = async (method, input) => {
-      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.a11y" }, body: JSON.stringify({ method, input }) });
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.a11y" }, body: JSON.stringify({ method, input }) });
       const j = await r.json();
       if (j.error) throw new Error(j.error.message);
       return j.result;
@@ -1096,7 +1101,7 @@ async function main() {
     const project = "autopilot-fixture";
     const instance = "60b060b0";
     const machineRpc = async (method, input) => {
-      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.merge-e2e" }, body: JSON.stringify({ method, input }) });
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.merge-e2e" }, body: JSON.stringify({ method, input }) });
       const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
     };
     await machineRpc("machines.heartbeat", { machine: "merge-e2e", instance, projects: [project], gateRunner: true });
@@ -1733,7 +1738,7 @@ async function main() {
     const beat = async (input = {}) => {
       const r = await fetch(`${base}/api/rpc`, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.adm-e2e" },
+        headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.adm-e2e" },
         body: JSON.stringify({ method: "machines.heartbeat", input: { machine: "adm-e2e", instance: "ad000001", version: "0.155.0", projects: ["payment", "adm-gone"], repos: both, ...input } }),
       });
       const j = await r.json();
@@ -3526,7 +3531,7 @@ async function main() {
   await step("codex-leader-chat", async () => {
     const machineRpc = async (method, input) => {
       const response = await fetch(`${base}/api/rpc`, {
-        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.codex-leader-e2e" },
+        method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.codex-leader-e2e" },
         body: JSON.stringify({ method, input }),
       });
       const body = await response.json();
@@ -3573,7 +3578,7 @@ async function main() {
   });
 
   await step("hub-leader-chat", async () => {
-    const machineRpc = async (method, input, token = admin) => {
+    const machineRpc = async (method, input, token = adminMachine) => {
       const response = await fetch(`${base}/api/rpc`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": "runner.hub-leader-e2e" },
@@ -3758,7 +3763,7 @@ async function main() {
     for (const p of ["his-api", "his-portal", "his-lab"]) await rpc("tasks.create", { id: `${p.toUpperCase()}-1`, project: p, title: `Việc của ${p}` });
     await rpc("systems.save", { name: "his", projects: ["his-api", "his-portal", "his-lab"] });
     const at = new Date().toISOString();
-    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.his-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: {
+    const beat = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.his-e2e" }, body: JSON.stringify({ method: "machines.heartbeat", input: {
       machine: "his-e2e", instance: "4e500001", version: "0.155.0", projects: ["his-api", "his-portal"],
       repoHealth: [
         { project: "his-api", status: "ok", checkedAt: at, head: "a".repeat(40) },
@@ -3844,7 +3849,7 @@ async function main() {
     expect((await rpc("tasks.list", {})).every((t) => t.project !== "throwaway"), "tasks.list still shows the archived project");
     const refused = await fetch(`${base}/api/rpc`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${admin}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}` },
       body: JSON.stringify({ method: "tasks.create", input: { id: "OLD-2", project: "throwaway", title: "x" } }),
     }).then((r) => r.json());
     expect(refused.error?.key === "errors.projectArchived", `writing to an archived project: ${JSON.stringify(refused)}`);
@@ -3930,7 +3935,7 @@ async function main() {
     await rpc("systems.save", { name: "ov-shop", projects: ["ov-api", "ov-web"] });
     await rpc("systems.save", { name: "ov-backoffice", projects: ["ov-jobs"] });
     const machineRpc = async (method, input) => {
-      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.overview" }, body: JSON.stringify({ method, input }) });
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.overview" }, body: JSON.stringify({ method, input }) });
       const j = await r.json();
       if (j.error) throw new Error(j.error.message);
       return j.result;
@@ -4972,7 +4977,7 @@ async function main() {
   // History reuses the retained source records and follows their permission-checked detail routes.
   await step("history-page", async () => {
     const machineRpc = async (method, input) => {
-      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method, input }) });
+      const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.history-e2e" }, body: JSON.stringify({ method, input }) });
       const data = await r.json();
       if (data.error) throw new Error(`${method}: ${data.error.message}`);
       return data.result;
@@ -5084,7 +5089,7 @@ async function main() {
 
   await step("artifacts-page", async () => {
     const machine = async (method, input) => {
-      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.artifacts-e2e" }, body: JSON.stringify({ method, input }) });
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.artifacts-e2e" }, body: JSON.stringify({ method, input }) });
       const body = await response.json();
       if (body.error) throw new Error(`${method}: ${body.error.message}`);
       return body.result;
@@ -5219,7 +5224,7 @@ async function main() {
   // *-compare images beside the template. Memory: a system of web/desktop/core so its seven cards are the only ones in view.
   await step("knowledge-compare", async () => {
     const tab = (current = tabs.admin);
-    const as = async (agent, method, input, token = admin) => {
+    const as = async (agent, method, input, token = adminMachine) => {
       const r = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-hive-agent": agent }, body: JSON.stringify({ method, input }) });
       const j = await r.json(); if (j.error) throw new Error(`${method}: ${j.error.message}`); return j.result;
     };
@@ -5664,7 +5669,7 @@ async function main() {
     const project = "inbox-source-e2e";
     const instance = "c105ec10";
     const machineRpc = async (method, input) => {
-      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${admin}`, "x-hive-agent": "runner.close-e2e" }, body: JSON.stringify({ method, input }) });
+      const response = await fetch(`${base}/api/rpc`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${adminMachine}`, "x-hive-agent": "runner.close-e2e" }, body: JSON.stringify({ method, input }) });
       const result = await response.json();
       if (result.error) throw new Error(`${method}: ${result.error.message}`);
       return result.result;
