@@ -849,12 +849,12 @@ export const schemas = {
    */
   "runs.steer": z.object({ machineId: z.string().min(1).max(200), runId, text: z.string().trim().min(1).max(8000) }),
   "runs.cancel": z.object({ machineId: z.string().min(1).max(200), runId }),
+  "runs.ciPolicy": z.object({ project, mrUrl: z.string().url().max(2000) }),
+  "runs.stopCi": z.object({ project, mrUrl: z.string().url().max(2000) }),
   /**
    * Merges the run's open MR or PR (roadmap 18c): someone with Code review on the project, not the one who asked for the
    * run. The machine does it with its own GitLab or GitHub token at its next heartbeat; only one that takes runs from the hub.
    */
-  "runs.ciPolicy": z.object({ project, mrUrl: z.string().url().max(2000) }),
-  "runs.stopCi": z.object({ project, mrUrl: z.string().url().max(2000) }),
   "runs.merge": z.object({ machineId: z.string().min(1).max(200), runId }),
   /** The machine says how a merge asked of it went (only for its own runs). */
   "runs.mergeResult": z.object({ runId: z.string().regex(/^[\w.-]{1,40}$/), ok: z.boolean(), error: machineError.nullable().default(null) }),
