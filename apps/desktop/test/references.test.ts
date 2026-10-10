@@ -57,7 +57,7 @@ describe("reference repos (roadmap 38h)", () => {
     const bare = buildCommand(AGENT_TEMPLATES.claude, { ...vars, references: [] }).args;
     const plain = JSON.parse(bare[bare.indexOf("--settings") + 1]!);
     assert.equal(plain.permissions.deny, undefined, "a run without references keeps the settings it had");
-    assert.deepEqual(claudeDenyWrites(["D:\\Codes\\svc-core-old\\"]).slice(0, 2), ["Write(D:/src/svc-core-old/**)", "Edit(D:/src/svc-core-old/**)"], "Windows separators");
+    assert.deepEqual(claudeDenyWrites(["D:\\src\\svc-core-old\\"]).slice(0, 2), ["Write(D:/src/svc-core-old/**)", "Edit(D:/src/svc-core-old/**)"], "Windows separators");
   });
 
   it("gives Codex nothing on the command line, so its sandbox never gains a writable folder", () => {
