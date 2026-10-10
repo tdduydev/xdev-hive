@@ -43,7 +43,10 @@ export function cliCommand(
 ): CliOpen {
   const base = cliArgs(profile, opts);
   const dirs = (opts.extraDirs ?? []).flatMap((dir) => EXTRA_DIR_ARGS[profile.kind]?.(dir) ?? []);
-  const open = dirs.length ? { ...base, command: { ...base.command, args: [...base.command.args, ...dirs] } } : base;
+  const withDirs = dirs.length ? { ...base, command: { ...base.command, args: [...base.command.args, ...dirs] } } : base;
+  // cmd.exe inherits the app's env, and the shim gives HIVE_PROJECT precedence over HIVE_SYSTEM: an app started from a
+  // shell that had one (an agent's session) would scope the system's session to that project.
+  const open = opts.system ? { ...withDirs, command: { ...withDirs.command, unsetEnv: [...(withDirs.command.unsetEnv ?? []), "HIVE_PROJECT"] } } : withDirs;
   if (!opts.bypass) return open;
   const extra = CLI_BYPASS_ARGS[profile.kind];
   // Refused, not ignored: a box ticked on a CLI with no checked flag would otherwise open a session that still asks.
