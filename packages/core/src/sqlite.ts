@@ -1115,8 +1115,9 @@ function toSpecFeature(r: Row): SpecFeatureDetail {
 const RUN_SELECTION_COLUMN = `COALESCE(
   (SELECT q.selection FROM run_requests q WHERE q.project = r.project AND q.machine_id = r.machine_id
     AND q.status = 'accepted' AND q.run_id = r.run_id ORDER BY q.id DESC LIMIT 1),
-  (SELECT json_extract(q.selection, '$.review') FROM run_requests q WHERE r.role = 'review' AND q.project = r.project
-    AND q.machine_id = r.machine_id AND q.status = 'accepted' AND q.run_id = r.parent_run ORDER BY q.id DESC LIMIT 1)
+  (SELECT json_extract(q.selection, '$.review') FROM run_requests q WHERE r.role = 'review'
+    AND q.project = r.project AND q.machine_id = r.machine_id AND q.status = 'accepted'
+    AND q.run_id = r.parent_run ORDER BY q.id DESC LIMIT 1)
 ) AS router_selection`;
 
 function toRunMessage(r: Row): RunMessage {

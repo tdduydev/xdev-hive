@@ -25,19 +25,25 @@ export function CommandPalette({
   onOpenChange,
   commands,
   pages,
+  sources,
+  placeholder,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   commands: PaletteCommand[];
   pages: PaletteCommand[];
+  /** What else to search, in place of the hub's tasks and docs: the desktop app has neither, only its machine's things. */
+  sources?: Array<[group: string, rows: PaletteCommand[]]>;
+  placeholder?: string;
 }) {
   const { client, scope } = useHive();
   const t = useT();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const tasks = useQuery(async () => (open ? client.call("tasks.list", scopeFilter(scope)) : []), [client, scope, open]);
-  const docs = useQuery(async () => (open ? client.call("docs.list", {}) : []), [client, open]);
+  const hub = open && !sources;
+  const tasks = useQuery(async () => (hub ? client.call("tasks.list", scopeFilter(scope)) : []), [client, scope, hub]);
+  const docs = useQuery(async () => (hub ? client.call("docs.list", {}) : []), [client, hub]);
 
   useEffect(() => {
     if (open) {
@@ -68,8 +74,10 @@ export function CommandPalette({
     const groups: Array<[string, PaletteCommand[]]> = [
       [t("palette.commands"), commands],
       [t("palette.goTo"), pages],
-      [t("palette.tasks"), taskRows],
-      [t("palette.docs"), docRows],
+      ...(sources ?? [
+        [t("palette.tasks"), taskRows],
+        [t("palette.docs"), docRows],
+      ] satisfies Array<[string, PaletteCommand[]]>),
     ];
     return groups.flatMap(([group, list]) =>
       list
@@ -77,7 +85,7 @@ export function CommandPalette({
         .slice(0, needle ? 8 : 4)
         .map((c) => ({ ...c, group })),
     );
-  }, [q, tasks.data, docs.data, commands, pages, t]);
+  }, [q, tasks.data, docs.data, commands, pages, sources, t]);
 
   const current = Math.min(sel, Math.max(rows.length - 1, 0));
   useEffect(() => {
@@ -124,8 +132,8 @@ export function CommandPalette({
                   pick(rows[current]);
                 }
               }}
-              placeholder={t("palette.placeholder")}
-              aria-label={t("palette.placeholder")}
+              placeholder={placeholder ?? t("palette.placeholder")}
+              aria-label={placeholder ?? t("palette.placeholder")}
               className="h-full min-w-0 flex-1 bg-transparent type-body-lg text-fg-strong outline-none placeholder:text-fg-muted"
             />
             <kbd className="rounded-xs border border-line-default bg-surface px-1.5 py-0.5 font-mono text-[10px] font-medium text-fg-secondary">Esc</kbd>

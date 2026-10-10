@@ -368,7 +368,7 @@ Thứ tự làm các mục còn mở, tiêu chí xong và phần test còn thi�
 - **73. hub-first-state** (hỏi 9/10: "mọi thứ lưu ở trên web, còn mấy máy client là dùng để chạy code thôi?"; chọn: làm, 73a trước). Spec: [docs/specs/73-hub-first-state.md](specs/73-hub-first-state.md). Tách:
   - [x] **73a. branch-on-remote** (0.148.0): runner push `ai/<task>` lên remote sau mỗi run (kể cả WIP), fetch trước khi chạy; hub ghi nhánh và SHA của từng run, nên máy nào cũng làm tiếp được.
   - [x] **73b. platform-routing** (0.154.0): task có nền tảng (windows/linux/mac), hub chỉ giao cho máy đúng nền tảng.
-  - [ ] **73c. ephemeral-worktree**: worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
+  - [x] **73c. ephemeral-worktree** (0.158.0): worktree là bộ nhớ tạm, tự dọn sau khi nhánh đã push.
   - [ ] **73d. app-runner-console**: app chế độ hub chỉ còn việc của máy (trạng thái, gói agent và quota, run trên máy, worktree, công cụ, cài đặt máy); việc khác mở web. Chế độ cục bộ giữ nguyên.
   - [ ] **73e. admin-area**: gom mọi trang quản trị vào nhóm Quản trị của web, theo quyền.
   - [x] **73f. release-split** (0.154.0): thay đổi chỉ ở web/hub thì chỉ deploy hub; app chỉ release khi runner/main process đổi.

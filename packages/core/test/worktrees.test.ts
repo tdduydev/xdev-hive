@@ -7,7 +7,7 @@ const admin: Actor = { name: "admin", role: "admin" };
 const owner: Actor = { name: "owner", account: "owner", role: "viewer", access: { projects: { demo: "viewer" } } };
 const machine: Actor = { name: "runner.mac@owner", account: "owner", role: "agent", access: owner.access };
 const report = (): WorktreeReport => ({ measuredAt: new Date().toISOString(), totalBytes: 4096, freeBytes: 1024 ** 3, cleanup: worktreeCleanupSchema.parse({}), logs: [], errors: [], entries: [{
-  project: "demo", taskId: "T-1", taskStatus: "done", taskUpdatedAt: new Date().toISOString(), path: "/work/demo/T-1", branch: "ai/T-1", head: "a".repeat(40), fingerprint: "b".repeat(64), bytes: 4096, modifiedAt: new Date().toISOString(), dirty: false, merged: true, active: false, error: null,
+  project: "demo", taskId: "T-1", taskStatus: "done", taskUpdatedAt: new Date().toISOString(), path: "/work/demo/T-1", branch: "ai/T-1", head: "a".repeat(40), fingerprint: "b".repeat(64), bytes: 4096, modifiedAt: new Date().toISOString(), dirty: false, merged: true, pushed: true, active: false, error: null,
 }] });
 const isError = (key: string) => (err: unknown) => err instanceof HiveError && err.key === key;
 
