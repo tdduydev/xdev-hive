@@ -5,8 +5,10 @@ type Result = { ok: true; value: unknown } | { ok: false; error: { code: string;
 
 async function invoke(channel: string, ...args: unknown[]): Promise<any> {
   const res = (await ipcRenderer.invoke(channel, ...args)) as Result;
-  // key/vars let the interface show the error in the chosen language (see packages/ui/src/i18n).
-  if (!res.ok) throw Object.assign(new Error(res.error.message), { code: res.error.code, key: res.error.key, vars: res.error.vars });
+  // key/vars let the interface show the error in the chosen language (see packages/ui/src/i18n). A plain object, not
+  // an Error: contextBridge copies only the message of an Error, so code, key and vars never reached the page (shown
+  // in English). The renderer turns it back into an Error (renderer/bridge-errors.ts).
+  if (!res.ok) throw { hiveError: true, code: res.error.code, message: res.error.message, key: res.error.key, vars: res.error.vars };
   return res.value;
 }
 
@@ -37,6 +39,8 @@ contextBridge.exposeInMainWorld("hive", {
     systemsOnMachine: () => invoke("desktop:systemsOnMachine"),
     systemForget: (system: string) => invoke("desktop:systemForget", system),
     openSystemCli: (id: string, system: string, opts?: { bypass?: boolean }) => invoke("desktop:openSystemCli", id, system, opts),
+    repoStatus: (projects: string[], opts?: { fetch?: boolean }) => invoke("desktop:repoStatus", projects, opts),
+    pullRepos: (projects: string[]) => invoke("desktop:pullRepos", projects),
     addProjects: (items: unknown) => invoke("desktop:addProjects", items),
     removeProject: (name: string) => invoke("desktop:removeProject", name),
     pickFolder: () => invoke("desktop:pickFolder"),
