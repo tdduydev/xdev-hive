@@ -8,6 +8,7 @@ import {
   loadConnection,
   type ProviderFactory,
   type RepoInfo,
+  type ScmAuthMode,
   type WebhookEvent,
 } from "../scm/index.ts";
 import { findSystem } from "../tenancy/index.ts";
@@ -79,6 +80,7 @@ const repoPatch = (r: RepoInfo): RepoPatch => ({
 interface StepContext {
   project: ProjectRow;
   provider: GitProvider;
+  authMode: ScmAuthMode;
   systemName: string;
   deps: ProvisionDeps;
 }
@@ -92,7 +94,7 @@ function needBranch(project: ProjectRow): string {
 
 /** Mỗi bước idempotent: chạy lại sau khi chết giữa chừng cho cùng kết quả, không tạo trùng trên nhà cung cấp. */
 async function execute(step: StepRow, c: StepContext): Promise<StepOutput> {
-  const { project, provider } = c;
+  const { project, provider, authMode } = c;
   const ref = { owner: project.repoOwner, name: project.repoName };
   switch (step.kind) {
     case "check-access": {
@@ -102,9 +104,11 @@ async function execute(step: StepRow, c: StepContext): Promise<StepOutput> {
         throw new StepFailure(
           "ACCESS_DENIED",
           `Kết nối Git chưa tạo được repo trong ${ref.owner}${missing}.`,
-          project.scmKind === "github"
-            ? `Cài GitHub App của Hive vào tổ chức ${ref.owner} (không phải tài khoản cá nhân) và cấp quyền Administration, Contents, Pull requests, Webhooks (ghi). Sửa xong, bấm “Thử lại bước này”.`
-            : `Token GitLab cần scope api và vai trò Maintainer trở lên trong group ${ref.owner}. Sửa xong, bấm “Thử lại bước này”.`,
+          project.scmKind === "github" && authMode === "token"
+            ? `Token GitHub phải tạo được repo trong ${ref.owner}: owner là chính chủ token hoặc org mà chủ token được tạo repo; fine-grained token cần Administration, Contents, Pull requests, Webhooks (ghi), PAT cổ điển cần scope repo. Sửa xong, bấm “Thử lại bước này”.`
+            : project.scmKind === "github"
+              ? `Cài GitHub App của Hive vào tổ chức ${ref.owner} (không phải tài khoản cá nhân) và cấp quyền Administration, Contents, Pull requests, Webhooks (ghi). Sửa xong, bấm “Thử lại bước này”.`
+              : `Token GitLab cần scope api và vai trò Maintainer trở lên trong group ${ref.owner}. Sửa xong, bấm “Thử lại bước này”.`,
         );
       }
       return { result: { missingScopes: access.missingScopes } };
@@ -224,9 +228,15 @@ export async function runProvision(
 
     let output: StepOutput;
     try {
-      output = await execute(step, { project, provider, systemName: loaded.systemName, deps });
+      output = await execute(step, {
+        project,
+        provider,
+        authMode: loaded.conn.authMode,
+        systemName: loaded.systemName,
+        deps,
+      });
     } catch (e) {
-      const error = describeFailure(step.kind, project.scmKind, project.repoOwner, e);
+      const error = describeFailure(step.kind, project.scmKind, project.repoOwner, e, loaded.conn.authMode);
       if (isGitProviderError(e) && e.retryable && attempt.retryCount < attempt.retryLimit) {
         await tenant((tx) =>
           tx

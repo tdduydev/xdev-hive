@@ -33,19 +33,44 @@ function needKey(deps: ScmDeps): MasterKey {
 /** Gọi ra GitHub/GitLab ngoài transaction, lỗi của provider thành kết quả để người quản trị đọc được. */
 export async function checkConnection(provider: GitProvider, owner: string | null): Promise<ScmConnectionTestResult> {
   if (!owner) {
-    return { ok: false, owner, canCreate: false, missingScopes: [], message: "Chưa có owner để kiểm: nhập owner." };
+    return {
+      ok: false,
+      owner,
+      canCreate: false,
+      missingScopes: [],
+      unverifiedScopes: [],
+      message: "Chưa có owner để kiểm: nhập owner.",
+    };
   }
   try {
     const access = await provider.checkAccess(owner);
-    const message = access.canCreate
+    const unverifiedScopes = access.unverifiedScopes ?? [];
+    let message = access.canCreate
       ? `Kết nối dùng được, tạo được repo trong ${owner}.`
       : `Kết nối dùng được nhưng chưa tạo được repo trong ${owner}${
           access.missingScopes.length ? `: thiếu ${access.missingScopes.join(", ")}` : ""
         }.`;
-    return { ok: true, owner, canCreate: access.canCreate, missingScopes: access.missingScopes, message };
+    if (unverifiedScopes.length) {
+      message += ` Token không cho đọc quyền của nó, nên chưa kiểm trước được: ${unverifiedScopes.join(", ")}. Hãy chắc token đã được cấp các quyền này.`;
+    }
+    return {
+      ok: true,
+      owner,
+      canCreate: access.canCreate,
+      missingScopes: access.missingScopes,
+      unverifiedScopes,
+      message,
+    };
   } catch (e) {
     if (!isGitProviderError(e)) throw e;
-    return { ok: false, owner, canCreate: false, missingScopes: e.missingScopes, message: e.message };
+    return {
+      ok: false,
+      owner,
+      canCreate: false,
+      missingScopes: e.missingScopes,
+      unverifiedScopes: [],
+      message: e.message,
+    };
   }
 }
 
