@@ -74,6 +74,7 @@ if (roles.includes("jobs") && jobs) {
       masterKey: config.masterKey,
       providerFactory: defaultProviderFactory,
       publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+      jobs,
     });
   }
   if (pool) {
