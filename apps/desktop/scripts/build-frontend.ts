@@ -5,5 +5,6 @@ import { fileURLToPath } from "node:url";
 
 const desktop = fileURLToPath(new URL("../", import.meta.url));
 mkdirSync(`${desktop}dist`, { recursive: true });
-for (const name of ["index.html", "style.css"]) copyFileSync(`${desktop}src/${name}`, `${desktop}dist/${name}`);
+for (const name of ["index.html", "style.css", "xdev-hive-icon.svg"])
+  copyFileSync(`${desktop}src/${name}`, `${desktop}dist/${name}`);
 writeFileSync(`${desktop}dist/app.js`, stripTypeScriptTypes(readFileSync(`${desktop}src/app.ts`, "utf8")));
