@@ -172,6 +172,9 @@ importers:
       '@swc/core':
         specifier: ^1.16.13
         version: 1.16.13
+      '@testcontainers/postgresql':
+        specifier: ^12.2.0
+        version: 12.2.0(supports-color@7.2.0)
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2

@@ -69,6 +69,8 @@ export interface CommentOptions {
 export interface AccessCheck {
   canCreate: boolean;
   missingScopes: string[];
+  /** Quyền cần có nhưng không đọc được trước; chỉ lộ ra khi gọi thật (fine-grained token). */
+  unverifiedScopes?: string[];
 }
 
 export interface GitProvider {

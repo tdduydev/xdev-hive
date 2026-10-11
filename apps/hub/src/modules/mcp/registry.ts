@@ -16,7 +16,7 @@ export interface McpToolContext {
   principal: McpPrincipal;
 }
 
-export interface McpTool<Input extends z.ZodObject = z.ZodObject> {
+export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = undefined> {
   /** Tên duy nhất trên cổng, dạng `<nhóm>_<động từ>`; action audit là `mcp.<name>`. */
   name: string;
   title?: string | undefined;
@@ -24,7 +24,12 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject> {
   input: Input;
   /** Tool chỉ đọc; client MCP dùng gợi ý này để khỏi hỏi người dùng trước khi gọi. */
   readOnly?: boolean | undefined;
-  handler: (args: z.infer<Input>, ctx: McpToolContext) => Promise<unknown>;
+  /**
+   * Chạy trước handler, ngoài transaction, sau khi đã chọn tổ chức. Dành cho việc chờ mạng (vd. gọi API embeddings)
+   * để không giữ kết nối database trong lúc chờ; kết quả truyền vào handler.
+   */
+  prepare?: ((args: z.infer<Input>) => Promise<Prepared>) | undefined;
+  handler: (args: z.infer<Input>, ctx: McpToolContext, prepared: Prepared) => Promise<unknown>;
 }
 
 /**
@@ -32,14 +37,14 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject> {
  * nó, nên module mcp không phải import vào bên trong module nào.
  */
 export class McpToolRegistry {
-  readonly #tools = new Map<string, McpTool>();
+  readonly #tools = new Map<string, McpTool<z.ZodObject, unknown>>();
   #memberships: ((tx: Tx, userId: string) => Promise<McpOrgMembership[]>) | undefined;
 
-  register<Input extends z.ZodObject>(tool: McpTool<Input>): void {
+  register<Input extends z.ZodObject, Prepared = undefined>(tool: McpTool<Input, Prepared>): void {
     if (this.#tools.has(tool.name)) throw new Error(`Tool MCP "${tool.name}" đã được đăng ký.`);
     if (!/^[a-z][a-z0-9_]*$/.test(tool.name)) throw new Error(`Tên tool MCP không hợp lệ: "${tool.name}".`);
     if ("org" in tool.input.shape) throw new Error(`Tool MCP "${tool.name}" không được tự khai báo tham số org.`);
-    this.#tools.set(tool.name, tool as unknown as McpTool);
+    this.#tools.set(tool.name, tool as unknown as McpTool<z.ZodObject, unknown>);
   }
 
   /**
@@ -55,7 +60,7 @@ export class McpToolRegistry {
     return this.#memberships(tx, userId);
   }
 
-  list(): McpTool[] {
+  list(): McpTool<z.ZodObject, unknown>[] {
     return [...this.#tools.values()];
   }
 }

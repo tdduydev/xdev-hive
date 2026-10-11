@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
 func TestDefaultMachineID(t *testing.T) {
@@ -94,5 +96,18 @@ func TestRegisterNeedsFlags(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := register([]string{"--token", "x"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("mã thoát %d", code)
+	}
+}
+
+func TestDetectCLIsUsesOverrides(t *testing.T) {
+	// PATH trống: không CLI thật nào được tìm thấy, chỉ CLI ghi đè trỏ tới file chạy được.
+	t.Setenv("PATH", t.TempDir())
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(runner.CLIOverridesEnv, fmt.Sprintf(`{"claude": {"path": %q}, "codex": {"path": %q}}`, exe, filepath.Join(t.TempDir(), "khong-co")))
+	if got := detectCLIs(); len(got) != 1 || got[0] != "claude" {
+		t.Fatalf("detectCLIs = %v", got)
 	}
 }

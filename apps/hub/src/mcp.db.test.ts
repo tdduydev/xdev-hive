@@ -289,13 +289,28 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     await client?.close();
   });
 
-  it("tools/list có các tool của tenancy và runs, tool nào cũng nhận tham số org", async () => {
+  it("tools/list có các tool của tenancy, runs và knowledge, tool nào cũng nhận tham số org", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["hive_whoami", "orgs_list", "systems_list", "task_get", "task_update", "teams_list"]);
+    expect(names).toEqual([
+      "doc_get",
+      "doc_list",
+      "doc_propose",
+      "hive_whoami",
+      "memory_search",
+      "memory_write",
+      "orgs_list",
+      "skill_get",
+      "skill_list",
+      "systems_list",
+      "task_get",
+      "task_update",
+      "teams_list",
+    ]);
+    const writes = ["task_update", "memory_write", "doc_propose"];
     for (const t of tools) {
       expect(t.inputSchema.properties).toHaveProperty("org");
-      expect(t.annotations?.readOnlyHint).toBe(t.name !== "task_update");
+      expect(t.annotations?.readOnlyHint).toBe(!writes.includes(t.name));
     }
   });
 

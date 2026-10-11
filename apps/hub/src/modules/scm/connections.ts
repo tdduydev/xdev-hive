@@ -14,8 +14,11 @@ import { requireOrgRole } from "../tenancy/index.ts";
 import { GitProviderError } from "./errors.ts";
 import { createGitHubProvider } from "./github.ts";
 import { createGitLabProvider } from "./gitlab.ts";
+import { createLocalProvider, isLocalConnection, type LocalProviderOptions, localProviderFromEnv } from "./local.ts";
 import { scmConnections } from "./schema.ts";
-import type { GitProvider, GitProviderKind } from "./types.ts";
+import type { FetchLike, GitProvider, GitProviderKind } from "./types.ts";
+
+export type ScmAuthMode = "app" | "token";
 
 export interface ScmConnectionRecord {
   id: string;
@@ -23,6 +26,7 @@ export interface ScmConnectionRecord {
   name: string;
   baseUrl: string | null;
   defaultOwner: string | null;
+  authMode: ScmAuthMode;
   appId: string | null;
   installationId: number | null;
   createdAt: Date;
@@ -38,21 +42,43 @@ export interface ResolvedConnection extends ScmConnectionRecord {
 /** Dựng GitProvider từ một kết nối. Test thay bằng provider giả. */
 export type ProviderFactory = (conn: ResolvedConnection) => GitProvider;
 
-export const defaultProviderFactory: ProviderFactory = (conn) => {
-  if (conn.kind === "github") {
-    if (!("privateKey" in conn.secret) || !conn.appId || !conn.installationId) {
-      throw new GitProviderError("invalid", "GitHub: kết nối thiếu App ID, installation ID hoặc khoá riêng");
+/**
+ * `fetch` cho test (MockAgent) hoặc proxy ra ngoài; mặc định dùng fetch có sẵn. `local` bật provider chỉ để thử của
+ * scripts/e2e-smoke.ts cho kết nối trỏ vào host `hive-e2e.invalid`.
+ */
+export function createProviderFactory(
+  opts: { fetch?: FetchLike; local?: LocalProviderOptions | undefined } = {},
+): ProviderFactory {
+  const extra = opts.fetch ? { fetch: opts.fetch } : {};
+  return (conn) => {
+    if (opts.local && isLocalConnection(conn)) return createLocalProvider(conn.kind, opts.local);
+    if (conn.kind === "github" && conn.authMode === "token") {
+      if (!("token" in conn.secret)) throw new GitProviderError("invalid", "GitHub: kết nối thiếu token");
+      return createGitHubProvider({
+        token: conn.secret.token,
+        ...(conn.baseUrl ? { baseUrl: conn.baseUrl } : {}),
+        ...extra,
+      });
     }
-    return createGitHubProvider({
-      appId: conn.appId,
-      privateKey: conn.secret.privateKey,
-      installationId: conn.installationId,
-      ...(conn.baseUrl ? { baseUrl: conn.baseUrl } : {}),
-    });
-  }
-  if (!("token" in conn.secret)) throw new GitProviderError("invalid", "GitLab: kết nối thiếu token");
-  return createGitLabProvider({ url: conn.baseUrl ?? "https://gitlab.com", token: conn.secret.token });
-};
+    if (conn.kind === "github") {
+      if (!("privateKey" in conn.secret) || !conn.appId || !conn.installationId) {
+        throw new GitProviderError("invalid", "GitHub: kết nối thiếu App ID, installation ID hoặc khoá riêng");
+      }
+      return createGitHubProvider({
+        appId: conn.appId,
+        privateKey: conn.secret.privateKey,
+        installationId: conn.installationId,
+        ...(conn.baseUrl ? { baseUrl: conn.baseUrl } : {}),
+        ...extra,
+      });
+    }
+    if (!("token" in conn.secret)) throw new GitProviderError("invalid", "GitLab: kết nối thiếu token");
+    return createGitLabProvider({ url: conn.baseUrl ?? "https://gitlab.com", token: conn.secret.token, ...extra });
+  };
+}
+
+// Provider local chỉ có khi hub chạy với HIVE_E2E=1 và HIVE_E2E_GIT_ROOT (scripts/e2e-smoke.ts).
+export const defaultProviderFactory: ProviderFactory = createProviderFactory({ local: localProviderFromEnv() });
 
 // Ngữ cảnh mã hoá gắn với id dòng: chép secret_enc sang dòng khác sẽ không giải mã được.
 const secretContext = (id: string) => `scm_connections:${id}`;
@@ -63,6 +89,8 @@ const columns = {
   name: scmConnections.name,
   baseUrl: scmConnections.baseUrl,
   defaultOwner: scmConnections.defaultOwner,
+  // Dòng GitLab có trước cột auth_mode mang giá trị mặc định "app"; GitLab chỉ có token nên đọc ra luôn là "token".
+  authMode: sql<ScmAuthMode>`case when ${scmConnections.kind} = 'gitlab' then 'token' else ${scmConnections.authMode}::text end`,
   appId: scmConnections.appId,
   installationId: scmConnections.installationId,
   createdAt: scmConnections.createdAt,
@@ -90,7 +118,8 @@ export async function createConnection(
   await requireOrgRole(tx, userId, "admin");
   // Sinh id trước để buộc nó vào bản mã của secret.
   const id = randomUUID();
-  const secret: Secret = input.kind === "github" ? { privateKey: input.privateKey } : { token: input.token };
+  const app = input.kind === "github" && input.authMode !== "token" ? input : null;
+  const secret: Secret = "privateKey" in input ? { privateKey: input.privateKey } : { token: input.token };
   let row: ScmConnectionRecord | undefined;
   try {
     [row] = await tx
@@ -102,8 +131,9 @@ export async function createConnection(
         name: input.name,
         baseUrl: input.baseUrl ?? (input.kind === "gitlab" ? "https://gitlab.com" : null),
         defaultOwner: input.defaultOwner ?? null,
-        appId: input.kind === "github" ? input.appId : null,
-        installationId: input.kind === "github" ? input.installationId : null,
+        authMode: app ? "app" : "token",
+        appId: app?.appId ?? null,
+        installationId: app?.installationId ?? null,
         secretEnc: encryptSecret(master, JSON.stringify(secret), secretContext(id)),
         createdBy: userId,
       })
@@ -120,7 +150,13 @@ export async function createConnection(
     targetType: "scm_connection",
     targetId: id,
     // Không ghi secret vào nhật ký.
-    data: { kind: row.kind, name: row.name, baseUrl: row.baseUrl, defaultOwner: row.defaultOwner },
+    data: {
+      kind: row.kind,
+      authMode: row.authMode,
+      name: row.name,
+      baseUrl: row.baseUrl,
+      defaultOwner: row.defaultOwner,
+    },
   });
   return row;
 }

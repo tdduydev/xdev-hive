@@ -2,15 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Brand } from "../components/icons.tsx";
+import { InviteForm } from "../components/invite-form.tsx";
 import { checkNameSlug, type NameSlugErrors, NameSlugFields } from "../components/name-slug-fields.tsx";
 import { Alert } from "../components/ui/alert.tsx";
 import { Button, buttonClass } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
-import { Pill } from "../components/ui/pill.tsx";
 import { formError } from "../lib/api-errors.ts";
 import { cx } from "../lib/cx.ts";
+import { canInvite } from "../lib/invites.ts";
 import { orgStore } from "../lib/org-store.ts";
 import { orgsMineQuery } from "../lib/orgs.ts";
 import { client } from "../lib/rpc.ts";
@@ -239,23 +240,38 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
 }
 
 function InviteStep({ teamId }: { teamId: string | undefined }) {
-  return (
-    <div className="grid gap-4.5">
-      <Heading
-        title={
-          <>
-            Mời người <Pill>Sắp có</Pill>
-          </>
-        }
-      >
-        Link mời dùng một lần cho đồng nghiệp đang được làm và sẽ có trong bản cập nhật tới. Trong lúc chờ, bạn có thể
-        thêm hệ thống cho đội.
-      </Heading>
-      <div className="flex justify-end">
-        <Link to="/quan-tri/doi" search={teamId ? { doi: teamId } : {}} className={buttonClass({ variant: "primary" })}>
-          Vào trang Đội và hệ thống
-        </Link>
+  const { current } = useOrgs();
+  const navigate = useNavigate();
+  const leave = () => navigate({ to: "/quan-tri/doi", search: teamId ? { doi: teamId } : {} });
+  if (!current)
+    return (
+      <p aria-busy="true" className="text-muted">
+        Đang tải…
+      </p>
+    );
+  // Hub chỉ cho quản trị mời người; người đã tạo tổ chức là chủ sở hữu, nhưng tổ chức đang chọn có thể là tổ chức khác.
+  if (!canInvite(current.org.role))
+    return (
+      <div className="grid gap-4.5">
+        <Heading title="Mời người">Chỉ quản trị tổ chức mời được người vào {current.org.name}.</Heading>
+        <div className="flex justify-end">
+          <Button variant="primary" onClick={leave}>
+            Vào trang Đội và hệ thống
+          </Button>
+        </div>
       </div>
-    </div>
+    );
+  return (
+    <InviteForm
+      title={
+        <Heading title="Mời người">
+          Mời đồng nghiệp vào {current.org.name}. Mỗi người nhận một link dùng một lần, hết hạn sau 7 ngày.
+        </Heading>
+      }
+      defaultTeamId={teamId}
+      cancelLabel="Để sau"
+      doneLabel="Xong: vào trang Đội và hệ thống"
+      onClose={leave}
+    />
   );
 }
