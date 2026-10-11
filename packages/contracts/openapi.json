@@ -18601,6 +18601,31 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "budget": {
+                            "type": "object",
+                            "properties": {
+                              "perRunUsd": {
+                                "type": "number",
+                                "maximum": 100000,
+                                "exclusiveMinimum": 0
+                              },
+                              "perTaskUsd": {
+                                "type": "number",
+                                "maximum": 100000,
+                                "exclusiveMinimum": 0
+                              },
+                              "maxTurns": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10000
+                              },
+                              "perRunTokens": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 1000000000
+                              }
+                            }
                           }
                         },
                         "required": [
@@ -19487,6 +19512,31 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "budget": {
+                          "type": "object",
+                          "properties": {
+                            "perRunUsd": {
+                              "type": "number",
+                              "maximum": 100000,
+                              "exclusiveMinimum": 0
+                            },
+                            "perTaskUsd": {
+                              "type": "number",
+                              "maximum": 100000,
+                              "exclusiveMinimum": 0
+                            },
+                            "maxTurns": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000
+                            },
+                            "perRunTokens": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000000
+                            }
+                          }
                         }
                       },
                       "required": [
@@ -20375,6 +20425,31 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "budget": {
+                              "type": "object",
+                              "properties": {
+                                "perRunUsd": {
+                                  "type": "number",
+                                  "maximum": 100000,
+                                  "exclusiveMinimum": 0
+                                },
+                                "perTaskUsd": {
+                                  "type": "number",
+                                  "maximum": 100000,
+                                  "exclusiveMinimum": 0
+                                },
+                                "maxTurns": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "perRunTokens": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000000000
+                                }
+                              }
                             }
                           },
                           "required": [
@@ -21416,6 +21491,31 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "budget": {
+                              "type": "object",
+                              "properties": {
+                                "perRunUsd": {
+                                  "type": "number",
+                                  "maximum": 100000,
+                                  "exclusiveMinimum": 0
+                                },
+                                "perTaskUsd": {
+                                  "type": "number",
+                                  "maximum": 100000,
+                                  "exclusiveMinimum": 0
+                                },
+                                "maxTurns": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "perRunTokens": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000000000
+                                }
+                              }
                             }
                           },
                           "required": [
@@ -34321,6 +34421,61 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "cost": {
+                      "type": "object",
+                      "properties": {
+                        "tokensIn": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokensOut": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheWrite": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "costUsd": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "turns": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tokensIn",
+                        "tokensOut",
+                        "cacheRead",
+                        "cacheWrite",
+                        "costUsd",
+                        "turns"
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -34374,6 +34529,7 @@
                     "headSha",
                     "prUrl",
                     "timeoutSec",
+                    "cost",
                     "createdBy",
                     "createdAt",
                     "startedAt",
@@ -35085,6 +35241,61 @@
                         "minimum": -9007199254740991,
                         "maximum": 9007199254740991
                       },
+                      "cost": {
+                        "type": "object",
+                        "properties": {
+                          "tokensIn": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "tokensOut": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "cacheRead": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "cacheWrite": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "costUsd": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "turns": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "tokensIn",
+                          "tokensOut",
+                          "cacheRead",
+                          "cacheWrite",
+                          "costUsd",
+                          "turns"
+                        ]
+                      },
                       "createdBy": {
                         "type": "string"
                       },
@@ -35138,6 +35349,7 @@
                       "headSha",
                       "prUrl",
                       "timeoutSec",
+                      "cost",
                       "createdBy",
                       "createdAt",
                       "startedAt",
@@ -35848,6 +36060,61 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "cost": {
+                      "type": "object",
+                      "properties": {
+                        "tokensIn": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokensOut": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheWrite": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "costUsd": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "turns": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tokensIn",
+                        "tokensOut",
+                        "cacheRead",
+                        "cacheWrite",
+                        "costUsd",
+                        "turns"
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -35901,6 +36168,7 @@
                     "headSha",
                     "prUrl",
                     "timeoutSec",
+                    "cost",
                     "createdBy",
                     "createdAt",
                     "startedAt",
@@ -36610,6 +36878,61 @@
                       "minimum": -9007199254740991,
                       "maximum": 9007199254740991
                     },
+                    "cost": {
+                      "type": "object",
+                      "properties": {
+                        "tokensIn": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokensOut": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheWrite": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "costUsd": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "turns": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "tokensIn",
+                        "tokensOut",
+                        "cacheRead",
+                        "cacheWrite",
+                        "costUsd",
+                        "turns"
+                      ]
+                    },
                     "createdBy": {
                       "type": "string"
                     },
@@ -36663,6 +36986,7 @@
                     "headSha",
                     "prUrl",
                     "timeoutSec",
+                    "cost",
                     "createdBy",
                     "createdAt",
                     "startedAt",
@@ -37526,6 +37850,522 @@
                       "createdAt"
                     ]
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/costs/summary": {
+      "get": {
+        "operationId": "costs.summary",
+        "summary": "Token và chi phí của dự án theo khoảng ngày (quản trị đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "costs"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "day",
+                "task",
+                "cli",
+                "machine"
+              ],
+              "type": "string",
+              "default": "day"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groupBy": {
+                      "enum": [
+                        "day",
+                        "task",
+                        "cli",
+                        "machine"
+                      ],
+                      "type": "string"
+                    },
+                    "groups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "runs": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "tokensIn": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "tokensOut": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "cacheRead": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "cacheWrite": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          "costUsd": {
+                            "type": "number"
+                          },
+                          "key": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "runs",
+                          "tokensIn",
+                          "tokensOut",
+                          "cacheRead",
+                          "cacheWrite",
+                          "costUsd",
+                          "key"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "object",
+                      "properties": {
+                        "runs": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokensIn": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "tokensOut": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheRead": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cacheWrite": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "costUsd": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "runs",
+                        "tokensIn",
+                        "tokensOut",
+                        "cacheRead",
+                        "cacheWrite",
+                        "costUsd"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "groupBy",
+                    "groups",
+                    "total"
+                  ]
                 }
               }
             }

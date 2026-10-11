@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,6 +29,7 @@ type Job struct {
 	Env                                      map[string]string
 	Timeout                                  time.Duration
 	SetupScript                              string
+	Budget                                   Budget
 }
 
 type Event struct {
@@ -39,6 +41,8 @@ type Event struct {
 	Offset  int64   `json:"offset,omitempty"`
 	Data    []byte  `json:"data,omitempty"`
 	Result  *Result `json:"result,omitempty"`
+	// Cost có ở sự kiện "cost": usage luỹ kế của lần chạy CLI.
+	Cost *Usage `json:"cost,omitempty"`
 }
 
 type Sink interface{ Emit(Event) error }
@@ -192,6 +196,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
 		defer cancel()
 	}
+	// Vượt trần chi phí thì dừng CLI theo đường huỷ (SIGINT, chờ grace rồi kill).
+	runCtx, stopForBudget := context.WithCancel(runCtx)
+	defer stopForBudget()
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -200,7 +207,14 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	cmd.Env = mergeEnv(os.Environ(), job.Env)
 	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
 	// "file already closed" (hay gặp trên macOS). Để exec tự chép log: Wait chờ chép xong rồi mới trả về.
-	cmd.Stdout = &logWriter{sink: sink, job: job, name: "stdout"}
+	usage, stopMeter := startMeter(job, sink, stopForBudget)
+	meterStopped := false
+	defer func() {
+		if !meterStopped {
+			_ = stopMeter()
+		}
+	}()
+	cmd.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
 	cmd.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
 	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
 	cmd.WaitDelay = r.grace()
@@ -211,6 +225,16 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
+	}
+	// Usage cuối gửi trước run_result: hub bỏ mọi gói của run đến sau run_result.
+	meterStopped = true
+	if err := stopMeter(); err != nil {
+		return err
+	}
+	// Người huỷ cùng lúc thì báo huỷ, không báo vượt ngân sách.
+	if reason := usage.exceeded(); reason != "" && ctx.Err() == nil {
+		result = &Result{Status: "failed", Error: "Vượt ngân sách: " + reason}
+		return errors.New(result.Error)
 	}
 	// CLI bắt SIGINT rồi thoát 0 khi hết giờ hay bị huỷ vẫn là run dở dang.
 	if waitErr != nil || runCtx.Err() != nil {
@@ -333,9 +357,17 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 	if !ok {
 		switch j.CLI {
 		case "claude":
-			configured = Command{Path: "claude", Args: []string{"-p", j.Prompt, "--output-format", "stream-json"}}
+			// stream-json ở chế độ -p bắt buộc có --verbose (claude 2.1 báo lỗi nếu thiếu).
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose"}
+			// Claude tự dừng khi chạm trần USD (result subtype error_max_budget_usd); runner chỉ biết USD của Claude ở
+			// tin result cuối nên cần cờ này để dừng giữa chừng. Claude 2.1 không có cờ giới hạn lượt trong --help.
+			if j.Budget.MaxCostUSD != nil {
+				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
+			}
+			configured = Command{Path: "claude", Args: args}
 		case "codex":
-			configured = Command{Path: "codex", Args: []string{"exec", j.Prompt}}
+			// --json in sự kiện JSONL; usage nằm ở sự kiện turn.completed.
+			configured = Command{Path: "codex", Args: []string{"exec", "--json", j.Prompt}}
 		case "gemini":
 			configured = Command{Path: "gemini", Args: []string{"-p", j.Prompt}}
 		default:
@@ -443,4 +475,28 @@ func (w *logWriter) Write(p []byte) (int, error) {
 		p = p[n:]
 	}
 	return written, nil
+}
+
+// startMeter đọc usage từ stdout của CLI và gửi sự kiện cost theo chu kỳ. Hàm trả về dừng chu kỳ và gửi usage cuối.
+func startMeter(job Job, sink Sink, stop context.CancelFunc) (*meter, func() error) {
+	m := newMeter(job.CLI, job.Budget, func(u Usage) error {
+		return emit(sink, Event{Type: "cost", RunID: job.RunID, Attempt: job.Attempt, Cost: &u})
+	}, func(string) { stop() })
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(m.interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				_ = m.flush(false)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return m, func() error {
+		close(done)
+		return m.finish()
+	}
 }
