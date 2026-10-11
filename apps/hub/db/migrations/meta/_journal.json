@@ -50,6 +50,20 @@
       "when": 1791719201148,
       "tag": "0006_quyen_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791719695788,
+      "tag": "0007_khoa_ngoai_nguoi_dung",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791719696540,
+      "tag": "0008_ham_any_org",
+      "breakpoints": true
     }
   ]
 }

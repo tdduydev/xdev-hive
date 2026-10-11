@@ -17,7 +17,9 @@ const auth =
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
+const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
+if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, đội, hệ thống không dùng được.");
 
-serve({ fetch: createApp({ config, auth }).fetch, port: config.port }, (info) => {
+serve({ fetch: createApp({ config, auth, pool }).fetch, port: config.port }, (info) => {
   console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
 });
