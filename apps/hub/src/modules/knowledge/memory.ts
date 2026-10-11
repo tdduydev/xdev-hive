@@ -149,6 +149,7 @@ export async function listMemories(tx: Tx, principal: Principal, input: MemoryLi
     .where(
       and(
         visibleWhere(reader, memories, project),
+        eq(memories.status, "approved"),
         data.kind ? eq(memories.kind, data.kind) : undefined,
         data.includeSuperseded ? undefined : isNull(memories.supersededBy),
       ),
@@ -170,7 +171,7 @@ export async function supersedeMemory(
   const reader = await readerFor(tx, principal);
   // Khoá dòng cũ: hai người cùng thay một memory thì người sau thấy nó đã bị thay, không tạo hai bản mới.
   const [old] = await tx.select().from(memories).where(eq(memories.id, data.id)).for("update");
-  if (!old || !canRead(reader, old)) throw notFound();
+  if (old?.status !== "approved" || !canRead(reader, old)) throw notFound();
   await authorize(tx, reader, old, "write");
   if (old.supersededBy) throw new ConflictError("MEMORY_SUPERSEDED", "Memory này đã được thay bằng memory khác.");
   const row = await insertMemory(
@@ -240,7 +241,11 @@ export async function searchMemory(
   const data = memorySearchInput.parse(input);
   const reader = await readerFor(tx, principal);
   const project = await projectContext(tx, reader, data.project);
-  const where = and(visibleWhere(reader, memories, project), isNull(memories.supersededBy));
+  const where = and(
+    visibleWhere(reader, memories, project),
+    eq(memories.status, "approved"),
+    isNull(memories.supersededBy),
+  );
 
   const sources: SQL[] = [];
   const text = orQuery(data.query);
@@ -312,7 +317,7 @@ export async function runEmbed(deps: EmbedDeps, job: EmbedJob, signal?: AbortSig
     const [m] = await tx
       .select({ content: memories.content, model: memories.embeddingModel })
       .from(memories)
-      .where(eq(memories.id, job.memoryId));
+      .where(and(eq(memories.id, job.memoryId), eq(memories.status, "approved")));
     return m ?? null;
   });
   // Memory đã xoá, hoặc đã có embedding của đúng mô hình (job chạy lại) thì thôi.

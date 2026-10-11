@@ -33,13 +33,13 @@ test("SSO: gọi sign-in/sso theo tên miền rồi chuyển sang trang của Id
     route.fulfill({ contentType: "text/html", body: "IdP giả" }),
   );
   await page.goto("/login");
-  await page.getByLabel("Email công ty").fill("Duy@FPT.com");
+  await page.getByLabel("Email công ty").fill("Duy@Example.COM");
   await page.getByRole("button", { name: "Tiếp tục với SSO" }).click();
   await expect(page).toHaveURL("https://idp.example.test/authorize");
   expect(hub.authCalls).toEqual([
     {
       path: "/sign-in/sso",
-      body: { domain: "fpt.com", loginHint: "Duy@FPT.com", callbackURL: "/", errorCallbackURL: "/login" },
+      body: { domain: "example.com", loginHint: "Duy@Example.COM", callbackURL: "/", errorCallbackURL: "/login" },
     },
   ]);
 });

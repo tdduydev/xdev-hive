@@ -147,7 +147,7 @@ function OrgStep() {
       <Heading title="Tạo tổ chức">Tổ chức chứa các đội, hệ thống và dự án. Bạn là chủ sở hữu.</Heading>
       <NameSlugFields
         nameLabel="Tên tổ chức"
-        namePlaceholder="Ví dụ: FPT Software xDev"
+        namePlaceholder="Ví dụ: Acme Software xDev"
         slugPrefix={`${window.location.host}/`}
         slugHint="Dùng trong đường dẫn và trong lệnh của agent."
         errors={errors}

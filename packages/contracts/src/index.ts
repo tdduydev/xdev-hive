@@ -3,19 +3,23 @@ import { z } from "zod";
 import { costsContract } from "./cost.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
-import { notificationChannelsContract } from "./notify.ts";
+import { leaderContract } from "./leader.ts";
+import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
 import { runsContract } from "./runs.ts";
+import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 
 export * from "./cost.ts";
+export * from "./egress.ts";
 export * from "./knowledge.ts";
 export * from "./notify.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
 export * from "./runs.ts";
+export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
@@ -79,6 +83,7 @@ export const contract = {
   ...tenancyContract,
   scmConnections: scmContract,
   notificationChannels: notificationChannelsContract,
+  inbox: inboxContract,
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
@@ -87,8 +92,11 @@ export const contract = {
   tasks: tasksContract,
   runs: runsContract,
   costs: costsContract,
+  sandbox: sandboxContract,
+  leader: leaderContract,
 };
 
 export type Contract = typeof contract;
 
 export * from "./fleet.ts";
+export * from "./leader.ts";

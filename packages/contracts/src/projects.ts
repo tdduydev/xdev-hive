@@ -115,6 +115,7 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+export const runPermissionMode = z.enum(["workspace", "full"]);
 /**
  * Trần chi phí của dự án. Mỗi trường bỏ trống là không giới hạn. Worker dừng run vượt trần như khi huỷ; hub từ chối
  * giao thêm run cho task đã tiêu hết perTaskUsd. Codex không báo USD nên trần USD chỉ có tác dụng với Claude; dùng
@@ -132,6 +133,8 @@ export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type MergeMethod = z.output<typeof mergeMethod>;
 
 export const projectSettings = z.object({
+  /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
+  runPermissions: z.object({ mode: runPermissionMode }).optional(),
   /** Model được dùng theo CLI và loại run; bỏ trống thì CLI chọn mặc định. */
   models: z
     .object({
@@ -139,18 +142,24 @@ export const projectSettings = z.object({
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       codex: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       gemini: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
     })
@@ -353,6 +362,9 @@ export type ProvisionView = z.output<typeof provisionView>;
 export const mergeQueueState = z.enum(["queued", "updating", "waiting", "merging", "merged", "failed", "removed"]);
 export type MergeQueueState = z.output<typeof mergeQueueState>;
 
+export const mergeQueueCiState = z.enum(["success", "pending", "failure", "none"]);
+export type MergeQueueCiState = z.output<typeof mergeQueueCiState>;
+
 export const mergeQueueEntry = z.object({
   id,
   projectId: id,
@@ -360,6 +372,8 @@ export const mergeQueueEntry = z.object({
   prUrl: z.string().nullable(),
   branch: z.string().nullable(),
   headSha: z.string().nullable(),
+  /** Kết quả CI gần nhất hàng merge đã kiểm tra trên headSha; null khi chưa kiểm tra. */
+  ciState: mergeQueueCiState.nullable(),
   runId: id.nullable(),
   taskId: id.nullable(),
   state: mergeQueueState,

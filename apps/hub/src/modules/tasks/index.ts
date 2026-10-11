@@ -1,5 +1,19 @@
-// Task của dự án. Module khác chỉ import file này.
-export { type TasksDeps, tasksRouter } from "./router.ts";
+// Task của dự án và kế hoạch của plan mode. Module khác chỉ import file này.
+export {
+  approvedPlanOf,
+  decidePlan,
+  findPlan,
+  getPlan,
+  latestPlanOf,
+  listPlans,
+  lockAwaitingPlan,
+  type PlanRow,
+  planMarkdown,
+  recordPlan,
+  supersedePlans,
+  toPlan,
+} from "./plans.ts";
+export { type PlanActions, type TasksDeps, tasksRouter } from "./router.ts";
 export {
   cancelTask,
   createSystemTask,

@@ -14,6 +14,7 @@ export const ON_MACHINE: readonly RunState[] = ["leased", "preparing", "running"
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+/** `machineName` để null; truy vấn trả run cho người xem điền tên qua withMachineNames (queries.ts). */
 export function toRun(r: RunRow): Run {
   return {
     id: r.id,
@@ -26,6 +27,7 @@ export function toRun(r: RunRow): Run {
     attempt: r.attempt,
     maxAttempts: r.maxAttempts,
     machineId: r.machineId,
+    machineName: null,
     cli: r.cli,
     model: r.model,
     pinnedMachineId: r.pinnedMachineId,
@@ -64,14 +66,19 @@ export async function notifyRun(tx: Tx, runId: string): Promise<void> {
   await tx.execute(sql`select pg_notify(${RUNS_CHANNEL}, ${runId})`);
 }
 
-/** Ghi một sự kiện do hub sinh (seq null) cho lần thử hiện tại của run. */
+/** Ghi một sự kiện do hub sinh (seq null) cho lần thử hiện tại của run. Trả id sự kiện. */
 export async function hubEvent(
   tx: Tx,
   run: Pick<RunRow, "id" | "orgId" | "attempt">,
   type: string,
   data: Record<string, unknown>,
-): Promise<void> {
-  await tx.insert(runEvents).values({ orgId: run.orgId, runId: run.id, attempt: run.attempt, seq: null, type, data });
+): Promise<number> {
+  const [row] = await tx
+    .insert(runEvents)
+    .values({ orgId: run.orgId, runId: run.id, attempt: run.attempt, seq: null, type, data })
+    .returning({ id: runEvents.id });
+  if (!row) throw new Error(`Không ghi được sự kiện ${type} của run ${run.id}.`);
+  return row.id;
 }
 
 /**

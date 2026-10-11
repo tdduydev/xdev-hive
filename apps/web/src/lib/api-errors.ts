@@ -13,12 +13,25 @@ const BY_CODE: Record<string, string> = {
 };
 
 /**
+ * Lỗi nghiệp vụ mà câu của hub chỉ nói cái gì sai, chưa nói người dùng làm gì tiếp; theo `data.code` hub gửi kèm.
+ * Câu dài hơn của hub vì người duyệt cần biết vì sao kế hoạch vừa mở đã không duyệt được.
+ */
+const BY_HUB_CODE: Record<string, string> = {
+  PLAN_DECIDED:
+    "Kế hoạch này không còn chờ duyệt: có người vừa duyệt hoặc từ chối, việc đã bị huỷ, hoặc agent đã lập bản mới. Tải lại để xem bản mới nhất.",
+  PLAN_NOT_FOUND: "Việc này chưa có kế hoạch. Kế hoạch có khi dự án bật plan mode và agent lập xong.",
+};
+
+/**
  * Câu báo lỗi tiếng Việt cho một lời gọi API. Lỗi đã khai báo trong hợp đồng (`defined`) mang câu hub viết bằng
  * tiếng Việt và nói rõ lý do (vd. chủ sở hữu cuối cùng), nên dùng nguyên văn. Lỗi khác mang câu mặc định tiếng Anh
  * của oRPC, nên đổi theo mã.
  */
 export function apiErrorMessage(error: unknown): string {
   if (!(error instanceof ORPCError)) return NETWORK;
+  const hubCode = isRecord(error.data) && typeof error.data.code === "string" ? error.data.code : undefined;
+  const byHubCode = hubCode ? BY_HUB_CODE[hubCode] : undefined;
+  if (byHubCode) return byHubCode;
   // "Chưa đăng nhập." của hub đúng nhưng khó hiểu khi đang dùng dở; nói rõ là phiên đã hết hạn.
   if (error.defined && error.code !== "UNAUTHORIZED" && error.message) return error.message;
   const byCode = BY_CODE[error.code];

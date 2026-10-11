@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@fpt.com", image: null };
+export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
 type Reply = { status: number; json: unknown };
 

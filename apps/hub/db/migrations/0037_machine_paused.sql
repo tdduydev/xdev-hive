@@ -1,0 +1,1 @@
+ALTER TABLE "hive"."machines" ADD COLUMN "paused_at" timestamp with time zone;

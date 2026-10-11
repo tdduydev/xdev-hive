@@ -6,7 +6,7 @@ describe("slugify", () => {
   it.each([
     ["Thanh toán", "thanh-toan"],
     ["Đối soát", "doi-soat"],
-    ["FPT Software xDev", "fpt-software-xdev"],
+    ["Acme Software xDev", "acme-software-xdev"],
     ["  --Hệ thống   CRM!! ", "he-thong-crm"],
     ["Cổng thanh toán 2", "cong-thanh-toan-2"],
     ["Nội bộ".normalize("NFD"), "noi-bo"],

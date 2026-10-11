@@ -202,8 +202,8 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
       <p class="lead">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
       <form class="field" onsubmit="event.preventDefault()">
         <label for="sso-email">Email công ty</label>
-        <input class="in-f" id="sso-email" type="email" placeholder="ten@congty.vn" value="duy@fpt.com">
-        <span class="hint">Tên miền fpt.com dùng SSO của FPT (Azure AD).</span>
+        <input class="in-f" id="sso-email" type="email" placeholder="ten@congty.vn" value="duy@example.com">
+        <span class="hint">Tên miền example.com dùng SSO của Acme (Azure AD).</span>
         <button class="btn primary block" type="submit"><svg class="i"><use href="#key"/></svg>Tiếp tục với SSO</button>
       </form>
       <div class="divider">hoặc</div>
@@ -230,12 +230,12 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
   <div class="card onb">
     <div class="steps"><span class="on"><i>1</i>Tổ chức</span>·<span><i>2</i>Đội đầu tiên</span>·<span><i>3</i>Mời người</span></div>
     <div><h1 style="margin:0;font-size:22px;color:var(--ink)">Tạo tổ chức</h1><p style="margin:4px 0 0;color:var(--muted)">Tổ chức chứa các đội, hệ thống và dự án. Bạn là chủ sở hữu.</p></div>
-    <div class="field"><label for="org-name">Tên tổ chức</label><input class="in-f" id="org-name" value="FPT Software xDev"></div>
+    <div class="field"><label for="org-name">Tên tổ chức</label><input class="in-f" id="org-name" value="Acme Software xDev"></div>
     <div class="field"><label for="org-slug">Định danh</label>
-      <div class="prefix"><span>hive.xdev.asia/</span><input class="in-f" id="org-slug" value="fpt-xdev"></div>
+      <div class="prefix"><span>hive.xdev.asia/</span><input class="in-f" id="org-slug" value="acme-dev"></div>
       <span class="hint" style="color:var(--ok)">Còn trống. Dùng trong đường dẫn và trong lệnh của agent.</span>
     </div>
-    <div class="field"><label for="org-domain">Tên miền email (không bắt buộc)</label><input class="in-f" id="org-domain" value="fpt.com">
+    <div class="field"><label for="org-domain">Tên miền email (không bắt buộc)</label><input class="in-f" id="org-domain" value="example.com">
       <span class="hint">Người có email tên miền này thấy tổ chức khi đăng nhập SSO. Họ vẫn cần được duyệt hoặc mời.</span></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn primary" type="button">Tiếp: tạo đội</button></div>
   </div>
@@ -245,7 +245,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
 <template id="shell">
   <div class="app">
     <aside class="side">
-      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Chủ sở hữu</small></span></div>
+      <div class="switcher"><span class="avatar">F</span><span><b>Acme Software xDev</b><small>Chủ sở hữu</small></span></div>
       <nav class="nav">
         <a class="dim"><svg class="i"><use href="#board"/></svg>Việc<span class="soon pill">M3</span></a>
         <a class="dim"><svg class="i"><use href="#grid"/></svg>Dự án<span class="soon pill">M2</span></a>
@@ -257,7 +257,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
         <a data-nav="sso"><svg class="i"><use href="#key"/></svg>Đăng nhập</a>
         <a class="dim"><svg class="i"><use href="#gear"/></svg>Cài đặt tổ chức</a>
       </nav>
-      <div class="me"><span class="av2">TD</span><span><b>Trần Đức Duy</b><small>duy@fpt.com</small></span></div>
+      <div class="me"><span class="av2">TD</span><span><b>Trần Đức Duy</b><small>duy@example.com</small></span></div>
     </aside>
     <div class="main"><slot></slot></div>
   </div>
@@ -290,9 +290,9 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
             <div class="tbl"><table>
               <thead><tr><th>Người</th><th>Vai trò trong đội</th><th>Đăng nhập bằng</th><th></th></tr></thead>
               <tbody>
-                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">LH</span><span><b>Lê Hà</b><small>ha.le@fpt.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option selected>Quản trị đội</option><option>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">SSO</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
-                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">PM</span><span><b>Phạm Minh</b><small>minh.pham@fpt.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option>Quản trị đội</option><option selected>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">GitHub</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
-                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">NV</span><span><b>Ngô Vy</b><small>vy.ngo@fpt.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option>Quản trị đội</option><option>Thành viên</option><option selected>Chỉ xem</option></select></td><td><span class="pill">Email</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
+                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">LH</span><span><b>Lê Hà</b><small>ha.le@example.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option selected>Quản trị đội</option><option>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">SSO</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
+                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">PM</span><span><b>Phạm Minh</b><small>minh.pham@example.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option>Quản trị đội</option><option selected>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">GitHub</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
+                <tr><td><div class="who"><span class="av2" style="width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-size:12px;font-weight:600">NV</span><span><b>Ngô Vy</b><small>vy.ngo@example.com</small></span></div></td><td><select class="in-f" style="height:30px;width:140px" aria-label="Vai trò"><option>Quản trị đội</option><option>Thành viên</option><option selected>Chỉ xem</option></select></td><td><span class="pill">Email</span></td><td><button class="btn ghost sm" type="button">Gỡ khỏi đội</button></td></tr>
               </tbody>
             </table></div>
           </div>
@@ -312,10 +312,10 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
       <div class="card tbl"><table>
         <thead><tr><th>Người</th><th>Vai trò tổ chức</th><th>Đội</th><th>Lần cuối vào</th><th></th></tr></thead>
         <tbody>
-          <tr><td><div class="who"><span class="avatar" style="border-radius:50%">TD</span><span><b>Trần Đức Duy</b><small>duy@fpt.com</small></span></div></td><td><span class="pill sel">Chủ sở hữu</span></td><td>Thanh toán, Nội bộ</td><td>Đang dùng</td><td></td></tr>
-          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#0F9D8E">LH</span><span><b>Lê Hà</b><small>ha.le@fpt.com</small></span></div></td><td><select class="in-f" style="height:30px;width:130px" aria-label="Vai trò"><option selected>Quản trị</option><option>Thành viên</option></select></td><td>Thanh toán <span class="pill">quản trị đội</span></td><td>2 giờ trước</td><td><button class="btn ghost sm" type="button">Khoá</button></td></tr>
-          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#E0567A">PM</span><span><b>Phạm Minh</b><small>minh.pham@fpt.com</small></span></div></td><td><select class="in-f" style="height:30px;width:130px" aria-label="Vai trò"><option>Quản trị</option><option selected>Thành viên</option></select></td><td>Thanh toán, CRM</td><td>Hôm qua</td><td><button class="btn ghost sm" type="button">Khoá</button></td></tr>
-          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#96929C">?</span><span><b>khoa.do@fpt.com</b><small>Đã đăng nhập SSO, chưa thuộc đội nào</small></span></div></td><td><span class="pill warn">Chờ duyệt</span></td><td>—</td><td>10 phút trước</td><td><button class="btn sm" type="button">Duyệt</button></td></tr>
+          <tr><td><div class="who"><span class="avatar" style="border-radius:50%">TD</span><span><b>Trần Đức Duy</b><small>duy@example.com</small></span></div></td><td><span class="pill sel">Chủ sở hữu</span></td><td>Thanh toán, Nội bộ</td><td>Đang dùng</td><td></td></tr>
+          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#0F9D8E">LH</span><span><b>Lê Hà</b><small>ha.le@example.com</small></span></div></td><td><select class="in-f" style="height:30px;width:130px" aria-label="Vai trò"><option selected>Quản trị</option><option>Thành viên</option></select></td><td>Thanh toán <span class="pill">quản trị đội</span></td><td>2 giờ trước</td><td><button class="btn ghost sm" type="button">Khoá</button></td></tr>
+          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#E0567A">PM</span><span><b>Phạm Minh</b><small>minh.pham@example.com</small></span></div></td><td><select class="in-f" style="height:30px;width:130px" aria-label="Vai trò"><option>Quản trị</option><option selected>Thành viên</option></select></td><td>Thanh toán, CRM</td><td>Hôm qua</td><td><button class="btn ghost sm" type="button">Khoá</button></td></tr>
+          <tr><td><div class="who"><span class="avatar" style="border-radius:50%;background:#96929C">?</span><span><b>khoa.do@example.com</b><small>Đã đăng nhập SSO, chưa thuộc đội nào</small></span></div></td><td><span class="pill warn">Chờ duyệt</span></td><td>—</td><td>10 phút trước</td><td><button class="btn sm" type="button">Duyệt</button></td></tr>
         </tbody>
       </table></div>
     </div>
@@ -329,7 +329,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
     <div class="top"><div><div class="crumb">Quản trị</div><h2>Đăng nhập</h2></div></div>
     <div class="body">
       <div class="card">
-        <div class="prov"><span class="logo"><svg class="i" style="width:20px;height:20px"><use href="#key"/></svg></span><span><b>SSO (OIDC)</b><small>Azure AD · fpt.com · 14 người dùng</small></span><span class="pill ok">Đang bật</span></div>
+        <div class="prov"><span class="logo"><svg class="i" style="width:20px;height:20px"><use href="#key"/></svg></span><span><b>SSO (OIDC)</b><small>Azure AD · example.com · 14 người dùng</small></span><span class="pill ok">Đang bật</span></div>
         <div class="prov"><span class="logo"><svg class="i" style="width:20px;height:20px"><use href="#gh"/></svg></span><span><b>GitHub</b><small>OAuth app tdduydev-hive · 3 người dùng</small></span><span class="pill ok">Đang bật</span></div>
         <div class="prov"><span class="logo"><svg class="i" style="width:20px;height:20px"><use href="#gl"/></svg></span><span><b>GitLab</b><small>Chưa cấu hình</small></span><button class="btn sm" type="button">Cấu hình</button></div>
         <div class="prov"><span class="logo"><svg class="i" style="width:20px;height:20px"><use href="#mail"/></svg></span><span><b>Email và mật khẩu</b><small>Chỉ cho người được mời · 2 người dùng</small></span><span class="pill ok">Đang bật</span></div>
@@ -338,12 +338,12 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
         <h3>SSO (OIDC)</h3>
         <div class="grid2">
           <div class="field"><label for="oidc-issuer">Issuer URL</label><input class="in-f" id="oidc-issuer" value="https://login.microsoftonline.com/3f2a…/v2.0"></div>
-          <div class="field"><label for="oidc-domain">Tên miền email</label><input class="in-f" id="oidc-domain" value="fpt.com"></div>
+          <div class="field"><label for="oidc-domain">Tên miền email</label><input class="in-f" id="oidc-domain" value="example.com"></div>
           <div class="field"><label for="oidc-id">Client ID</label><input class="in-f" id="oidc-id" value="8c1d5e2a-…"></div>
           <div class="field"><label for="oidc-secret">Client secret</label><input class="in-f" id="oidc-secret" value="••••••••••••3kQ9"><span class="hint">Để trống nếu không đổi.</span></div>
         </div>
         <div class="field"><label for="cb">Callback URL (dán vào cấu hình app bên nhà cung cấp)</label>
-          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.xdev.asia/api/auth/sso/callback/fpt-azure"><button class="btn" type="button">Chép</button></div></div>
+          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.xdev.asia/api/auth/sso/callback/acme-azure"><button class="btn" type="button">Chép</button></div></div>
         <div class="field"><label for="oidc-map">Khi người mới đăng nhập SSO lần đầu</label>
           <select class="in-f" id="oidc-map"><option>Vào hàng chờ duyệt (khuyên dùng)</option><option>Tự thêm vào tổ chức với vai trò Thành viên, chưa thuộc đội nào</option></select></div>
         <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button">Thử đăng nhập</button><button class="btn primary" type="button">Lưu</button></div>
@@ -356,7 +356,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
   <h3>Tạo đội</h3>
   <div class="field"><label for="t-name">Tên đội</label><input class="in-f" id="t-name" placeholder="Ví dụ: Thanh toán"></div>
   <div class="field"><label for="t-slug">Định danh</label><input class="in-f" id="t-slug" placeholder="thanh-toan"><span class="hint">Dùng trong đường dẫn và tên hệ thống.</span></div>
-  <div class="field"><label for="t-admin">Quản trị đội</label><input class="in-f" id="t-admin" value="duy@fpt.com"></div>
+  <div class="field"><label for="t-admin">Quản trị đội</label><input class="in-f" id="t-admin" value="duy@example.com"></div>
   <div class="act"><button class="btn" value="cancel">Huỷ</button><button class="btn primary" value="ok">Tạo đội</button></div>
 </form></dialog>
 
@@ -370,7 +370,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
 
 <dialog id="dlg-invite"><form method="dialog">
   <h3>Mời người vào tổ chức</h3>
-  <div class="field"><label for="i-email">Email</label><input class="in-f" id="i-email" placeholder="ten@fpt.com, ten2@fpt.com"><span class="hint">Nhiều email cách nhau bằng dấu phẩy.</span></div>
+  <div class="field"><label for="i-email">Email</label><input class="in-f" id="i-email" placeholder="ten@example.com, ten2@example.com"><span class="hint">Nhiều email cách nhau bằng dấu phẩy.</span></div>
   <div class="grid2">
     <div class="field"><label for="i-role">Vai trò tổ chức</label><select class="in-f" id="i-role"><option>Thành viên</option><option>Quản trị</option></select></div>
     <div class="field"><label for="i-team">Thêm vào đội</label><select class="in-f" id="i-team"><option>Thanh toán · Thành viên</option><option>CRM · Thành viên</option><option>Không thêm</option></select></div>

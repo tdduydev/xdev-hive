@@ -162,6 +162,7 @@ func TestIsGitLockError(t *testing.T) {
 		"error: cannot lock ref 'refs/remotes/origin/main': Unable to create '/c/refs/remotes/origin/main.lock': File exists.": true,
 		"fatal: Unable to create '/c/worktrees/x/index.lock': File exists.":                                                    true,
 		"error: could not lock config file config: File exists":                                                                true,
+		"error: fetching ref refs/remotes/origin/master failed: reference already exists":                                      true,
 		"fatal: couldn't find remote ref no-such-branch":                                                                       false,
 		"fatal: unable to access 'https://example.invalid/': Could not resolve host":                                           false,
 	} {

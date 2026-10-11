@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hubToWorker, PROTOCOL_VERSION, workerToHub } from "./worker-protocol.ts";
+import { hubToWorker, PROTOCOL_VERSION, steerResultData, workerToHub } from "./worker-protocol.ts";
 
 describe("worker protocol", () => {
   it("nhận gói hello hợp lệ và điền resumeRuns mặc định", () => {
@@ -15,6 +15,25 @@ describe("worker protocol", () => {
       capacity: 2,
     });
     expect(msg.type === "hello" && msg.resumeRuns).toEqual([]);
+  });
+
+  it("nhận thông tin runner host và capacity phần cứng", () => {
+    const msg = workerToHub.parse({
+      type: "hello",
+      v: PROTOCOL_VERSION,
+      id: "m1",
+      machineId: "host-01",
+      version: "0.1.0",
+      protoRange: [1, 1],
+      os: "linux",
+      runnerMode: "host",
+      cpuCount: 16,
+      memoryMB: 65536,
+      clis: ["codex"],
+      capacity: 4,
+    });
+    expect(msg.type === "hello" && msg.runnerMode).toBe("host");
+    expect(msg.type === "hello" && msg.memoryMB).toBe(65536);
   });
 
   it("từ chối machineId có chữ hoa", () => {
@@ -92,6 +111,19 @@ describe("ràng buộc gói", () => {
     const base = { type: "run_event", v: 1, id: "e", runId: "r", attempt: 1, seq: 0, data: {} };
     expect(workerToHub.safeParse({ ...base, event: "phase" }).success).toBe(true);
     expect(workerToHub.safeParse({ ...base, event: "khac" }).success).toBe(false);
+  });
+
+  it("steer của hub cũ (không steerId, attempt) vẫn hợp lệ", () => {
+    const msg = { type: "steer", v: 1, id: "s", runId: "r", input: "dùng pnpm" };
+    expect(hubToWorker.parse(msg)).toEqual(msg);
+  });
+
+  it("steer_result báo đã hay chưa áp dụng chỉ dẫn", () => {
+    const base = { type: "run_event", v: 1, id: "e", runId: "r", attempt: 1, seq: 3, event: "steer_result" };
+    const data = { steerId: "42", applied: false, reason: "CLI codex chưa nhận chỉ dẫn giữa chừng" };
+    expect(workerToHub.safeParse({ ...base, data }).success).toBe(true);
+    expect(steerResultData.parse(data)).toEqual(data);
+    expect(steerResultData.safeParse({ steerId: "42" }).success).toBe(false);
   });
 
   it("log_chunk đòi bytes là base64", () => {

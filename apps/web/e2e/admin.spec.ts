@@ -4,8 +4,8 @@ import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 const at = "2026-10-01T03:00:00.000Z";
 const ORG_A = {
   id: "0a0a0a0a-0000-4000-8000-00000000000a",
-  slug: "fpt-xdev",
-  name: "FPT Software xDev",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
   role: "owner",
 };
 const ORG_B = { id: "0b0b0b0b-0000-4000-8000-00000000000b", slug: "noi-bo", name: "Nội bộ", role: "member" };
@@ -27,7 +27,7 @@ const SYSTEM = {
   description: "Nhận thanh toán thẻ",
   createdAt: at,
 };
-const HA = { userId: "u2", name: "Lê Hà", email: "ha.le@fpt.com", image: null };
+const HA = { userId: "u2", name: "Lê Hà", email: "ha.le@example.com", image: null };
 
 /** Hub giả có hai tổ chức: ở A người dùng là chủ sở hữu, ở B chỉ là thành viên (chỉ xem trong đội). */
 function twoOrgs(): Record<string, RpcHandler> {
@@ -68,7 +68,7 @@ function orgMembersIn(org: string | undefined) {
     {
       userId: "u3",
       name: "Đỗ Khoa",
-      email: "khoa.do@fpt.com",
+      email: "khoa.do@example.com",
       image: null,
       role: "member",
       status: "pending",
@@ -106,7 +106,7 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   expect(orgsOf("orgs/mine")).toEqual([undefined]);
 
   await switcher(page).click();
-  await page.getByRole("menuitemradio", { name: /FPT Software xDev/ }).click();
+  await page.getByRole("menuitemradio", { name: /Acme Software xDev/ }).click();
   await expect(switcher(page)).toContainText("Chủ sở hữu");
   await expect(page.getByRole("button", { name: "Tạo đội" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hệ thống", exact: true })).toBeVisible();
@@ -115,13 +115,212 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   expect(await page.evaluate(() => localStorage.getItem("hive.org"))).toBe(ORG_A.id);
 
   await page.reload();
-  await expect(switcher(page)).toContainText("FPT Software xDev");
+  await expect(switcher(page)).toContainText("Acme Software xDev");
+});
+
+const PROJECT = {
+  id: "6e6e6e6e-0000-4000-8000-000000000001",
+  systemId: SYSTEM.id,
+  teamId: TEAM.id,
+  key: "web",
+  name: "Web",
+  state: "active",
+  repo: {
+    mode: "existing",
+    connectionId: "6e6e6e6e-0000-4000-8000-000000000002",
+    kind: "github",
+    owner: "acme",
+    name: "web",
+    defaultBranch: "main",
+    visibility: null,
+    httpUrl: "https://github.com/acme/web",
+    sshUrl: "git@github.com:acme/web.git",
+    webUrl: "https://github.com/acme/web",
+  },
+  settings: {
+    merge: { mode: "review", requiredApprovals: 1 },
+    outcome: { default: [{ check: "changes", required: true }], byType: {} },
+    features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
+    issueIntake: { enabled: false, label: "hive", mention: "hive" },
+  },
+  createdBy: USER.id,
+  createdAt: at,
+  updatedAt: at,
+};
+
+test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và xác nhận thu hồi", async ({ page }) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () => ok({ orgs: [myOrg(ORG_A)], canCreateOrg: false }),
+      "teams/list": () => ok([TEAM]),
+      "projects/list": () => ok([]),
+      "machines/list": () =>
+        ok([
+          {
+            id: "8e8e8e8e-0000-4000-8000-000000000001",
+            teamId: TEAM.id,
+            name: "mac-mini-01",
+            os: "darwin",
+            version: "1.2.3",
+            clis: ["claude", "codex"],
+            capacity: 2,
+            status: "online",
+            lastSeenAt: at,
+            createdAt: at,
+          },
+        ]),
+      "machines/createRegistration": () =>
+        ok({
+          token: "reg-once-token",
+          expiresAt: "2026-10-11T17:00:00.000Z",
+          command: "hive-worker register --hub https://hive.test --token reg-once-token",
+        }),
+      "machines/revoke": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "revoked",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+      "machines/pause": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "paused",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+      "machines/resume": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "online",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+    },
+  });
+  await page.goto("/machines");
+  await expect(page.getByRole("heading", { name: "Máy", exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /mac-mini-01/ })).toContainText("Sẵn sàng");
+  await page.screenshot({ path: "e2e/screenshots/machines.png", fullPage: true });
+  await page.getByRole("button", { name: "Tạm dừng", exact: true }).click();
+  expect(hub.rpcCalls.find((call) => call.path === "machines/pause")).toMatchObject({
+    org: ORG_A.id,
+    input: { machineId: "8e8e8e8e-0000-4000-8000-000000000001" },
+  });
+  await page.getByRole("button", { name: "Thêm máy" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Tạo mã đăng ký" }).click();
+  await expect(dialog.getByRole("status", { name: "Mã đăng ký dùng một lần" })).toHaveText("reg-once-token");
+  await expect(dialog.getByText("brew install xdev/tap/hive-worker")).toBeVisible();
+  await dialog.getByRole("button", { name: "Linux" }).click();
+  await expect(dialog.getByText(/install\.sh/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Đóng" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: "Thu hồi", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Thu hồi máy" }).click();
+  expect(hub.rpcCalls.find((call) => call.path === "machines/revoke")).toMatchObject({
+    org: ORG_A.id,
+    input: { machineId: "8e8e8e8e-0000-4000-8000-000000000001" },
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("màn Chi phí: chọn khoảng ngày, nhóm dữ liệu và cập nhật ngân sách dự án", async ({ page }) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () => ok({ orgs: [myOrg(ORG_A)], canCreateOrg: false }),
+      "projects/list": () => ok([PROJECT]),
+      "costs/summary": (input) => {
+        const groupBy = (input as { groupBy: string }).groupBy;
+        return ok({
+          groupBy,
+          groups: [
+            {
+              key: groupBy === "day" ? "2026-10-11" : "claude",
+              runs: 2,
+              tokensIn: 900,
+              tokensOut: 400,
+              cacheRead: 10,
+              cacheWrite: 0,
+              costUsd: 1.25,
+            },
+          ],
+          total: { runs: 2, tokensIn: 900, tokensOut: 400, cacheRead: 10, cacheWrite: 0, costUsd: 1.25 },
+        });
+      },
+      "costs/budgetStopped": () =>
+        ok([
+          {
+            runId: "6a6a6a6a-0000-4000-8000-000000000001",
+            taskId: "7a7a7a7a-0000-4000-8000-000000000001",
+            taskKey: "PAY-31",
+            taskTitle: "Xử lý thanh toán",
+            reason: "per_run_usd",
+            measured: 2.03,
+            limit: 2,
+            stoppedAt: at,
+          },
+        ]),
+      "projects/updateSettings": (input) => {
+        const settings = (
+          input as {
+            settings: { budget: { perRunUsd: number | null; perTaskUsd: number | null; maxTurns: number | null } };
+          }
+        ).settings;
+        return ok({ ...PROJECT.settings, budget: settings.budget });
+      },
+    },
+  });
+  await page.goto("/admin/costs");
+  await expect(page.getByRole("heading", { name: "Chi phí và token", exact: true })).toBeVisible();
+  await expect(page.getByText("1,25 US$", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Vượt trần USD/run")).toBeVisible();
+  await page.screenshot({ path: "e2e/screenshots/costs.png", fullPage: true });
+  await page.getByLabel("Khoảng thời gian").selectOption("7");
+  await page.getByLabel("Nhóm theo").selectOption("machine");
+  await expect(page.getByRole("columnheader", { name: "Mã máy" })).toBeVisible();
+
+  await page.getByLabel("USD mỗi run").fill("5");
+  await page.getByLabel("USD mỗi việc").fill("20");
+  await page.getByLabel("Lượt agent tối đa").fill("12");
+  await page.getByRole("button", { name: "Lưu ngân sách" }).click();
+  await expect.poll(() => hub.rpcCalls.some((call) => call.path === "projects/updateSettings")).toBe(true);
+  expect(hub.rpcCalls.find((call) => call.path === "projects/updateSettings")).toMatchObject({
+    org: ORG_A.id,
+    input: { key: PROJECT.key, settings: { budget: { perRunUsd: 5, perTaskUsd: 20, maxTurns: 12 } } },
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
 const INVITES = [
   {
     id: "1a1a1a1a-0000-4000-8000-000000000001",
-    email: "vy.ngo@fpt.com",
+    email: "vy.ngo@example.com",
     orgRole: "member",
     teamId: TEAM.id,
     teamName: TEAM.name,
@@ -133,7 +332,7 @@ const INVITES = [
   },
   {
     id: "1a1a1a1a-0000-4000-8000-000000000002",
-    email: "minh.pham@fpt.com",
+    email: "minh.pham@example.com",
     orgRole: "member",
     teamId: null,
     teamName: null,
@@ -145,7 +344,7 @@ const INVITES = [
   },
   {
     id: "1a1a1a1a-0000-4000-8000-000000000003",
-    email: "cu@fpt.com",
+    email: "cu@example.com",
     orgRole: "admin",
     teamId: null,
     teamName: null,
@@ -202,22 +401,22 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
 
   await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
   // Người chờ duyệt không nằm trong danh sách chính.
-  await expect(page.getByText("khoa.do@fpt.com")).toHaveCount(0);
+  await expect(page.getByText("khoa.do@example.com")).toHaveCount(0);
   await expect(page.getByRole("row", { name: /Lê Hà/ })).toContainText("quản trị đội");
 
   await page.getByRole("tab", { name: "Lời mời · 1" }).click();
   await expect(page).toHaveURL("/admin/members?xem=loi-moi");
-  const vy = page.getByRole("row", { name: /vy\.ngo@fpt\.com/ });
+  const vy = page.getByRole("row", { name: /vy\.ngo@example\.com/ });
   await expect(vy).toContainText("Chờ nhận");
   await expect(vy).toContainText("Thanh toán");
   await expect(vy).toContainText("chỉ xem");
   await expect(vy).toContainText("18/10/2026");
-  await expect(page.getByRole("row", { name: /minh\.pham@fpt\.com/ })).toContainText("Đã nhận");
+  await expect(page.getByRole("row", { name: /minh\.pham@example\.com/ })).toContainText("Đã nhận");
   // Lời mời đã dùng thì hub không cho thu hồi.
-  await expect(page.getByRole("button", { name: "Thu hồi lời mời cho minh.pham@fpt.com" })).toHaveCount(0);
-  await expect(page.getByRole("row", { name: /cu@fpt\.com/ })).toContainText("Hết hạn");
+  await expect(page.getByRole("button", { name: "Thu hồi lời mời cho minh.pham@example.com" })).toHaveCount(0);
+  await expect(page.getByRole("row", { name: /cu@example\.com/ })).toContainText("Hết hạn");
 
-  await page.getByRole("button", { name: "Thu hồi lời mời cho vy.ngo@fpt.com" }).click();
+  await page.getByRole("button", { name: "Thu hồi lời mời cho vy.ngo@example.com" }).click();
   await expect(vy).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Lời mời · 0" })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "invitations/revoke")).toMatchObject({
@@ -266,13 +465,13 @@ test("mời người: nhiều email, vai trò tổ chức, đội và vai trò �
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Mời người vào tổ chức" })).toBeVisible();
   const emails = dialog.getByLabel("Email");
-  await emails.fill("A@fpt.com, b@fpt.com\nsai-email");
+  await emails.fill("A@example.com, b@example.com\nsai-email");
   await dialog.getByRole("button", { name: "Tạo lời mời" }).click();
   await expect(dialog.getByText("Email không hợp lệ: sai-email.")).toBeVisible();
   await expect(emails).toHaveAttribute("aria-invalid", "true");
   expect(hub.rpcCalls.some((c) => c.path === "invitations/create")).toBe(false);
 
-  await emails.fill("A@fpt.com, b@fpt.com\na@fpt.com");
+  await emails.fill("A@example.com, b@example.com\na@example.com");
   // Chủ sở hữu mời được quản trị.
   await dialog.getByLabel("Vai trò tổ chức").selectOption({ label: "Quản trị" });
   await expect(dialog.getByLabel("Vai trò trong đội")).toHaveCount(0);
@@ -285,15 +484,15 @@ test("mời người: nhiều email, vai trò tổ chức, đội và vai trò �
   expect(hub.rpcCalls.find((c) => c.path === "invitations/create")).toMatchObject({
     method: "POST",
     org: ORG_A.id,
-    input: { emails: ["a@fpt.com", "b@fpt.com"], orgRole: "admin", teamId: TEAM.id, teamRole: "viewer" },
+    input: { emails: ["a@example.com", "b@example.com"], orgRole: "admin", teamId: TEAM.id, teamRole: "viewer" },
   });
   const linkA = "https://hive.example.vn/invite/ma-moi-0-0123456789abcdef";
-  await expect(dialog.getByLabel("Link mời cho a@fpt.com", { exact: true })).toHaveValue(linkA);
-  await expect(dialog.getByLabel("Link mời cho b@fpt.com", { exact: true })).toHaveValue(
+  await expect(dialog.getByLabel("Link mời cho a@example.com", { exact: true })).toHaveValue(linkA);
+  await expect(dialog.getByLabel("Link mời cho b@example.com", { exact: true })).toHaveValue(
     "https://hive.example.vn/invite/ma-moi-1-0123456789abcdef",
   );
-  await dialog.getByRole("button", { name: "Chép link mời cho a@fpt.com" }).click();
-  await expect(dialog.getByRole("button", { name: "Đã chép link mời cho a@fpt.com" })).toBeVisible();
+  await dialog.getByRole("button", { name: "Chép link mời cho a@example.com" }).click();
+  await expect(dialog.getByRole("button", { name: "Đã chép link mời cho a@example.com" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(linkA);
 
   // Mời thêm thì về form trống; đóng thì link không còn.
@@ -320,7 +519,7 @@ test("mời người: lỗi của hub hiện tiếng Việt, quản trị không
   await page.getByRole("button", { name: "Mời người" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Vai trò tổ chức").locator("option")).toHaveText(["Thành viên"]);
-  await dialog.getByLabel("Email").fill("a@fpt.com, b@fpt.vn");
+  await dialog.getByLabel("Email").fill("a@example.com, b@example.org");
   await dialog.getByRole("button", { name: "Tạo lời mời" }).click();
   await expect(dialog.getByText("Email không hợp lệ.", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");
@@ -354,11 +553,11 @@ test("đội: quản trị tổ chức mời người mới từ hộp thoại T
   await expect(dialog.getByRole("heading", { name: "Mời người vào tổ chức" })).toBeVisible();
   await expect(dialog.getByLabel("Thêm vào đội")).toHaveValue(TEAM.id);
   await expect(dialog.getByLabel("Vai trò trong đội")).toHaveValue("member");
-  await dialog.getByLabel("Email").fill("moi@fpt.com");
+  await dialog.getByLabel("Email").fill("moi@example.com");
   await dialog.getByRole("button", { name: "Tạo lời mời" }).click();
-  await expect(dialog.getByLabel("Link mời cho moi@fpt.com", { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel("Link mời cho moi@example.com", { exact: true })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "invitations/create")?.input).toEqual({
-    emails: ["moi@fpt.com"],
+    emails: ["moi@example.com"],
     orgRole: "member",
     teamId: TEAM.id,
     teamRole: "member",
@@ -380,7 +579,7 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
     signedIn: true,
     rpc: {
       ...twoOrgs(),
-      "orgs/mine": () => ok({ orgs: [{ ...myOrg(ORG_A), emailDomain: "fpt.com" }], canCreateOrg: false }),
+      "orgs/mine": () => ok({ orgs: [{ ...myOrg(ORG_A), emailDomain: "example.com" }], canCreateOrg: false }),
       "ssoProviders/get": () => ok(settings),
       "ssoProviders/upsert": (input) => {
         const i = input as { issuer: string; domain: string; clientId: string; join: string };
@@ -406,7 +605,7 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Chưa cấu hình");
   await expect(methods.getByRole("listitem").filter({ hasText: "GitHub" })).toContainText("Cấu hình ở hub");
   // Tên miền điền sẵn từ tên miền email của tổ chức.
-  await expect(page.getByLabel("Tên miền email")).toHaveValue("fpt.com");
+  await expect(page.getByLabel("Tên miền email")).toHaveValue("example.com");
 
   const callback = page.getByLabel("Callback URL (dán vào cấu hình app bên nhà cung cấp)");
   await expect(callback).toHaveValue(SSO_NONE.callbackUrl);
@@ -433,7 +632,7 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
     org: ORG_A.id,
     input: {
       issuer: "https://login.microsoftonline.com/3f2a/v2.0",
-      domain: "fpt.com",
+      domain: "example.com",
       clientId: "8c1d5e2a-abcd",
       clientSecret: "bi-mat-cua-idp",
       join: "member",
@@ -441,7 +640,9 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   });
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Đang bật");
   // Tên miền mới khai luôn chưa xác minh: hub chưa cho SSO tạo tài khoản, chính sách người mới chưa áp dụng.
-  await expect(methods).toContainText("login.microsoftonline.com · fpt.com (chưa xác minh) · người mới: cần lời mời");
+  await expect(methods).toContainText(
+    "login.microsoftonline.com · example.com (chưa xác minh) · người mới: cần lời mời",
+  );
   await expect(page.getByText(/Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới/)).toBeVisible();
   // Secret chỉ ghi: lưu xong thì ô trống, hub không trả secret về.
   await expect(page.getByLabel("Client secret")).toHaveValue("");
@@ -453,7 +654,12 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const configured = {
     ...SSO_NONE,
-    provider: { issuer: "https://idp.fpt.com", domain: "fpt.com", domainVerified: true, clientIdLastFour: "ab12" },
+    provider: {
+      issuer: "https://idp.example.com",
+      domain: "example.com",
+      domainVerified: true,
+      clientIdLastFour: "ab12",
+    },
   };
   const hub = await fakeHub(page, {
     signedIn: true,
@@ -467,20 +673,20 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
     },
   });
   await page.goto("/admin/sign-in-settings");
-  await expect(page.getByLabel("Issuer URL")).toHaveValue("https://idp.fpt.com");
+  await expect(page.getByLabel("Issuer URL")).toHaveValue("https://idp.example.com");
   await expect(page.getByText("Đang dùng Client ID kết thúc bằng ab12. Nhập lại khi lưu.")).toBeVisible();
   await expect(page.getByRole("list", { name: "Các cách đăng nhập" })).toContainText(
-    "idp.fpt.com · fpt.com · người mới: chờ duyệt",
+    "idp.example.com · example.com · người mới: chờ duyệt",
   );
   await expect(page.getByText("Người có email tên miền này đăng nhập bằng SSO của tổ chức.")).toBeVisible();
-  await page.getByLabel("Issuer URL").fill("https://idp-moi.fpt.com");
+  await page.getByLabel("Issuer URL").fill("https://idp-moi.example.com");
   await page.getByLabel("Client ID").fill("client-ab12");
   await page.getByRole("button", { name: "Lưu" }).click();
   await expect(page.getByText(/Không đọc được cấu hình OIDC từ Issuer URL/)).toBeVisible();
   await expect(page.getByLabel("Issuer URL")).toHaveAttribute("aria-invalid", "true");
   expect(hub.rpcCalls.find((c) => c.path === "ssoProviders/upsert")?.input).toEqual({
-    issuer: "https://idp-moi.fpt.com",
-    domain: "fpt.com",
+    issuer: "https://idp-moi.example.com",
+    domain: "example.com",
     clientId: "client-ab12",
     join: "pending",
   });
@@ -489,12 +695,12 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
 test("cài đặt đăng nhập: tên miền đã có tổ chức khác khai thì lỗi của hub gắn vào ô tên miền", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const message =
-    "Tên miền fpt.com đã được một tổ chức khác trên hub khai cho SSO. Mỗi tên miền chỉ thuộc một tổ chức; nếu tên miền là của tổ chức bạn, hãy báo quản trị hub.";
+    "Tên miền example.com đã được một tổ chức khác trên hub khai cho SSO. Mỗi tên miền chỉ thuộc một tổ chức; nếu tên miền là của tổ chức bạn, hãy báo quản trị hub.";
   await fakeHub(page, {
     signedIn: true,
     rpc: {
       ...twoOrgs(),
-      "orgs/mine": () => ok({ orgs: [{ ...myOrg(ORG_A), emailDomain: "fpt.com" }], canCreateOrg: false }),
+      "orgs/mine": () => ok({ orgs: [{ ...myOrg(ORG_A), emailDomain: "example.com" }], canCreateOrg: false }),
       "ssoProviders/get": () => ok(SSO_NONE),
       "ssoProviders/upsert": () => fail("CONFLICT", 409, message, { code: "SSO_DOMAIN_TAKEN" }),
     },

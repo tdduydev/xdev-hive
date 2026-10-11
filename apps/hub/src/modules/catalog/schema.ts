@@ -1,6 +1,7 @@
-import type { ProjectSettings } from "@xdev-hive/contracts";
+import type { MergeQueueCiState, ProjectSettings } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -87,6 +88,7 @@ export const projects = hive
       // Gửi lại cùng khoá chống trùng trả về dự án đã tạo thay vì tạo thêm.
       unique("projects_org_idempotency").on(t.orgId, t.idempotencyKey),
       unique("projects_id_org").on(t.id, t.orgId),
+      unique("projects_id_org_team").on(t.id, t.orgId, t.teamId),
       // Một repo chỉ thuộc một dự án; GitHub và GitLab không phân biệt hoa thường trong đường dẫn.
       uniqueIndex("projects_repo").on(t.scmConnectionId, sql`lower(${t.repoOwner})`, sql`lower(${t.repoName})`),
       index("projects_org_team").on(t.orgId, t.teamId),
@@ -168,6 +170,7 @@ export const mergeQueueEntries = hive
       prUrl: text("pr_url"),
       branch: text("branch"),
       headSha: text("head_sha"),
+      ciState: text("ci_state").$type<MergeQueueCiState>(),
       runId: uuid("run_id"),
       taskId: uuid("task_id"),
       state: mergeQueueState("state").notNull().default("queued"),
@@ -192,6 +195,7 @@ export const mergeQueueEntries = hive
         .where(sql`state in ('queued', 'updating', 'waiting', 'merging')`),
       index("merge_queue_entries_project_created").on(t.projectId, t.createdAt),
       index("merge_queue_entries_org").on(t.orgId),
+      check("merge_queue_entries_ci_state", sql`${t.ciState} in ('success', 'pending', 'failure', 'none')`),
       orgScoped("merge_queue_entries"),
     ],
   )

@@ -6,7 +6,7 @@ import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../pla
 import { disconnectMachine } from "./connections.ts";
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
-import { listMachines, revokeMachine } from "./machines.ts";
+import { listMachines, pauseMachine, resumeMachine, revokeMachine } from "./machines.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
 
 export interface FleetDeps {
@@ -61,7 +61,7 @@ export function fleetRouter(deps: FleetDeps) {
       ),
       createRegistration: machinesOs.createRegistration.handler(async ({ context, input }) => {
         const { token, expiresAt } = await inOrg(context.headers, (tx, userId) =>
-          createRegistration(tx, userId, input.teamId),
+          createRegistration(tx, userId, input.teamId, input.kind),
         );
         return {
           token,
@@ -75,6 +75,12 @@ export function fleetRouter(deps: FleetDeps) {
         disconnectMachine(machine.id, CLOSE.revoked, "Máy đã bị thu hồi");
         return machine;
       }),
+      pause: machinesOs.pause.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => pauseMachine(tx, userId, input.machineId)),
+      ),
+      resume: machinesOs.resume.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => resumeMachine(tx, userId, input.machineId)),
+      ),
     },
     worker: {
       register: workerOs.register.handler(({ input }) => registerMachine(requirePool(), input).catch(toORPC)),

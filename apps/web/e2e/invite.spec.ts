@@ -4,9 +4,9 @@ import { fail, fakeHub, ok, USER } from "./fake-hub.ts";
 const TOKEN = "7Hk2pQ9xLm4vRt8sWb3nZc6yJd1fGh5kAe0uIo2qXy4";
 const ORG = {
   id: "0a0a0a0a-0000-4000-8000-00000000000a",
-  slug: "fpt-xdev",
-  name: "FPT Software xDev",
-  emailDomain: "fpt.com",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
+  emailDomain: "example.com",
   createdAt: "2026-10-01T03:00:00.000Z",
   role: "member",
 };
@@ -162,16 +162,16 @@ test("đã đăng nhập bằng email khác: báo sai email, đăng xuất để
         return { status: 200, json: { success: true } };
       },
     },
-    rpc: { "invitations/preview": () => preview({ email: "vy.ngo@fpt.com" }) },
+    rpc: { "invitations/preview": () => preview({ email: "vy.ngo@example.com" }) },
   });
   await page.goto(`/invite/${TOKEN}`);
   await expect(page.getByRole("alert")).toContainText(
-    `Lời mời này dành cho vy.ngo@fpt.com, nhưng bạn đang đăng nhập bằng ${USER.email}.`,
+    `Lời mời này dành cho vy.ngo@example.com, nhưng bạn đang đăng nhập bằng ${USER.email}.`,
   );
   await expect(page.getByRole("button", { name: "Nhận lời mời và vào tổ chức" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Đăng xuất" }).click();
-  await expect(page.getByLabel("Email")).toHaveValue("vy.ngo@fpt.com");
+  await expect(page.getByLabel("Email")).toHaveValue("vy.ngo@example.com");
   await expect(page).toHaveURL(`/invite/${TOKEN}`);
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
 });
