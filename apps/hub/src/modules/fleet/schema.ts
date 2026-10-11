@@ -28,6 +28,8 @@ const tokenPolicies = (name: string) => [
   pgPolicy(`${name}_delete`, { for: "delete", to: hiveApp, using: inOrg }),
 ];
 
+export const machineKind = hive.enum("machine_kind", ["worker", "host"]);
+
 export const machineStatus = hive.enum("machine_status", ["online", "offline", "revoked"]);
 
 export const machines = hive
@@ -39,6 +41,7 @@ export const machines = hive
       teamId: uuid("team_id").notNull(),
       /** Định danh máy tự chọn (machineId trong gói hello). */
       name: text("name").notNull(),
+      kind: machineKind("kind").notNull().default("worker"),
       os: text("os").notNull(),
       version: text("version").notNull(),
       clis: text("clis").array().notNull().default(sql`'{}'::text[]`),
@@ -98,6 +101,7 @@ export const registrationTokens = hive
       orgId: uuid("org_id").notNull(),
       teamId: uuid("team_id").notNull(),
       tokenHash: text("token_hash").notNull().unique(),
+      kind: machineKind("kind").notNull().default("worker"),
       expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
       usedAt: timestamp("used_at", { withTimezone: true }),
       /** Máy đã dùng mã này (không có khoá ngoại để giữ dấu vết cả khi máy bị xoá). */

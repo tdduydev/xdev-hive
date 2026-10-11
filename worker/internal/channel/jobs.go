@@ -189,10 +189,19 @@ func (j *jobs) heartbeat() Heartbeat {
 func (j *jobs) onOffer(m *JobOffer) {
 	cli := specCLI(m.Spec)
 	reason := ""
+	var spec jobSpec
+	if err := json.Unmarshal(m.Spec, &spec); err != nil {
+		reason = "job không hợp lệ"
+	} else if err := spec.validateExecution(); err != nil {
+		reason = err.Error()
+	} else if (spec.Execution == "sandbox") != (j.cfg.Sandbox != nil) {
+		reason = "loại thực thi job không khớp chế độ runner"
+	}
 	j.mu.Lock()
 	_, offered := j.offers[m.RunID]
 	_, running := j.active[m.RunID]
 	switch {
+	case reason != "":
 	case j.draining:
 		reason = "máy đang thoát"
 	case running:
@@ -251,7 +260,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
 	if err == nil {
 		job.Steers = run.steers
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {

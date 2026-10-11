@@ -6,16 +6,19 @@ import { docsContract, memoryContract, proposalsContract, skillsContract } from 
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
 import { runsContract } from "./runs.ts";
+import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 
 export * from "./cost.ts";
+export * from "./egress.ts";
 export * from "./knowledge.ts";
 export * from "./notify.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
 export * from "./runs.ts";
+export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
@@ -88,6 +91,7 @@ export const contract = {
   tasks: tasksContract,
   runs: runsContract,
   costs: costsContract,
+  sandbox: sandboxContract,
 };
 
 export type Contract = typeof contract;

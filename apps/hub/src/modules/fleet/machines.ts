@@ -1,4 +1,4 @@
-import type { Machine } from "@xdev-hive/contracts";
+import type { Machine, MachineKind } from "@xdev-hive/contracts";
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -12,6 +12,7 @@ import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
 export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   id: m.id,
   teamId: m.teamId,
+  kind: m.kind,
   name: m.name,
   os: m.os,
   version: m.version,
@@ -95,6 +96,7 @@ export interface AuthedMachine {
   orgId: string;
   teamId: string;
   name: string;
+  kind: MachineKind;
 }
 
 export const FLEET_OFFLINE_QUEUE = "fleet-offline-check";
@@ -125,7 +127,13 @@ export async function authenticateMachine(pool: pg.Pool, token: string): Promise
   if (!found) return null;
   const [row] = await withTenant(pool, { orgId: found.orgId }, (tx) =>
     tx
-      .select({ id: machines.id, orgId: machines.orgId, teamId: machines.teamId, name: machines.name })
+      .select({
+        id: machines.id,
+        orgId: machines.orgId,
+        teamId: machines.teamId,
+        name: machines.name,
+        kind: machines.kind,
+      })
       .from(machines)
       .where(and(eq(machines.id, found.machineId), isNull(machines.revokedAt))),
   );
@@ -262,6 +270,7 @@ export async function registerFleetOfflineWorker(
 export async function listOnlineMachines(
   tx: Tx,
   teamId: string,
+  kind: MachineKind = "worker",
 ): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number }>> {
   return tx
     .select({ id: machines.id, name: machines.name, clis: machines.clis, capacity: machines.capacity })
@@ -269,6 +278,7 @@ export async function listOnlineMachines(
     .where(
       and(
         eq(machines.teamId, teamId),
+        eq(machines.kind, kind),
         eq(machines.status, "online"),
         isNull(machines.pausedAt),
         isNull(machines.revokedAt),
@@ -291,10 +301,10 @@ export async function machineNames(tx: Tx, ids: string[]): Promise<Map<string, s
 export async function findMachine(
   tx: Tx,
   id: string,
-): Promise<{ id: string; teamId: string; revoked: boolean } | null> {
+): Promise<{ id: string; teamId: string; kind: MachineKind; revoked: boolean } | null> {
   const [row] = await tx
-    .select({ id: machines.id, teamId: machines.teamId, revokedAt: machines.revokedAt })
+    .select({ id: machines.id, teamId: machines.teamId, kind: machines.kind, revokedAt: machines.revokedAt })
     .from(machines)
     .where(eq(machines.id, id));
-  return row ? { id: row.id, teamId: row.teamId, revoked: row.revokedAt !== null } : null;
+  return row ? { id: row.id, teamId: row.teamId, kind: row.kind, revoked: row.revokedAt !== null } : null;
 }

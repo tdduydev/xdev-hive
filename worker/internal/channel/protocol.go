@@ -26,6 +26,9 @@ type Hello struct {
 	Version    string   `json:"version"`
 	ProtoRange [2]int   `json:"protoRange"`
 	OS         string   `json:"os"`
+	RunnerMode string   `json:"runnerMode,omitempty"`
+	CPUCount   int      `json:"cpuCount,omitempty"`
+	MemoryMB   uint64   `json:"memoryMB,omitempty"`
 	CLIs       []string `json:"clis"`
 	Capacity   int      `json:"capacity"`
 	ResumeRuns []string `json:"resumeRuns"`

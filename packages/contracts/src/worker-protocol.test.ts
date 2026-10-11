@@ -17,6 +17,25 @@ describe("worker protocol", () => {
     expect(msg.type === "hello" && msg.resumeRuns).toEqual([]);
   });
 
+  it("nhận thông tin runner host và capacity phần cứng", () => {
+    const msg = workerToHub.parse({
+      type: "hello",
+      v: PROTOCOL_VERSION,
+      id: "m1",
+      machineId: "host-01",
+      version: "0.1.0",
+      protoRange: [1, 1],
+      os: "linux",
+      runnerMode: "host",
+      cpuCount: 16,
+      memoryMB: 65536,
+      clis: ["codex"],
+      capacity: 4,
+    });
+    expect(msg.type === "hello" && msg.runnerMode).toBe("host");
+    expect(msg.type === "hello" && msg.memoryMB).toBe(65536);
+  });
+
   it("từ chối machineId có chữ hoa", () => {
     const r = workerToHub.safeParse({
       type: "hello",
