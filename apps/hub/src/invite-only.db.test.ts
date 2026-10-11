@@ -375,7 +375,15 @@ describe("người quản trị hub đăng ký bằng mật khẩu khi hub còn 
     await Promise.all([fresh.auth.end(), fresh.pool.end(), fresh.admin.end()]);
   });
 
+  const setup = async () => {
+    const res = await send(fresh.app, "GET", "/api/v1/setup");
+    expect(res.status).toBe(200);
+    return (await res.json()) as { firstAdminSignUp: boolean };
+  };
+
   it("chưa có tổ chức nào: người trong danh sách đăng ký được, người ngoài thì không", async () => {
+    // Trang đăng nhập hỏi trước khi có phiên để hiện form tạo người quản trị đầu tiên.
+    expect(await setup()).toEqual({ firstAdminSignUp: true });
     expect((await signUp(fresh.app, mail("nguoi-ngoai"))).status).toBe(403);
     const res = await signUp(fresh.app, creator);
     expect(res.status).toBe(200);
@@ -397,6 +405,7 @@ describe("người quản trị hub đăng ký bằng mật khẩu khi hub còn 
       body: { name: "Tổ chức đầu tiên", slug: `dau-tien-${run}` },
     });
     expect(org.status).toBe(200);
+    expect(await setup()).toEqual({ firstAdminSignUp: false });
     const res = await signUp(fresh.app, second);
     expect(res.status).toBe(403);
     expect(((await res.json()) as { code: string }).code).toBe("SIGN_UP_INVITE_REQUIRED");
@@ -633,7 +642,7 @@ describe("khai tên miền SSO", () => {
     expect(res.status).toBe(409);
     const b = await body(res);
     expect(b.data?.code).toBe("SSO_DOMAIN_TAKEN");
-    expect(b.message).toMatch(/đã được một tổ chức khác trên hub khai cho SSO/);
+    expect(b.message).toMatch(/một tổ chức khác trên hub (khai|xác minh) cho SSO/);
     const { rows } = await admin.query(`select 1 from auth."ssoProvider" where "providerId" = $1`, [`org-${other}`]);
     expect(rows).toHaveLength(0);
   });

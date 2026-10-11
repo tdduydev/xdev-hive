@@ -7,7 +7,7 @@ import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
-import { type Auth, mcpMode, meRouter } from "./modules/identity/index.ts";
+import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { notifyRouter } from "./modules/notify/index.ts";
@@ -44,6 +44,8 @@ export interface AppDeps {
   runs?: RunsEngine | undefined;
   /** Kết nối LISTEN cho SSE của run; bỏ trống thì tự tạo từ pool. */
   runNotifier?: RunNotifier | undefined;
+  /** DNS giả cho test xác minh tên miền SSO; bỏ trống thì tra DNS thật. */
+  resolveTxt?: TxtResolver | undefined;
 }
 
 export function createApp({
@@ -56,6 +58,7 @@ export function createApp({
   embedder,
   runs,
   runNotifier,
+  resolveTxt,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -70,7 +73,7 @@ export function createApp({
   const router = {
     system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
+    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),

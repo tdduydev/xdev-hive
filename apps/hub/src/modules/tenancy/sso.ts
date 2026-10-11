@@ -5,10 +5,14 @@ import { recordAudit } from "../audit/index.ts";
 import {
   type Auth,
   type AuthHooks,
+  checkDomainVerification,
+  getDomainVerification,
   getSsoProvider,
   removeSsoProvider,
+  requestDomainVerification,
   saveSsoProvider,
   ssoCallbackUrl,
+  systemTxtResolver,
 } from "../identity/index.ts";
 import { NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import { invitationService } from "./invitations.ts";
@@ -90,7 +94,41 @@ async function settings(tx: Tx, auth: Auth, orgId: string) {
     callbackUrl: await ssoCallbackUrl(auth, providerId),
     join: org.ssoJoin,
     provider: await getSsoProvider(auth, providerId),
+    domainVerification: await getDomainVerification(auth, providerId),
   };
+}
+
+/**
+ * Tổ chức chưa xác minh vừa bị giành tên miền: ghi vào nhật ký của chính tổ chức đó, để quản trị bên ấy biết vì sao SSO
+ * biến mất. Transaction riêng vì audit lấy org_id từ tenant context. Người thao tác là quản trị của tổ chức giành.
+ */
+async function auditDomainLost(pool: pg.Pool, userId: string, lostProviderId: string, domain: string, byOrgId: string) {
+  const lostOrgId = orgIdOf(lostProviderId);
+  if (!lostOrgId) return;
+  await withTenant(pool, { userId, orgId: lostOrgId }, (tx) =>
+    recordAudit(tx, {
+      action: "sso.domain_lost",
+      targetType: "org",
+      targetId: lostOrgId,
+      data: { domain, claimedByOrgId: byOrgId },
+    }),
+  );
+}
+
+/** Ghi audit hai phía khi tên miền bị giành từ tổ chức chưa xác minh. */
+async function auditClaim(
+  tx: Tx,
+  pool: pg.Pool,
+  claim: { userId: string; orgId: string; domain: string; claimedFrom: string | undefined },
+) {
+  if (!claim.claimedFrom) return;
+  await recordAudit(tx, {
+    action: "sso.domain_claim",
+    targetType: "org",
+    targetId: claim.orgId,
+    data: { domain: claim.domain, fromOrgId: orgIdOf(claim.claimedFrom) ?? claim.claimedFrom },
+  });
+  await auditDomainLost(pool, claim.userId, claim.claimedFrom, claim.domain, claim.orgId);
 }
 
 export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
@@ -98,6 +136,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
     if (!deps.auth) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa cấu hình đăng nhập." });
     return deps.auth;
   };
+  const resolveTxt = deps.resolveTxt ?? systemTxtResolver();
 
   return {
     get: inOrg.ssoProviders.get.handler(async ({ context: { tx, user, orgId } }) => {
@@ -105,7 +144,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
       return settings(tx, auth(), orgId);
     }),
 
-    upsert: inOrg.ssoProviders.upsert.handler(async ({ context: { tx, user, orgId, headers }, input }) => {
+    upsert: inOrg.ssoProviders.upsert.handler(async ({ context: { tx, pool, user, orgId, headers }, input }) => {
       await requireOrgRole(tx, user.id, "admin");
       // Ghi phần của hub trước, gọi plugin sau cùng: plugin lỗi thì transaction rollback, không để lại chính sách
       // và audit cho một cấu hình chưa lưu được.
@@ -121,7 +160,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
           clientSecretChanged: Boolean(input.clientSecret),
         },
       });
-      await saveSsoProvider(
+      const saved = await saveSsoProvider(
         auth(),
         { userId: user.id, headers },
         {
@@ -132,8 +171,43 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
           clientSecret: input.clientSecret,
         },
       );
+      await auditClaim(tx, pool, { userId: user.id, orgId, domain: input.domain, claimedFrom: saved.claimedFrom });
       return settings(tx, auth(), orgId);
     }),
+
+    requestDomainVerification: inOrg.ssoProviders.requestDomainVerification.handler(
+      async ({ context: { tx, user, orgId }, input }) => {
+        await requireOrgRole(tx, user.id, "admin");
+        const v = await requestDomainVerification(auth(), ssoProviderIdOf(orgId), input.domain);
+        await recordAudit(tx, {
+          action: "sso.domain_verification_request",
+          targetType: "org",
+          targetId: orgId,
+          data: { domain: v.domain },
+        });
+        return settings(tx, auth(), orgId);
+      },
+    ),
+
+    checkDomainVerification: inOrg.ssoProviders.checkDomainVerification.handler(
+      async ({ context: { tx, pool, user, orgId, headers } }) => {
+        await requireOrgRole(tx, user.id, "admin");
+        const result = await checkDomainVerification(
+          auth(),
+          { userId: user.id, headers },
+          ssoProviderIdOf(orgId),
+          resolveTxt,
+        );
+        await recordAudit(tx, {
+          action: "sso.domain_verify",
+          targetType: "org",
+          targetId: orgId,
+          data: { domain: result.domain, applied: result.applied },
+        });
+        await auditClaim(tx, pool, { userId: user.id, orgId, domain: result.domain, claimedFrom: result.claimedFrom });
+        return settings(tx, auth(), orgId);
+      },
+    ),
 
     remove: inOrg.ssoProviders.remove.handler(async ({ context: { tx, user, orgId, headers } }) => {
       await requireOrgRole(tx, user.id, "admin");
