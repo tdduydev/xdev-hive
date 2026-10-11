@@ -2,4 +2,5 @@
 export { type HubConfig, loadConfig } from "./config.ts";
 export type { RequestContext } from "./context.ts";
 export { createPool, type TenantContext, type Tx, withTenant } from "./db.ts";
+export { ForbiddenError } from "./errors.ts";
 export { bootstrapRoles, type RolePasswords, runMigrations } from "./migrate.ts";
