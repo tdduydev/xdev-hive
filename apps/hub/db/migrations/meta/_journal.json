@@ -232,6 +232,20 @@
       "when": 1791733212221,
       "tag": "0032_invite_pending_function",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791733912499,
+      "tag": "0033_sso_domain_verified",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791733927478,
+      "tag": "0034_purge_orphan_users",
+      "breakpoints": true
     }
   ]
 }

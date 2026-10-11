@@ -25,8 +25,11 @@ describe("authErrorLabel", () => {
     expect(authErrorLabel({ code: "SIGN_UP_INVITE_INVALID", status: 403 }, "signup")).toMatch(/Lời mời không còn/));
   it("GitHub/GitLab/SSO: người mới chưa được mời (mã gửi về qua ?error=)", () =>
     expect(authErrorLabel({ code: "SIGN_UP_NOT_INVITED" })).toMatch(/^Hub chỉ nhận người được mời/));
-  it("GitHub/GitLab: email chưa xác minh", () =>
-    expect(authErrorLabel({ code: "SIGN_UP_EMAIL_UNVERIFIED" })).toMatch(/chưa được nhà cung cấp xác minh/));
+  it("GitHub/GitLab/SSO: cùng một câu cho chưa được mời và email chưa xác minh", () =>
+    expect(authErrorLabel({ code: "sign_up_not_invited" })).toMatch(/được nhà cung cấp xác minh và có lời mời/));
+  it("email ngoài ASCII", () => expect(authErrorLabel({ code: "EMAIL_NOT_ASCII", status: 403 })).toMatch(/ASCII/));
+  it("đăng ký: nhận lời mời lỗi thì báo thử lại", () =>
+    expect(authErrorLabel({ code: "SIGN_UP_INVITE_ACCEPT_FAILED", status: 500 }, "signup")).toMatch(/Thử lại sau/));
   it("đăng ký: email đã có tài khoản thì gợi ý đăng nhập", () =>
     expect(authErrorLabel({ code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", status: 422 }, "signup")).toMatch(
       /Đăng nhập để nhận lời mời/,

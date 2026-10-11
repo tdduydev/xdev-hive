@@ -29,15 +29,17 @@ const LABELS: Record<string, string> = {
   OAUTH_PROVIDER_NOT_FOUND: "Hub chưa bật cách đăng nhập này. Dùng cách khác hoặc báo quản trị hub.",
   ACCESS_DENIED: "Bạn đã huỷ hoặc chưa cấp quyền ở trang của nhà cung cấp.",
   SIGNUP_DISABLED: "Tài khoản này chưa có trên hub. Nhờ quản trị tổ chức gửi lời mời.",
-  // Bốn mã SIGN_UP_* do quy tắc "chỉ nhận người được mời" của hub đặt (apps/hub, identity/auth.ts). Hai mã sau đến
-  // qua `?error=` khi GitHub, GitLab hoặc SSO định tạo tài khoản mới.
+  // Các mã SIGN_UP_* và EMAIL_NOT_ASCII do quy tắc "chỉ nhận người được mời" của hub đặt (apps/hub, identity/auth.ts).
+  // SIGN_UP_NOT_INVITED đến qua `?error=` khi GitHub, GitLab hoặc SSO định tạo tài khoản mới. Hub cố ý dùng một mã cho
+  // cả "chưa được mời" lẫn "email chưa xác minh", nên câu báo phải nói cả hai.
   SIGN_UP_INVITE_REQUIRED: "Hub chỉ cho đăng ký bằng lời mời. Mở link mời mà quản trị tổ chức gửi cho bạn.",
   SIGN_UP_INVITE_INVALID:
     "Lời mời không còn dùng được cho email này (sai, hết hạn hoặc đã dùng). Nhờ quản trị tổ chức gửi lời mời mới.",
   SIGN_UP_NOT_INVITED:
-    "Hub chỉ nhận người được mời. Email của tài khoản bạn vừa dùng chưa có lời mời còn hạn: nhờ quản trị tổ chức mời đúng email đó, hoặc đăng nhập bằng tài khoản có email được mời.",
-  SIGN_UP_EMAIL_UNVERIFIED:
-    "Email của tài khoản bạn vừa dùng chưa được nhà cung cấp xác minh, nên hub không dùng nó để đối chiếu lời mời. Xác minh email ở GitHub/GitLab rồi thử lại, hoặc tạo tài khoản bằng link mời.",
+    "Hub chỉ nhận người được mời. Email của tài khoản bạn vừa dùng phải được nhà cung cấp xác minh và có lời mời còn hạn: nhờ quản trị tổ chức mời đúng email đó, hoặc tạo tài khoản bằng link mời.",
+  SIGN_UP_INVITE_ACCEPT_FAILED: "Hub chưa tạo được tài khoản vì lỗi khi nhận lời mời. Thử lại sau ít phút.",
+  EMAIL_NOT_ASCII:
+    "Hub chỉ nhận email viết bằng ký tự ASCII (không dấu, không ký tự đặc biệt). Dùng tài khoản có địa chỉ email khác.",
   USER_ALREADY_EXISTS: "Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.",
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.",
   PASSWORD_TOO_SHORT: "Mật khẩu quá ngắn, cần ít nhất 10 ký tự.",

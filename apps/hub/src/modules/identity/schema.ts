@@ -1,5 +1,6 @@
 // Bảng của Better Auth, giữ đúng tên bảng và cột (camelCase) mà Better Auth dùng mặc định.
 // Test identity.db.test.ts so với getSchema() của Better Auth để bắt lệch khi nâng cấp.
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgSchema, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const auth = pgSchema("auth");
@@ -55,16 +56,24 @@ export const verification = auth.table("verification", {
   updatedAt: ts("updatedAt").notNull().defaultNow(),
 });
 
-export const ssoProvider = auth.table("ssoProvider", {
-  id: text("id").primaryKey(),
-  issuer: text("issuer").notNull(),
-  oidcConfig: text("oidcConfig"),
-  samlConfig: text("samlConfig"),
-  userId: text("userId").references(() => user.id, { onDelete: "cascade" }),
-  providerId: text("providerId").notNull().unique(),
-  organizationId: text("organizationId"),
-  domain: text("domain").notNull(),
-});
+export const ssoProvider = auth.table(
+  "ssoProvider",
+  {
+    id: text("id").primaryKey(),
+    issuer: text("issuer").notNull(),
+    oidcConfig: text("oidcConfig"),
+    samlConfig: text("samlConfig"),
+    userId: text("userId").references(() => user.id, { onDelete: "cascade" }),
+    providerId: text("providerId").notNull().unique(),
+    organizationId: text("organizationId"),
+    domain: text("domain").notNull(),
+    // Hub tự khai cột này (plugin chỉ khai khi bật domainVerification, xem auth.ts).
+    domainVerified: boolean("domainVerified").notNull().default(false),
+  },
+  // Plugin tìm nhà cung cấp theo tên miền của email: hai tổ chức cùng khai một tên miền thì người của tổ chức này có
+  // thể bị chuyển sang IdP của tổ chức kia.
+  (t) => [uniqueIndex("ssoProvider_domain_uidx").on(sql`lower(${t.domain})`)],
+);
 
 // Bảng của plugin jwt, oauth-provider (qua mcp) và cimd: hub làm authorization server OAuth 2.1 cho client MCP.
 // Mảng chuỗi lưu jsonb vì Better Auth dùng jsonb cho kiểu string[] trên Postgres.

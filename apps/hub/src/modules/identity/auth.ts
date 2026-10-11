@@ -5,6 +5,7 @@ import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
 import { sso } from "@better-auth/sso";
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { deleteSessionCookie } from "better-auth/cookies";
 import { jwt } from "better-auth/plugins";
 import type pg from "pg";
 
@@ -22,12 +23,16 @@ export interface AuthHooks {
   inviteValid(token: string, email: string): Promise<boolean>;
   /** Email này có lời mời còn hạn, chưa dùng ở tổ chức nào không (đăng nhập GitHub/GitLab không mang mã mời). */
   invitePending(email: string): Promise<boolean>;
-  /** Nhận lời mời ngay sau khi tài khoản được tạo. */
+  /** Hub đã có tổ chức nào chưa (hive.any_org). */
+  anyOrg(): Promise<boolean>;
+  /** Nhận lời mời ngay sau khi tài khoản được tạo. Lỗi thì tài khoản vừa tạo bị xoá. */
   acceptInvite(token: string, user: { id: string; email: string }): Promise<void>;
   /** Mỗi lần đăng nhập SSO thành công. Phải idempotent. */
   ssoSignedIn(input: {
     providerId: string;
     domain: string;
+    /** Tên miền đã được xác minh là của tổ chức. Chưa có API xác minh nên chỉ quản trị hub đặt được. */
+    domainVerified: boolean;
     user: { id: string; email: string; name: string };
   }): Promise<void>;
 }
@@ -42,7 +47,7 @@ export interface AuthOptions {
   gitlab?: (OAuthApp & { issuer?: string | undefined }) | undefined;
   /**
    * Cho tự tạo tài khoản bằng mọi cách đăng nhập (HIVE_ALLOW_EMAIL_SIGNUP=1, dùng khi dev). Tắt mặc định: chỉ người
-   * được mời, người trong orgCreators, hoặc người vào bằng SSO đúng tên miền của tổ chức mới có tài khoản.
+   * được mời, người trong orgCreators, hoặc người vào bằng SSO đúng tên miền đã xác minh của tổ chức mới có tài khoản.
    */
   allowEmailSignUp?: boolean;
   /** Email người quản trị hub (HIVE_ORG_CREATORS, chữ thường). Được tạo tài khoản dù chưa ai mời. */
@@ -109,6 +114,18 @@ const inviteTokenOf = (body: unknown): string | undefined => {
   return typeof t === "string" && t.length > 0 ? t : undefined;
 };
 
+const emailOf = (obj: unknown): string | undefined => {
+  const e = (obj as { email?: unknown } | undefined)?.email;
+  return typeof e === "string" ? e : undefined;
+};
+
+/**
+ * Hub so email bằng chuỗi (lời mời, HIVE_ORG_CREATORS, người dùng đã có), sau khi Better Auth hạ chữ thường. Ký tự
+ * ngoài ASCII có thể biến thành chữ ASCII lúc hạ chữ thường (ký hiệu Kelvin "\u212A" thành "k"), nên một địa chỉ khác
+ * sẽ trùng email của người thật. Email trong lời mời luôn là ASCII, nên chặn ngay chỗ nhận vào.
+ */
+const notAscii = (email: string | undefined) => email !== undefined && /[^\x21-\x7e]/.test(email);
+
 /** Lý do không tạo tài khoản. Web đổi mã thành câu hiển thị (apps/web, lib/auth-errors.ts). */
 const SIGN_UP_DENIED = {
   inviteRequired: {
@@ -119,18 +136,25 @@ const SIGN_UP_DENIED = {
     code: "SIGN_UP_INVITE_INVALID",
     message: "Mã mời không hợp lệ, đã hết hạn, đã dùng, hoặc không dành cho email này.",
   },
+  // Một mã cho cả "chưa được mời" lẫn "email chưa xác minh": tách hai mã thì ai cũng dò được email nào đang có lời
+  // mời ở bất kỳ tổ chức nào (hoặc nằm trong HIVE_ORG_CREATORS) bằng một tài khoản GitHub hay một IdP gắn email
+  // chưa xác minh.
   notInvited: {
     code: "SIGN_UP_NOT_INVITED",
     message:
-      "Hub chỉ nhận người được mời. Email của tài khoản này chưa có lời mời còn hạn: nhờ quản trị tổ chức mời đúng email bạn dùng để đăng nhập.",
+      "Hub chỉ nhận người được mời. Email của tài khoản bạn vừa dùng phải được nhà cung cấp xác minh và có lời mời còn hạn: nhờ quản trị tổ chức mời đúng email đó, hoặc tạo tài khoản bằng link mời.",
   },
-  emailUnverified: {
-    code: "SIGN_UP_EMAIL_UNVERIFIED",
-    message:
-      "Email của tài khoản này chưa được nhà cung cấp xác minh nên hub không dùng nó để đối chiếu lời mời. Xác minh email rồi thử lại.",
+  emailNotAscii: {
+    code: "EMAIL_NOT_ASCII",
+    message: "Hub chỉ nhận email viết bằng ký tự ASCII (không dấu, không ký tự đặc biệt). Hãy dùng địa chỉ email khác.",
   },
 } as const;
 type SignUpDenial = (typeof SIGN_UP_DENIED)[keyof typeof SIGN_UP_DENIED];
+
+interface SsoProviderRow {
+  domain: string;
+  domainVerified?: boolean | null;
+}
 
 interface SignUpAttempt {
   email: string;
@@ -138,9 +162,24 @@ interface SignUpAttempt {
   /** Cách đăng nhập theo Better Auth: "email-password", "oauth", "sso-oidc"... */
   method: string;
   inviteToken?: string | undefined;
-  /** Tên miền đã khai của nhà cung cấp SSO đang đăng nhập, nếu là SSO. */
-  ssoDomain?: (() => Promise<string | undefined>) | undefined;
+  /** Nhà cung cấp SSO đang đăng nhập, nếu là SSO. */
+  ssoProvider?: (() => Promise<SsoProviderRow | null>) | undefined;
 }
+
+/**
+ * Cột domainVerified của plugin SSO chỉ có trong schema khi bật `domainVerification`, mà bật thì plugin chặn hẳn đăng
+ * nhập qua nhà cung cấp chưa xác minh, kể cả người đã có tài khoản SSO. Hub chỉ cần cột này để quyết có tự tạo tài
+ * khoản và tự xếp vào tổ chức không, nên tự khai cột bằng một plugin chỉ có schema. Plugin SSO vẫn ghi false khi đăng
+ * ký hay đổi tên miền, và dùng cột để tính isTrustedProvider khi gắn tài khoản.
+ */
+const ssoDomainVerified = {
+  id: "hive-sso-domain-verified",
+  schema: {
+    ssoProvider: {
+      fields: { domainVerified: { type: "boolean", required: false, defaultValue: false, input: false } },
+    },
+  },
+} satisfies BetterAuthPlugin;
 
 export function authConfig(o: AuthOptions) {
   const hooks = o.hooks;
@@ -158,16 +197,22 @@ export function authConfig(o: AuthOptions) {
       // ai biết email người được mời cũng chiếm trước được tài khoản đó.
       if (a.inviteToken)
         return hooks && (await hooks.inviteValid(a.inviteToken, email)) ? undefined : SIGN_UP_DENIED.inviteInvalid;
-      return creators.has(email) ? undefined : SIGN_UP_DENIED.inviteRequired;
+      // Cùng lý do: ai biết email trong HIVE_ORG_CREATORS cũng đăng ký trước được rồi giữ quyền tạo tổ chức. Chỉ mở lúc
+      // hub chưa có tổ chức nào (lúc dựng hub, như canCreateOrg của tenancy). Sau đó người quản trị vào bằng
+      // GitHub/GitLab có email đã xác minh, hoặc bằng lời mời. Không biết được hub đã có tổ chức chưa thì từ chối.
+      if (!creators.has(email) || !hooks || (await hooks.anyOrg())) return SIGN_UP_DENIED.inviteRequired;
+      return undefined;
     }
-    // IdP của tổ chức chứng nhận người trong tên miền đã khai; chính sách sso_join (tenancy) quyết vào thẳng hay chờ
-    // duyệt. Chỉ hub đăng ký được nhà cung cấp SSO (API của plugin bị tắt) nên mọi nhà cung cấp đều là của tổ chức.
-    const ssoDomain = await a.ssoDomain?.();
-    if (ssoDomain && email.split("@").pop() === ssoDomain.toLowerCase()) return undefined;
+    // IdP của tổ chức chứng nhận người trong tên miền của tổ chức, nhưng chỉ khi tên miền đã được xác minh là của tổ
+    // chức đó: tên miền do quản trị tổ chức tự gõ, và IdP của họ phát được email bất kỳ. Chưa xác minh thì SSO đi
+    // đường lời mời như GitHub/GitLab bên dưới. Chính sách sso_join (tenancy) quyết vào thẳng hay chờ duyệt.
+    const sso = await a.ssoProvider?.();
+    if (sso?.domainVerified === true && email.split("@").pop() === sso.domain.toLowerCase()) return undefined;
+    // Xét xác minh trước khi tra lời mời, để kết quả với email chưa xác minh không phụ thuộc lời mời (xem notInvited).
+    // GitHub cho gắn email chưa xác minh vào tài khoản; plugin SSO luôn coi email của IdP là chưa xác minh.
+    if (!a.emailVerified) return SIGN_UP_DENIED.notInvited;
     const known = creators.has(email) || (hooks ? await hooks.invitePending(email) : false);
-    if (!known) return SIGN_UP_DENIED.notInvited;
-    // GitHub cho gắn email chưa xác minh vào tài khoản; tin email đó thì ai cũng nhận được lời mời của người khác.
-    return a.emailVerified ? undefined : SIGN_UP_DENIED.emailUnverified;
+    return known ? undefined : SIGN_UP_DENIED.notInvited;
   }
   return {
     database: o.pool,
@@ -179,9 +224,20 @@ export function authConfig(o: AuthOptions) {
     // user.validateUserInfo bên dưới tự chặn khi chưa bật đăng ký tự do.
     emailAndPassword: { enabled: true, minPasswordLength: 10 },
     user: {
-      // Better Auth gọi hook này ngay trước khi tạo người dùng ở mọi đường (email, GitHub, GitLab, SSO). Từ chối thì
-      // không có user, không có phiên: luồng OAuth/SSO chuyển về errorCallbackURL kèm ?error=<mã>, API trả 403.
+      // Better Auth gọi hook này ngay trước khi tạo người dùng ở mọi đường (email, GitHub, GitLab, SSO), và trước khi
+      // gắn cách đăng nhập mới vào tài khoản có sẵn. Từ chối thì không có user, không có phiên: luồng OAuth/SSO chuyển
+      // về errorCallbackURL kèm ?error=<mã>, API trả 403.
       validateUserInfo: async ({ user, source }, ctx) => {
+        if (source.action !== "create-user" && source.action !== "link-account") return;
+        // user.email đã bị hạ chữ thường; xét cả email gốc (body của đăng ký, hồ sơ thô của GitHub/GitLab/IdP).
+        const raw = [
+          String(user.email ?? ""),
+          source.method === "email-password" ? emailOf(ctx.body) : undefined,
+          emailOf(source.oauth?.profile),
+          emailOf(source.sso?.profile),
+        ];
+        if (raw.some(notAscii))
+          return { error: SIGN_UP_DENIED.emailNotAscii.code, errorDescription: SIGN_UP_DENIED.emailNotAscii.message };
         if (source.action !== "create-user") return;
         const providerId = source.sso?.providerId;
         const denied = await signUpDenial({
@@ -189,14 +245,12 @@ export function authConfig(o: AuthOptions) {
           emailVerified: user.emailVerified === true,
           method: source.method,
           inviteToken: inviteTokenOf(ctx.body),
-          ssoDomain: providerId
-            ? async () =>
-                (
-                  await ctx.context.adapter.findOne<{ domain: string }>({
-                    model: "ssoProvider",
-                    where: [{ field: "providerId", value: providerId }],
-                  })
-                )?.domain
+          ssoProvider: providerId
+            ? () =>
+                ctx.context.adapter.findOne<SsoProviderRow>({
+                  model: "ssoProvider",
+                  where: [{ field: "providerId", value: providerId }],
+                })
             : undefined,
         });
         if (denied) return { error: denied.code, errorDescription: denied.message };
@@ -205,7 +259,19 @@ export function authConfig(o: AuthOptions) {
     socialProviders: {
       ...(o.github ? { github: { clientId: o.github.clientId, clientSecret: o.github.clientSecret } } : {}),
       ...(o.gitlab
-        ? { gitlab: { clientId: o.gitlab.clientId, clientSecret: o.gitlab.clientSecret, issuer: o.gitlab.issuer } }
+        ? {
+            gitlab: {
+              clientId: o.gitlab.clientId,
+              clientSecret: o.gitlab.clientSecret,
+              issuer: o.gitlab.issuer,
+              // Better Auth chỉ đọc email_verified, mà /api/v4/user của GitLab không có trường này: thiếu dòng dưới thì
+              // mọi email GitLab đều bị coi là chưa xác minh và không ai vào bằng lời mời được. GitLab chỉ đổi email
+              // chính sau khi người dùng xác nhận địa chỉ mới, nên confirmed_at có nghĩa là email hiện tại đã xác minh.
+              mapProfileToUser: (profile: { email_verified?: boolean | undefined; confirmed_at?: string | null }) => ({
+                emailVerified: profile.email_verified ?? Boolean(profile.confirmed_at),
+              }),
+            },
+          }
         : {}),
     },
     disabledPaths: SSO_ADMIN_PATHS,
@@ -214,12 +280,23 @@ export function authConfig(o: AuthOptions) {
       // dò xem email nào đã có tài khoản qua lỗi "email đã tồn tại".
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/sign-up/email") return;
-        const denied = await signUpDenial({
-          email: String((ctx.body as { email?: unknown } | undefined)?.email ?? ""),
-          emailVerified: false,
-          method: "email-password",
-          inviteToken: inviteTokenOf(ctx.body),
-        });
+        const email = emailOf(ctx.body) ?? "";
+        if (notAscii(email))
+          throw new APIError("FORBIDDEN", {
+            message: SIGN_UP_DENIED.emailNotAscii.message,
+            code: SIGN_UP_DENIED.emailNotAscii.code,
+          });
+        const inviteToken = inviteTokenOf(ctx.body);
+        let denied = await signUpDenial({ email, emailVerified: false, method: "email-password", inviteToken });
+        // Người trong HIVE_ORG_CREATORS đăng ký không cần mã (lúc hub còn trống): email đã có tài khoản cũng trả đúng mã
+        // như người ngoài danh sách, không thì lỗi "email đã tồn tại" cho biết ai là quản trị hub và đã đăng ký chưa.
+        if (
+          !denied &&
+          !inviteToken &&
+          !o.allowEmailSignUp &&
+          (await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase()))
+        )
+          denied = SIGN_UP_DENIED.inviteRequired;
         if (denied) throw new APIError("FORBIDDEN", { message: denied.message, code: denied.code });
       }),
       after: createAuthMiddleware(async (ctx) => {
@@ -230,9 +307,24 @@ export function authConfig(o: AuthOptions) {
         try {
           await hooks.acceptInvite(token, { id: user.id, email: user.email });
         } catch (error) {
-          // Tài khoản đã tạo xong; làm hỏng phản hồi lúc này chỉ khiến người dùng tưởng đăng ký thất bại. Họ vẫn
-          // nhận lại được lời mời từ link (invitations.accept), nơi lỗi được báo rõ.
-          ctx.context.logger.error("Không tự nhận được lời mời sau khi đăng ký", error);
+          // Lời mời bị thu hồi hoặc hết hạn giữa lúc kiểm (hook before) và lúc nhận. Không gộp được vào transaction
+          // tạo user: transaction đó chạy trên pool hive_auth, còn nhận lời mời chạy trên hive_app và cần user đã
+          // commit (khoá ngoại của org_members). Giữ tài khoản thì có người không thuộc tổ chức nào, trái quy tắc
+          // "chỉ người được mời mới có tài khoản"; xoá đi để họ đăng ký lại bằng lời mời mới.
+          await ctx.context.internalAdapter.deleteUser(user.id);
+          ctx.context.responseHeaders?.delete("set-cookie");
+          deleteSessionCookie(ctx);
+          const code = (error as { code?: unknown }).code;
+          if (typeof code === "string" && code.startsWith("INVITE_"))
+            throw new APIError("FORBIDDEN", {
+              message: SIGN_UP_DENIED.inviteInvalid.message,
+              code: SIGN_UP_DENIED.inviteInvalid.code,
+            });
+          ctx.context.logger.error("Không nhận được lời mời sau khi đăng ký; đã xoá tài khoản vừa tạo", error);
+          throw new APIError("INTERNAL_SERVER_ERROR", {
+            message: "Hub chưa tạo được tài khoản vì lỗi khi nhận lời mời. Thử lại sau ít phút.",
+            code: "SIGN_UP_INVITE_ACCEPT_FAILED",
+          });
         }
       }),
     },
@@ -247,10 +339,12 @@ export function authConfig(o: AuthOptions) {
           await hooks?.ssoSignedIn({
             providerId: provider.providerId,
             domain: provider.domain,
+            domainVerified: (provider as { domainVerified?: boolean | null }).domainVerified === true,
             user: { id: user.id, email: user.email, name: user.name },
           });
         },
       }),
+      ssoDomainVerified,
       // jwt() giữ khoá ký access token; cổng MCP kiểm chữ ký bằng JWKS lấy thẳng từ Better Auth trong tiến trình.
       jwt(),
       ...(mcpEnabled(o.baseURL)

@@ -118,18 +118,14 @@
           "name": "audit_log_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         },
         "audit_log_insert": {
           "name": "audit_log_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         }
       },
@@ -319,16 +315,10 @@
         "merge_queue_entries_project_id_org_id_projects_id_org_id_fk": {
           "name": "merge_queue_entries_project_id_org_id_projects_id_org_id_fk",
           "tableFrom": "merge_queue_entries",
-          "columnsFrom": [
-            "project_id",
-            "org_id"
-          ],
+          "columnsFrom": ["project_id", "org_id"],
           "tableTo": "projects",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -340,9 +330,7 @@
           "name": "merge_queue_entries_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -460,16 +448,10 @@
         "project_provision_steps_project_id_org_id_projects_id_org_id_fk": {
           "name": "project_provision_steps_project_id_org_id_projects_id_org_id_fk",
           "tableFrom": "project_provision_steps",
-          "columnsFrom": [
-            "project_id",
-            "org_id"
-          ],
+          "columnsFrom": ["project_id", "org_id"],
           "tableTo": "projects",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -478,10 +460,7 @@
       "uniqueConstraints": {
         "project_provision_steps_position": {
           "name": "project_provision_steps_position",
-          "columns": [
-            "project_id",
-            "position"
-          ],
+          "columns": ["project_id", "position"],
           "nullsNotDistinct": false
         }
       },
@@ -490,9 +469,7 @@
           "name": "project_provision_steps_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -725,26 +702,17 @@
       "uniqueConstraints": {
         "projects_org_key": {
           "name": "projects_org_key",
-          "columns": [
-            "org_id",
-            "key"
-          ],
+          "columns": ["org_id", "key"],
           "nullsNotDistinct": false
         },
         "projects_org_idempotency": {
           "name": "projects_org_idempotency",
-          "columns": [
-            "org_id",
-            "idempotency_key"
-          ],
+          "columns": ["org_id", "idempotency_key"],
           "nullsNotDistinct": false
         },
         "projects_id_org": {
           "name": "projects_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -753,9 +721,7 @@
           "name": "projects_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         },
@@ -763,9 +729,7 @@
           "name": "projects_webhook_lookup",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "id = hive.ctx_webhook_project()"
         }
       },
@@ -851,16 +815,10 @@
         "machine_tokens_machine_id_org_id_machines_id_org_id_fk": {
           "name": "machine_tokens_machine_id_org_id_machines_id_org_id_fk",
           "tableFrom": "machine_tokens",
-          "columnsFrom": [
-            "machine_id",
-            "org_id"
-          ],
+          "columnsFrom": ["machine_id", "org_id"],
           "tableTo": "machines",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -869,9 +827,7 @@
       "uniqueConstraints": {
         "machine_tokens_token_hash_unique": {
           "name": "machine_tokens_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
+          "columns": ["token_hash"],
           "nullsNotDistinct": false
         }
       },
@@ -880,27 +836,21 @@
           "name": "machine_tokens_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org() or token_hash = hive.ctx_fleet_token()"
         },
         "machine_tokens_insert": {
           "name": "machine_tokens_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         },
         "machine_tokens_update": {
           "name": "machine_tokens_update",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         },
@@ -908,9 +858,7 @@
           "name": "machine_tokens_delete",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         }
       },
@@ -1039,16 +987,10 @@
         "machines_team_id_org_id_teams_id_org_id_fk": {
           "name": "machines_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "machines",
-          "columnsFrom": [
-            "team_id",
-            "org_id"
-          ],
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1057,18 +999,12 @@
       "uniqueConstraints": {
         "machines_org_name": {
           "name": "machines_org_name",
-          "columns": [
-            "org_id",
-            "name"
-          ],
+          "columns": ["org_id", "name"],
           "nullsNotDistinct": false
         },
         "machines_id_org": {
           "name": "machines_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -1077,9 +1013,7 @@
           "name": "machines_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -1169,16 +1103,10 @@
         "registration_tokens_team_id_org_id_teams_id_org_id_fk": {
           "name": "registration_tokens_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "registration_tokens",
-          "columnsFrom": [
-            "team_id",
-            "org_id"
-          ],
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1187,9 +1115,7 @@
       "uniqueConstraints": {
         "registration_tokens_token_hash_unique": {
           "name": "registration_tokens_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
+          "columns": ["token_hash"],
           "nullsNotDistinct": false
         }
       },
@@ -1198,27 +1124,21 @@
           "name": "registration_tokens_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org() or token_hash = hive.ctx_fleet_token()"
         },
         "registration_tokens_insert": {
           "name": "registration_tokens_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         },
         "registration_tokens_update": {
           "name": "registration_tokens_update",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         },
@@ -1226,9 +1146,7 @@
           "name": "registration_tokens_delete",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         }
       },
@@ -1325,14 +1243,10 @@
         "account_userId_user_id_fk": {
           "name": "account_userId_user_id_fk",
           "tableFrom": "account",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -1574,56 +1488,40 @@
         "oauthAccessToken_clientId_oauthClient_clientId_fk": {
           "name": "oauthAccessToken_clientId_oauthClient_clientId_fk",
           "tableFrom": "oauthAccessToken",
-          "columnsFrom": [
-            "clientId"
-          ],
+          "columnsFrom": ["clientId"],
           "tableTo": "oauthClient",
           "schemaTo": "auth",
-          "columnsTo": [
-            "clientId"
-          ],
+          "columnsTo": ["clientId"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "oauthAccessToken_sessionId_session_id_fk": {
           "name": "oauthAccessToken_sessionId_session_id_fk",
           "tableFrom": "oauthAccessToken",
-          "columnsFrom": [
-            "sessionId"
-          ],
+          "columnsFrom": ["sessionId"],
           "tableTo": "session",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         },
         "oauthAccessToken_userId_user_id_fk": {
           "name": "oauthAccessToken_userId_user_id_fk",
           "tableFrom": "oauthAccessToken",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "oauthAccessToken_refreshId_oauthRefreshToken_id_fk": {
           "name": "oauthAccessToken_refreshId_oauthRefreshToken_id_fk",
           "tableFrom": "oauthAccessToken",
-          "columnsFrom": [
-            "refreshId"
-          ],
+          "columnsFrom": ["refreshId"],
           "tableTo": "oauthRefreshToken",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1632,9 +1530,7 @@
       "uniqueConstraints": {
         "oauthAccessToken_token_unique": {
           "name": "oauthAccessToken_token_unique",
-          "columns": [
-            "token"
-          ],
+          "columns": ["token"],
           "nullsNotDistinct": false
         }
       },
@@ -1887,14 +1783,10 @@
         "oauthClient_userId_user_id_fk": {
           "name": "oauthClient_userId_user_id_fk",
           "tableFrom": "oauthClient",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -1903,9 +1795,7 @@
       "uniqueConstraints": {
         "oauthClient_clientId_unique": {
           "name": "oauthClient_clientId_unique",
-          "columns": [
-            "clientId"
-          ],
+          "columns": ["clientId"],
           "nullsNotDistinct": false
         }
       },
@@ -2030,28 +1920,20 @@
         "oauthClientResource_clientId_oauthClient_clientId_fk": {
           "name": "oauthClientResource_clientId_oauthClient_clientId_fk",
           "tableFrom": "oauthClientResource",
-          "columnsFrom": [
-            "clientId"
-          ],
+          "columnsFrom": ["clientId"],
           "tableTo": "oauthClient",
           "schemaTo": "auth",
-          "columnsTo": [
-            "clientId"
-          ],
+          "columnsTo": ["clientId"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "oauthClientResource_resourceId_oauthResource_identifier_fk": {
           "name": "oauthClientResource_resourceId_oauthResource_identifier_fk",
           "tableFrom": "oauthClientResource",
-          "columnsFrom": [
-            "resourceId"
-          ],
+          "columnsFrom": ["resourceId"],
           "tableTo": "oauthResource",
           "schemaTo": "auth",
-          "columnsTo": [
-            "identifier"
-          ],
+          "columnsTo": ["identifier"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2157,28 +2039,20 @@
         "oauthConsent_clientId_oauthClient_clientId_fk": {
           "name": "oauthConsent_clientId_oauthClient_clientId_fk",
           "tableFrom": "oauthConsent",
-          "columnsFrom": [
-            "clientId"
-          ],
+          "columnsFrom": ["clientId"],
           "tableTo": "oauthClient",
           "schemaTo": "auth",
-          "columnsTo": [
-            "clientId"
-          ],
+          "columnsTo": ["clientId"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "oauthConsent_userId_user_id_fk": {
           "name": "oauthConsent_userId_user_id_fk",
           "tableFrom": "oauthConsent",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -2368,42 +2242,30 @@
         "oauthRefreshToken_clientId_oauthClient_clientId_fk": {
           "name": "oauthRefreshToken_clientId_oauthClient_clientId_fk",
           "tableFrom": "oauthRefreshToken",
-          "columnsFrom": [
-            "clientId"
-          ],
+          "columnsFrom": ["clientId"],
           "tableTo": "oauthClient",
           "schemaTo": "auth",
-          "columnsTo": [
-            "clientId"
-          ],
+          "columnsTo": ["clientId"],
           "onUpdate": "no action",
           "onDelete": "no action"
         },
         "oauthRefreshToken_sessionId_session_id_fk": {
           "name": "oauthRefreshToken_sessionId_session_id_fk",
           "tableFrom": "oauthRefreshToken",
-          "columnsFrom": [
-            "sessionId"
-          ],
+          "columnsFrom": ["sessionId"],
           "tableTo": "session",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         },
         "oauthRefreshToken_userId_user_id_fk": {
           "name": "oauthRefreshToken_userId_user_id_fk",
           "tableFrom": "oauthRefreshToken",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "no action"
         }
@@ -2412,9 +2274,7 @@
       "uniqueConstraints": {
         "oauthRefreshToken_token_unique": {
           "name": "oauthRefreshToken_token_unique",
-          "columns": [
-            "token"
-          ],
+          "columns": ["token"],
           "nullsNotDistinct": false
         }
       },
@@ -2526,9 +2386,7 @@
       "uniqueConstraints": {
         "oauthResource_identifier_unique": {
           "name": "oauthResource_identifier_unique",
-          "columns": [
-            "identifier"
-          ],
+          "columns": ["identifier"],
           "nullsNotDistinct": false
         }
       },
@@ -2596,14 +2454,10 @@
         "session_userId_user_id_fk": {
           "name": "session_userId_user_id_fk",
           "tableFrom": "session",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2612,9 +2466,7 @@
       "uniqueConstraints": {
         "session_token_unique": {
           "name": "session_token_unique",
-          "columns": [
-            "token"
-          ],
+          "columns": ["token"],
           "nullsNotDistinct": false
         }
       },
@@ -2680,14 +2532,10 @@
         "ssoProvider_userId_user_id_fk": {
           "name": "ssoProvider_userId_user_id_fk",
           "tableFrom": "ssoProvider",
-          "columnsFrom": [
-            "userId"
-          ],
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2696,9 +2544,7 @@
       "uniqueConstraints": {
         "ssoProvider_providerId_unique": {
           "name": "ssoProvider_providerId_unique",
-          "columns": [
-            "providerId"
-          ],
+          "columns": ["providerId"],
           "nullsNotDistinct": false
         }
       },
@@ -2762,9 +2608,7 @@
       "uniqueConstraints": {
         "user_email_unique": {
           "name": "user_email_unique",
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "nullsNotDistinct": false
         }
       },
@@ -2917,16 +2761,10 @@
         "doc_versions_doc_id_org_id_docs_id_org_id_fk": {
           "name": "doc_versions_doc_id_org_id_docs_id_org_id_fk",
           "tableFrom": "doc_versions",
-          "columnsFrom": [
-            "doc_id",
-            "org_id"
-          ],
+          "columnsFrom": ["doc_id", "org_id"],
           "tableTo": "docs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -2935,10 +2773,7 @@
       "uniqueConstraints": {
         "doc_versions_doc_version": {
           "name": "doc_versions_doc_version",
-          "columns": [
-            "doc_id",
-            "version"
-          ],
+          "columns": ["doc_id", "version"],
           "nullsNotDistinct": false
         }
       },
@@ -2947,9 +2782,7 @@
           "name": "doc_versions_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3070,18 +2903,12 @@
       "uniqueConstraints": {
         "docs_org_key": {
           "name": "docs_org_key",
-          "columns": [
-            "org_id",
-            "key"
-          ],
+          "columns": ["org_id", "key"],
           "nullsNotDistinct": false
         },
         "docs_id_org": {
           "name": "docs_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -3090,9 +2917,7 @@
           "name": "docs_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3254,14 +3079,10 @@
         "memories_superseded_by_memories_id_fk": {
           "name": "memories_superseded_by_memories_id_fk",
           "tableFrom": "memories",
-          "columnsFrom": [
-            "superseded_by"
-          ],
+          "columnsFrom": ["superseded_by"],
           "tableTo": "memories",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "set null"
         }
@@ -3273,9 +3094,7 @@
           "name": "memories_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3457,9 +3276,7 @@
           "name": "proposals_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3570,16 +3387,10 @@
         "skill_versions_skill_id_org_id_skills_id_org_id_fk": {
           "name": "skill_versions_skill_id_org_id_skills_id_org_id_fk",
           "tableFrom": "skill_versions",
-          "columnsFrom": [
-            "skill_id",
-            "org_id"
-          ],
+          "columnsFrom": ["skill_id", "org_id"],
           "tableTo": "skills",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -3588,10 +3399,7 @@
       "uniqueConstraints": {
         "skill_versions_skill_version": {
           "name": "skill_versions_skill_version",
-          "columns": [
-            "skill_id",
-            "version"
-          ],
+          "columns": ["skill_id", "version"],
           "nullsNotDistinct": false
         }
       },
@@ -3600,9 +3408,7 @@
           "name": "skill_versions_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3695,20 +3501,12 @@
       "uniqueConstraints": {
         "skills_scope_name": {
           "name": "skills_scope_name",
-          "columns": [
-            "org_id",
-            "team_id",
-            "project_id",
-            "name"
-          ],
+          "columns": ["org_id", "team_id", "project_id", "name"],
           "nullsNotDistinct": true
         },
         "skills_id_org": {
           "name": "skills_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -3717,9 +3515,7 @@
           "name": "skills_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3834,18 +3630,12 @@
       "uniqueConstraints": {
         "notification_channels_org_name": {
           "name": "notification_channels_org_name",
-          "columns": [
-            "org_id",
-            "name"
-          ],
+          "columns": ["org_id", "name"],
           "nullsNotDistinct": false
         },
         "notification_channels_id_org": {
           "name": "notification_channels_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -3854,9 +3644,7 @@
           "name": "notification_channels_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -3992,9 +3780,7 @@
           "name": "notifications_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -4110,16 +3896,10 @@
         "run_events_run_id_org_id_runs_id_org_id_fk": {
           "name": "run_events_run_id_org_id_runs_id_org_id_fk",
           "tableFrom": "run_events",
-          "columnsFrom": [
-            "run_id",
-            "org_id"
-          ],
+          "columnsFrom": ["run_id", "org_id"],
           "tableTo": "runs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -4128,11 +3908,7 @@
       "uniqueConstraints": {
         "run_events_seq": {
           "name": "run_events_seq",
-          "columns": [
-            "run_id",
-            "attempt",
-            "seq"
-          ],
+          "columns": ["run_id", "attempt", "seq"],
           "nullsNotDistinct": false
         }
       },
@@ -4141,18 +3917,14 @@
           "name": "run_events_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         },
         "run_events_insert": {
           "name": "run_events_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         }
       },
@@ -4256,16 +4028,10 @@
         "run_leases_run_id_org_id_runs_id_org_id_fk": {
           "name": "run_leases_run_id_org_id_runs_id_org_id_fk",
           "tableFrom": "run_leases",
-          "columnsFrom": [
-            "run_id",
-            "org_id"
-          ],
+          "columnsFrom": ["run_id", "org_id"],
           "tableTo": "runs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -4274,9 +4040,7 @@
       "uniqueConstraints": {
         "run_leases_run": {
           "name": "run_leases_run",
-          "columns": [
-            "run_id"
-          ],
+          "columns": ["run_id"],
           "nullsNotDistinct": false
         }
       },
@@ -4285,9 +4049,7 @@
           "name": "run_leases_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -4402,16 +4164,10 @@
         "run_logs_run_id_org_id_runs_id_org_id_fk": {
           "name": "run_logs_run_id_org_id_runs_id_org_id_fk",
           "tableFrom": "run_logs",
-          "columnsFrom": [
-            "run_id",
-            "org_id"
-          ],
+          "columnsFrom": ["run_id", "org_id"],
           "tableTo": "runs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -4420,11 +4176,7 @@
       "uniqueConstraints": {
         "run_logs_offset": {
           "name": "run_logs_offset",
-          "columns": [
-            "run_id",
-            "attempt",
-            "offset"
-          ],
+          "columns": ["run_id", "attempt", "offset"],
           "nullsNotDistinct": false
         }
       },
@@ -4433,9 +4185,7 @@
           "name": "run_logs_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -4777,16 +4527,10 @@
         "runs_parent_run_id_org_id_runs_id_org_id_fk": {
           "name": "runs_parent_run_id_org_id_runs_id_org_id_fk",
           "tableFrom": "runs",
-          "columnsFrom": [
-            "parent_run_id",
-            "org_id"
-          ],
+          "columnsFrom": ["parent_run_id", "org_id"],
           "tableTo": "runs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -4795,10 +4539,7 @@
       "uniqueConstraints": {
         "runs_id_org": {
           "name": "runs_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -4807,9 +4548,7 @@
           "name": "runs_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -4921,18 +4660,12 @@
       "uniqueConstraints": {
         "scm_connections_org_name": {
           "name": "scm_connections_org_name",
-          "columns": [
-            "org_id",
-            "name"
-          ],
+          "columns": ["org_id", "name"],
           "nullsNotDistinct": false
         },
         "scm_connections_id_org": {
           "name": "scm_connections_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -4941,9 +4674,7 @@
           "name": "scm_connections_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5054,10 +4785,7 @@
       "uniqueConstraints": {
         "webhook_deliveries_provider_delivery": {
           "name": "webhook_deliveries_provider_delivery",
-          "columns": [
-            "provider",
-            "delivery_id"
-          ],
+          "columns": ["provider", "delivery_id"],
           "nullsNotDistinct": false
         }
       },
@@ -5066,9 +4794,7 @@
           "name": "webhook_deliveries_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5227,18 +4953,12 @@
       "uniqueConstraints": {
         "tasks_project_number": {
           "name": "tasks_project_number",
-          "columns": [
-            "project_id",
-            "number"
-          ],
+          "columns": ["project_id", "number"],
           "nullsNotDistinct": false
         },
         "tasks_id_org": {
           "name": "tasks_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -5247,9 +4967,7 @@
           "name": "tasks_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5344,14 +5062,10 @@
         "invitations_org_id_orgs_id_fk": {
           "name": "invitations_org_id_orgs_id_fk",
           "tableFrom": "invitations",
-          "columnsFrom": [
-            "org_id"
-          ],
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -5360,9 +5074,7 @@
       "uniqueConstraints": {
         "invitations_token_hash_unique": {
           "name": "invitations_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
+          "columns": ["token_hash"],
           "nullsNotDistinct": false
         }
       },
@@ -5371,27 +5083,21 @@
           "name": "invitations_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org() or token_hash = hive.ctx_invite()"
         },
         "invitations_insert": {
           "name": "invitations_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         },
         "invitations_update": {
           "name": "invitations_update",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         },
@@ -5399,18 +5105,14 @@
           "name": "invitations_delete",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         },
         "invitations_owner_select": {
           "name": "invitations_owner_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_owner"
-          ],
+          "to": ["hive_owner"],
           "using": "true"
         }
       },
@@ -5462,28 +5164,20 @@
         "org_members_org_id_orgs_id_fk": {
           "name": "org_members_org_id_orgs_id_fk",
           "tableFrom": "org_members",
-          "columnsFrom": [
-            "org_id"
-          ],
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "org_members_user_id_user_id_fk": {
           "name": "org_members_user_id_user_id_fk",
           "tableFrom": "org_members",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -5491,10 +5185,7 @@
       "compositePrimaryKeys": {
         "org_members_org_id_user_id_pk": {
           "name": "org_members_org_id_user_id_pk",
-          "columns": [
-            "org_id",
-            "user_id"
-          ]
+          "columns": ["org_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -5503,27 +5194,21 @@
           "name": "org_members_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org() or user_id = hive.ctx_user()"
         },
         "org_members_write": {
           "name": "org_members_write",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "org_id = hive.ctx_org()"
         },
         "org_members_update": {
           "name": "org_members_update",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         },
@@ -5531,9 +5216,7 @@
           "name": "org_members_delete",
           "as": "PERMISSIVE",
           "for": "DELETE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
         }
       },
@@ -5596,9 +5279,7 @@
       "uniqueConstraints": {
         "orgs_slug_unique": {
           "name": "orgs_slug_unique",
-          "columns": [
-            "slug"
-          ],
+          "columns": ["slug"],
           "nullsNotDistinct": false
         }
       },
@@ -5607,27 +5288,21 @@
           "name": "orgs_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "id = hive.ctx_org() or exists (select 1 from hive.org_members m where m.org_id = orgs.id and m.user_id = hive.ctx_user() and m.status = 'active')"
         },
         "orgs_insert": {
           "name": "orgs_insert",
           "as": "PERMISSIVE",
           "for": "INSERT",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "withCheck": "id = hive.ctx_org()"
         },
         "orgs_update": {
           "name": "orgs_update",
           "as": "PERMISSIVE",
           "for": "UPDATE",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "id = hive.ctx_org()",
           "withCheck": "id = hive.ctx_org()"
         },
@@ -5635,9 +5310,7 @@
           "name": "orgs_owner_select",
           "as": "PERMISSIVE",
           "for": "SELECT",
-          "to": [
-            "hive_owner"
-          ],
+          "to": ["hive_owner"],
           "using": "true"
         }
       },
@@ -5698,16 +5371,10 @@
         "systems_team_id_org_id_teams_id_org_id_fk": {
           "name": "systems_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "systems",
-          "columnsFrom": [
-            "team_id",
-            "org_id"
-          ],
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -5716,10 +5383,7 @@
       "uniqueConstraints": {
         "systems_team_slug": {
           "name": "systems_team_slug",
-          "columns": [
-            "team_id",
-            "slug"
-          ],
+          "columns": ["team_id", "slug"],
           "nullsNotDistinct": false
         }
       },
@@ -5728,9 +5392,7 @@
           "name": "systems_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5781,30 +5443,20 @@
         "team_members_user_id_user_id_fk": {
           "name": "team_members_user_id_user_id_fk",
           "tableFrom": "team_members",
-          "columnsFrom": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         },
         "team_members_team_id_org_id_teams_id_org_id_fk": {
           "name": "team_members_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "team_members",
-          "columnsFrom": [
-            "team_id",
-            "org_id"
-          ],
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id",
-            "org_id"
-          ],
+          "columnsTo": ["id", "org_id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -5812,10 +5464,7 @@
       "compositePrimaryKeys": {
         "team_members_team_id_user_id_pk": {
           "name": "team_members_team_id_user_id_pk",
-          "columns": [
-            "team_id",
-            "user_id"
-          ]
+          "columns": ["team_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -5824,9 +5473,7 @@
           "name": "team_members_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5882,14 +5529,10 @@
         "teams_org_id_orgs_id_fk": {
           "name": "teams_org_id_orgs_id_fk",
           "tableFrom": "teams",
-          "columnsFrom": [
-            "org_id"
-          ],
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsTo": [
-            "id"
-          ],
+          "columnsTo": ["id"],
           "onUpdate": "no action",
           "onDelete": "cascade"
         }
@@ -5898,18 +5541,12 @@
       "uniqueConstraints": {
         "teams_org_slug": {
           "name": "teams_org_slug",
-          "columns": [
-            "org_id",
-            "slug"
-          ],
+          "columns": ["org_id", "slug"],
           "nullsNotDistinct": false
         },
         "teams_id_org": {
           "name": "teams_id_org",
-          "columns": [
-            "id",
-            "org_id"
-          ],
+          "columns": ["id", "org_id"],
           "nullsNotDistinct": false
         }
       },
@@ -5918,9 +5555,7 @@
           "name": "teams_rw",
           "as": "PERMISSIVE",
           "for": "ALL",
-          "to": [
-            "hive_app"
-          ],
+          "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
@@ -5933,117 +5568,62 @@
     "hive.merge_queue_state": {
       "name": "merge_queue_state",
       "schema": "hive",
-      "values": [
-        "queued",
-        "updating",
-        "waiting",
-        "merging",
-        "merged",
-        "failed",
-        "removed"
-      ]
+      "values": ["queued", "updating", "waiting", "merging", "merged", "failed", "removed"]
     },
     "hive.project_state": {
       "name": "project_state",
       "schema": "hive",
-      "values": [
-        "provisioning",
-        "active",
-        "failed",
-        "archived"
-      ]
+      "values": ["provisioning", "active", "failed", "archived"]
     },
     "hive.provision_step_kind": {
       "name": "provision_step_kind",
       "schema": "hive",
-      "values": [
-        "check-access",
-        "create-repo",
-        "link-repo",
-        "commit-template",
-        "protect-branch",
-        "add-webhook"
-      ]
+      "values": ["check-access", "create-repo", "link-repo", "commit-template", "protect-branch", "add-webhook"]
     },
     "hive.provision_step_state": {
       "name": "provision_step_state",
       "schema": "hive",
-      "values": [
-        "pending",
-        "running",
-        "done",
-        "failed",
-        "skipped"
-      ]
+      "values": ["pending", "running", "done", "failed", "skipped"]
     },
     "hive.project_repo_mode": {
       "name": "project_repo_mode",
       "schema": "hive",
-      "values": [
-        "new",
-        "existing"
-      ]
+      "values": ["new", "existing"]
     },
     "hive.machine_status": {
       "name": "machine_status",
       "schema": "hive",
-      "values": [
-        "online",
-        "offline",
-        "revoked"
-      ]
+      "values": ["online", "offline", "revoked"]
     },
     "hive.memory_kind": {
       "name": "memory_kind",
       "schema": "hive",
-      "values": [
-        "decision",
-        "convention",
-        "gotcha",
-        "note"
-      ]
+      "values": ["decision", "convention", "gotcha", "note"]
     },
     "hive.proposal_kind": {
       "name": "proposal_kind",
       "schema": "hive",
-      "values": [
-        "doc",
-        "skill"
-      ]
+      "values": ["doc", "skill"]
     },
     "hive.proposal_status": {
       "name": "proposal_status",
       "schema": "hive",
-      "values": [
-        "pending",
-        "approved",
-        "rejected"
-      ]
+      "values": ["pending", "approved", "rejected"]
     },
     "hive.notification_channel_kind": {
       "name": "notification_channel_kind",
       "schema": "hive",
-      "values": [
-        "telegram",
-        "email"
-      ]
+      "values": ["telegram", "email"]
     },
     "hive.notification_status": {
       "name": "notification_status",
       "schema": "hive",
-      "values": [
-        "queued",
-        "sent",
-        "failed"
-      ]
+      "values": ["queued", "sent", "failed"]
     },
     "hive.run_kind": {
       "name": "run_kind",
       "schema": "hive",
-      "values": [
-        "code",
-        "review"
-      ]
+      "values": ["code", "review"]
     },
     "hive.run_state": {
       "name": "run_state",
@@ -6069,75 +5649,42 @@
     "hive.scm_auth_mode": {
       "name": "scm_auth_mode",
       "schema": "hive",
-      "values": [
-        "app",
-        "token"
-      ]
+      "values": ["app", "token"]
     },
     "hive.scm_kind": {
       "name": "scm_kind",
       "schema": "hive",
-      "values": [
-        "github",
-        "gitlab"
-      ]
+      "values": ["github", "gitlab"]
     },
     "hive.webhook_delivery_status": {
       "name": "webhook_delivery_status",
       "schema": "hive",
-      "values": [
-        "queued",
-        "processed",
-        "ignored",
-        "failed"
-      ]
+      "values": ["queued", "processed", "ignored", "failed"]
     },
     "hive.task_status": {
       "name": "task_status",
       "schema": "hive",
-      "values": [
-        "todo",
-        "queued",
-        "running",
-        "review",
-        "done",
-        "cancelled"
-      ]
+      "values": ["todo", "queued", "running", "review", "done", "cancelled"]
     },
     "hive.member_status": {
       "name": "member_status",
       "schema": "hive",
-      "values": [
-        "active",
-        "pending",
-        "blocked"
-      ]
+      "values": ["active", "pending", "blocked"]
     },
     "hive.org_role": {
       "name": "org_role",
       "schema": "hive",
-      "values": [
-        "owner",
-        "admin",
-        "member"
-      ]
+      "values": ["owner", "admin", "member"]
     },
     "hive.sso_join": {
       "name": "sso_join",
       "schema": "hive",
-      "values": [
-        "pending",
-        "member"
-      ]
+      "values": ["pending", "member"]
     },
     "hive.team_role": {
       "name": "team_role",
       "schema": "hive",
-      "values": [
-        "admin",
-        "member",
-        "viewer"
-      ]
+      "values": ["admin", "member", "viewer"]
     }
   },
   "schemas": {
