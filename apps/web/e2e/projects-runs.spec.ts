@@ -113,7 +113,10 @@ test("danh sách dự án: hiện dự án và dẫn tới bảng việc của d
   await page.goto("/projects");
   await expect(page.getByRole("heading", { name: "Dự án", exact: true })).toBeVisible();
   await expect(page.getByText("payment-api").first()).toBeVisible();
-  await page.getByRole("link", { name: /payment-api|PAY/ }).first().click();
+  await page
+    .getByRole("link", { name: /payment-api|PAY/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/\/projects\/PAY/);
 });
 
@@ -139,10 +142,12 @@ test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền 
   await expect(page.getByLabel(/Toàn quyền/)).toBeChecked();
 
   await page.getByRole("button", { name: "Lưu cấu hình" }).click();
-  await expect.poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input).toMatchObject({
-    key: "PAY",
-    settings: { budget: { perRunUsd: 3.5 }, runPermissions: { mode: "full" } },
-  });
+  await expect
+    .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
+    .toMatchObject({
+      key: "PAY",
+      settings: { budget: { perRunUsd: 3.5 }, runPermissions: { mode: "full" } },
+    });
 });
 
 test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) => {
