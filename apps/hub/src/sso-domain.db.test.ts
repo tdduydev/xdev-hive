@@ -70,7 +70,13 @@ interface Settings {
 }
 type ApiResult = { status: number; json: Settings & { message?: string; data?: { code?: string } } };
 
-async function api(org: string, method: string, path: string, body?: unknown, cookie = ownerCookie): Promise<ApiResult> {
+async function api(
+  org: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  cookie = ownerCookie,
+): Promise<ApiResult> {
   const res = await send(app, method, `/api/v1${path}`, { cookie, org, body });
   return { status: res.status, json: (await res.json()) as ApiResult["json"] };
 }
@@ -129,7 +135,12 @@ beforeAll(async () => {
     allowEmailSignUp: true,
     hooks: authHooks(appPool),
   });
-  app = createApp({ config: { port: 0, version: "t", publicUrl: PUBLIC_URL, orgCreators: [OWNER] }, auth, pool: appPool, resolveTxt });
+  app = createApp({
+    config: { port: 0, version: "t", publicUrl: PUBLIC_URL, orgCreators: [OWNER] },
+    auth,
+    pool: appPool,
+    resolveTxt,
+  });
 
   const owner = await send(app, "POST", "/api/auth/sign-up/email", {
     body: { name: "Chủ", email: OWNER, password: PASSWORD },
@@ -189,10 +200,9 @@ describe("xác minh tên miền bằng TXT", () => {
   it("hub không lưu mã: dòng trong database không chứa giá trị bản ghi", async () => {
     const v = (await requestVerification(org)).json.domainVerification;
     const token = v?.recordValue.split("=")[1] ?? "";
-    const { rows } = await admin.query<{ value: string }>(
-      `select value from auth.verification where identifier = $1`,
-      [`hive-sso-domain-verification:org-${org}`],
-    );
+    const { rows } = await admin.query<{ value: string }>(`select value from auth.verification where identifier = $1`, [
+      `hive-sso-domain-verification:org-${org}`,
+    ]);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.value).not.toContain(token);
   });
@@ -415,8 +425,6 @@ describe("định tuyến SSO theo tên miền email", () => {
   });
 
   it("gọi thẳng theo providerId thì giữ nguyên", async () => {
-    expect(await routed({ providerId: `org-${unverifiedOrg}`, email: `a@con.${PARENT}` })).toBe(
-      `org-${unverifiedOrg}`,
-    );
+    expect(await routed({ providerId: `org-${unverifiedOrg}`, email: `a@con.${PARENT}` })).toBe(`org-${unverifiedOrg}`);
   });
 });

@@ -389,8 +389,8 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
         </>
       ) : (
         <p className="text-muted">
-          Chứng minh tổ chức giữ tên miền {provider?.domain} bằng một bản ghi TXT trên DNS. Tên miền đang bị tổ chức chưa
-          xác minh khác khai thì sẽ chuyển về tổ chức bạn.
+          Chứng minh tổ chức giữ tên miền {provider?.domain} bằng một bản ghi TXT trên DNS. Tên miền đang bị tổ chức
+          chưa xác minh khác khai thì sẽ chuyển về tổ chức bạn.
         </p>
       )}
       {check.isError && <Alert>{apiErrorMessage(check.error)}</Alert>}

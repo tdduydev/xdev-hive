@@ -339,7 +339,11 @@ async function tokenOf(auth: Auth, providerId: string, v: Pick<StoredVerificatio
     .digest("base64url");
 }
 
-async function verificationView(auth: Auth, providerId: string, v: StoredVerification): Promise<DomainVerificationView> {
+async function verificationView(
+  auth: Auth,
+  providerId: string,
+  v: StoredVerification,
+): Promise<DomainVerificationView> {
   return {
     domain: v.domain,
     recordName: `${DOMAIN_VERIFICATION_LABEL}.${v.domain}`,

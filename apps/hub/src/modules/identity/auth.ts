@@ -171,7 +171,10 @@ type ProviderFinder = {
 export async function ssoProviderForDomain(adapter: ProviderFinder, rawDomain: string): Promise<SsoProviderRow | null> {
   const domain = rawDomain.trim().toLowerCase();
   if (!domain) return null;
-  const exact = await adapter.findOne<SsoProviderRow>({ model: "ssoProvider", where: [{ field: "domain", value: domain }] });
+  const exact = await adapter.findOne<SsoProviderRow>({
+    model: "ssoProvider",
+    where: [{ field: "domain", value: domain }],
+  });
   if (exact?.domainVerified === true) return exact;
   const verified = await adapter.findMany<SsoProviderRow>({
     model: "ssoProvider",
