@@ -87,6 +87,7 @@ export const projects = hive
       // Gửi lại cùng khoá chống trùng trả về dự án đã tạo thay vì tạo thêm.
       unique("projects_org_idempotency").on(t.orgId, t.idempotencyKey),
       unique("projects_id_org").on(t.id, t.orgId),
+      unique("projects_id_org_team").on(t.id, t.orgId, t.teamId),
       // Một repo chỉ thuộc một dự án; GitHub và GitLab không phân biệt hoa thường trong đường dẫn.
       uniqueIndex("projects_repo").on(t.scmConnectionId, sql`lower(${t.repoOwner})`, sql`lower(${t.repoName})`),
       index("projects_org_team").on(t.orgId, t.teamId),

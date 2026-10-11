@@ -54,7 +54,7 @@ async function machine(status = "offline"): Promise<{ machine: AuthedMachine; jo
     [id, org.orgId, org.teamId, name, status],
   );
   return {
-    machine: { id, orgId: org.orgId, teamId: org.teamId, name },
+    machine: { id, orgId: org.orgId, teamId: org.teamId, name, kind: "worker" },
     job: { orgId: org.orgId, machineId: id, offlineAt: (rows[0].last_seen_at as Date).toISOString() },
   };
 }
