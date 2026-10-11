@@ -16,7 +16,10 @@ export {
   findMachine,
   fleetOfflineQueue,
   listOnlineMachines,
+  machineIsPaused,
   machineNames,
+  pauseMachine,
   registerFleetOfflineWorker,
+  resumeMachine,
 } from "./machines.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";

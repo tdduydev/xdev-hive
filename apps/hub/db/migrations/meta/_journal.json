@@ -260,6 +260,13 @@
       "when": 1791738700810,
       "tag": "0036_merge_queue_ci_state",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791738815861,
+      "tag": "0037_machine_paused",
+      "breakpoints": true
     }
   ]
 }

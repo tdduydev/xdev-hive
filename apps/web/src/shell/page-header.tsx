@@ -15,5 +15,5 @@ export function PageHeader({ crumb, title, children }: { crumb?: ReactNode; titl
 
 /** Nội dung trang. Cột `minmax(0, 1fr)` để bảng rộng cuộn trong khung của nó, không đẩy cả trang cuộn ngang. */
 export function PageBody({ children }: { children: ReactNode }) {
-  return <div className="grid grid-cols-1 content-start gap-4 p-6">{children}</div>;
+  return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 p-6">{children}</div>;
 }

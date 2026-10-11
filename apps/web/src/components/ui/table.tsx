@@ -7,7 +7,7 @@ import { cx } from "../../lib/cx.ts";
  */
 export function Table({ className, ...props }: ComponentProps<"table">) {
   return (
-    <div className="relative overflow-x-auto">
+    <div className="relative min-w-0 overflow-x-auto">
       <table className={cx("w-full min-w-130 border-collapse text-label", className)} {...props} />
     </div>
   );

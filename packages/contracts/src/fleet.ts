@@ -6,7 +6,7 @@ const id = z.uuid("Mã không hợp lệ.");
 // `code` ổn định để client phân biệt lý do mà không phải đọc message.
 const reason = z.object({ code: z.string() }).optional();
 
-export const machineStatus = z.enum(["online", "offline", "revoked"]);
+export const machineStatus = z.enum(["online", "offline", "paused", "revoked"]);
 export type MachineStatus = z.output<typeof machineStatus>;
 
 export const machine = z.object({
@@ -82,6 +82,16 @@ export const fleetContract = {
       .output(registrationOutput),
     revoke: oc
       .route({ method: "POST", path: "/v1/machines/{machineId}/revoke", summary: "Thu hồi máy", tags: ["fleet"] })
+      .errors(userErrors)
+      .input(z.object({ machineId: id }))
+      .output(machine),
+    pause: oc
+      .route({ method: "POST", path: "/v1/machines/{machineId}/pause", summary: "Tạm dừng máy", tags: ["fleet"] })
+      .errors(userErrors)
+      .input(z.object({ machineId: id }))
+      .output(machine),
+    resume: oc
+      .route({ method: "POST", path: "/v1/machines/{machineId}/resume", summary: "Chạy lại máy", tags: ["fleet"] })
       .errors(userErrors)
       .input(z.object({ machineId: id }))
       .output(machine),

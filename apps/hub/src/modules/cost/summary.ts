@@ -3,6 +3,7 @@ import { and, eq, gte, lt, type SQL, sql } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
 import { runEvents, runs } from "../runs/index.ts";
+import { loadTask } from "../tasks/index.ts";
 import { requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 
 const GROUP_KEY: Record<CostSummaryInput["groupBy"], SQL<string | null>> = {
@@ -80,4 +81,64 @@ export async function costSummary(tx: Tx, userId: string, input: CostSummaryInpu
   // Cộng số thực của các nhóm có thể lệch ở chữ số thứ 15; numeric(14, 6) chỉ có 6 chữ số thập phân.
   total.costUsd = Math.round(total.costUsd * 1e6) / 1e6;
   return { groupBy: input.groupBy, groups, total };
+}
+
+/** Danh sách run worker kết thúc do bộ đo vượt một trần ngân sách của dự án. */
+export async function budgetStoppedRuns(tx: Tx, userId: string, projectId: string) {
+  const project = await loadProject(tx, projectId);
+  if (!project || !(await teamRoleOf(tx, userId, project.teamId))) {
+    throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
+  }
+  await requireTeamRole(tx, userId, project.teamId, "admin");
+  const budget = project.settings.budget;
+  if (!budget) return [];
+  const rows = await tx
+    .select({
+      id: runs.id,
+      taskId: runs.taskId,
+      costUsd: runs.costUsd,
+      turns: runs.turns,
+      stoppedAt: runEvents.createdAt,
+    })
+    .from(runs)
+    .innerJoin(
+      runEvents,
+      and(eq(runEvents.runId, runs.id), eq(runEvents.attempt, runs.attempt), eq(runEvents.type, "result")),
+    )
+    .where(and(eq(runs.projectId, projectId), sql`${runEvents.data}->'report'->>'error' like 'Vượt ngân sách:%'`))
+    .orderBy(sql`${runEvents.createdAt} desc`)
+    .limit(100);
+  const out = [];
+  for (const row of rows) {
+    const task = await loadTask(tx, row.taskId);
+    if (!task) continue;
+    const reasons = [];
+    if (budget.perRunUsd !== undefined && row.costUsd !== null && row.costUsd > budget.perRunUsd) {
+      reasons.push({ reason: "per_run_usd" as const, measured: row.costUsd, limit: budget.perRunUsd });
+    }
+    if (budget.perTaskUsd !== undefined) {
+      const [spent] = await tx
+        .select({ value: sql<string>`coalesce(sum(${runs.costUsd}), 0)` })
+        .from(runs)
+        .where(eq(runs.taskId, task.id));
+      const measured = Number(spent?.value ?? 0);
+      if (measured > budget.perTaskUsd) {
+        reasons.push({ reason: "per_task_usd" as const, measured, limit: budget.perTaskUsd });
+      }
+    }
+    if (budget.maxTurns !== undefined && row.turns !== null && row.turns > budget.maxTurns) {
+      reasons.push({ reason: "max_turns" as const, measured: row.turns, limit: budget.maxTurns });
+    }
+    for (const reason of reasons) {
+      out.push({
+        runId: row.id,
+        taskId: task.id,
+        taskKey: task.key,
+        taskTitle: task.title,
+        ...reason,
+        stoppedAt: row.stoppedAt.toISOString(),
+      });
+    }
+  }
+  return out;
 }
