@@ -374,11 +374,19 @@ func TestConnectIdleTimeoutAndShutdown(t *testing.T) {
 	if _, err := conn.Read(data[:]); err == nil {
 		t.Fatal("idle tunnel remained open")
 	}
-	p.mu.Lock()
-	count := len(p.tunnels)
-	p.mu.Unlock()
-	if count != 0 {
-		t.Fatalf("leaked tunnel: %d", count)
+	// Client thấy kết nối đóng trước khi goroutine của proxy kịp gỡ tunnel khỏi danh sách: chờ có hạn, không kiểm ngay.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		p.mu.Lock()
+		count := len(p.tunnels)
+		p.mu.Unlock()
+		if count == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("leaked tunnel: %d", count)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
