@@ -21,9 +21,15 @@ import (
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
 const KindReview = "review"
 
+// KindPlan là run lập kế hoạch của plan mode: đọc nhánh chính, CLI chạy ở chế độ chỉ đọc, không push.
+const KindPlan = "plan"
+
+// KindLeader là run hội thoại; CLI được giới hạn chỉ đọc như KindPlan.
+const KindLeader = "leader"
+
 type Job struct {
 	RunID                                           string
-	Kind                                            string // "code" (mặc định) hoặc KindReview
+	Kind                                            string // "code" (mặc định), KindReview, KindPlan hoặc KindLeader
 	Budget                                          Budget
 	RunPermissions                                  string
 	gitRoots                                        []string
@@ -179,6 +185,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
+	} else if job.Kind == KindPlan || job.Kind == KindLeader {
+		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
+		// của run code.
+		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {
+			return err
+		}
 	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
@@ -267,8 +279,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
 	}
-	if job.Kind == KindReview {
-		// Run review không nộp code: hub chấm theo việc agent đã gọi review_submit, nên không đếm commit, không push.
+	if job.Kind == KindReview || job.Kind == KindPlan || job.Kind == KindLeader {
+		// Run review và run plan không nộp code: hub chấm theo việc agent đã gọi review_submit hay plan_submit, nên không
+		// đếm commit, không push.
 		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 		if err != nil {
 			return err
@@ -400,7 +413,10 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			if j.Kind == KindPlan || j.Kind == KindLeader {
+				// Chế độ plan chặn sửa file; các tool MCP được phép khai báo readOnlyHint.
+				args = append(args, "--permission-mode", "plan")
+			} else if j.RunPermissions == "full" {
 				args = append(args, "--permission-mode", "bypassPermissions")
 			} else {
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
@@ -414,7 +430,10 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			if j.Kind == KindPlan || j.Kind == KindLeader {
+				// Run chỉ đọc không được ghi repo kể cả khi cấu hình dự án bật quyền đầy đủ.
+				args = append(args, "--sandbox", "read-only")
+			} else if j.RunPermissions == "full" {
 				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 			} else {
 				args = append(args, "-s", "workspace-write", "-c", `approval_policy="never"`)
@@ -430,10 +449,17 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
+			if j.Kind == KindPlan || j.Kind == KindLeader {
+				// "plan (read-only mode)" theo gemini --help bản 0.63.0.
+				args = append(args, "--approval-mode", "plan")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
 			args = append(args, "--skip-trust")
+			if j.Kind == KindPlan || j.Kind == KindLeader {
+				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			}
 			if j.RunPermissions == "full" {
 				args = append(args, "--approval-mode", "yolo")
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil

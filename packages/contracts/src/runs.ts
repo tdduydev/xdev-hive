@@ -32,7 +32,8 @@ export const TERMINAL_RUN_STATES: readonly RunState[] = [
   "cancelled",
 ];
 
-export const runKind = z.enum(["code", "review", "leader"]);
+/** `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động. */
+export const runKind = z.enum(["code", "review", "plan", "leader"]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({
@@ -70,11 +71,11 @@ export type RunCost = z.output<typeof runCost>;
 
 export const run = z.object({
   id,
-  taskId: id,
+  taskId: id.nullable(),
   projectId: id,
   teamId: id,
   kind: runKind,
-  /** Run review chéo: run code mà nó review. null với run code. */
+  /** Run review/plan trỏ tới run cha; leader run gắn với thread. null với run code. */
   parentRunId: id.nullable(),
   state: runState,
   attempt: z.number().int(),
