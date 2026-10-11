@@ -22,7 +22,7 @@ import WebSocket from "ws";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
-import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
+import { attachWorkerGateway, pauseMachine, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
@@ -431,6 +431,41 @@ describe("run từ đầu tới PR", () => {
   });
 });
 
+describe("máy tạm dừng", () => {
+  it("run đã nhận tiếp tục tới xong; offer mới được chuyển sang máy khác", async () => {
+    const firstMachine = await seedMachine(`pause-a-${tag}`);
+    const firstWorker = await FakeWorker.connect(firstMachine);
+    const runningTask = await newTask("Run đang chạy khi tạm dừng");
+    const running = await startRun(runningTask.id);
+    await firstWorker.next("job_offer", (offer) => offer.runId === running.id);
+    firstWorker.send({ type: "job_accept", runId: running.id, attempt: 1 });
+    await firstWorker.next("lease", (lease) => lease.runId === running.id);
+
+    await withTenant(pool, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
+      pauseMachine(tx, org.user("admin"), firstMachine.id),
+    );
+    const secondMachine = await seedMachine(`pause-b-${tag}`);
+    const secondWorker = await FakeWorker.connect(secondMachine);
+    const queuedTask = await newTask("Run mới sau khi tạm dừng");
+    const queued = await startRun(queuedTask.id);
+    const offer = await secondWorker.next("job_offer", (message) => message.runId === queued.id);
+    expect(offer.runId).toBe(queued.id);
+    expect(await firstWorker.has("job_offer")).toBe(false);
+
+    firstWorker.sendRun({
+      type: "run_result",
+      runId: running.id,
+      attempt: 1,
+      exit: 0,
+      headSha: null,
+      report: { commitCount: 0 },
+    });
+    await until(async () => (await runRow(running.id)).state === "no_changes");
+    await secondWorker.close();
+    await firstWorker.close();
+  });
+});
+
 describe("model theo cấu hình dự án", () => {
   it("đưa model cấu hình vào spec và cho người giao ghi đè", async () => {
     const m = await seedMachine(`model-${tag}`);
@@ -835,6 +870,33 @@ describe("chi phí và ngân sách", () => {
       report: { status: "failed", error: "Vượt ngân sách: chi phí $0.2500 > $0.2000" },
     });
     await until(async () => (await runRow(run2.id)).state === "failed");
+
+    await admin.query("update hive.team_members set role = 'admin' where team_id = $1 and user_id = $2", [
+      org.teamId,
+      userId,
+    ]);
+    try {
+      const stopped = await api<Array<Record<string, unknown>>>(
+        "GET",
+        `/v1/costs/budget-stopped?projectId=${budgetProject}`,
+      );
+      expect(stopped.status).toBe(200);
+      expect(stopped.data).toEqual([
+        expect.objectContaining({
+          runId: run2.id,
+          taskId: task.id,
+          taskKey: task.key,
+          reason: "per_task_usd",
+          measured: 0.55,
+          limit: 0.5,
+        }),
+      ]);
+    } finally {
+      await admin.query("update hive.team_members set role = 'member' where team_id = $1 and user_id = $2", [
+        org.teamId,
+        userId,
+      ]);
+    }
 
     const refused = await api<{ message: string; data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id });
     expect(refused.status).toBe(400);

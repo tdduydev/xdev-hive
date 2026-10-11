@@ -9,6 +9,7 @@ import {
   findMachine,
   isConnected,
   listOnlineMachines,
+  machineIsPaused,
   type OutgoingMessage,
   type RunHandlers,
   type RunMessage,
@@ -380,6 +381,14 @@ export function createRunsEngine(deps: RunsDeps) {
         return lease ? { run, lease } : null;
       }
       if (run.state !== "queued" || run.offerMachineId !== machine.id) return null;
+      if (await machineIsPaused(tx, machine.id)) {
+        await tx
+          .update(runs)
+          .set({ offerMachineId: null, offerExpiresAt: null, updatedAt: sql`now()` })
+          .where(eq(runs.id, run.id));
+        await notifyRun(tx, run.id);
+        return null;
+      }
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
       const expiresAt = new Date(Date.now() + leaseSec * 1000);
       const [lease] = await tx
@@ -407,8 +416,9 @@ export function createRunsEngine(deps: RunsDeps) {
       return { run: leased, lease };
     });
     if (!out) {
-      // Đề nghị đã hết hạn và chuyển cho máy khác, hoặc run đã bị huỷ: bảo máy đừng chạy.
+      // Máy đã tạm dừng hoặc đề nghị đã hết hạn: bảo worker không chạy offer cũ.
       send(machine.id, { type: "cancel", runId: msg.runId, graceSec: 0 });
+      background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run sau khi máy từ chối offer");
       return;
     }
     const { token } = signRunToken(tokenKey, deps.publicUrl, {
