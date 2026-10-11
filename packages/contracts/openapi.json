@@ -12292,6 +12292,9 @@
                             "domain": {
                               "type": "string"
                             },
+                            "domainVerified": {
+                              "type": "boolean"
+                            },
                             "clientIdLastFour": {
                               "anyOf": [
                                 {
@@ -12306,6 +12309,7 @@
                           "required": [
                             "issuer",
                             "domain",
+                            "domainVerified",
                             "clientIdLastFour"
                           ]
                         },
@@ -12738,6 +12742,9 @@
                             "domain": {
                               "type": "string"
                             },
+                            "domainVerified": {
+                              "type": "boolean"
+                            },
                             "clientIdLastFour": {
                               "anyOf": [
                                 {
@@ -12752,6 +12759,7 @@
                           "required": [
                             "issuer",
                             "domain",
+                            "domainVerified",
                             "clientIdLastFour"
                           ]
                         },
@@ -13143,6 +13151,9 @@
                             "domain": {
                               "type": "string"
                             },
+                            "domainVerified": {
+                              "type": "boolean"
+                            },
                             "clientIdLastFour": {
                               "anyOf": [
                                 {
@@ -13157,6 +13168,7 @@
                           "required": [
                             "issuer",
                             "domain",
+                            "domainVerified",
                             "clientIdLastFour"
                           ]
                         },

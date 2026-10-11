@@ -49,6 +49,7 @@ function fakeJobs(): Jobs & { sent: Array<{ queue: string; data: unknown; inTx: 
     sent,
     start: async () => {},
     stop: async () => {},
+    schedule: async () => {},
     work: async () => {},
     async enqueue(queue, data, opts) {
       sent.push({ queue, data, inTx: opts?.tx !== undefined });

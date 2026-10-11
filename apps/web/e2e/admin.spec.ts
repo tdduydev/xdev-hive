@@ -387,7 +387,12 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
         settings = {
           ...SSO_NONE,
           join: i.join,
-          provider: { issuer: i.issuer, domain: i.domain, clientIdLastFour: i.clientId.slice(-4) },
+          provider: {
+            issuer: i.issuer,
+            domain: i.domain,
+            domainVerified: false,
+            clientIdLastFour: i.clientId.slice(-4),
+          },
         };
         return ok(settings);
       },
@@ -435,7 +440,9 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
     },
   });
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Đang bật");
-  await expect(methods).toContainText("login.microsoftonline.com · example.com");
+  // Tên miền mới khai luôn chưa xác minh: hub chưa cho SSO tạo tài khoản, chính sách người mới chưa áp dụng.
+  await expect(methods).toContainText("login.microsoftonline.com · example.com (chưa xác minh) · người mới: cần lời mời");
+  await expect(page.getByText(/Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới/)).toBeVisible();
   // Secret chỉ ghi: lưu xong thì ô trống, hub không trả secret về.
   await expect(page.getByLabel("Client secret")).toHaveValue("");
   await expect(page.getByText("Để trống nếu không đổi.")).toBeVisible();
@@ -446,7 +453,7 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const configured = {
     ...SSO_NONE,
-    provider: { issuer: "https://idp.example.com", domain: "example.com", clientIdLastFour: "ab12" },
+    provider: { issuer: "https://idp.example.com", domain: "example.com", domainVerified: true, clientIdLastFour: "ab12" },
   };
   const hub = await fakeHub(page, {
     signedIn: true,
@@ -462,6 +469,10 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await page.goto("/admin/sign-in-settings");
   await expect(page.getByLabel("Issuer URL")).toHaveValue("https://idp.example.com");
   await expect(page.getByText("Đang dùng Client ID kết thúc bằng ab12. Nhập lại khi lưu.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Các cách đăng nhập" })).toContainText(
+    "idp.example.com · example.com · người mới: chờ duyệt",
+  );
+  await expect(page.getByText("Người có email tên miền này đăng nhập bằng SSO của tổ chức.")).toBeVisible();
   await page.getByLabel("Issuer URL").fill("https://idp-moi.example.com");
   await page.getByLabel("Client ID").fill("client-ab12");
   await page.getByRole("button", { name: "Lưu" }).click();
@@ -473,6 +484,28 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
     clientId: "client-ab12",
     join: "pending",
   });
+});
+
+test("cài đặt đăng nhập: tên miền đã có tổ chức khác khai thì lỗi của hub gắn vào ô tên miền", async ({ page }) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const message =
+    "Tên miền example.com đã được một tổ chức khác trên hub khai cho SSO. Mỗi tên miền chỉ thuộc một tổ chức; nếu tên miền là của tổ chức bạn, hãy báo quản trị hub.";
+  await fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      ...twoOrgs(),
+      "orgs/mine": () => ok({ orgs: [{ ...myOrg(ORG_A), emailDomain: "example.com" }], canCreateOrg: false }),
+      "ssoProviders/get": () => ok(SSO_NONE),
+      "ssoProviders/upsert": () => fail("CONFLICT", 409, message, { code: "SSO_DOMAIN_TAKEN" }),
+    },
+  });
+  await page.goto("/admin/sign-in-settings");
+  await page.getByLabel("Issuer URL").fill("https://login.microsoftonline.com/3f2a/v2.0");
+  await page.getByLabel("Client ID").fill("8c1d5e2a-abcd");
+  await page.getByLabel("Client secret").fill("bi-mat-cua-idp");
+  await page.getByRole("button", { name: "Lưu" }).click();
+  await expect(page.getByText(message)).toBeVisible();
+  await expect(page.getByLabel("Tên miền email")).toHaveAttribute("aria-invalid", "true");
 });
 
 test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn quay về vai trò cũ", async ({ page }) => {

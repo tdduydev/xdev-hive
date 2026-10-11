@@ -109,7 +109,18 @@ export const ssoSettings = z.object({
   providerId: z.string(),
   callbackUrl: z.url(),
   join: ssoJoin,
-  provider: z.object({ issuer: z.string(), domain: z.string(), clientIdLastFour: z.string().nullable() }).nullable(),
+  provider: z
+    .object({
+      issuer: z.string(),
+      domain: z.string(),
+      /**
+       * Tên miền đã được xác minh là của tổ chức. Chưa xác minh thì SSO không tự tạo tài khoản và không tự xếp người vào
+       * tổ chức: người mới phải được mời như với GitHub/GitLab.
+       */
+      domainVerified: z.boolean(),
+      clientIdLastFour: z.string().nullable(),
+    })
+    .nullable(),
 });
 export type Org = z.output<typeof org>;
 export type MyOrg = z.output<typeof myOrg>;

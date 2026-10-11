@@ -6,6 +6,8 @@ import type { Auth } from "./auth.ts";
 export interface SsoProviderView {
   issuer: string;
   domain: string;
+  /** Chưa xác minh thì SSO không tự tạo tài khoản, không tự xếp người vào tổ chức; người mới phải được mời. */
+  domainVerified: boolean;
   clientIdLastFour: string | null;
 }
 
@@ -28,8 +30,59 @@ interface StoredProvider {
   providerId: string;
   issuer: string;
   domain: string;
+  domainVerified?: boolean | null;
   userId: string | null;
   oidcConfig: string | null;
+}
+
+/**
+ * Tên miền thư công cộng: không tổ chức nào sở hữu, nên không cho khai làm tên miền SSO. Khai được thì IdP của tổ
+ * chức đó chiếm luồng đăng nhập SSO của mọi người dùng tên miền này trên hub.
+ */
+const PUBLIC_EMAIL_DOMAINS = new Set([
+  "gmail.com",
+  "googlemail.com",
+  "outlook.com",
+  "outlook.com.vn",
+  "hotmail.com",
+  "live.com",
+  "msn.com",
+  "yahoo.com",
+  "yahoo.com.vn",
+  "ymail.com",
+  "icloud.com",
+  "me.com",
+  "mac.com",
+  "proton.me",
+  "protonmail.com",
+  "pm.me",
+  "aol.com",
+  "gmx.com",
+  "gmx.net",
+  "mail.com",
+  "zoho.com",
+  "yandex.com",
+  "yandex.ru",
+  "tutanota.com",
+  "tuta.io",
+  "fastmail.com",
+  "hey.com",
+  "qq.com",
+  "163.com",
+  "126.com",
+]);
+
+const domainTaken = (domain: string) =>
+  new ConflictError(
+    "SSO_DOMAIN_TAKEN",
+    `Tên miền ${domain} đã được một tổ chức khác trên hub khai cho SSO. Mỗi tên miền chỉ thuộc một tổ chức; nếu tên miền là của tổ chức bạn, hãy báo quản trị hub.`,
+  );
+
+/** Unique index ssoProvider_domain_uidx: hai tổ chức khai cùng tên miền một lúc, bên ghi sau nhận lỗi này. */
+function isDomainConflict(error: unknown): boolean {
+  for (let e = error as { code?: unknown; constraint?: unknown; cause?: unknown } | undefined; e; e = e.cause as never)
+    if (e.code === "23505" && e.constraint === "ssoProvider_domain_uidx") return true;
+  return false;
 }
 
 async function findProvider(auth: Auth, providerId: string): Promise<StoredProvider | null> {
@@ -40,11 +93,22 @@ async function findProvider(auth: Auth, providerId: string): Promise<StoredProvi
   });
 }
 
+/** Tên miền luôn lưu chữ thường (saveSsoProvider), nên so bằng nhau là đủ; unique index chặn nốt phần còn lại. */
+async function findProviderByDomain(auth: Auth, domain: string): Promise<StoredProvider | null> {
+  const ctx = await auth.$context;
+  return ctx.adapter.findOne<StoredProvider>({ model: "ssoProvider", where: [{ field: "domain", value: domain }] });
+}
+
 const oidcOf = (p: StoredProvider) => JSON.parse(p.oidcConfig ?? "{}") as { clientId?: string; clientSecret?: string };
 
 function view(p: StoredProvider): SsoProviderView {
   const clientId = oidcOf(p).clientId;
-  return { issuer: p.issuer, domain: p.domain, clientIdLastFour: clientId ? clientId.slice(-4) : null };
+  return {
+    issuer: p.issuer,
+    domain: p.domain,
+    domainVerified: p.domainVerified === true,
+    clientIdLastFour: clientId ? clientId.slice(-4) : null,
+  };
 }
 
 /**
@@ -67,7 +131,7 @@ async function mapErrors<T>(run: () => Promise<T>): Promise<T> {
   try {
     return await run();
   } catch (error) {
-    if (!(error instanceof APIError)) throw error;
+    if (!(error instanceof APIError) || isDomainConflict(error)) throw error;
     const detail = error.body?.message ?? error.message;
     const code = String(error.body?.code ?? "");
     if (code.startsWith("discovery_") || code === "issuer_mismatch" || code.startsWith("oidc_"))
@@ -97,6 +161,23 @@ export async function getSsoProvider(auth: Auth, providerId: string): Promise<Ss
 
 export async function saveSsoProvider(auth: Auth, actor: SsoActor, input: SsoProviderInput): Promise<SsoProviderView> {
   const domain = input.domain.toLowerCase();
+  if (PUBLIC_EMAIL_DOMAINS.has(domain))
+    throw new BadRequestError(
+      "SSO_DOMAIN_PUBLIC",
+      `${domain} là tên miền thư công cộng, không thuộc riêng tổ chức nào nên không dùng làm tên miền SSO được. Hãy nhập tên miền email của tổ chức.`,
+    );
+  const owner = await findProviderByDomain(auth, domain);
+  if (owner && owner.providerId !== input.providerId) throw domainTaken(domain);
+  try {
+    return await writeProvider(auth, actor, { ...input, domain });
+  } catch (error) {
+    if (isDomainConflict(error)) throw domainTaken(domain);
+    throw error;
+  }
+}
+
+async function writeProvider(auth: Auth, actor: SsoActor, input: SsoProviderInput): Promise<SsoProviderView> {
+  const { domain } = input;
   const current = await findProvider(auth, input.providerId);
   const register = (clientSecret: string) =>
     mapErrors(() =>

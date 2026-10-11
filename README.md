@@ -55,8 +55,48 @@ HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <use
   Dùng HTTPS thì để `HIVE_BIND` mặc định và thêm `--profile https` (Caddy).
 - User không thuộc nhóm docker thì đặt `HIVE_REMOTE_DOCKER="sudo docker"`.
 
-Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret, rồi chạy
-`docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
+### Người quản trị đầu tiên
+
+Hub không cho tự đăng ký: chỉ người được mời mới có tài khoản, bằng mọi cách đăng nhập (email + mật khẩu, GitHub,
+GitLab, SSO). GitHub/GitLab chỉ tạo tài khoản khi email đã được nhà cung cấp xác minh. Lúc hub mới chạy chưa có ai để
+gửi lời mời, nên khai email người quản trị hub trong `HIVE_ORG_CREATORS` (cách nhau bằng dấu phẩy). Những email này
+được tạo tổ chức, và được tạo tài khoản dù chưa có lời mời: bằng GitHub/GitLab có email đã xác minh, hoặc bằng email +
+mật khẩu khi hub chưa có tổ chức nào.
+
+```sh
+HIVE_ORG_CREATORS=duy@example.com HIVE_PUBLIC_URL=https://hive.example.com deploy/remote.sh <user>@<máy-chủ>
+```
+
+Sau đó người quản trị mở hub và đăng nhập bằng GitHub hoặc GitLab có email đó (đã xác minh với nhà cung cấp), rồi tạo
+tổ chức, cấu hình SSO và gửi lời mời. Hub chưa bật GitHub/GitLab thì đăng ký bằng email + mật khẩu qua API (web chưa có
+form đăng ký cho trường hợp này), rồi đăng nhập bằng email ở `/dang-nhap`:
+
+```sh
+curl -X POST https://hive.example.com/api/auth/sign-up/email -H 'content-type: application/json' \
+  -H 'origin: https://hive.example.com' \
+  -d '{"name":"Duy","email":"duy@example.com","password":"<ít nhất 10 ký tự>"}'
+```
+
+Đăng ký bằng email không xác minh hộp thư: ai biết email trong `HIVE_ORG_CREATORS` mà đăng ký trước sẽ chiếm tài khoản
+đó. Vì vậy hub chỉ mở đường này khi chưa có tổ chức nào; hãy đăng ký ngay sau khi hub chạy. Sau khi đã có tổ chức, người
+quản trị khác vào bằng GitHub/GitLab hoặc bằng lời mời. `HIVE_ALLOW_EMAIL_SIGNUP=1` tắt hẳn quy tắc chỉ nhận người được
+mời, chỉ dùng khi dev.
+
+SSO của tổ chức chỉ tự tạo tài khoản và tự xếp người vào tổ chức (theo chính sách vào thẳng hoặc chờ duyệt) khi tên
+miền đã được xác minh. Mỗi tên miền chỉ thuộc một tổ chức, và hub không nhận tên miền thư công cộng (gmail.com,
+outlook.com…). Hub chưa có bước xác minh tên miền bằng bản ghi TXT; tới lúc đó, quản trị hub kiểm tra tổ chức sở hữu
+tên miền rồi đặt trong database:
+
+```sql
+UPDATE auth."ssoProvider" SET "domainVerified" = true WHERE "providerId" = 'org-<id tổ chức>';
+```
+
+Đổi tên miền trong cài đặt SSO thì mất xác minh. Mỗi ngày hub xoá tài khoản tạo quá 7 ngày mà không thuộc tổ chức nào
+và không có lời mời đang chờ (giữ email trong `HIVE_ORG_CREATORS`), vd. tài khoản tạo bằng lời mời mà lời mời bị thu hồi
+sau đó, hay người bị gỡ khỏi mọi tổ chức.
+
+Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu, secret và `HIVE_ORG_CREATORS`,
+rồi chạy `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
 cho hàng đợi), chạy migration rồi khởi động API. Health: `/api/v1/health`.
 
 ### Sao lưu và khôi phục
