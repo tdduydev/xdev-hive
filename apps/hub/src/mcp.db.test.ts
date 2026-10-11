@@ -167,7 +167,7 @@ async function approve(authorizationUrl: URL, as: string, signedIn = true): Prom
   // Better Auth trả 302 cho trình duyệt, hoặc JSON {redirect, url} khi request không đòi HTML như ở đây.
   const next = res.headers.get("location") ?? ((await res.json()) as { url: string }).url;
   let location = new URL(next, baseURL);
-  if (location.pathname === "/dang-nhap") {
+  if (location.pathname === "/login") {
     // Chưa đăng nhập: trang đăng nhập của web gửi kèm query đã ký (oauthProviderClient), hub trả bước kế tiếp.
     expect(signedIn).toBe(false);
     const res = await call("/api/auth/sign-in/email", {
@@ -187,14 +187,14 @@ async function approve(authorizationUrl: URL, as: string, signedIn = true): Prom
       .join("; ");
     location = new URL(body.url ?? "", baseURL);
   }
-  if (location.pathname === "/dong-y-mcp") {
+  if (location.pathname === "/mcp/consent") {
     const consent = await call("/api/auth/oauth2/consent", {
       method: "POST",
       as,
       body: JSON.stringify({ accept: true, oauth_query: location.search.slice(1) }),
     });
     expect(consent.status).toBe(200);
-    // Trang /dong-y-mcp của web dựa vào đúng dạng này để chuyển trình duyệt về CLI.
+    // Trang /mcp/consent của web dựa vào đúng dạng này để chuyển trình duyệt về CLI.
     const body = (await consent.json()) as { redirect?: boolean; url?: string };
     expect(body.redirect).toBe(true);
     location = new URL(body.url ?? "");

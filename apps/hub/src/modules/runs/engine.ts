@@ -1,4 +1,5 @@
 import { type OutcomeCheck, type RunStartInput, type TaskStatus, TERMINAL_RUN_STATES } from "@xdev-hive/contracts";
+import { type DiffStats, diffStats } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -33,7 +34,7 @@ import {
 import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
 import { applyCost, assertTaskBudget, type JobBudget, jobBudget, parseCostData, taskSpentUsd } from "./cost.ts";
 import { createMcpRunTokens } from "./mcp.ts";
-import { evaluatePolicy, evaluateReviewRun, type Outcome, type ReviewEvidence } from "./policy.ts";
+import { evaluatePolicy, evaluateReviewRun, type Outcome, type ReviewEvidence, reviewSkipReason } from "./policy.ts";
 import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
@@ -103,7 +104,8 @@ const pgError = (e: unknown) => ((e as { cause?: unknown }).cause ?? e) as { cod
 const runNotFound = () => new NotFoundError("RUN_NOT_FOUND", "Không tìm thấy run trong tổ chức.");
 
 type ReviewCheck = Extract<OutcomeCheck, { check: "review" }>;
-const reviewCheckOf = (policy: OutcomeCheck[]) => policy.find((c): c is ReviewCheck => c.check === "review");
+const reviewCheckOf = (policy: OutcomeCheck[], stats?: DiffStats) =>
+  policy.find((c): c is ReviewCheck => c.check === "review" && !reviewSkipReason(c, stats));
 const exitOf = (data: Record<string, unknown>) => (typeof data.exit === "number" ? data.exit : null);
 
 /** Gói run_result sau cùng của lần thử hiện tại. */
@@ -198,6 +200,7 @@ function buildSpec(
       : prompt,
     instructions,
     cli,
+    model: run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null,
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,
@@ -213,7 +216,9 @@ function prBody(task: TaskRow, run: RunRow, checks: RunResult["checks"]): string
     `Task: ${task.key} · Run: ${run.id} (lần thử ${run.attempt})`,
     "",
     "Kiểm tra của hub:",
-    ...checks.map((c) => `- ${c.passed ? "✅" : c.passed === null ? "⏸" : "❌"} ${c.check}: ${c.message}`),
+    ...checks.map(
+      (c) => `- ${c.skipped ? "⏭" : c.passed ? "✅" : c.passed === null ? "⏸" : "❌"} ${c.check}: ${c.message}`,
+    ),
   ];
   return lines.join("\n").trim();
 }
@@ -524,7 +529,7 @@ export function createRunsEngine(deps: RunsDeps) {
           attempt: run.attempt,
           seq: msg.seq,
           type: "result",
-          data: { exit: msg.exit, headSha: msg.headSha, report: msg.report },
+          data: { exit: msg.exit, headSha: msg.headSha, report: msg.report, diffStats: msg.diffStats },
         })
         .onConflictDoNothing()
         .returning({ id: runEvents.id });
@@ -637,10 +642,24 @@ export function createRunsEngine(deps: RunsDeps) {
       const task = await loadTask(tx, run.taskId);
       const conn = project && deps.masterKey ? await loadConnection(tx, deps.masterKey, project.scmConnectionId) : null;
       // Đọc cờ lúc verify thay vì lúc giao: dự án tắt review chéo giữa chừng thì run đang chờ không tạo run review nữa.
-      const reviewCheck = project?.settings.features.crossReview ? reviewCheckOf(run.policySnapshot) : undefined;
+      const stats = diffStats.safeParse(data.diffStats);
+      const reviewCheck = project?.settings.features.crossReview
+        ? reviewCheckOf(run.policySnapshot, stats.success ? stats.data : undefined)
+        : undefined;
       const child = reviewCheck ? await reviewRunOf(tx, run.id) : null;
       const childReport = child?.state === "succeeded" ? await reviewReportOf(tx, child) : null;
-      return { run, data, hasAgentReport: Boolean(report), project, task, conn, reviewCheck, child, childReport };
+      return {
+        run,
+        data,
+        hasAgentReport: Boolean(report),
+        project,
+        task,
+        conn,
+        reviewCheck,
+        child,
+        childReport,
+        diffStats: stats.success ? stats.data : undefined,
+      };
     });
     if (!ctx) return;
     const { run, data, project, task, reviewCheck, child } = ctx;
@@ -659,6 +678,7 @@ export function createRunsEngine(deps: RunsDeps) {
       report,
       hasAgentReport: ctx.hasAgentReport,
       review,
+      diffStats: ctx.diffStats,
     });
     let outcome = ev.outcome;
     let checks = ev.checks;
@@ -694,9 +714,14 @@ export function createRunsEngine(deps: RunsDeps) {
       awaitingReview = false;
       outcome = "needs_review";
       checks = checks.map((c) =>
-        c.check === "review" && c.passed === null ? { ...c, message: "Không có PR để review chéo; cần người xem." } : c,
+        c.check === "review" && c.passed === null && !c.skipped
+          ? { ...c, message: "Không có PR để review chéo; cần người xem." }
+          : c,
       );
-      reasons = [...checks.filter((c) => c.passed !== true).map((c) => c.message), ...reasons.slice(ev.reasons.length)];
+      reasons = [
+        ...checks.filter((c) => !c.skipped && c.passed !== true).map((c) => c.message),
+        ...reasons.slice(ev.reasons.length),
+      ];
     }
     const result: RunResult = {
       exit: exitOf(data),
@@ -751,7 +776,7 @@ export function createRunsEngine(deps: RunsDeps) {
         actorUserId: null,
         targetType: "run",
         targetId: locked.id,
-        data: { outcome, prUrl, taskId: locked.taskId },
+        data: { outcome, prUrl, taskId: locked.taskId, checks },
       });
       await notifyOutcome(tx, locked, task, outcome, reasons, prUrl);
       return null;
@@ -904,7 +929,7 @@ export function createRunsEngine(deps: RunsDeps) {
         title: outcome === "failed" ? `Run của ${key} thất bại` : `${key} cần người xem lại`,
         body: body.join("\n"),
         // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
-        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/viec/${task.key}` : null,
+        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.key}` : null,
       },
       { jobs: deps.jobs },
     );
@@ -1052,6 +1077,7 @@ export function createRunsEngine(deps: RunsDeps) {
     }
     const { row, afterCommit } = await queueRun(tx, task, project, {
       cli: input.cli ?? task.preferredCli ?? null,
+      model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
     });
@@ -1068,6 +1094,7 @@ export function createRunsEngine(deps: RunsDeps) {
     project: ProjectRow | null,
     opts: {
       cli: RunRow["cli"];
+      model?: string | null;
       machineId?: string | null;
       createdBy: string;
       /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
@@ -1094,6 +1121,12 @@ export function createRunsEngine(deps: RunsDeps) {
           taskId: task.id,
           projectId: project.id,
           cli: opts.cli,
+          model:
+            opts.model !== undefined
+              ? opts.model
+              : opts.cli
+                ? (project.settings.models?.[opts.cli]?.code ?? null)
+                : null,
           pinnedMachineId: opts.machineId ?? null,
           branch: `ai/${task.key}`,
           policySnapshot: policy,

@@ -40,6 +40,8 @@ export const checkOutcome = z.object({
   required: z.boolean(),
   /** null khi hub chưa hỗ trợ kiểm tra này (command, ci), hoặc review chéo đang tắt hay chưa có kết quả. */
   passed: z.boolean().nullable(),
+  /** Bỏ qua theo điều kiện review: không ảnh hưởng kết luận chính sách. */
+  skipped: z.boolean().optional(),
   message: z.string(),
 });
 export type CheckOutcome = z.output<typeof checkOutcome>;
@@ -81,6 +83,7 @@ export const run = z.object({
   machineId: id.nullable(),
   /** CLI yêu cầu; null là máy nào có CLI cũng được. */
   cli: cli.nullable(),
+  model: z.string().nullable(),
   /** Máy người dùng chỉ định; null là hub tự chọn. */
   pinnedMachineId: id.nullable(),
   branch: z.string(),
@@ -128,6 +131,8 @@ export const runStartInput = z.object({
   taskId: id,
   /** Bỏ trống thì dùng CLI ưa thích của task, rồi tới bất kỳ CLI nào máy có. */
   cli: cli.optional(),
+  /** Ghi đè model cấu hình của dự án cho run này. */
+  model: z.string().trim().min(1).max(200).nullable().optional(),
   /** Chỉ giao cho máy này (máy của đội sở hữu dự án). */
   machineId: id.optional(),
 });

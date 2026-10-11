@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { fakeHub, USER } from "./fake-hub.ts";
 
-test("đã đăng nhập: mở /dang-nhap thì vào /, thấy khung app như mockup", async ({ page }) => {
+test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
-  await page.goto("/dang-nhap");
+  await page.goto("/login");
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();
@@ -49,25 +49,27 @@ test("đăng xuất thì về trang đăng nhập", async ({ page }) => {
   });
   await page.goto("/");
   await page.locator("aside").getByRole("button", { name: "Đăng xuất" }).click();
-  await expect(page).toHaveURL("/dang-nhap");
+  await expect(page).toHaveURL("/login");
   await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
 });
 
-for (const [scheme, canvas, surface] of [
-  ["light", "rgb(250, 249, 252)", "rgb(255, 255, 255)"],
-  ["dark", "rgb(14, 14, 17)", "rgb(29, 28, 32)"],
+// Giá trị theo docs/design-system/tokens.json: canvas, surface, accent, on-accent.
+for (const [scheme, canvas, surface, accent, onAccent] of [
+  ["light", "rgb(246, 248, 252)", "rgb(255, 255, 255)", "rgb(0, 76, 255)", "rgb(255, 255, 255)"],
+  ["dark", "rgb(12, 23, 41)", "rgb(20, 39, 69)", "rgb(63, 169, 255)", "rgb(11, 23, 48)"],
 ] as const) {
   test(`màu theo chế độ ${scheme} của hệ điều hành, đúng token mockup`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await fakeHub(page);
-    await page.goto("/dang-nhap");
+    await page.goto("/login");
     const card = page.getByRole("heading", { name: "Đăng nhập" }).locator("..");
     await expect(page.locator("body")).toHaveCSS("background-color", canvas);
     await expect(card).toHaveCSS("background-color", surface);
-    await expect(page.getByRole("button", { name: "Tiếp tục với SSO" })).toHaveCSS(
-      "background-color",
-      "rgb(123, 97, 255)",
-    );
+    const sso = page.getByRole("button", { name: "Tiếp tục với SSO" });
+    await expect(sso).toHaveCSS("background-color", accent);
+    await expect(sso).toHaveCSS("color", onAccent);
+    // Logo đúng theme: chỉ ảnh của theme hiện tại hiện ra.
+    await expect(page.locator(`img[src="/xdev-hive-${scheme}.svg"]`)).toBeVisible();
   });
 }
