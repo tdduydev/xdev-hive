@@ -1,0 +1,2 @@
+ALTER TABLE "hive"."merge_queue_entries" ADD COLUMN "ci_state" text;--> statement-breakpoint
+ALTER TABLE "hive"."merge_queue_entries" ADD CONSTRAINT "merge_queue_entries_ci_state" CHECK ("hive"."merge_queue_entries"."ci_state" in ('success', 'pending', 'failure', 'none'));

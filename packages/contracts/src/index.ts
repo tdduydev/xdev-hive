@@ -3,7 +3,7 @@ import { z } from "zod";
 import { costsContract } from "./cost.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
-import { notificationChannelsContract } from "./notify.ts";
+import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
 import { runsContract } from "./runs.ts";
 import { scmContract } from "./scm.ts";
@@ -79,6 +79,7 @@ export const contract = {
   ...tenancyContract,
   scmConnections: scmContract,
   notificationChannels: notificationChannelsContract,
+  inbox: inboxContract,
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,

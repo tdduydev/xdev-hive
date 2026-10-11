@@ -31,7 +31,7 @@ export interface ScmHandlerDeps {
     task: TaskRow,
     project: ProjectRow | null,
     opts: { cli: RunRow["cli"]; createdBy: string; actorUserId?: string | null; instructions?: string[] },
-  ): Promise<{ afterCommit: () => void }>;
+  ): Promise<{ row: RunRow; afterCommit: () => void }>;
   steerRun(
     tx: Tx,
     runId: string,
@@ -258,20 +258,22 @@ async function onIssue(
       author: e.issue.author,
     },
   );
-  let started = false;
+  let started: RunRow | null = null;
   if (projectReady(project)) {
-    const { afterCommit } = await deps.queueRun(tx, task, project, {
+    const { row, afterCommit } = await deps.queueRun(tx, task, project, {
       cli: project.settings.defaultCli ?? null,
       createdBy: by,
       actorUserId: null,
     });
     ctx.afterCommit(afterCommit);
-    started = true;
+    started = row;
   }
   const link = taskUrl(deps.publicUrl, task);
-  const body = started
-    ? `Hive đã nhận issue này thành task [${task.key}](${link}) và giao cho agent. PR sẽ được mở khi agent làm xong.`
-    : `Hive đã nhận issue này thành task [${task.key}](${link}). Dự án chưa sẵn sàng nên task chờ người giao.`;
+  const body = !started
+    ? `Hive đã nhận issue này thành task [${task.key}](${link}). Dự án chưa sẵn sàng nên task chờ người giao.`
+    : started.state === "planning"
+      ? `Hive đã nhận issue này thành task [${task.key}](${link}). Agent sẽ lập kế hoạch; người duyệt kế hoạch xong agent mới sửa code và mở PR.`
+      : `Hive đã nhận issue này thành task [${task.key}](${link}) và giao cho agent. PR sẽ được mở khi agent làm xong.`;
   replyLater(ctx, deps, conn, project, e.issue.number, body);
 }
 
@@ -311,14 +313,17 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
   } else if (await taskBudgetExhausted(tx, task.id, project.settings.budget)) {
     reply = `Task ${task.key} đã dùng hết ngân sách của dự án, Hive không chạy lại.`;
   } else {
-    const { afterCommit } = await deps.queueRun(tx, task, project, {
+    const { row, afterCommit } = await deps.queueRun(tx, task, project, {
       cli: prRun.cli ?? project.settings.defaultCli ?? null,
       createdBy: by,
       actorUserId: null,
       instructions: [input],
     });
     ctx.afterCommit(afterCommit);
-    reply = `Đã chạy lại task ${task.key} với chỉ dẫn này; agent sẽ cập nhật PR khi xong.`;
+    reply =
+      row.state === "planning"
+        ? `Đã chạy lại task ${task.key} với chỉ dẫn này. Dự án bật plan mode: agent lập kế hoạch trước, người duyệt xong mới sửa PR.`
+        : `Đã chạy lại task ${task.key} với chỉ dẫn này; agent sẽ cập nhật PR khi xong.`;
   }
   await recordAudit(tx, {
     action: "run.steer",

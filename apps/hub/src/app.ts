@@ -10,7 +10,7 @@ import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
-import { notifyRouter } from "./modules/notify/index.ts";
+import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import {
   RunNotifier,
@@ -74,9 +74,10 @@ export function createApp({
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
+    inbox: inboxRouter({ auth, pool, jobs }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
-    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
+    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
   };

@@ -118,6 +118,205 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   await expect(switcher(page)).toContainText("FPT Software xDev");
 });
 
+const PROJECT = {
+  id: "6e6e6e6e-0000-4000-8000-000000000001",
+  systemId: SYSTEM.id,
+  teamId: TEAM.id,
+  key: "web",
+  name: "Web",
+  state: "active",
+  repo: {
+    mode: "existing",
+    connectionId: "6e6e6e6e-0000-4000-8000-000000000002",
+    kind: "github",
+    owner: "fpt",
+    name: "web",
+    defaultBranch: "main",
+    visibility: null,
+    httpUrl: "https://github.com/fpt/web",
+    sshUrl: "git@github.com:fpt/web.git",
+    webUrl: "https://github.com/fpt/web",
+  },
+  settings: {
+    merge: { mode: "review", requiredApprovals: 1 },
+    outcome: { default: [{ check: "changes", required: true }], byType: {} },
+    features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
+    issueIntake: { enabled: false, label: "hive", mention: "hive" },
+  },
+  createdBy: USER.id,
+  createdAt: at,
+  updatedAt: at,
+};
+
+test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và xác nhận thu hồi", async ({ page }) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () => ok({ orgs: [myOrg(ORG_A)], canCreateOrg: false }),
+      "teams/list": () => ok([TEAM]),
+      "projects/list": () => ok([]),
+      "machines/list": () =>
+        ok([
+          {
+            id: "8e8e8e8e-0000-4000-8000-000000000001",
+            teamId: TEAM.id,
+            name: "mac-mini-01",
+            os: "darwin",
+            version: "1.2.3",
+            clis: ["claude", "codex"],
+            capacity: 2,
+            status: "online",
+            lastSeenAt: at,
+            createdAt: at,
+          },
+        ]),
+      "machines/createRegistration": () =>
+        ok({
+          token: "reg-once-token",
+          expiresAt: "2026-10-11T17:00:00.000Z",
+          command: "hive-worker register --hub https://hive.test --token reg-once-token",
+        }),
+      "machines/revoke": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "revoked",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+      "machines/pause": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "paused",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+      "machines/resume": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "online",
+          lastSeenAt: at,
+          createdAt: at,
+        }),
+    },
+  });
+  await page.goto("/machines");
+  await expect(page.getByRole("heading", { name: "Máy", exact: true })).toBeVisible();
+  await expect(page.getByRole("row", { name: /mac-mini-01/ })).toContainText("Sẵn sàng");
+  await page.screenshot({ path: "e2e/screenshots/machines.png", fullPage: true });
+  await page.getByRole("button", { name: "Tạm dừng", exact: true }).click();
+  expect(hub.rpcCalls.find((call) => call.path === "machines/pause")).toMatchObject({
+    org: ORG_A.id,
+    input: { machineId: "8e8e8e8e-0000-4000-8000-000000000001" },
+  });
+  await page.getByRole("button", { name: "Thêm máy" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Tạo mã đăng ký" }).click();
+  await expect(dialog.getByRole("status", { name: "Mã đăng ký dùng một lần" })).toHaveText("reg-once-token");
+  await expect(dialog.getByText("brew install xdev/tap/hive-worker")).toBeVisible();
+  await dialog.getByRole("button", { name: "Linux" }).click();
+  await expect(dialog.getByText(/install\.sh/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Đóng" }).click();
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: "Thu hồi", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Thu hồi máy" }).click();
+  expect(hub.rpcCalls.find((call) => call.path === "machines/revoke")).toMatchObject({
+    org: ORG_A.id,
+    input: { machineId: "8e8e8e8e-0000-4000-8000-000000000001" },
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("màn Chi phí: chọn khoảng ngày, nhóm dữ liệu và cập nhật ngân sách dự án", async ({ page }) => {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () => ok({ orgs: [myOrg(ORG_A)], canCreateOrg: false }),
+      "projects/list": () => ok([PROJECT]),
+      "costs/summary": (input) => {
+        const groupBy = (input as { groupBy: string }).groupBy;
+        return ok({
+          groupBy,
+          groups: [
+            {
+              key: groupBy === "day" ? "2026-10-11" : "claude",
+              runs: 2,
+              tokensIn: 900,
+              tokensOut: 400,
+              cacheRead: 10,
+              cacheWrite: 0,
+              costUsd: 1.25,
+            },
+          ],
+          total: { runs: 2, tokensIn: 900, tokensOut: 400, cacheRead: 10, cacheWrite: 0, costUsd: 1.25 },
+        });
+      },
+      "costs/budgetStopped": () =>
+        ok([
+          {
+            runId: "6a6a6a6a-0000-4000-8000-000000000001",
+            taskId: "7a7a7a7a-0000-4000-8000-000000000001",
+            taskKey: "PAY-31",
+            taskTitle: "Xử lý thanh toán",
+            reason: "per_run_usd",
+            measured: 2.03,
+            limit: 2,
+            stoppedAt: at,
+          },
+        ]),
+      "projects/updateSettings": (input) => {
+        const settings = (
+          input as {
+            settings: { budget: { perRunUsd: number | null; perTaskUsd: number | null; maxTurns: number | null } };
+          }
+        ).settings;
+        return ok({ ...PROJECT.settings, budget: settings.budget });
+      },
+    },
+  });
+  await page.goto("/admin/costs");
+  await expect(page.getByRole("heading", { name: "Chi phí và token", exact: true })).toBeVisible();
+  await expect(page.getByText("1,25 US$", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Vượt trần USD/run")).toBeVisible();
+  await page.screenshot({ path: "e2e/screenshots/costs.png", fullPage: true });
+  await page.getByLabel("Khoảng thời gian").selectOption("7");
+  await page.getByLabel("Nhóm theo").selectOption("machine");
+  await expect(page.getByRole("columnheader", { name: "Mã máy" })).toBeVisible();
+
+  await page.getByLabel("USD mỗi run").fill("5");
+  await page.getByLabel("USD mỗi việc").fill("20");
+  await page.getByLabel("Lượt agent tối đa").fill("12");
+  await page.getByRole("button", { name: "Lưu ngân sách" }).click();
+  await expect.poll(() => hub.rpcCalls.some((call) => call.path === "projects/updateSettings")).toBe(true);
+  expect(hub.rpcCalls.find((call) => call.path === "projects/updateSettings")).toMatchObject({
+    org: ORG_A.id,
+    input: { key: PROJECT.key, settings: { budget: { perRunUsd: 5, perTaskUsd: 20, maxTurns: 12 } } },
+  });
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 const INVITES = [
   {
     id: "1a1a1a1a-0000-4000-8000-000000000001",

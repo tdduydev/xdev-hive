@@ -201,7 +201,9 @@ describe("runs.steer", () => {
     const sent = await api<{ status: string }>("POST", `/v1/runs/${run.id}/steer`, { input: "Thêm test cho số âm" });
     expect(sent).toEqual({ status: 200, data: { status: "pending" } });
     const events = await admin.query("select data from hive.run_events where run_id = $1 and type = 'steer'", [run.id]);
-    expect(events.rows.map((r) => r.data)).toEqual([{ input: "Thêm test cho số âm", by: devUserId, delivered: false }]);
+    expect(events.rows.map((r) => r.data)).toEqual([
+      { input: "Thêm test cho số âm", by: devUserId, delivered: false, sent: false },
+    ]);
     const audit = await admin.query(
       "select data from hive.audit_log where action = 'run.steer' and target_id = $1::text",
       [run.id],

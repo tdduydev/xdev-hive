@@ -4,6 +4,7 @@ package channel
 // -test.run=^TestHelperCLI$, repo là bare repo git cục bộ.
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -58,8 +59,35 @@ func TestHelperCLI(t *testing.T) {
 		helperCommit()
 	case "commit":
 		helperCommit()
+	case "stream":
+		helperStream()
 	}
 	os.Exit(0)
+}
+
+// helperStream làm như `claude -p --input-format stream-json --replay-user-messages`: phát lại prompt và một chỉ dẫn,
+// in result, rồi chỉ thoát khi worker đóng stdin. stdin đóng trước lượt cuối thì thoát mã 5.
+func helperStream() {
+	sc := bufio.NewScanner(os.Stdin)
+	for range 2 {
+		var m struct {
+			UUID string `json:"uuid"`
+		}
+		done := make(chan bool, 1)
+		go func() { done <- sc.Scan() }()
+		select {
+		case ok := <-done:
+			if !ok || json.Unmarshal(sc.Bytes(), &m) != nil {
+				os.Exit(5)
+			}
+		case <-time.After(waitFor):
+			os.Exit(6)
+		}
+		fmt.Printf(`{"type":"user","uuid":%q,"isReplay":true}`+"\n", m.UUID)
+	}
+	fmt.Println(`{"type":"result","subtype":"success","is_error":false}`)
+	for sc.Scan() {
+	}
 }
 
 func helperCommit() {
@@ -355,6 +383,35 @@ func TestJobOfferToResult(t *testing.T) {
 	eventually(t, "hàng đợi trống", noFiles(filepath.Join(cfg.DataDir, "pending", "*.json")))
 	eventually(t, "marker được gỡ", noFiles(filepath.Join(cfg.DataDir, "active", "*.json")))
 	eventually(t, "worktree được gỡ", noFiles(filepath.Join(cfg.DataDir, "runs", "*")))
+}
+
+// Hub gửi chỉ dẫn cho run đang chạy: tới đúng CLI qua stdin, worker báo steer_result đã áp dụng, run kết thúc bình
+// thường. Chỉ dẫn cho run không có trên máy thì bị bỏ, không có gói trả lời.
+func TestSteerReachesRunningCLI(t *testing.T) {
+	remote, base := makeRemote(t)
+	hub := newFakeHub(t, true)
+	cfg := workerConfig(t, hub, "stream")
+	cfg.CLICommands = map[string]runner.Command{"codex": {Path: os.Args[0], Args: []string{"-test.run=^TestHelperCLI$", "--", "hive-helper", "stream"}, Input: runner.InputStreamJSON}}
+	startWorker(t, cfg)
+	c := hub.accept(t)
+	c.offer(t, "run-1", jobSpecFor(remote, base, "ai/T-steer"))
+	c.nextType(t, "job_accept")
+	c.lease(t, "run-1", "tok-1")
+	c.next(t, "pha running", func(m wmsg) bool { return m.Type == "run_event" && m.phase() == "running" })
+	c.send(t, `{"type":"steer","v":1,"id":"s0","runId":"run-x","attempt":1,"steerId":"9","input":"nhầm run"}`)
+	c.send(t, `{"type":"steer","v":1,"id":"s1","runId":"run-1","attempt":1,"steerId":"42","input":"thêm test"}`)
+	var results []string
+	for _, m := range c.untilResult(t, "run-1") {
+		if m.Type == "run_event" && m.Event == "steer_result" {
+			results = append(results, string(m.Data))
+		}
+		if m.Type == "run_result" && (m.Exit != 0 || m.report().Status != "no_changes") {
+			t.Fatalf("run_result = %+v report %+v", m, m.report())
+		}
+	}
+	if len(results) != 1 || results[0] != `{"steerId":"42","applied":true}` {
+		t.Fatalf("steer_result = %v", results)
+	}
 }
 
 func TestReconnectResendsUnackedAndKeepsRunAlive(t *testing.T) {

@@ -1,7 +1,9 @@
 package runner
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -9,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -83,6 +86,50 @@ func TestRunnerReviewChecksOutParentBranchWithoutPush(t *testing.T) {
 			}
 			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-1")); now != parentSHA {
 				t.Fatalf("nhánh của cha bị đổi: %s → %s", parentSHA, now)
+			}
+		})
+	}
+}
+
+// Run plan đọc nhánh chính (không phải nhánh ai/<task> còn sót của run trước), không push dù agent lỡ commit.
+func TestRunnerPlanReadsBaseWithoutPush(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	src := filepath.Join(t.TempDir(), "old")
+	must(t, "git", "clone", remote, src)
+	must(t, "git", "-C", src, "checkout", "-b", "ai/HD-2")
+	mustDir(t, src, "stale.txt", "của run trước")
+	must(t, "git", "-C", src, "add", ".")
+	must(t, "git", "-C", src, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "cũ")
+	must(t, "git", "-C", src, "push", "origin", "ai/HD-2")
+	oldSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2"))
+	baseSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base))
+
+	for _, mode := range []string{"empty", "commit"} {
+		t.Run(mode, func(t *testing.T) {
+			var events []Event
+			r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
+			job := Job{RunID: "plan-" + mode, Kind: KindPlan, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
+			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
+				t.Fatal(err)
+			}
+			got := lastResult(events)
+			if got == nil || got.Status != "succeeded" || got.CommitCount != 0 || len(got.ChangedFiles) != 0 {
+				t.Fatalf("result = %#v", got)
+			}
+			if mode == "empty" && got.HeadSHA != baseSHA {
+				t.Fatalf("HEAD = %s, muốn nhánh chính %s", got.HeadSHA, baseSHA)
+			}
+			for _, e := range events {
+				if e.Type == "phase" && e.Phase == "publishing" {
+					t.Fatal("run plan không được push")
+				}
+			}
+			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2")); now != oldSHA {
+				t.Fatalf("nhánh ai/HD-2 bị đổi: %s → %s", oldSHA, now)
+			}
+			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base)); now != baseSHA {
+				t.Fatalf("nhánh chính bị đổi: %s → %s", baseSHA, now)
 			}
 		})
 	}
@@ -250,6 +297,11 @@ func TestFakeCLIHelper(t *testing.T) {
 		os.Exit(0)
 	}
 	switch os.Getenv("HIVE_FAKE_MODE") {
+	case "stream":
+		fakeStreamCLI()
+	case "wait":
+		time.Sleep(300 * time.Millisecond)
+		os.Exit(0)
 	case "usage-ok":
 		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
 		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)
@@ -266,6 +318,12 @@ func TestFakeCLIHelper(t *testing.T) {
 	if f := os.Getenv("HIVE_FAKE_EXPECT_FILE"); f != "" {
 		if _, err := os.Stat(f); err != nil {
 			os.Exit(4)
+		}
+	}
+	// Run plan không được thấy code của nhánh khác ngoài nhánh chính.
+	if f := os.Getenv("HIVE_FAKE_ABSENT_FILE"); f != "" {
+		if _, err := os.Stat(f); err == nil {
+			os.Exit(5)
 		}
 	}
 	if os.Getenv("HIVE_FAKE_MODE") == "loud" {
@@ -286,6 +344,54 @@ func TestFakeCLIHelper(t *testing.T) {
 		if err := c.Run(); err != nil {
 			os.Exit(3)
 		}
+	}
+	os.Exit(0)
+}
+
+// fakeStreamCLI làm như `claude -p --input-format stream-json --replay-user-messages`: đọc tin user từ stdin, phát lại
+// tin đã nhận (cùng uuid), in result khi đủ HIVE_FAKE_STEERS chỉ dẫn sau prompt, rồi chỉ thoát khi stdin đóng như
+// Claude thật. stdin đóng sớm hơn (runner đóng trước lượt cuối) thì thoát mã 5.
+func fakeStreamCLI() {
+	want, _ := strconv.Atoi(os.Getenv("HIVE_FAKE_STEERS"))
+	record, err := os.OpenFile(os.Getenv("HIVE_FAKE_RECORD"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		os.Exit(7)
+	}
+	lines := make(chan []byte)
+	go func() {
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(nil, 1<<20)
+		for sc.Scan() {
+			lines <- append([]byte(nil), sc.Bytes()...)
+		}
+		close(lines)
+	}()
+	for got := -1; got < want; got++ {
+		select {
+		case b, ok := <-lines:
+			if !ok {
+				os.Exit(5)
+			}
+			var m struct {
+				Type    string `json:"type"`
+				UUID    string `json:"uuid"`
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(b, &m) != nil || m.Type != "user" || m.UUID == "" {
+				os.Exit(8)
+			}
+			content, _ := json.Marshal(m.Message.Content)
+			_, _ = fmt.Fprintf(record, "%s\n", content)
+			fmt.Printf(`{"type":"user","uuid":%q,"isReplay":true,"message":{"role":"user","content":%s}}`+"\n", m.UUID, content)
+		case <-time.After(10 * time.Second):
+			os.Exit(6)
+		}
+	}
+	_ = record.Close()
+	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"num_turns":1}`)
+	for range lines {
 	}
 	os.Exit(0)
 }
@@ -380,10 +486,10 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 		cli, model string
 		want       []string
 	}{
-		{"claude", "sonnet", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"claude", "", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"codex", "gpt-test", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
 		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
+		{"claude", "sonnet", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"claude", "", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
 		{"gemini", "", []string{"-p", "prompt"}},
 	} {
@@ -398,6 +504,10 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		}()
 		args := cmd.Args[1:]
+		// Chỉ Claude nhận prompt qua stdin; CLI khác vẫn nhận prompt trong tham số.
+		if wantInput := map[bool]string{true: InputStreamJSON}[tc.cli == "claude"]; cmd.input != wantInput {
+			t.Fatalf("%s input = %q", tc.cli, cmd.input)
+		}
 		// Quyền được kiểm riêng ở TestRunPermissionArguments; ở đây kiểm model và MCP.
 		switch tc.cli {
 		case "claude":
@@ -435,6 +545,38 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		} else if strings.Join(args, "\x00") != strings.Join(tc.want, "\x00") {
 			t.Fatalf("%s args = %q, want %q", tc.cli, args, tc.want)
+		}
+	}
+}
+
+// Run plan bật chế độ chỉ đọc của từng CLI; run code và run review giữ nguyên lệnh (TestDefaultCLIArgumentsAndClaudeMCPFile).
+func TestPlanCLIArgumentsAreReadOnly(t *testing.T) {
+	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
+	for _, tc := range []struct {
+		cli  string
+		want []string
+	}{
+		{"claude", []string{"--permission-mode", "plan"}},
+		{"codex", []string{"--sandbox", "read-only"}},
+		{"gemini", []string{"--approval-mode", "plan"}},
+	} {
+		for _, kind := range []string{KindPlan, "", KindReview} {
+			cmd, err := (Runner{}).cliCommand(Job{CLI: tc.cli, Kind: kind, Prompt: "prompt", Env: env})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cmd.cleanup != nil {
+				cmd.cleanup()
+			}
+			args := strings.Join(cmd.Args[1:], "\x00")
+			has := strings.Contains(args, strings.Join(tc.want, "\x00"))
+			if has != (kind == KindPlan) {
+				t.Fatalf("%s kind=%q args = %q", tc.cli, kind, cmd.Args[1:])
+			}
+			// Prompt vẫn là đối số cuối của codex (cờ phải đứng trước nó).
+			if tc.cli == "codex" && cmd.Args[len(cmd.Args)-1] != "prompt" {
+				t.Fatalf("codex args = %q", cmd.Args[1:])
+			}
 		}
 	}
 }

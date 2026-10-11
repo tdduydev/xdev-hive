@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ForbiddenError, type Tx } from "../platform/index.ts";
 import { orgMembers, type orgRole, teamMembers, type teamRole, teams } from "./schema.ts";
 
@@ -10,6 +10,22 @@ const TEAM_RANK: Record<TeamRole, number> = { viewer: 1, member: 2, admin: 3 };
 
 const ORG_LABEL: Record<OrgRole, string> = { owner: "chủ sở hữu", admin: "quản trị", member: "thành viên" };
 const TEAM_LABEL: Record<TeamRole, string> = { admin: "quản trị", member: "thành viên", viewer: "người xem" };
+
+/** Lọc người nhận thật trong tổ chức: created_by của webhook có thể là danh tính Git, không phải tài khoản hub. */
+export async function notificationRecipients(tx: Tx, userIds?: string[]): Promise<string[]> {
+  if (userIds?.length === 0) return [];
+  const rows = await tx
+    .select({ userId: orgMembers.userId })
+    .from(orgMembers)
+    .where(
+      and(
+        eq(orgMembers.orgId, sql`hive.ctx_org()`),
+        eq(orgMembers.status, "active"),
+        userIds ? inArray(orgMembers.userId, [...new Set(userIds)]) : inArray(orgMembers.role, ["owner", "admin"]),
+      ),
+    );
+  return rows.map((r) => r.userId);
+}
 
 /**
  * Vai trò của người dùng trong tổ chức đang ở context, hoặc null nếu không phải thành viên đang hoạt động.

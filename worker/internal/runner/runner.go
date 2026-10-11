@@ -21,9 +21,12 @@ import (
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
 const KindReview = "review"
 
+// KindPlan là run lập kế hoạch của plan mode: đọc nhánh chính, CLI chạy ở chế độ chỉ đọc, không push.
+const KindPlan = "plan"
+
 type Job struct {
 	RunID                                           string
-	Kind                                            string // "code" (mặc định) hoặc KindReview
+	Kind                                            string // "code" (mặc định), KindReview hoặc KindPlan
 	Budget                                          Budget
 	RunPermissions                                  string
 	gitRoots                                        []string
@@ -32,6 +35,8 @@ type Job struct {
 	Env                                             map[string]string
 	Timeout                                         time.Duration
 	SetupScript                                     string
+	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
+	Steers <-chan Steer
 }
 
 type Event struct {
@@ -45,6 +50,8 @@ type Event struct {
 	Result  *Result `json:"result,omitempty"`
 	// Cost có ở sự kiện "cost": usage luỹ kế của lần chạy CLI.
 	Cost *Usage `json:"cost,omitempty"`
+	// Steer có ở sự kiện "steer_result".
+	Steer *SteerResult `json:"steer,omitempty"`
 }
 
 type Sink interface{ Emit(Event) error }
@@ -61,14 +68,17 @@ type Result struct {
 	Error        string     `json:"error,omitempty"`
 }
 
-// Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
+// Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job. Input là InputStreamJSON khi
+// CLI đọc prompt và chỉ dẫn giữa chừng từ stdin; để trống thì stdin không nối gì.
 type Command struct {
-	Path string   `json:"path"`
-	Args []string `json:"args"`
+	Path  string   `json:"path"`
+	Args  []string `json:"args"`
+	Input string   `json:"input,omitempty"`
 }
 
 // CLIOverridesEnv thay lệnh của từng CLI mà không phải build lại worker, để scripts/e2e-smoke.ts trỏ "claude" tới
-// một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}.
+// một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}; thêm
+// "input": "stream-json" nếu CLI giả đọc prompt từ stdin như Claude.
 const CLIOverridesEnv = "HIVE_WORKER_CLI_OVERRIDES"
 
 // CommandsFromEnv đọc HIVE_WORKER_CLI_OVERRIDES; biến trống thì trả map rỗng.
@@ -179,6 +189,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
+	} else if job.Kind == KindPlan {
+		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
+		// của run code.
+		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {
+			return err
+		}
 	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
@@ -231,12 +247,31 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}()
 	process.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
 	process.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
+	steer := newSteering(job.CLI, func(res SteerResult) {
+		if res.SteerID != "" {
+			_ = emit(sink, Event{Type: "steer_result", RunID: job.RunID, Attempt: job.Attempt, Steer: &res})
+		}
+	})
+	// Chạy trước khi defer gửi run_result: chỉ dẫn tới lúc verifying vẫn được báo là chưa áp dụng, sau đó thì thôi.
+	defer steer.shutdown()
+	var stdin io.WriteCloser
+	if cmd.input == InputStreamJSON {
+		if stdin, err = process.StdinPipe(); err != nil {
+			return err
+		}
+		process.Stdout = io.MultiWriter(process.Stdout, steer)
+	}
 	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
 	process.WaitDelay = r.grace()
 	if err := startProcess(process); err != nil {
 		return err
 	}
+	if stdin != nil {
+		steer.attach(stdin, job.Prompt)
+	}
+	steer.listen(job.Steers)
 	waitErr := waitProcess(runCtx, process, r.grace)
+	steer.finish()
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
@@ -267,8 +302,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
 	}
-	if job.Kind == KindReview {
-		// Run review không nộp code: hub chấm theo việc agent đã gọi review_submit, nên không đếm commit, không push.
+	if job.Kind == KindReview || job.Kind == KindPlan {
+		// Run review và run plan không nộp code: hub chấm theo việc agent đã gọi review_submit hay plan_submit, nên không
+		// đếm commit, không push.
 		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 		if err != nil {
 			return err
@@ -371,6 +407,8 @@ func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
 type cliExecCmd struct {
 	*exec.Cmd
 	cleanup func()
+	// input là Command.Input: InputStreamJSON thì runner gửi prompt và chỉ dẫn qua stdin.
+	input string
 }
 
 func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
@@ -393,28 +431,44 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if err != nil {
 				return nil, err
 			}
-			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			// Prompt đi qua stdin (stream-json) để còn gửi thêm chỉ dẫn khi agent đang chạy; xem steering.
+			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			if j.Kind == KindPlan {
+				// Chế độ plan của Claude Code chặn sửa file và chạy lệnh (đã thử trên claude 2.1.296); tool MCP chỉ gọi được
+				// khi có readOnlyHint, hub đánh dấu plan_submit như vậy.
+				args = append(args, "--permission-mode", "plan")
+			}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
 			}
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			switch {
+			case j.Kind == KindPlan:
+				// Giữ chế độ plan ở trên: thêm --permission-mode thứ hai sẽ ghi đè nó và mất tính chỉ đọc.
+			case j.RunPermissions == "full":
 				args = append(args, "--permission-mode", "bypassPermissions")
-			} else {
+			default:
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
 				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
 			}
-			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
+			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON}, nil
 		case "codex":
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			if j.Kind == KindPlan {
+				// Sandbox read-only chặn ghi file và lệnh ghi; tool MCP vẫn gọi được (đã thử trên codex-cli 0.162.1).
+				args = append(args, "--sandbox", "read-only")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			// Run plan giữ sandbox read-only ở trên, không nhận cờ quyền ghi.
+			if j.Kind == KindPlan {
+				args = append(args, "-c", `approval_policy="never"`)
+			} else if j.RunPermissions == "full" {
 				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 			} else {
 				args = append(args, "-s", "workspace-write", "-c", `approval_policy="never"`)
@@ -430,10 +484,18 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
+			if j.Kind == KindPlan {
+				// "plan (read-only mode)" theo gemini --help bản 0.63.0.
+				args = append(args, "--approval-mode", "plan")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
 			args = append(args, "--skip-trust")
+			// Run plan không nhận policy cho phép shell hay chế độ yolo, vì chúng ghi đè chế độ plan chỉ đọc.
+			if j.Kind == KindPlan {
+				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			}
 			if j.RunPermissions == "full" {
 				args = append(args, "--approval-mode", "yolo")
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
@@ -459,7 +521,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			configured.Args[i] = strings.ReplaceAll(configured.Args[i], "{{prompt}}", j.Prompt)
 		}
 	}
-	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...)}, nil
+	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...), input: configured.Input}, nil
 }
 
 func claudeMCPConfig(env map[string]string) (string, error) {

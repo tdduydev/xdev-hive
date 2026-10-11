@@ -22,7 +22,7 @@ import WebSocket from "ws";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
-import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
+import { attachWorkerGateway, pauseMachine, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
@@ -431,6 +431,41 @@ describe("run từ đầu tới PR", () => {
   });
 });
 
+describe("máy tạm dừng", () => {
+  it("run đã nhận tiếp tục tới xong; offer mới được chuyển sang máy khác", async () => {
+    const firstMachine = await seedMachine(`pause-a-${tag}`);
+    const firstWorker = await FakeWorker.connect(firstMachine);
+    const runningTask = await newTask("Run đang chạy khi tạm dừng");
+    const running = await startRun(runningTask.id);
+    await firstWorker.next("job_offer", (offer) => offer.runId === running.id);
+    firstWorker.send({ type: "job_accept", runId: running.id, attempt: 1 });
+    await firstWorker.next("lease", (lease) => lease.runId === running.id);
+
+    await withTenant(pool, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
+      pauseMachine(tx, org.user("admin"), firstMachine.id),
+    );
+    const secondMachine = await seedMachine(`pause-b-${tag}`);
+    const secondWorker = await FakeWorker.connect(secondMachine);
+    const queuedTask = await newTask("Run mới sau khi tạm dừng");
+    const queued = await startRun(queuedTask.id);
+    const offer = await secondWorker.next("job_offer", (message) => message.runId === queued.id);
+    expect(offer.runId).toBe(queued.id);
+    expect(await firstWorker.has("job_offer")).toBe(false);
+
+    firstWorker.sendRun({
+      type: "run_result",
+      runId: running.id,
+      attempt: 1,
+      exit: 0,
+      headSha: null,
+      report: { commitCount: 0 },
+    });
+    await until(async () => (await runRow(running.id)).state === "no_changes");
+    await secondWorker.close();
+    await firstWorker.close();
+  });
+});
+
 describe("model theo cấu hình dự án", () => {
   it("đưa model cấu hình vào spec và cho người giao ghi đè", async () => {
     const m = await seedMachine(`model-${tag}`);
@@ -647,8 +682,14 @@ describe("thông báo cho nhóm quản trị", () => {
       link: `${publicUrl}/tasks/${task.key}`,
     });
     expect(failed.body).toContain("Agent thoát lỗi");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event, link from hive.inbox_items where org_id = $1 and event_key = $2",
+      [org.orgId, `${run.id}:1:failed`],
+    );
+    expect(inbox).toEqual([{ user_id: devUserId, event: "run.failed", link: `${publicUrl}/tasks/${task.key}` }]);
 
     const lost = await newTask("Máy mất giữa chừng");
+    await admin.query("update hive.tasks set created_by = $1 where id = $2", [org.user("tmember"), lost.id]);
     const run2 = await startRun(lost.id);
     await admin.query("update hive.runs set max_attempts = 1 where id = $1", [run2.id]);
     await w.next("job_offer", (o) => o.runId === run2.id);
@@ -661,7 +702,104 @@ describe("thông báo cho nhóm quản trị", () => {
     const [gone] = await notes(lost.key);
     expect(gone).toMatchObject({ event: "run.failed" });
     expect(gone.body).toContain("Mất kết nối với máy");
+    expect(
+      (
+        await admin.query("select user_id from hive.inbox_items where org_id = $1 and event_key = $2", [
+          org.orgId,
+          `${run2.id}:1:failed`,
+        ])
+      ).rows
+        .map((r) => r.user_id)
+        .sort(),
+    ).toEqual([devUserId, org.user("tmember")].sort());
     await w.close();
+  });
+});
+
+describe("chỉ dẫn cho run đang chạy", () => {
+  async function steer(runId: string, input: string) {
+    const { status, afterCommit } = await withTenant(pool, { orgId: org.orgId }, (tx) =>
+      engine.steerRun(tx, runId, input, "dev"),
+    );
+    afterCommit();
+    return status;
+  }
+  const audits = async (runId: string) =>
+    (
+      await admin.query(
+        "select action, actor_user_id, data from hive.audit_log where target_id = $1 and action like 'run.steer%' order by created_at, id",
+        [runId],
+      )
+    ).rows;
+
+  it("gói steer mang steerId và attempt; worker báo đã/chưa đưa vào agent; lần thử sau vẫn mang chỉ dẫn", async () => {
+    const m = await seedMachine(`steer-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Chỉ dẫn giữa chừng");
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    const lease = await w.next("lease", (l) => l.runId === run.id);
+    const s0 = w.sendRun({ type: "run_event", runId: run.id, attempt: 1, event: "phase", data: { phase: "running" } });
+    await w.next("ack", (a) => a.uptoSeq === s0);
+
+    expect(await steer(run.id, "thêm test cho số âm")).toBe("sent");
+    const first = await w.next("steer", (s) => s.runId === run.id);
+    expect(first).toMatchObject({ attempt: 1, input: "thêm test cho số âm", steerId: expect.stringMatching(/^\d+$/) });
+    expect(await steer(run.id, "đổi tên biến")).toBe("sent");
+    const second = await w.next("steer", (s) => s.runId === run.id && s.input === "đổi tên biến");
+
+    const results = [
+      { steerId: first.steerId, applied: true },
+      { steerId: second.steerId, applied: false, reason: "CLI codex chưa nhận chỉ dẫn giữa chừng" },
+      // id không phải chỉ dẫn của run này: vẫn lưu sự kiện nhưng không ghi audit.
+      { steerId: "999999999", applied: true },
+    ];
+    for (const data of results) {
+      const seq = w.sendRun({ type: "run_event", runId: run.id, attempt: 1, event: "steer_result", data });
+      await w.next("ack", (a) => a.uptoSeq === seq);
+    }
+
+    expect(await audits(run.id)).toEqual([
+      { action: "run.steer_applied", actor_user_id: null, data: { steerId: Number(first.steerId), attempt: 1 } },
+      {
+        action: "run.steer_not_applied",
+        actor_user_id: null,
+        data: { steerId: Number(second.steerId), attempt: 1, reason: "CLI codex chưa nhận chỉ dẫn giữa chừng" },
+      },
+    ]);
+
+    // Web ghép steer với steer_result theo id: sự kiện steer giữ delivered false, kết quả nằm ở steer_result.
+    const { data: events } = await api<Array<{ id: number; type: string; data: Record<string, unknown> }>>(
+      "GET",
+      `/v1/runs/${run.id}/events`,
+    );
+    const steers = events.filter((e) => e.type === "steer");
+    expect(steers.map((e) => [String(e.id), e.data])).toEqual([
+      [first.steerId, { input: "thêm test cho số âm", by: "dev", delivered: false, sent: true }],
+      [second.steerId, { input: "đổi tên biến", by: "dev", delivered: false, sent: true }],
+    ]);
+    expect(events.filter((e) => e.type === "steer_result").map((e) => e.data)).toEqual(results);
+
+    // Mất máy: lần thử sau làm lại từ đầu nên vẫn nhận mọi chỉ dẫn trong prompt, kể cả chỉ dẫn đã vào lần thử trước.
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run.id, leaseId: lease.leaseId });
+    const retry = await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 2);
+    expect(retry.spec.instructions).toEqual(["thêm test cho số âm", "đổi tên biến"]);
+    await w.close();
+  });
+
+  it("run chưa tới máy: chỉ ghi lại, không gửi gói steer", async () => {
+    const task = await newTask("Chỉ dẫn khi chờ máy", { preferredCli: "gemini" });
+    const run = await startRun(task.id);
+    expect(await steer(run.id, "nhớ chạy lint")).toBe("pending");
+    const { rows } = await admin.query("select data from hive.run_events where run_id = $1 and type = 'steer'", [
+      run.id,
+    ]);
+    expect(rows).toEqual([{ data: { input: "nhớ chạy lint", by: "dev", delivered: false, sent: false } }]);
+    await api("POST", `/v1/runs/${run.id}/cancel`);
   });
 });
 
@@ -835,6 +973,33 @@ describe("chi phí và ngân sách", () => {
       report: { status: "failed", error: "Vượt ngân sách: chi phí $0.2500 > $0.2000" },
     });
     await until(async () => (await runRow(run2.id)).state === "failed");
+
+    await admin.query("update hive.team_members set role = 'admin' where team_id = $1 and user_id = $2", [
+      org.teamId,
+      userId,
+    ]);
+    try {
+      const stopped = await api<Array<Record<string, unknown>>>(
+        "GET",
+        `/v1/costs/budget-stopped?projectId=${budgetProject}`,
+      );
+      expect(stopped.status).toBe(200);
+      expect(stopped.data).toEqual([
+        expect.objectContaining({
+          runId: run2.id,
+          taskId: task.id,
+          taskKey: task.key,
+          reason: "per_task_usd",
+          measured: 0.55,
+          limit: 0.5,
+        }),
+      ]);
+    } finally {
+      await admin.query("update hive.team_members set role = 'member' where team_id = $1 and user_id = $2", [
+        org.teamId,
+        userId,
+      ]);
+    }
 
     const refused = await api<{ message: string; data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id });
     expect(refused.status).toBe(400);

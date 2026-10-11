@@ -17,7 +17,7 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   version: m.version,
   clis: m.clis,
   capacity: m.capacity,
-  status: m.status,
+  status: m.pausedAt ? "paused" : m.status,
   lastSeenAt: m.lastSeenAt?.toISOString() ?? null,
   createdAt: m.createdAt.toISOString(),
 });
@@ -39,7 +39,7 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
   await tx.delete(machineTokens).where(eq(machineTokens.machineId, machineId));
   const [row] = await tx
     .update(machines)
-    .set({ status: "revoked", revokedAt: found.revokedAt ?? sql`now()` })
+    .set({ status: "revoked", pausedAt: null, revokedAt: found.revokedAt ?? sql`now()` })
     .where(eq(machines.id, machineId))
     .returning();
   if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
@@ -51,6 +51,43 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
   });
   return toMachine(row);
 }
+
+async function setMachinePaused(tx: Tx, userId: string, machineId: string, paused: boolean): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
+  const [row] = await tx
+    .update(machines)
+    .set({ pausedAt: paused ? (found.pausedAt ?? sql`now()`) : null })
+    .where(eq(machines.id, machineId))
+    .returning();
+  if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  if (Boolean(found.pausedAt) !== paused) {
+    await recordAudit(tx, {
+      action: paused ? "machine.pause" : "machine.resume",
+      targetType: "machine",
+      targetId: machineId,
+      data: { name: row.name, teamId: row.teamId },
+    });
+  }
+  return toMachine(row);
+}
+
+export async function machineIsPaused(tx: Tx, machineId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ pausedAt: machines.pausedAt })
+    .from(machines)
+    .where(eq(machines.id, machineId))
+    .for("update");
+  return row?.pausedAt !== null && row?.pausedAt !== undefined;
+}
+
+export const pauseMachine = (tx: Tx, userId: string, machineId: string) =>
+  setMachinePaused(tx, userId, machineId, true);
+
+export const resumeMachine = (tx: Tx, userId: string, machineId: string) =>
+  setMachinePaused(tx, userId, machineId, false);
 
 /** Máy đã xác thực bằng machine token; gateway giữ thông tin này suốt phiên. */
 export interface AuthedMachine {
@@ -110,7 +147,12 @@ export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: Machine
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
       .update(machines)
-      .set({ ...info, status: "online", lastSeenAt: sql`now()`, offlineNotifiedAt: null })
+      .set({
+        ...info,
+        status: "online",
+        lastSeenAt: sql`now()`,
+        offlineNotifiedAt: null,
+      })
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
       .returning({ id: machines.id }),
   );
@@ -127,7 +169,11 @@ export async function markOffline(
     const [row] = await tx
       .update(machines)
       // Payload JSON giữ mili giây; làm tròn timestamp để job không mất micro giây khi so sánh lúc xử lý.
-      .set({ status: "offline", lastSeenAt: sql`date_trunc('milliseconds', now())`, offlineNotifiedAt: null })
+      .set({
+        status: "offline",
+        lastSeenAt: sql`date_trunc('milliseconds', now())`,
+        offlineNotifiedAt: null,
+      })
       .where(and(eq(machines.id, m.id), eq(machines.status, "online"), isNull(machines.revokedAt)))
       .returning({ offlineAt: machines.lastSeenAt });
     if (!row?.offlineAt || !opts.jobs) return;
@@ -186,6 +232,7 @@ export async function checkMachineOffline(
       {
         orgId: job.orgId,
         event: "machine.offline",
+        eventKey: `${job.machineId}:${job.offlineAt}`,
         title: `Máy ${row.name} mất kết nối hơn ${delayMinutes} phút`,
         body: `Đội ${row.teamName}.`,
         link: `${publicUrl.replace(/\/+$/, "")}/admin/machines`,
@@ -219,7 +266,14 @@ export async function listOnlineMachines(
   return tx
     .select({ id: machines.id, name: machines.name, clis: machines.clis, capacity: machines.capacity })
     .from(machines)
-    .where(and(eq(machines.teamId, teamId), eq(machines.status, "online"), isNull(machines.revokedAt)))
+    .where(
+      and(
+        eq(machines.teamId, teamId),
+        eq(machines.status, "online"),
+        isNull(machines.pausedAt),
+        isNull(machines.revokedAt),
+      ),
+    )
     .orderBy(asc(machines.lastSeenAt));
 }
 

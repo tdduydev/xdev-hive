@@ -3,7 +3,14 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPool, ForbiddenError, withTenant } from "../platform/index.ts";
 import { FleetError } from "./errors.ts";
-import { authenticateMachine, listMachines, revokeMachine } from "./machines.ts";
+import {
+  authenticateMachine,
+  listMachines,
+  listOnlineMachines,
+  pauseMachine,
+  resumeMachine,
+  revokeMachine,
+} from "./machines.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
 import { hashToken } from "./tokens.ts";
 
@@ -209,5 +216,33 @@ describe("danh sách và thu hồi", () => {
         withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) => revokeMachine(tx, user("admin"), randomUUID())),
       ),
     ).toBe("MACHINE_NOT_FOUND");
+  });
+});
+
+describe("tạm dừng máy", () => {
+  it("không giao run mới, giữ kết nối và ghi audit khi tạm dừng/chạy lại", async () => {
+    const machine = await register((await newRegistration()).token, `pause-${tag}`);
+    await admin.query("update hive.machines set status = 'online' where id = $1", [machine.id]);
+    const pause = await withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) =>
+      pauseMachine(tx, user("admin"), machine.id),
+    );
+    expect(pause.status).toBe("paused");
+    expect(
+      (
+        await withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) => listMachines(tx, user("admin"), teamA))
+      ).find((row) => row.id === machine.id)?.status,
+    ).toBe("paused");
+    expect(await withTenant(app, { orgId: orgA }, (tx) => listOnlineMachines(tx, teamA))).not.toContainEqual(
+      expect.objectContaining({ id: machine.id }),
+    );
+    const resumed = await withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) =>
+      resumeMachine(tx, user("admin"), machine.id),
+    );
+    expect(resumed.status).toBe("online");
+    const { rows } = await admin.query(
+      "select action from hive.audit_log where org_id = $1 and target_id = $2 and action in ('machine.pause', 'machine.resume') order by created_at",
+      [orgA, machine.id],
+    );
+    expect(rows.map((row) => row.action)).toEqual(["machine.pause", "machine.resume"]);
   });
 });

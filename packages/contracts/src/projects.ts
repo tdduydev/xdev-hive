@@ -142,18 +142,21 @@ export const projectSettings = z.object({
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       codex: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       gemini: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
     })
@@ -356,6 +359,9 @@ export type ProvisionView = z.output<typeof provisionView>;
 export const mergeQueueState = z.enum(["queued", "updating", "waiting", "merging", "merged", "failed", "removed"]);
 export type MergeQueueState = z.output<typeof mergeQueueState>;
 
+export const mergeQueueCiState = z.enum(["success", "pending", "failure", "none"]);
+export type MergeQueueCiState = z.output<typeof mergeQueueCiState>;
+
 export const mergeQueueEntry = z.object({
   id,
   projectId: id,
@@ -363,6 +369,8 @@ export const mergeQueueEntry = z.object({
   prUrl: z.string().nullable(),
   branch: z.string().nullable(),
   headSha: z.string().nullable(),
+  /** Kết quả CI gần nhất hàng merge đã kiểm tra trên headSha; null khi chưa kiểm tra. */
+  ciState: mergeQueueCiState.nullable(),
   runId: id.nullable(),
   taskId: id.nullable(),
   state: mergeQueueState,

@@ -300,6 +300,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "memory_search",
       "memory_write",
       "orgs_list",
+      "plan_submit",
       "review_submit",
       "skill_get",
       "skill_list",
@@ -308,6 +309,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "task_update",
       "teams_list",
     ]);
+    // plan_submit ghi lên hub nhưng vẫn khai chỉ đọc: Claude Code ở chế độ plan chỉ cho gọi tool MCP chỉ đọc.
     const writes = ["task_update", "review_submit", "memory_write", "doc_propose"];
     for (const t of tools) {
       expect(t.inputSchema.properties).toHaveProperty("org");

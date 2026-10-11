@@ -9,6 +9,7 @@ coverage/
 .DS_Store
 # Dump và .env sao lưu chứa dữ liệu/secret của bản triển khai.
 backups/
+.legacy/
 # Go
 worker/bin/
 # Tauri
