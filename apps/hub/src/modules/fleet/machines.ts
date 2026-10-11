@@ -1,9 +1,10 @@
 import type { Machine } from "@xdev-hive/contracts";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { type Tx, withTenant } from "../platform/index.ts";
-import { requireTeamRole } from "../tenancy/index.ts";
+import { notify } from "../notify/index.ts";
+import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
+import { requireTeamRole, teams } from "../tenancy/index.ts";
 import { FleetError } from "./errors.ts";
 import { machines, machineTokens } from "./schema.ts";
 import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
@@ -59,6 +60,21 @@ export interface AuthedMachine {
   name: string;
 }
 
+export const FLEET_OFFLINE_QUEUE = "fleet-offline-check";
+export const fleetOfflineQueue = {
+  name: FLEET_OFFLINE_QUEUE,
+  // Giữ mọi lần offline đang chờ; stately sẽ bỏ lần mới nếu máy nối lại rồi mất kết nối trước hạn cũ.
+  policy: "singleton",
+  retryLimit: 5,
+  retryDelay: 10,
+  retryBackoff: true,
+} as const;
+export interface FleetOfflineJob {
+  orgId: string;
+  machineId: string;
+  offlineAt: string;
+}
+
 /** Tìm máy theo machine token. Trả null khi token sai, đã bị thu hồi, hoặc máy đã bị thu hồi. */
 export async function authenticateMachine(pool: pg.Pool, token: string): Promise<AuthedMachine | null> {
   if (!token.startsWith(MACHINE_PREFIX)) return null;
@@ -94,7 +110,7 @@ export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: Machine
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
       .update(machines)
-      .set({ ...info, status: "online", lastSeenAt: sql`now()` })
+      .set({ ...info, status: "online", lastSeenAt: sql`now()`, offlineNotifiedAt: null })
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
       .returning({ id: machines.id }),
   );
@@ -102,12 +118,96 @@ export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: Machine
 }
 
 /** Ghi máy offline khi kết nối đóng. Không đụng máy đã bị thu hồi. */
-export async function markOffline(pool: pg.Pool, m: AuthedMachine): Promise<void> {
-  await withTenant(pool, { orgId: m.orgId }, (tx) =>
-    tx
+export async function markOffline(
+  pool: pg.Pool,
+  m: AuthedMachine,
+  opts: { jobs?: Jobs | undefined; notifyAfterSec?: number | undefined } = {},
+): Promise<void> {
+  await withTenant(pool, { orgId: m.orgId }, async (tx) => {
+    const [row] = await tx
       .update(machines)
-      .set({ status: "offline", lastSeenAt: sql`now()` })
-      .where(and(eq(machines.id, m.id), isNull(machines.revokedAt))),
+      // Payload JSON giữ mili giây; làm tròn timestamp để job không mất micro giây khi so sánh lúc xử lý.
+      .set({ status: "offline", lastSeenAt: sql`date_trunc('milliseconds', now())`, offlineNotifiedAt: null })
+      .where(and(eq(machines.id, m.id), eq(machines.status, "online"), isNull(machines.revokedAt)))
+      .returning({ offlineAt: machines.lastSeenAt });
+    if (!row?.offlineAt || !opts.jobs) return;
+    const offlineAt = row.offlineAt.toISOString();
+    await opts.jobs.enqueue<FleetOfflineJob>(
+      FLEET_OFFLINE_QUEUE,
+      { orgId: m.orgId, machineId: m.id, offlineAt },
+      {
+        tx,
+        singletonKey: m.id,
+        startAfter: new Date(row.offlineAt.getTime() + (opts.notifyAfterSec ?? 300) * 1000),
+      },
+    );
+  });
+}
+
+export async function checkMachineOffline(
+  pool: pg.Pool,
+  publicUrl: string,
+  job: FleetOfflineJob,
+  opts: { jobs?: Jobs | undefined; notifyAfterSec?: number | undefined } = {},
+): Promise<void> {
+  const offlineAt = new Date(job.offlineAt);
+  const delayMinutes = Math.max(1, Math.ceil((opts.notifyAfterSec ?? 300) / 60));
+  await withTenant(pool, { orgId: job.orgId }, async (tx) => {
+    const [row] = await tx
+      .select({ name: machines.name, teamName: teams.name })
+      .from(machines)
+      .innerJoin(teams, eq(teams.id, machines.teamId))
+      .where(
+        and(
+          eq(machines.id, job.machineId),
+          eq(machines.status, "offline"),
+          isNull(machines.revokedAt),
+          lte(machines.lastSeenAt, offlineAt),
+          isNull(machines.offlineNotifiedAt),
+        ),
+      );
+    if (!row) return;
+    const [claimed] = await tx
+      .update(machines)
+      .set({ offlineNotifiedAt: sql`now()` })
+      .where(
+        and(
+          eq(machines.id, job.machineId),
+          eq(machines.status, "offline"),
+          isNull(machines.revokedAt),
+          lte(machines.lastSeenAt, offlineAt),
+          isNull(machines.offlineNotifiedAt),
+        ),
+      )
+      .returning({ id: machines.id });
+    if (!claimed) return;
+    await notify(
+      tx,
+      {
+        orgId: job.orgId,
+        event: "machine.offline",
+        title: `Máy ${row.name} mất kết nối hơn ${delayMinutes} phút`,
+        body: `Đội ${row.teamName}.`,
+        link: `${publicUrl.replace(/\/+$/, "")}/quan-tri/may`,
+      },
+      { jobs: opts.jobs },
+    );
+  });
+}
+
+export async function registerFleetOfflineWorker(
+  jobs: Jobs,
+  deps: {
+    pool: pg.Pool;
+    publicUrl: string;
+    notifyAfterSec?: number | undefined;
+  },
+): Promise<void> {
+  await jobs.work<FleetOfflineJob>(FLEET_OFFLINE_QUEUE, (job) =>
+    checkMachineOffline(deps.pool, deps.publicUrl, job.data, {
+      jobs,
+      notifyAfterSec: deps.notifyAfterSec,
+    }),
   );
 }
 

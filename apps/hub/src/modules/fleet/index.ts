@@ -9,5 +9,13 @@ export {
   registerRunHandlers,
   WORKER_WS_PATH,
 } from "./gateway.ts";
-export { type AuthedMachine, findMachine, listOnlineMachines } from "./machines.ts";
+export {
+  type AuthedMachine,
+  checkMachineOffline,
+  FLEET_OFFLINE_QUEUE,
+  findMachine,
+  fleetOfflineQueue,
+  listOnlineMachines,
+  registerFleetOfflineWorker,
+} from "./machines.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";
