@@ -1,23 +1,121 @@
 @import "tailwindcss";
 
-/* Token màu tối thiểu cho M0; design system đầy đủ thêm ở M1. */
+/*
+ * Token lấy từ mockup đã duyệt docs/ui/m1-dang-nhap-to-chuc.html (biến CSS ở đầu file mockup).
+ * Bảng màu, cỡ chữ, bo góc, bóng mặc định của Tailwind bị xoá (`initial`) để class chỉ dùng được token của Hive:
+ * cần màu, cỡ chữ, bo góc hay bóng mới thì thêm token ở đây, không viết giá trị tuỳ ý trong class.
+ * Tên khác mockup ở chỗ trùng tiện ích Tailwind (`text-text`, `bg-bg`):
+ * --bg → canvas, --text → body, --line2 → line-strong, --accent-h → accent-hover, --sel-bd → sel-line, --shadow → shadow-app.
+ */
 @theme {
-  --color-accent: #7b61ff;
+  --color-*: initial;
+  --color-white: #fff;
   --color-canvas: #faf9fc;
+  --color-surface: #fff;
+  --color-subtle: #f2f1f5;
+  --color-sunken: #f3f2f6;
   --color-ink: #28262e;
+  --color-body: #35323b;
   --color-muted: #6b6772;
-  --font-sans: "Inter", system-ui, sans-serif;
+  --color-faint: #96929c;
+  --color-line: #e9e7ed;
+  --color-line-strong: #dad7e1;
+  --color-accent: #7b61ff;
+  --color-accent-hover: #694eeb;
+  --color-sel: #f0ecff;
+  --color-sel-fg: #543acf;
+  --color-sel-line: #c4b8ff;
+  --color-ok: #0f7a4a;
+  --color-ok-bg: #e6f6ee;
+  --color-warn: #9a5b00;
+  --color-warn-bg: #fff4db;
+  --color-bad: #c62828;
+  --color-bad-bg: #fdecec;
+  --color-backdrop: rgb(12 26 51 / 0.45);
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* Mockup dùng cỡ lẻ nửa pixel; dòng không ghi line-height thì kế thừa 1.55 của body như mockup. */
+  --text-*: initial;
+  --text-2xs: 11px; /* tiêu đề nhóm ở sidebar, nhãn mốc */
+  --text-xs: 12px; /* gợi ý, pill, chữ phụ */
+  --text-sm: 12.5px; /* nút nhỏ, breadcrumb, chữ mono */
+  --text-label: 13px; /* nhãn ô nhập, tên ở sidebar */
+  --text-nav: 13.5px; /* mục sidebar */
+  --text-base: 14px;
+  --text-base--line-height: 1.55;
+  --text-lg: 15px; /* tiêu đề card */
+  --text-xl: 16px; /* tên sản phẩm */
+  --text-2xl: 17px; /* tiêu đề dialog */
+  --text-3xl: 18px; /* tiêu đề trang */
+  --text-4xl: 22px; /* tiêu đề màn đăng nhập */
+  --text-4xl--line-height: 1.3;
+
+  --leading-tight: 1.2;
+  --tracking-*: initial;
+  --tracking-tight: -0.01em;
+  --tracking-caps: 0.06em;
+
+  /* Khoảng cách trong mockup là bội của 2px: dùng thang mặc định 4px với bước .5 (p-2.5 = 10px, h-9.5 = 38px). */
+
+  --radius-*: initial;
+  --radius-sm: 7px; /* mục sidebar */
+  --radius-md: 8px; /* nút, ô nhập, avatar tổ chức */
+  --radius-lg: 10px; /* ô chọn tổ chức, lời nhắn */
+  --radius-xl: 12px; /* card */
+  --radius-2xl: 14px; /* dialog */
+
+  --shadow-*: initial;
+  --shadow-app: 0 4px 12px -2px rgb(20 39 69 / 0.1), 0 2px 4px rgb(20 39 69 / 0.05);
+  --shadow-dialog: 0 24px 56px -12px rgb(20 39 69 / 0.35);
+
+  /* Mockup gập sidebar dưới 900px. */
+  --breakpoint-app: 56.25rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --color-canvas: #0e0e11;
-    --color-ink: #f2f2f3;
+    --color-surface: #1d1c20;
+    --color-subtle: #171619;
+    --color-sunken: #171619;
+    --color-ink: #fff;
+    --color-body: #f2f2f3;
     --color-muted: #a9a9a9;
+    --color-faint: #77777b;
+    --color-line: #2a292d;
+    --color-line-strong: #343337;
+    --color-accent-hover: #8c75ff;
+    --color-sel: #2d2545;
+    --color-sel-fg: #b3a5ff;
+    --color-sel-line: #5c4fa0;
+    --color-ok: #4ade9b;
+    --color-ok-bg: #1d392c;
+    --color-warn: #f5b544;
+    --color-warn-bg: #3d3423;
+    --color-bad: #ff8a8a;
+    --color-bad-bg: #45233a;
+    --shadow-app: 0 6px 16px -4px rgb(0 0 0 / 0.45);
   }
 }
 
-body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }

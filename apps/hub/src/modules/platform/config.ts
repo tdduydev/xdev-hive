@@ -11,6 +11,7 @@ export interface HubConfig {
   version: string;
   /** Địa chỉ người dùng mở trên trình duyệt; Better Auth dựng URL callback từ đây. */
   publicUrl?: string | undefined;
+  /** Kết nối bằng role hive_app; mọi truy vấn dữ liệu tổ chức đi qua đây. */
   databaseUrl?: string | undefined;
   /** Kết nối bằng role hive_jobs cho pg-boss. Không đặt thì hub chạy không có hàng đợi (không tạo được dự án). */
   jobsDatabaseUrl?: string | undefined;
@@ -18,6 +19,8 @@ export interface HubConfig {
   roles?: HubRole[] | undefined;
   /** Khoá chủ mã hoá secret (token Git, secret webhook). */
   masterKey?: MasterKey | undefined;
+  /** Email được tạo thêm tổ chức sau khi hub đã có tổ chức đầu tiên (HIVE_ORG_CREATORS, cách nhau bằng dấu phẩy). */
+  orgCreators?: string[] | undefined;
   authDatabaseUrl?: string | undefined;
   authSecret?: string | undefined;
   allowEmailSignUp?: boolean | undefined;
@@ -74,6 +77,10 @@ export function loadConfig(env: Env = process.env): HubConfig {
     jobsDatabaseUrl: env.HIVE_DATABASE_JOBS_URL,
     roles: roles(env),
     masterKey: masterKey(env),
+    orgCreators: (env.HIVE_ORG_CREATORS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
     authDatabaseUrl,
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",

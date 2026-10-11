@@ -1,7 +1,7 @@
 import { implement, ORPCError } from "@orpc/server";
 import { contract, type ScmConnectionTestResult } from "@xdev-hive/contracts";
 import { type MasterKey, type RequestContext, withTenant } from "../platform/index.ts";
-import { type OrgScopeDeps, orgScope } from "../tenancy/index.ts";
+import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import {
   createConnection,
   defaultProviderFactory,
@@ -14,7 +14,7 @@ import {
 import { isGitProviderError } from "./errors.ts";
 import type { GitProvider } from "./types.ts";
 
-export interface ScmDeps extends OrgScopeDeps {
+export interface ScmDeps extends OrgDeps {
   masterKey?: MasterKey | undefined;
   providerFactory?: ProviderFactory | undefined;
 }
@@ -50,25 +50,28 @@ export async function checkConnection(provider: GitProvider, owner: string | nul
 }
 
 export function scmRouter(deps: ScmDeps) {
-  const os = implement(contract.scmConnections).$context<RequestContext>().use(orgScope(deps));
+  const { authed, inOrg, orgMember } = orgMiddlewares(deps);
+  const os = implement(contract.scmConnections).$context<RequestContext>().use(authed);
   const factory = deps.providerFactory ?? defaultProviderFactory;
 
   return {
     // Mọi thành viên xem được (không có secret), vì quản trị đội cần chọn kết nối khi tạo dự án.
-    list: os.list.handler(async ({ context: { pool, actor } }) =>
-      (await withTenant(pool, actor, (tx) => listConnections(tx))).map(view),
-    ),
-    create: os.create.handler(async ({ context: { pool, actor }, input }) => {
+    list: os.list.use(inOrg).handler(async ({ context: { tx } }) => (await listConnections(tx)).map(view)),
+    create: os.create
+      .use(inOrg)
+      .handler(async ({ context: { tx, user }, input }) =>
+        view(await createConnection(tx, needKey(deps), user.id, input)),
+      ),
+    // Gọi ra nhà cung cấp nên không dùng inOrg: đọc kết nối trong transaction ngắn rồi trả kết nối database.
+    test: os.test.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
       const key = needKey(deps);
-      return view(await withTenant(pool, actor, (tx) => createConnection(tx, key, actor.userId, input)));
-    }),
-    test: os.test.handler(async ({ context: { pool, actor }, input }) => {
-      const key = needKey(deps);
-      const conn = await withTenant(pool, actor, (tx) => loadConnectionForAdmin(tx, key, actor.userId, input.id));
+      const conn = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
+        loadConnectionForAdmin(tx, key, user.id, input.id),
+      );
       return checkConnection(factory(conn), input.owner ?? conn.defaultOwner);
     }),
-    remove: os.remove.handler(async ({ context: { pool, actor }, input }) => {
-      await withTenant(pool, actor, (tx) => removeConnection(tx, actor.userId, input.id));
+    remove: os.remove.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
+      await removeConnection(tx, user.id, input.id);
       return { id: input.id };
     }),
   };

@@ -23,3 +23,9 @@ describe("loadConfig: khoá chủ và vai trò", () => {
   it("mặc định chạy cả api và jobs", () => expect(loadConfig({}).roles).toEqual(["api", "jobs"]));
   it("từ chối vai trò lạ", () => expect(() => loadConfig({ HIVE_ROLES: "api,gw" })).toThrow(/gw/));
 });
+
+describe("loadConfig: người tạo tổ chức", () => {
+  it("tách danh sách email, bỏ khoảng trắng, chữ thường", () =>
+    expect(loadConfig({ HIVE_ORG_CREATORS: " A@x.vn, ,b@y.vn" }).orgCreators).toEqual(["a@x.vn", "b@y.vn"]));
+  it("không đặt thì rỗng", () => expect(loadConfig({}).orgCreators).toEqual([]));
+});

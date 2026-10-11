@@ -1,5 +1,5 @@
 {
-  "id": "6b873a2f-7d4a-48fd-a26e-04c730bfc7ee",
+  "id": "17fa231e-df78-4044-98c7-c8587f278289",
   "prevId": "697e79c0-548b-488e-9543-d2efdfac462b",
   "version": "7",
   "dialect": "postgresql",
@@ -126,397 +126,6 @@
           "as": "PERMISSIVE",
           "for": "INSERT",
           "to": ["hive_app"],
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "hive.project_provision_steps": {
-      "name": "project_provision_steps",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "provision_step_kind",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "target": {
-          "name": "target",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "provision_step_state",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "params": {
-          "name": "params",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "result": {
-          "name": "result",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "error": {
-          "name": "error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "project_provision_steps_org": {
-          "name": "project_provision_steps_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "project_provision_steps_project_id_org_id_projects_id_org_id_fk": {
-          "name": "project_provision_steps_project_id_org_id_projects_id_org_id_fk",
-          "tableFrom": "project_provision_steps",
-          "tableTo": "projects",
-          "schemaTo": "hive",
-          "columnsFrom": ["project_id", "org_id"],
-          "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "project_provision_steps_position": {
-          "name": "project_provision_steps_position",
-          "nullsNotDistinct": false,
-          "columns": ["project_id", "position"]
-        }
-      },
-      "policies": {
-        "project_provision_steps_rw": {
-          "name": "project_provision_steps_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "hive.projects": {
-      "name": "projects",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "team_id": {
-          "name": "team_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "system_id": {
-          "name": "system_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "key": {
-          "name": "key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scm_connection_id": {
-          "name": "scm_connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "scm_kind": {
-          "name": "scm_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_mode": {
-          "name": "repo_mode",
-          "type": "project_repo_mode",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_owner": {
-          "name": "repo_owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_name": {
-          "name": "repo_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "repo_visibility": {
-          "name": "repo_visibility",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_branch": {
-          "name": "default_branch",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "repo_external_id": {
-          "name": "repo_external_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "repo_http_url": {
-          "name": "repo_http_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "repo_ssh_url": {
-          "name": "repo_ssh_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "repo_web_url": {
-          "name": "repo_web_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "project_state",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'provisioning'"
-        },
-        "settings": {
-          "name": "settings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "webhook_secret_enc": {
-          "name": "webhook_secret_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "projects_repo": {
-          "name": "projects_repo",
-          "columns": [
-            {
-              "expression": "scm_connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lower(\"repo_owner\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "lower(\"repo_name\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "projects_org_team": {
-          "name": "projects_org_team",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "projects_system": {
-          "name": "projects_system",
-          "columns": [
-            {
-              "expression": "system_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "projects_org_key": {
-          "name": "projects_org_key",
-          "nullsNotDistinct": false,
-          "columns": ["org_id", "key"]
-        },
-        "projects_org_idempotency": {
-          "name": "projects_org_idempotency",
-          "nullsNotDistinct": false,
-          "columns": ["org_id", "idempotency_key"]
-        },
-        "projects_id_org": {
-          "name": "projects_id_org",
-          "nullsNotDistinct": false,
-          "columns": ["id", "org_id"]
-        }
-      },
-      "policies": {
-        "projects_rw": {
-          "name": "projects_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
           "withCheck": "org_id = hive.ctx_org()"
         }
       },
@@ -900,124 +509,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "hive.scm_connections": {
-      "name": "scm_connections",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "scm_kind",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "base_url": {
-          "name": "base_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_owner": {
-          "name": "default_owner",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_id": {
-          "name": "app_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "installation_id": {
-          "name": "installation_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "secret_enc": {
-          "name": "secret_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "scm_connections_org": {
-          "name": "scm_connections_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "scm_connections_org_name": {
-          "name": "scm_connections_org_name",
-          "nullsNotDistinct": false,
-          "columns": ["org_id", "name"]
-        },
-        "scm_connections_id_org": {
-          "name": "scm_connections_id_org",
-          "nullsNotDistinct": false,
-          "columns": ["id", "org_id"]
-        }
-      },
-      "policies": {
-        "scm_connections_rw": {
-          "name": "scm_connections_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
     "hive.invitations": {
       "name": "invitations",
       "schema": "hive",
@@ -1206,6 +697,16 @@
           "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
+        },
+        "org_members_user_id_user_id_fk": {
+          "name": "org_members_user_id_user_id_fk",
+          "tableFrom": "org_members",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1323,6 +824,13 @@
           "to": ["hive_app"],
           "using": "id = hive.ctx_org()",
           "withCheck": "id = hive.ctx_org()"
+        },
+        "orgs_owner_select": {
+          "name": "orgs_owner_select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
+          "to": ["hive_owner"],
+          "using": "true"
         }
       },
       "checkConstraints": {},
@@ -1451,6 +959,16 @@
       },
       "indexes": {},
       "foreignKeys": {
+        "team_members_user_id_user_id_fk": {
+          "name": "team_members_user_id_user_id_fk",
+          "tableFrom": "team_members",
+          "tableTo": "user",
+          "schemaTo": "auth",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
         "team_members_team_id_org_id_teams_id_org_id_fk": {
           "name": "team_members_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "team_members",
@@ -1566,31 +1084,6 @@
     }
   },
   "enums": {
-    "hive.project_state": {
-      "name": "project_state",
-      "schema": "hive",
-      "values": ["provisioning", "active", "failed", "archived"]
-    },
-    "hive.provision_step_kind": {
-      "name": "provision_step_kind",
-      "schema": "hive",
-      "values": ["check-access", "create-repo", "link-repo", "commit-template", "protect-branch", "add-webhook"]
-    },
-    "hive.provision_step_state": {
-      "name": "provision_step_state",
-      "schema": "hive",
-      "values": ["pending", "running", "done", "failed", "skipped"]
-    },
-    "hive.project_repo_mode": {
-      "name": "project_repo_mode",
-      "schema": "hive",
-      "values": ["new", "existing"]
-    },
-    "hive.scm_kind": {
-      "name": "scm_kind",
-      "schema": "hive",
-      "values": ["github", "gitlab"]
-    },
     "hive.member_status": {
       "name": "member_status",
       "schema": "hive",
