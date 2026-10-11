@@ -14,10 +14,12 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@better-auth/sso": "^1.7.7",
     "@hono/node-server": "^2.1.4",
     "@orpc/openapi": "^1.15.5",
     "@orpc/server": "^1.15.5",
     "@xdev-hive/contracts": "workspace:*",
+    "better-auth": "^1.7.7",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "pg": "^8.23.1"

@@ -3,9 +3,12 @@ packages:
   - packages/*
 
 # Không chạy script cài đặt: swc và esbuild dùng gói binary dựng sẵn theo nền tảng (script chỉ để kiểm tra);
+# @prisma/client, better-sqlite3 là peer tuỳ chọn của Better Auth, hub không dùng;
 # ssh2/cpu-features là phần tuỳ chọn của Testcontainers khi nối Docker qua SSH; protobufjs chỉ in thông báo.
 allowBuilds:
+  "@prisma/client": false
   "@swc/core": false
+  better-sqlite3: false
   cpu-features: false
   esbuild: false
   protobufjs: false

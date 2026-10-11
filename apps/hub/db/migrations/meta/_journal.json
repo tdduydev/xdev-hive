@@ -22,6 +22,20 @@
       "when": 1791718108130,
       "tag": "0002_quyen_va_ep_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791718532897,
+      "tag": "0003_dang_nhap",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791718533400,
+      "tag": "0004_quyen_dang_nhap",
+      "breakpoints": true
     }
   ]
 }
