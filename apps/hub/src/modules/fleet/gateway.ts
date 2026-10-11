@@ -1,0 +1,162 @@
+import { randomUUID } from "node:crypto";
+import type { IncomingMessage, Server } from "node:http";
+import type { Duplex } from "node:stream";
+import { PROTOCOL_VERSION, type WorkerToHub, workerToHub } from "@xdev-hive/contracts/worker-protocol";
+import type pg from "pg";
+import { type WebSocket, WebSocketServer } from "ws";
+import { registerConnection, sendToMachine, unregisterConnection } from "./connections.ts";
+import { type AuthedMachine, authenticateMachine, markOffline, markOnline } from "./machines.ts";
+
+export const WORKER_WS_PATH = "/ws/worker";
+
+/** Mã đóng kết nối (dải 4000–4999 dành cho ứng dụng). Worker đọc mã để biết nên nối lại hay dừng. */
+export const CLOSE = {
+  badMessage: 4400,
+  revoked: 4401,
+  machineMismatch: 4403,
+  timeout: 4408,
+  protocolUnsupported: 4426,
+} as const;
+
+type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
+
+export interface GatewayOptions {
+  /** Pool của role hive_app. */
+  pool: pg.Pool;
+  heartbeatSec?: number;
+  /** Thời gian chờ gói hello sau khi nâng cấp kết nối. */
+  helloTimeoutMs?: number;
+  /**
+   * Gia hạn lease và lấy lệnh huỷ cho heartbeat. Module runs gắn vào đây; chưa gắn thì không gia hạn lease nào, vì
+   * hub chưa giao run nào.
+   */
+  onHeartbeat?: (machine: AuthedMachine, msg: Heartbeat) => Promise<{ renewed: string[]; cancel: string[] }>;
+  /** Gói của run (job_accept, run_event, log_chunk…). Module runs xử lý; chưa gắn thì bỏ qua. */
+  onMessage?: (machine: AuthedMachine, msg: Exclude<WorkerToHub, { type: "hello" | "heartbeat" }>) => Promise<void>;
+  logger?: Pick<Console, "info" | "warn" | "error">;
+}
+
+/**
+ * Gắn WSS /ws/worker vào server HTTP của @hono/node-server. Xác thực bằng machine token trong header Authorization
+ * trước khi nâng cấp, để kết nối không hợp lệ bị từ chối bằng 401 thay vì mở rồi mới đóng.
+ */
+export function attachWorkerGateway(server: Server, opts: GatewayOptions): { close: () => Promise<void> } {
+  const log = opts.logger ?? console;
+  const heartbeatSec = opts.heartbeatSec ?? 30;
+  // Không nhận gói nào trong ba chu kỳ heartbeat thì coi máy đã mất (kết nối TCP có thể treo mà không báo đóng).
+  const idleMs = heartbeatSec * 3 * 1000;
+  const helloTimeoutMs = opts.helloTimeoutMs ?? 10_000;
+  // Gói lớn nhất là log_chunk (~1 MB base64); chặn trên để worker lỗi không làm hub hết bộ nhớ.
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
+
+  const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    const path = new URL(req.url ?? "/", "http://hub").pathname;
+    if (path !== WORKER_WS_PATH) return;
+    socket.on("error", () => socket.destroy());
+    const token = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
+    if (!token) return reject(socket, 401, "Thiếu machine token.");
+    authenticateMachine(opts.pool, token).then(
+      (machine) => {
+        if (!machine) return reject(socket, 401, "Machine token không hợp lệ hoặc đã bị thu hồi.");
+        wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, machine));
+      },
+      (error: unknown) => {
+        log.error("Lỗi xác thực worker", error);
+        reject(socket, 500, "Hub lỗi khi xác thực máy.");
+      },
+    );
+  };
+
+  const onConnection = (ws: WebSocket, machine: AuthedMachine) => {
+    let session: string | undefined;
+    let idle: NodeJS.Timeout | undefined;
+    const helloTimer = setTimeout(() => ws.close(CLOSE.timeout, "Không nhận được hello"), helloTimeoutMs);
+    const touch = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => ws.close(CLOSE.timeout, "Mất heartbeat"), idleMs);
+    };
+    // Xử lý tuần tự từng gói của một kết nối để giữ thứ tự (hello trước heartbeat, run_event theo seq).
+    let queue = Promise.resolve();
+
+    const handle = async (raw: string) => {
+      let msg: WorkerToHub;
+      try {
+        msg = workerToHub.parse(JSON.parse(raw));
+      } catch {
+        return ws.close(CLOSE.badMessage, "Gói tin không hợp lệ");
+      }
+      if (!session) {
+        if (msg.type !== "hello") return ws.close(CLOSE.badMessage, "Cần gửi hello trước");
+        clearTimeout(helloTimer);
+        if (msg.machineId !== machine.name) return ws.close(CLOSE.machineMismatch, "machineId không khớp token");
+        const [lo, hi] = msg.protoRange;
+        // Chưa có kênh phát hành worker để gửi upgrade_required (cần url, sha256, chữ ký), nên đóng kèm mã riêng.
+        if (lo > PROTOCOL_VERSION || hi < PROTOCOL_VERSION) {
+          return ws.close(CLOSE.protocolUnsupported, `Hub dùng giao thức v${PROTOCOL_VERSION}`);
+        }
+        const { os, version, clis, capacity } = msg;
+        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity }))) {
+          return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
+        }
+        if (ws.readyState !== ws.OPEN) return;
+        session = randomUUID();
+        registerConnection(machine.id, ws);
+        sendToMachine(machine.id, { type: "welcome", sessionId: session, heartbeatSec });
+        log.info(`Máy ${machine.name} (${machine.id}) đã kết nối, phiên ${session}`);
+        return touch();
+      }
+      touch();
+      switch (msg.type) {
+        case "hello":
+          return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
+        case "heartbeat": {
+          if (!(await markOnline(opts.pool, machine))) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
+          const { renewed, cancel } = (await opts.onHeartbeat?.(machine, msg)) ?? { renewed: [], cancel: [] };
+          sendToMachine(machine.id, { type: "heartbeat_ack", renewed, cancel });
+          return;
+        }
+        default:
+          if (opts.onMessage) await opts.onMessage(machine, msg);
+      }
+    };
+
+    ws.on("message", (data, isBinary) => {
+      if (isBinary) return ws.close(CLOSE.badMessage, "Chỉ nhận gói văn bản JSON");
+      const raw = data.toString();
+      queue = queue.then(() =>
+        handle(raw).catch((error: unknown) => {
+          log.error(`Lỗi xử lý gói từ máy ${machine.id}`, error);
+          ws.close(1011, "Hub lỗi khi xử lý gói");
+        }),
+      );
+    });
+    ws.on("close", () => {
+      clearTimeout(helloTimer);
+      clearTimeout(idle);
+      if (!session || !unregisterConnection(machine.id, ws)) return;
+      // Đợi các gói đang xử lý xong để markOffline không bị một heartbeat chạy sau ghi đè thành online.
+      queue = queue.then(() =>
+        markOffline(opts.pool, machine).catch((error: unknown) => log.error("Không ghi được máy offline", error)),
+      );
+    });
+    ws.on("error", (error) => log.warn(`Kết nối của máy ${machine.id} lỗi`, error));
+  };
+
+  server.on("upgrade", onUpgrade);
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.off("upgrade", onUpgrade);
+        for (const ws of wss.clients) ws.close(1001, "Hub đang tắt");
+        wss.close(() => resolve());
+      }),
+  };
+}
+
+function reject(socket: Duplex, status: 401 | 500, message: string) {
+  const body = Buffer.from(message);
+  const reason = status === 401 ? "Unauthorized" : "Internal Server Error";
+  socket.end(
+    `HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: ${body.length}\r\n\r\n${body}`,
+  );
+}

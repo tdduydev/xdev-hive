@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -130,5 +131,87 @@ func TestWebsocketURL(t *testing.T) {
 	}
 	if strings.TrimSpace(got) != "wss://hub.example/ws/worker" {
 		t.Fatalf("url = %q", got)
+	}
+}
+
+func TestTokenAndHeartbeat(t *testing.T) {
+	gotAuth := make(chan string, 1)
+	gotHeartbeat := make(chan Heartbeat, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth <- r.Header.Get("Authorization")
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		hello := receiveHello(t, conn)
+		if hello.ResumeRuns == nil || hello.CLIs == nil {
+			t.Errorf("hello có mảng null: %+v", hello)
+		}
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))
+		_, data, err := conn.Read(r.Context())
+		if err != nil {
+			return
+		}
+		var hb Heartbeat
+		_ = json.Unmarshal(data, &hb)
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"heartbeat_ack","v":1,"id":"a","renewed":[],"cancel":[]}`))
+		gotHeartbeat <- hb
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	cfg := testConfig(srv.URL)
+	cfg.Token = "hwm_secret"
+	cfg.Heartbeat = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = cfg.Run(ctx) }()
+	if auth := <-gotAuth; auth != "Bearer hwm_secret" {
+		t.Fatalf("Authorization = %q", auth)
+	}
+	select {
+	case hb := <-gotHeartbeat:
+		if hb.Type != "heartbeat" || hb.V != 1 || hb.ID == "" || hb.Runs == nil {
+			t.Fatalf("heartbeat sai: %+v", hb)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("không nhận heartbeat")
+	}
+}
+
+func TestUnauthorizedStops(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "Machine token không hợp lệ", http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	err := testConfig(srv.URL).Run(context.Background())
+	var rejected *RejectedError
+	if !errors.As(err, &rejected) || rejected.Code != http.StatusUnauthorized {
+		t.Fatalf("error = %v, cần RejectedError 401", err)
+	}
+}
+
+func TestRevokedCloseStops(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		receiveHello(t, conn)
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))
+		_ = conn.Close(4401, "Máy đã bị thu hồi")
+	}))
+	defer srv.Close()
+	done := make(chan error, 1)
+	go func() { done <- testConfig(srv.URL).Run(context.Background()) }()
+	select {
+	case err := <-done:
+		var rejected *RejectedError
+		if !errors.As(err, &rejected) || rejected.Code != 4401 {
+			t.Fatalf("error = %v, cần RejectedError 4401", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker không dừng khi máy bị thu hồi")
 	}
 }

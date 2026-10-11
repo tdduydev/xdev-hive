@@ -50,6 +50,27 @@
       "when": 1791719201148,
       "tag": "0006_quyen_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791720191881,
+      "tag": "0007_ham_token_may",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791720198245,
+      "tag": "0008_may",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791720200847,
+      "tag": "0009_ep_rls_may",
+      "breakpoints": true
     }
   ]
 }

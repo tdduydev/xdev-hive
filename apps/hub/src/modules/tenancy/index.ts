@@ -7,3 +7,5 @@ export {
   type TeamRole,
   teamRoleOf,
 } from "./permissions.ts";
+// Bảng của module khác cần khoá ngoại kép (team_id, org_id) tới teams.
+export { teams } from "./schema.ts";

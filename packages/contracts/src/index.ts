@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { fleetContract } from "./fleet.ts";
 
 /** Trạng thái hub. Worker Go gọi qua OpenAPI (GET /api/v1/health) trước khi mở WSS. */
 export const healthOutput = z.object({
@@ -30,6 +31,9 @@ export const contract = {
       .errors({ UNAUTHORIZED: { message: "Chưa đăng nhập." } })
       .output(meOutput),
   },
+  ...fleetContract,
 };
 
 export type Contract = typeof contract;
+
+export * from "./fleet.ts";
