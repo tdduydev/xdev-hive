@@ -32274,6 +32274,17 @@
                       ],
                       "type": "string"
                     },
+                    "parentRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "state": {
                       "enum": [
                         "queued",
@@ -32619,6 +32630,7 @@
                     "projectId",
                     "teamId",
                     "kind",
+                    "parentRunId",
                     "state",
                     "attempt",
                     "maxAttempts",
@@ -33026,6 +33038,17 @@
                         ],
                         "type": "string"
                       },
+                      "parentRunId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "state": {
                         "enum": [
                           "queued",
@@ -33371,6 +33394,7 @@
                       "projectId",
                       "teamId",
                       "kind",
+                      "parentRunId",
                       "state",
                       "attempt",
                       "maxAttempts",
@@ -33777,6 +33801,17 @@
                       ],
                       "type": "string"
                     },
+                    "parentRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "state": {
                       "enum": [
                         "queued",
@@ -34122,6 +34157,7 @@
                     "projectId",
                     "teamId",
                     "kind",
+                    "parentRunId",
                     "state",
                     "attempt",
                     "maxAttempts",
@@ -34527,6 +34563,17 @@
                       ],
                       "type": "string"
                     },
+                    "parentRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "state": {
                       "enum": [
                         "queued",
@@ -34872,6 +34919,7 @@
                     "projectId",
                     "teamId",
                     "kind",
+                    "parentRunId",
                     "state",
                     "attempt",
                     "maxAttempts",
