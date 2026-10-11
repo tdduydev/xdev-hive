@@ -21,6 +21,7 @@ export function toRun(r: RunRow): Run {
     projectId: r.projectId,
     teamId: r.teamId,
     kind: r.kind,
+    parentRunId: r.parentRunId,
     state: r.state,
     attempt: r.attempt,
     maxAttempts: r.maxAttempts,
