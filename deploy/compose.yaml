@@ -47,7 +47,7 @@ services:
       timeout: 3s
       retries: 12
   caddy:
-    image: caddy:2
+    image: ${HIVE_CADDY_IMAGE:-caddy:2.11.7}
     profiles: [https]
     restart: unless-stopped
     depends_on:
