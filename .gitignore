@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+# Go
+worker/bin/
+# Tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/

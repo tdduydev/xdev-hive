@@ -1,0 +1,17 @@
+{
+  "name": "@xdev-hive/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri",
+    "app:dev": "tauri dev",
+    "app:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.1"
+  }
+}

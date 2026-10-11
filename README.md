@@ -13,3 +13,16 @@ Bản viết lại, đang ở giai đoạn thiết kế. Bản cũ: [`tdduydev/x
 ## Stack
 
 Hub và web: TypeScript (Node, Hono, oRPC, Drizzle, pg-boss, Better Auth, MCP SDK v2, React, Vite). Worker và runner host: Go. Desktop: Tauri. Dữ liệu: PostgreSQL với RLS và pgvector.
+
+## Chạy tại máy
+
+Cần Node 24+, pnpm 12, Go 1.27, Rust (chỉ khi làm app desktop).
+
+```sh
+pnpm install
+pnpm --filter @xdev-hive/hub dev     # hub ở http://localhost:3000
+pnpm --filter @xdev-hive/web dev     # web ở http://localhost:5173
+cd worker && go run ./cmd/hive-worker check --hub http://localhost:3000
+```
+
+Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.md](AGENTS.md).

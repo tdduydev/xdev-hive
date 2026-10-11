@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Token màu tối thiểu cho M0; design system đầy đủ thêm ở M1. */
+@theme {
+  --color-accent: #7b61ff;
+  --color-canvas: #faf9fc;
+  --color-ink: #28262e;
+  --color-muted: #6b6772;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0e0e11;
+    --color-ink: #f2f2f3;
+    --color-muted: #a9a9a9;
+  }
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
