@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mockup M3: việc và run</title>
+<style>
+/* Giữ token của M1/M2 để quản trị review trong cùng một ngữ cảnh. */
+:root{
+  --bg:#FAF9FC;--surface:#FFFFFF;--subtle:#F2F1F5;--sunken:#F3F2F6;
+  --ink:#28262E;--text:#35323B;--muted:#6B6772;--faint:#96929C;
+  --line:#E9E7ED;--line2:#DAD7E1;
+  --accent:#7B61FF;--accent-h:#694EEB;--sel:#F0ECFF;--sel-fg:#543ACF;--sel-bd:#C4B8FF;
+  --ok:#0F7A4A;--ok-bg:#E6F6EE;--warn:#9A5B00;--warn-bg:#FFF4DB;--bad:#C62828;--bad-bg:#FDECEC;
+  --run:#004CFF;--run-bg:#EAF1FF;--bad-bd:#F3B4B4;--warn-bd:#F5C86B;
+  --shadow:0 4px 12px -2px rgba(20,39,69,.10),0 2px 4px rgba(20,39,69,.05);
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+/* Hai khối tối giống nhau: một theo hệ điều hành, một khi người review bấm "Tối" ở thanh trên. */
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}}
+:root[data-theme=dark]{
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--text);font:400 14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Thanh chọn màn của mockup */
+.review{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.review .in{max-width:1240px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.review b{font-weight:600;color:var(--ink)}
+.review small{color:var(--muted)}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:500;font-size:13px;color:var(--muted)}
+.tabs button[aria-current="page"]{background:var(--sel);color:var(--sel-fg);border-color:var(--sel-bd)}
+.stage{max-width:1240px;margin:0 auto;padding:20px 16px 64px}
+.note{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--sel);border:1px dashed var(--sel-bd);color:var(--text);font-size:13px}
+.note b{color:var(--sel-fg)}
+.note ul{margin:4px 0 0;padding-left:18px}
+.screen[hidden]{display:none}
+
+/* Thành phần dùng chung */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--subtle)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-h)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad)}
+.btn.sm{height:28px;padding:0 10px;font-size:12.5px}
+.in-f{height:38px;width:100%;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 11px}
+textarea.in-f{height:auto;min-height:76px;padding:9px 11px;resize:vertical}
+.in-f:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.field{display:grid;gap:6px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label,.field .lbl{font-weight:500;color:var(--ink);font-size:13px}
+.hint{font-size:12px;color:var(--muted)}
+.hint.ok{color:var(--ok)}
+.hint.err{color:var(--bad)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;background:var(--subtle);color:var(--muted);border:1px solid var(--line2);white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.pill.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.pill.bad{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.pill.run{background:var(--run-bg);color:var(--run);border-color:transparent}
+.pill.sel{background:var(--sel);color:var(--sel-fg);border-color:transparent}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.mono{font-family:var(--mono);font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+svg.i{width:16px;height:16px;flex:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+
+/* Khung app (giống M1) */
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:680px;border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.switcher{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;border:1px solid var(--line);margin-bottom:10px;cursor:pointer}
+.avatar{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+.switcher b{display:block;color:var(--ink);font-weight:600;font-size:13px;line-height:1.2}
+.switcher small{color:var(--muted);font-size:12px}
+.nav-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:12px 10px 4px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-size:13.5px;cursor:pointer}
+.nav a.on{background:var(--sel);color:var(--sel-fg);font-weight:500}
+.nav a.dim{opacity:.5;cursor:default}
+.nav a .soon{margin-left:auto;font-size:11px}
+.nav a.sys{padding-left:20px;font-size:13px}
+.nav a.sys .n{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.me{margin-top:auto;display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid var(--line)}
+.me .av2{width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-weight:600;font-size:12px;color:var(--ink)}
+.me b{display:block;font-size:13px;color:var(--ink);font-weight:500}
+.me small{color:var(--muted);font-size:12px}
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.top h2{margin:0;font-size:18px;color:var(--ink)}
+.crumb{color:var(--muted);font-size:12.5px}
+.sp{flex:1}
+.sub{display:flex;gap:2px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+.sub a{padding:10px 12px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.sub a.on{color:var(--ink);border-color:var(--accent)}
+.body{padding:24px;display:grid;gap:16px;align-content:start}
+.sec{padding:16px 18px;display:grid;gap:12px}
+.sec h3{margin:0;font-size:15px;color:var(--ink)}
+.sec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.tbl table{min-width:720px}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--subtle)}
+
+
+.seg{display:flex;gap:8px;padding:5px 10px;background:var(--subtle);border:1px solid var(--line);border-radius:8px;font-size:12px;flex-wrap:wrap}
+input{accent-color:var(--accent)}
+.board{display:grid;grid-template-columns:repeat(4,minmax(185px,1fr));gap:12px;overflow-x:auto;padding-bottom:8px}
+.column{background:var(--sunken);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:400px}
+.column h3{font-size:13px;margin:0 0 12px;display:flex;justify-content:space-between}
+.task-card{display:grid;gap:10px;padding:14px;margin-bottom:10px;width:100%;text-align:left;cursor:pointer;color:var(--text);font:inherit}
+.task-card:hover{border-color:var(--sel-bd);box-shadow:var(--shadow)}
+.task-card strong{font-size:13px;line-height:1.5;color:var(--ink)}
+.task-card small{font-size:11px;color:var(--muted)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 245px;gap:16px;align-items:start}
+h3,h4,p{margin:0}h4{font-size:13px;color:var(--ink)}
+.kv{display:grid;gap:14px;margin:0}.kv dt{font-size:11px;color:var(--muted)}.kv dd{margin:2px 0 0;overflow-wrap:anywhere}
+.timeline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;list-style:none;padding:0;margin:0}
+.timeline li{padding:12px;border-radius:10px;background:var(--subtle);border:1px solid var(--line)}
+.timeline li.active{border-color:var(--sel-bd);background:var(--sel)}.timeline b{display:block;font-size:13px}.timeline small{font-size:11px;color:var(--muted)}
+.terminal{background:#101117;color:#D3D8E5;border:1px solid #303341;border-radius:10px;overflow:hidden}
+.terminal-head{padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #303341;font-size:12px}
+.terminal-head label{margin-left:auto}#log{height:280px;overflow:auto;padding:14px;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.9 var(--mono)}
+.terminal .pill{background:#203A2F;color:#8AE2B5;border:0}
+.file{display:flex;gap:12px;justify-content:space-between;font:12px var(--mono);overflow-wrap:anywhere;padding:8px 0;border-bottom:1px solid var(--line)}
+.file:last-child{border:0}.add{color:var(--ok)}.del{color:var(--bad)}
+.result-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.result-grid div{padding:12px;border:1px solid var(--line);border-radius:8px;font-size:12px}.result-grid p{margin-top:6px;color:var(--muted)}
+.link{color:var(--sel-fg);text-decoration:underline;cursor:pointer;background:none;border:0;padding:0;font:inherit;text-align:left}
+dialog{width:min(620px,calc(100% - 28px));max-height:90vh;overflow:auto;border:1px solid var(--line2);border-radius:14px;background:var(--surface);color:var(--text);padding:0;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(15,12,25,.55)}.modal-head,.modal-foot{padding:16px 22px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}.modal-foot{border-top:1px solid var(--line);border-bottom:0;justify-content:flex-end}.modal-body{padding:20px 22px;display:grid;gap:16px}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px}legend{font-size:13px;font-weight:500}fieldset label{display:flex;gap:8px;align-items:center;font-size:13px}
+pre.command{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunken);border:1px solid var(--line);padding:12px;border-radius:8px;margin:0;font:12px/1.8 var(--mono)}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;background:var(--ink);color:var(--surface);border-radius:10px;box-shadow:var(--shadow);z-index:50;max-width:90vw}
+@media(max-width:1000px){.app{grid-template-columns:190px minmax(0,1fr)}.body{padding:16px}.split{grid-template-columns:1fr}.board{grid-template-columns:repeat(4,205px)}.top{padding:16px}}
+@media(max-width:680px){.app{grid-template-columns:1fr}.side{display:none}.grid2,.result-grid{grid-template-columns:1fr}.timeline{grid-template-columns:1fr 1fr}.review .in{gap:8px}.stage{padding:12px 8px 40px}.tabs button{padding:6px 8px}.body{padding:12px}}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="hex" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="#7B61FF"/><path d="M12 7l4.33 2.5v5L12 17l-4.33-2.5v-5z" fill="#fff"/></symbol>
+  <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+  <symbol id="gl" viewBox="0 0 24 24"><path fill="#E24329" d="M12 21.4 15.7 10H8.3z"/><path fill="#FC6D26" d="M12 21.4 8.3 10H3.1z"/><path fill="#FCA326" d="M3.1 10 2 13.4c-.1.3 0 .6.3.8L12 21.4z"/><path fill="#E24329" d="M3.1 10h5.2L6.1 3.2c-.1-.3-.6-.3-.7 0z"/><path fill="#FC6D26" d="M12 21.4 15.7 10h5.2z"/><path fill="#FCA326" d="m20.9 10 1.1 3.4c.1.3 0 .6-.3.8L12 21.4z"/><path fill="#E24329" d="M20.9 10h-5.2l2.2-6.8c.1-.3.6-.3.7 0z"/></symbol>
+  <symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 12l9-9m-3 3 3 3m-6 0 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .6 3.2 2.4 3.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="icon-board" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 4v16M14.5 4v9" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="server" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="spin" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="skip" viewBox="0 0 24 24"><path d="M6 12h12M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="6" cy="19" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3-11 7" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+</svg>
+
+
+<header class="review"><div class="in"><b>Mockup M3</b><small>Việc & chạy agent · dữ liệu ví dụ · không gọi API</small><span class="sp"></span>
+<nav class="tabs" aria-label="Màn hình">
+<button data-go="board" aria-current="page">1 Bảng việc</button><button data-open="create">2 Tạo task</button><button data-go="task">3 Chi tiết task</button><button data-go="run">4 Chi tiết run</button><button data-go="fleet">5 Máy</button>
+</nav><div class="seg" aria-label="Giao diện sáng tối"><label><input type="radio" name="theme" value="auto" checked>Tự động</label><label><input type="radio" name="theme" value="light">Sáng</label><label><input type="radio" name="theme" value="dark">Tối</label></div></div></header>
+<main class="stage"><template id="shell">
+  <div class="app">
+    <aside class="side">
+      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
+      <nav class="nav">
+        <a href="#board" data-go="board" class="work"><svg class="i"><use href="#icon-board"/></svg>Việc</a>
+        <a class="dim"><svg class="i"><use href="#grid"/></svg>Dự án</a>
+        <a class="sys dim">Cổng thanh toán<span class="n">2</span></a>
+        <a class="sys dim">Hoá đơn<span class="n">4</span></a>
+        <a class="sys dim">Đối soát<span class="n">0</span></a>
+        <a href="#fleet" data-go="fleet" class="fleet"><svg class="i"><use href="#server"/></svg>Máy</a>
+        <a class="dim"><svg class="i"><use href="#book"/></svg>Tri thức<span class="soon pill">M4</span></a>
+        <div class="nav-h">Quản trị</div>
+        <a class="dim"><svg class="i"><use href="#users"/></svg>Đội và hệ thống</a>
+        <a class="dim"><svg class="i"><use href="#mail"/></svg>Thành viên</a>
+        <a class="dim"><svg class="i"><use href="#key"/></svg>Kết nối Git<span class="soon pill">M2</span></a>
+        <a class="dim"><svg class="i"><use href="#gear"/></svg>Cài đặt tổ chức</a>
+      </nav>
+      <div class="me"><span class="av2">LH</span><span><b>Lê Hà</b><small>ha.le@example.com</small></span></div>
+    </aside>
+    <div class="main"></div>
+  </div>
+</template>
+<section class="screen" id="s-board"><div class="note"><b>Cần review:</b> Cách ánh xạ kết quả run sang cột: failed/no_changes về Cần làm; succeeded/needs_review vào Chờ review; chỉ Xong sau merge hoặc đóng task. Lọc theo một dự án; chưa hỗ trợ kéo thả.</div><div data-shell><div class="top"><div><div class="crumb">Đội Thanh toán · Hoá đơn / Hoá đơn API</div><h2>Bảng việc</h2></div><span class="sp"></span><button class="btn primary" data-open="create">＋ Giao task</button></div><div class="body"><div class="row"><div class="field"><label for="system">Hệ thống</label><select id="system" class="in-f"><option value="invoice">Hoá đơn</option><option value="payment">Cổng thanh toán</option></select></div><div class="field"><label for="project">Dự án</label><select id="project" class="in-f"></select></div><span class="sp"></span><span id="board-count" class="hint"></span></div><div class="board" id="board"></div><p class="hint">Bấm thẻ để xem task. Việc lỗi hoặc không có thay đổi vẫn cần người quyết định; “Xong” trong ví dụ là PR đã merge.</p></div></div></section>
+<section class="screen" id="s-task" hidden><div class="note"><b>Cần review:</b> Có cần cho người review đóng task no_changes kèm lý do? RUN-404 đang chạy lại từ RUN-403. Chặn chạy lại khi còn run đang hoạt động; giữ nguyên lịch sử kết quả.</div><div data-shell><div class="top"><div><div class="crumb">Đội Thanh toán · Hoá đơn / Hoá đơn API</div><h2>Kiểm tra mã số thuế</h2></div><span class="sp"></span><button class="btn primary" id="rerun" disabled title="Cần dừng run đang hoạt động trước">Chạy lại</button><button class="btn danger" id="task-cancel" data-open="cancel">Huỷ</button></div><div class="body"><div class="row"><span class="pill run" id="task-state">Đang chạy</span><span class="mono muted">TASK-128</span><span class="pill">code</span><span class="hint">Lê Hà giao · 11/10/2026, 09:40</span></div>
+<div class="split"><div class="card sec"><h3>Mô tả</h3><p>Thêm kiểm tra mã số thuế trước khi phát hành hoá đơn. Trả về thông báo tiếng Việt và giữ nguyên hợp đồng API.</p><h4>Điều kiện nghiệm thu</h4><ul><li>Mã số thuế dài 10 hoặc 13 chữ số.</li><li>Có kiểm thử cho đầu vào trống và ký tự không hợp lệ.</li><li>Không sửa <code>infra/prod/**</code>.</li></ul><span class="hint">Nội dung Markdown được hiển thị sau khi render.</span></div><aside class="card sec"><h3>Kết quả trước · RUN-403</h3><span class="pill warn">needs_review · Cần xem lại</span><p>Review chéo 6/10, thấp hơn ngưỡng 7. Các kiểm tra bắt buộc đều đạt.</p><button class="link" data-open="pr">PR #84 ↗ · đang mở (ví dụ)</button><span class="hint">Bản chụp chính sách: v3 · 09:40</span></aside></div>
+<div class="card sec"><div class="sec-h"><h3>Danh sách run</h3><span class="sp"></span><span class="hint">Chạy lại tạo run mới, giữ lịch sử</span></div><div class="tbl"><table id="task-runs"><thead><tr><th>Run</th><th>CLI / nơi chạy</th><th>Kết quả</th><th>Lý do</th><th>Thời gian</th></tr></thead><tbody>
+<tr><td><button class="link" data-go="run">RUN-404</button></td><td>Codex · mac-ha</td><td id="task-run-state"><span class="pill run">Đang chạy</span></td><td>Chạy lại · bổ sung ca 13 chữ số</td><td>10:10 · đang chạy</td></tr>
+<tr><td><button class="link" data-open="history" data-result="needs_review">RUN-403</button></td><td>Codex · mac-ha</td><td><span class="pill warn">needs_review</span></td><td>Review mềm 6/10 &lt; 7; PR #84 đang mở</td><td>09:54 · 8 phút</td></tr>
+<tr><td><button class="link" data-open="history" data-result="failed">RUN-402</button></td><td>Codex · mac-ha</td><td><span class="pill bad">failed</span></td><td>pnpm test lỗi 2 ca; không tạo PR</td><td>09:42 · 6 phút</td></tr>
+</tbody></table></div></div>
+<div class="card sec"><h3>Chính sách kết quả · ví dụ để review</h3><div class="result-grid"><div><span class="pill ok">succeeded · Đạt</span><p>Mọi kiểm tra bắt buộc đạt. PR chờ duyệt, chưa đồng nghĩa đã merge.</p></div><div><span class="pill">no_changes · Không có thay đổi</span><p>Agent kết thúc bình thường nhưng không có gì để nộp; không mở PR.</p></div><div><span class="pill warn">needs_review · Cần xem lại</span><p>Kiểm tra mềm không đạt. Người review xem bằng chứng rồi quyết định.</p></div><div><span class="pill bad">failed · Thất bại</span><p>Kiểm tra bắt buộc không đạt, agent lỗi hoặc hết giờ. Ví dụ: test lỗi.</p></div></div></div></div></div></section>
+<section class="screen" id="s-run" hidden><div class="note"><b>Cần review:</b> Log thêm dòng mỗi 1,4 giây khi màn này đang mở; bỏ “Tự cuộn” để đọc phần cũ. Chỉ dẫn thêm ghi vào log giả. Huỷ có xác nhận và dừng log. Dữ liệu mô phỏng không chạy CLI.</div><div data-shell><div class="top"><div><div class="crumb">Đội Thanh toán · Hoá đơn / Hoá đơn API</div><h2>Chi tiết run</h2></div><span class="sp"></span><button class="btn" id="steer-button" data-open="steer">Gửi thêm chỉ dẫn</button><button class="btn danger" id="cancel-button" data-open="cancel">Huỷ</button></div><div class="body"><div class="row"><span class="pill run" id="run-state">Đang chạy</span><span class="mono" id="run-id">RUN-404 · lần thử 1</span><button class="link" data-go="task">TASK-128 ↗</button><span class="hint">Codex · mac-ha · nhánh ai/task-128</span></div>
+<ol class="timeline" aria-label="Các pha của run"><li><b>✓ Chuẩn bị</b><small>prepare · 10:10:00 → 10:10:12</small><p class="hint">Tạo worktree, setup</p></li><li class="active" id="running-phase"><b>● Agent đang chạy</b><small>running · từ 10:10:12</small><p class="hint">Đọc mã & viết kiểm thử</p></li><li><b>3 Kiểm tra</b><small>verifying · đang chờ</small><p class="hint">Chính sách v3</p></li><li><b>4 Nộp kết quả</b><small>publishing · đang chờ</small><p class="hint">Push nhánh & tạo PR</p></li></ol>
+<div class="note"><b>Luồng đề xuất:</b> “Nộp kết quả” là pha hiển thị, chưa phải trạng thái riêng trong máy trạng thái đã chốt. Kiểm tra CI (nếu bật) cần PR được tạo trước khi chốt kết quả. Review chéo thuộc M5; bản này chỉ minh hoạ.</div>
+<div class="split"><div class="terminal"><div class="terminal-head"><span class="pill">● Log giả trực tiếp</span><span id="log-count">0 dòng</span><label><input id="follow" type="checkbox" checked>Tự cuộn</label></div><pre id="log" tabindex="0" aria-label="Log terminal mô phỏng"></pre></div><aside class="card sec"><h3>Máy & lần chạy</h3><dl class="kv"><div><dt>Máy</dt><dd>mac-ha · macOS 15 · online</dd></div><div><dt>Agent CLI</dt><dd>Codex</dd></div><div><dt>Thời điểm bắt đầu</dt><dd>11/10/2026, 10:10</dd></div><div><dt>Chính sách</dt><dd>v3 · chụp khi tạo run</dd></div><div><dt>PR</dt><dd>Chưa tạo · chờ kiểm tra</dd></div></dl></aside></div>
+<div class="grid2"><div class="card sec"><h3>File đã đổi · tạm thời</h3><div class="file"><span>src/invoices/tax-id.ts</span><span><b class="add">+24</b> <b class="del">−3</b></span></div><div class="file"><span>src/invoices/tax-id.test.ts</span><span class="add">+42</span></div><span class="hint">2/80 file · chưa có commit mới</span></div><div class="card sec"><h3>Kết quả từng kiểm tra · chính sách v3</h3><p class="hint">Chưa kiểm tra cho run này; kết quả RUN-403 ở danh sách task là lịch sử.</p><div class="tbl"><table><thead><tr><th>Kiểm tra</th><th>Mức</th><th>Kết quả</th></tr></thead><tbody><tr><td>changes · ≤ 80 file; cấm infra/prod/**</td><td>Bắt buộc</td><td>Chờ</td></tr><tr><td>command · pnpm test · 15 phút</td><td>Bắt buộc</td><td>Chờ</td></tr><tr><td>review · Claude Code · ≥ 7/10</td><td>Mềm</td><td>Chờ</td></tr><tr><td>agentReport / ci</td><td>Không bật</td><td>Không áp dụng</td></tr></tbody></table></div></div></div></div></div></section>
+<section class="screen" id="s-fleet" hidden><div class="note"><b>Cần review:</b> Thu hồi khoá máy ngăn nhận việc mới; cần chốt cách xử lý run đang chạy (đề xuất huỷ và giữ lịch sử). Lệnh đăng ký dùng token một lần, có hạn 1 giờ.</div><div data-shell><div class="top"><div><div class="crumb">Đội Thanh toán · Máy</div><h2>Máy của đội</h2></div><span class="sp"></span><button class="btn primary" data-open="register">＋ Thêm máy</button></div><div class="body"><div class="row"><span class="pill ok" id="online-count">2 online</span><span class="pill" id="offline-count">1 offline</span><span class="hint">Máy thuộc đội Thanh toán · heartbeat cập nhật trạng thái</span></div><div class="card tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hệ điều hành</th><th>CLI có</th><th>Run đang chạy</th><th>Lần cuối thấy</th><th></th></tr></thead><tbody>
+<tr data-machine="mac-ha"><td><b>mac-ha</b><div class="hint">Lê Hà · 1/2 slot</div></td><td class="machine-state"><span class="pill ok">online · Trực tuyến</span></td><td>macOS 15 · arm64</td><td>Claude Code, Codex</td><td class="machine-run"><button class="link" data-go="run">RUN-404 ↗</button></td><td>3 giây trước</td><td><button class="btn sm danger" data-revoke="mac-ha">Thu hồi</button></td></tr>
+<tr data-machine="build-01"><td><b>build-01</b><div class="hint">Máy dev · 0/4 slot</div></td><td class="machine-state"><span class="pill ok">online · Trực tuyến</span></td><td>Ubuntu 24.04 · x64</td><td>Claude Code, Codex, Gemini</td><td>—</td><td>5 giây trước</td><td><button class="btn sm danger" data-revoke="build-01">Thu hồi</button></td></tr>
+<tr data-machine="win-minh"><td><b>win-minh</b><div class="hint">Phạm Minh · 0/1 slot</div></td><td class="machine-state"><span class="pill">offline · Ngoại tuyến</span></td><td>Windows 11 · x64</td><td>Codex, Gemini</td><td>—</td><td>Hôm nay, 08:10</td><td><button class="btn sm danger" data-revoke="win-minh">Thu hồi</button></td></tr></tbody></table></div><div class="card sec"><h3>Khả năng nhận việc</h3><p>Chỉ máy online, đúng đội, có CLI và còn slot mới nhận run mới. Run chưa có máy phù hợp nằm trong hàng đợi.</p><p class="hint">Container do runner host cung cấp trong M6; không tính là máy dev trong danh sách này.</p></div></div></div></section>
+</main>
+<dialog id="create" aria-labelledby="create-title"><form id="create-form"><div class="modal-head"><h3 id="create-title">Giao task mới</h3><span class="sp"></span><button type="button" class="btn ghost" data-close aria-label="Đóng hộp thoại">✕</button></div><div class="modal-body">
+<div class="note"><b>Cần review:</b> Một task thuộc một dự án. “Tự chọn” để hub chọn CLI có sẵn trên máy phù hợp. Chưa có máy thì chờ trong hàng đợi; không báo lỗi tạo task.</div>
+<div class="field"><label for="new-project">Dự án</label><select class="in-f" id="new-project"><option>Hoá đơn API</option><option>Hoá đơn web</option><option>Cổng thanh toán API</option></select></div>
+<div class="field"><label for="title">Tiêu đề</label><input class="in-f" id="title" required maxlength="160" placeholder="Ví dụ: Kiểm tra mã số thuế"></div>
+<div class="field"><label for="description">Mô tả · Markdown</label><textarea class="in-f mono" id="description" rows="5" required placeholder="## Yêu cầu&#10;- Việc cần làm&#10;- Điều kiện nghiệm thu"></textarea><span class="hint">Hỗ trợ tiêu đề, danh sách và đoạn mã. Bản mockup chỉ lưu trong bộ nhớ.</span></div>
+<div class="field"><label for="cli">Agent CLI</label><select class="in-f" id="cli"><option>Codex</option><option>Claude Code</option><option>Gemini</option><option>Tự chọn</option></select></div>
+<fieldset><legend>Nơi chạy</legend><label><input type="radio" name="target" value="dev" checked>Máy dev · máy online có CLI phù hợp</label><label><input type="radio" name="target" value="container">Container · cô lập, dùng một lần (M6)</label><span class="hint" id="target-hint">Hub chọn máy rảnh của đội Thanh toán.</span></fieldset>
+<fieldset><legend>Thời điểm</legend><label><input type="radio" name="schedule" value="now" checked>Chạy ngay · tạo run và xếp hàng</label><label><input type="radio" name="schedule" value="later">Để sau · chỉ tạo task ở Cần làm</label></fieldset>
+</div><div class="modal-foot"><button type="button" class="btn" data-close>Huỷ</button><button type="submit" class="btn primary">Giao task</button></div></form></dialog>
+<dialog id="steer" aria-labelledby="steer-title"><form id="steer-form"><div class="modal-head"><h3 id="steer-title">Gửi thêm chỉ dẫn · RUN-404</h3></div><div class="modal-body"><p class="hint">Agent nhận chỉ dẫn ở lần xử lý tiếp theo; không đảm bảo dừng ngay thao tác hiện tại.</p><div class="field"><label for="instruction">Chỉ dẫn</label><textarea id="instruction" class="in-f" required rows="4" placeholder="Ví dụ: thêm test mã số thuế có 13 chữ số"></textarea></div></div><div class="modal-foot"><button type="button" class="btn" data-close>Đóng</button><button class="btn primary" type="submit">Gửi chỉ dẫn</button></div></form></dialog>
+<dialog id="cancel" aria-labelledby="cancel-title"><div class="modal-head"><h3 id="cancel-title">Huỷ RUN-404?</h3></div><div class="modal-body"><p>Worker sẽ nhận yêu cầu dừng agent. File tạm và log được giữ làm bằng chứng; run không mở PR.</p><p class="hint">Mockup mô phỏng trạng thái Đang huỷ rồi Đã huỷ.</p></div><div class="modal-foot"><button class="btn" data-close>Tiếp tục chạy</button><button class="btn danger" id="confirm-cancel">Huỷ run</button></div></dialog>
+<dialog id="register" aria-labelledby="register-title"><div class="modal-head"><h3 id="register-title">Thêm máy vào đội Thanh toán</h3></div><div class="modal-body"><p>Cài hive-worker rồi chạy lệnh này trên máy của bạn:</p><pre class="command">hive-worker register --hub https://hive.example.invalid --token &lt;TOKEN_DANG_KY_MOT_LAN&gt;</pre><p class="hint">Đây là lệnh ví dụ, chưa có token thật. Khi triển khai: token dùng một lần, hết hạn sau 1 giờ; máy tạo khoá riêng lúc đăng ký.</p><p class="hint">Máy sẽ xuất hiện trong danh sách sau khi đăng ký thành công.</p></div><div class="modal-foot"><button class="btn" data-close>Đóng</button></div></dialog>
+<dialog id="revoke" aria-labelledby="revoke-title"><div class="modal-head"><h3 id="revoke-title">Thu hồi máy <span id="revoke-name"></span>?</h3></div><div class="modal-body"><p>Máy không thể kết nối và nhận việc mới. Muốn dùng lại cần đăng ký lại.</p><p id="revoke-running" class="hint"></p><div class="note"><b>Cần review:</b> Với máy có run đang chạy, ví dụ này đồng thời gửi yêu cầu huỷ. Thực tế cần chờ worker hoặc lease hết hạn để xác nhận đã dừng.</div></div><div class="modal-foot"><button class="btn" data-close>Giữ máy</button><button class="btn danger" id="confirm-revoke">Thu hồi máy</button></div></dialog>
+<dialog id="history" aria-labelledby="history-title"><div class="modal-head"><h3 id="history-title">Kết quả RUN-403</h3></div><div class="modal-body"><span id="history-result" class="pill warn">needs_review</span><p id="history-reason"></p><div class="tbl"><table><thead><tr><th>Kiểm tra · bản chụp v3</th><th>Mức</th><th>Kết quả / bằng chứng</th></tr></thead><tbody><tr><td>changes</td><td>Bắt buộc</td><td>Đạt · 2 file, 1 commit, không sửa đường dẫn cấm</td></tr><tr><td>command · pnpm test</td><td>Bắt buộc</td><td id="history-command">Đạt · 24/24 ca, mã thoát 0</td></tr><tr><td>review · Claude Code</td><td>Mềm</td><td id="history-review">Chưa đạt · 6/10 &lt; 7, thiếu ca mã số thuế 13 số</td></tr><tr><td>agentReport / ci</td><td>Không bật</td><td>Không áp dụng</td></tr></tbody></table></div><p class="hint">Không có kiểm tra CI trong chính sách ví dụ; trạng thái run không thay cho trạng thái CI của PR.</p></div><div class="modal-foot"><button class="btn" data-close>Đóng</button></div></dialog>
+<dialog id="pr" aria-labelledby="pr-title"><div class="modal-head"><h3 id="pr-title">PR #84 · dữ liệu ví dụ</h3></div><div class="modal-body"><p>Kiểm tra mã số thuế · nhánh ai/task-128 → main</p><span class="pill warn">Đang chờ người review</span><p class="hint">Mockup không có PR thật. Trong sản phẩm, liên kết này mở PR trên GitHub hoặc MR trên GitLab.</p></div><div class="modal-foot"><button class="btn" data-close>Đóng</button></div></dialog>
+<div id="toast" role="status" hidden></div>
+<script>
+const $ = (selector, root = document) => root.querySelector(selector);
+const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+const template = $('#shell');
+$$('[data-shell]').forEach((host) => {
+  const app = template.content.firstElementChild.cloneNode(true);
+  $('.main', app).append(...host.childNodes);
+  host.append(app);
+});
+const projects = {
+  invoice: ['Hoá đơn API', 'Hoá đơn web'],
+  payment: ['Cổng thanh toán API'],
+};
+const tasks = [
+  {id:'TASK-129', title:'Thêm bộ lọc ngày phát hành', project:'Hoá đơn API', column:0, cli:'Tự chọn', reason:'Chưa có run · để sau'},
+  {id:'TASK-125', title:'Rút gọn truy vấn danh sách', project:'Hoá đơn API', column:0, cli:'Gemini', reason:'no_changes · không có commit mới'},
+  {id:'TASK-126', title:'Kiểm tra quyền tải PDF', project:'Hoá đơn API', column:0, cli:'Claude Code', reason:'failed · kiểm tra bắt buộc lỗi'},
+  {id:'TASK-130', title:'Bổ sung test mã số thuế 13 số', project:'Hoá đơn API', column:0, cli:'Codex', reason:'Chưa có run · để sau'},
+  {id:'TASK-128', title:'Kiểm tra mã số thuế', project:'Hoá đơn API', column:1, cli:'Codex · mac-ha', reason:'RUN-404 · đang chạy lại; trước đó needs_review'},
+  {id:'TASK-127', title:'Thêm phân trang hoá đơn', project:'Hoá đơn API', column:2, cli:'Claude Code', reason:'succeeded · PR #83 chờ duyệt'},
+  {id:'TASK-124', title:'Sửa định dạng số tiền', project:'Hoá đơn API', column:3, cli:'Codex', reason:'PR #82 đã merge · hôm qua'},
+  {id:'TASK-131', title:'Thêm trạng thái rỗng', project:'Hoá đơn web', column:0, cli:'Tự chọn', reason:'Chưa có run'},
+  {id:'TASK-132', title:'Rà soát callback thanh toán', project:'Cổng thanh toán API', column:0, cli:'Claude Code', reason:'Chưa có run'},
+];
+let current = 'board';
+let cancelled = false;
+let runNumber = 404;
+let pendingMachine = '';
+let toastTimer;
+function toast(message) {
+  clearTimeout(toastTimer);
+  $('#toast').textContent = message;
+  $('#toast').hidden = false;
+  toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 4000);
+}
+function show(id) {
+  if (!['board','task','run','fleet'].includes(id)) return;
+  current = id;
+  $$('.screen').forEach((s) => { s.hidden = s.id !== `s-${id}`; });
+  $$('.tabs [data-go]').forEach((b) => {
+    if (b.dataset.go === id) b.setAttribute('aria-current','page');
+    else b.removeAttribute('aria-current');
+  });
+  $$('.side .work').forEach((a) => a.classList.toggle('on', id !== 'fleet'));
+  $$('.side .fleet').forEach((a) => a.classList.toggle('on', id === 'fleet'));
+  history.replaceState(null, '', `#${id}`);
+  window.scrollTo(0, 0);
+  if (id === 'run' && $('#follow').checked) $('#log').scrollTop = $('#log').scrollHeight;
+}
+function renderBoard() {
+  $('#board').replaceChildren();
+  const filtered = tasks.filter((t) => t.project === $('#project').value);
+  $('#board-count').textContent = `${filtered.length} việc · dữ liệu ví dụ`;
+  ['Cần làm','Đang chạy','Chờ review','Xong'].forEach((name, index) => {
+    const col = document.createElement('div');
+    col.className = 'column';
+    const heading = document.createElement('h3');
+    heading.textContent = `${name} · ${filtered.filter(t => t.column === index).length}`;
+    col.append(heading);
+    filtered.filter(t => t.column === index).forEach((t) => {
+      const card = document.createElement('button');
+      card.className = 'card task-card';
+      for (const [tag, text] of [['small',t.id],['strong',t.title],['small',t.cli],['small',t.reason]]) {
+        const el = document.createElement(tag);
+        el.textContent = text;
+        card.append(el);
+      }
+      card.addEventListener('click', () => {
+        if (t.id === 'TASK-128') show('task');
+        else toast(`${t.id}: ${t.reason}. Mockup chi tiết mẫu dùng TASK-128.`);
+      });
+      col.append(card);
+    });
+    $('#board').append(col);
+  });
+}
+function syncProjects() {
+  $('#project').replaceChildren(...projects[$('#system').value].map((name) => new Option(name, name)));
+  renderBoard();
+}
+$('#system').addEventListener('change', syncProjects);
+$('#project').addEventListener('change', renderBoard);
+syncProjects();
+// Dùng textContent cho nội dung người review nhập để Markdown giả không thực thi HTML.
+document.addEventListener('click', (event) => {
+  const go = event.target.closest('[data-go]');
+  if (go) { event.preventDefault(); show(go.dataset.go); }
+  const open = event.target.closest('[data-open]');
+  if (open) {
+    if (open.dataset.open === 'create') $('#new-project').value = $('#project').value;
+    if (open.dataset.open === 'history') {
+      const failed = open.dataset.result === 'failed';
+      $('#history-title').textContent = `Kết quả ${failed ? 'RUN-402' : 'RUN-403'}`;
+      $('#history-result').textContent = failed ? 'failed · Thất bại' : 'needs_review · Cần xem lại';
+      $('#history-result').className = `pill ${failed ? 'bad' : 'warn'}`;
+      $('#history-reason').textContent = failed ? 'Kiểm tra bắt buộc không đạt. Không mở PR.' : 'Mọi kiểm tra bắt buộc đạt; review mềm thiếu điểm. PR #84 chờ người duyệt.';
+      $('#history-command').textContent = failed ? 'Lỗi · 22/24 ca, mã thoát 1' : 'Đạt · 24/24 ca, mã thoát 0';
+      $('#history-review').textContent = failed ? 'Không chạy · kiểm tra bắt buộc trước đó lỗi' : 'Chưa đạt · 6/10 < 7, thiếu ca mã số thuế 13 số';
+    }
+    $(`#${open.dataset.open}`).showModal();
+  }
+  const close = event.target.closest('[data-close]');
+  if (close) close.closest('dialog').close();
+  const revoke = event.target.closest('[data-revoke]');
+  if (revoke) {
+    pendingMachine = revoke.dataset.revoke;
+    $('#revoke-name').textContent = pendingMachine;
+    $('#revoke-running').textContent = pendingMachine === 'mac-ha' && !cancelled ? `Máy có RUN-${runNumber} đang chạy; thu hồi sẽ yêu cầu huỷ run.` : 'Máy không có run đang chạy.';
+    $('#revoke').showModal();
+  }
+});
+$$('input[name="theme"]').forEach((input) => input.addEventListener('change', () => {
+  if (input.value === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme = input.value;
+}));
+$$('input[name="target"]').forEach((input) => input.addEventListener('change', () => {
+  $('#target-hint').textContent = input.value === 'container' ? 'Tuỳ chọn tương lai M6 · bản mockup không tạo container.' : 'Hub chọn máy rảnh của đội Thanh toán.';
+}));
+$('#create-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  const project = $('#new-project').value;
+  const now = $('input[name="schedule"]:checked').value === 'now';
+  tasks.push({id:`TASK-${133 + tasks.length - 9}`, title:$('#title').value.trim(), project, column:0, cli:$('#cli').value, reason:now ? 'Đã xếp hàng · chờ máy hoặc runner phù hợp' : 'Chưa có run · để sau'});
+  $('#system').value = project === 'Cổng thanh toán API' ? 'payment' : 'invoice';
+  syncProjects(); $('#project').value = project; renderBoard();
+  $('#create').close(); show('board');
+  toast(now ? 'Đã tạo task và xếp hàng run (mô phỏng).' : 'Đã tạo task để chạy sau (mô phỏng).');
+  $('#create-form').reset();
+  $('#target-hint').textContent = 'Hub chọn máy rảnh của đội Thanh toán.';
+});
+let lines = 0;
+function appendLog(message) {
+  const line = document.createElement('span');
+  line.textContent = `${new Date().toLocaleTimeString('vi-VN')}  ${message}\n`;
+  $('#log').append(line);
+  // Giới hạn log để mở mockup lâu không làm trình duyệt giữ vô hạn dữ liệu giả.
+  while ($('#log').childNodes.length > 200) $('#log').firstChild.remove();
+  $('#log-count').textContent = `${++lines} dòng`;
+  if ($('#follow').checked) $('#log').scrollTop = $('#log').scrollHeight;
+}
+['[chuẩn bị] Đã tạo worktree cho TASK-128.', '[chuẩn bị] Setup hoàn tất; đã xoá secret của pha setup.', '[agent] Codex đang đọc quy tắc dự án và kiểm thử hiện có.'].forEach(appendLog);
+const messages = ['[agent] Đọc bộ kiểm tra mã số thuế.', '[agent] Thêm ca đầu vào rỗng và ký tự không hợp lệ.', '[agent] Đang bổ sung ca 13 chữ số.', '[agent] Soát diff trước khi gửi báo cáo.'];
+let tick = 0;
+setInterval(() => {
+  if (current === 'run' && !cancelled && !document.hidden) appendLog(messages[tick++ % messages.length]);
+}, 1400);
+$('#follow').addEventListener('change', () => {
+  if ($('#follow').checked) $('#log').scrollTop = $('#log').scrollHeight;
+});
+$('#steer-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  if (cancelled) return;
+  appendLog(`[chỉ dẫn từ Lê Hà] ${$('#instruction').value.trim()}`);
+  $('#steer').close(); $('#steer-form').reset(); toast('Đã gửi chỉ dẫn (mô phỏng).');
+});
+function cancelRun() {
+  if (cancelled) return;
+  cancelled = true;
+  $('#cancel-button').disabled = true;
+  $('#steer-button').disabled = true;
+  $('#run-state').textContent = 'Đang huỷ';
+  $('#task-state').textContent = 'Đang huỷ';
+  $('#task-run-state').textContent = 'Đang huỷ';
+  $('#task-cancel').disabled = true;
+  appendLog('[hub] Đã gửi yêu cầu huỷ; đang chờ worker dừng agent.');
+  setTimeout(() => {
+    $('#run-state').textContent = 'Đã huỷ';
+    $('#run-state').className = 'pill';
+    $('#task-state').textContent = 'Cần làm'; $('#task-state').className = 'pill';
+    $('#task-run-state').textContent = 'Đã huỷ';
+    $('#rerun').disabled = false; $('#rerun').removeAttribute('title');
+    $('#running-phase').classList.remove('active');
+    $('#running-phase').firstElementChild.textContent = 'Đã dừng agent';
+    appendLog('[worker] Agent đã dừng; run cancelled. Không tạo PR.');
+    const running = tasks.find(t => t.id === 'TASK-128');
+    running.column = 0; running.reason = 'cancelled · người dùng đã huỷ'; renderBoard();
+    $('.machine-run').textContent = '—';
+  }, 700);
+}
+$('#confirm-cancel').addEventListener('click', () => { $('#cancel').close(); cancelRun(); });
+$('#confirm-revoke').addEventListener('click', () => {
+  const row = $(`[data-machine="${pendingMachine}"]`);
+  $('.machine-state', row).textContent = 'Đã thu hồi';
+  $('[data-revoke]', row).disabled = true;
+  if (pendingMachine === 'mac-ha') cancelRun();
+  const activeMachines = $$('[data-machine]').filter(r => !$('[data-revoke]', r).disabled);
+  $('#online-count').textContent = `${activeMachines.filter(r => r.dataset.machine !== 'win-minh').length} online`;
+  $('#offline-count').textContent = `${activeMachines.filter(r => r.dataset.machine === 'win-minh').length} offline`;
+  $('#revoke').close(); toast(`Đã thu hồi ${pendingMachine} (mô phỏng).`);
+});
+$('#rerun').addEventListener('click', () => {
+  if ($('[data-revoke="mac-ha"]').disabled) {
+    toast('Máy mac-ha đã thu hồi; cần đăng ký lại để chạy ví dụ này.'); return;
+  }
+  if (cancelled) {
+    runNumber++;
+    $('#run-id').textContent = `RUN-${runNumber} · lần thử 1`;
+    $('#steer-title').textContent = `Gửi thêm chỉ dẫn · RUN-${runNumber}`;
+    $('#cancel-title').textContent = `Huỷ RUN-${runNumber}?`;
+    $('#task-run-state').removeAttribute('id');
+    const row = $('#task-runs tbody').insertRow(0);
+    row.innerHTML = `<td><button class="link" data-go="run">RUN-${runNumber}</button></td><td>Codex · mac-ha</td><td id="task-run-state">Đang chạy</td><td>Chạy lại từ run đã huỷ · mô phỏng</td><td>Vừa bắt đầu</td>`;
+    $('#log').replaceChildren(); lines = 0;
+    cancelled = false; $('#run-state').textContent = 'Đang chạy'; $('#run-state').className = 'pill run';
+    $('#running-phase').classList.add('active'); $('#running-phase').firstElementChild.textContent = '● Agent đang chạy';
+    $('#cancel-button').disabled = false; $('#steer-button').disabled = false;
+    $('#task-state').textContent = 'Đang chạy'; $('#task-state').className = 'pill run';
+    $('#task-run-state').textContent = 'Đang chạy'; $('#task-cancel').disabled = false; $('#rerun').disabled = true;
+    const task = tasks.find(t => t.id === 'TASK-128'); task.column = 1; task.reason = `RUN-${runNumber} · đang chạy lại (mẫu)`; renderBoard();
+    $('.machine-run').innerHTML = `<button class="link" data-go="run">RUN-${runNumber} ↗</button>`;
+    appendLog(`[hub] Tạo RUN-${runNumber} từ task cũ; giữ lịch sử các run trước.`);
+  }
+  show('run'); toast(`Đã tạo RUN-${runNumber} (mô phỏng).`);
+});
+show(location.hash.slice(1) || 'board');
+</script></body></html>
