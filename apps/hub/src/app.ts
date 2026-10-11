@@ -4,6 +4,7 @@ import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type pg from "pg";
+import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, meRouter } from "./modules/identity/index.ts";
 import type { HubConfig } from "./modules/platform/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
@@ -24,6 +25,7 @@ export function createApp({ config, auth, pool, webDist = process.env.HIVE_WEB_D
     system: systemRouter(config),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators }),
+    ...fleetRouter({ auth, pool, publicUrl: config.publicUrl ?? `http://localhost:${config.port}` }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
