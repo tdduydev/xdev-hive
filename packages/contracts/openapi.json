@@ -45019,8 +45019,15 @@
                             "format": "uuid"
                           },
                           "taskId": {
-                            "type": "string",
-                            "format": "uuid"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "projectId": {
                             "type": "string",
@@ -45033,7 +45040,9 @@
                           "kind": {
                             "enum": [
                               "code",
-                              "review"
+                              "review",
+                              "plan",
+                              "leader"
                             ],
                             "type": "string"
                           },
@@ -55278,6 +55287,125 @@
                                     },
                                     "additionalProperties": false
                                   },
+                                  "runPermissions": {
+                                    "anyOf": [
+                                      {
+                                        "type": "object",
+                                        "properties": {
+                                          "mode": {
+                                            "enum": [
+                                              "workspace",
+                                              "full"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "mode"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "models": {
+                                    "type": "object",
+                                    "properties": {
+                                      "claude": {
+                                        "type": "object",
+                                        "properties": {
+                                          "code": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "review": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "codex": {
+                                        "type": "object",
+                                        "properties": {
+                                          "code": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "review": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "additionalProperties": false
+                                      },
+                                      "gemini": {
+                                        "type": "object",
+                                        "properties": {
+                                          "code": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          },
+                                          "review": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              },
+                                              {
+                                                "type": "null"
+                                              }
+                                            ]
+                                          }
+                                        },
+                                        "additionalProperties": false
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
                                   "issueIntake": {
                                     "type": "object",
                                     "properties": {
@@ -56261,6 +56389,125 @@
                                         },
                                         "sandbox": {
                                           "type": "boolean"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "runPermissions": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "mode": {
+                                              "enum": [
+                                                "workspace",
+                                                "full"
+                                              ],
+                                              "type": "string"
+                                            }
+                                          },
+                                          "required": [
+                                            "mode"
+                                          ],
+                                          "additionalProperties": false
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "models": {
+                                      "type": "object",
+                                      "properties": {
+                                        "claude": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "review": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "codex": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "review": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "gemini": {
+                                          "type": "object",
+                                          "properties": {
+                                            "code": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "review": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
                                         }
                                       },
                                       "additionalProperties": false
@@ -57293,6 +57540,125 @@
                                     },
                                     "sandbox": {
                                       "type": "boolean"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "runPermissions": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "mode": {
+                                          "enum": [
+                                            "workspace",
+                                            "full"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "mode"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "models": {
+                                  "type": "object",
+                                  "properties": {
+                                    "claude": {
+                                      "type": "object",
+                                      "properties": {
+                                        "code": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "review": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "codex": {
+                                      "type": "object",
+                                      "properties": {
+                                        "code": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "review": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "gemini": {
+                                      "type": "object",
+                                      "properties": {
+                                        "code": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        },
+                                        "review": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "additionalProperties": false
                                     }
                                   },
                                   "additionalProperties": false
