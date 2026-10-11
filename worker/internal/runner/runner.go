@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,6 +26,7 @@ type Job struct {
 	Env                                      map[string]string
 	Timeout                                  time.Duration
 	SetupScript                              string
+	Budget                                   Budget
 }
 
 type Event struct {
@@ -36,6 +38,8 @@ type Event struct {
 	Offset  int64   `json:"offset,omitempty"`
 	Data    []byte  `json:"data,omitempty"`
 	Result  *Result `json:"result,omitempty"`
+	// Cost có ở sự kiện "cost": usage luỹ kế của lần chạy CLI.
+	Cost *Usage `json:"cost,omitempty"`
 }
 
 type Sink interface{ Emit(Event) error }
@@ -180,6 +184,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
 		defer cancel()
 	}
+	// Vượt trần chi phí thì dừng CLI theo đường huỷ (SIGINT, chờ grace rồi kill).
+	runCtx, stopForBudget := context.WithCancel(runCtx)
+	defer stopForBudget()
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -197,11 +204,21 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := startProcess(cmd); err != nil {
 		return err
 	}
+	usage, stopMeter := startMeter(job, sink, stopForBudget)
 	logErr := make(chan error, 2)
-	go func() { logErr <- stream(runCtx, stdout, sink, job, "stdout") }()
+	go func() { logErr <- stream(runCtx, io.TeeReader(stdout, usage), sink, job, "stdout") }()
 	go func() { logErr <- stream(runCtx, stderr, sink, job, "stderr") }()
 	waitErr := waitProcess(runCtx, cmd, r.grace)
 	e1, e2 := <-logErr, <-logErr
+	// Usage cuối gửi trước run_result: hub bỏ mọi gói của run đến sau run_result.
+	if err := stopMeter(); err != nil {
+		return err
+	}
+	// Người huỷ cùng lúc thì báo huỷ, không báo vượt ngân sách.
+	if reason := usage.exceeded(); reason != "" && ctx.Err() == nil {
+		result = &Result{Status: "failed", Error: "Vượt ngân sách: " + reason}
+		return errors.New(result.Error)
+	}
 	if waitErr != nil || e1 != nil || e2 != nil {
 		e := errors.Join(waitErr, e1, e2)
 		status := "failed"
@@ -313,9 +330,17 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 	if !ok {
 		switch j.CLI {
 		case "claude":
-			configured = Command{Path: "claude", Args: []string{"-p", j.Prompt, "--output-format", "stream-json"}}
+			// stream-json ở chế độ -p bắt buộc có --verbose (claude 2.1 báo lỗi nếu thiếu).
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose"}
+			// Claude tự dừng khi chạm trần USD (result subtype error_max_budget_usd); runner chỉ biết USD của Claude ở
+			// tin result cuối nên cần cờ này để dừng giữa chừng. Claude 2.1 không có cờ giới hạn lượt trong --help.
+			if j.Budget.MaxCostUSD != nil {
+				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
+			}
+			configured = Command{Path: "claude", Args: args}
 		case "codex":
-			configured = Command{Path: "codex", Args: []string{"exec", j.Prompt}}
+			// --json in sự kiện JSONL; usage nằm ở sự kiện turn.completed.
+			configured = Command{Path: "codex", Args: []string{"exec", "--json", j.Prompt}}
 		case "gemini":
 			configured = Command{Path: "gemini", Args: []string{"-p", j.Prompt}}
 		default:
@@ -423,5 +448,29 @@ func stream(ctx context.Context, r io.Reader, s Sink, j Job, name string) error 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+	}
+}
+
+// startMeter đọc usage từ stdout của CLI và gửi sự kiện cost theo chu kỳ. Hàm trả về dừng chu kỳ và gửi usage cuối.
+func startMeter(job Job, sink Sink, stop context.CancelFunc) (*meter, func() error) {
+	m := newMeter(job.CLI, job.Budget, func(u Usage) error {
+		return emit(sink, Event{Type: "cost", RunID: job.RunID, Attempt: job.Attempt, Cost: &u})
+	}, func(string) { stop() })
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(m.interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				_ = m.flush(false)
+			case <-done:
+				return
+			}
+		}
+	}()
+	return m, func() error {
+		close(done)
+		return m.finish()
 	}
 }

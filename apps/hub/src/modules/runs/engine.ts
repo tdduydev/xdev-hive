@@ -23,6 +23,7 @@ import {
   scmEvents,
 } from "../scm/index.ts";
 import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
+import { applyCost, assertTaskBudget, type JobBudget, jobBudget, parseCostData, taskSpentUsd } from "./cost.ts";
 import { createMcpRunTokens } from "./mcp.ts";
 import { evaluatePolicy, type Outcome } from "./policy.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
@@ -115,6 +116,7 @@ function buildSpec(
   project: ProjectRow,
   cli: string,
   instructions: string[],
+  budget: JobBudget | undefined,
 ): Record<string, unknown> {
   const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
   return {
@@ -133,6 +135,7 @@ function buildSpec(
     baseBranch: project.defaultBranch,
     branch: run.branch,
     timeoutSec: run.timeoutSec,
+    ...(budget ? { budget } : {}),
   };
 }
 
@@ -248,15 +251,17 @@ export function createRunsEngine(deps: RunsDeps) {
       const machine = await pickMachine(tx, run);
       if (!machine) return null;
       const instructions = await instructionsOf(tx, run.id);
+      const budget = jobBudget(project.settings.budget, await taskSpentUsd(tx, task.id));
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
-      await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name });
+      const cli = run.cli ?? machine.clis[0] ?? "claude";
+      // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
+      await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       await notifyRun(tx, run.id);
       await schedule({ kind: "offer", orgId, runId, attempt: run.attempt, machineId: machine.id }, expiresAt, tx);
-      const cli = run.cli ?? machine.clis[0] ?? "claude";
       return {
         machineId: machine.id,
         msg: {
@@ -264,7 +269,7 @@ export function createRunsEngine(deps: RunsDeps) {
           runId: run.id,
           attempt: run.attempt,
           ttl: offerTtlSec,
-          spec: buildSpec(run, task, project, cli, instructions),
+          spec: buildSpec(run, task, project, cli, instructions, budget),
         } satisfies OutgoingMessage,
       };
     });
@@ -394,7 +399,13 @@ export function createRunsEngine(deps: RunsDeps) {
         })
         .onConflictDoNothing()
         .returning({ id: runEvents.id });
-      if (inserted.length === 0) return true;
+      const [event] = inserted;
+      if (!event) return true;
+      if (msg.event === "cost") {
+        const cost = parseCostData(msg.data);
+        if (cost) await applyCost(tx, run, event.id, cost);
+        else log.warn(`Bỏ sự kiện cost sai dạng: run ${run.id}, seq ${msg.seq}`);
+      }
       const to = msg.event === "phase" ? PHASE_STATE[String(msg.data.phase)] : undefined;
       const forward =
         (to === "preparing" && run.state === "leased") ||
@@ -796,6 +807,7 @@ export function createRunsEngine(deps: RunsDeps) {
     if (!projectReady(project)) {
       throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo, chưa giao task được.");
     }
+    await assertTaskBudget(tx, task.id, project.settings.budget);
     const outcome = project.settings.outcome;
     const policy = (task.type ? outcome.byType[task.type] : undefined) ?? outcome.default;
     let row: RunRow | undefined;
