@@ -1,7 +1,7 @@
 import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
-import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
+import { mergeQueue, provisionQueue, registerMergeWorker, registerProvisionWorker } from "./modules/catalog/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -61,7 +61,7 @@ else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL khô
 jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
+      queues: [provisionQueue, mergeQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -88,15 +88,17 @@ if (runs) registerRunHandlers(runs.handlers);
 if (roles.includes("jobs") && jobs) {
   if (runs) await runs.registerJobs(jobs);
   if (!pool || !config.masterKey) {
-    console.warn("Vai trò jobs cần HIVE_DATABASE_URL và HIVE_MASTER_KEY; bỏ qua saga khởi tạo dự án.");
+    console.warn("Vai trò jobs cần HIVE_DATABASE_URL và HIVE_MASTER_KEY; bỏ qua saga khởi tạo dự án và hàng merge.");
   } else {
-    await registerProvisionWorker(jobs, {
+    const catalogDeps = {
       pool,
       masterKey: config.masterKey,
       providerFactory: defaultProviderFactory,
       publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
       jobs,
-    });
+    };
+    await registerProvisionWorker(jobs, catalogDeps);
+    await registerMergeWorker(jobs, catalogDeps);
   }
   if (pool) {
     await registerFleetOfflineWorker(jobs, {

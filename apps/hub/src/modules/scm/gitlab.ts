@@ -12,16 +12,19 @@ import {
   Users,
 } from "@gitbeaker/rest";
 import { errorFromResponse, GitProviderError, isGitProviderError, networkError } from "./errors.ts";
-import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
+import { assertOwnedRepo, describeWithMarker, notMergeable } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  ChecksState,
   CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,
   GitProvider,
+  MergeMethod,
   PullRequestInput,
+  PullRequestState,
   RepoInfo,
   RepoRef,
   RepoVisibility,
@@ -71,6 +74,43 @@ function toRepoInfo(p: GlProject): RepoInfo {
   };
 }
 
+interface GlMergeRequest {
+  iid: number;
+  web_url: string;
+  state: "opened" | "closed" | "locked" | "merged";
+  draft?: boolean;
+  work_in_progress?: boolean;
+  source_branch: string;
+  target_branch: string;
+  sha: string;
+  /** Có từ GitLab 15.6; bản cũ hơn chỉ có has_conflicts và merge_status. */
+  detailed_merge_status?: string;
+  has_conflicts?: boolean;
+  merge_status?: string;
+  merge_commit_sha?: string | null;
+  squash_commit_sha?: string | null;
+}
+
+// Trạng thái còn lại (ci_must_pass, not_approved, discussions_not_resolved, draft_status...) là chờ điều kiện
+// của chính GitLab: blocked.
+const GL_MERGEABLE: Record<string, PullRequestState["mergeable"]> = {
+  mergeable: "clean",
+  conflict: "conflict",
+  need_rebase: "behind",
+  checking: "unknown",
+  unchecked: "unknown",
+  preparing: "unknown",
+  approvals_syncing: "unknown",
+};
+
+function mergeableOf(mr: GlMergeRequest): PullRequestState["mergeable"] {
+  if (mr.detailed_merge_status) return GL_MERGEABLE[mr.detailed_merge_status] ?? "blocked";
+  if (mr.has_conflicts) return "conflict";
+  if (mr.merge_status === "can_be_merged") return "clean";
+  if (mr.merge_status === "cannot_be_merged") return "blocked";
+  return "unknown";
+}
+
 /** GitLab trả `message` là chuỗi hoặc object theo trường (ví dụ `{"name":["has already been taken"]}`). */
 function detailOf(text: string): string | undefined {
   if (!text) return undefined;
@@ -102,6 +142,7 @@ async function orNull<T>(fn: () => Promise<T>): Promise<T | null> {
 
 /** Repo GitLab định danh bằng đường dẫn đầy đủ; gitbeaker tự mã hoá, còn gọi tay thì phải mã hoá. */
 const projectPath = (ref: RepoRef) => `${ref.owner}/${ref.name}`;
+const mrPath = (ref: RepoRef, iid: number) => `projects/${encodeURIComponent(projectPath(ref))}/merge_requests/${iid}`;
 
 export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
   const doFetch: FetchLike = opts.fetch ?? ((input, init) => fetch(input, init));
@@ -363,6 +404,54 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         ),
       );
       return (m?.access_level ?? 0) >= DEVELOPER;
+    },
+
+    async getPR(ref: RepoRef, number: number) {
+      const mr = await orNull(() => rest<GlMergeRequest>("GET", mrPath(ref, number)));
+      if (!mr) return null;
+      return {
+        number: mr.iid,
+        url: mr.web_url,
+        // locked: GitLab đang merge dở, chưa xong; coi như còn mở để hỏi lại sau.
+        state: mr.state === "merged" ? "merged" : mr.state === "closed" ? "closed" : "open",
+        draft: mr.draft ?? mr.work_in_progress ?? false,
+        head: mr.source_branch,
+        headSha: mr.sha,
+        base: mr.target_branch,
+        mergeable: mr.state === "locked" ? "unknown" : mergeableOf(mr),
+      } satisfies PullRequestState;
+    },
+
+    async updatePRBranch(ref: RepoRef, number: number) {
+      // GitLab rebase chạy nền và không nhận sha mong đợi; xung đột chỉ lộ ra ở lần getPR sau (need_rebase/conflict).
+      await rest("PUT", `${mrPath(ref, number)}/rebase`);
+    },
+
+    async checksFor(ref: RepoRef, sha: string): Promise<ChecksState> {
+      const q = new URLSearchParams({ sha, order_by: "id", sort: "desc", per_page: "1" });
+      const [pipeline] = await rest<Array<{ status: string }>>(
+        "GET",
+        `projects/${encodeURIComponent(projectPath(ref))}/pipelines?${q}`,
+      );
+      if (!pipeline || pipeline.status === "skipped") return "none";
+      if (pipeline.status === "success") return "success";
+      if (pipeline.status === "failed" || pipeline.status === "canceled") return "failure";
+      // created, waiting_for_resource, preparing, pending, running, manual, scheduled.
+      return "pending";
+    },
+
+    async mergePR(ref: RepoRef, number: number, opts: { method: MergeMethod; sha: string }) {
+      try {
+        const mr = await rest<GlMergeRequest>("PUT", `${mrPath(ref, number)}/merge`, {
+          sha: opts.sha,
+          squash: opts.method === "squash",
+        });
+        return { sha: mr.merge_commit_sha ?? mr.squash_commit_sha ?? null };
+      } catch (e) {
+        // 405: bản nháp, đã đóng, pipeline chưa xanh, thiếu duyệt; 406: xung đột. 409 (sha khác head) đã là conflict.
+        if (isGitProviderError(e) && (e.status === 405 || e.status === 406)) throw notMergeable(e);
+        throw e;
+      }
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {

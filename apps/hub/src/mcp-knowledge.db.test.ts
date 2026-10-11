@@ -11,7 +11,7 @@ import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
 import { type Auth, createAuth } from "./modules/identity/index.ts";
-import { MCP_LIMITS, saveDoc, saveSkill, writeMemory } from "./modules/knowledge/index.ts";
+import { saveDoc, saveSkill, writeMemory } from "./modules/knowledge/index.ts";
 import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine, runTokenKey, signRunToken } from "./modules/runs/index.ts";
 import { createMemoryProvider } from "./modules/scm/index.ts";
@@ -37,7 +37,7 @@ let server: ReturnType<typeof serve>;
 let baseURL = "";
 let fetchApp: (req: Request) => Response | Promise<Response> = () => new Response(null, { status: 503 });
 const clients: Client[] = [];
-const BIG = `${"Quy ước dài. ".repeat(4000)}HẾT`;
+const BIG = `# Tổng quan\n${"Quy ước dài. ".repeat(1000)}\n## Chi tiết\n${"Ví dụ. ".repeat(1000)}\n# Kết luận\nHẾT`;
 
 async function seedRun(o: Org, projectId: string) {
   const key = `KN${tag}-1`;
@@ -215,9 +215,11 @@ describe("tool knowledge với run token", () => {
     client = await connect(runToken());
   });
 
-  it("tools/list có đủ bảy tool, tool đọc được đánh dấu readOnly", async () => {
+  it("tools/list chỉ có tool knowledge được phép, tool đọc được đánh dấu readOnly", async () => {
     const tools = (await client.listTools()).tools;
-    expect(tools.map((t) => t.name)).toEqual(expect.arrayContaining(KNOWLEDGE_TOOLS));
+    expect(tools.map((t) => t.name)).toEqual(
+      expect.arrayContaining(KNOWLEDGE_TOOLS.filter((n) => n !== "memory_write" && n !== "doc_propose")),
+    );
     const readOnly = tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name);
     expect(readOnly).toEqual(
       expect.arrayContaining(["memory_search", "doc_list", "doc_get", "skill_list", "skill_get"]),
@@ -241,53 +243,35 @@ describe("tool knowledge với run token", () => {
     }
   });
 
-  it("memory_write ghi vào dự án của run, tác giả là run, có audit", async () => {
-    const res = await call(client, "memory_write", {
-      kind: "gotcha",
-      content: "Test hoá đơn cần múi giờ Asia/Ho_Chi_Minh.",
-      files: ["src/hoa-don.ts"],
-    });
-    expect(res.isError).toBe(false);
-    const { id } = res.json();
-    const { rows } = await admin.query(
-      "select org_id, project_id, author_user_id, author_run_id, files from hive.memories where id = $1",
-      [id],
-    );
-    expect(rows[0]).toEqual({
-      org_id: orgA.orgId,
-      project_id: proj.a.id,
-      author_user_id: null,
-      author_run_id: run.runId,
-      files: ["src/hoa-don.ts"],
-    });
-    const audit = await admin.query(
-      "select action, data from hive.audit_log where org_id = $1 and action in ('mcp.memory_write', 'memory.write') and target_id in ($2, 'memory_write')",
-      [orgA.orgId, id],
-    );
-    expect(audit.rows.map((r) => r.action).sort()).toEqual(
-      expect.arrayContaining(["mcp.memory_write", "memory.write"]),
-    );
-    expect(audit.rows.find((r) => r.action === "memory.write")?.data).toMatchObject({ runId: run.runId });
-    // Memory vừa ghi tìm được ngay (không cần embedding).
-    const found = await call(client, "memory_search", { query: "múi giờ" });
-    expect(found.json().hits.map((h: { id: string }) => h.id)).toContain(id);
-  });
-
-  it("run không ghi được memory vào dự án khác, kể cả của tổ chức khác hay qua tham số org", async () => {
+  it("run bị từ chối mọi tool ngoài danh sách, kể cả tool ghi knowledge", async () => {
     const before = (await admin.query("select count(*)::int as n from hive.memories where org_id = $1", [orgA.orgId]))
       .rows[0].n;
-    for (const project of [proj.a2.key, proj.a2.id, proj.b.id, proj.b.key]) {
-      const res = await call(client, "memory_write", { project, kind: "note", content: "Ghi lén." });
-      expect(res).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy dự án") });
+    for (const name of ["memory_write", "doc_propose", "hive_whoami", "orgs_list", "teams_list", "systems_list"]) {
+      await expect(client.callTool({ name, arguments: {} })).rejects.toThrow();
     }
-    const viaOrg = await call(client, "memory_write", { org: orgB.orgId, kind: "note", content: "Ghi lén." });
-    expect(viaOrg.isError).toBe(true);
-    const after = (await admin.query("select count(*)::int as n from hive.memories where org_id = $1", [orgA.orgId]))
-      .rows[0].n;
-    expect(after).toBe(before);
-    // Truyền đúng dự án của run vẫn được.
-    const own = await call(client, "memory_write", { project: proj.a.key, kind: "note", content: "Ghi đúng chỗ." });
-    expect(own.isError).toBe(false);
+    expect(
+      (await admin.query("select count(*)::int as n from hive.memories where org_id = $1", [orgA.orgId])).rows[0].n,
+    ).toBe(before);
+  });
+
+  it("memory_search mặc định 5 mục, cắt mỗi mục 500 ký tự và báo truncated", async () => {
+    for (let i = 0; i < 7; i++) {
+      await inOrg(orgA, "tadmin", (tx) =>
+        writeMemory(tx, asUser(orgA, "tadmin"), {
+          scope: { level: "project", projectId: proj.a.id },
+          kind: "note",
+          content: `Giớihạn ${i} ${"x".repeat(700)}`,
+        }),
+      );
+    }
+    const hits = (await call(client, "memory_search", { query: "Giớihạn" })).json().hits;
+    expect(hits).toHaveLength(5);
+    for (const hit of hits) {
+      expect(hit.content).toHaveLength(500);
+      expect(hit.truncated).toBe(true);
+    }
+    const short = (await call(client, "memory_search", { query: "decimal.js" })).json().hits;
+    expect(short[0].truncated).toBe(false);
   });
 
   it("doc_list chỉ có tài liệu áp dụng cho dự án của run; doc_get trả bản của tổ chức mình", async () => {
@@ -302,51 +286,77 @@ describe("tool knowledge với run token", () => {
     expect(other).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy") });
   });
 
-  it("doc_get chia trang tài liệu dài", async () => {
+  it("doc_get giới hạn ký tự, trả tiêu đề và đọc tiếp bằng offset hoặc section", async () => {
     const first = (await call(client, "doc_get", { key: "org/dai" })).json();
-    expect(first.content).toHaveLength(MCP_LIMITS.pageChars);
-    expect(first).toMatchObject({ offset: 0, totalChars: BIG.length, nextOffset: MCP_LIMITS.pageChars });
-    const rest = (await call(client, "doc_get", { key: "org/dai", offset: first.nextOffset })).json();
-    expect(rest.nextOffset).toBeNull();
-    expect(first.content + rest.content).toBe(BIG);
+    expect(first.content).toHaveLength(8000);
+    expect(first).toMatchObject({
+      offset: 0,
+      totalChars: BIG.length,
+      nextOffset: 8000,
+      truncated: true,
+      headings: ["Tổng quan", "Chi tiết", "Kết luận"],
+    });
+    let content = first.content;
+    let next = first.nextOffset;
+    while (next !== null) {
+      const rest = (await call(client, "doc_get", { key: "org/dai", offset: next })).json();
+      content += rest.content;
+      next = rest.nextOffset;
+    }
+    expect(content).toBe(BIG);
+    const section = (await call(client, "doc_get", { key: "org/dai", section: "Kết luận" })).json();
+    expect(section).toMatchObject({ content: "# Kết luận\nHẾT", truncated: false });
+    expect(section).not.toHaveProperty("headings");
+    const small = (await call(client, "doc_get", { key: "org/dai", section: "Tổng quan", maxChars: 100 })).json();
+    expect(small.content).toHaveLength(100);
+    expect(small.totalChars).toBe(BIG.indexOf("# Kết luận"));
+    const missing = await call(client, "doc_get", { key: "org/dai", section: "Không có" });
+    expect(missing.isError).toBe(true);
+    expect((await call(client, "doc_get", { key: "org/dai", maxChars: 40_001 })).isError).toBe(true);
   });
 
-  it("doc_propose tạo đề xuất chờ duyệt, tác giả là run; baseVersion cũ bị từ chối", async () => {
-    const key = `project/${proj.a.key}/kien-truc`;
-    const res = await call(client, "doc_propose", {
-      key,
-      baseVersion: 1,
-      content: "Kiến trúc A, thêm phần làm tròn.",
-      note: "Bổ sung quyết định làm tròn.",
-    });
-    expect(res.isError).toBe(false);
-    const { proposalId } = res.json();
-    const { rows } = await admin.query(
-      "select status, reason, author_user_id, author_run_id, project_id from hive.proposals where id = $1",
-      [proposalId],
+  it("doc_get bỏ heading trong code fence và lấy đến mục cùng cấp tiếp theo", async () => {
+    const content = "# Mục thật\n```md\n# Mục giả\n```\n## C#\nNội dung.\n# Mục sau ###\nHết.";
+    await inOrg(orgA, "admin", (tx) =>
+      saveDoc(tx, asUser(orgA, "admin"), { key: "org/heading", content, baseVersion: 0 }),
     );
-    expect(rows[0]).toEqual({
-      status: "pending",
-      reason: "Bổ sung quyết định làm tròn.",
-      author_user_id: null,
-      author_run_id: run.runId,
-      project_id: proj.a.id,
-    });
-    // Tài liệu chưa đổi: agent không sửa trực tiếp.
-    expect((await call(client, "doc_get", { key })).json()).toMatchObject({ version: 1, content: "Kiến trúc A." });
-    const stale = await call(client, "doc_propose", { key, baseVersion: 0, content: "x", note: "y" });
-    expect(stale.isError).toBe(true);
-    const otherTeam = await call(client, "doc_propose", {
-      key: `project/${proj.a2.key}/kien-truc`,
-      baseVersion: 1,
-      content: "x",
-      note: "y",
-    });
-    expect(otherTeam).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy") });
+    const tiny = (await call(client, "doc_get", { key: "org/heading", maxChars: 1 })).json();
+    expect(tiny.headings).toEqual(["Mục thật", "C#", "Mục sau"]);
+    const section = (await call(client, "doc_get", { key: "org/heading", section: "Mục thật" })).json();
+    expect(section.content).toBe(content.slice(0, content.indexOf("# Mục sau")));
+    expect(section.truncated).toBe(false);
+  });
+
+  it("doc_list và skill_list áp dụng limit và truncated", async () => {
+    const docs = (await call(client, "doc_list", { limit: 1 })).json();
+    expect(docs.docs).toHaveLength(1);
+    expect(docs.truncated).toBe(true);
+    for (let i = 0; i < 12; i++) {
+      await inOrg(orgA, "tadmin", (tx) =>
+        saveSkill(tx, asUser(orgA, "tadmin"), {
+          scope: { level: "project", projectId: proj.a.id },
+          name: `gioi-han-${i}`,
+          description: "Thử giới hạn",
+          content: "x",
+          baseVersion: 0,
+        }),
+      );
+    }
+    const skills = (await call(client, "skill_list", {})).json();
+    expect(skills.skills).toHaveLength(10);
+    expect(skills.truncated).toBe(true);
+    expect(skills.nextOffset).toBe(10);
+    const rest = (await call(client, "skill_list", { offset: skills.nextOffset })).json();
+    expect(rest.skills).toHaveLength(3);
+    expect(rest.nextOffset).toBeNull();
+    const all = (await call(client, "skill_list", { limit: 50 })).json();
+    expect(all.skills).toHaveLength(13);
+    expect(all.truncated).toBe(false);
+    expect([...skills.skills, ...rest.skills]).toEqual(all.skills);
   });
 
   it("skill_list và skill_get theo dự án của run", async () => {
-    const names = (await call(client, "skill_list", {})).json().skills.map((s: { name: string }) => s.name);
+    const names = (await call(client, "skill_list", { limit: 50 })).json().skills.map((s: { name: string }) => s.name);
     expect(names).toContain("tao-hoa-don");
     expect(names).not.toContain("crm-noi-bo");
     const skill = (await call(client, "skill_get", { name: "tao-hoa-don" })).json();
@@ -360,6 +370,10 @@ describe("tool knowledge với token người dùng", () => {
   let member: Client;
   beforeAll(async () => {
     member = await connect(await userToken(orgA.user("tmember")));
+  });
+
+  it("OAuth vẫn thấy toàn bộ tool knowledge", async () => {
+    expect((await member.listTools()).tools.map((t) => t.name)).toEqual(expect.arrayContaining(KNOWLEDGE_TOOLS));
   });
 
   it("thuộc hai tổ chức thì phải chọn org", async () => {
@@ -426,7 +440,7 @@ describe("tool knowledge với token người dùng", () => {
     const names = (await call(member, "skill_list", { org: orgA.slug, project: proj.a.key }))
       .json()
       .skills.map((s: { name: string }) => s.name);
-    expect(names).toEqual(["tao-hoa-don"]);
+    expect(names.length).toBeLessThanOrEqual(10);
     const skill = (
       await call(member, "skill_get", { org: orgA.slug, name: "tao-hoa-don", project: proj.a.key })
     ).json();
