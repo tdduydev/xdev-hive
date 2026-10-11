@@ -38,7 +38,7 @@ export const runKind = z.enum(["code", "review"]);
 export const checkOutcome = z.object({
   check: z.string(),
   required: z.boolean(),
-  /** null khi hub chưa hỗ trợ kiểm tra này (command, review, ci). */
+  /** null khi hub chưa hỗ trợ kiểm tra này (command, ci), hoặc review chéo đang tắt hay chưa có kết quả. */
   passed: z.boolean().nullable(),
   message: z.string(),
 });
@@ -60,6 +60,8 @@ export const run = z.object({
   projectId: id,
   teamId: id,
   kind: runKind,
+  /** Run review chéo: run code mà nó review. null với run code. */
+  parentRunId: id.nullable(),
   state: runState,
   attempt: z.number().int(),
   maxAttempts: z.number().int(),

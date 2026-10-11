@@ -1,5 +1,5 @@
 {
-  "id": "9240d611-23de-466e-98fa-c17c19d6a47c",
+  "id": "87ab1768-507b-44f0-a9a4-f26bdb59d314",
   "prevId": "9a48b8d3-29ff-4980-bbbf-3497f14428b5",
   "version": "7",
   "dialect": "postgresql",
@@ -4236,6 +4236,12 @@
           "notNull": true,
           "default": "'code'"
         },
+        "parent_run_id": {
+          "name": "parent_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "state": {
           "name": "state",
           "type": "run_state",
@@ -4377,6 +4383,22 @@
             }
           ],
           "isUnique": true,
+          "where": "kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_review_active": {
+          "name": "runs_review_active",
+          "columns": [
+            {
+              "expression": "parent_run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
           "where": "state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
           "concurrently": false,
           "method": "btree",
@@ -4440,7 +4462,18 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "runs_parent_run_id_org_id_runs_id_org_id_fk": {
+          "name": "runs_parent_run_id_org_id_runs_id_org_id_fk",
+          "tableFrom": "runs",
+          "tableTo": "runs",
+          "schemaTo": "hive",
+          "columnsFrom": ["parent_run_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "runs_id_org": {
@@ -5013,13 +5046,6 @@
           "for": "DELETE",
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
-        },
-        "invitations_owner_select": {
-          "name": "invitations_owner_select",
-          "as": "PERMISSIVE",
-          "for": "SELECT",
-          "to": ["hive_owner"],
-          "using": "true"
         }
       },
       "checkConstraints": {},

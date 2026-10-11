@@ -77,6 +77,21 @@ export function mcpEnabled(baseURL: string): boolean {
   }
 }
 
+/**
+ * Chế độ của cổng /mcp: `full` nhận cả OAuth người dùng lẫn run token; `run` (chỉ khi người vận hành bật
+ * HIVE_MCP_ALLOW_HTTP và URL là http) chỉ nhận run token của agent, vì OAuth qua http trần thì lộ bearer; `off` là tắt.
+ */
+export type McpMode = "full" | "run" | "off";
+
+export function mcpMode(baseURL: string, allowHttp: boolean): McpMode {
+  if (mcpEnabled(baseURL)) return "full";
+  try {
+    return allowHttp && new URL(baseURL).protocol === "http:" ? "run" : "off";
+  } catch {
+    return "off";
+  }
+}
+
 // Quản lý nhà cung cấp SSO chỉ đi qua API của hub (ssoProviders.*), nơi kiểm quyền quản trị tổ chức. Để mở, bất kỳ ai
 // đăng nhập cũng đăng ký được IdP cho một tên miền rồi chen vào luồng đăng nhập của tổ chức khác.
 const SSO_ADMIN_PATHS = [
