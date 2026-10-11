@@ -9,7 +9,7 @@ export const POSTGRES_IMAGE = process.env.HIVE_TEST_POSTGRES_IMAGE ?? "pgvector/
 
 declare module "vitest" {
   export interface ProvidedContext {
-    db: { adminUrl: string; ownerUrl: string; appUrl: string };
+    db: { adminUrl: string; ownerUrl: string; appUrl: string; authUrl: string };
   }
 }
 
@@ -28,7 +28,7 @@ export async function setup(project: TestProject) {
   };
   const ownerUrl = url("hive_owner", pw.owner);
   await runMigrations(ownerUrl);
-  project.provide("db", { adminUrl, ownerUrl, appUrl: url("hive_app", pw.app) });
+  project.provide("db", { adminUrl, ownerUrl, appUrl: url("hive_app", pw.app), authUrl: url("hive_auth", pw.auth) });
 }
 
 export async function teardown() {

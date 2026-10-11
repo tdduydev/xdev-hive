@@ -1,23 +1,38 @@
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
+import { type Auth, meRouter } from "./modules/identity/index.ts";
 import type { HubConfig } from "./modules/platform/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
 
-export function createApp(config: HubConfig) {
-  const router = { system: systemRouter(config) };
+export interface AppDeps {
+  config: HubConfig;
+  /** Không có khi chạy test đơn vị không cần database. */
+  auth?: Auth | undefined;
+}
+
+export function createApp({ config, auth }: AppDeps) {
+  const router = { system: systemRouter(config), me: meRouter(auth) };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router);
   const openapi = new OpenAPIHandler(router);
 
   const app = new Hono();
+  // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
+  if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
   app.use("/rpc/*", async (c, next) => {
-    const { matched, response } = await rpc.handle(c.req.raw, { prefix: "/rpc", context: {} });
+    const { matched, response } = await rpc.handle(c.req.raw, {
+      prefix: "/rpc",
+      context: { headers: c.req.raw.headers },
+    });
     if (matched) return c.newResponse(response.body, response);
     await next();
   });
   app.use("/api/*", async (c, next) => {
-    const { matched, response } = await openapi.handle(c.req.raw, { prefix: "/api", context: {} });
+    const { matched, response } = await openapi.handle(c.req.raw, {
+      prefix: "/api",
+      context: { headers: c.req.raw.headers },
+    });
     if (matched) return c.newResponse(response.body, response);
     await next();
   });
