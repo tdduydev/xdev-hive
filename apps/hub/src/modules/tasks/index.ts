@@ -2,7 +2,10 @@
 export { type TasksDeps, tasksRouter } from "./router.ts";
 export {
   cancelTask,
+  createSystemTask,
   createTask,
+  findTaskByIssue,
+  findTaskByKey,
   getTask,
   listTasks,
   loadTask,

@@ -1,7 +1,7 @@
 import type { Task, TaskCreateInput, TaskStatus, TaskUpdateInput } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
-import { loadProject } from "../catalog/index.ts";
+import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import { requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { tasks } from "./schema.ts";
@@ -72,6 +72,31 @@ export async function createTask(
   const project = await loadProject(tx, input.projectId);
   if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw projectNotFound();
   await requireTeamRole(tx, userId, project.teamId, "member");
+  return toTask(await insertTask(tx, project, input, userId, source));
+}
+
+/**
+ * Task do hệ thống tạo (issue GitHub/GitLab), không có người dùng hub đứng sau nên không kiểm vai trò. `createdBy` ghi
+ * nguồn (vd. `github:lan`) để audit còn biết ai gây ra.
+ */
+export async function createSystemTask(
+  tx: Tx,
+  createdBy: string,
+  input: TaskCreateInput,
+  source: Record<string, unknown>,
+): Promise<TaskRow> {
+  const project = await loadProject(tx, input.projectId);
+  if (!project) throw projectNotFound();
+  return insertTask(tx, project, input, createdBy, source);
+}
+
+async function insertTask(
+  tx: Tx,
+  project: ProjectRow,
+  input: TaskCreateInput,
+  createdBy: string,
+  source: Record<string, unknown>,
+): Promise<TaskRow> {
   if (project.state === "archived") throw new ConflictError("PROJECT_ARCHIVED", "Dự án đã lưu trữ, không thêm task.");
   // Khoá theo dự án tới hết transaction để hai task tạo cùng lúc không lấy cùng số thứ tự.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`tasks:${project.id}`}, 0))`);
@@ -92,7 +117,7 @@ export async function createTask(
       body: input.body,
       type: input.type ?? null,
       preferredCli: input.preferredCli ?? null,
-      createdBy: userId,
+      createdBy,
       source,
     })
     .returning();
@@ -103,7 +128,37 @@ export async function createTask(
     targetId: row.id,
     data: { projectId: project.id, key: row.key, title: row.title },
   });
-  return toTask(row);
+  return row;
+}
+
+/** Task của dự án theo key (nhánh `ai/<key>` của run). Key chép lúc tạo nên có thể trùng sau khi đổi key; lấy mới nhất. */
+export async function findTaskByKey(tx: Tx, projectId: string, key: string): Promise<TaskRow | null> {
+  const [row] = await tx
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.projectId, projectId), eq(tasks.key, key)))
+    .orderBy(desc(tasks.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Task đã tạo từ một issue của dự án, theo `source` ghi lúc tạo. */
+export async function findTaskByIssue(
+  tx: Tx,
+  projectId: string,
+  issue: { provider: string; number: number },
+): Promise<TaskRow | null> {
+  const [row] = await tx
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.projectId, projectId),
+        sql`${tasks.source} @> ${JSON.stringify({ kind: "issue", provider: issue.provider, number: issue.number })}::jsonb`,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
 
 export async function listTasks(tx: Tx, userId: string, projectId: string, status?: TaskStatus): Promise<Task[]> {
