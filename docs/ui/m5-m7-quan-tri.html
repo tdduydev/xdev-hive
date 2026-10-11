@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mockup M5–M7: quản trị</title>
+<style>
+/* Giữ token của M1/M2/M3 để quản trị review trong cùng một ngữ cảnh. */
+:root{
+  --bg:#FAF9FC;--surface:#FFFFFF;--subtle:#F2F1F5;--sunken:#F3F2F6;
+  --ink:#28262E;--text:#35323B;--muted:#6B6772;--faint:#96929C;
+  --line:#E9E7ED;--line2:#DAD7E1;
+  --accent:#7B61FF;--accent-h:#694EEB;--sel:#F0ECFF;--sel-fg:#543ACF;--sel-bd:#C4B8FF;
+  --ok:#0F7A4A;--ok-bg:#E6F6EE;--warn:#9A5B00;--warn-bg:#FFF4DB;--bad:#C62828;--bad-bg:#FDECEC;
+  --run:#004CFF;--run-bg:#EAF1FF;--bad-bd:#F3B4B4;--warn-bd:#F5C86B;
+  --shadow:0 4px 12px -2px rgba(20,39,69,.10),0 2px 4px rgba(20,39,69,.05);
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+/* Hai khối tối giống nhau: một theo hệ điều hành, một khi người review bấm "Tối" ở thanh trên. */
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}}
+:root[data-theme=dark]{
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--text);font:400 14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Thanh chọn màn của mockup */
+.review{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.review .in{max-width:1240px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.review b{font-weight:600;color:var(--ink)}
+.review small{color:var(--muted)}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:500;font-size:13px;color:var(--muted)}
+.tabs button[aria-current="page"]{background:var(--sel);color:var(--sel-fg);border-color:var(--sel-bd)}
+.stage{max-width:1240px;margin:0 auto;padding:20px 16px 64px}
+.note{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--sel);border:1px dashed var(--sel-bd);color:var(--text);font-size:13px}
+.note b{color:var(--sel-fg)}
+.note ul{margin:4px 0 0;padding-left:18px}
+.screen[hidden]{display:none}
+
+/* Thành phần dùng chung */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--subtle)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-h)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad)}
+.btn.sm{height:28px;padding:0 10px;font-size:12.5px}
+.in-f{height:38px;width:100%;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 11px}
+textarea.in-f{height:auto;min-height:76px;padding:9px 11px;resize:vertical}
+.in-f:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.field{display:grid;gap:6px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label,.field .lbl{font-weight:500;color:var(--ink);font-size:13px}
+.hint{font-size:12px;color:var(--muted)}
+.hint.ok{color:var(--ok)}
+.hint.err{color:var(--bad)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;background:var(--subtle);color:var(--muted);border:1px solid var(--line2);white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.pill.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.pill.bad{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.pill.run{background:var(--run-bg);color:var(--run);border-color:transparent}
+.pill.sel{background:var(--sel);color:var(--sel-fg);border-color:transparent}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.mono{font-family:var(--mono);font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+svg.i{width:16px;height:16px;flex:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+
+/* Khung app (giống M1) */
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:680px;border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.switcher{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;border:1px solid var(--line);margin-bottom:10px;cursor:pointer}
+.avatar{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+.switcher b{display:block;color:var(--ink);font-weight:600;font-size:13px;line-height:1.2}
+.switcher small{color:var(--muted);font-size:12px}
+.nav-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:12px 10px 4px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-size:13.5px;cursor:pointer}
+.nav a.on{background:var(--sel);color:var(--sel-fg);font-weight:500}
+.nav a.dim{opacity:.5;cursor:default}
+.nav a .soon{margin-left:auto;font-size:11px}
+.nav a.sys{padding-left:20px;font-size:13px}
+.nav a.sys .n{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.me{margin-top:auto;display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid var(--line)}
+.me .av2{width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-weight:600;font-size:12px;color:var(--ink)}
+.me b{display:block;font-size:13px;color:var(--ink);font-weight:500}
+.me small{color:var(--muted);font-size:12px}
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.top h2{margin:0;font-size:18px;color:var(--ink)}
+.crumb{color:var(--muted);font-size:12.5px}
+.sp{flex:1}
+.sub{display:flex;gap:2px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+.sub a{padding:10px 12px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.sub a.on{color:var(--ink);border-color:var(--accent)}
+.body{padding:24px;display:grid;gap:16px;align-content:start}
+.sec{padding:16px 18px;display:grid;gap:12px}
+.sec h3{margin:0;font-size:15px;color:var(--ink)}
+.sec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{white-space:nowrap;text-align:left;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.tbl table{min-width:720px}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--subtle)}
+
+
+.link{color:var(--sel-fg);text-decoration:underline;cursor:pointer;background:none;border:0;padding:0;font:inherit;text-align:left}
+dialog{width:min(620px,calc(100% - 28px));max-height:90vh;overflow:auto;border:1px solid var(--line2);border-radius:14px;background:var(--surface);color:var(--text);padding:0;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(15,12,25,.55)}.modal-head,.modal-foot{padding:16px 22px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line)}.modal-foot{border-top:1px solid var(--line);border-bottom:0;justify-content:flex-end}.modal-body{padding:20px 22px;display:grid;gap:16px}
+fieldset{border:1px solid var(--line);border-radius:10px;padding:12px;display:grid;gap:8px}legend{font-size:13px;font-weight:500}fieldset label{display:flex;gap:8px;align-items:center;font-size:13px}
+pre.command{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunken);border:1px solid var(--line);padding:12px;border-radius:8px;margin:0;font:12px/1.8 var(--mono)}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 20px;background:var(--ink);color:var(--surface);border-radius:10px;box-shadow:var(--shadow);z-index:50;max-width:90vw}
+@media(max-width:1000px){.app{grid-template-columns:190px minmax(0,1fr)}.body{padding:16px}.split{grid-template-columns:1fr}.board{grid-template-columns:repeat(4,205px)}.top{padding:16px}}
+@media(max-width:680px){.app{grid-template-columns:1fr}.side{display:none}.grid2,.result-grid{grid-template-columns:1fr}.timeline{grid-template-columns:1fr 1fr}.review .in{gap:8px}.stage{padding:12px 8px 40px}.tabs button{padding:6px 8px}.body{padding:12px}}
+
+/* Bổ sung riêng cho M5–M7: lấy lại từ M2 (stat, set, toggle, choice, seg) để giữ cùng một bộ thành phần. */
+.seg{display:inline-flex;padding:3px;background:var(--subtle);border:1px solid var(--line);border-radius:8px;gap:2px;width:max-content;max-width:100%;flex-wrap:wrap}
+.seg label,.seg button{cursor:pointer;padding:5px 11px;border-radius:6px;font-weight:500;font-size:13px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;border:0;background:none}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked),.seg button[aria-pressed=true]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent)}
+.seg label:has(input:disabled){opacity:.5;cursor:not-allowed}
+.review .ctl{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.review select{height:30px;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 8px}
+.review .in{max-width:1320px}.stage{max-width:1320px}
+.banner{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:10px;border:1px solid var(--warn-bd);background:var(--warn-bg);font-size:13px;flex-wrap:wrap}
+.banner b{color:var(--warn)}
+.banner.bad{border-color:var(--bad-bd);background:var(--bad-bg)}.banner.bad b{color:var(--bad)}
+.banner.info{border-color:var(--sel-bd);background:var(--sel)}.banner.info b{color:var(--sel-fg)}
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.opt{position:relative;display:grid;gap:4px;padding:14px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--surface);font-size:13px;color:var(--muted)}
+.opt b{color:var(--ink);font-size:14px;font-weight:600}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt:has(input:checked){border-color:var(--accent);background:var(--sel);box-shadow:0 0 0 1px var(--accent) inset}
+.opt:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.opt:has(input:disabled){opacity:.5;cursor:not-allowed}
+.toggle{display:flex;gap:12px;align-items:flex-start;font-size:13px;color:var(--muted);cursor:pointer}
+.toggle b{display:block;color:var(--ink);font-weight:500}
+.sw{position:relative;flex:none;width:34px;height:20px;border-radius:999px;background:var(--line2);margin-top:1px}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle input{position:absolute;opacity:0}
+.toggle input:checked+.sw{background:var(--accent)}
+.toggle input:checked+.sw::after{transform:translateX(14px)}
+.toggle input:focus-visible+.sw{outline:2px solid var(--accent);outline-offset:2px}
+.toggle input:disabled+.sw{opacity:.5}
+.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.stat{padding:14px 16px;display:grid;gap:4px}
+.stat small{font-size:12px;color:var(--muted)}
+.stat b{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.2}
+.stat span{font-size:12px;color:var(--muted)}
+.set{display:grid;grid-template-columns:240px minmax(0,1fr);gap:16px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:start}
+.set:last-child{border-bottom:0}
+.set>div:first-child b{display:block;color:var(--ink);font-weight:500;font-size:13.5px}
+.set>div:first-child small{display:block;color:var(--muted);font-size:12px}
+.set .val{display:grid;gap:8px;min-width:0}
+.ptitle{display:flex;align-items:center;gap:12px}
+.plogo{width:36px;height:36px;border-radius:9px;background:var(--sel);color:var(--sel-fg);display:grid;place-items:center;font-weight:600;font-size:13px}
+.who{display:flex;gap:10px;align-items:center}
+.sk{display:block;border-radius:6px;background:linear-gradient(90deg,var(--subtle),var(--line),var(--subtle));background-size:200% 100%;animation:sk 1.3s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.sk{animation:none}}
+.skrows{display:grid;gap:10px;padding:16px 18px}
+.emptybox{display:grid;gap:8px;justify-items:center;text-align:center;padding:40px 20px;color:var(--muted)}
+.emptybox h3{color:var(--ink)}
+.emptybox .ic{width:44px;height:44px;border-radius:12px;background:var(--subtle);display:grid;place-items:center;color:var(--faint)}
+.emptybox .ic svg{width:22px;height:22px}
+.screen:not([data-state=data]) [data-st=data],
+.screen:not([data-state=empty]) [data-st=empty],
+.screen:not([data-state=loading]) [data-st=loading],
+.screen:not([data-state=error]) [data-st=error],
+.screen:not([data-state=off]) [data-st=off]{display:none !important}
+.screen[data-denied=true] [data-st]{display:none !important}
+.screen:not([data-denied=true]) .deny{display:none}
+.ev{display:flex;gap:4px;flex-wrap:wrap}
+.ev .pill{height:20px;font-size:11.5px;font-family:var(--mono)}
+.res{font-size:12.5px;display:flex;gap:6px;align-items:flex-start;margin-top:6px}
+.res.ok{color:var(--ok)}.res.bad{color:var(--bad)}
+.evlist{display:grid;gap:6px}
+.evlist label{display:flex;gap:10px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;cursor:pointer}
+.evlist label:has(input:checked){border-color:var(--sel-bd);background:var(--sel)}
+.evlist small{display:block;color:var(--muted);font-size:12px}
+.evlist code{font:12px var(--mono);color:var(--ink)}
+.in-f.err{border-color:var(--bad)}
+.chart{width:100%;height:auto;display:block}
+.chart text{font:11px var(--sans);fill:var(--muted)}
+.chart .grid{stroke:var(--line)}
+.chart .bar{fill:var(--accent)}.chart .bar:hover{fill:var(--accent-h)}
+.chart .bar.low{fill:var(--sel-bd)}
+.bar-tip{font-size:12px;color:var(--muted)}
+.dirty{position:sticky;bottom:0;display:flex;gap:10px;align-items:center;justify-content:flex-end;padding:12px 16px;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(6px);border:1px solid var(--line2);border-radius:12px;box-shadow:var(--shadow)}
+.pos{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--subtle);font-weight:600;font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums}
+.pos.first{background:var(--run-bg);color:var(--run)}
+.pill.spin svg{animation:rot 1s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+td .sub2{display:block;font-size:12px;color:var(--muted)}
+td.wrap{white-space:normal;min-width:220px}
+.mt{margin-top:6px}
+.flag{font-size:12px;color:var(--warn);background:var(--warn-bg);border-radius:6px;padding:1px 6px}
+.matrix th,.matrix td{text-align:center;font-size:12.5px}.matrix th:first-child,.matrix td:first-child{text-align:left}
+.pw{display:flex;gap:8px;align-items:center}
+.modelgrid{display:grid;grid-template-columns:130px 1fr 1fr;gap:8px 12px;align-items:center}
+.modelgrid .h{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+@media(max-width:1000px){.stats{grid-template-columns:repeat(2,1fr)}.set{grid-template-columns:1fr}.modelgrid{grid-template-columns:1fr}}
+
+.sub a.dim{opacity:.5;cursor:default}
+.tbl table{min-width:720px}
+</style></head><body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="hex" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="#7B61FF"/><path d="M12 7l4.33 2.5v5L12 17l-4.33-2.5v-5z" fill="#fff"/></symbol>
+  <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+  <symbol id="gl" viewBox="0 0 24 24"><path fill="#E24329" d="M12 21.4 15.7 10H8.3z"/><path fill="#FC6D26" d="M12 21.4 8.3 10H3.1z"/><path fill="#FCA326" d="M3.1 10 2 13.4c-.1.3 0 .6.3.8L12 21.4z"/><path fill="#E24329" d="M3.1 10h5.2L6.1 3.2c-.1-.3-.6-.3-.7 0z"/><path fill="#FC6D26" d="M12 21.4 15.7 10h5.2z"/><path fill="#FCA326" d="m20.9 10 1.1 3.4c.1.3 0 .6-.3.8L12 21.4z"/><path fill="#E24329" d="M20.9 10h-5.2l2.2-6.8c.1-.3.6-.3.7 0z"/></symbol>
+  <symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 12l9-9m-3 3 3 3m-6 0 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .6 3.2 2.4 3.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="icon-board" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 4v16M14.5 4v9" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="server" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="spin" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="skip" viewBox="0 0 24 24"><path d="M6 12h12M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="6" cy="19" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3-11 7" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+  <symbol id="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14.5 9.2c-.5-.8-1.4-1.2-2.5-1.2-1.4 0-2.4.7-2.4 1.8 0 2.6 5 1.2 5 3.9 0 1.1-1.1 1.9-2.6 1.9-1.2 0-2.2-.5-2.7-1.4M12 6.5V8m0 8v1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+  <symbol id="send" viewBox="0 0 24 24"><path d="M21 4 3 11l6 2.5L11.5 20zM9 13.5 21 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="review"><div class="in"><b>Mockup M5–M7</b><small>Màn quản trị mới · dữ liệu ví dụ · không gọi API</small><span class="sp"></span>
+<nav class="tabs" aria-label="Màn hình">
+<button data-go="queue" aria-current="page">1 Hàng merge</button><button data-go="notify">2 Kênh thông báo</button><button data-go="cost">3 Chi phí và token</button><button data-go="config">4 Cấu hình dự án</button>
+</nav>
+<div class="ctl"><span>Trạng thái</span><div class="seg" id="state-seg" aria-label="Trạng thái màn hình"></div></div>
+<label class="ctl">Vai trò <select id="role"><option value="org">Quản trị tổ chức</option><option value="team">Quản trị đội</option><option value="member">Thành viên đội</option><option value="viewer">Chỉ xem</option></select></label>
+<div class="seg" aria-label="Giao diện sáng tối"><label><input type="radio" name="theme" value="auto" checked>Tự động</label><label><input type="radio" name="theme" value="light">Sáng</label><label><input type="radio" name="theme" value="dark">Tối</label></div></div></header>
+
+<main class="stage">
+<template id="shell">
+  <div class="app">
+    <aside class="side">
+      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small class="who-line">Quản trị tổ chức</small></span></div>
+      <nav class="nav">
+        <a class="dim"><svg class="i"><use href="#icon-board"/></svg>Việc</a>
+        <a data-nav="project"><svg class="i"><use href="#grid"/></svg>Dự án</a>
+        <a class="sys dim">Cổng thanh toán<span class="n">2</span></a>
+        <a class="sys dim">Hoá đơn<span class="n">4</span></a>
+        <a class="dim"><svg class="i"><use href="#server"/></svg>Máy</a>
+        <a class="dim"><svg class="i"><use href="#book"/></svg>Tri thức</a>
+        <div class="nav-h">Quản trị</div>
+        <a class="dim"><svg class="i"><use href="#users"/></svg>Đội và hệ thống</a>
+        <a class="dim"><svg class="i"><use href="#mail"/></svg>Thành viên</a>
+        <a class="dim"><svg class="i"><use href="#key"/></svg>Kết nối Git</a>
+        <a data-nav="notify" data-go="notify"><svg class="i"><use href="#bell"/></svg>Kênh thông báo<span class="soon pill">Mới</span></a>
+        <a data-nav="cost" data-go="cost"><svg class="i"><use href="#coin"/></svg>Chi phí và token<span class="soon pill">Mới</span></a>
+        <a class="dim"><svg class="i"><use href="#gear"/></svg>Cài đặt tổ chức</a>
+      </nav>
+      <div class="me"><span class="av2">LH</span><span><b>Lê Hà</b><small>ha.le@fpt.com</small></span></div>
+    </aside>
+    <div class="main"></div>
+  </div>
+</template>
+
+<!-- ============ 1. HÀNG MERGE ============ -->
+<section class="screen" id="s-queue" data-nav="project" data-states="data,empty,loading,error,off">
+<div class="note"><b>Cần review:</b>
+<ul>
+<li>Hợp đồng <code>mergeQueueEntry</code> (nhánh <code>ai/M5-merge-queue</code>) không có tiêu đề PR. Mockup lấy tiêu đề từ task liên kết; PR thêm tay (như #95) không có tiêu đề. Có cần thêm trường <code>title</code> không?</li>
+<li>Đưa vào hàng và bỏ khỏi hàng: mọi thành viên đội. Người duyệt vẫn do bảo vệ nhánh trên GitHub/GitLab quyết. Mục đang <code>merging</code> không bỏ được.</li>
+<li>Màn tự làm mới 10 giây một lần (đề xuất); chưa có SSE cho hàng merge.</li>
+</ul></div>
+<div data-shell>
+<div class="top"><div class="ptitle"><span class="plogo">HĐ</span><div><div class="crumb">Thanh toán / Hoá đơn</div><h2>Hoá đơn API</h2></div></div><span class="pill ok"><span class="dot"></span>Sẵn sàng</span><span class="sp"></span>
+<button class="btn primary" data-open="enqueue" data-roles="org team member" data-st="data"><svg class="i"><use href="#plus"/></svg>Đưa PR vào hàng</button></div>
+<nav class="sub" aria-label="Thẻ của dự án"><a class="dim">Tổng quan</a><a class="dim">Repo</a><a class="dim">Máy · 3</a><a data-go="config">Cấu hình</a><a class="on">Hàng merge<span class="pill sel" style="margin-left:6px;height:18px" id="q-count">5</span></a><a class="dim">Kết quả run</a></nav>
+<div class="body">
+  <div class="banner info" data-ro-note="org team member" role="note"><b>Chỉ xem.</b> Vai trò “Chỉ xem” không đưa PR vào hàng hay bỏ khỏi hàng.</div>
+
+  <div data-st="data" class="grid-gap" style="display:grid;gap:16px">
+    <div class="row"><span class="pill run" id="q-run"><span class="dot"></span>2 đang xử lý</span><span class="pill" id="q-wait">3 đang chờ</span><span class="hint">Merge tuần tự · kiểu squash · bắt buộc CI xanh</span><span class="sp"></span><span class="hint" id="q-updated">Cập nhật 10:16:42</span><button class="btn sm" data-act="refresh">Làm mới</button></div>
+    <div class="card sec"><div class="sec-h"><h3>Đang trong hàng</h3><span class="hint">Thứ tự từ trên xuống; vị trí 1 là PR đang được xử lý</span></div>
+    <div class="tbl"><table><thead><tr><th>Vị trí</th><th>PR</th><th>Trạng thái</th><th>Ghi chú</th><th>Task · run</th><th>Người đưa vào</th><th></th></tr></thead><tbody id="q-active"></tbody></table></div></div>
+    <div class="card sec"><div class="sec-h"><h3>Đã xong gần nhất</h3><span class="hint">20 mục mới nhất · đang hiện 6</span></div>
+    <div class="tbl"><table><thead><tr><th>PR</th><th>Kết quả</th><th>Ghi chú</th><th>Task · run</th><th>Người đưa vào</th><th>Kết thúc</th></tr></thead><tbody id="q-done"></tbody></table></div></div>
+    <div class="card sec"><h3>Ý nghĩa trạng thái</h3><div class="row" style="gap:14px 22px;align-items:flex-start">
+      <span><span class="pill">queued</span><div class="hint mt">Chờ tới lượt.</div></span><span><span class="pill run">updating</span><div class="hint mt">Đã yêu cầu cập nhật nhánh PR theo nhánh chính.</div></span><span><span class="pill warn">waiting</span><div class="hint mt">Chờ CI, người duyệt hoặc nhà cung cấp tính xong.</div></span><span><span class="pill run">merging</span><div class="hint mt">Đang merge.</div></span><span><span class="pill ok">merged</span><div class="hint mt">Đã merge.</div></span><span><span class="pill bad">failed</span><div class="hint mt">Không merge được; xem ghi chú.</div></span><span><span class="pill">removed</span><div class="hint mt">Người dùng bỏ khỏi hàng.</div></span></div></div>
+  </div>
+
+  <div data-st="empty" class="card"><div class="emptybox"><span class="ic"><svg><use href="#branch"/></svg></span><h3>Hàng merge đang trống</h3><p>Chưa có PR nào chờ merge. PR của agent vào hàng tự động khi dự án bật “Tự merge”, hoặc bạn đưa vào thủ công bằng số PR.</p><button class="btn primary" data-open="enqueue" data-roles="org team member"><svg class="i"><use href="#plus"/></svg>Đưa PR vào hàng</button><span class="hint">Chưa có mục đã xong nào trong 20 mục gần nhất.</span></div></div>
+
+  <div data-st="loading" class="card" aria-busy="true"><div class="skrows" role="status" aria-label="Đang tải hàng merge"><span class="sk" style="height:22px;width:30%"></span><span class="sk" style="height:38px"></span><span class="sk" style="height:38px"></span><span class="sk" style="height:38px"></span><span class="sk" style="height:38px;width:80%"></span></div><p class="hint" style="padding:0 18px 16px">Đang tải hàng merge…</p></div>
+
+  <div data-st="error" class="banner bad" role="alert"><b>Không tải được hàng merge.</b><span>Hub trả lỗi 503 (không kết nối được nhà cung cấp Git). Dữ liệu cũ nếu có được giữ lại.</span><span class="sp"></span><button class="btn sm" data-act="retry">Thử lại</button></div>
+
+  <div data-st="off" class="card"><div class="emptybox"><span class="ic"><svg><use href="#gear"/></svg></span><h3>Merge queue đang tắt cho dự án này</h3><p>Dự án chưa bật merge queue nên PR merge theo cách thủ công trên GitHub. Bật ở thẻ Cấu hình.</p><button class="btn primary" data-go="config" data-roles="org team">Mở cấu hình merge</button><span class="hint" data-ro-note="org team">Chỉ quản trị đội trở lên bật được merge queue.</span></div></div>
+</div>
+</div></section>
+
+<!-- ============ 2. KÊNH THÔNG BÁO ============ -->
+<section class="screen" id="s-notify" data-nav="notify" data-states="data,empty,loading,error" hidden>
+<div class="note"><b>Cần review:</b>
+<ul>
+<li>Chỉ quản trị tổ chức thấy và sửa kênh (theo <code>notify.ts</code>). Các vai trò khác thấy thông báo “không có quyền”.</li>
+<li>Secret (token bot, mật khẩu SMTP) không bao giờ hiển thị lại. Hợp đồng sửa kênh thay toàn bộ <code>config</code>, nên sửa kênh phải nhập lại secret. Có muốn cho “để trống = giữ nguyên” không?</li>
+<li><code>merge.failed</code> chưa có trong <code>notificationEvent</code> của <code>notify.ts</code> trên main (đang 5 sự kiện); mockup đã thêm theo yêu cầu task, cần thêm vào hợp đồng.</li>
+<li>SMTP trỏ vào địa chỉ nội bộ (localhost, 10.x, 172.16–31.x, 192.168.x, 169.254.x) bị hub từ chối để tránh SSRF. Thử nhập <span class="mono">10.0.4.12</span> hoặc <span class="mono">localhost</span>.</li>
+</ul></div>
+<div data-shell>
+<div class="top"><div><div class="crumb">Quản trị</div><h2>Kênh thông báo</h2></div><span class="sp"></span><button class="btn primary" data-act="new-channel" data-roles="org" data-st="data"><svg class="i"><use href="#plus"/></svg>Thêm kênh</button></div>
+<div class="body">
+  <div class="card deny"><div class="emptybox"><span class="ic"><svg><use href="#key"/></svg></span><h3>Bạn không có quyền xem kênh thông báo</h3><p>Chỉ quản trị tổ chức quản lý kênh thông báo vì kênh chứa thông tin kết nối. Nhờ quản trị tổ chức nếu bạn cần nhận thông báo.</p></div></div>
+
+  <div data-st="data" style="display:grid;gap:16px">
+    <p class="hint">Mỗi kênh nhận những loại sự kiện bạn chọn. Tin gửi cho nhóm quản trị, không kèm secret hay nội dung mã.</p>
+    <div class="card tbl"><table style="min-width:900px"><thead><tr><th>Kênh</th><th>Nơi nhận</th><th>Sự kiện</th><th>Bật</th><th></th></tr></thead><tbody id="ch-rows"></tbody></table></div>
+    <div class="card sec"><h3>Các loại sự kiện</h3><div class="tbl"><table style="min-width:560px"><thead><tr><th>Sự kiện</th><th>Khi nào gửi</th></tr></thead><tbody id="ev-ref"></tbody></table></div></div>
+  </div>
+
+  <div data-st="empty" class="card"><div class="emptybox"><span class="ic"><svg><use href="#bell"/></svg></span><h3>Chưa có kênh thông báo nào</h3><p>Thêm kênh Telegram hoặc email để nhận tin khi run lỗi, máy mất kết nối hay có người xin vào tổ chức.</p><button class="btn primary" data-act="new-channel" data-roles="org"><svg class="i"><use href="#plus"/></svg>Thêm kênh đầu tiên</button></div></div>
+
+  <div data-st="loading" class="card" aria-busy="true"><div class="skrows" role="status" aria-label="Đang tải kênh"><span class="sk" style="height:22px;width:28%"></span><span class="sk" style="height:46px"></span><span class="sk" style="height:46px"></span><span class="sk" style="height:46px;width:85%"></span></div></div>
+
+  <div data-st="error" class="banner bad" role="alert"><b>Không tải được danh sách kênh.</b><span>Hub trả lỗi 500. Thử lại sau ít phút.</span><span class="sp"></span><button class="btn sm" data-act="retry">Thử lại</button></div>
+</div>
+</div></section>
+
+<!-- ============ 3. CHI PHÍ VÀ TOKEN ============ -->
+<section class="screen" id="s-cost" data-nav="cost" data-states="data,empty,loading,error" hidden>
+<div class="note"><b>Cần review:</b>
+<ul>
+<li>Packages/contracts hiện chưa có hợp đồng chi phí hay ngân sách; các trường dưới đây (<code>perRunUsd</code>, <code>perTaskUsd</code>, <code>maxTurns</code>) là đề xuất cho M5–M7.</li>
+<li>Quyền (đề xuất): quản trị tổ chức xem mọi dự án; quản trị đội xem và đặt ngân sách dự án của đội; thành viên chỉ xem; “Chỉ xem” không thấy chi phí.</li>
+<li>Vượt ngân sách thì dừng cứng run (trạng thái <code>failed</code>, lý do rõ) hay chỉ cảnh báo? Mockup chọn dừng cứng cho <code>perRunUsd</code> và <code>maxTurns</code>, cảnh báo cho <code>perTaskUsd</code>.</li>
+<li>CLI nào không báo số token (ví dụ Gemini trong mẫu) hiện “ước tính” hoặc “—”, không bịa số.</li>
+</ul></div>
+<div data-shell>
+<div class="top"><div><div class="crumb">Quản trị · Hoá đơn API</div><h2>Chi phí và token</h2></div><span class="sp"></span>
+<select class="in-f" style="width:190px;height:34px" aria-label="Dự án"><option>Hoá đơn API</option><option>Hoá đơn web</option><option>Tất cả dự án (quản trị tổ chức)</option></select>
+<select class="in-f" style="width:160px;height:34px" aria-label="Kỳ"><option>14 ngày qua</option><option disabled>Tháng 10/2026</option></select></div>
+<div class="body">
+  <div class="card deny"><div class="emptybox"><span class="ic"><svg><use href="#coin"/></svg></span><h3>Vai trò “Chỉ xem” không xem được chi phí</h3><p>Nhờ quản trị đội nếu bạn cần số liệu này.</p></div></div>
+
+  <div data-st="data" style="display:grid;gap:16px">
+    <div class="stats" id="c-stats"></div>
+    <div class="card sec"><div class="sec-h"><h3>Chi phí theo ngày</h3><span class="sp"></span><span class="bar-tip" id="bar-tip">Rê chuột hoặc Tab vào cột để xem số liệu</span></div>
+      <svg class="chart" id="c-chart" role="img" aria-label="Biểu đồ cột chi phí USD theo ngày, 14 ngày gần nhất"></svg>
+      <details><summary class="hint" style="cursor:pointer">Xem dạng bảng</summary><div class="tbl"><table id="c-daytbl" style="min-width:420px"></table></div></details></div>
+    <div class="card sec"><div class="sec-h"><h3>Phân tích</h3><div class="seg" id="by-seg" role="group" aria-label="Nhóm theo"><button aria-pressed="true" data-by="task">Theo task</button><button aria-pressed="false" data-by="cli">Theo CLI</button><button aria-pressed="false" data-by="machine">Theo máy</button></div><span class="sp"></span><span class="hint" id="by-hint">Bấm một task để xem chi tiết từng run</span></div>
+      <div class="tbl"><table id="by-tbl"></table></div></div>
+
+    <div class="card sec"><div class="sec-h"><h3>Run bị dừng vì vượt ngân sách</h3><span class="pill bad">2 run trong kỳ</span></div>
+      <div class="tbl"><table><thead><tr><th>Run</th><th>Task</th><th>Giới hạn vượt</th><th>Lúc dừng</th><th>Chi phí</th><th></th></tr></thead><tbody>
+      <tr><td><button class="link" data-act="run-detail" data-run="RUN-411">RUN-411</button><span class="sub2">Claude Code · build-01</span></td><td>TASK-133 · Xuất hoá đơn CSV</td><td><span class="pill bad">perRunUsd</span> <span class="mono">$5,12 &gt; $5,00</span></td><td>09/10, 08:51 · lượt 33/40</td><td class="num">$5,12</td><td><button class="btn sm" data-roles="org team member" data-act="toast" data-msg="Mở TASK-133 (mô phỏng).">Mở task</button></td></tr>
+      <tr><td><button class="link" data-act="run-detail" data-run="RUN-398">RUN-398</button><span class="sub2">Codex · mac-ha</span></td><td>TASK-127 · Thêm phân trang hoá đơn</td><td><span class="pill bad">maxTurns</span> <span class="mono">41 &gt; 40</span></td><td>08/10, 16:20 · lượt 41/40</td><td class="num">$3,07</td><td><button class="btn sm" data-roles="org team member" data-act="toast" data-msg="Mở TASK-127 (mô phỏng).">Mở task</button></td></tr>
+      </tbody></table></div><p class="hint">Run bị dừng giữ worktree và log làm bằng chứng. Task về “Cần làm”; người giao quyết định chạy lại hay nâng ngân sách.</p></div>
+
+    <div class="card" data-roles-box>
+      <div class="sec" style="padding-bottom:0"><div class="sec-h"><h3>Ngân sách của dự án Hoá đơn API</h3><span class="sp"></span><span class="hint" data-ro-note="org team">Chỉ quản trị đội trở lên sửa ngân sách.</span></div><p class="hint">Để trống nghĩa là không giới hạn. Áp dụng cho run mới; run đang chạy giữ giới hạn lúc bắt đầu.</p></div>
+      <div class="guard" data-roles="org team" id="budget-box">
+      <div class="set"><div><b>Mỗi run</b><small>perRunUsd · dừng run khi vượt</small></div><div class="val"><div class="pw"><input class="in-f" id="b-run" inputmode="decimal" value="5,00" style="max-width:140px" aria-describedby="b-run-h"><span>USD</span></div><span class="hint" id="b-run-h">Trung bình 14 ngày: $0,69/run, cao nhất $5,12.</span></div></div>
+      <div class="set"><div><b>Mỗi task</b><small>perTaskUsd · cộng mọi run của task</small></div><div class="val"><div class="pw"><input class="in-f" id="b-task" inputmode="decimal" value="12,00" style="max-width:140px"><span>USD</span></div><span class="hint">Vượt thì cảnh báo trên task và gửi <span class="mono">run.needs_review</span>, không chặn thêm run.</span></div></div>
+      <div class="set"><div><b>Số lượt tối đa</b><small>maxTurns · lượt agent trong một run</small></div><div class="val"><div class="pw"><input class="in-f" id="b-turns" inputmode="numeric" value="40" style="max-width:140px"><span>lượt</span></div><span class="hint err" id="b-err" hidden></span></div></div>
+      <div class="set"><div></div><div class="val"><div class="row" style="justify-content:flex-end"><button class="btn" data-act="budget-reset">Huỷ</button><button class="btn primary" data-act="budget-save">Lưu ngân sách</button></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div data-st="empty" class="card"><div class="emptybox"><span class="ic"><svg><use href="#coin"/></svg></span><h3>Chưa có run nào trong kỳ này</h3><p>Chi phí và token hiện khi dự án chạy ít nhất một run. Bạn vẫn đặt được ngân sách trước.</p><div class="row"><button class="btn" data-act="toast" data-msg="Đổi sang kỳ khác (mô phỏng).">Chọn kỳ khác</button></div></div></div>
+  <div data-st="loading" class="grid-gap" aria-busy="true" style="display:grid;gap:16px"><div class="stats"><span class="sk" style="height:84px;border-radius:12px"></span><span class="sk" style="height:84px;border-radius:12px"></span><span class="sk" style="height:84px;border-radius:12px"></span><span class="sk" style="height:84px;border-radius:12px"></span><span class="sk" style="height:84px;border-radius:12px"></span></div><div class="card"><div class="skrows" role="status" aria-label="Đang tải chi phí"><span class="sk" style="height:200px"></span><span class="sk" style="height:32px"></span><span class="sk" style="height:32px;width:70%"></span></div></div></div>
+  <div data-st="error" class="banner bad" role="alert"><b>Không tải được số liệu chi phí.</b><span>Hub trả lỗi 500 khi gộp token của 224 run.</span><span class="sp"></span><button class="btn sm" data-act="retry">Thử lại</button></div>
+</div>
+</div></section>
+
+<!-- ============ 4. CẤU HÌNH DỰ ÁN ============ -->
+<section class="screen" id="s-config" data-nav="project" data-states="data,empty,loading,error" hidden>
+<div class="note"><b>Cần review:</b>
+<ul>
+<li>Mục “Merge” khớp <code>projectSettings.merge</code> (<code>mode</code>, <code>method</code>, <code>requireCi</code>) và <code>features.mergeQueue</code>, <code>features.crossReview</code> trong hợp đồng hiện tại. Model theo CLI, quyền agent và CLI người review chéo là trường mới đề xuất.</li>
+<li>Quyền <code>full</code> của agent: đề xuất chỉ quản trị tổ chức bật được, và chỉ đáng dùng trong container (M6). Thử đổi vai trò sang “Quản trị đội”.</li>
+<li>Điểm tối thiểu của review chéo là cùng giá trị với <code>minScore</code> của kiểm tra <code>review</code> trong chính sách kết quả; mockup đặt hai nơi nhìn thấy nhau, cần chốt nguồn dữ liệu duy nhất.</li>
+</ul></div>
+<div data-shell>
+<div class="top"><div class="ptitle"><span class="plogo">HĐ</span><div><div class="crumb">Thanh toán / Hoá đơn</div><h2>Hoá đơn API</h2></div></div><span class="pill ok"><span class="dot"></span>Sẵn sàng</span><span class="sp"></span></div>
+<nav class="sub" aria-label="Thẻ của dự án"><a class="dim">Tổng quan</a><a class="dim">Repo</a><a class="dim">Máy · 3</a><a class="on">Cấu hình</a><a data-go="queue">Hàng merge</a><a class="dim">Kết quả run</a></nav>
+<div class="body">
+  <div class="banner info" data-ro-note="org team" role="note"><b>Chỉ xem.</b> Chỉ quản trị đội trở lên sửa được cấu hình dự án.</div>
+
+  <div data-st="data" style="display:grid;gap:16px" id="cfg" class="guard" data-roles="org team">
+    <div class="card sec"><h3>Merge</h3>
+      <div class="choice" role="radiogroup" aria-label="Cách merge"><label class="opt"><input type="radio" name="mmode" value="review" checked><b>Cần người duyệt</b>PR của agent chờ người duyệt rồi mới merge.</label><label class="opt"><input type="radio" name="mmode" value="auto"><b>Tự merge khi đạt điều kiện</b>Merge khi đạt chính sách kết quả, không cần người bấm.</label></div>
+      <div class="banner" id="warn-auto-ci" hidden><svg class="i"><use href="#warn"/></svg><span><b>Tự merge mà không bắt buộc CI.</b> PR chưa được kiểm vẫn có thể vào main. Bật “Bắt buộc CI xanh” hoặc chấp nhận rủi ro này.</span></div>
+      <div class="set" style="padding:0;border:0"><div><b>Kiểu merge</b><small>method</small></div><div class="val"><div class="seg" role="radiogroup" aria-label="Kiểu merge"><label><input type="radio" name="mtype" value="squash" checked>Squash</label><label><input type="radio" name="mtype" value="merge">Merge commit</label><label><input type="radio" name="mtype" value="rebase">Rebase</label></div><span class="hint">GitLab chỉ phân biệt squash; rebase theo cấu hình của project GitLab.</span></div></div>
+      <div class="set" style="padding:0;border:0"><div><b>Số người duyệt</b><small>requiredApprovals</small></div><div class="val"><select class="in-f" style="max-width:120px" aria-label="Số người duyệt"><option>0</option><option selected>1</option><option>2</option><option>3</option></select></div></div>
+      <label class="toggle"><input type="checkbox" id="m-ci" checked><span class="sw"></span><span><b>Bắt buộc CI xanh</b>Tắt thì repo chưa có CI vẫn merge được. <span class="mono">requireCi</span></span></label>
+      <label class="toggle"><input type="checkbox" id="m-queue" checked><span class="sw"></span><span><b>Bật merge queue</b>Merge tuần tự; PR sau được cập nhật theo nhánh chính rồi kiểm lại. Xem ở thẻ Hàng merge. <span class="mono">features.mergeQueue</span></span></label>
+    </div>
+
+    <div class="card sec"><h3>Model theo CLI và loại run</h3><p class="hint">Để trống nghĩa là dùng model mặc định của CLI. Tên model do nhà cung cấp CLI quy định; hub không kiểm tên có tồn tại.</p>
+      <div class="modelgrid"><span class="h">CLI</span><span class="h">Run code</span><span class="h">Run review</span>
+        <b>Claude Code</b><input class="in-f" list="claude-models" value="claude-sonnet-5-5" aria-label="Model Claude Code cho run code"><input class="in-f" list="claude-models" value="claude-opus-5-5" aria-label="Model Claude Code cho run review">
+        <b>Codex</b><input class="in-f" placeholder="Mặc định của CLI" aria-label="Model Codex cho run code"><input class="in-f" placeholder="Mặc định của CLI" aria-label="Model Codex cho run review">
+        <b>Gemini</b><input class="in-f" placeholder="Mặc định của CLI" aria-label="Model Gemini cho run code"><input class="in-f" placeholder="Mặc định của CLI" aria-label="Model Gemini cho run review"></div>
+      <datalist id="claude-models"><option value="claude-fable-5-1"><option value="claude-opus-5-5"><option value="claude-sonnet-5-5"><option value="claude-haiku-5-5"></datalist>
+    </div>
+
+    <div class="card sec"><h3>Quyền của agent trong run</h3>
+      <div class="choice" role="radiogroup" aria-label="Quyền của agent"><label class="opt"><input type="radio" name="perm" value="workspace" checked><b>Chỉ trong workspace</b>Agent đọc và ghi trong worktree của run. Mặc định, an toàn nhất.</label><label class="opt" id="perm-full"><input type="radio" name="perm" value="full" data-roles="org"><b>Toàn quyền</b>Agent chạy lệnh và ghi file ngoài worktree, không hỏi lại.</label></div>
+      <span class="hint" data-ro-note="org" id="perm-hint">Chỉ quản trị tổ chức bật được “Toàn quyền”.</span>
+      <div class="banner bad" id="warn-full" hidden role="alert"><svg class="i"><use href="#warn"/></svg><span><b>Chỉ nên dùng “Toàn quyền” trong container.</b> Trên máy dev, agent có thể đọc khoá SSH, token và file ngoài dự án. Run trên máy dev sẽ bị từ chối khi chọn mức này.</span></div>
+      <label class="toggle" id="full-ack" hidden><input type="checkbox" id="full-ack-in"><span class="sw"></span><span><b>Tôi hiểu rủi ro và chỉ cho chạy trong container</b>Bắt buộc tick mới lưu được.</span></label>
+    </div>
+
+    <div class="card sec"><h3>Review chéo</h3><p class="hint">Một agent khác đọc diff và chấm điểm trước khi PR vào hàng merge.</p>
+      <label class="toggle"><input type="checkbox" id="x-on" checked><span class="sw"></span><span><b>Bật review chéo</b><span class="mono">features.crossReview</span></span></label>
+      <div class="grid2" id="x-fields"><div class="field"><label for="x-cli">CLI người review</label><select class="in-f" id="x-cli"><option>Codex</option><option>Gemini</option><option>Claude Code</option></select><span class="hint" id="x-cli-h">Nên khác CLI viết code để có góc nhìn khác.</span></div>
+      <div class="field"><label for="x-min">Điểm tối thiểu (0–10)</label><input class="in-f" id="x-min" inputmode="decimal" value="7" style="max-width:120px"><span class="hint err" id="x-min-e" hidden></span><span class="hint">Dưới ngưỡng: run về <span class="mono">needs_review</span>, không vào hàng merge.</span></div></div>
+    </div>
+    <div class="dirty" id="dirty" hidden><span class="hint" id="dirty-t">Có thay đổi chưa lưu</span><button class="btn" data-act="cfg-reset">Huỷ thay đổi</button><button class="btn primary" data-act="cfg-save">Lưu cấu hình</button></div>
+  </div>
+
+  <div data-st="empty" class="card"><div class="emptybox"><span class="ic"><svg><use href="#gear"/></svg></span><h3>Dự án đang dùng cấu hình mặc định</h3><p>Cần người duyệt, kiểu squash, không merge queue, không review chéo, agent chỉ trong workspace.</p><button class="btn primary" data-roles="org team" data-act="cfg-custom">Tuỳ chỉnh cấu hình</button></div></div>
+  <div data-st="loading" class="card" aria-busy="true"><div class="skrows" role="status" aria-label="Đang tải cấu hình"><span class="sk" style="height:22px;width:20%"></span><span class="sk" style="height:70px"></span><span class="sk" style="height:38px;width:60%"></span><span class="sk" style="height:38px;width:60%"></span></div></div>
+  <div data-st="error" class="banner bad" role="alert"><b>Không tải được cấu hình dự án.</b><span>Hub trả lỗi 500. Chưa lưu thay đổi nào.</span><span class="sp"></span><button class="btn sm" data-act="retry">Thử lại</button></div>
+</div>
+</div></section>
+</main>
+
+<!-- ===== Hộp thoại ===== -->
+<dialog id="enqueue" aria-labelledby="enq-t"><form id="enq-form" novalidate><div class="modal-head"><h3 id="enq-t">Đưa PR vào hàng merge</h3></div><div class="modal-body">
+<div class="field"><label for="enq-n">Số PR</label><input class="in-f mono" id="enq-n" inputmode="numeric" placeholder="Ví dụ: 97" autocomplete="off" aria-describedby="enq-h"><span class="hint" id="enq-h">PR phải đang mở và thuộc repo của dự án. Thử 94 (đã trong hàng), 5 (không có), 97 (hợp lệ).</span></div></div>
+<div class="modal-foot"><button type="button" class="btn" data-close>Huỷ</button><button type="submit" class="btn primary">Đưa vào hàng</button></div></form></dialog>
+
+<dialog id="rm" aria-labelledby="rm-t"><div class="modal-head"><h3 id="rm-t">Bỏ PR khỏi hàng?</h3></div><div class="modal-body"><p id="rm-p"></p><p class="hint">Chỉ bỏ khỏi hàng; PR vẫn mở trên GitHub. Task liên kết giữ nguyên trạng thái.</p></div><div class="modal-foot"><button class="btn" data-close>Giữ lại</button><button class="btn danger" id="rm-ok">Bỏ khỏi hàng</button></div></dialog>
+
+<dialog id="chform" aria-labelledby="ch-t"><form id="ch-form" novalidate><div class="modal-head"><h3 id="ch-t">Thêm kênh thông báo</h3></div><div class="modal-body">
+<div class="field"><label for="ch-name">Tên kênh</label><input class="in-f" id="ch-name" maxlength="80" placeholder="Ví dụ: Nhóm vận hành"><span class="hint err" id="ch-name-e" hidden></span></div>
+<fieldset id="ch-kind"><legend>Loại kênh</legend><label><input type="radio" name="kind" value="telegram" checked>Telegram</label><label><input type="radio" name="kind" value="email">Email (SMTP)</label><span class="hint" id="ch-kind-h" hidden>Không đổi loại kênh khi sửa; muốn đổi thì xoá và tạo lại.</span></fieldset>
+<div id="f-tg" style="display:grid;gap:16px"><div class="field"><label for="tg-tok">Token bot</label><input class="in-f mono" id="tg-tok" type="password" autocomplete="off" placeholder="123456:ABC…"><span class="hint">Lấy từ @BotFather. Không hiển thị lại sau khi lưu.</span><span class="hint err" id="tg-tok-e" hidden></span></div>
+<div class="field"><label for="tg-chat">Chat id</label><input class="in-f mono" id="tg-chat" placeholder="-1002345678901 hoặc @ten_kenh"><span class="hint err" id="tg-chat-e" hidden></span></div></div>
+<div id="f-em" style="display:none;gap:16px" hidden>
+<div class="grid2"><div class="field"><label for="em-host">Máy chủ SMTP</label><input class="in-f mono" id="em-host" placeholder="smtp.example.com"><span class="hint err" id="em-host-e" hidden></span></div><div class="field"><label for="em-port">Cổng</label><input class="in-f mono" id="em-port" inputmode="numeric" value="587"><span class="hint err" id="em-port-e" hidden></span></div></div>
+<div class="field"><label for="em-tls">Mã hoá</label><select class="in-f" id="em-tls"><option value="starttls">STARTTLS · cổng 587 (khuyên dùng)</option><option value="implicit">TLS ngầm · cổng 465</option><option value="none">Không mã hoá · chỉ cho máy chủ nội bộ</option></select></div>
+<div class="grid2"><div class="field"><label for="em-user">Tài khoản SMTP</label><input class="in-f" id="em-user" autocomplete="off" placeholder="Bỏ trống nếu không cần"></div><div class="field"><label for="em-pw">Mật khẩu</label><input class="in-f" id="em-pw" type="password" autocomplete="new-password"><span class="hint">Không hiển thị lại sau khi lưu.</span></div></div>
+<div class="field"><label for="em-from">Địa chỉ gửi</label><input class="in-f" id="em-from" placeholder="hive@fpt.com"><span class="hint err" id="em-from-e" hidden></span></div>
+<div class="field"><label for="em-to">Địa chỉ nhận</label><textarea class="in-f" id="em-to" rows="2" placeholder="ops@fpt.com, admin@fpt.com"></textarea><span class="hint">Phân cách bằng dấu phẩy hoặc xuống dòng, tối đa 20 địa chỉ.</span><span class="hint err" id="em-to-e" hidden></span></div></div>
+<div class="field"><span class="lbl">Sự kiện nhận</span><div class="evlist" id="ev-list"></div><span class="hint err" id="ev-e" hidden></span></div>
+<label class="toggle"><input type="checkbox" id="ch-on" checked><span class="sw"></span><span><b>Bật kênh</b>Tắt thì giữ cấu hình nhưng không gửi tin.</span></label>
+<div class="banner bad" id="ch-top-e" hidden role="alert"></div>
+</div><div class="modal-foot"><button type="button" class="btn" data-close>Huỷ</button><button type="submit" class="btn primary" id="ch-save">Lưu kênh</button></div></form></dialog>
+
+<dialog id="chdel" aria-labelledby="chdel-t"><div class="modal-head"><h3 id="chdel-t">Xoá kênh?</h3></div><div class="modal-body"><p id="chdel-p"></p><p class="hint">Sự kiện sau đó không còn gửi qua kênh này. Không hoàn tác được.</p></div><div class="modal-foot"><button class="btn" data-close>Giữ kênh</button><button class="btn danger" id="chdel-ok">Xoá kênh</button></div></dialog>
+
+<dialog id="runs" aria-labelledby="runs-t" style="width:min(820px,calc(100% - 28px))"><div class="modal-head"><h3 id="runs-t">Run của task</h3><span class="sp"></span><button type="button" class="btn ghost" data-close aria-label="Đóng hộp thoại">✕</button></div><div class="modal-body"><div class="tbl"><table style="min-width:680px"><thead><tr><th>Run</th><th>CLI · máy</th><th class="num">Token vào</th><th class="num">Token ra</th><th class="num">Cache</th><th class="num">Lượt</th><th class="num">USD</th><th>Kết quả</th></tr></thead><tbody id="runs-b"></tbody></table></div><p class="hint" id="runs-h"></p></div><div class="modal-foot"><button class="btn" data-close>Đóng</button></div></dialog>
+
+<div id="toast" role="status" hidden></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const usd = (n) => '$' + n.toFixed(2).replace('.', ',');
+const num = (n) => Math.round(n).toLocaleString('vi-VN');
+const hhmm = () => new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+// Dùng textContent cho mọi chữ người dùng nhập; HTML chỉ ghép từ chuỗi cố định của mockup.
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let toastTimer;
+function toast(m) { clearTimeout(toastTimer); const t = $('#toast'); t.textContent = m; t.hidden = false; toastTimer = setTimeout(() => { t.hidden = true; }, 4000); }
+
+/* ---------- Khung app ---------- */
+const tpl = $('#shell');
+$$('[data-shell]').forEach((host) => {
+  const app = tpl.content.firstElementChild.cloneNode(true);
+  $('.main', app).append(...host.childNodes);
+  host.append(app);
+});
+$$('.screen').forEach((s) => {
+  $$('.side a[data-nav]', s).forEach((a) => a.classList.toggle('on', a.dataset.nav === s.dataset.nav));
+  s.dataset.state = 'data';
+});
+
+/* ---------- Vai trò ---------- */
+const roleName = { org: 'Quản trị tổ chức', team: 'Quản trị đội Thanh toán', member: 'Thành viên đội Thanh toán', viewer: 'Chỉ xem' };
+function applyRole() {
+  const role = $('#role').value;
+  document.body.dataset.role = role;
+  $$('.who-line').forEach((e) => { e.textContent = roleName[role]; });
+  $('#s-notify').dataset.denied = role !== 'org';
+  $('#s-cost').dataset.denied = role === 'viewer';
+  // Vùng "guard" khoá cả cụm điều khiển trước, rồi từng nút có data-roles riêng khoá thêm.
+  const guardOff = new Map();
+  $$('.guard[data-roles]').forEach((g) => {
+    const ok = g.dataset.roles.split(' ').includes(role);
+    guardOff.set(g, !ok);
+    $$('input,select,textarea,button', g).forEach((c) => { c.disabled = !ok; });
+  });
+  $$('[data-roles]').filter((e) => !e.classList.contains('guard')).forEach((e) => {
+    const ok = e.dataset.roles.split(' ').includes(role);
+    const g = e.closest('.guard');
+    e.disabled = !ok || (g ? guardOff.get(g) : false);
+    if (e.disabled) e.title = 'Vai trò của bạn không có quyền này'; else e.removeAttribute('title');
+  });
+  $$('[data-ro-note]').forEach((e) => { e.hidden = e.dataset.roNote.split(' ').includes(role); });
+  lockMerging();
+  cfgRules();
+}
+
+/* ---------- Chuyển màn và trạng thái ---------- */
+const stateLabel = { data: 'Có dữ liệu', empty: 'Trống', loading: 'Đang tải', error: 'Lỗi', off: 'Tính năng tắt' };
+let current = 'queue';
+function buildStateSeg() {
+  const s = $(`#s-${current}`);
+  const seg = $('#state-seg');
+  seg.replaceChildren(...s.dataset.states.split(',').map((st) => {
+    const b = document.createElement('button');
+    b.textContent = stateLabel[st]; b.dataset.st = st;
+    b.setAttribute('aria-pressed', String(s.dataset.state === st));
+    return b;
+  }));
+}
+function setState(id, st) {
+  $(`#s-${id}`).dataset.state = st;
+  if (id === current) buildStateSeg();
+}
+function show(id) {
+  if (!$(`#s-${id}`)) return;
+  current = id;
+  $$('.screen').forEach((s) => { s.hidden = s.id !== `s-${id}`; });
+  $$('.tabs [data-go]').forEach((b) => { if (b.dataset.go === id) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+  history.replaceState(null, '', `#${id}`);
+  buildStateSeg(); window.scrollTo(0, 0);
+}
+$('#state-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (b) setState(current, b.dataset.st);
+});
+function retry() { setState(current, 'loading'); setTimeout(() => setState(current, 'data'), 900); }
+
+/* ---------- 1. Hàng merge ---------- */
+const mins = (m) => `${m} phút trước`;
+let entries = [
+  { pr: 91, title: 'Thêm phân trang hoá đơn', branch: 'ai/task-127', task: 'TASK-127', run: 'RUN-398', state: 'merging', note: 'Đang merge kiểu squash vào main.', by: 'Lê Hà' },
+  { pr: 93, title: 'Xuất hoá đơn CSV', branch: 'ai/task-133', task: 'TASK-133', run: 'RUN-410', state: 'updating', note: 'Đã yêu cầu cập nhật nhánh theo main lúc 10:14.', by: 'Tự động (run succeeded)' },
+  { pr: 94, title: 'Kiểm tra mã số thuế', branch: 'ai/task-128', task: 'TASK-128', run: 'RUN-403', state: 'waiting', note: 'Chờ CI: 2/3 kiểm tra đang chạy.', by: 'Lê Hà' },
+  { pr: 95, title: '', branch: 'feature/export-excel', task: '', run: '', state: 'waiting', note: 'Chờ người duyệt: cần 1, hiện có 0.', by: 'Phạm Minh' },
+  { pr: 96, title: 'Rút gọn truy vấn danh sách', branch: 'ai/task-125', task: 'TASK-125', run: 'RUN-401', state: 'queued', note: 'Tới lượt sau PR #95.', by: 'Tự động (run succeeded)' },
+];
+const done = [
+  { pr: 90, title: 'Sửa định dạng số tiền VND', branch: 'ai/task-124', task: 'TASK-124', run: 'RUN-392', state: 'merged', note: 'Đã merge · mã 7f3c2a9.', by: 'Tự động (run succeeded)', at: 'Hôm nay 09:02' },
+  { pr: 89, title: 'Thêm bộ lọc ngày phát hành', branch: 'ai/task-129', task: 'TASK-129', run: 'RUN-389', state: 'merged', note: 'Đã merge · mã b1e0d44.', by: 'Lê Hà', at: 'Hôm qua 17:31' },
+  { pr: 88, title: 'Đồng bộ danh mục thuế', branch: 'ai/task-120', task: 'TASK-120', run: 'RUN-381', state: 'failed', note: 'Xung đột với main ở src/invoices/format.ts. Giải quyết xung đột rồi đưa lại vào hàng.', by: 'Phạm Minh', at: 'Hôm qua 14:08' },
+  { pr: 87, title: '', branch: 'hotfix/rounding', task: '', run: '', state: 'removed', note: 'Phạm Minh bỏ khỏi hàng.', by: 'Phạm Minh', at: '09/10 16:45' },
+  { pr: 86, title: 'Chuẩn hoá mã lỗi API', branch: 'ai/task-118', task: 'TASK-118', run: 'RUN-366', state: 'failed', note: 'CI đỏ sau khi cập nhật nhánh: kiểm tra “lint” lỗi 3 chỗ. Task đã về Review.', by: 'Tự động (run succeeded)', at: '09/10 11:20' },
+  { pr: 82, title: 'Sửa định dạng số tiền', branch: 'ai/task-124', task: 'TASK-124', run: 'RUN-352', state: 'merged', note: 'Đã merge · mã 02a9c15.', by: 'Lê Hà', at: '08/10 15:12' },
+];
+const pillCls = { queued: '', updating: 'run spin', waiting: 'warn', merging: 'run spin', merged: 'ok', failed: 'bad', removed: '' };
+const statePill = (s) => `<span class="pill ${pillCls[s]}">${/spin/.test(pillCls[s]) ? '<svg class="i" style="width:12px;height:12px"><use href="#spin"/></svg>' : '<span class="dot"></span>'}${s}</span>`;
+const prCell = (e) => `<b class="mono">#${e.pr}</b> ${e.title ? `<span>${esc(e.title)}</span>` : '<span class="muted">(không có task)</span>'}<span class="sub2 mono">${esc(e.branch)} ↗</span>`;
+const taskCell = (e) => (e.task ? `<span style="white-space:nowrap"><button class="link" data-act="toast" data-msg="Mở ${e.task} (mô phỏng).">${e.task}</button> · <span class="mono">${e.run}</span></span>` : '—');
+function renderQueue() {
+  $('#q-active').innerHTML = entries.map((e, i) => `<tr><td><span class="pos ${i === 0 ? 'first' : ''}">${i + 1}</span></td><td class="wrap">${prCell(e)}</td><td>${statePill(e.state)}</td><td class="wrap">${esc(e.note)}</td><td>${taskCell(e)}</td><td>${esc(e.by)}</td><td><button class="btn sm danger" data-act="rm" data-pr="${e.pr}" data-roles="org team member" ${e.state === 'merging' ? 'data-merging="1"' : ''}>Bỏ khỏi hàng</button></td></tr>`).join('');
+  $('#q-done').innerHTML = done.map((e) => `<tr><td class="wrap">${prCell(e)}</td><td>${statePill(e.state)}</td><td class="wrap">${esc(e.note)}</td><td>${taskCell(e)}</td><td>${esc(e.by)}</td><td>${e.at}</td></tr>`).join('');
+  $('#q-count').textContent = entries.length;
+  const n = entries.filter((e) => e.state === 'merging' || e.state === 'updating').length;
+  $('#q-run').lastChild.textContent = `${n} đang xử lý`; $('#q-wait').textContent = `${entries.length - n} đang chờ`;
+  applyRole();
+}
+function lockMerging() {
+  // Mục đang merge không bỏ được dù có quyền; chặn sau applyRole để không bị ghi đè.
+  $$('[data-merging]').forEach((b) => { b.disabled = true; b.title = 'PR đang merge, không bỏ khỏi hàng được'; });
+}
+let pendingRm = null;
+$('#enq-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const raw = $('#enq-n').value.trim(), h = $('#enq-h');
+  const n = Number(raw);
+  const fail = (m) => { h.textContent = m; h.className = 'hint err'; $('#enq-n').classList.add('err'); };
+  $('#enq-n').classList.remove('err');
+  if (!/^\d+$/.test(raw) || n < 1) return fail('Nhập số PR là số nguyên dương, ví dụ 97.');
+  const at = entries.findIndex((x) => x.pr === n);
+  if (at >= 0) return fail(`PR #${n} đã có trong hàng ở vị trí ${at + 1}.`);
+  if (n !== 97 && n < 90) return fail(`Không tìm thấy PR #${n} đang mở trong repo hoa-don-api.`);
+  entries.push({ pr: n, title: '', branch: `feature/pr-${n}`, task: '', run: '', state: 'queued', note: `Tới lượt sau PR #${entries[entries.length - 1].pr}.`, by: 'Lê Hà' });
+  $('#enqueue').close(); setState('queue', 'data'); renderQueue(); toast(`Đã đưa PR #${n} vào hàng (mô phỏng).`);
+});
+$('#rm-ok').addEventListener('click', () => {
+  const i = entries.findIndex((x) => x.pr === pendingRm); if (i < 0) return;
+  const [e] = entries.splice(i, 1);
+  done.unshift({ ...e, state: 'removed', note: 'Lê Hà bỏ khỏi hàng.', at: `Hôm nay ${hhmm()}` });
+  $('#rm').close(); if (!entries.length) setState('queue', 'empty'); renderQueue(); toast(`Đã bỏ PR #${e.pr} khỏi hàng (mô phỏng).`);
+});
+
+/* ---------- 2. Kênh thông báo ---------- */
+const EVENTS = [
+  ['run.failed', 'Run kết thúc ở trạng thái failed.'],
+  ['run.needs_review', 'Run cần người xem lại (kiểm tra mềm không đạt).'],
+  ['project.provision_failed', 'Một bước khởi tạo dự án lỗi (tạo repo, bảo vệ nhánh, webhook…).'],
+  ['machine.offline', 'Máy mất heartbeat khi đang có run.'],
+  ['member.pending', 'Có người xin vào tổ chức, chờ duyệt.'],
+  ['merge.failed', 'PR bị loại khỏi hàng merge vì lỗi. Chưa có trong notify.ts.'],
+];
+let channels = [
+  { id: 1, name: 'Nhóm vận hành Hive', kind: 'telegram', target: 'Telegram · chat -1002345678901', events: ['run.failed', 'run.needs_review', 'project.provision_failed', 'machine.offline', 'merge.failed'], on: true, test: { ok: true, m: 'Telegram nhận tin thử.' } },
+  { id: 2, name: 'Email quản trị', kind: 'email', target: 'ops@fpt.com +1 · smtp.fpt.com:587 · STARTTLS', events: ['run.failed', 'project.provision_failed', 'machine.offline', 'member.pending'], on: true, test: { ok: false, m: 'Máy chủ SMTP từ chối đăng nhập (mã 535). Kiểm tra tài khoản và mật khẩu.' } },
+  { id: 3, name: 'Telegram Lê Hà', kind: 'telegram', target: 'Telegram · chat 482913356', events: ['merge.failed'], on: false, test: { ok: false, m: 'Telegram trả lỗi 401: token bot không đúng hoặc đã bị thu hồi.' } },
+];
+let results = {};
+$('#ev-ref').innerHTML = EVENTS.map(([k, d]) => `<tr><td class="mono">${k}</td><td>${d}</td></tr>`).join('');
+function renderChannels() {
+  $('#ch-rows').innerHTML = channels.map((c) => {
+    const r = results[c.id];
+    const res = r ? (r.pending ? `<div class="res muted"><svg class="i" style="animation:rot 1s linear infinite"><use href="#spin"/></svg>Đang gửi tin thử…</div>` : `<div class="res ${r.ok ? 'ok' : 'bad'}" role="status"><svg class="i"><use href="#${r.ok ? 'check' : 'x'}"/></svg><span>${esc(r.m)} <span class="hint">· ${r.at}</span></span></div>`) : '';
+    return `<tr><td class="wrap"><b>${esc(c.name)}</b><span class="sub2"><svg class="i" style="width:13px;height:13px;vertical-align:-2px"><use href="#${c.kind === 'email' ? 'mail' : 'send'}"/></svg> ${c.kind === 'email' ? 'Email' : 'Telegram'}</span></td><td class="wrap">${esc(c.target)}${res}</td><td><div class="ev">${c.events.map((e) => `<span class="pill">${e}</span>`).join('')}</div></td><td><label class="toggle" style="align-items:center"><input type="checkbox" data-act="ch-toggle" data-id="${c.id}" ${c.on ? 'checked' : ''} data-roles="org" aria-label="Bật kênh ${esc(c.name)}"><span class="sw" style="margin:0"></span></label></td><td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="ch-test" data-id="${c.id}" data-roles="org">Gửi tin thử</button><button class="btn sm" data-act="ch-edit" data-id="${c.id}" data-roles="org">Sửa</button><button class="btn sm ghost danger" data-act="ch-del" data-id="${c.id}" data-roles="org">Xoá</button></div></td></tr>`;
+  }).join('');
+  applyRole();
+}
+$('#ev-list').innerHTML = EVENTS.map(([k, d]) => `<label><input type="checkbox" name="ev" value="${k}"><span><code>${k}</code><small>${d}</small></span></label>`).join('');
+let editing = null;
+const fields = ['ch-name', 'tg-tok', 'tg-chat', 'em-host', 'em-port', 'em-user', 'em-pw', 'em-from', 'em-to'];
+function kindShow() {
+  const em = $('input[name=kind]:checked').value === 'email';
+  const f = $('#f-em'); f.hidden = !em; f.style.display = em ? 'grid' : 'none';
+  $('#f-tg').hidden = em; $('#f-tg').style.display = em ? 'none' : 'grid';
+}
+$$('input[name=kind]').forEach((r) => r.addEventListener('change', kindShow));
+function clearErr() { $$('.err', $('#ch-form')).forEach((e) => { if (e.tagName === 'SPAN') e.hidden = true; else e.classList.remove('err'); }); $('#ch-top-e').hidden = true; }
+function openForm(c) {
+  editing = c || null; clearErr();
+  $('#ch-form').reset();
+  $('#ch-t').textContent = c ? `Sửa kênh · ${c.name}` : 'Thêm kênh thông báo';
+  $('#ch-kind-h').hidden = !c;
+  $$('input[name=kind]').forEach((r) => { r.disabled = !!c; r.checked = r.value === (c ? c.kind : 'telegram'); });
+  if (c) {
+    $('#ch-name').value = c.name; $('#ch-on').checked = c.on;
+    $$('input[name=ev]').forEach((i) => { i.checked = c.events.includes(i.value); });
+    if (c.kind === 'telegram') $('#tg-chat').value = c.target.split('chat ')[1];
+    else { $('#em-host').value = 'smtp.fpt.com'; $('#em-from').value = 'hive@fpt.com'; $('#em-to').value = 'ops@fpt.com, admin@fpt.com'; $('#em-user').value = 'hive-notify'; }
+    $('#tg-tok').placeholder = 'Nhập lại token để lưu'; $('#em-pw').placeholder = 'Nhập lại mật khẩu để lưu';
+  } else { $('#tg-tok').placeholder = '123456:ABC…'; $('#em-pw').placeholder = ''; }
+  kindShow(); $('#chform').showModal();
+}
+// Hub chặn SMTP nội bộ để tránh dùng kênh thông báo dò mạng trong (SSRF).
+const internalHost = (h) => /^(localhost|.*\.(local|internal|lan))$/i.test(h) || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.)/.test(h);
+$('#ch-form').addEventListener('submit', (ev) => {
+  ev.preventDefault(); clearErr();
+  let bad = false;
+  const err = (id, m) => { const e = $(`#${id}-e`); e.textContent = m; e.hidden = false; $(`#${id}`)?.classList.add('err'); bad = true; };
+  const name = $('#ch-name').value.trim();
+  if (!name) err('ch-name', 'Tên không được để trống.');
+  const kind = $('input[name=kind]:checked').value;
+  let target = '';
+  if (kind === 'telegram') {
+    const tok = $('#tg-tok').value.trim(), chat = $('#tg-chat').value.trim();
+    if (!/^\d{3,20}:[\w-]{20,100}$/.test(tok)) err('tg-tok', 'Token bot Telegram có dạng 123456:ABC…');
+    if (!/^(-?\d{1,20}|@[A-Za-z]\w{3,63})$/.test(chat)) err('tg-chat', 'Chat id là số (nhóm thường âm) hoặc @tên_kênh.');
+    target = `Telegram · chat ${chat}`;
+  } else {
+    const host = $('#em-host').value.trim(), port = Number($('#em-port').value);
+    if (!host) err('em-host', 'Nhập địa chỉ máy chủ SMTP.');
+    else if (!/^[A-Za-z0-9.-]+$/.test(host)) err('em-host', 'Địa chỉ máy chủ SMTP chỉ gồm chữ, số, `.` và `-`.');
+    else if (internalHost(host)) err('em-host', 'SMTP trỏ vào địa chỉ nội bộ. Hub không gửi tới localhost, 10.x, 172.16–31.x, 192.168.x; dùng máy chủ SMTP có địa chỉ công khai.');
+    if (!Number.isInteger(port) || port < 1 || port > 65535) err('em-port', 'Cổng từ 1 đến 65535.');
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!re.test($('#em-from').value.trim())) err('em-from', 'Địa chỉ gửi không hợp lệ.');
+    const to = $('#em-to').value.split(/[,;\s]+/).filter(Boolean);
+    if (!to.length) err('em-to', 'Nhập ít nhất một địa chỉ nhận.');
+    else if (to.length > 20) err('em-to', 'Tối đa 20 địa chỉ nhận.');
+    else if (to.some((a) => !re.test(a))) err('em-to', 'Địa chỉ nhận không hợp lệ.');
+    target = `${to[0]}${to.length > 1 ? ` +${to.length - 1}` : ''} · ${host}:${port} · ${{ none: 'không mã hoá', implicit: 'TLS', starttls: 'STARTTLS' }[$('#em-tls').value]}`;
+  }
+  const evs = $$('input[name=ev]:checked').map((i) => i.value);
+  if (!evs.length) err('ev', 'Chọn ít nhất một loại sự kiện.');
+  if (bad) { const f = $('.err:not(span)', $('#ch-form')) || $('#ch-form'); f.focus?.(); return; }
+  if (editing) Object.assign(editing, { name, target, events: evs, on: $('#ch-on').checked });
+  else channels.push({ id: Date.now(), name, kind, target, events: evs, on: $('#ch-on').checked, test: { ok: true, m: 'Đã nhận tin thử.' } });
+  $('#chform').close(); setState('notify', 'data'); renderChannels(); toast(`${editing ? 'Đã sửa' : 'Đã thêm'} kênh “${name}” (mô phỏng).`);
+});
+function testChannel(c) {
+  results[c.id] = { pending: true }; renderChannels();
+  setTimeout(() => { results[c.id] = { ...c.test, at: hhmm() }; renderChannels(); }, 900);
+}
+let pendingDel = null;
+$('#chdel-ok').addEventListener('click', () => {
+  channels = channels.filter((c) => c.id !== pendingDel); $('#chdel').close();
+  if (!channels.length) setState('notify', 'empty'); renderChannels(); toast('Đã xoá kênh (mô phỏng).');
+});
+
+/* ---------- 3. Chi phí và token ---------- */
+const DAYS = 14;
+const dayCost = [14.2, 15.3, 16.8, 13.9, 12.1, 4.2, 3.1, 16.9, 18.5, 15.7, 13.2, 17.5, 2.6, 3.8];
+const dayRuns = [20, 22, 24, 19, 17, 6, 4, 25, 27, 23, 19, 26, 4, 6];
+const totalCost = dayCost.reduce((a, b) => a + b, 0), totalRuns = dayRuns.reduce((a, b) => a + b, 0);
+const geminiShare = 0.13;
+const geminiCost = Math.round(totalCost * geminiShare * 100) / 100;
+const metered = totalCost - geminiCost; // Gemini không báo token nên chỉ ước tính tiền
+const T = { in: metered * 118000, out: metered * 14000, cache: metered * 270000 };
+$('#c-stats').innerHTML = [
+  ['Tổng chi phí', usd(totalCost), `gồm ${usd(geminiCost)} ước tính (Gemini)`],
+  ['Token vào', (T.in / 1e6).toFixed(1).replace('.', ',') + ' triệu', 'không tính cache'],
+  ['Token ra', (T.out / 1e6).toFixed(1).replace('.', ',') + ' triệu', 'Claude Code, Codex'],
+  ['Token cache', (T.cache / 1e6).toFixed(1).replace('.', ',') + ' triệu', 'đọc từ cache'],
+  ['Số run', String(totalRuns), `${usd(totalCost / totalRuns)}/run trung bình`],
+].map(([a, b, c]) => `<div class="card stat"><small>${a}</small><b>${b}</b><span>${c}</span></div>`).join('');
+const base = new Date(2026, 8, 28);
+const dow = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+const dayLbl = (i) => { const d = new Date(base); d.setDate(base.getDate() + i); return { d, short: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`, wd: dow[d.getDay()], we: d.getDay() % 6 === 0 }; };
+(function chart() {
+  const W = 760, H = 230, L = 38, B = 28, Tp = 10, max = 25;
+  const bw = (W - L) / DAYS, y = (v) => Tp + (H - B - Tp) * (1 - v / max);
+  let s = '';
+  for (let v = 0; v <= max; v += 5) s += `<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">$${v}</text>`;
+  dayCost.forEach((c, i) => {
+    const l = dayLbl(i), x = L + i * bw + bw * 0.16, w = bw * 0.68;
+    s += `<rect class="bar ${l.we ? 'low' : ''}" tabindex="0" x="${x}" y="${y(c)}" width="${w}" height="${y(0) - y(c)}" rx="3" data-i="${i}" aria-label="${l.wd} ${l.short}: ${usd(c)}, ${dayRuns[i]} run"/><text x="${x + w / 2}" y="${H - 10}" text-anchor="middle">${l.short.slice(0, 5)}</text>`;
+  });
+  $('#c-chart').setAttribute('viewBox', `0 0 ${W} ${H}`); $('#c-chart').innerHTML = s;
+  $('#c-daytbl').innerHTML = `<thead><tr><th>Ngày</th><th class="num">USD</th><th class="num">Run</th></tr></thead><tbody>${dayCost.map((c, i) => `<tr><td>${dayLbl(i).wd} ${dayLbl(i).short}</td><td class="num">${usd(c)}</td><td class="num">${dayRuns[i]}</td></tr>`).join('')}</tbody>`;
+  const tip = (e) => { const r = e.target.closest('.bar'); if (!r) return; const i = +r.dataset.i; $('#bar-tip').textContent = `${dayLbl(i).wd} ${dayLbl(i).short} · ${usd(dayCost[i])} · ${dayRuns[i]} run`; };
+  $('#c-chart').addEventListener('mouseover', tip); $('#c-chart').addEventListener('focusin', tip);
+})();
+const tokCells = (cost, ratio = 1) => `<td class="num">${num(cost * 118000 * ratio)}</td><td class="num">${num(cost * 14000 * ratio)}</td><td class="num">${num(cost * 270000 * ratio)}</td>`;
+const tasks = [
+  ['TASK-133', 'Xuất hoá đơn CSV', 5, 19.4, 'Claude Code'], ['TASK-128', 'Kiểm tra mã số thuế', 4, 12.75, 'Codex'], ['TASK-127', 'Thêm phân trang hoá đơn', 3, 9.6, 'Codex'],
+  ['TASK-126', 'Kiểm tra quyền tải PDF', 2, 4.8, 'Claude Code'], ['TASK-124', 'Sửa định dạng số tiền', 2, 3.1, 'Codex'], ['TASK-125', 'Rút gọn truy vấn danh sách', 1, 0.9, 'Gemini'],
+];
+const taskSum = tasks.reduce((a, t) => a + t[3], 0), taskRuns = tasks.reduce((a, t) => a + t[2], 0);
+const split = (shares) => { let left = totalCost, runs = totalRuns; return shares.map(([n, p], i) => { const last = i === shares.length - 1; const c = last ? left : Math.round(totalCost * p * 100) / 100; const r = last ? runs : Math.round(totalRuns * p); left -= c; runs -= r; return [n, r, c]; }); };
+const BY = {
+  task: () => `<thead><tr><th>Task</th><th>CLI</th><th class="num">Run</th><th class="num">Token vào</th><th class="num">Token ra</th><th class="num">Cache</th><th class="num">USD</th></tr></thead><tbody>${tasks.map(([id, t, r, c, cli]) => `<tr class="click" data-task="${id}" tabindex="0"><td><b>${id}</b><span class="sub2">${t}</span></td><td>${cli}</td><td class="num">${r}</td>${cli === 'Gemini' ? '<td class="num muted" colspan="3">— CLI không báo token</td>' : tokCells(c)}<td class="num">${cli === 'Gemini' ? '~' : ''}${usd(c)}${id === 'TASK-128' ? ' <span class="pill warn" title="Vượt perTaskUsd $12,00">vượt</span>' : ''}</td></tr>`).join('')}<tr><td><span class="muted">41 task khác</span></td><td>—</td><td class="num">${totalRuns - taskRuns}</td>${tokCells(totalCost - taskSum, metered / totalCost)}<td class="num">${usd(totalCost - taskSum)}</td></tr></tbody>`,
+  cli: () => { const cl = Math.round(totalCost * 0.46 * 100) / 100, cr = Math.round(totalRuns * 0.46), gr = Math.round(totalRuns * geminiShare); const rows = [['Claude Code', cr, cl], ['Codex', totalRuns - cr - gr, totalCost - cl - geminiCost], ['Gemini', gr, geminiCost]]; return `<thead><tr><th>CLI</th><th class="num">Run</th><th class="num">Token vào</th><th class="num">Token ra</th><th class="num">Cache</th><th class="num">USD</th></tr></thead><tbody>${rows.map(([n, r, c]) => `<tr><td><b>${n}</b></td><td class="num">${r}</td>${n === 'Gemini' ? '<td class="num muted" colspan="3">— CLI không báo token</td>' : tokCells(c)}<td class="num">${n === 'Gemini' ? '~' : ''}${usd(c)}</td></tr>`).join('')}</tbody>`; },
+  machine: () => `<thead><tr><th>Máy</th><th class="num">Run</th><th class="num">Token vào</th><th class="num">Token ra</th><th class="num">Cache</th><th class="num">USD</th></tr></thead><tbody>${split([['mac-ha', 0.38], ['build-01', 0.33], ['build-03', 0.17], ['win-minh', 0]]).map(([n, r, c]) => `<tr><td><b>${n}</b></td><td class="num">${r}</td>${tokCells(c, metered / totalCost)}<td class="num">${usd(c)}</td></tr>`).join('')}</tbody>`,
+};
+function renderBy(k) {
+  $('#by-tbl').innerHTML = BY[k](); $('#by-hint').textContent = k === 'task' ? 'Bấm một task để xem chi tiết từng run' : k === 'cli' ? 'Gemini chỉ có tiền ước tính' : 'Run chạy trên máy dev; container tính riêng từ M6';
+  $$('#by-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.by === k)));
+}
+renderBy('task');
+const R = (id, cli, m, c, turns, res) => ({ id, cli, m, c, turns, res });
+const runsOf = {
+  'TASK-128': [R('RUN-404', 'Codex', 'mac-ha', 2.95, 19, 'run'), R('RUN-403', 'Codex', 'mac-ha', 4.1, 28, 'warn'), R('RUN-402', 'Codex', 'mac-ha', 3.4, 24, 'bad'), R('RUN-401', 'Codex', 'build-01', 2.3, 17, 'ok')],
+  'TASK-133': [R('RUN-411', 'Claude Code', 'build-01', 5.12, 33, 'stop'), R('RUN-410', 'Claude Code', 'build-01', 4.2, 31, 'ok'), R('RUN-409', 'Claude Code', 'build-01', 3.88, 29, 'bad'), R('RUN-408', 'Claude Code', 'mac-ha', 3.6, 26, 'warn'), R('RUN-407', 'Claude Code', 'mac-ha', 2.6, 20, 'bad')],
+  'TASK-127': [R('RUN-398', 'Codex', 'mac-ha', 3.07, 41, 'stopt'), R('RUN-397', 'Codex', 'mac-ha', 3.08, 30, 'warn'), R('RUN-396', 'Codex', 'build-01', 3.45, 32, 'ok')],
+};
+const resPill = { run: '<span class="pill run">đang chạy</span>', ok: '<span class="pill ok">succeeded</span>', warn: '<span class="pill warn">needs_review</span>', bad: '<span class="pill bad">failed</span>', stop: '<span class="pill bad">dừng: perRunUsd</span>', stopt: '<span class="pill bad">dừng: maxTurns</span>' };
+function openRuns(taskId) {
+  const t = tasks.find((x) => x[0] === taskId);
+  const rows = runsOf[taskId] || Array.from({ length: t[2] }, (_, i) => R(`RUN-${380 - i}`, t[4], 'build-01', t[3] / t[2], 18, 'ok'));
+  $('#runs-t').textContent = `${taskId} · ${t[1]}`;
+  $('#runs-b').innerHTML = rows.map((r) => `<tr><td><b class="mono">${r.id}</b></td><td>${r.cli} · ${r.m}</td>${r.cli === 'Gemini' ? '<td class="num muted" colspan="3">—</td>' : tokCells(r.c)}<td class="num">${r.turns}</td><td class="num">${r.cli === 'Gemini' ? '~' : ''}${usd(r.c)}</td><td>${resPill[r.res]}</td></tr>`).join('');
+  $('#runs-h').textContent = `Tổng ${usd(rows.reduce((a, r) => a + r.c, 0))}. Số token lấy từ báo cáo của CLI khi run kết thúc; run đang chạy cập nhật mỗi lần agent báo.`;
+  $('#runs').showModal();
+}
+$('#by-seg').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) renderBy(b.dataset.by); });
+$('#by-tbl').addEventListener('click', (e) => { const r = e.target.closest('[data-task]'); if (r) openRuns(r.dataset.task); });
+$('#by-tbl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const r = e.target.closest('[data-task]'); if (r) openRuns(r.dataset.task); } });
+const budget = { 'b-run': '5,00', 'b-task': '12,00', 'b-turns': '40' };
+function saveBudget() {
+  const e = $('#b-err'); e.hidden = true; ['b-run', 'b-task', 'b-turns'].forEach((i) => $(`#${i}`).classList.remove('err'));
+  const p = (id) => { const v = $(`#${id}`).value.trim().replace(',', '.'); return v === '' ? null : Number(v); };
+  const fail = (id, m) => { $(`#${id}`).classList.add('err'); e.textContent = m; e.hidden = false; $(`#${id}`).focus(); };
+  const r = p('b-run'), t = p('b-task'), n = p('b-turns');
+  if (r !== null && !(r > 0)) return fail('b-run', 'Ngân sách mỗi run phải là số USD lớn hơn 0, ví dụ 5,00.');
+  if (t !== null && !(t > 0)) return fail('b-task', 'Ngân sách mỗi task phải là số USD lớn hơn 0, ví dụ 12,00.');
+  if (r !== null && t !== null && t < r) return fail('b-task', 'Ngân sách mỗi task phải lớn hơn hoặc bằng ngân sách mỗi run.');
+  if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 500)) return fail('b-turns', 'Số lượt là số nguyên từ 1 đến 500.');
+  Object.keys(budget).forEach((k) => { budget[k] = $(`#${k}`).value; });
+  toast('Đã lưu ngân sách (mô phỏng). Áp dụng cho run mới.');
+}
+
+/* ---------- 4. Cấu hình dự án ---------- */
+const ctl = () => $$('#cfg input,#cfg select').filter((c) => c.type !== 'hidden');
+const snap = () => ctl().map((c) => (c.type === 'checkbox' || c.type === 'radio' ? c.checked : c.value));
+let base0 = snap();
+function cfgRules() {
+  if (!$('#cfg')) return;
+  const auto = $('input[name=mmode]:checked').value === 'auto';
+  $('#warn-auto-ci').hidden = !(auto && !$('#m-ci').checked);
+  const full = $('input[name=perm]:checked').value === 'full';
+  $('#warn-full').hidden = !full; $('#full-ack').hidden = !full;
+  const x = $('#x-on').checked;
+  const locked = !['org', 'team'].includes(document.body.dataset.role);
+  $$('#x-fields select,#x-fields input').forEach((c) => { c.disabled = !x || locked; });
+  $('#x-fields').style.opacity = x ? 1 : 0.5;
+  $('#x-cli-h').textContent = $('#x-cli').value === 'Claude Code' ? 'Cùng CLI với run code mặc định: dễ cùng một điểm mù.' : 'Khác CLI viết code nên cho góc nhìn khác.';
+  const dirty = snap().filter((v, i) => v !== base0[i]).length;
+  $('#dirty').hidden = !dirty;
+  $('#dirty-t').textContent = `${dirty} thay đổi chưa lưu`;
+}
+$('#cfg').addEventListener('input', cfgRules); $('#cfg').addEventListener('change', cfgRules);
+function saveCfg() {
+  const m = $('#x-min'), e = $('#x-min-e'); e.hidden = true; m.classList.remove('err');
+  const v = Number(m.value.replace(',', '.'));
+  if ($('#x-on').checked && (m.value.trim() === '' || !(v >= 0 && v <= 10))) { e.textContent = 'Điểm tối thiểu từ 0 đến 10.'; e.hidden = false; m.classList.add('err'); m.focus(); return; }
+  if ($('input[name=perm]:checked').value === 'full' && !$('#full-ack-in').checked) { toast('Tick xác nhận rủi ro của “Toàn quyền” trước khi lưu.'); $('#full-ack-in').focus(); return; }
+  base0 = snap(); cfgRules(); toast('Đã lưu cấu hình (mô phỏng).');
+}
+function resetCfg() { ctl().forEach((c, i) => { if (c.type === 'checkbox' || c.type === 'radio') c.checked = base0[i]; else c.value = base0[i]; }); cfgRules(); }
+
+/* ---------- Sự kiện chung ---------- */
+document.addEventListener('click', (e) => {
+  const go = e.target.closest('[data-go]');
+  if (go && !go.classList.contains('dim')) { e.preventDefault(); show(go.dataset.go); return; }
+  const op = e.target.closest('[data-open]');
+  if (op) {
+    if (op.dataset.open === 'enqueue') { $('#enq-n').value = ''; $('#enq-n').classList.remove('err'); $('#enq-h').className = 'hint'; $('#enq-h').textContent = 'PR phải đang mở và thuộc repo của dự án. Thử 94 (đã trong hàng), 5 (không có), 97 (hợp lệ).'; }
+    $(`#${op.dataset.open}`).showModal(); return;
+  }
+  if (e.target.closest('[data-close]')) { e.target.closest('dialog').close(); return; }
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  const id = Number(a.dataset.id), ch = channels.find((c) => c.id === id);
+  ({
+    retry, toast: () => toast(a.dataset.msg), refresh: () => { $('#q-updated').textContent = `Cập nhật ${new Date().toLocaleTimeString('vi-VN')}`; toast('Đã làm mới hàng merge.'); },
+    rm: () => { pendingRm = Number(a.dataset.pr); $('#rm-p').textContent = `Bỏ PR #${pendingRm} khỏi hàng merge?`; $('#rm').showModal(); },
+    'new-channel': () => openForm(), 'ch-edit': () => openForm(ch), 'ch-test': () => testChannel(ch),
+    'ch-del': () => { pendingDel = id; $('#chdel-p').textContent = `Xoá kênh “${ch.name}”?`; $('#chdel').showModal(); },
+    'run-detail': () => openRuns({ 'RUN-411': 'TASK-133', 'RUN-398': 'TASK-127' }[a.dataset.run]),
+    'budget-save': saveBudget, 'budget-reset': () => { Object.entries(budget).forEach(([k, v]) => { $(`#${k}`).value = v; $(`#${k}`).classList.remove('err'); }); $('#b-err').hidden = true; },
+    'cfg-save': saveCfg, 'cfg-reset': resetCfg, 'cfg-custom': () => setState('config', 'data'),
+  }[a.dataset.act] || (() => {}))();
+});
+$('#ch-rows').addEventListener('change', (e) => {
+  const t = e.target.closest('[data-act=ch-toggle]'); if (!t) return;
+  const c = channels.find((x) => x.id === Number(t.dataset.id)); c.on = t.checked; toast(`${t.checked ? 'Đã bật' : 'Đã tắt'} kênh “${c.name}” (mô phỏng).`);
+});
+$('#role').addEventListener('change', applyRole);
+$$('input[name="theme"]').forEach((i) => i.addEventListener('change', () => {
+  if (i.value === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = i.value;
+}));
+renderQueue(); renderChannels(); applyRole();
+show(location.hash.slice(1) || 'queue');
+</script></body></html>
