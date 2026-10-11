@@ -267,6 +267,13 @@
       "when": 1791738815861,
       "tag": "0037_machine_paused",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791738851188,
+      "tag": "0038_plan_mode",
+      "breakpoints": true
     }
   ]
 }

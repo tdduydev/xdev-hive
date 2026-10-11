@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import type { Run, RunEventView, RunSteerStatus } from "@xdev-hive/contracts";
+import type { Run, RunEventView, RunSteerStatus, Task } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
+import { Button, buttonClass } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { DescriptionList } from "../components/ui/description-list.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
@@ -101,7 +101,8 @@ export function RunPage() {
         />
       </PageHeader>
       <PageBody>
-        <RunMeta run={r} />
+        <RunMeta run={r} task={task.data} />
+        {task.data && <PlanNotice run={r} task={task.data} />}
         {steerOpen && canSteer(r.state) && <SteerPanel id={steerPanelId} run={r} onClose={() => setSteerOpen(false)} />}
         <Steps label="Các pha của run" steps={runPhases(r, stream.events, now)} />
         <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
@@ -120,7 +121,7 @@ export function RunPage() {
   );
 }
 
-function RunMeta({ run }: { run: Run }) {
+function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
   return (
     <div className="flex flex-wrap items-center gap-2.5 text-sm text-muted">
       <Pill tone={runStateTone(run.state)} dot>
@@ -132,12 +133,55 @@ function RunMeta({ run }: { run: Run }) {
       </span>
       <span className="font-mono break-all">{run.branch}</span>
       {run.kind === "review" && <span>Review chéo</span>}
+      {run.kind === "plan" && <span>Lập kế hoạch (chỉ đọc)</span>}
+      {run.kind === "plan" && task && (
+        <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-accent hover:text-accent-hover">
+          Xem kế hoạch
+        </Link>
+      )}
+      {run.parentRunId && (
+        <Link to="/runs/$id" params={{ id: run.parentRunId }} className="text-accent hover:text-accent-hover">
+          Run cha <span className="font-mono">{shortId(run.parentRunId)}</span>
+        </Link>
+      )}
       {run.prUrl && (
         <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">
           PR {prLabel(run.prUrl)}
         </a>
       )}
     </div>
+  );
+}
+
+/**
+ * Run code của dự án bật plan mode dừng ở `planning` (run plan con đang lập) rồi `awaiting_plan` (chờ người duyệt).
+ * Người mở run lúc này cần biết vì sao run chưa chạy và đi đâu để duyệt.
+ */
+function PlanNotice({ run, task }: { run: Run; task: Task }) {
+  const { api } = useOrg();
+  const planning = run.kind === "code" && run.state === "planning";
+  // Tìm run plan con để mở log của nó; chỉ cần khi đang lập, danh sách run của một task thì ngắn.
+  const runs = useQuery(api.runs.list.queryOptions({ input: { taskId: task.id }, enabled: planning }));
+  const child = runs.data?.find((r) => r.kind === "plan" && r.parentRunId === run.id);
+  if (run.kind !== "code" || (run.state !== "planning" && run.state !== "awaiting_plan")) return null;
+  return (
+    <Card className="flex flex-wrap items-center gap-3 border-warn-bg px-4 py-3">
+      <p className="min-w-0 flex-1 text-body">
+        {planning
+          ? "Agent đang lập kế hoạch trong một run riêng chỉ đọc. Lập xong thì kế hoạch chờ người duyệt, run này mới chạy."
+          : "Kế hoạch đang chờ duyệt. Run này chỉ chạy tiếp sau khi kế hoạch được duyệt."}
+      </p>
+      {planning && child && (
+        <Link to="/runs/$id" params={{ id: child.id }} className={buttonClass()}>
+          Xem log lập kế hoạch
+        </Link>
+      )}
+      {!planning && (
+        <Link to="/tasks/$key/plan" params={{ key: task.key }} className={buttonClass({ variant: "primary" })}>
+          Xem và duyệt kế hoạch
+        </Link>
+      )}
+    </Card>
   );
 }
 

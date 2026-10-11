@@ -21,9 +21,12 @@ import (
 // KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
 const KindReview = "review"
 
+// KindPlan là run lập kế hoạch của plan mode: đọc nhánh chính, CLI chạy ở chế độ chỉ đọc, không push.
+const KindPlan = "plan"
+
 type Job struct {
 	RunID                                           string
-	Kind                                            string // "code" (mặc định) hoặc KindReview
+	Kind                                            string // "code" (mặc định), KindReview hoặc KindPlan
 	Budget                                          Budget
 	RunPermissions                                  string
 	gitRoots                                        []string
@@ -186,6 +189,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
+	} else if job.Kind == KindPlan {
+		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
+		// của run code.
+		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {
+			return err
+		}
 	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
@@ -293,8 +302,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
 	}
-	if job.Kind == KindReview {
-		// Run review không nộp code: hub chấm theo việc agent đã gọi review_submit, nên không đếm commit, không push.
+	if job.Kind == KindReview || job.Kind == KindPlan {
+		// Run review và run plan không nộp code: hub chấm theo việc agent đã gọi review_submit hay plan_submit, nên không
+		// đếm commit, không push.
 		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 		if err != nil {
 			return err
@@ -423,15 +433,23 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			}
 			// Prompt đi qua stdin (stream-json) để còn gửi thêm chỉ dẫn khi agent đang chạy; xem steering.
 			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			if j.Kind == KindPlan {
+				// Chế độ plan của Claude Code chặn sửa file và chạy lệnh (đã thử trên claude 2.1.296); tool MCP chỉ gọi được
+				// khi có readOnlyHint, hub đánh dấu plan_submit như vậy.
+				args = append(args, "--permission-mode", "plan")
+			}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
 			}
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			switch {
+			case j.Kind == KindPlan:
+				// Giữ chế độ plan ở trên: thêm --permission-mode thứ hai sẽ ghi đè nó và mất tính chỉ đọc.
+			case j.RunPermissions == "full":
 				args = append(args, "--permission-mode", "bypassPermissions")
-			} else {
+			default:
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
 				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
 			}
@@ -440,10 +458,17 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			if j.Kind == KindPlan {
+				// Sandbox read-only chặn ghi file và lệnh ghi; tool MCP vẫn gọi được (đã thử trên codex-cli 0.162.1).
+				args = append(args, "--sandbox", "read-only")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
-			if j.RunPermissions == "full" {
+			// Run plan giữ sandbox read-only ở trên, không nhận cờ quyền ghi.
+			if j.Kind == KindPlan {
+				args = append(args, "-c", `approval_policy="never"`)
+			} else if j.RunPermissions == "full" {
 				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 			} else {
 				args = append(args, "-s", "workspace-write", "-c", `approval_policy="never"`)
@@ -459,10 +484,18 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
+			if j.Kind == KindPlan {
+				// "plan (read-only mode)" theo gemini --help bản 0.63.0.
+				args = append(args, "--approval-mode", "plan")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
 			args = append(args, "--skip-trust")
+			// Run plan không nhận policy cho phép shell hay chế độ yolo, vì chúng ghi đè chế độ plan chỉ đọc.
+			if j.Kind == KindPlan {
+				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			}
 			if j.RunPermissions == "full" {
 				args = append(args, "--approval-mode", "yolo")
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil

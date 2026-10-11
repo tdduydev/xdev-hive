@@ -142,18 +142,21 @@ export const projectSettings = z.object({
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       codex: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       gemini: z
         .object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
     })
