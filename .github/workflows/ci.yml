@@ -125,6 +125,12 @@ jobs:
         with:
           go-version-file: worker/go.mod
           cache: false
+      # Các runner tự host trên cùng máy dùng chung $HOME: cargo/rustup chung thư mục thì build song song làm hỏng registry.
+      - name: CARGO_HOME và RUSTUP_HOME riêng cho runner
+        run: |
+          echo "CARGO_HOME=$RUNNER_TOOL_CACHE/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TOOL_CACHE/rustup" >> "$GITHUB_ENV"
+          echo "$RUNNER_TOOL_CACHE/cargo/bin" >> "$GITHUB_PATH"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
