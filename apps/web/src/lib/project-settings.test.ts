@@ -17,7 +17,7 @@ describe("buildPatch", () => {
     expect(buildPatch(form, s)).toEqual({
       ok: true,
       patch: {
-        features: { planMode: false, crossReview: false, mergeQueue: true },
+        features: { planMode: false, crossReview: false, mergeQueue: true, sandbox: false },
         budget: { perRunUsd: 2.5, perTaskUsd: null, maxTurns: null },
       },
     });
@@ -65,7 +65,9 @@ describe("buildPatch", () => {
     s.features.crossReview = true;
     s.outcome.default = [{ check: "review", by: "codex", required: true, minScore: 7 }];
     const r = buildPatch({ ...formFromSettings(s), crossReview: false }, s);
-    expect(r.ok && r.patch).toEqual({ features: { planMode: false, crossReview: false, mergeQueue: false } });
+    expect(r.ok && r.patch).toEqual({
+      features: { planMode: false, crossReview: false, mergeQueue: false, sandbox: false },
+    });
   });
 
   it("model và quyền CLI", () => {

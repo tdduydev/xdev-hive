@@ -40,6 +40,7 @@ const GROUPS: { title: string; entries: NavEntry[] }[] = [
       { label: "Đội và hệ thống", icon: "network", to: "/admin/teams", match: "/admin/teams" },
       { label: "Thông báo", icon: "bell", to: pending("/notifications"), match: "/notifications" },
       { label: "Chi phí và token", icon: "chart", to: pending("/admin/costs"), match: "/admin/costs" },
+      { label: "Sandbox", icon: "lock", to: "/admin/sandbox", match: "/admin/sandbox", adminOnly: true },
       {
         label: "Cài đặt đăng nhập",
         icon: "lock",
