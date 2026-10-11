@@ -11,7 +11,7 @@ export {
 // Cổng MCP: kiểm run token và tool task_get, task_update cho agent trong run.
 export { createMcpRunTokens, registerMcpTools } from "./mcp.ts";
 export { evaluatePolicy, matchGlob } from "./policy.ts";
-export { eventsAfter, getRun, listRuns, logsAfter } from "./queries.ts";
+export { eventsAfter, getRun, latestRuns, listRuns, logsAfter } from "./queries.ts";
 export { type RunsRouterDeps, runsRouter } from "./router.ts";
 // Bảng runs cho module cost tổng hợp token và chi phí (costs.summary).
 export { runEvents, runs } from "./schema.ts";
