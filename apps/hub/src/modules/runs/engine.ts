@@ -1,4 +1,10 @@
-import { type OutcomeCheck, type RunStartInput, type TaskStatus, TERMINAL_RUN_STATES } from "@xdev-hive/contracts";
+import {
+  type OutcomeCheck,
+  type RunStartInput,
+  type SandboxJobConfig,
+  type TaskStatus,
+  TERMINAL_RUN_STATES,
+} from "@xdev-hive/contracts";
 import { type DiffStats, diffStats } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
@@ -24,6 +30,7 @@ import {
   type Tx,
   withTenant,
 } from "../platform/index.ts";
+import { loadSandboxJobConfig } from "../sandbox/index.ts";
 import {
   isGitProviderError,
   loadConnection,
@@ -173,6 +180,7 @@ function buildSpec(
   instructions: string[],
   budget: JobBudget | undefined,
   parentPrUrl: string | null,
+  sandbox?: SandboxJobConfig,
 ): Record<string, unknown> {
   // Run review đọc nhánh của run cha (run.branch) so với nhánh chính; worker không push và không đòi commit.
   const prompt =
@@ -190,6 +198,8 @@ function buildSpec(
         : task.title;
   return {
     kind: run.kind,
+    execution: sandbox ? "sandbox" : "worker",
+    ...(sandbox ? { sandbox } : {}),
     taskId: task.id,
     taskKey: task.key,
     projectId: project.id,
@@ -281,8 +291,8 @@ export function createRunsEngine(deps: RunsDeps) {
   // ---- Giao job ----------------------------------------------------------------------------------------------
 
   /** Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. */
-  async function pickMachine(tx: Tx, run: RunRow) {
-    const online = await listOnlineMachines(tx, run.teamId);
+  async function pickMachine(tx: Tx, run: RunRow, project: ProjectRow) {
+    const online = await listOnlineMachines(tx, run.teamId, project.settings.features.sandbox ? "host" : "worker");
     const candidates = online.filter(
       (m) =>
         m.capacity > 0 &&
@@ -321,8 +331,9 @@ export function createRunsEngine(deps: RunsDeps) {
       const task = await loadTask(tx, run.taskId);
       const project = await loadProject(tx, run.projectId);
       if (!task || !project) return null;
-      const machine = await pickMachine(tx, run);
+      const machine = await pickMachine(tx, run, project);
       if (!machine) return null;
+      const sandbox = project.settings.features.sandbox ? await loadSandboxJobConfig(tx, project.id) : undefined;
       const instructions = await instructionsOf(tx, run.id);
       const budget = jobBudget(project.settings.budget, await taskSpentUsd(tx, task.id));
       const [parent] = run.parentRunId
@@ -345,7 +356,7 @@ export function createRunsEngine(deps: RunsDeps) {
           runId: run.id,
           attempt: run.attempt,
           ttl: offerTtlSec,
-          spec: buildSpec(run, task, project, cli, instructions, budget, parent?.prUrl ?? null),
+          spec: buildSpec(run, task, project, cli, instructions, budget, parent?.prUrl ?? null, sandbox),
         } satisfies OutgoingMessage,
       };
     });
@@ -1072,7 +1083,12 @@ export function createRunsEngine(deps: RunsDeps) {
     const project = await loadProject(tx, task.projectId);
     if (input.machineId) {
       const m = await findMachine(tx, input.machineId);
-      if (!m || m.teamId !== task.teamId || m.revoked) {
+      if (
+        !m ||
+        m.teamId !== task.teamId ||
+        m.revoked ||
+        m.kind !== (project?.settings.features.sandbox ? "host" : "worker")
+      ) {
         throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy của đội sở hữu dự án.");
       }
     }
@@ -1103,6 +1119,7 @@ export function createRunsEngine(deps: RunsDeps) {
       instructions?: string[];
     },
   ): Promise<{ row: RunRow; afterCommit: () => void }> {
+    if (project?.settings.features.sandbox) await loadSandboxJobConfig(tx, project.id);
     if (task.status === "cancelled" || task.status === "done") {
       throw new ConflictError("TASK_CLOSED", "Task đã xong hoặc đã huỷ, không giao được.");
     }

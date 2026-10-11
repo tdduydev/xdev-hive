@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sandboxJobConfig } from "./sandbox.ts";
 
 /** Phiên bản giao thức worker ↔ hub (docs/architecture.md mục 5). Tăng khi đổi gói theo cách không tương thích. */
 export const PROTOCOL_VERSION = 1;
@@ -150,7 +151,15 @@ export const jobOffer = z.object({
   runId,
   attempt,
   /** Nội dung job do module runs định nghĩa. */
-  spec: z.record(z.string(), z.unknown()),
+  spec: z
+    .object({
+      execution: z.enum(["worker", "sandbox"]).optional(),
+      sandbox: sandboxJobConfig.optional(),
+    })
+    .catchall(z.unknown())
+    .refine((spec) => (spec.execution === "sandbox") === (spec.sandbox !== undefined), {
+      message: "Job sandbox phải có cấu hình mạng và image.",
+    }),
   /** Số giây worker có để trả lời trước khi hub đề nghị máy khác. */
   ttl: z.number().int().min(1).max(600),
 });

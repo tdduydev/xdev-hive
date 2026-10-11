@@ -108,6 +108,7 @@ describe("đăng ký máy", () => {
       orgId: orgA,
       teamId: teamA,
       name: `may-${tag}`,
+      kind: "worker",
     });
     const { rows } = await admin.query(
       "select status, os, clis, capacity, registered_by from hive.machines where id = $1",
@@ -210,4 +211,22 @@ describe("danh sách và thu hồi", () => {
       ),
     ).toBe("MACHINE_NOT_FOUND");
   });
+});
+
+it("assigns host type from the admin registration token and prevents converting a worker", async () => {
+  const createHostRegistration = () =>
+    withTenant(app, { orgId: orgA, userId: user("admin") }, (tx) =>
+      createRegistration(tx, user("admin"), teamA, "host"),
+    );
+  const { token } = await createHostRegistration();
+  const host = await register(token, `host-${tag}`);
+  const listed = await withTenant(app, { orgId: orgA, userId: user("admin") }, (tx) =>
+    listMachines(tx, user("admin"), teamA),
+  );
+  expect(listed.find((m) => m.id === host.id)?.kind).toBe("host");
+  const workerToken = await newRegistration();
+  const worker = await register(workerToken.token, `dev-${tag}`);
+  const conversionToken = await createHostRegistration();
+  expect(await fleetCode(() => register(conversionToken.token, `dev-${tag}`))).toBe("MACHINE_NAME_TAKEN");
+  expect((await admin.query("select kind from hive.machines where id = $1", [worker.id])).rows[0].kind).toBe("worker");
 });

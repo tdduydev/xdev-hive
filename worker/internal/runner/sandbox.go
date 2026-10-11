@@ -66,7 +66,7 @@ func SandboxRunArgs(s SandboxConfig, runID, work, repoCache, image string, comma
 		args = append(args, "--label", "hive.host="+s.HostID)
 	}
 	if s.EgressSocket != "" && s.WorkerBinary != "" {
-		args = append(args, "--mount", "type=bind,src="+s.EgressSocket+",dst=/run/hive/egress.sock", "--mount", "type=bind,src="+s.WorkerBinary+",dst=/usr/local/bin/hive-worker,readonly")
+		args = append(args, "--mount", "type=bind,src="+s.EgressSocket+",dst=/run/hive/egress.sock,readonly", "--mount", "type=bind,src="+s.WorkerBinary+",dst=/usr/local/bin/hive-worker,readonly")
 	}
 	containerEnv := sandboxEnv(env, s)
 	for _, key := range sortedKeys(containerEnv) {
@@ -127,7 +127,7 @@ func sandboxEnv(env map[string]string, s SandboxConfig) map[string]string {
 		containerEnv["HTTPS_PROXY"] = "http://127.0.0.1:3128"
 		containerEnv["http_proxy"] = containerEnv["HTTP_PROXY"]
 		containerEnv["https_proxy"] = containerEnv["HTTPS_PROXY"]
-		containerEnv["NO_PROXY"] = "127.0.0.1,localhost"
+		containerEnv["NO_PROXY"] = ""
 		containerEnv["no_proxy"] = containerEnv["NO_PROXY"]
 	}
 	return containerEnv
