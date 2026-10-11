@@ -7,6 +7,7 @@ import type pg from "pg";
 import { catalogRouter } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, meRouter } from "./modules/identity/index.ts";
+import { type Embedder, knowledgeRouter } from "./modules/knowledge/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
@@ -24,9 +25,19 @@ export interface AppDeps {
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
   providerFactory?: ProviderFactory | undefined;
+  /** Tạo embedding cho memory; không có thì chỉ tìm theo từ. */
+  embedder?: Embedder | undefined;
 }
 
-export function createApp({ config, auth, pool, jobs, providerFactory, webDist = process.env.HIVE_WEB_DIST }: AppDeps) {
+export function createApp({
+  config,
+  auth,
+  pool,
+  jobs,
+  providerFactory,
+  embedder,
+  webDist = process.env.HIVE_WEB_DIST,
+}: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
   const shared = {
     auth,
@@ -41,6 +52,7 @@ export function createApp({ config, auth, pool, jobs, providerFactory, webDist =
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    ...knowledgeRouter({ auth, pool, jobs, embedder }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });

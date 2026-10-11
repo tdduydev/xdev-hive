@@ -3,10 +3,12 @@ export {
   type CatalogDeps,
   createProject,
   dryRunCreate,
+  findProject,
   getProject,
   getProvision,
   listProjects,
   PROVISION_QUEUE,
+  type ProjectRef,
   type ProvisionJob,
   retryStep,
 } from "./projects.ts";

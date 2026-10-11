@@ -167,6 +167,34 @@ export async function loadProject(tx: Tx, id: string): Promise<ProjectRow | null
   return row ?? null;
 }
 
+export interface ProjectRef {
+  id: string;
+  key: string;
+  name: string;
+  teamId: string;
+  systemId: string;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Dự án theo id hoặc project key trong tổ chức của context; RLS lọc tổ chức khác. Không kiểm quyền: module gọi tự
+ * kiểm theo đội sở hữu. Agent biết key (từ AGENTS.md), web biết id, nên nhận cả hai.
+ */
+export async function findProject(tx: Tx, ref: string): Promise<ProjectRef | null> {
+  const [row] = await tx
+    .select({
+      id: projects.id,
+      key: projects.key,
+      name: projects.name,
+      teamId: projects.teamId,
+      systemId: projects.systemId,
+    })
+    .from(projects)
+    .where(UUID.test(ref) ? eq(projects.id, ref) : eq(projects.key, ref));
+  return row ?? null;
+}
+
 export function loadSteps(tx: Tx, projectId: string): Promise<StepRow[]> {
   return tx
     .select()

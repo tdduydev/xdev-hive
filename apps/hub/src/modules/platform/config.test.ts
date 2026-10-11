@@ -29,3 +29,20 @@ describe("loadConfig: người tạo tổ chức", () => {
     expect(loadConfig({ HIVE_ORG_CREATORS: " A@x.vn, ,b@y.vn" }).orgCreators).toEqual(["a@x.vn", "b@y.vn"]));
   it("không đặt thì rỗng", () => expect(loadConfig({}).orgCreators).toEqual([]));
 });
+
+describe("loadConfig: embeddings", () => {
+  it("không đặt URL thì không có", () => expect(loadConfig({}).embeddings).toBeUndefined());
+  it("mặc định mô hình text-embedding-3-small, bỏ / cuối URL", () =>
+    expect(
+      loadConfig({ HIVE_EMBEDDINGS_URL: "https://api.openai.com/v1/", HIVE_EMBEDDINGS_API_KEY: "k" }).embeddings,
+    ).toEqual({
+      url: "https://api.openai.com/v1",
+      apiKey: "k",
+      model: "text-embedding-3-small",
+      dimensions: undefined,
+    }));
+  it("báo lỗi số chiều sai", () =>
+    expect(() =>
+      loadConfig({ HIVE_EMBEDDINGS_URL: "http://ollama:11434/v1", HIVE_EMBEDDINGS_DIMENSIONS: "-3" }),
+    ).toThrow(/HIVE_EMBEDDINGS_DIMENSIONS/));
+});
