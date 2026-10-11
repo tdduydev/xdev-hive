@@ -9,24 +9,25 @@ test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup"
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();
 
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
-  for (const [label, milestone] of [
-    ["Việc", "M3"],
-    ["Dự án", "M2"],
-    ["Máy", "M3"],
-    ["Tri thức", "M4"],
-  ] as const) {
-    // Mục chưa có màn: mờ, không bấm được, kèm nhãn mốc.
-    await expect(nav.locator("[aria-disabled=true]").filter({ hasText: label })).toContainText(milestone);
+  await expect(nav.getByText("Làm việc hằng ngày", { exact: true })).toBeVisible();
+  await expect(nav.getByText("Dự án và quản trị", { exact: true })).toBeVisible();
+  // Chưa thuộc tổ chức nào: mọi mục mờ, không bấm được, nói rõ vì sao.
+  for (const label of [
+    "Bảng việc",
+    "Lượt chạy",
+    "Máy",
+    "Dự án",
+    "Thành viên",
+    "Đội và hệ thống",
+    "Thông báo",
+    "Chi phí và token",
+    "Cài đặt đăng nhập",
+  ]) {
+    const entry = nav.locator("[aria-disabled=true]").filter({ hasText: label });
+    await expect(entry).toBeVisible();
+    await expect(entry).toHaveAttribute("title", "Cần thuộc một tổ chức");
   }
-  await expect(nav.getByText("Quản trị", { exact: true })).toBeVisible();
-  // Chưa thuộc tổ chức nào nên mục quản trị cũng mờ.
-  for (const label of ["Đội và hệ thống", "Thành viên", "Đăng nhập", "Cài đặt tổ chức"]) {
-    await expect(nav.locator("[aria-disabled=true]").filter({ hasText: label })).toBeVisible();
-  }
-  await expect(nav.locator("[aria-disabled=true]").filter({ hasText: "Đăng nhập" })).toHaveAttribute(
-    "title",
-    "Cần thuộc một tổ chức",
-  );
+  await expect(nav.getByRole("link")).toHaveCount(0);
 
   const aside = page.locator("aside");
   await expect(aside.getByText(USER.name)).toBeVisible();
