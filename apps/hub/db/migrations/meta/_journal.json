@@ -253,6 +253,13 @@
       "when": 1791738680436,
       "tag": "0035_inbox_items",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791738700810,
+      "tag": "0036_merge_queue_ci_state",
+      "breakpoints": true
     }
   ]
 }

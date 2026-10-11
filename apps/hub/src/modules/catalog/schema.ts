@@ -1,6 +1,7 @@
-import type { ProjectSettings } from "@xdev-hive/contracts";
+import type { MergeQueueCiState, ProjectSettings } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -168,6 +169,7 @@ export const mergeQueueEntries = hive
       prUrl: text("pr_url"),
       branch: text("branch"),
       headSha: text("head_sha"),
+      ciState: text("ci_state").$type<MergeQueueCiState>(),
       runId: uuid("run_id"),
       taskId: uuid("task_id"),
       state: mergeQueueState("state").notNull().default("queued"),
@@ -192,6 +194,7 @@ export const mergeQueueEntries = hive
         .where(sql`state in ('queued', 'updating', 'waiting', 'merging')`),
       index("merge_queue_entries_project_created").on(t.projectId, t.createdAt),
       index("merge_queue_entries_org").on(t.orgId),
+      check("merge_queue_entries_ci_state", sql`${t.ciState} in ('success', 'pending', 'failure', 'none')`),
       orgScoped("merge_queue_entries"),
     ],
   )

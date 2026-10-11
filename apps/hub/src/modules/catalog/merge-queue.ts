@@ -1,4 +1,4 @@
-import type { MergeQueueEntry, MergeQueueState } from "@xdev-hive/contracts";
+import type { MergeQueueCiState, MergeQueueEntry, MergeQueueState } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -62,6 +62,7 @@ export function mergeEntryView(row: MergeEntryRow, position: number | null): Mer
     prUrl: row.prUrl,
     branch: row.branch,
     headSha: row.headSha,
+    ciState: row.ciState,
     runId: row.runId,
     taskId: row.taskId,
     state: row.state,
@@ -267,12 +268,13 @@ export interface MergeDeps {
 /** `next`: mục đầu đã xong, xử lý mục kế ngay. `wait`: mục đầu đang chờ, hỏi lại sau. `idle`: hàng trống. */
 export type MergeStep = "next" | "wait" | "idle";
 
-type Decision =
+type Decision = (
   | { state: "merged"; mergeSha: string | null; note: string | null }
   | { state: "failed"; note: string }
   | { state: "waiting" | "updating"; note: string }
   | { state: "queued"; note: string | null; attempts?: number }
-  | { state: "merging" };
+  | { state: "merging" }
+) & { ciState?: MergeQueueCiState };
 
 /**
  * Xử lý một bước của mục đầu hàng (FIFO theo created_at). Gọi nhà cung cấp ngoài transaction; mỗi lần ghi trạng
@@ -297,8 +299,10 @@ export async function processMergeQueue(deps: MergeDeps, job: MergeJob): Promise
   if (!loaded) return "idle";
   const { project, entry, conn } = loaded;
 
+  let ciState: MergeQueueCiState | null = null;
+
   const save = (from: MergeQueueState, decision: Decision, pr: PullRequestState | null) =>
-    tenant((tx) => saveDecision(tx, deps, project, entry.id, from, decision, pr));
+    tenant((tx) => saveDecision(tx, deps, project, entry.id, from, decision, pr, ciState));
 
   if (!conn) return save(entry.state, { state: "failed", note: "Dự án không còn kết nối Git." }, null);
   const provider = deps.providerFactory(conn);
@@ -315,6 +319,7 @@ export async function processMergeQueue(deps: MergeDeps, job: MergeJob): Promise
     if (e.retryable) return "wait";
     decision = { state: "failed", note: `Lỗi từ nhà cung cấp Git: ${e.message}` };
   }
+  ciState = decision.ciState ?? null;
 
   if (decision.state === "waiting" || decision.state === "updating") {
     const since = entry.waitingSince?.getTime();
@@ -382,13 +387,14 @@ async function decide(
     return { state: "updating", note: "Đang cập nhật nhánh của PR theo nhánh chính." };
   }
   const checks = await provider.checksFor(ref, pr.headSha);
-  if (checks === "pending") return { state: "waiting", note: "Chờ CI." };
-  if (checks === "failure") return { state: "failed", note: "CI không đạt." };
+  if (checks === "pending") return { state: "waiting", note: "Chờ CI.", ciState: checks };
+  if (checks === "failure") return { state: "failed", note: "CI không đạt.", ciState: checks };
   if (checks === "none" && project.settings.merge.requireCi) {
-    return { state: "waiting", note: "Chờ CI: dự án bắt buộc CI xanh mà chưa có kết quả nào." };
+    return { state: "waiting", note: "Chờ CI: dự án bắt buộc CI xanh mà chưa có kết quả nào.", ciState: checks };
   }
-  if (pr.mergeable === "blocked") return { state: "waiting", note: "Chờ người duyệt hoặc kiểm tra bắt buộc." };
-  return { state: "merging" };
+  if (pr.mergeable === "blocked")
+    return { state: "waiting", note: "Chờ người duyệt hoặc kiểm tra bắt buộc.", ciState: checks };
+  return { state: "merging", ciState: checks };
 }
 
 /** Ghi bước vừa quyết. Trả `wait` khi mục còn trong hàng, `next` khi đã xong hoặc không còn ở trạng thái đã đọc. */
@@ -400,6 +406,7 @@ async function saveDecision(
   from: MergeQueueState,
   decision: Decision,
   pr: PullRequestState | null,
+  ciState: MergeQueueCiState | null,
 ): Promise<MergeStep> {
   const [row] = await tx.select().from(mergeQueueEntries).where(eq(mergeQueueEntries.id, entryId)).for("update");
   if (row?.state !== from) return "next";
@@ -409,6 +416,8 @@ async function saveDecision(
     .update(mergeQueueEntries)
     .set({
       state: decision.state,
+      // Xoá kết quả cũ khi lần xử lý này chưa kiểm tra CI (ví dụ PR đã đổi head và đang cập nhật nhánh).
+      ciState,
       note: "note" in decision ? decision.note : null,
       ...(pr ? { prUrl: pr.url, branch: pr.head, headSha: pr.headSha } : {}),
       ...(decision.state === "merged" ? { mergeSha: decision.mergeSha } : {}),
