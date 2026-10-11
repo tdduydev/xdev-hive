@@ -53,5 +53,6 @@ kiểm bản mới. Để bật:
    `tauri.conf.json`.
 3. Dựng bản phát hành với `TAURI_SIGNING_PRIVATE_KEY`. Đặt `HIVE_WORKER_VERSION` để sidecar mang đúng phiên bản.
 4. Hub trả file JSON cập nhật của Tauri tại `/api/v1/desktop/updates/<os>/<arch>/<phiên bản hiện tại>`. App lấy địa
-   chỉ hub từ cấu hình của máy, nên không cần ghi `endpoints` trong `tauri.conf.json`. **Hub chưa có endpoint này.**
-   Cần thêm vào hub khi bắt đầu phát hành app.
+   chỉ hub từ cấu hình của máy, nên không cần ghi `endpoints` trong `tauri.conf.json`. Cấu hình `HIVE_DESKTOP_RELEASES`
+   ở hub là đường dẫn file JSON hoặc URL HTTPS tới manifest phát hành; hub đọc lại tối đa mỗi 5 phút. Định dạng
+   manifest theo static JSON của Tauri updater, với platform như `darwin-aarch64`, `linux-x86_64` hoặc `windows-x86_64`.
