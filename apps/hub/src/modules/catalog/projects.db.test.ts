@@ -5,6 +5,7 @@ import pg from "pg";
 import { MockAgent, fetch as undiciFetch } from "undici";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
+import { createChannel } from "../notify/index.ts";
 import { createJobs, createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import {
   createConnection,
@@ -315,7 +316,14 @@ describe("saga khởi tạo", () => {
     expect(provider().calls.length).toBe(callsBefore);
   });
 
-  it("lỗi giữa chừng thì dừng ở bước đó với cách sửa; retryStep chạy tiếp từ bước lỗi", async () => {
+  it("lỗi giữa chừng thì dừng ở bước đó với cách sửa, báo nhóm quản trị; retryStep chạy tiếp từ bước lỗi", async () => {
+    await withTenant(app, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
+      createChannel(tx, masterKey, org.user("admin"), {
+        name: `saga-${org.orgId.slice(0, 6)}`,
+        events: ["project.provision_failed"],
+        config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["qt@example.com"] },
+      }),
+    );
     const r = await createProject(app, deps, actor("tadmin"), input());
     const id = r.projectId as string;
     provider().fail("protectBranch", new GitProviderError("forbidden", "GitHub: không đủ quyền", { status: 403 }));
@@ -329,6 +337,14 @@ describe("saga khởi tạo", () => {
     expect(failed.map((s) => s.state)).toEqual(["done", "done", "done", "failed", "pending"]);
     expect(failed[3]?.error).toMatchObject({ code: "SCM_FORBIDDEN" });
     expect(failed[3]?.error?.fix).toContain("Administration (ghi)");
+    const { rows: notes } = await admin.query(
+      "select event, title, body, link from hive.notifications where org_id = $1 and event = 'project.provision_failed'",
+      [org.orgId],
+    );
+    expect(notes).toHaveLength(1);
+    expect(notes[0].title).toContain("dừng ở bước protect-branch");
+    expect(notes[0].body).toContain("không đủ quyền");
+    expect(notes[0].link).toMatch(/^https:\/\/hive\.example\.com\/du-an\//);
 
     const view = await as("tadmin", (tx) => getProvision(tx, deps, org.user("tadmin"), id));
     const protect = view.steps.find((s) => s.kind === "protect-branch");

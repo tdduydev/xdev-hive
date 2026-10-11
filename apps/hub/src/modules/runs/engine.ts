@@ -13,6 +13,7 @@ import {
   type RunMessage,
   sendToMachine,
 } from "../fleet/index.ts";
+import { notify } from "../notify/index.ts";
 import { ConflictError, type Jobs, type MasterKey, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import {
   isGitProviderError,
@@ -600,8 +601,34 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: locked.id,
         data: { outcome, prUrl, taskId: locked.taskId },
       });
+      await notifyOutcome(tx, locked, task, outcome, reasons, prUrl);
     });
-    // Chưa có module notify trên main; khi có, run failed gửi thông báo cho nhóm quản trị ở đây.
+  }
+
+  /** Run kết thúc mà cần người (lỗi, hoặc cần review tay) thì báo nhóm quản trị, cùng transaction với kết quả. */
+  async function notifyOutcome(
+    tx: Tx,
+    run: RunRow,
+    task: TaskRow | null,
+    outcome: string,
+    reasons: string[],
+    prUrl: string | null,
+  ) {
+    if (outcome !== "failed" && outcome !== "needs_review") return;
+    const key = task?.key ?? run.taskId;
+    const body = [task?.title ?? "", ...reasons.map((r) => `- ${r}`), prUrl ? `PR: ${prUrl}` : ""].filter(Boolean);
+    await notify(
+      tx,
+      {
+        orgId: run.orgId,
+        event: outcome === "failed" ? "run.failed" : "run.needs_review",
+        title: outcome === "failed" ? `Run của ${key} thất bại` : `${key} cần người xem lại`,
+        body: body.join("\n"),
+        // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
+        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/viec/${task.key}` : null,
+      },
+      { jobs: deps.jobs },
+    );
   }
 
   // ---- Hẹn giờ ---------------------------------------------------------------------------------------------
@@ -678,6 +705,7 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: run.id,
         data: { outcome: "failed", reasons },
       });
+      await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
       return null;
     });
     if (out && "recheckAt" in out) await schedule(t, out.recheckAt);
