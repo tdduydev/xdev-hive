@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { authRedirect, loginHref, safeRedirect } from "./redirect.ts";
+import { authRedirect, legacyRedirect, loginHref, safeRedirect } from "./redirect.ts";
 
 describe("safeRedirect", () => {
   it("giữ đường dẫn trong hub, kèm query và hash", () => {
-    expect(safeRedirect("/du-an/abc?tab=viec#log")).toBe("/du-an/abc?tab=viec#log");
+    expect(safeRedirect("/projects/abc?tab=viec#log")).toBe("/projects/abc?tab=viec#log");
   });
   it.each([
     ["không có", undefined],
@@ -13,14 +13,14 @@ describe("safeRedirect", () => {
     ["gạch ngược", "/\\evil.example"],
     ["javascript:", "javascript:alert(1)"],
     ["không bắt đầu bằng /", "du-an"],
-    ["chính trang đăng nhập", "/dang-nhap?redirect=/x"],
+    ["chính trang đăng nhập", "/login?redirect=/x"],
   ])("về trang chủ khi %s", (_, value) => expect(safeRedirect(value)).toBe("/"));
 });
 
 describe("loginHref", () => {
-  it("trang chủ thì không kèm redirect", () => expect(loginHref("/")).toBe("/dang-nhap"));
+  it("trang chủ thì không kèm redirect", () => expect(loginHref("/")).toBe("/login"));
   it("trang khác thì mã hoá vào ?redirect=", () =>
-    expect(loginHref("/du-an?x=1")).toBe("/dang-nhap?redirect=%2Fdu-an%3Fx%3D1"));
+    expect(loginHref("/projects?x=1")).toBe("/login?redirect=%2Fprojects%3Fx%3D1"));
 });
 
 describe("authRedirect", () => {
@@ -30,20 +30,41 @@ describe("authRedirect", () => {
     ...(redirect === undefined ? {} : { redirect }),
   });
 
-  it("chưa đăng nhập: trang chủ chuyển về /dang-nhap", () => expect(authRedirect(at("/"), false)).toBe("/dang-nhap"));
-  it("chưa đăng nhập: trang khác (kể cả không tồn tại) chuyển về /dang-nhap và nhớ chỗ quay lại", () =>
-    expect(authRedirect(at("/khong-co?a=1"), false)).toBe("/dang-nhap?redirect=%2Fkhong-co%3Fa%3D1"));
+  it("chưa đăng nhập: trang chủ chuyển về /login", () => expect(authRedirect(at("/"), false)).toBe("/login"));
+  it("chưa đăng nhập: trang khác (kể cả không tồn tại) chuyển về /login và nhớ chỗ quay lại", () =>
+    expect(authRedirect(at("/khong-co?a=1"), false)).toBe("/login?redirect=%2Fkhong-co%3Fa%3D1"));
   it("chưa đăng nhập: trang mở link mời xem được, không bị chuyển đi", () =>
-    expect(authRedirect(at("/moi/7Hk2abcdefghijklmnop"), false)).toBeNull());
-  it("đã đăng nhập: trang mở link mời", () => expect(authRedirect(at("/moi/7Hk2abcdefghijklmnop"), true)).toBeNull());
+    expect(authRedirect(at("/invite/7Hk2abcdefghijklmnop"), false)).toBeNull());
+  it("đã đăng nhập: trang mở link mời", () =>
+    expect(authRedirect(at("/invite/7Hk2abcdefghijklmnop"), true)).toBeNull());
   it("đăng nhập xong quay lại đúng link mời", () =>
-    expect(authRedirect(at("/dang-nhap?redirect=%2Fmoi%2Fabc", "/moi/abc"), true)).toBe("/moi/abc"));
-  it("chưa đăng nhập: đang ở /dang-nhap thì ở yên", () =>
-    expect(authRedirect(at("/dang-nhap?redirect=%2Fx", "/x"), false)).toBeNull());
-  it("đã đăng nhập: vào trang bất kỳ", () => expect(authRedirect(at("/du-an"), true)).toBeNull());
-  it("đã đăng nhập: mở /dang-nhap thì vào /", () => expect(authRedirect(at("/dang-nhap"), true)).toBe("/"));
-  it("đã đăng nhập: mở /dang-nhap?redirect= thì về đúng chỗ cũ", () =>
-    expect(authRedirect(at("/dang-nhap?redirect=%2Fdu-an", "/du-an"), true)).toBe("/du-an"));
+    expect(authRedirect(at("/login?redirect=%2Finvite%2Fabc", "/invite/abc"), true)).toBe("/invite/abc"));
+  it("chưa đăng nhập: đang ở /login thì ở yên", () =>
+    expect(authRedirect(at("/login?redirect=%2Fx", "/x"), false)).toBeNull());
+  it("đã đăng nhập: vào trang bất kỳ", () => expect(authRedirect(at("/projects"), true)).toBeNull());
+  it("đã đăng nhập: mở /login thì vào /", () => expect(authRedirect(at("/login"), true)).toBe("/"));
+  it("đã đăng nhập: mở /login?redirect= thì về đúng chỗ cũ", () =>
+    expect(authRedirect(at("/login?redirect=%2Fprojects", "/projects"), true)).toBe("/projects"));
   it("đã đăng nhập: redirect ra ngoài hub bị bỏ", () =>
-    expect(authRedirect(at("/dang-nhap", "https://evil.example"), true)).toBe("/"));
+    expect(authRedirect(at("/login", "https://evil.example"), true)).toBe("/"));
+});
+
+describe("legacyRedirect", () => {
+  const at = (href: string) => legacyRedirect({ pathname: new URL(href, "http://x").pathname, href });
+  it.each([
+    ["/dang-nhap", "/login"],
+    ["/dang-nhap?redirect=%2Fx", "/login?redirect=%2Fx"],
+    ["/moi/abc", "/invite/abc"],
+    ["/dong-y-mcp?client_id=c&state=s", "/mcp/consent?client_id=c&state=s"],
+    ["/tao-to-chuc?buoc=doi", "/orgs/new?buoc=doi"],
+    ["/quan-tri/doi?doi=1", "/admin/teams?doi=1"],
+    ["/quan-tri/thanh-vien", "/admin/members"],
+    ["/quan-tri/dang-nhap", "/admin/sign-in-settings"],
+    ["/quan-tri/may", "/admin/machines"],
+    ["/viec/HIVE-1", "/tasks/HIVE-1"],
+    ["/du-an/abc#log", "/projects/abc#log"],
+  ])("%s -> %s", (from, to) => expect(at(from)).toBe(to));
+  it.each(["/", "/login", "/invite/abc", "/moi-khac", "/admin/members"])("%s giữ nguyên", (href) =>
+    expect(at(href)).toBeNull(),
+  );
 });

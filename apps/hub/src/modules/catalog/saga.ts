@@ -269,7 +269,7 @@ export async function runProvision(
             event: "project.provision_failed",
             title: `Khởi tạo dự án ${project.key} dừng ở bước ${step.kind}`,
             body: `${error.message}\nSửa nguyên nhân rồi chạy lại bước này trên trang dự án.`,
-            link: `${deps.publicUrl.replace(/\/+$/, "")}/du-an/${project.key}`,
+            link: `${deps.publicUrl.replace(/\/+$/, "")}/projects/${project.key}`,
           },
           { jobs: deps.jobs },
         );

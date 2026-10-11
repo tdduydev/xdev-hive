@@ -112,17 +112,18 @@ func fileURL(path string) string {
 // ---- Hub giả ---------------------------------------------------------------------------------------------------
 
 type wmsg struct {
-	Type    string          `json:"type"`
-	RunID   string          `json:"runId"`
-	Attempt int             `json:"attempt"`
-	Seq     int64           `json:"seq"`
-	Event   string          `json:"event"`
-	Data    json.RawMessage `json:"data"`
-	Bytes   []byte          `json:"bytes"`
-	Exit    int             `json:"exit"`
-	HeadSHA *string         `json:"headSha"`
-	Report  json.RawMessage `json:"report"`
-	Reason  string          `json:"reason"`
+	Type      string            `json:"type"`
+	RunID     string            `json:"runId"`
+	Attempt   int               `json:"attempt"`
+	Seq       int64             `json:"seq"`
+	Event     string            `json:"event"`
+	Data      json.RawMessage   `json:"data"`
+	Bytes     []byte            `json:"bytes"`
+	Exit      int               `json:"exit"`
+	HeadSHA   *string           `json:"headSha"`
+	Report    json.RawMessage   `json:"report"`
+	DiffStats *runner.DiffStats `json:"diffStats"`
+	Reason    string            `json:"reason"`
 }
 
 func (m wmsg) phase() string {
@@ -339,6 +340,9 @@ func TestJobOfferToResult(t *testing.T) {
 	res := msgs[len(msgs)-1]
 	if res.Exit != 0 || res.HeadSHA == nil || res.report().Status != "succeeded" {
 		t.Fatalf("run_result = %+v report %+v", res, res.report())
+	}
+	if res.DiffStats == nil || res.DiffStats.AddedLines != 1 || res.DiffStats.DeletedLines != 0 || !slices.Equal(res.DiffStats.ChangedFiles, []string{"change.txt"}) {
+		t.Fatalf("diffStats = %#v", res.DiffStats)
 	}
 	if !strings.Contains(logs.String(), "token=tok-1 mcp=tok-1 project=web") {
 		t.Fatalf("CLI không nhận biến môi trường của run; log = %q", logs.String())

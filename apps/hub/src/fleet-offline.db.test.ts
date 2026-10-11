@@ -91,7 +91,7 @@ describe("thông báo máy offline", () => {
       event: "machine.offline",
       title: `Máy ${m.name} mất kết nối hơn 5 phút`,
       body: "Đội thanh-toan.",
-      link: "https://hive.example.com/quan-tri/may",
+      link: "https://hive.example.com/admin/machines",
     });
     const delivery = await admin.query("select data from pgboss.job where name = $1 and data->>'notificationId' = $2", [
       notifyQueue.name,

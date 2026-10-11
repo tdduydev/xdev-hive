@@ -183,7 +183,7 @@ export function invitationsRouter({ base, authed, inOrg }: Procedures, deps: Ten
           targetId: row.id,
           data: { email, orgRole: row.orgRole, teamId: row.teamId, teamRole: row.teamRole },
         });
-        created.push({ id: row.id, email, link: `${publicUrl}/moi/${token}`, expiresAt: iso(expiresAt) });
+        created.push({ id: row.id, email, link: `${publicUrl}/invite/${token}`, expiresAt: iso(expiresAt) });
       }
       return { invitations: created };
     }),
