@@ -207,14 +207,14 @@ export function matchGlob(glob: string, path: string): boolean {
 }
 
 /**
- * Chính sách cố định của run review: tương đương `agentReport` bắt buộc, nhưng trên báo cáo `review_report` (agent gọi
- * review_submit). Run review không nộp code nên không xét commit.
+ * Run con chỉ nộp báo cáo qua MCP (review, plan): succeeded khi agent thoát êm và đã nộp, như `agentReport` bắt buộc.
+ * Run con không nộp code nên không xét commit.
  */
-export function evaluateReviewRun(ev: {
-  exit: number;
-  report: Record<string, unknown> | null;
-  score: number | null;
-}): Evaluation {
+function evaluateSubmitRun(
+  ev: { exit: number; report: Record<string, unknown> | null },
+  agent: string,
+  check: { check: string; passed: boolean; message: string },
+): Evaluation {
   const base = { commitCount: null, changedFiles: [], hasChanges: false, awaitingReview: false };
   if (ev.exit !== 0) {
     const error = ev.report?.error;
@@ -223,17 +223,40 @@ export function evaluateReviewRun(ev: {
       ...base,
       outcome: "failed",
       checks: [],
-      reasons: [`Agent review kết thúc với mã lỗi ${ev.exit}${detail}.`],
+      reasons: [`${agent} kết thúc với mã lỗi ${ev.exit}${detail}.`],
     };
   }
+  const outcome = { ...check, required: true };
+  return check.passed
+    ? { ...base, outcome: "succeeded", checks: [outcome], reasons: [] }
+    : { ...base, outcome: "failed", checks: [outcome], reasons: [check.message] };
+}
+
+/** Chính sách cố định của run review: báo cáo `review_report` (agent gọi review_submit). */
+export function evaluateReviewRun(ev: {
+  exit: number;
+  report: Record<string, unknown> | null;
+  score: number | null;
+}): Evaluation {
   const passed = ev.score !== null;
-  const check = {
+  return evaluateSubmitRun(ev, "Agent review", {
     check: "reviewReport",
-    required: true,
     passed,
     message: passed ? `Agent đã nộp review, điểm ${ev.score}/10.` : "Agent review chưa gọi review_submit.",
-  };
-  return passed
-    ? { ...base, outcome: "succeeded", checks: [check], reasons: [] }
-    : { ...base, outcome: "failed", checks: [check], reasons: [check.message] };
+  });
+}
+
+/** Chính sách cố định của run lập kế hoạch: báo cáo `plan_report` (agent gọi plan_submit). */
+export function evaluatePlanRun(ev: {
+  exit: number;
+  report: Record<string, unknown> | null;
+  /** Số bước của kế hoạch đã nộp; null khi chưa nộp. */
+  steps: number | null;
+}): Evaluation {
+  const passed = ev.steps !== null;
+  return evaluateSubmitRun(ev, "Agent lập kế hoạch", {
+    check: "planReport",
+    passed,
+    message: passed ? `Agent đã nộp kế hoạch ${ev.steps} bước.` : "Agent lập kế hoạch chưa gọi plan_submit.",
+  });
 }

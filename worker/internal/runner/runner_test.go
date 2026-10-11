@@ -87,6 +87,50 @@ func TestRunnerReviewChecksOutParentBranchWithoutPush(t *testing.T) {
 	}
 }
 
+// Run plan đọc nhánh chính (không phải nhánh ai/<task> còn sót của run trước), không push dù agent lỡ commit.
+func TestRunnerPlanReadsBaseWithoutPush(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	src := filepath.Join(t.TempDir(), "old")
+	must(t, "git", "clone", remote, src)
+	must(t, "git", "-C", src, "checkout", "-b", "ai/HD-2")
+	mustDir(t, src, "stale.txt", "của run trước")
+	must(t, "git", "-C", src, "add", ".")
+	must(t, "git", "-C", src, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "cũ")
+	must(t, "git", "-C", src, "push", "origin", "ai/HD-2")
+	oldSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2"))
+	baseSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base))
+
+	for _, mode := range []string{"empty", "commit"} {
+		t.Run(mode, func(t *testing.T) {
+			var events []Event
+			r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
+			job := Job{RunID: "plan-" + mode, Kind: KindPlan, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
+			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
+				t.Fatal(err)
+			}
+			got := lastResult(events)
+			if got == nil || got.Status != "succeeded" || got.CommitCount != 0 || len(got.ChangedFiles) != 0 {
+				t.Fatalf("result = %#v", got)
+			}
+			if mode == "empty" && got.HeadSHA != baseSHA {
+				t.Fatalf("HEAD = %s, muốn nhánh chính %s", got.HeadSHA, baseSHA)
+			}
+			for _, e := range events {
+				if e.Type == "phase" && e.Phase == "publishing" {
+					t.Fatal("run plan không được push")
+				}
+			}
+			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2")); now != oldSHA {
+				t.Fatalf("nhánh ai/HD-2 bị đổi: %s → %s", oldSHA, now)
+			}
+			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base)); now != baseSHA {
+				t.Fatalf("nhánh chính bị đổi: %s → %s", baseSHA, now)
+			}
+		})
+	}
+}
+
 // CLI in nhiều log rồi thoát ngay trong khi sink còn chậm: log không được mất, run không được lỗi
 // "file already closed" (Wait đóng pipe trước khi đọc xong, từng làm CI macOS đỏ).
 func TestRunnerKeepsAllLogWhenCLIExitsFast(t *testing.T) {
@@ -220,6 +264,12 @@ func TestFakeCLIHelper(t *testing.T) {
 	if f := os.Getenv("HIVE_FAKE_EXPECT_FILE"); f != "" {
 		if _, err := os.Stat(f); err != nil {
 			os.Exit(4)
+		}
+	}
+	// Run plan không được thấy code của nhánh khác ngoài nhánh chính.
+	if f := os.Getenv("HIVE_FAKE_ABSENT_FILE"); f != "" {
+		if _, err := os.Stat(f); err == nil {
+			os.Exit(5)
 		}
 	}
 	if os.Getenv("HIVE_FAKE_MODE") == "loud" {
@@ -379,6 +429,38 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		} else if strings.Join(args, "\x00") != strings.Join(tc.want, "\x00") {
 			t.Fatalf("%s args = %q, want %q", tc.cli, args, tc.want)
+		}
+	}
+}
+
+// Run plan bật chế độ chỉ đọc của từng CLI; run code và run review giữ nguyên lệnh (TestDefaultCLIArgumentsAndClaudeMCPFile).
+func TestPlanCLIArgumentsAreReadOnly(t *testing.T) {
+	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
+	for _, tc := range []struct {
+		cli  string
+		want []string
+	}{
+		{"claude", []string{"--permission-mode", "plan"}},
+		{"codex", []string{"--sandbox", "read-only"}},
+		{"gemini", []string{"--approval-mode", "plan"}},
+	} {
+		for _, kind := range []string{KindPlan, "", KindReview} {
+			cmd, err := (Runner{}).cliCommand(Job{CLI: tc.cli, Kind: kind, Prompt: "prompt", Env: env})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cmd.cleanup != nil {
+				cmd.cleanup()
+			}
+			args := strings.Join(cmd.Args[1:], "\x00")
+			has := strings.Contains(args, strings.Join(tc.want, "\x00"))
+			if has != (kind == KindPlan) {
+				t.Fatalf("%s kind=%q args = %q", tc.cli, kind, cmd.Args[1:])
+			}
+			// Prompt vẫn là đối số cuối của codex (cờ phải đứng trước nó).
+			if tc.cli == "codex" && cmd.Args[len(cmd.Args)-1] != "prompt" {
+				t.Fatalf("codex args = %q", cmd.Args[1:])
+			}
 		}
 	}
 }
