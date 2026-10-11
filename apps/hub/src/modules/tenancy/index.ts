@@ -9,3 +9,4 @@ export {
 } from "./permissions.ts";
 export { ORG_HEADER, type TenancyDeps } from "./procedures.ts";
 export { tenancyRouter } from "./router.ts";
+export { authHooks } from "./sso.ts";

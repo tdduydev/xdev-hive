@@ -11,6 +11,8 @@ export interface TenancyDeps {
   pool?: pg.Pool | undefined;
   /** Email (chữ thường) được tạo thêm tổ chức sau tổ chức đầu tiên. */
   orgCreators?: string[] | undefined;
+  /** Địa chỉ web mà người được mời mở link; link mời là `${publicUrl}/moi/<mã>`. */
+  publicUrl?: string | undefined;
 }
 
 export interface SessionUser {
@@ -23,9 +25,9 @@ export const ORG_HEADER = "x-hive-org";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Hai tầng procedure: `authed` chỉ cần đăng nhập (chọn hoặc tạo tổ chức), `inOrg` chạy cả handler trong một
- * transaction withTenant của tổ chức đang chọn. Handler và recordAudit dùng chung transaction đó, nên thao tác và
- * nhật ký cùng commit hoặc cùng rollback.
+ * Ba tầng procedure: `base` không cần đăng nhập (xem lời mời), `authed` chỉ cần đăng nhập (chọn hoặc tạo tổ chức,
+ * nhận lời mời), `inOrg` chạy cả handler trong một transaction withTenant của tổ chức đang chọn. Handler và
+ * recordAudit dùng chung transaction đó, nên thao tác và nhật ký cùng commit hoặc cùng rollback.
  */
 export function procedures(deps: TenancyDeps) {
   const base = implement(tenancyContract).$context<RequestContext>();
@@ -53,7 +55,7 @@ export function procedures(deps: TenancyDeps) {
     });
   });
 
-  return { authed, inOrg };
+  return { base, authed, inOrg };
 }
 
 export type Procedures = ReturnType<typeof procedures>;

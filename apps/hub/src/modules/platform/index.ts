@@ -2,5 +2,5 @@
 export { type HubConfig, loadConfig } from "./config.ts";
 export type { RequestContext } from "./context.ts";
 export { createPool, type TenantContext, type Tx, withTenant } from "./db.ts";
-export { ConflictError, ForbiddenError, NotFoundError } from "./errors.ts";
+export { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "./errors.ts";
 export { bootstrapRoles, type RolePasswords, runMigrations } from "./migrate.ts";

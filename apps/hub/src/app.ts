@@ -23,7 +23,7 @@ export function createApp({ config, auth, pool, webDist = process.env.HIVE_WEB_D
   const router = {
     system: systemRouter(config),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators }),
+    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });

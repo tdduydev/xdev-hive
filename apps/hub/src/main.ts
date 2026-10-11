@@ -2,8 +2,11 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createPool, loadConfig } from "./modules/platform/index.ts";
+import { authHooks } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
+const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
+if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, đội, hệ thống không dùng được.");
 const auth =
   config.authDatabaseUrl && config.authSecret
     ? createAuth({
@@ -14,11 +17,10 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
+        hooks: pool ? authHooks(pool) : undefined,
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
-const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
-if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, đội, hệ thống không dùng được.");
 
 serve({ fetch: createApp({ config, auth, pool }).fetch, port: config.port }, (info) => {
   console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
