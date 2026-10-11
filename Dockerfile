@@ -12,4 +12,7 @@ RUN pnpm --filter @xdev-hive/web build
 FROM build AS runtime
 ENV NODE_ENV=production HIVE_PORT=3000 HIVE_WEB_DIST=/repo/apps/web/dist
 EXPOSE 3000
-CMD ["sh", "-c", "if [ -n \"$HIVE_DATABASE_ADMIN_URL\" ]; then pnpm --filter @xdev-hive/hub db:bootstrap; fi && pnpm --filter @xdev-hive/hub db:migrate && pnpm --filter @xdev-hive/hub start"]
+# Không chạy bằng root. Gọi node trực tiếp (không qua pnpm) vì corepack cần ghi cache mà user node không có quyền.
+USER node
+WORKDIR /repo/apps/hub
+CMD ["sh", "-c", "if [ -n \"$HIVE_DATABASE_ADMIN_URL\" ]; then node src/cli.ts db:bootstrap; fi && node src/cli.ts db:migrate && exec node src/main.ts"]
