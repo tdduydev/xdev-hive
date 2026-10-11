@@ -94,11 +94,12 @@ export async function searchRuns(tx: Tx, userId: string, input: RunSearchInput):
     .limit(input.limit + 1);
   const page = rows.slice(0, input.limit);
   const named = await withMachineNames(tx, page.map(toRun));
-  const tasks = await taskSummaries(tx, [...new Set(named.map((r) => r.taskId))]);
+  // Run leader không gắn task: hiện như một cuộc trao đổi với leader thay vì mã việc.
+  const tasks = await taskSummaries(tx, [...new Set(named.flatMap((r) => (r.taskId ? [r.taskId] : [])))]);
   const items = named.map((r) => ({
     ...r,
-    taskKey: tasks.get(r.taskId)?.key ?? "",
-    taskTitle: tasks.get(r.taskId)?.title ?? "",
+    taskKey: r.taskId ? (tasks.get(r.taskId)?.key ?? "") : "leader",
+    taskTitle: r.taskId ? (tasks.get(r.taskId)?.title ?? "") : "Trao đổi với leader",
   }));
   let machines: RunSearchResult["machines"] = [];
   if (!input.cursor) {

@@ -3,8 +3,8 @@ import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect
 import { meQuery } from "./lib/me.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
-import { CostsPage } from "./pages/costs-page.tsx";
 import { validateRunsSearch } from "./lib/run-list.ts";
+import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
