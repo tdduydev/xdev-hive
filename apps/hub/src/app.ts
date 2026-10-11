@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { extname, resolve, sep } from "node:path";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
@@ -10,13 +12,14 @@ import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
   config: HubConfig;
+  webDist?: string | undefined;
   /** Không có khi chạy test đơn vị không cần database. */
   auth?: Auth | undefined;
   /** Pool của role hive_app (HIVE_DATABASE_URL). Không có khi chạy test đơn vị không cần database. */
   pool?: pg.Pool | undefined;
 }
 
-export function createApp({ config, auth, pool }: AppDeps) {
+export function createApp({ config, auth, pool, webDist = process.env.HIVE_WEB_DIST }: AppDeps) {
   const router = {
     system: systemRouter(config),
     me: meRouter(auth),
@@ -44,5 +47,48 @@ export function createApp({ config, auth, pool }: AppDeps) {
     if (matched) return c.newResponse(response.body, response);
     await next();
   });
+  if (webDist) {
+    const root = resolve(webDist);
+    const types: Record<string, string> = {
+      ".css": "text/css; charset=utf-8",
+      ".html": "text/html; charset=utf-8",
+      ".ico": "image/x-icon",
+      ".js": "text/javascript; charset=utf-8",
+      ".json": "application/json",
+      ".png": "image/png",
+      ".svg": "image/svg+xml",
+      ".woff2": "font/woff2",
+    };
+    app.get("*", async (c) => {
+      let pathname: string;
+      try {
+        pathname = decodeURIComponent(new URL(c.req.url).pathname);
+      } catch {
+        // Mã hoá % hỏng thì coi như đường dẫn không tồn tại, không để lỗi thành 500.
+        return c.notFound();
+      }
+      const requested = resolve(root, `.${pathname}`);
+      const safe = requested === root || requested.startsWith(`${root}${sep}`);
+      if (safe) {
+        try {
+          const body = await readFile(requested);
+          // File trong /assets/ có hash trong tên nên cache lâu được; index.html thì không.
+          const cache = pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";
+          return c.body(body, 200, {
+            "Content-Type": types[extname(requested)] ?? "application/octet-stream",
+            "Cache-Control": cache,
+          });
+        } catch {
+          /* Đường dẫn SPA không phải file; trả entry point để client router xử lý. */
+        }
+      }
+      if (c.req.path.startsWith("/api/") || c.req.path.startsWith("/rpc/")) return c.notFound();
+      try {
+        return c.html(await readFile(resolve(root, "index.html"), "utf8"));
+      } catch {
+        return c.notFound();
+      }
+    });
+  }
   return app;
 }
