@@ -16,9 +16,13 @@ export async function seedUsers(admin: pg.Pool, ids: string[]): Promise<void> {
 
 /**
  * Database riêng trong cùng container, đã bootstrap và migrate. Dùng cho test cần hub "trống" (quy tắc tạo tổ chức
- * đầu tiên): database chung có tổ chức do file test khác seed song song.
+ * đầu tiên): database chung có tổ chức do file test khác seed song song. `pgvector: false` dựng database không có
+ * extension vector dù image có, để kiểm đường chỉ tìm theo từ.
  */
-export async function freshDatabase(db: { adminUrl: string; ownerUrl: string; appUrl: string; authUrl: string }) {
+export async function freshDatabase(
+  db: { adminUrl: string; ownerUrl: string; appUrl: string; authUrl: string },
+  opts: { pgvector?: boolean } = {},
+) {
   const name = `hive_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const admin = new pg.Pool({ connectionString: db.adminUrl, max: 1 });
   try {
@@ -33,7 +37,7 @@ export async function freshDatabase(db: { adminUrl: string; ownerUrl: string; ap
   };
   const pw = (url: string) => decodeURIComponent(new URL(url).password);
   const urls = { adminUrl: on(db.adminUrl), ownerUrl: on(db.ownerUrl), appUrl: on(db.appUrl), authUrl: on(db.authUrl) };
-  await bootstrapRoles(urls.adminUrl, { owner: pw(db.ownerUrl), app: pw(db.appUrl), auth: pw(db.authUrl) });
+  await bootstrapRoles(urls.adminUrl, { owner: pw(db.ownerUrl), app: pw(db.appUrl), auth: pw(db.authUrl) }, opts);
   await runMigrations(urls.ownerUrl);
   return urls;
 }
