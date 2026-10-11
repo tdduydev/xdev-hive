@@ -27,7 +27,8 @@ const { adminUrl, appUrl, authUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
 const pool = createPool(appUrl);
 const authPool = createPool(authUrl);
-const secret = "run-test-secret-0123456789abcdef-0123456789";
+// Cùng secret với các file test khác: JWKS của Better Auth nằm chung database và được mã hoá bằng secret này.
+const secret = "test-secret-0123456789abcdef-0123456789";
 const publicUrl = "http://hub.test";
 const masterKey = parseMasterKey(randomBytes(32).toString("base64"));
 const tag = randomUUID().slice(0, 6);

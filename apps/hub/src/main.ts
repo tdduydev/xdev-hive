@@ -3,13 +3,16 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
-import { createAuth } from "./modules/identity/index.ts";
+import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import { defaultProviderFactory } from "./modules/scm/index.ts";
+import { authHooks } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
+const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
+if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
 const auth =
   config.authDatabaseUrl && config.authSecret
     ? createAuth({
@@ -20,11 +23,11 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
+        hooks: pool ? authHooks(pool) : undefined,
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
-const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
-if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
+else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp.");
 
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
