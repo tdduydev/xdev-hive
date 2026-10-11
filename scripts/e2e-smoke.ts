@@ -20,7 +20,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -43,14 +43,14 @@ import type {
 } from "../packages/contracts/src/index.ts";
 
 const execFileAsync = promisify(execFile);
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const env = process.env;
 const GITHUB = env.HIVE_E2E_GITHUB === "1";
 const REAL_CLI = env.HIVE_E2E_REAL_CLI === "1";
 const CLEANUP = env.HIVE_E2E_CLEANUP === "1";
 const VERBOSE = env.HIVE_E2E_VERBOSE === "1";
 const KEEP = env.HIVE_E2E_KEEP === "1";
-const CLI = (env.HIVE_E2E_CLI ?? "claude") as "claude" | "codex" | "gemini";
+export const CLI = (env.HIVE_E2E_CLI ?? "claude") as "claude" | "codex" | "gemini";
 const RUN_TIMEOUT_MS = Number(env.HIVE_E2E_RUN_TIMEOUT_SEC ?? 300) * 1000;
 const POSTGRES_IMAGE = env.HIVE_TEST_POSTGRES_IMAGE ?? "pgvector/pgvector:0.8.7-pg18-trixie";
 // Kết nối GitLab trỏ vào host này được hub (HIVE_E2E=1) chuyển sang provider local; xem apps/hub/src/modules/scm/local.ts.
@@ -216,7 +216,7 @@ function freePort(): Promise<number> {
 const secret = () => randomBytes(24).toString("base64url");
 
 /** Tiến trình con kèm file log; theo dõi được dòng log khớp mẫu. */
-class Proc {
+export class Proc {
   readonly name: string;
   readonly child: ChildProcess;
   exited = false;
@@ -281,7 +281,7 @@ class Proc {
   }
 }
 
-function startProc(
+export function startProc(
   name: string,
   cmd: string,
   args: string[],
@@ -291,7 +291,7 @@ function startProc(
   return new Proc(name, child, opts.log);
 }
 
-async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {}) {
+export async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {}) {
   try {
     const { stdout } = await execFileAsync(cmd, args, {
       cwd: opts.cwd ?? ROOT,
@@ -306,13 +306,13 @@ async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessE
 }
 
 /** Biến môi trường không có HIVE_*, để cấu hình của máy người chạy không lẫn vào hub và worker thử. */
-function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("HIVE_")));
 }
 
 // ---- Client HTTP của hub (cookie phiên như trình duyệt) -------------------------------------------------------------
 
-class HubClient {
+export class HubClient {
   readonly base: string;
   private readonly cookies = new Map<string, string>();
   orgId: string | null = null;
@@ -355,7 +355,7 @@ class HubClient {
 
 // ---- Trạng thái dùng chung giữa các bước và bước dọn dẹp -----------------------------------------------------------
 
-const state: {
+export const state: {
   tmp?: string | undefined;
   container?: { stop(): Promise<unknown> } | undefined;
   hub?: Proc | undefined;
@@ -375,7 +375,7 @@ interface DbUrls {
   jobsUrl: string;
 }
 
-async function startPostgres(): Promise<DbUrls> {
+export async function startPostgres(): Promise<DbUrls> {
   let adminUrl = env.HIVE_E2E_DATABASE_ADMIN_URL;
   if (adminUrl) {
     console.log("  Dùng Postgres có sẵn (HIVE_E2E_DATABASE_ADMIN_URL).");
@@ -426,12 +426,12 @@ async function startPostgres(): Promise<DbUrls> {
 
 // ---- 2. Hub --------------------------------------------------------------------------------------------------------
 
-interface LocalGit {
+export interface LocalGit {
   root: string;
   prDir: string;
 }
 
-async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Promise<HubClient> {
+export async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Promise<HubClient> {
   const port = await freePort();
   // 127.0.0.1 là địa chỉ hub coi như localhost: bật được cổng /mcp mà không cần HTTPS.
   const url = `http://127.0.0.1:${port}`;
@@ -467,7 +467,7 @@ async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Pro
 
 // ---- 3. Người dùng, tổ chức, đội, hệ thống -------------------------------------------------------------------------
 
-async function setupTenant(api: HubClient) {
+export async function setupTenant(api: HubClient) {
   await api.post("/api/auth/sign-up/email", {
     name: "Người thử e2e",
     email: names.email,
@@ -492,7 +492,7 @@ function githubSettings() {
   return { token, owner };
 }
 
-async function connectGit(api: HubClient) {
+export async function connectGit(api: HubClient) {
   const input: ScmConnectionCreateInput = GITHUB
     ? {
         kind: "github",
@@ -519,7 +519,7 @@ async function connectGit(api: HubClient) {
 
 // ---- 5. Dự án ------------------------------------------------------------------------------------------------------
 
-async function createProject(
+export async function createProject(
   api: HubClient,
   systemId: string,
   connectionId: string,
@@ -594,10 +594,13 @@ function workerDataDir(e: NodeJS.ProcessEnv): string {
   return join(cache, "xdev-hive", "worker");
 }
 
-async function startWorker(api: HubClient, teamId: string, tmp: string) {
+export async function startWorker(api: HubClient, teamId: string, tmp: string, sandbox?: { image: string }) {
   const bin = join(tmp, "bin", isWindows ? "hive-worker.exe" : "hive-worker");
   console.log("  go build ./cmd/hive-worker");
-  await runCmd("go", ["build", "-o", bin, "./cmd/hive-worker"], { cwd: join(ROOT, "worker") });
+  await runCmd("go", ["build", "-o", bin, "./cmd/hive-worker"], {
+    cwd: join(ROOT, "worker"),
+    env: { ...env, ...(sandbox ? { CGO_ENABLED: "0" } : {}) },
+  });
 
   const workerEnv: NodeJS.ProcessEnv = { ...cleanEnv(), GIT_TERMINAL_PROMPT: "0" };
   if (!REAL_CLI) {
@@ -607,7 +610,9 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
       XDG_CACHE_HOME: join(tmp, "cache"),
       LocalAppData: join(tmp, "cache"),
       HIVE_WORKER_CLI_OVERRIDES: JSON.stringify({
-        [CLI]: { path: process.execPath, args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}"] },
+        [CLI]: sandbox
+          ? { path: "node", args: ["/opt/hive/e2e-fake-cli.ts", "{{prompt}}"] }
+          : { path: process.execPath, args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}"] },
       }),
     });
     await mkdir(join(tmp, "home"), { recursive: true });
@@ -625,7 +630,10 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
   }
   state.workerDataDir = workerDataDir(workerEnv);
 
-  const reg = await api.post<{ token: string; command: string }>(`/api/v1/teams/${teamId}/machines/registrations`);
+  const reg = await api.post<{ token: string; command: string }>(
+    `/api/v1/teams/${teamId}/machines/registrations`,
+    sandbox ? { kind: "host" } : {},
+  );
   const config = join(tmp, "worker.json");
   const out = await runCmd(
     bin,
@@ -633,7 +641,8 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
     { env: workerEnv },
   );
   console.log(`  ${out.split("\n")[0]}`);
-  const worker = startProc("worker", bin, ["run", "--config", config], {
+  const args = sandbox ? ["host", "--image", sandbox.image, "--memory", "512m", "--cpus", "1"] : ["run"];
+  const worker = startProc("worker", bin, [...args, "--config", config], {
     env: workerEnv,
     log: join(tmp, "worker.log"),
   });
@@ -774,7 +783,7 @@ interface LocalPullRequest {
   title: string;
 }
 
-async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
+export async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
   if (!run.prUrl) throw new Error("Run không có prUrl.");
   if (localGit) {
     const pr = JSON.parse(await readFile(fileURLToPath(run.prUrl), "utf8")) as LocalPullRequest;
@@ -807,7 +816,7 @@ async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
   console.log(`  PR GitHub #${pr.number} (${pr.state}): ${run.prUrl}`);
 }
 
-async function checkWorktree(run: Run) {
+export async function checkWorktree(run: Run) {
   const data = state.workerDataDir;
   const repoUrl = state.repoUrl;
   if (!data || !repoUrl) throw new Error("Không biết thư mục dữ liệu của worker.");
@@ -968,7 +977,7 @@ async function runParallel(api: HubClient, project: Project, worker: Proc, local
 
 let cleaning: Promise<void> | null = null;
 
-function cleanup(): Promise<void> {
+export function cleanup(): Promise<void> {
   cleaning ??= timed("cleanup", async () => {
     const problems: string[] = [];
     const attempt = async (what: string, fn: () => Promise<unknown>) => {
@@ -1011,7 +1020,9 @@ function cleanup(): Promise<void> {
       else await attempt("xoá thư mục tạm", () => rm(state.tmp as string, { recursive: true, force: true }));
     }
     if (problems.length) throw new Error(problems.join("; "));
-  }).then(() => {});
+  }).then(({ error }) => {
+    if (error) throw error;
+  });
   return cleaning;
 }
 
@@ -1174,4 +1185,6 @@ async function main(): Promise<number> {
   return printSummary() > 0 || unexpected ? 1 : 0;
 }
 
-process.exitCode = await main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  process.exitCode = await main();
+}
