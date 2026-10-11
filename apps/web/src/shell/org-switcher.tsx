@@ -1,0 +1,69 @@
+import { Menu } from "@base-ui/react/menu";
+import { cx } from "../lib/cx.ts";
+
+export interface OrgOption {
+  id: string;
+  name: string;
+  /** Vai trò của người dùng trong tổ chức, đã dịch: "Chủ sở hữu", "Quản trị", "Thành viên". */
+  role: string;
+}
+
+export interface OrgSwitcherProps {
+  orgs: OrgOption[];
+  currentId?: string | undefined;
+  onSelect?: ((id: string) => void) | undefined;
+}
+
+const orgInitial = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpperCase();
+
+/** Ô chọn tổ chức ở đầu sidebar. Danh sách tổ chức có khi API tổ chức (M1c) xong; trước đó hiện trạng thái chờ lời mời. */
+export function OrgSwitcher({ orgs, currentId, onSelect }: OrgSwitcherProps) {
+  const current = orgs.find((o) => o.id === currentId) ?? orgs[0];
+  return (
+    <Menu.Root>
+      <Menu.Trigger className="mb-2.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-line p-2 text-left hover:bg-subtle data-popup-open:bg-subtle">
+        <span
+          className={cx(
+            "grid size-7 shrink-0 place-items-center rounded-md text-label font-semibold text-white",
+            current ? "bg-accent" : "bg-faint",
+          )}
+        >
+          {current ? orgInitial(current.name) : "?"}
+        </span>
+        <span className="min-w-0">
+          <b className="block truncate text-label leading-tight font-semibold text-ink">
+            {current?.name ?? "Chưa có tổ chức"}
+          </b>
+          {/* `small` để inline trong khối cỡ chữ thân như mockup, nên dòng cao theo cỡ 14px. */}
+          <span className="block truncate">
+            <small className="text-xs text-muted">{current?.role ?? "Chờ lời mời"}</small>
+          </span>
+        </span>
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner sideOffset={4} align="start" className="z-10">
+          <Menu.Popup className="min-w-(--anchor-width) rounded-lg border border-line-strong bg-surface p-1 shadow-app outline-none">
+            {orgs.length === 0 ? (
+              <p className="px-2.5 py-1.75 text-label text-muted">Chưa thuộc tổ chức nào</p>
+            ) : (
+              <Menu.RadioGroup value={current?.id} onValueChange={(id: string) => onSelect?.(id)}>
+                {orgs.map((org) => (
+                  <Menu.RadioItem
+                    key={org.id}
+                    value={org.id}
+                    className="flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav outline-none data-checked:font-medium data-checked:text-sel-fg data-highlighted:bg-subtle"
+                  >
+                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-accent text-xs font-semibold text-white">
+                      {orgInitial(org.name)}
+                    </span>
+                    <span className="min-w-0 truncate">{org.name}</span>
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+            )}
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
+  );
+}
