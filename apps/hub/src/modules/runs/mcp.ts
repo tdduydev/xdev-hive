@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { McpPrincipal, RunTokenVerifier as McpRunTokenVerifier, McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
 import { loadTask, taskByKeyForUser, toTask } from "../tasks/index.ts";
+import { reviewReportInput } from "./review.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, lockRun, notifyRun, ON_MACHINE } from "./state.ts";
 import { createRunTokenVerifier } from "./token.ts";
@@ -26,7 +27,13 @@ export function createMcpRunTokens(opts: {
       if (!claims) return null;
       const run = await withTenant(opts.pool, { orgId: claims.org_id }, async (tx) => {
         const [row] = await tx
-          .select({ state: runs.state, attempt: runs.attempt, taskId: runs.taskId, createdBy: runs.createdBy })
+          .select({
+            kind: runs.kind,
+            state: runs.state,
+            attempt: runs.attempt,
+            taskId: runs.taskId,
+            createdBy: runs.createdBy,
+          })
           .from(runs)
           .where(eq(runs.id, claims.run_id));
         return row;
@@ -39,6 +46,7 @@ export function createMcpRunTokens(opts: {
         userId: run.createdBy,
         orgId: claims.org_id,
         runId: claims.run_id,
+        runKind: run.kind,
         taskId: claims.task_id,
         attempt: claims.attempt,
         clientId: `run:${claims.run_id}`,
@@ -62,18 +70,21 @@ function requireRun(principal: McpPrincipal) {
 const runNotActive = () =>
   new ConflictError("RUN_NOT_ACTIVE", "Run không còn chạy hoặc đã sang lần thử khác; báo cáo không được ghi.");
 
-/** Tool cho agent trong run: đọc task, gửi báo cáo cho kiểm tra `agentReport` của chính sách kết quả. */
+/**
+ * Tool cho agent trong run: đọc task, gửi báo cáo cho kiểm tra `agentReport` của chính sách kết quả, và nộp kết quả
+ * review chéo (chỉ run review).
+ */
 export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
     name: "task_get",
     title: "Xem task",
-    description:
-      "Đọc task. Trong run (HIVE_RUN_TOKEN) bỏ trống key để lấy task của run hiện tại; ngoài run phải truyền key.",
+    description: "Đọc task theo key hoặc task của run hiện tại.",
     input: z.object({
-      key: z.string().min(1).max(100).optional().describe("Key của task, vd. HD-12. Bỏ trống để lấy task của run."),
+      key: z.string().min(1).max(100).optional().describe("Key task; bỏ trống để lấy task của run."),
+      full: z.boolean().optional().describe("Lấy đầy đủ nội dung task."),
     }),
     readOnly: true,
-    handler: async ({ key }, { tx, principal }) => {
+    handler: async ({ key, full }, { tx, principal }) => {
       let task: Task;
       if (key) {
         task = toTask(await taskByKeyForUser(tx, principal.userId, key, "viewer"));
@@ -85,21 +96,30 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         if (!row) throw new NotFoundError("TASK_NOT_FOUND", "Không tìm thấy task của run.");
         task = toTask(row);
       }
-      if (principal.kind !== "run" || task.id !== principal.taskId) return { task };
+      const result = full
+        ? task
+        : {
+            id: task.id,
+            key: task.key,
+            title: task.title,
+            status: task.status,
+            type: task.type,
+            body: task.body.slice(0, 2000),
+            truncated: task.body.length > 2000,
+          };
+      if (principal.kind !== "run" || task.id !== principal.taskId) return { task: result };
       const [run] = await tx
         .select({ id: runs.id, state: runs.state, attempt: runs.attempt, branch: runs.branch })
         .from(runs)
         .where(eq(runs.id, principal.runId ?? ""));
-      return { task, run: run ?? null };
+      return { task: result, run: run ?? null };
     },
   });
 
   registry.register({
     name: "task_update",
     title: "Báo cáo task",
-    description:
-      "Gửi báo cáo của agent cho task của run hiện tại (tóm tắt việc đã làm, bằng chứng). status là đề xuất của " +
-      "agent (review hoặc done); trạng thái thật của task do chính sách kết quả quyết định khi run kết thúc.",
+    description: "Ghi báo cáo và đề xuất trạng thái cho task của run hiện tại.",
     input: z.object({
       status: z.enum(["review", "done"]).optional().describe("Đề xuất trạng thái task sau run."),
       note: z.string().min(1).max(20_000).describe("Báo cáo: đã làm gì, kiểm tra ra sao, còn vướng gì."),
@@ -114,6 +134,28 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       await hubEvent(tx, run, "agent_report", { note, status: status ?? null });
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, taskId: run.taskId, recorded: "agent_report" };
+    },
+  });
+
+  registry.register({
+    name: "review_submit",
+    title: "Nộp kết quả review chéo",
+    description:
+      "Chỉ dành cho run review chéo: nộp điểm (0–10), tóm tắt và các phát hiện cho PR của run cha. Hub đăng nhận " +
+      "xét lên PR và dùng điểm cho kiểm tra review của chính sách kết quả. Gọi lại thì lần sau cùng được tính.",
+    input: reviewReportInput,
+    runKinds: ["review"],
+    handler: async (report, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      // Run code mà tự chấm điểm được thì kiểm tra review mất nghĩa.
+      if (run.kind !== "review") {
+        throw new ForbiddenError("REVIEW_RUN_REQUIRED", "Chỉ run review chéo mới gọi được review_submit.");
+      }
+      await hubEvent(tx, run, "review_report", report);
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "review_report", score: report.score };
     },
   });
 }

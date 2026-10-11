@@ -2,6 +2,7 @@ import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
 import type { RequestContext } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { enqueueMergeAs, queueForUser, removeMergeAs } from "./merge-queue.ts";
 import {
   type CatalogDeps,
   createProject,
@@ -31,6 +32,19 @@ export function catalogRouter(deps: CatalogDeps & OrgDeps) {
       .use(inOrg)
       .handler(({ context: { tx, user, orgId }, input }) =>
         retryStep(tx, deps, { userId: user.id, orgId }, input.id, input.stepId),
+      ),
+    mergeQueue: os.mergeQueue
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => queueForUser(tx, user.id, input.id)),
+    enqueueMerge: os.enqueueMerge
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) =>
+        enqueueMergeAs(tx, deps, user.id, { projectId: input.id, prNumber: input.prNumber }),
+      ),
+    removeMerge: os.removeMerge
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) =>
+        removeMergeAs(tx, deps, user.id, { projectId: input.id, entryId: input.entryId }),
       ),
   };
 }

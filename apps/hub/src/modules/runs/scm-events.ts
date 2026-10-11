@@ -61,11 +61,12 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 /** createdBy của task, run do webhook tạo: không có người dùng hub, ghi tài khoản trên nhà cung cấp Git. */
 const scmActor = (e: { provider: string; actor: string | null }) => `${e.provider}:${e.actor ?? "?"}`;
 
+/** Run code đang sống của task; run review chạy kèm lúc run cha verifying không nhận chỉ dẫn từ PR. */
 async function activeRunOf(tx: Tx, taskId: string): Promise<RunRow | null> {
   const [row] = await tx
     .select()
     .from(runs)
-    .where(and(eq(runs.taskId, taskId), notInArray(runs.state, [...FINISHED])))
+    .where(and(eq(runs.taskId, taskId), eq(runs.kind, "code"), notInArray(runs.state, [...FINISHED])))
     .limit(1);
   return row ?? null;
 }
