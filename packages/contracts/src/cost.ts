@@ -41,8 +41,29 @@ export const costSummary = z.object({
 });
 export type CostSummary = z.output<typeof costSummary>;
 
+export const budgetStopReason = z.enum(["per_run_usd", "per_task_usd", "max_turns"]);
+export const budgetStoppedRun = z.object({
+  runId: id,
+  taskId: id,
+  taskKey: z.string(),
+  taskTitle: z.string(),
+  reason: budgetStopReason,
+  measured: z.number(),
+  limit: z.number(),
+  stoppedAt: z.iso.datetime(),
+});
+export type BudgetStoppedRun = z.output<typeof budgetStoppedRun>;
+
 export const costsContract = {
   summary: orgRoute("GET", "/v1/costs/summary", "Token và chi phí của dự án theo khoảng ngày (quản trị đội)", "costs")
     .input(costSummaryInput)
     .output(costSummary),
+  budgetStopped: orgRoute(
+    "GET",
+    "/v1/costs/budget-stopped",
+    "Run bị dừng vì vượt ngân sách của dự án (quản trị đội)",
+    "costs",
+  )
+    .input(z.object({ projectId: id }))
+    .output(z.array(budgetStoppedRun)),
 };

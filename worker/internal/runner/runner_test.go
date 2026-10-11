@@ -1,13 +1,17 @@
 package runner
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -84,6 +88,52 @@ func TestRunnerReviewChecksOutParentBranchWithoutPush(t *testing.T) {
 				t.Fatalf("nhánh của cha bị đổi: %s → %s", parentSHA, now)
 			}
 		})
+	}
+}
+
+// Run plan và leader đọc nhánh chính, không push dù agent lỡ commit.
+func TestRunnerReadOnlyRunsDoNotPush(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	src := filepath.Join(t.TempDir(), "old")
+	must(t, "git", "clone", remote, src)
+	must(t, "git", "-C", src, "checkout", "-b", "ai/HD-2")
+	mustDir(t, src, "stale.txt", "của run trước")
+	must(t, "git", "-C", src, "add", ".")
+	must(t, "git", "-C", src, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "cũ")
+	must(t, "git", "-C", src, "push", "origin", "ai/HD-2")
+	oldSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2"))
+	baseSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base))
+
+	for _, kind := range []string{KindPlan, KindLeader} {
+		for _, mode := range []string{"empty", "commit"} {
+			t.Run(kind+"/"+mode, func(t *testing.T) {
+				var events []Event
+				r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
+				job := Job{RunID: kind + "-" + mode, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
+				if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
+					t.Fatal(err)
+				}
+				got := lastResult(events)
+				if got == nil || got.Status != "succeeded" || got.CommitCount != 0 || len(got.ChangedFiles) != 0 {
+					t.Fatalf("result = %#v", got)
+				}
+				if mode == "empty" && got.HeadSHA != baseSHA {
+					t.Fatalf("HEAD = %s, muốn nhánh chính %s", got.HeadSHA, baseSHA)
+				}
+				for _, e := range events {
+					if e.Type == "phase" && e.Phase == "publishing" {
+						t.Fatal("run chỉ đọc không được push")
+					}
+				}
+				if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2")); now != oldSHA {
+					t.Fatalf("nhánh ai/HD-2 bị đổi: %s → %s", oldSHA, now)
+				}
+				if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base)); now != baseSHA {
+					t.Fatalf("nhánh chính bị đổi: %s → %s", baseSHA, now)
+				}
+			})
+		}
 	}
 }
 
@@ -195,6 +245,51 @@ func TestReapOrphans(t *testing.T) {
 	}
 }
 
+// TestMain cho phép chính binary test đóng vai CLI claude giả (copy thành claude/claude.exe vào PATH): Windows không chạy được shell script.
+func TestMain(m *testing.M) {
+	if mode := os.Getenv("HIVE_FAKE_MCP_MODE"); mode != "" {
+		for i, a := range os.Args {
+			if a == "--mcp-config" && i+1 < len(os.Args) {
+				if err := os.WriteFile(os.Getenv("HIVE_CAPTURE_MCP"), []byte(os.Args[i+1]), 0600); err != nil {
+					os.Exit(5)
+				}
+				break
+			}
+		}
+		if mode == "sleep" {
+			time.Sleep(30 * time.Second)
+		}
+		os.Exit(7)
+	}
+	os.Exit(m.Run())
+}
+
+func installFakeClaude(t *testing.T) string {
+	t.Helper()
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := t.TempDir()
+	src, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(filepath.Join(bin, name), os.O_CREATE|os.O_WRONLY, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		_ = dst.Close()
+		t.Fatal(err)
+	}
+	if err := dst.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
 func TestFakeCLIHelper(t *testing.T) {
 	if os.Getenv("HIVE_RUNNER_HELPER") != "1" {
 		return
@@ -204,6 +299,11 @@ func TestFakeCLIHelper(t *testing.T) {
 		os.Exit(0)
 	}
 	switch os.Getenv("HIVE_FAKE_MODE") {
+	case "stream":
+		fakeStreamCLI()
+	case "wait":
+		time.Sleep(300 * time.Millisecond)
+		os.Exit(0)
 	case "usage-ok":
 		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
 		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)
@@ -220,6 +320,12 @@ func TestFakeCLIHelper(t *testing.T) {
 	if f := os.Getenv("HIVE_FAKE_EXPECT_FILE"); f != "" {
 		if _, err := os.Stat(f); err != nil {
 			os.Exit(4)
+		}
+	}
+	// Run plan không được thấy code của nhánh khác ngoài nhánh chính.
+	if f := os.Getenv("HIVE_FAKE_ABSENT_FILE"); f != "" {
+		if _, err := os.Stat(f); err == nil {
+			os.Exit(5)
 		}
 	}
 	if os.Getenv("HIVE_FAKE_MODE") == "loud" {
@@ -240,6 +346,54 @@ func TestFakeCLIHelper(t *testing.T) {
 		if err := c.Run(); err != nil {
 			os.Exit(3)
 		}
+	}
+	os.Exit(0)
+}
+
+// fakeStreamCLI làm như `claude -p --input-format stream-json --replay-user-messages`: đọc tin user từ stdin, phát lại
+// tin đã nhận (cùng uuid), in result khi đủ HIVE_FAKE_STEERS chỉ dẫn sau prompt, rồi chỉ thoát khi stdin đóng như
+// Claude thật. stdin đóng sớm hơn (runner đóng trước lượt cuối) thì thoát mã 5.
+func fakeStreamCLI() {
+	want, _ := strconv.Atoi(os.Getenv("HIVE_FAKE_STEERS"))
+	record, err := os.OpenFile(os.Getenv("HIVE_FAKE_RECORD"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		os.Exit(7)
+	}
+	lines := make(chan []byte)
+	go func() {
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(nil, 1<<20)
+		for sc.Scan() {
+			lines <- append([]byte(nil), sc.Bytes()...)
+		}
+		close(lines)
+	}()
+	for got := -1; got < want; got++ {
+		select {
+		case b, ok := <-lines:
+			if !ok {
+				os.Exit(5)
+			}
+			var m struct {
+				Type    string `json:"type"`
+				UUID    string `json:"uuid"`
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(b, &m) != nil || m.Type != "user" || m.UUID == "" {
+				os.Exit(8)
+			}
+			content, _ := json.Marshal(m.Message.Content)
+			_, _ = fmt.Fprintf(record, "%s\n", content)
+			fmt.Printf(`{"type":"user","uuid":%q,"isReplay":true,"message":{"role":"user","content":%s}}`+"\n", m.UUID, content)
+		case <-time.After(10 * time.Second):
+			os.Exit(6)
+		}
+	}
+	_ = record.Close()
+	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"num_turns":1}`)
+	for range lines {
 	}
 	os.Exit(0)
 }
@@ -334,10 +488,10 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 		cli, model string
 		want       []string
 	}{
-		{"claude", "sonnet", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"claude", "", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"codex", "gpt-test", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
-		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
+		{"codex", "gpt-test", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
+		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
+		{"claude", "sonnet", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"claude", "", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
 		{"gemini", "", []string{"-p", "prompt"}},
 	} {
@@ -352,6 +506,19 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		}()
 		args := cmd.Args[1:]
+		// Chỉ Claude nhận prompt qua stdin; CLI khác vẫn nhận prompt trong tham số.
+		if wantInput := map[bool]string{true: InputStreamJSON}[tc.cli == "claude"]; cmd.input != wantInput {
+			t.Fatalf("%s input = %q", tc.cli, cmd.input)
+		}
+		// Quyền được kiểm riêng ở TestRunPermissionArguments; ở đây kiểm model và MCP.
+		switch tc.cli {
+		case "claude":
+			args = args[:len(args)-4]
+		case "codex":
+			args = append(append([]string(nil), args[:len(args)-5]...), args[len(args)-1])
+		case "gemini":
+			args = args[:len(args)-5]
+		}
 		if tc.cli == "claude" {
 			extra := 1
 			if tc.model != "" {
@@ -365,6 +532,7 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Windows không có quyền kiểu Unix (Mode() luôn 0666) và code không đặt ACL, nên chỉ kiểm 0600 trên hệ khác.
 			if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 				t.Fatalf("MCP mode = %o", info.Mode().Perm())
 			}
@@ -383,6 +551,38 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 	}
 }
 
+// Run plan bật chế độ chỉ đọc của từng CLI; run code và run review giữ nguyên lệnh (TestDefaultCLIArgumentsAndClaudeMCPFile).
+func TestPlanCLIArgumentsAreReadOnly(t *testing.T) {
+	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
+	for _, tc := range []struct {
+		cli  string
+		want []string
+	}{
+		{"claude", []string{"--permission-mode", "plan"}},
+		{"codex", []string{"--sandbox", "read-only"}},
+		{"gemini", []string{"--approval-mode", "plan"}},
+	} {
+		for _, kind := range []string{KindPlan, KindLeader, "", KindReview} {
+			cmd, err := (Runner{}).cliCommand(Job{CLI: tc.cli, Kind: kind, Prompt: "prompt", Env: env})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cmd.cleanup != nil {
+				cmd.cleanup()
+			}
+			args := strings.Join(cmd.Args[1:], "\x00")
+			has := strings.Contains(args, strings.Join(tc.want, "\x00"))
+			if has != (kind == KindPlan || kind == KindLeader) {
+				t.Fatalf("%s kind=%q args = %q", tc.cli, kind, cmd.Args[1:])
+			}
+			// Prompt vẫn là đối số cuối của codex (cờ phải đứng trước nó).
+			if tc.cli == "codex" && cmd.Args[len(cmd.Args)-1] != "prompt" {
+				t.Fatalf("codex args = %q", cmd.Args[1:])
+			}
+		}
+	}
+}
+
 func TestClaudeMCPFileCleanup(t *testing.T) {
 	path, err := claudeMCPConfig(map[string]string{"HIVE_HUB_URL": "https://hub", "HIVE_RUN_TOKEN": "token"})
 	if err != nil {
@@ -397,22 +597,6 @@ func TestClaudeMCPFileCleanup(t *testing.T) {
 }
 
 func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		// Windows does not execute the POSIX shell fixture below; validate the command cleanup hook directly.
-		cmd, err := (Runner{}).cliCommand(Job{CLI: "claude", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := cmd.Args[len(cmd.Args)-1]
-		if _, err := os.Stat(path); err != nil {
-			t.Fatal(err)
-		}
-		cmd.cleanup()
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Fatalf("file MCP còn sau cleanup: %v", err)
-		}
-		return
-	}
 	remote, base := makeRemote(t)
 	for _, cancelRun := range []bool{false, true} {
 		name := "failure"
@@ -420,25 +604,18 @@ func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
 			name = "cancelled"
 		}
 		t.Run(name, func(t *testing.T) {
-			bin := t.TempDir()
 			capture := filepath.Join(t.TempDir(), "mcp-path")
-			fake := filepath.Join(bin, "claude")
-			script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = \"--mcp-config\" ]; then shift; printf '%s' \"$1\" > \"$HIVE_CAPTURE_MCP\"; break; fi; shift; done\n"
+			mode := "fail"
 			if cancelRun {
-				script += "sleep 30\n"
-			} else {
-				script += "exit 7\n"
+				mode = "sleep"
 			}
-			if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("PATH", installFakeClaude(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 			data := t.TempDir()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
+				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}, KillGrace: 200 * time.Millisecond}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_FAKE_MCP_MODE": mode, "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
 			}()
 			limit := time.Now().Add(5 * time.Second)
 			for {
@@ -541,12 +718,8 @@ func TestClaudeDefaultCommandPassesBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.Join(cmd.Args[1:], " ")
-	if !strings.HasPrefix(got, "-p p --output-format stream-json --verbose --setting-sources project --strict-mcp-config --mcp-config ") || !strings.HasSuffix(got, " --max-budget-usd 2.5") {
+	defer cmd.cleanup()
+	if got := strings.Join(cmd.Args[1:], " "); !strings.Contains(got, "--max-budget-usd 2.5") {
 		t.Fatalf("lệnh = %s", got)
-	}
-	path := cmd.Args[len(cmd.Args)-3]
-	if err := os.Remove(path); err != nil {
-		t.Fatal(err)
 	}
 }

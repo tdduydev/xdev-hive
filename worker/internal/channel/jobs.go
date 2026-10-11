@@ -28,6 +28,8 @@ const (
 	// flushWait: lúc thoát vì drain, chờ hub ack các gói cuối trước khi đóng kết nối.
 	flushWait     = 5 * time.Second
 	restartReason = "worker khởi động lại giữa chừng, tiến trình CLI đã dừng"
+	// steerBuffer: chỉ dẫn tới lúc run còn chuẩn bị (clone, setup) nằm chờ ở đây tới khi CLI chạy.
+	steerBuffer = 16
 )
 
 // errOffline: chưa có kết nối. Gói của run đã nằm trên đĩa và sẽ được gửi lại khi nối lại.
@@ -40,6 +42,7 @@ type activeRun struct {
 	cancel    context.CancelFunc
 	cancelled atomic.Bool
 	grace     atomic.Int64
+	steers    chan runner.Steer
 }
 
 func (r *activeRun) stop(grace time.Duration) {
@@ -186,10 +189,19 @@ func (j *jobs) heartbeat() Heartbeat {
 func (j *jobs) onOffer(m *JobOffer) {
 	cli := specCLI(m.Spec)
 	reason := ""
+	var spec jobSpec
+	if err := json.Unmarshal(m.Spec, &spec); err != nil {
+		reason = "job không hợp lệ"
+	} else if err := spec.validateExecution(); err != nil {
+		reason = err.Error()
+	} else if (spec.Execution == "sandbox") != (j.cfg.Sandbox != nil) {
+		reason = "loại thực thi job không khớp chế độ runner"
+	}
 	j.mu.Lock()
 	_, offered := j.offers[m.RunID]
 	_, running := j.active[m.RunID]
 	switch {
+	case reason != "":
 	case j.draining:
 		reason = "máy đang thoát"
 	case running:
@@ -228,7 +240,7 @@ func (j *jobs) onLease(l *Lease) {
 	}
 	delete(j.offers, l.RunID)
 	ctx, cancel := context.WithCancel(j.ctx)
-	run := &activeRun{runID: l.RunID, attempt: l.Attempt, leaseID: l.LeaseID, cancel: cancel}
+	run := &activeRun{runID: l.RunID, attempt: l.Attempt, leaseID: l.LeaseID, cancel: cancel, steers: make(chan runner.Steer, steerBuffer)}
 	run.grace.Store(int64(defaultGrace))
 	j.active[l.RunID] = run
 	j.wg.Add(1)
@@ -247,7 +259,8 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
 	if err == nil {
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		job.Steers = run.steers
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {
@@ -283,6 +296,27 @@ func (j *jobs) cancel(runID string, grace time.Duration) {
 		run.stop(grace)
 	}
 	j.checkIdle()
+}
+
+// steer chuyển chỉ dẫn của hub tới run đang chạy. Run không còn trên máy (đã xong, chưa nhận lease) hay khác lần thử thì
+// bỏ: không trả lời thì hub giữ delivered false và chỉ dẫn vẫn vào prompt của lần thử sau.
+func (j *jobs) steer(m *Steer) {
+	j.mu.Lock()
+	run := j.active[m.RunID]
+	j.mu.Unlock()
+	switch {
+	case run == nil:
+		j.log.Info("Bỏ chỉ dẫn cho run không chạy trên máy", "run", m.RunID, "steer", m.SteerID)
+	case m.Attempt != 0 && m.Attempt != run.attempt:
+		j.log.Info("Bỏ chỉ dẫn của lần thử khác", "run", m.RunID, "attempt", m.Attempt, "running", run.attempt, "steer", m.SteerID)
+	default:
+		select {
+		case run.steers <- runner.Steer{ID: m.SteerID, Input: m.Input}:
+			j.log.Info("Đã nhận chỉ dẫn cho run đang chạy", "run", m.RunID, "steer", m.SteerID)
+		default:
+			j.log.Warn("Bỏ chỉ dẫn vì run còn nhiều chỉ dẫn chưa xử lý", "run", m.RunID, "steer", m.SteerID)
+		}
+	}
 }
 
 func (j *jobs) drain() {
@@ -387,6 +421,9 @@ func (s *durableSink) Emit(e runner.Event) error {
 		msg = resultMessage(e.RunID, e.Attempt, seq, e.Result)
 	case "cost":
 		data, _ := json.Marshal(e.Cost)
+		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
+	case "steer_result":
+		data, _ := json.Marshal(e.Steer)
 		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
 	default:
 		data, _ := json.Marshal(map[string]any{"phase": e.Phase, "event": e.Type})

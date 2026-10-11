@@ -21,7 +21,7 @@ describe("parseEmails", () => {
       "e@x.vn",
     ]));
   it("chữ thường, bỏ trùng, giữ thứ tự nhập", () =>
-    expect(parseEmails("Ha.Le@example.com, b@x.vn, ha.le@example.com")).toEqual({
+    expect(parseEmails("Ha.Le@Example.COM, b@x.vn, ha.le@example.com")).toEqual({
       emails: ["ha.le@example.com", "b@x.vn"],
       invalid: [],
     }));
@@ -68,16 +68,17 @@ describe("isInviteToken", () => {
 });
 
 describe("sameEmail", () => {
-  it("không phân biệt hoa thường như hub", () => expect(sameEmail("Ha.Le@example.com", "ha.le@example.com")).toBe(true));
+  it("không phân biệt hoa thường như hub", () =>
+    expect(sameEmail("Ha.Le@Example.COM", "ha.le@example.com")).toBe(true));
   it("email khác", () => expect(sameEmail("a@x.vn", "b@x.vn")).toBe(false));
 });
 
 describe("joinedOrg", () => {
   const orgs = [
     { id: "1", name: "Nội bộ" },
-    { id: "2", name: "FPT Software xDev" },
+    { id: "2", name: "Acme Software xDev" },
   ];
-  it("tìm theo tên trong lời mời", () => expect(joinedOrg(orgs, "FPT Software xDev")?.id).toBe("2"));
+  it("tìm theo tên trong lời mời", () => expect(joinedOrg(orgs, "Acme Software xDev")?.id).toBe("2"));
   it("không khớp tên thì lấy tổ chức đầu tiên", () => expect(joinedOrg(orgs, "Khác")?.id).toBe("1"));
-  it("chưa vào tổ chức nào", () => expect(joinedOrg([], "FPT Software xDev")).toBeNull());
+  it("chưa vào tổ chức nào", () => expect(joinedOrg([], "Acme Software xDev")).toBeNull());
 });

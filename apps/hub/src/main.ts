@@ -10,7 +10,14 @@ import {
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
-import { notify, notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
+import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
+import {
+  inboxCleanupQueue,
+  notify,
+  notifyQueue,
+  registerInboxCleanupWorker,
+  registerNotifyWorker,
+} from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import {
@@ -46,6 +53,7 @@ const auth =
                   {
                     orgId: member.orgId,
                     event: "member.pending",
+                    eventKey: member.userId,
                     title: `${member.email} chờ duyệt vào tổ chức`,
                     body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
                     link: `${config.publicUrl ?? `http://localhost:${config.port}`}/admin/members`,
@@ -76,6 +84,7 @@ jobs = config.jobsDatabaseUrl
         scmEventQueue,
         embedQueue,
         notifyQueue,
+        inboxCleanupQueue,
         fleetOfflineQueue,
         orphanUsersQueue,
       ],
@@ -97,6 +106,8 @@ const runs =
         masterKey: config.masterKey,
         providerFactory: defaultProviderFactory,
         jobs,
+        leaderMessage: appendLeaderSystemMessage,
+        leaderQueuedPrompt: queuedLeaderPrompt,
       })
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
@@ -130,6 +141,7 @@ if (roles.includes("jobs") && jobs) {
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
+    await registerInboxCleanupWorker(jobs, pool);
   }
 }
 

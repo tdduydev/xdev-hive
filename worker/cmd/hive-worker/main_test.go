@@ -32,6 +32,12 @@ func TestDefaultMachineID(t *testing.T) {
 	}
 }
 
+func TestSandboxInitRunsCLICommand(t *testing.T) {
+	if code := sandboxInit([]string{"--socket", filepath.Join(t.TempDir(), "egress.sock"), "--", "sh", "-c", "exit 0"}); code != 0 {
+		t.Fatalf("sandbox-init trả mã %d", code)
+	}
+}
+
 func TestRegisterSavesToken(t *testing.T) {
 	var got map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

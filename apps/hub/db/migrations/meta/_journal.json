@@ -246,6 +246,55 @@
       "when": 1791734552294,
       "tag": "0034_purge_orphan_users",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791738680436,
+      "tag": "0035_inbox_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791738700810,
+      "tag": "0036_merge_queue_ci_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791738815861,
+      "tag": "0037_machine_paused",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791738851188,
+      "tag": "0038_plan_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791738961730,
+      "tag": "0039_legacy_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791739579675,
+      "tag": "0040_sandbox_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791740527768,
+      "tag": "0041_leader_chat",
+      "breakpoints": true
     }
   ]
 }

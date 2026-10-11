@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chi tiết run</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent)}a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1100px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
+  <dc-import name="Sidebar" active="runs" hint-size="240px,1100px"></dc-import>
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <header style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+        <div style="font-size: 12.5px; color: var(--muted);"><a href="Tasks.dc.html" style="text-decoration: none;">Bảng việc</a> / <span style="font-family: var(--font-mono);">TASK-42</span></div>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.3; font-weight: 600; color: var(--ink);">Sửa làm tròn tiền trong hoá đơn VAT</h1>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted);">
+          <span style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: var(--sel); color: var(--sel-fg);"><span style="width: 6px; height: 6px; border-radius: 9999px; background: currentColor;"></span>Đang chạy</span>
+          <span style="font-family: var(--font-mono);">run 7f3a21c0</span><span>lần thử 1/3</span><span style="font-family: var(--font-mono);">ai/TASK-42</span>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button type="button" onClick="{{toggleSteer}}" aria-expanded="{{steerOpen}}" style="height: 36px; padding: 0 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">Gửi chỉ dẫn</button>
+        <button type="button" style="height: 36px; padding: 0 14px; background: var(--surface); color: var(--bad); border: 1px solid var(--bad); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">Huỷ run</button>
+      </div>
+    </header>
+    <sc-if value="{{showSteer}}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 16px; background: var(--surface); border: 1px solid var(--sel-line); border-radius: 12px; display: flex; flex-direction: column; gap: 8px;">
+        <label for="steer" style="font-size: 13px; font-weight: 500; color: var(--ink);">Chỉ dẫn cho agent đang chạy</label>
+        <textarea id="steer" rows="3" style="box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; resize: vertical;">Giữ nguyên chữ ký hàm round(); thêm test cho số âm.</textarea>
+        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; align-items: center;">
+          <span style="font-size: 12px; color: var(--muted);">Agent nhận chỉ dẫn ở lượt kế tiếp. Run đã xong thì hub chạy lại với chỉ dẫn này.</span>
+          <button type="button" style="height: 36px; padding: 0 14px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;">Gửi</button>
+        </div>
+      </div>
+    </sc-if>
+    <ol aria-label="Các pha của run" style="list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px;">
+      <sc-for list="{{phases}}" as="p" hint-placeholder-count="6">
+        <li style="{{p.style}}"><span style="{{p.mark}}"></span>{{p.label}}<span style="color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;">{{p.time}}</span></li>
+      </sc-for>
+    </ol>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+      <section aria-label="Log" style="flex: 2 1 520px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line);">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Log trực tiếp</h2>
+          <span style="font-size: 12px; color: var(--muted);">stdout và stderr · tự cuộn</span>
+        </div>
+        <pre style="margin: 0; padding: 14px 16px; min-height: 520px; box-sizing: border-box; background: var(--sunken); color: var(--body); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; overflow-x: auto;">14:02:11  prepare   git fetch origin main:refs/remotes/origin/main
+14:02:13  prepare   worktree runs/7f3a21c0-1 ← ai/TASK-42
+14:02:14  running   claude -p … --model claude-sonnet-5-5 --permission-mode acceptEdits
+14:02:40  agent     Đọc packages/billing/src/vat.ts và test hiện có
+14:03:05  agent     round() dùng Math.round trên số thực → sai ở 2.675
+14:04:31  agent     Đổi sang làm tròn theo đơn vị nhỏ nhất (đồng), thêm 6 ca test
+14:06:02  agent     pnpm --filter @acme/billing test
+14:06:19  stdout    ✓ vat.test.ts (14 tests)
+14:07:44  agent     git commit -m "fix(billing): làm tròn VAT theo đơn vị tiền nhỏ nhất"
+14:08:23  agent     task_update: tóm tắt và bằng chứng đã gửi</pre>
+      </section>
+      <aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <section style="padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Chi tiết</h2>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; font-size: 13px;">
+            <dt style="color: var(--muted);">Agent</dt><dd style="margin: 0; color: var(--ink);">Claude · sonnet</dd>
+            <dt style="color: var(--muted);">Máy</dt><dd style="margin: 0; color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;">mac-mini-lan</dd>
+            <dt style="color: var(--muted);">Quyền</dt><dd style="margin: 0; color: var(--ink);">Trong worktree</dd>
+            <dt style="color: var(--muted);">Bắt đầu</dt><dd style="margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;">14:02, 11/10</dd>
+            <dt style="color: var(--muted);">Thời gian</dt><dd style="margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;">6 phút 12 giây</dd>
+          </dl>
+        </section>
+        <section style="padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Token và chi phí</h2>
+            <span style="font-family: var(--font-display); font-size: 22px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;">0,42 USD</span>
+          </div>
+          <div aria-label="Đã dùng 21% trần chi phí của run" style="height: 8px; border-radius: 9999px; background: var(--subtle); overflow: hidden;"><div style="width: 21%; height: 100%; background: var(--accent);"></div></div>
+          <div style="font-size: 12px; color: var(--muted);">21% trần 2,00 USD mỗi run. Vượt trần thì hub dừng run và ghi lý do.</div>
+          <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums;">
+            <dt style="color: var(--muted);">Token vào</dt><dd style="margin: 0; color: var(--ink); text-align: right;">182.400</dd>
+            <dt style="color: var(--muted);">Đọc từ cache</dt><dd style="margin: 0; color: var(--ink); text-align: right;">141.050</dd>
+            <dt style="color: var(--muted);">Token ra</dt><dd style="margin: 0; color: var(--ink); text-align: right;">9.850</dd>
+            <dt style="color: var(--muted);">Số lượt</dt><dd style="margin: 0; color: var(--ink); text-align: right;">14</dd>
+          </dl>
+        </section>
+        <section style="padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Chính sách kết quả</h2>
+          <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+            <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+              <li style="display: flex; justify-content: space-between; gap: 8px;"><span style="color: var(--ink);">{{c.label}}</span><span style="{{c.style}}">{{c.state}}</span></li>
+            </sc-for>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { steer: false }; }
+  renderVals() {
+    const done = 'display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; font-size: 13px; background: var(--ok-bg); color: var(--ok);';
+    const now = 'display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; font-size: 13px; font-weight: 600; background: var(--sel); color: var(--sel-fg); border: 1px solid var(--sel-line);';
+    const next = 'display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 7px; font-size: 13px; background: var(--surface); color: var(--muted); border: 1px dashed var(--line-strong);';
+    const mark = 'width: 6px; height: 6px; border-radius: 9999px; background: currentColor;';
+    const phases = [
+      ['Xếp hàng', '14:02:01', done], ['Nhận máy', '14:02:03', done], ['Chuẩn bị', '14:02:11', done],
+      ['Đang chạy', '6 phút', now], ['Kiểm tra kết quả', '', next], ['Mở PR', '', next],
+    ].map(([label, time, style]) => ({ label, time, style, mark }));
+    const wait = 'color: var(--muted);';
+    const ok = 'color: var(--ok); font-weight: 500;';
+    const checks = [
+      { label: 'Có commit mới, không đụng infra/prod', state: 'Đạt · 1 commit, 2 file', style: ok },
+      { label: 'Agent báo cáo qua task_update', state: 'Đạt', style: ok },
+      { label: 'Review chéo bởi Codex, điểm ≥ 7', state: 'Chờ run kết thúc', style: wait },
+      { label: 'CI trên PR xanh', state: 'Chờ PR', style: wait },
+    ];
+    return {
+      theme: this.props.dark ? 'dark' : 'light', phases, checks,
+      showSteer: this.state.steer, steerOpen: this.state.steer ? 'true' : 'false',
+      toggleSteer: () => this.setState({ steer: !this.state.steer }),
+    };
+  }
+}
+</script>
+</body>
+</html>

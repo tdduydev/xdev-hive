@@ -17,10 +17,9 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -30,6 +29,8 @@ import type {
   Project,
   ProjectCreateInput,
   ProjectCreateResult,
+  ProjectSettings,
+  ProjectSettingsPatch,
   ProvisionView,
   Run,
   RunEventView,
@@ -43,14 +44,14 @@ import type {
 } from "../packages/contracts/src/index.ts";
 
 const execFileAsync = promisify(execFile);
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const env = process.env;
 const GITHUB = env.HIVE_E2E_GITHUB === "1";
 const REAL_CLI = env.HIVE_E2E_REAL_CLI === "1";
 const CLEANUP = env.HIVE_E2E_CLEANUP === "1";
 const VERBOSE = env.HIVE_E2E_VERBOSE === "1";
 const KEEP = env.HIVE_E2E_KEEP === "1";
-const CLI = (env.HIVE_E2E_CLI ?? "claude") as "claude" | "codex" | "gemini";
+export const CLI = (env.HIVE_E2E_CLI ?? "claude") as "claude" | "codex" | "gemini";
 const RUN_TIMEOUT_MS = Number(env.HIVE_E2E_RUN_TIMEOUT_SEC ?? 300) * 1000;
 const POSTGRES_IMAGE = env.HIVE_TEST_POSTGRES_IMAGE ?? "pgvector/pgvector:0.8.7-pg18-trixie";
 // Kết nối GitLab trỏ vào host này được hub (HIVE_E2E=1) chuyển sang provider local; xem apps/hub/src/modules/scm/local.ts.
@@ -85,21 +86,22 @@ const STEPS = {
   tenant: "3. Đăng ký, tổ chức, đội, hệ thống",
   scm: `4. Kết nối Git (${GITHUB ? "GitHub" : "local"})`,
   project: "5. Dự án mới, provision tới active",
-  worker: "6. Worker: build, đăng ký, online",
+  worker: "6. Worker: build, đăng ký, online, capacity 2",
   run: "7. Task, run, theo dõi SSE",
   succeeded: "8a. Run succeeded",
   review: "8b. Task sang review",
   pr: "8c. PR tồn tại",
   report: "8d. Agent báo cáo qua MCP",
   worktree: "8e. Worktree trên worker đã gỡ",
-  mergeOn: "9a. Bật merge queue, merge.mode auto",
+  mergeOn: "9a. API settings: bật merge queue, merge.mode auto",
   mqEnqueue: "9b. PR của run tự vào hàng merge",
   mqMerged: "9c. Job catalog-merge xử lý tới merged",
   mqMain: "9d. Nhánh chính có thay đổi của agent",
   mqDone: "9e. Mục ở Đã xong kèm mergeSha",
-  parQueue: "10a. Hai task song song, hai PR vào hàng",
-  parOrder: "10b. Merge tuần tự đúng thứ tự hàng",
-  parMain: "10c. Nhánh chính chứa cả hai thay đổi",
+  parRuns: "10a. Hai run cùng repo chạy đồng thời, đều succeeded",
+  parQueue: "10b. Hai PR vào hàng merge",
+  parOrder: "10c. Merge tuần tự đúng thứ tự hàng",
+  parMain: "10d. Nhánh chính chứa cả hai thay đổi",
   cleanup: "11. Dọn dẹp",
 } as const;
 type StepKey = keyof typeof STEPS;
@@ -216,7 +218,7 @@ function freePort(): Promise<number> {
 const secret = () => randomBytes(24).toString("base64url");
 
 /** Tiến trình con kèm file log; theo dõi được dòng log khớp mẫu. */
-class Proc {
+export class Proc {
   readonly name: string;
   readonly child: ChildProcess;
   exited = false;
@@ -281,7 +283,7 @@ class Proc {
   }
 }
 
-function startProc(
+export function startProc(
   name: string,
   cmd: string,
   args: string[],
@@ -291,7 +293,7 @@ function startProc(
   return new Proc(name, child, opts.log);
 }
 
-async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {}) {
+export async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv; cwd?: string } = {}) {
   try {
     const { stdout } = await execFileAsync(cmd, args, {
       cwd: opts.cwd ?? ROOT,
@@ -306,13 +308,13 @@ async function runCmd(cmd: string, args: string[], opts: { env?: NodeJS.ProcessE
 }
 
 /** Biến môi trường không có HIVE_*, để cấu hình của máy người chạy không lẫn vào hub và worker thử. */
-function cleanEnv(): NodeJS.ProcessEnv {
+export function cleanEnv(): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith("HIVE_")));
 }
 
 // ---- Client HTTP của hub (cookie phiên như trình duyệt) -------------------------------------------------------------
 
-class HubClient {
+export class HubClient {
   readonly base: string;
   private readonly cookies = new Map<string, string>();
   orgId: string | null = null;
@@ -355,7 +357,7 @@ class HubClient {
 
 // ---- Trạng thái dùng chung giữa các bước và bước dọn dẹp -----------------------------------------------------------
 
-const state: {
+export const state: {
   tmp?: string | undefined;
   container?: { stop(): Promise<unknown> } | undefined;
   hub?: Proc | undefined;
@@ -368,14 +370,12 @@ const state: {
 // ---- 1. Postgres ---------------------------------------------------------------------------------------------------
 
 interface DbUrls {
-  /** Superuser: chỉ để bật tính năng dự án mà hub chưa có API đổi settings. */
-  adminUrl: string;
   appUrl: string;
   authUrl: string;
   jobsUrl: string;
 }
 
-async function startPostgres(): Promise<DbUrls> {
+export async function startPostgres(): Promise<DbUrls> {
   let adminUrl = env.HIVE_E2E_DATABASE_ADMIN_URL;
   if (adminUrl) {
     console.log("  Dùng Postgres có sẵn (HIVE_E2E_DATABASE_ADMIN_URL).");
@@ -417,7 +417,6 @@ async function startPostgres(): Promise<DbUrls> {
     env: { ...base, HIVE_DATABASE_OWNER_URL: url("hive_owner", pw.owner) },
   });
   return {
-    adminUrl,
     appUrl: url("hive_app", pw.app),
     authUrl: url("hive_auth", pw.auth),
     jobsUrl: url("hive_jobs", pw.jobs),
@@ -426,12 +425,12 @@ async function startPostgres(): Promise<DbUrls> {
 
 // ---- 2. Hub --------------------------------------------------------------------------------------------------------
 
-interface LocalGit {
+export interface LocalGit {
   root: string;
   prDir: string;
 }
 
-async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Promise<HubClient> {
+export async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Promise<HubClient> {
   const port = await freePort();
   // 127.0.0.1 là địa chỉ hub coi như localhost: bật được cổng /mcp mà không cần HTTPS.
   const url = `http://127.0.0.1:${port}`;
@@ -467,7 +466,7 @@ async function startHub(db: DbUrls, tmp: string, localGit: LocalGit | null): Pro
 
 // ---- 3. Người dùng, tổ chức, đội, hệ thống -------------------------------------------------------------------------
 
-async function setupTenant(api: HubClient) {
+export async function setupTenant(api: HubClient) {
   await api.post("/api/auth/sign-up/email", {
     name: "Người thử e2e",
     email: names.email,
@@ -492,7 +491,7 @@ function githubSettings() {
   return { token, owner };
 }
 
-async function connectGit(api: HubClient) {
+export async function connectGit(api: HubClient) {
   const input: ScmConnectionCreateInput = GITHUB
     ? {
         kind: "github",
@@ -519,7 +518,7 @@ async function connectGit(api: HubClient) {
 
 // ---- 5. Dự án ------------------------------------------------------------------------------------------------------
 
-async function createProject(
+export async function createProject(
   api: HubClient,
   systemId: string,
   connectionId: string,
@@ -594,10 +593,13 @@ function workerDataDir(e: NodeJS.ProcessEnv): string {
   return join(cache, "xdev-hive", "worker");
 }
 
-async function startWorker(api: HubClient, teamId: string, tmp: string) {
+export async function startWorker(api: HubClient, teamId: string, tmp: string, sandbox?: { image: string }) {
   const bin = join(tmp, "bin", isWindows ? "hive-worker.exe" : "hive-worker");
   console.log("  go build ./cmd/hive-worker");
-  await runCmd("go", ["build", "-o", bin, "./cmd/hive-worker"], { cwd: join(ROOT, "worker") });
+  await runCmd("go", ["build", "-o", bin, "./cmd/hive-worker"], {
+    cwd: join(ROOT, "worker"),
+    env: { ...env, ...(sandbox ? { CGO_ENABLED: "0" } : {}) },
+  });
 
   const workerEnv: NodeJS.ProcessEnv = { ...cleanEnv(), GIT_TERMINAL_PROMPT: "0" };
   if (!REAL_CLI) {
@@ -607,7 +609,12 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
       XDG_CACHE_HOME: join(tmp, "cache"),
       LocalAppData: join(tmp, "cache"),
       HIVE_WORKER_CLI_OVERRIDES: JSON.stringify({
-        [CLI]: { path: process.execPath, args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}"] },
+        [CLI]: sandbox
+          ? { path: "node", args: ["/opt/hive/e2e-fake-cli.ts", "{{prompt}}"] }
+          : {
+              path: process.execPath,
+              args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}", join(tmp, "parallel")],
+            },
       }),
     });
     await mkdir(join(tmp, "home"), { recursive: true });
@@ -625,7 +632,10 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
   }
   state.workerDataDir = workerDataDir(workerEnv);
 
-  const reg = await api.post<{ token: string; command: string }>(`/api/v1/teams/${teamId}/machines/registrations`);
+  const reg = await api.post<{ token: string; command: string }>(
+    `/api/v1/teams/${teamId}/machines/registrations`,
+    sandbox ? { kind: "host" } : {},
+  );
   const config = join(tmp, "worker.json");
   const out = await runCmd(
     bin,
@@ -633,7 +643,12 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
     { env: workerEnv },
   );
   console.log(`  ${out.split("\n")[0]}`);
-  const worker = startProc("worker", bin, ["run", "--config", config], {
+  // Ca hai run song song chỉ có ở e2e-smoke; e2e sandbox chạy một run nên runner host giữ capacity 1.
+  const capacity = sandbox ? 1 : 2;
+  const args = sandbox
+    ? ["host", "--image", sandbox.image, "--memory", "512m", "--cpus", "1"]
+    : ["run", "--capacity", String(capacity)];
+  const worker = startProc("worker", bin, [...args, "--config", config], {
     env: workerEnv,
     log: join(tmp, "worker.log"),
   });
@@ -641,7 +656,7 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
   const machine = await waitFor(
     `máy ${names.machine} online`,
     async () => {
-      const list = await api.get<Array<{ id: string; name: string; status: string; clis: string[] }>>(
+      const list = await api.get<Array<{ id: string; name: string; status: string; clis: string[]; capacity: number }>>(
         `/api/v1/teams/${teamId}/machines`,
       );
       return list.find((m) => m.name === names.machine && m.status === "online");
@@ -649,6 +664,7 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
     { timeoutMs: 30_000, alive: worker },
   );
   console.log(`  Máy ${machine.name} online, CLI: ${machine.clis.join(", ") || "(không có)"}`);
+  if (machine.capacity !== capacity) throw new Error(`Worker báo capacity ${machine.capacity}, cần ${capacity}.`);
   if (!machine.clis.includes(CLI)) throw new Error(`Worker không có CLI ${CLI}; hub sẽ không giao run.`);
   return { bin, machineId: machine.id, worker };
 }
@@ -732,9 +748,9 @@ const readmeTask: TaskSpec = {
  * Hai task chạy song song phải sửa file khác nhau: cùng sửa cuối README thì PR sau xung đột với nhánh chính sau khi
  * PR trước merge. CLI giả đọc dấu [e2e-file:...] trong prompt để ghi file riêng.
  */
-const fileTask = (name: string): TaskSpec => ({
+const fileTask = (name: string, peer: string): TaskSpec => ({
   title: `Thêm file ${name} (e2e)`,
-  body: `[e2e-file:${name}] Thêm file ghi chú ${name} (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
+  body: `[e2e-file:${name}] [e2e-peer:${peer}] Thêm file ghi chú ${name} (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
 });
 
 async function runTask(api: HubClient, projectId: string, worker: Proc, spec: TaskSpec = readmeTask) {
@@ -774,7 +790,7 @@ interface LocalPullRequest {
   title: string;
 }
 
-async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
+export async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
   if (!run.prUrl) throw new Error("Run không có prUrl.");
   if (localGit) {
     const pr = JSON.parse(await readFile(fileURLToPath(run.prUrl), "utf8")) as LocalPullRequest;
@@ -807,7 +823,7 @@ async function checkPr(run: Run, project: Project, localGit: LocalGit | null) {
   console.log(`  PR GitHub #${pr.number} (${pr.state}): ${run.prUrl}`);
 }
 
-async function checkWorktree(run: Run) {
+export async function checkWorktree(run: Run) {
   const data = state.workerDataDir;
   const repoUrl = state.repoUrl;
   if (!data || !repoUrl) throw new Error("Không biết thư mục dữ liệu của worker.");
@@ -836,39 +852,20 @@ async function checkWorktree(run: Run) {
 
 const MERGE_TIMEOUT_MS = 90_000;
 
-/** Hub chưa có API đổi settings dự án: bật merge queue bằng SQL, rồi đọc lại qua API công khai để chắc đã có hiệu lực. */
-async function enableMergeQueue(api: HubClient, db: DbUrls, projectId: string) {
-  interface PgClient {
-    connect(): Promise<void>;
-    query(sql: string, params: unknown[]): Promise<{ rowCount: number | null }>;
-    end(): Promise<void>;
-  }
-  // pg là dependency của hub, không của gốc repo.
-  const { Client } = createRequire(join(ROOT, "apps", "hub", "package.json"))("pg") as {
-    Client: new (cfg: { connectionString: string }) => PgClient;
+async function enableMergeQueue(api: HubClient, project: Project) {
+  // Provider local luôn trả checks "none"; tắt yêu cầu CI để kiểm được luồng merge tại máy.
+  const settings: ProjectSettingsPatch = {
+    features: { mergeQueue: true },
+    merge: { mode: "auto", requireCi: false },
   };
-  const client = new Client({ connectionString: db.adminUrl });
-  await client.connect();
-  try {
-    // requireCi false vì provider local luôn trả checks "none".
-    const res = await client.query(
-      `update hive.projects set settings = settings || jsonb_build_object(
-         'features', (settings->'features') || '{"mergeQueue": true}'::jsonb,
-         'merge', (settings->'merge') || '{"mode": "auto", "requireCi": false}'::jsonb)
-       where id = $1`,
-      [projectId],
-    );
-    if (res.rowCount !== 1) throw new Error(`Cập nhật settings dự án ảnh hưởng ${res.rowCount} dòng, cần 1.`);
-  } finally {
-    await client.end();
+  const updated = await api.request<ProjectSettings>("PATCH", `/api/v1/projects/${project.key}/settings`, { settings });
+  const now = await api.get<Project>(`/api/v1/projects/${project.id}`);
+  for (const value of [updated, now.settings]) {
+    if (!value.features.mergeQueue || value.merge.mode !== "auto" || value.merge.requireCi !== false) {
+      throw new Error(`Settings dự án chưa đổi: ${JSON.stringify({ features: value.features, merge: value.merge })}`);
+    }
   }
-  const now = await api.get<Project>(`/api/v1/projects/${projectId}`);
-  if (!now.settings.features.mergeQueue || now.settings.merge.mode !== "auto") {
-    throw new Error(
-      `Settings dự án chưa đổi: ${JSON.stringify({ features: now.settings.features, merge: now.settings.merge })}`,
-    );
-  }
-  console.log(`  features.mergeQueue=true, merge ${JSON.stringify(now.settings.merge)}`);
+  console.log(`  projects.updateSettings: features.mergeQueue=true, merge ${JSON.stringify(now.settings.merge)}`);
 }
 
 const listQueue = (api: HubClient, projectId: string) =>
@@ -947,20 +944,33 @@ async function checkDone(api: HubClient, project: Project, runId: string) {
 }
 
 /**
- * Hai task tạo cùng lúc, hai PR vào hàng, merge lần lượt. Worker để capacity 1: với capacity 2, hai run cùng repo fetch
- * đồng thời vào một repo cache và tranh khoá ref (lỗi của worker, ghi trong mô tả PR), nên run chạy nối nhau. Provider local không bao giờ trả "behind" (chỉ xét xung đột),
- * nên bước "cập nhật nhánh PR theo nhánh chính" của hàng không được kiểm ở đây và không giả lập: PR sau vẫn merge
- * được trên nhánh chính đã tiến vì hai task sửa file khác nhau.
+ * Provider local không trả "behind", nên ca này kiểm merge tuần tự với hai file khác nhau; bước cập nhật nhánh PR
+ * theo nhánh chính cần kiểm riêng với GitHub/GitLab thật. CLI giả chờ nhau để ca chạy nối tiếp không thể đạt.
  */
 async function runParallel(api: HubClient, project: Project, worker: Proc, localGit: LocalGit | null) {
   if (!localGit) throw new Pending("Ca song song chỉ chạy với provider local.");
-  const a = fileTask(`par-a-${stamp}.md`);
-  const b = fileTask(`par-b-${stamp}.md`);
-  const [ra, rb] = await Promise.all([runTask(api, project.id, worker, a), runTask(api, project.id, worker, b)]);
-  for (const r of [ra, rb]) {
-    if (r.run.state !== "succeeded")
-      throw new Error(`Run ${r.run.id} ${r.run.state}: ${(r.run.result?.reasons ?? []).join("; ")}`);
-  }
+  const first = `par-a-${stamp}.md`;
+  const second = `par-b-${stamp}.md`;
+  const [ra, rb] = await Promise.all([
+    runTask(api, project.id, worker, fileTask(first, second)),
+    runTask(api, project.id, worker, fileTask(second, first)),
+  ]);
+  const intervals = await Promise.all(
+    [ra.run, rb.run].map(async (run) => {
+      if (run.state !== "succeeded")
+        throw new Error(`Run ${run.id} ${run.state}: ${(run.result?.reasons ?? []).join("; ")}`);
+      const events = await api.get<RunEventView[]>(`/api/v1/runs/${run.id}/events?after=0&limit=1000`);
+      const phases = events.filter((e) => e.type === "phase" && e.attempt === run.attempt);
+      const start = phases.find((e) => e.data.phase === "running");
+      const end = phases.find((e) => e.data.phase === "verifying");
+      if (!start || !end) throw new Error(`Run ${run.id} thiếu pha running hoặc verifying.`);
+      console.log(`  Run ${run.id}: succeeded, running ${start.createdAt} → ${end.createdAt}`);
+      return { start: Date.parse(start.createdAt), end: Date.parse(end.createdAt) };
+    }),
+  );
+  const overlapMs = Math.min(...intervals.map((r) => r.end)) - Math.max(...intervals.map((r) => r.start));
+  if (!(overlapMs > 0)) throw new Error("Hai run thành công nhưng không chạy đồng thời trên cùng repo.");
+  console.log(`  Hai run trên ${project.repo.httpUrl} chạy đồng thời ${fmtMs(overlapMs)}.`);
   return [ra.run, rb.run] as const;
 }
 
@@ -968,7 +978,7 @@ async function runParallel(api: HubClient, project: Project, worker: Proc, local
 
 let cleaning: Promise<void> | null = null;
 
-function cleanup(): Promise<void> {
+export function cleanup(): Promise<void> {
   cleaning ??= timed("cleanup", async () => {
     const problems: string[] = [];
     const attempt = async (what: string, fn: () => Promise<unknown>) => {
@@ -1011,7 +1021,9 @@ function cleanup(): Promise<void> {
       else await attempt("xoá thư mục tạm", () => rm(state.tmp as string, { recursive: true, force: true }));
     }
     if (problems.length) throw new Error(problems.join("; "));
-  }).then(() => {});
+  }).then(({ error }) => {
+    if (error) throw error;
+  });
   return cleaning;
 }
 
@@ -1063,7 +1075,7 @@ async function main(): Promise<number> {
     state.repoUrl = project.repo.httpUrl ?? undefined;
     const { worker } = await step("worker", () => startWorker(api, team.id, tmp));
     // Bật trước run đầu: chế độ auto đưa PR vào hàng ngay lúc run succeeded.
-    await step("mergeOn", () => enableMergeQueue(api, db, project.id));
+    await step("mergeOn", () => enableMergeQueue(api, project));
     const { task, run } = await step("run", () => runTask(api, project.id, worker));
 
     await check("succeeded", async () => {
@@ -1104,21 +1116,22 @@ async function main(): Promise<number> {
 
     // Ca hai: hai task song song.
     let par: readonly [Run, Run] | undefined;
-    await check("parQueue", async () => {
-      const [r1, r2] = await runParallel(api, project, worker, localGit);
-      par = [r1, r2];
-      const entries = await waitFor(
-        "hai mục vào hàng",
-        async () => {
-          const list = (await listQueue(api, project.id)).filter((x) => x.runId === r1.id || x.runId === r2.id);
-          return list.length === 2 ? list : null;
-        },
-        { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
-      );
-      console.log(`  ${entries.map((e) => `#${e.prNumber}:${e.state}`).join(", ")}`);
+    await check("parRuns", async () => {
+      par = await runParallel(api, project, worker, localGit);
     });
     if (par) {
       const [r1, r2] = par;
+      await check("parQueue", async () => {
+        const entries = await waitFor(
+          "hai mục vào hàng",
+          async () => {
+            const list = (await listQueue(api, project.id)).filter((x) => x.runId === r1.id || x.runId === r2.id);
+            return list.length === 2 ? list : null;
+          },
+          { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
+        );
+        console.log(`  ${entries.map((e) => `#${e.prNumber}:${e.state}`).join(", ")}`);
+      });
       await check("parOrder", async () => {
         const done = await Promise.all([waitMerged(api, project.id, r1.id), waitMerged(api, project.id, r2.id)]);
         const byQueue = [...done].sort((x, y) => x.createdAt.localeCompare(y.createdAt));
@@ -1174,4 +1187,6 @@ async function main(): Promise<number> {
   return printSummary() > 0 || unexpected ? 1 : 0;
 }
 
-process.exitCode = await main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  process.exitCode = await main();
+}

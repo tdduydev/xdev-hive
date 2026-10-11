@@ -92,7 +92,15 @@
       "runToken": "jwt"
     },
     { "type": "ack", "v": 1, "id": "h-ack", "runId": "run-1", "uptoSeq": 9 },
-    { "type": "steer", "v": 1, "id": "h-steer", "runId": "run-1", "input": "dùng pnpm" },
+    {
+      "type": "steer",
+      "v": 1,
+      "id": "h-steer-ack",
+      "runId": "run-1",
+      "attempt": 2,
+      "steerId": "42",
+      "input": "thêm test"
+    },
     {
       "type": "approval_result",
       "v": 1,

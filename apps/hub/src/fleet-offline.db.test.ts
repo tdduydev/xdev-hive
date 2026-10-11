@@ -54,7 +54,7 @@ async function machine(status = "offline"): Promise<{ machine: AuthedMachine; jo
     [id, org.orgId, org.teamId, name, status],
   );
   return {
-    machine: { id, orgId: org.orgId, teamId: org.teamId, name },
+    machine: { id, orgId: org.orgId, teamId: org.teamId, name, kind: "worker" },
     job: { orgId: org.orgId, machineId: id, offlineAt: (rows[0].last_seen_at as Date).toISOString() },
   };
 }
@@ -87,6 +87,11 @@ describe("thông báo máy offline", () => {
     await checkMachineOffline(pool, publicUrl, job, { jobs });
     const rows = await notices(m);
     expect(rows).toHaveLength(1);
+    const { rows: inbox } = await admin.query(
+      "select user_id from hive.inbox_items where org_id = $1 and event_key = $2",
+      [m.orgId, `${job.machineId}:${job.offlineAt}`],
+    );
+    expect(inbox.map((r) => r.user_id).sort()).toEqual([org.user("owner"), org.user("admin")].sort());
     expect(rows[0]).toMatchObject({
       event: "machine.offline",
       title: `Máy ${m.name} mất kết nối hơn 5 phút`,

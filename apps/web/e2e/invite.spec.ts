@@ -4,8 +4,8 @@ import { fail, fakeHub, ok, USER } from "./fake-hub.ts";
 const TOKEN = "7Hk2pQ9xLm4vRt8sWb3nZc6yJd1fGh5kAe0uIo2qXy4";
 const ORG = {
   id: "0a0a0a0a-0000-4000-8000-00000000000a",
-  slug: "fpt-xdev",
-  name: "FPT Software xDev",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
   emailDomain: "example.com",
   createdAt: "2026-10-01T03:00:00.000Z",
   role: "member",

@@ -5,12 +5,55 @@ import { id, orgRoute } from "./common.ts";
 export const notificationEvent = z.enum([
   "run.failed",
   "run.needs_review",
+  "plan.awaiting_approval",
   "project.provision_failed",
   "machine.offline",
   "member.pending",
   "merge.failed",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
+
+export const inboxCursor = z
+  .string()
+  .max(100)
+  .refine((value) => {
+    const [createdAt, itemId, extra] = value.split("~");
+    return extra === undefined && z.iso.datetime().safeParse(createdAt).success && id.safeParse(itemId).success;
+  }, "Con trỏ hộp thông báo không hợp lệ.");
+export const inboxListInput = z.object({
+  cursor: inboxCursor.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  unreadOnly: z
+    .enum(["true", "false"])
+    .or(z.boolean())
+    .transform((v) => v === true || v === "true")
+    .default(false),
+});
+export type InboxListInput = z.output<typeof inboxListInput>;
+export const inboxItem = z.object({
+  id,
+  event: notificationEvent,
+  title: z.string(),
+  body: z.string(),
+  link: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  readAt: z.iso.datetime().nullable(),
+});
+export type InboxItem = z.output<typeof inboxItem>;
+export const inboxContract = {
+  list: orgRoute("GET", "/v1/inbox", "Hộp thông báo cá nhân", "notify")
+    .input(inboxListInput)
+    .output(z.object({ items: z.array(inboxItem), nextCursor: inboxCursor.nullable() })),
+  unreadCount: orgRoute("GET", "/v1/inbox/unread-count", "Số thông báo chưa đọc", "notify").output(
+    z.object({ count: z.number().int().nonnegative() }),
+  ),
+  markRead: orgRoute("POST", "/v1/inbox/read", "Đánh dấu thông báo đã đọc", "notify")
+    .input(z.object({ ids: z.array(id).min(1).max(100) }))
+    .output(z.object({ count: z.number().int().nonnegative() })),
+  markAllRead: orgRoute("POST", "/v1/inbox/read-all", "Đánh dấu tất cả thông báo đã đọc", "notify").output(
+    z.object({ count: z.number().int().nonnegative() }),
+  ),
+};
 
 export const notificationChannelKind = z.enum(["telegram", "email"]);
 export type NotificationChannelKind = z.output<typeof notificationChannelKind>;

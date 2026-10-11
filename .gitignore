@@ -9,8 +9,12 @@ coverage/
 .DS_Store
 # Dump và .env sao lưu chứa dữ liệu/secret của bản triển khai.
 backups/
+.legacy/
 # Go
 worker/bin/
 # Tauri
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
+
+# Báo cáo và dữ liệu tạm của e2e sandbox.
+.e2e/

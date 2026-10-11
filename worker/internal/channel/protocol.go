@@ -26,6 +26,9 @@ type Hello struct {
 	Version    string   `json:"version"`
 	ProtoRange [2]int   `json:"protoRange"`
 	OS         string   `json:"os"`
+	RunnerMode string   `json:"runnerMode,omitempty"`
+	CPUCount   int      `json:"cpuCount,omitempty"`
+	MemoryMB   uint64   `json:"memoryMB,omitempty"`
 	CLIs       []string `json:"clis"`
 	Capacity   int      `json:"capacity"`
 	ResumeRuns []string `json:"resumeRuns"`
@@ -157,12 +160,15 @@ type Ack struct {
 	UptoSeq int64  `json:"uptoSeq"`
 }
 
+// Steer: Attempt và SteerID do hub mới gửi. Chỉ khi có SteerID worker mới báo lại bằng run_event "steer_result".
 type Steer struct {
-	Type  string `json:"type"`
-	V     int    `json:"v"`
-	ID    string `json:"id"`
-	RunID string `json:"runId"`
-	Input string `json:"input"`
+	Type    string `json:"type"`
+	V       int    `json:"v"`
+	ID      string `json:"id"`
+	RunID   string `json:"runId"`
+	Attempt int    `json:"attempt,omitempty"`
+	SteerID string `json:"steerId,omitempty"`
+	Input   string `json:"input"`
 }
 
 type ApprovalResult struct {

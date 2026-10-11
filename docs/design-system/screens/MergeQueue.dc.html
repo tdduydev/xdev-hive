@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Hàng merge</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent)}a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+button:disabled{opacity:.5;cursor:not-allowed}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
+  <dc-import name="Sidebar" active="projects" hint-size="240px,1000px"></dc-import>
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <header style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 12.5px; color: var(--muted);">Dự án / Thanh toán</div>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.3; font-weight: 600; color: var(--ink);">payment-api</h1>
+      </div>
+      <nav aria-label="Mục của dự án" style="display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto;">
+        <a href="#" style="padding: 8px 12px; color: var(--muted); text-decoration: none; font-weight: 500;">Tổng quan</a>
+        <a href="Tasks.dc.html" style="padding: 8px 12px; color: var(--muted); text-decoration: none; font-weight: 500;">Việc</a>
+        <a href="#" aria-current="page" style="padding: 8px 12px; color: var(--ink); text-decoration: none; font-weight: 600; border-bottom: 2px solid var(--accent); margin-bottom: -1px;">Hàng merge</a>
+        <a href="#" style="padding: 8px 12px; color: var(--muted); text-decoration: none; font-weight: 500;">Cài đặt</a>
+      </nav>
+    </header>
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;">
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px;">
+        <span><span style="color: var(--muted);">Chế độ</span> <span style="color: var(--ink); font-weight: 500;">Tự vào hàng khi run đạt</span></span>
+        <span><span style="color: var(--muted);">Cách merge</span> <span style="color: var(--ink); font-weight: 500;">Squash</span></span>
+        <span><span style="color: var(--muted);">CI</span> <span style="color: var(--ink); font-weight: 500;">Bắt buộc xanh</span></span>
+        <span><span style="color: var(--muted);">Người duyệt</span> <span style="color: var(--ink); font-weight: 500;">1, theo bảo vệ nhánh trên GitHub</span></span>
+      </div>
+      <form onSubmit="{{enqueue}}" style="display: flex; gap: 8px; align-items: center;">
+        <label for="pr" style="font-size: 13px; font-weight: 500; color: var(--ink);">Số PR</label>
+        <input id="pr" inputmode="numeric" value="{{draft}}" onChange="{{setDraft}}" style="width: 88px; height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-family: var(--font-mono);">
+        <button type="submit" style="height: 36px; padding: 0 14px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;">Đưa vào hàng</button>
+      </form>
+    </div>
+    <section style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto;">
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Đang trong hàng</h2>
+        <span style="font-size: 12px; color: var(--muted);">Merge lần lượt từ trên xuống; mục đầu được cập nhật theo main và chờ CI trước khi merge.</span>
+      </div>
+      <table style="width: 100%; min-width: 860px; border-collapse: collapse; font-size: 13.5px;">
+        <thead>
+          <tr style="background: var(--subtle); text-align: left; font-size: 13px; color: var(--muted);">
+            <th style="padding: 10px 12px; font-weight: 500; width: 48px;">Vị trí</th>
+            <th style="padding: 10px 12px; font-weight: 500;">PR</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Trạng thái</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Ghi chú</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Việc</th>
+            <th style="padding: 10px 12px; font-weight: 500;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{active}}" as="e" hint-placeholder-count="4">
+            <tr style="border-top: 1px solid var(--line); height: 56px;">
+              <td style="padding: 8px 12px; font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;">{{e.position}}</td>
+              <td style="padding: 8px 12px; min-width: 260px;"><div style="display: flex; flex-direction: column; line-height: 1.35;"><span style="color: var(--ink); font-weight: 500;"><span style="font-family: var(--font-mono); font-size: 12.5px; color: var(--accent);">{{e.pr}}</span> {{e.title}}</span><span style="font-family: var(--font-mono); font-size: 12px; color: var(--muted);">{{e.branch}} · {{e.sha}}</span></div></td>
+              <td style="padding: 8px 12px; white-space: nowrap;"><span style="{{e.chip}}"><span style="width: 6px; height: 6px; border-radius: 9999px; background: currentColor;"></span>{{e.state}}</span></td>
+              <td style="padding: 8px 12px; color: var(--muted); font-size: 13px;">{{e.note}}</td>
+              <td style="padding: 8px 12px; font-family: var(--font-mono); font-size: 12.5px;"><a href="RunDetail.dc.html" style="text-decoration: none;">{{e.task}}</a></td>
+              <td style="padding: 8px 12px; text-align: right;"><button type="button" onClick="{{e.remove}}" disabled="{{e.locked}}" title="{{e.removeHint}}" style="height: 32px; padding: 0 12px; background: var(--surface); color: var(--bad); border: 1px solid var(--bad); border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer;">Bỏ khỏi hàng</button></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 0; padding: 32px 16px; text-align: center; color: var(--muted);">Chưa có PR nào trong hàng. Nhập số PR ở trên để đưa vào hàng.</p>
+      </sc-if>
+    </section>
+    <section style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto;">
+      <h2 style="margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: 600; color: var(--ink);">Đã xong gần đây</h2>
+      <table style="width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13.5px;">
+        <tbody>
+          <sc-for list="{{finished}}" as="f" hint-placeholder-count="3">
+            <tr style="border-top: 1px solid var(--line); height: 48px;">
+              <td style="padding: 8px 16px; min-width: 260px; color: var(--ink);"><span style="font-family: var(--font-mono); font-size: 12.5px; color: var(--accent);">{{f.pr}}</span> {{f.title}}</td>
+              <td style="padding: 8px 12px; white-space: nowrap;"><span style="{{f.chip}}">{{f.state}}</span></td>
+              <td style="padding: 8px 12px; color: var(--muted); font-size: 13px;">{{f.note}}</td>
+              <td style="padding: 8px 16px; color: var(--muted); font-size: 12.5px; text-align: right; white-space: nowrap;">{{f.when}}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      draft: '133',
+      entries: [
+        { id: 'a', pr: '#127', title: 'Nâng Go lên 1.27 trong worker', branch: 'ai/TASK-40', sha: '4e1c9a2', kind: 'merging', state: 'Đang merge', note: 'CI xanh, đang squash vào main', task: 'TASK-40' },
+        { id: 'b', pr: '#128', title: 'Thêm phân trang cho API giao dịch', branch: 'ai/TASK-41', sha: 'b7d03f1', kind: 'waiting', state: 'Chờ CI', note: '3/5 kiểm tra xong', task: 'TASK-41' },
+        { id: 'c', pr: '#131', title: 'Bỏ mã cũ của cổng thanh toán', branch: 'ai/TASK-35', sha: '90aa6e4', kind: 'updating', state: 'Cập nhật nhánh', note: 'main vừa tiến, đang gộp vào nhánh PR', task: 'TASK-35' },
+        { id: 'd', pr: '#129', title: 'Ghi log thời gian gọi ngân hàng', branch: 'ai/TASK-36', sha: 'c21f7e0', kind: 'queued', state: 'Chờ tới lượt', note: '', task: 'TASK-36' },
+      ],
+    };
+  }
+  renderVals() {
+    const tone = { merging: ['var(--sel)', 'var(--sel-fg)'], updating: ['var(--sel)', 'var(--sel-fg)'], waiting: ['var(--warn-bg)', 'var(--warn)'], queued: ['var(--subtle)', 'var(--muted)'] };
+    const chip = (k) => `display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: ${tone[k][0]}; color: ${tone[k][1]};`;
+    const active = this.state.entries.map((e, i) => ({
+      ...e, position: i + 1, chip: chip(e.kind), locked: e.kind === 'merging',
+      removeHint: e.kind === 'merging' ? 'PR đang được merge, không bỏ khỏi hàng được' : 'Bỏ PR này khỏi hàng merge',
+      remove: () => this.setState({ entries: this.state.entries.filter((x) => x.id !== e.id) }),
+    }));
+    const done = (bg, fg) => `display: inline-flex; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: ${bg}; color: ${fg};`;
+    const finished = [
+      { pr: '#124', title: 'Đổi route web sang tiếng Anh', state: 'Đã merge', chip: done('var(--ok-bg)', 'var(--ok)'), note: 'squash 9c1e2ab', when: '18:20 hôm nay' },
+      { pr: '#122', title: 'Gộp hai bảng phí giao dịch', state: 'Không merge được', chip: done('var(--bad-bg)', 'var(--bad)'), note: 'Xung đột với nhánh chính ở billing/fees.ts', when: '16:05 hôm nay' },
+      { pr: '#120', title: 'Thử nghiệm cache tỉ giá', state: 'Đã bỏ', chip: done('var(--subtle)', 'var(--muted)'), note: 'Trần Lan bỏ khỏi hàng', when: 'hôm qua' },
+    ];
+    return {
+      theme: this.props.dark ? 'dark' : 'light', active, finished, empty: active.length === 0, draft: this.state.draft,
+      setDraft: (ev) => this.setState({ draft: ev.target.value }),
+      enqueue: (ev) => {
+        ev.preventDefault();
+        const n = String(this.state.draft || '').trim();
+        if (!n) return;
+        this.setState({ draft: '', entries: [...this.state.entries, { id: 'n' + n + Date.now(), pr: '#' + n, title: 'PR mới vào hàng', branch: 'đang đọc PR…', sha: '—', kind: 'queued', state: 'Chờ tới lượt', note: 'hub sẽ đọc nhánh và CI của PR', task: '—' }] });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

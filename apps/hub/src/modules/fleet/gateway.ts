@@ -119,6 +119,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         if (msg.type !== "hello") return ws.close(CLOSE.badMessage, "Cần gửi hello trước");
         clearTimeout(helloTimer);
         if (msg.machineId !== machine.name) return ws.close(CLOSE.machineMismatch, "machineId không khớp token");
+        if ((msg.runnerMode ?? "worker") !== machine.kind) {
+          return ws.close(CLOSE.machineMismatch, "Chế độ runner không khớp loại máy đã đăng ký");
+        }
         const [lo, hi] = msg.protoRange;
         // Chưa có kênh phát hành worker để gửi upgrade_required (cần url, sha256, chữ ký), nên đóng kèm mã riêng.
         if (lo > PROTOCOL_VERSION || hi < PROTOCOL_VERSION) {

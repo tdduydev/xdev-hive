@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 4174;
+// Mỗi worktree có thể dùng cổng riêng để không tái sử dụng Vite của một task khác.
+const port = Number(process.env.HIVE_WEB_E2E_PORT ?? 4174);
 
 export default defineConfig({
   testDir: "e2e",

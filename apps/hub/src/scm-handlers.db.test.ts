@@ -334,9 +334,15 @@ describe("bình luận nhắc @hive trên PR của run", () => {
     sent.length = 0;
     await emit([mention(202, "@hive nhớ thêm test")]);
     expect(await runsOf(task.id)).toHaveLength(1);
-    expect(sent).toEqual([{ machineId, msg: { type: "steer", runId, input: "@hive nhớ thêm test" } }]);
+    // Gửi tới máy chưa phải đã vào agent: delivered chờ worker báo lại bằng steer_result mang steerId.
     expect(await steers(runId)).toEqual([
-      { data: { input: "@hive nhớ thêm test", by: "gitlab:lan", delivered: true } },
+      { data: { input: "@hive nhớ thêm test", by: "gitlab:lan", delivered: false, sent: true } },
+    ]);
+    const { rows } = await admin.query("select id::text from hive.run_events where run_id = $1 and type = 'steer'", [
+      runId,
+    ]);
+    expect(sent).toEqual([
+      { machineId, msg: { type: "steer", runId, attempt: 1, steerId: rows[0].id, input: "@hive nhớ thêm test" } },
     ]);
     expect(repo.comments.find((c) => c.number === 202)?.body).toContain("Đã chuyển chỉ dẫn");
   });

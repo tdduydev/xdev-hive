@@ -15,9 +15,9 @@ describe("initials", () => {
 });
 
 describe("emailDomain", () => {
-  it("lấy tên miền, chữ thường", () => expect(emailDomain(" Duy@example.com ")).toBe("example.com"));
+  it("lấy tên miền, chữ thường", () => expect(emailDomain(" Duy@Example.COM ")).toBe("example.com"));
   it("tên miền con", () => expect(emailDomain("a@mail.example.com.vn")).toBe("mail.example.com.vn"));
-  it.each(["", "duy", "duy@", "@example.com", "duy@fpt", "duy@fpt.", "a b@example.com", "a@b@example.com"])(
+  it.each(["", "duy", "duy@", "@example.com", "duy@example", "duy@example.", "a b@example.com", "a@b@example.com"])(
     "%j không hợp lệ",
     (email) => expect(emailDomain(email)).toBeNull(),
   );

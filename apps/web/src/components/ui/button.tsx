@@ -6,6 +6,10 @@ const variants = {
   primary: "border-accent bg-accent text-on-accent hover:not-data-disabled:bg-accent-hover",
   // Mockup không đổi nền khi rê chuột lên nút ghost; thêm nền nhạt để biết là bấm được.
   ghost: "border-transparent bg-transparent text-ink hover:not-data-disabled:bg-subtle",
+  /** Thao tác huỷ, xoá: nút viền đỏ như "Huỷ run" trong thiết kế RunDetail.dc.html. */
+  danger: "border-bad bg-surface text-bad hover:not-data-disabled:bg-bad-bg",
+  /** Nút xác nhận trong dialog huỷ, xoá. */
+  dangerSolid: "border-bad bg-bad text-on-accent hover:not-data-disabled:opacity-90",
 };
 
 const sizes = {

@@ -2,7 +2,10 @@
 // rồi báo cáo bằng tool MCP task_update như agent thật. Nhờ vậy kiểm được luồng worker → hub → PR mà không gọi AI.
 // Worker chạy: node scripts/e2e-fake-cli.ts "<prompt>" trong worktree của run.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { probeProxy } from "./e2e-sandbox-probe.ts";
 
 const prompt = process.argv[2] ?? "";
 // Máy CI không có danh tính git global; đặt qua biến môi trường để không đụng cấu hình của worktree.
@@ -16,8 +19,45 @@ const gitEnv = {
 const git = (...args: string[]) => execFileSync("git", args, { env: gitEnv, encoding: "utf8" }).trim();
 
 console.log(`[cli giả] nhận việc: ${prompt.split("\n")[0]}`);
+const { HTTP_PROXY: proxyUrl } = process.env;
+const sandboxUrls = /\[e2e-sandbox:(http:\/\/[^\s]+) (http:\/\/[^\s\]]+)\]/.exec(prompt);
+if (sandboxUrls) {
+  const allowedUrl = sandboxUrls[1];
+  const blockedUrl = sandboxUrls[2];
+  if (!allowedUrl || !blockedUrl || !proxyUrl) throw new Error("Thiếu cấu hình kiểm mạng sandbox.");
+  const proxy = new URL(proxyUrl);
+  const connection = { host: proxy.hostname, port: Number(proxy.port) };
+  const allowed = await probeProxy(allowedUrl, connection);
+  const blocked = await probeProxy(blockedUrl, connection);
+  const interfaces = readdirSync("/sys/class/net").sort();
+  writeFileSync("sandbox-network.json", JSON.stringify({ allowed, blocked, interfaces }, null, 2));
+  console.log(
+    `[cli giả] đã ghi kết quả mạng: ${allowed.status}, ${blocked.status}; card mạng ${interfaces.join(", ")}`,
+  );
+  // The harness inspects the live container before allowing the successful CLI to finish.
+  const deadline = Date.now() + 120_000;
+  while (!existsSync(".e2e-release")) {
+    if (Date.now() > deadline) throw new Error("Hết thời gian chờ e2e kiểm container.");
+    await delay(100);
+  }
+}
 // Dấu [e2e-file:tên] cho ca nhiều task song song: mỗi task ghi file riêng để PR không xung đột nhau.
 const own = /\[e2e-file:([\w.-]+)\]/.exec(prompt)?.[1];
+const peer = /\[e2e-peer:([\w.-]+)\]/.exec(prompt)?.[1];
+if (own && peer) {
+  const parallelDir = process.argv[3];
+  if (!parallelDir) throw new Error("CLI giả thiếu thư mục đồng bộ cho ca song song.");
+  // Hai CLI phải cùng tồn tại: capacity 1 sẽ hết thời gian chờ, thay vì tạo hai PR nối tiếp mà vẫn báo đạt.
+  mkdirSync(parallelDir, { recursive: true });
+  writeFileSync(join(parallelDir, own), "ready");
+  const deadline = Date.now() + 45_000;
+  while (!existsSync(join(parallelDir, peer))) {
+    if (Date.now() >= deadline) throw new Error(`Hết thời gian chờ CLI của task ${peer} chạy đồng thời.`);
+    await delay(50);
+  }
+  // Giữ khoảng chạy chồng đủ dài để phân biệt được hai pha running/verifying trong nhật ký của hub.
+  await delay(200);
+}
 const target = own ? `e2e-notes/${own}` : "README.md";
 if (own) {
   mkdirSync("e2e-notes", { recursive: true });
@@ -26,6 +66,7 @@ if (own) {
   appendFileSync(target, `\n## Ghi chú của agent giả\n\n${prompt}\n`);
 }
 git("add", target);
+if (sandboxUrls) git("add", "sandbox-network.json");
 git("commit", "--quiet", "-m", "docs: ghi chú của agent giả (e2e)");
 const sha = git("rev-parse", "HEAD");
 console.log(`[cli giả] đã commit ${sha}`);
@@ -62,11 +103,11 @@ async function callTool(hub: string, token: string, name: string, args: Record<s
 
 // Worker đặt hai biến này cho CLI của run (worker/internal/channel).
 const { HIVE_RUN_TOKEN: token, HIVE_HUB_URL: hub } = process.env;
-if (token && hub) {
+if (token && hub && !sandboxUrls) {
   try {
     const out = await callTool(hub, token, "task_update", {
       status: "review",
-      note: `Agent giả đã thêm ghi chú vào README.md (commit ${sha.slice(0, 12)}).`,
+      note: `Agent giả đã thêm ghi chú vào ${target} (commit ${sha.slice(0, 12)}).`,
     });
     console.log(`[cli giả] đã báo cáo qua MCP: ${out}`);
   } catch (e) {

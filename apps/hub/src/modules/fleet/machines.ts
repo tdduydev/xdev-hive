@@ -1,5 +1,5 @@
-import type { Machine } from "@xdev-hive/contracts";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import type { Machine, MachineKind } from "@xdev-hive/contracts";
+import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { notify } from "../notify/index.ts";
@@ -12,12 +12,13 @@ import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
 export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   id: m.id,
   teamId: m.teamId,
+  kind: m.kind,
   name: m.name,
   os: m.os,
   version: m.version,
   clis: m.clis,
   capacity: m.capacity,
-  status: m.status,
+  status: m.pausedAt ? "paused" : m.status,
   lastSeenAt: m.lastSeenAt?.toISOString() ?? null,
   createdAt: m.createdAt.toISOString(),
 });
@@ -39,7 +40,7 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
   await tx.delete(machineTokens).where(eq(machineTokens.machineId, machineId));
   const [row] = await tx
     .update(machines)
-    .set({ status: "revoked", revokedAt: found.revokedAt ?? sql`now()` })
+    .set({ status: "revoked", pausedAt: null, revokedAt: found.revokedAt ?? sql`now()` })
     .where(eq(machines.id, machineId))
     .returning();
   if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
@@ -52,12 +53,50 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
   return toMachine(row);
 }
 
+async function setMachinePaused(tx: Tx, userId: string, machineId: string, paused: boolean): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
+  const [row] = await tx
+    .update(machines)
+    .set({ pausedAt: paused ? (found.pausedAt ?? sql`now()`) : null })
+    .where(eq(machines.id, machineId))
+    .returning();
+  if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  if (Boolean(found.pausedAt) !== paused) {
+    await recordAudit(tx, {
+      action: paused ? "machine.pause" : "machine.resume",
+      targetType: "machine",
+      targetId: machineId,
+      data: { name: row.name, teamId: row.teamId },
+    });
+  }
+  return toMachine(row);
+}
+
+export async function machineIsPaused(tx: Tx, machineId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ pausedAt: machines.pausedAt })
+    .from(machines)
+    .where(eq(machines.id, machineId))
+    .for("update");
+  return row?.pausedAt !== null && row?.pausedAt !== undefined;
+}
+
+export const pauseMachine = (tx: Tx, userId: string, machineId: string) =>
+  setMachinePaused(tx, userId, machineId, true);
+
+export const resumeMachine = (tx: Tx, userId: string, machineId: string) =>
+  setMachinePaused(tx, userId, machineId, false);
+
 /** Máy đã xác thực bằng machine token; gateway giữ thông tin này suốt phiên. */
 export interface AuthedMachine {
   id: string;
   orgId: string;
   teamId: string;
   name: string;
+  kind: MachineKind;
 }
 
 export const FLEET_OFFLINE_QUEUE = "fleet-offline-check";
@@ -88,7 +127,13 @@ export async function authenticateMachine(pool: pg.Pool, token: string): Promise
   if (!found) return null;
   const [row] = await withTenant(pool, { orgId: found.orgId }, (tx) =>
     tx
-      .select({ id: machines.id, orgId: machines.orgId, teamId: machines.teamId, name: machines.name })
+      .select({
+        id: machines.id,
+        orgId: machines.orgId,
+        teamId: machines.teamId,
+        name: machines.name,
+        kind: machines.kind,
+      })
       .from(machines)
       .where(and(eq(machines.id, found.machineId), isNull(machines.revokedAt))),
   );
@@ -110,7 +155,12 @@ export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: Machine
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
       .update(machines)
-      .set({ ...info, status: "online", lastSeenAt: sql`now()`, offlineNotifiedAt: null })
+      .set({
+        ...info,
+        status: "online",
+        lastSeenAt: sql`now()`,
+        offlineNotifiedAt: null,
+      })
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
       .returning({ id: machines.id }),
   );
@@ -127,7 +177,11 @@ export async function markOffline(
     const [row] = await tx
       .update(machines)
       // Payload JSON giữ mili giây; làm tròn timestamp để job không mất micro giây khi so sánh lúc xử lý.
-      .set({ status: "offline", lastSeenAt: sql`date_trunc('milliseconds', now())`, offlineNotifiedAt: null })
+      .set({
+        status: "offline",
+        lastSeenAt: sql`date_trunc('milliseconds', now())`,
+        offlineNotifiedAt: null,
+      })
       .where(and(eq(machines.id, m.id), eq(machines.status, "online"), isNull(machines.revokedAt)))
       .returning({ offlineAt: machines.lastSeenAt });
     if (!row?.offlineAt || !opts.jobs) return;
@@ -186,6 +240,7 @@ export async function checkMachineOffline(
       {
         orgId: job.orgId,
         event: "machine.offline",
+        eventKey: `${job.machineId}:${job.offlineAt}`,
         title: `Máy ${row.name} mất kết nối hơn ${delayMinutes} phút`,
         body: `Đội ${row.teamName}.`,
         link: `${publicUrl.replace(/\/+$/, "")}/admin/machines`,
@@ -215,22 +270,41 @@ export async function registerFleetOfflineWorker(
 export async function listOnlineMachines(
   tx: Tx,
   teamId: string,
+  kind: MachineKind = "worker",
 ): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number }>> {
   return tx
     .select({ id: machines.id, name: machines.name, clis: machines.clis, capacity: machines.capacity })
     .from(machines)
-    .where(and(eq(machines.teamId, teamId), eq(machines.status, "online"), isNull(machines.revokedAt)))
+    .where(
+      and(
+        eq(machines.teamId, teamId),
+        eq(machines.kind, kind),
+        eq(machines.status, "online"),
+        isNull(machines.pausedAt),
+        isNull(machines.revokedAt),
+      ),
+    )
     .orderBy(asc(machines.lastSeenAt));
+}
+
+/** Tên của các máy trong tổ chức của context (kể cả máy đã thu hồi), để hiện kèm run. */
+export async function machineNames(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: machines.id, name: machines.name })
+    .from(machines)
+    .where(inArray(machines.id, ids));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */
 export async function findMachine(
   tx: Tx,
   id: string,
-): Promise<{ id: string; teamId: string; revoked: boolean } | null> {
+): Promise<{ id: string; teamId: string; kind: MachineKind; revoked: boolean } | null> {
   const [row] = await tx
-    .select({ id: machines.id, teamId: machines.teamId, revokedAt: machines.revokedAt })
+    .select({ id: machines.id, teamId: machines.teamId, kind: machines.kind, revokedAt: machines.revokedAt })
     .from(machines)
     .where(eq(machines.id, id));
-  return row ? { id: row.id, teamId: row.teamId, revoked: row.revokedAt !== null } : null;
+  return row ? { id: row.id, teamId: row.teamId, kind: row.kind, revoked: row.revokedAt !== null } : null;
 }

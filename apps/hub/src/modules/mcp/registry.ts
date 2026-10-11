@@ -64,7 +64,11 @@ export class McpToolRegistry {
 
   list(principal?: McpPrincipal): McpTool<z.ZodObject, unknown>[] {
     const tools = [...this.#tools.values()];
-    if (!principal || principal.kind === "user") return tools;
+    if (!principal) return tools;
+    if (principal.kind === "user") return tools.filter((tool) => !tool.runKinds?.includes("leader"));
+    if (principal.runKind === "leader") {
+      return tools.filter((tool) => tool.name === "leader_reply" || tool.name === "leader_propose");
+    }
     return tools.filter(
       (tool) =>
         RUN_TOOLS.has(tool.name) || (principal.runKind !== undefined && tool.runKinds?.includes(principal.runKind)),

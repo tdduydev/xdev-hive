@@ -4,6 +4,7 @@
 export type { Principal } from "./access.ts";
 export { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
 export { createOpenAIEmbedder, type Embedder, EmbedderError } from "./embedder.ts";
+export { type ImportReport, importLegacy, type LegacyImportOptions } from "./legacy-import.ts";
 export { MCP_LIMITS, registerMcpTools } from "./mcp-tools.ts";
 export {
   EMBED_QUEUE,

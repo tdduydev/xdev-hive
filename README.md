@@ -1,154 +1,156 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/design-system/assets/logos/png/xdev-hive-dark.png">
+    <img alt="xDev Hive" src="docs/design-system/assets/logos/png/xdev-hive-light.png" width="300">
+  </picture>
+</p>
+
+<p align="center"><b>A self-hosted control plane for teams that run coding agents.</b></p>
+
+<p align="center">English · <a href="README.vi.md">Tiếng Việt</a></p>
+
 # xDev Hive
 
-Nơi nhiều đội trong một tổ chức giao việc cho coding agent CLI (Claude Code, Codex, Gemini CLI), dùng chung memory, tài liệu, skill, rồi review và merge kết quả.
+xDev Hive lets several teams in one organization hand work to coding-agent CLIs (Claude Code, Codex, Gemini CLI),
+run those agents on their own machines or in sandboxes, share memory, docs and skills between runs, and review and
+merge the results through a single board.
 
-Bản viết lại, đang ở giai đoạn thiết kế. Bản cũ: [`tdduydev/xdev-hive-old`](https://github.com/tdduydev/xdev-hive-old).
+> **Status:** early and moving fast (pre-1.0). APIs, database schema and the worker protocol may still change between
+> releases. The web UI is currently in Vietnamese; English UI and docs are planned.
 
-## Tài liệu
+## Why
 
-- [Kiến trúc](docs/architecture.md): thành phần, module, dữ liệu, giao thức worker, bảo mật, vận hành, thứ tự xây dựng.
-- [Quyết định](docs/decisions.md): phạm vi, stack và phiên bản đã chốt.
-- [Phân tích hệ cũ](docs/history/phan-tich-2026-10/README.md).
+Coding agents are good at individual tasks, but a team running many of them quickly needs answers to questions a single
+CLI session cannot give: which machine runs which task, what did it cost, who reviews the PR, what did the last agent
+learn about this repo, and how do we keep agents from stepping on each other's branches. xDev Hive is the hub that
+answers those questions while the agents keep running where your code and credentials already live.
 
-## Stack
+## Features
 
-Hub và web: TypeScript (Node, Hono, oRPC, Drizzle, pg-boss, Better Auth, MCP SDK v2, React, Vite). Worker và runner host: Go. Desktop: Tauri. Dữ liệu: PostgreSQL với RLS và pgvector.
+- **Task board and runs.** Create tasks per project, assign them to an agent CLI, follow each run live (phases, logs,
+  events over SSE), cancel it, or send extra instructions to a running Claude Code session.
+- **Your machines, your logins.** A small Go worker runs on macOS, Linux or Windows dev machines and drives the CLIs
+  that are already logged in there. The hub never stores CLI credentials. Workers can run as a background service.
+- **Outcome policies.** Each project decides what "done" means: exit codes, required checks, agent reports, CI status,
+  and optional cross-review by a different agent CLI, only when the diff is large or touches sensitive paths.
+- **Merge queue.** Approved PRs merge one by one on GitHub or GitLab; branches are updated against the latest base and
+  CI must pass before each merge.
+- **Plan mode.** For projects that want it, an agent first writes a plan in a read-only run; a human approves, edits or
+  rejects it before any code is written.
+- **Leader chat.** Talk to a leader agent about a project; it can only propose actions (create or assign tasks, change
+  settings, …), and nothing happens until someone with the right permission approves the proposal.
+- **Shared knowledge over MCP.** Agents in a run get a scoped MCP gateway with memory search, docs, skills and task
+  updates, using a short-lived run token. Teams curate memory, documents and skills in the hub.
+- **Costs and budgets.** Token usage and cost are recorded per run, task, CLI and machine. Projects can cap cost per
+  run, per task and the number of turns; runs that exceed a budget are stopped with a reason.
+- **Sandboxed runs (optional).** A runner host executes runs in single-use gVisor containers with no network
+  interface; the only way out is an egress proxy with a default-deny allowlist per organization and project.
+- **Notifications.** Telegram and email channels per organization, plus a personal inbox in the web app.
+- **Invite-only accounts.** Email and password, GitHub, GitLab and organization SSO (OIDC). Nobody can self-register;
+  people join through invitations or a verified SSO domain. Multi-tenant data isolation is enforced with PostgreSQL
+  row-level security.
+- **Desktop app.** A Tauri app that registers the machine, runs the worker in the background and shows notifications.
 
-## Chạy tại máy
+## How it works
 
-Cần Docker Compose v2, Node 24+, pnpm 12, Go 1.27, Rust (chỉ khi làm app desktop).
+```mermaid
+flowchart LR
+  subgraph Hub["Hub (TypeScript)"]
+    API["API + web app"]
+    MCP["MCP gateway"]
+    Jobs["Jobs: merge queue, reviews, notifications"]
+  end
+  DB[("PostgreSQL + RLS + pgvector")]
+  W["Worker (Go) on dev machines\nClaude Code / Codex / Gemini CLI"]
+  RH["Runner host (Go)\ngVisor containers"]
+  EP["Egress proxy\n(allowlist)"]
+  SCM["GitHub / GitLab"]
+
+  API --- DB
+  Jobs --- DB
+  W <-->|"WebSocket: leases, logs, results"| API
+  RH <-->|"same protocol"| API
+  RH --- EP
+  W -->|"run token"| MCP
+  Jobs <--> SCM
+  W -->|"git push, PR"| SCM
+```
+
+1. A task is assigned to an agent CLI. The hub offers the run to an online machine that has that CLI and free capacity.
+2. The worker prepares a git worktree, starts the CLI with the task prompt and a scoped MCP configuration, and streams
+   logs, usage and results back over a durable, acknowledged WebSocket channel.
+3. When the agent finishes, the hub evaluates the project's outcome policy, opens the PR, optionally starts a
+   cross-review run, and moves the PR into the merge queue.
+
+Machines connect out to the hub, so dev machines behind NAT or a firewall work without inbound ports.
+
+## Quick start (local development)
+
+Requirements: Docker with Compose v2, Node 24+, pnpm 12, Go 1.27. Rust is only needed for the desktop app.
 
 ```sh
 pnpm install
-pnpm dev                             # Postgres, setup DB, hub :3000 và web :5173
+pnpm dev                 # PostgreSQL, database setup, hub on :3000 and web on :5173
 cd worker && go run ./cmd/hive-worker check --hub http://localhost:3000
 ```
 
-Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.md](AGENTS.md).
-
-Chạy thử trọn luồng (Postgres, hub, đăng ký, dự án, worker, task, run, PR): `pnpm e2e:smoke`. Cần Docker (Testcontainers), Go và git; mặc định dùng repo git cục bộ và CLI giả, không ra mạng ngoài. Biến môi trường cho GitHub thật, CLI thật hay Postgres có sẵn ghi ở đầu [scripts/e2e-smoke.ts](scripts/e2e-smoke.ts).
-
-## Triển khai
-
-Lên một máy chủ có Docker và docker compose v2, từ máy dev:
+Run the whole flow end to end (PostgreSQL, hub, sign-up, project, worker, task, run, PR, merge queue) against a local
+git repository and a fake CLI, with no external network access:
 
 ```sh
-HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <user>@<máy-chủ>
+pnpm e2e:smoke
 ```
 
-- Script gửi mã của commit đang chọn (tham số thứ hai, mặc định `HEAD`) bằng `git archive` qua SSH, nên máy chủ không
-  cần quyền đọc repo private. Mã nằm ở `<dir>/src`, mặc định `<dir>` là `/opt/xdev-hive` (đổi bằng `HIVE_REMOTE_DIR`).
-  Sau đó script chạy `docker compose up -d --build` và chờ hub báo healthy.
-- **Máy chủ đã chạy hệ khác có compose project tên `xdev-hive` (ví dụ hệ cũ) thì phải đặt `HIVE_COMPOSE_PROJECT` khác**
-  ở lần đầu. Nếu không, compose sẽ coi container của hệ kia là của mình. Tên này được lưu vào `<dir>/.env` cho các lần
-  sau.
-- Lần đầu, mật khẩu database, `HIVE_AUTH_SECRET` và `HIVE_MASTER_KEY` được sinh ngay trên máy chủ vào `<dir>/.env`
-  (quyền 600). Script không in chúng ra và không chép về máy dev. **Sao lưu `HIVE_MASTER_KEY`**: mất khoá là mất mọi
-  secret đã lưu (token Git, kênh thông báo).
-- Lần sau, script giữ nguyên secret và chỉ thêm biến mới còn thiếu. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
-  `HIVE_POSTGRES_IMAGE`, `HIVE_NODE_IMAGE` đặt theo tham số của lệnh.
-- `HIVE_BIND=0.0.0.0` cho máy chủ LAN không có HTTPS. Khi đó cổng `/mcp` tự tắt vì `HIVE_PUBLIC_URL` không phải https.
-- Muốn agent trong run vẫn gọi `task_update`, `memory_search` qua http trong mạng tin cậy, đặt `HIVE_MCP_ALLOW_HTTP=1`
-  (mặc định tắt). Khi đó `/mcp` chỉ nhận run token của agent: token OAuth hay request không có run token bị 401, còn
-  `/.well-known` và đăng nhập OAuth cho người dùng vẫn chỉ bật khi https. Run token đi qua http trần, nên chỉ bật cờ này
-  khi mạng giữa máy chủ và máy chạy worker là mạng tin cậy. Hub ghi một dòng cảnh báo lúc khởi động.
-  Dùng HTTPS thì để `HIVE_BIND` mặc định và thêm `--profile https` (Caddy).
-- User không thuộc nhóm docker thì đặt `HIVE_REMOTE_DOCKER="sudo docker"`.
+Before opening a pull request, run `pnpm check` (lint, typecheck, module boundaries, tests). Tests that use the database
+need Docker.
 
-### Người quản trị đầu tiên
+## Self-hosting
 
-Hub không cho tự đăng ký: chỉ người được mời mới có tài khoản, bằng mọi cách đăng nhập (email + mật khẩu, GitHub,
-GitLab, SSO). GitHub/GitLab chỉ tạo tài khoản khi email đã được nhà cung cấp xác minh. Lúc hub mới chạy chưa có ai để
-gửi lời mời, nên khai email người quản trị hub trong `HIVE_ORG_CREATORS` (cách nhau bằng dấu phẩy). Những email này
-được tạo tổ chức, và được tạo tài khoản dù chưa có lời mời: bằng GitHub/GitLab có email đã xác minh, hoặc bằng email +
-mật khẩu khi hub chưa có tổ chức nào.
+The hub ships as a Docker Compose stack (hub and PostgreSQL, with an optional Caddy profile for HTTPS). From a
+development machine with SSH access to a server:
 
 ```sh
-HIVE_ORG_CREATORS=duy@example.com HIVE_PUBLIC_URL=https://hive.example.com deploy/remote.sh <user>@<máy-chủ>
+HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com deploy/remote.sh user@server
 ```
 
-Sau đó người quản trị mở hub và đăng nhập bằng GitHub hoặc GitLab có email đó (đã xác minh với nhà cung cấp), rồi tạo
-tổ chức, cấu hình SSO và gửi lời mời. Hub chưa bật GitHub/GitLab thì đăng ký bằng email + mật khẩu qua API (web chưa có
-form đăng ký cho trường hợp này), rồi đăng nhập bằng email ở `/dang-nhap`:
+Secrets are generated on the server and never printed. Then register machines from the web app (Machines → Add machine)
+and install the worker on each one:
 
 ```sh
-curl -X POST https://hive.example.com/api/auth/sign-up/email -H 'content-type: application/json' \
-  -H 'origin: https://hive.example.com' \
-  -d '{"name":"Duy","email":"duy@example.com","password":"<ít nhất 10 ký tự>"}'
+hive-worker register --hub https://hive.example.com --token <one-time token>
+hive-worker service install
 ```
 
-Đăng ký bằng email không xác minh hộp thư: ai biết email trong `HIVE_ORG_CREATORS` mà đăng ký trước sẽ chiếm tài khoản
-đó. Vì vậy hub chỉ mở đường này khi chưa có tổ chức nào; hãy đăng ký ngay sau khi hub chạy. Sau khi đã có tổ chức, người
-quản trị khác vào bằng GitHub/GitLab hoặc bằng lời mời. `HIVE_ALLOW_EMAIL_SIGNUP=1` tắt hẳn quy tắc chỉ nhận người được
-mời, chỉ dùng khi dev.
+See [docs/self-hosting.md](docs/self-hosting.md) for configuration, the first administrator account, HTTPS, MCP over
+plain HTTP on trusted networks, backups and restore, background workers and sandboxed runs.
 
-SSO của tổ chức chỉ tự tạo tài khoản và tự xếp người vào tổ chức (theo chính sách vào thẳng hoặc chờ duyệt) khi tên
-miền đã được xác minh. Mỗi tên miền chỉ thuộc một tổ chức, và hub không nhận tên miền thư công cộng (gmail.com,
-outlook.com…). Hub chưa có bước xác minh tên miền bằng bản ghi TXT; tới lúc đó, quản trị hub kiểm tra tổ chức sở hữu
-tên miền rồi đặt trong database:
+## Repository layout
 
-```sql
-UPDATE auth."ssoProvider" SET "domainVerified" = true WHERE "providerId" = 'org-<id tổ chức>';
-```
+| Path | What it is |
+|---|---|
+| `apps/hub` | Hub: Node, Hono, oRPC, Drizzle, pg-boss, Better Auth, MCP SDK. Business logic lives in `src/modules/<name>/` |
+| `apps/web` | Web app: React, Vite, TanStack Query, Tailwind |
+| `apps/desktop` | Desktop app: Tauri |
+| `packages/contracts` | API contracts (oRPC + zod) and the worker protocol; generates `openapi.json` |
+| `worker` | Worker, runner host and egress proxy in Go (separate Go module) |
+| `deploy` | Docker Compose stack, remote deploy, backup and restore scripts |
+| `docs` | Architecture, decisions, design system and screen designs |
 
-Đổi tên miền trong cài đặt SSO thì mất xác minh. Mỗi ngày hub xoá tài khoản tạo quá 7 ngày mà không thuộc tổ chức nào
-và không có lời mời đang chờ (giữ email trong `HIVE_ORG_CREATORS`), vd. tài khoản tạo bằng lời mời mà lời mời bị thu hồi
-sau đó, hay người bị gỡ khỏi mọi tổ chức.
+## Documentation
 
-Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu, secret và `HIVE_ORG_CREATORS`,
-rồi chạy `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
-cho hàng đợi), chạy migration rồi khởi động API. Health: `/api/v1/health`.
+- [Self-hosting guide](docs/self-hosting.md)
+- [Architecture](docs/architecture.md): components, modules, data model, worker protocol, security and operations
+  (Vietnamese).
+- [Decisions](docs/decisions.md): scope, stack and pinned versions (Vietnamese).
+- [Design system](docs/design-system/README.md) and [screen designs](docs/design-system/screens/README.md).
+- [Contributor and agent conventions](AGENTS.md).
 
-### Sao lưu và khôi phục
+## Security
 
-Với bố cục của `deploy/remote.sh` (`<dir>/.env`, `<dir>/src`), chạy trên máy chủ:
+Please do not report security issues in public issues. Use GitHub's private vulnerability reporting for this
+repository instead.
 
-```sh
-cd <dir>/src
-deploy/backup.sh
-HIVE_BACKUP_KEEP=30 deploy/backup.sh
-deploy/restore.sh <dir>/backups/20261011T030000Z
-# Bỏ qua câu hỏi ghi đè .env khi chạy tự động:
-deploy/restore.sh <dir>/backups/20261011T030000Z --yes
-```
+## License
 
-- Backup gồm `hive.dump` (pg_dump custom), `.env` **có HIVE_MASTER_KEY**, và `SHA256SUMS`. Thư mục có quyền 700,
-  file có quyền 600. Dump được kiểm bằng `pg_restore --list`; lỗi thì trả mã khác 0 và giữ các bản cũ.
-- `HIVE_BACKUP_KEEP` đặt trong `<dir>/.env` hoặc môi trường lệnh, mặc định 14. Chỉ xoá bản cũ sau khi hoàn tất bản mới.
-  Nên chép cả thư mục backup sang nơi lưu trữ an toàn ngoài máy chủ; người đọc được `.env` cũng đọc được secret.
-- Restore kiểm checksum, dump và project trước khi dừng hub. Nếu `.env` khác, phải xác nhận hoặc dùng `--yes`.
-  SQL từ `pg_restore --clean --if-exists` được chạy bằng psql trong một transaction, giữ role, ownership và ACL.
-  Schema `pgboss` được xoá và dựng lại trong cùng transaction để tránh lỗi clean constraint của bảng partition.
-  Script nạp lại `.env`, đồng bộ mật khẩu postgres, tái tạo hub bằng image hiện có và chờ healthy tối đa 3 phút.
-- Restore **ghi đè dữ liệu hiện tại**. Sao lưu trước khi chạy. Chỉ dùng backup tin cậy và khôi phục vào cùng project
-  đã bootstrap, cùng phiên bản code/extension tương thích; không phải công cụ dựng lại toàn bộ máy chủ hay đổi project.
-  Dump không chứa role toàn cụm, mã nguồn, blob ngoài Postgres hay cấu hình hạ tầng. Nếu lỗi sau khi dừng hub,
-  hub được giữ dừng để tránh ghi thêm dữ liệu; sửa lỗi rồi chạy lại restore với cùng backup.
-- Backup/restore dùng khoá `<dir>/.backup-restore.lock` để tránh chạy chồng nhau. Không chạy đồng thời với deploy
-  hoặc đổi `.env`. Nếu tiến trình bị kill cưỡng bức, chỉ xoá khoá sau khi chắc chắn không còn backup/restore chạy.
-
-Từ máy dev, dùng bản script đã triển khai trên máy chủ:
-
-```sh
-deploy/remote-backup.sh <user>@<máy-chủ>
-HIVE_REMOTE_DIR=/opt/xdev-hive deploy/remote-backup.sh <user>@<máy-chủ> --cron "0 3 * * *"
-```
-
-Lệnh luôn backup ngay; `--cron` thêm lịch vào crontab của user SSH, chạy lại sẽ thay lịch của cùng `<dir>` và giữ
-các lịch khác. Cron dùng múi giờ máy chủ, ghi log quyền 600 tại `<dir>/backups/cron.log`; cần Docker trong PATH của
-cron. `HIVE_REMOTE_DOCKER="sudo -n docker"` khi cần sudo không tương tác. `.env` và dump không được tải về máy dev.
-
-Kiểm tra các nhánh lỗi và cron bằng `sh deploy/test-backup.sh` (Docker/SSH giả, không đụng bản triển khai thật).
-
-### Worker chạy nền
-
-Đăng ký máy một lần bằng `hive-worker register --hub URL --token MÃ`. Sau đó cài worker chạy nền bằng
-`hive-worker service install [--config PATH] [--capacity N]`; xem trạng thái bằng `hive-worker service status`
-và gỡ bằng `hive-worker service uninstall`. Dùng `--dry-run` để xem nội dung dịch vụ và các lệnh trước khi cài.
-
-Linux cài systemd user service. Mặc định service chỉ chạy trong phiên đăng nhập; dùng `loginctl enable-linger USER`
-để worker tiếp tục chạy khi người dùng chưa đăng nhập. Log xem bằng `journalctl --user -u hive-worker`.
-macOS cài LaunchAgent và ghi log vào `~/Library/Logs/xdev-hive/worker.log`. Khi hub từ chối máy, LaunchAgent
-thoát thành công và không tự khởi động lại liên tục; đăng ký lại rồi chạy `service install` để nạp lại.
-Windows tạo tác vụ Task Scheduler ở mức quyền thường, chạy lúc đăng nhập và ghi log vào
-`%LOCALAPPDATA%\xdev-hive\worker.log`.
+xDev Hive is licensed under the [GNU Affero General Public License v3.0](LICENSE). If you run a modified version as a
+network service, the AGPL requires you to offer its source code to the users of that service.

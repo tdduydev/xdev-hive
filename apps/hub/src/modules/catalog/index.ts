@@ -32,6 +32,7 @@ export {
   type ProjectRef,
   type ProjectRow,
   type ProvisionJob,
+  projectFor,
   projectView,
   retryStep,
   webhookSecretContext,
