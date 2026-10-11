@@ -1,6 +1,5 @@
-import { Link, type LinkProps } from "@tanstack/react-router";
-import { Brand, Icon, type IconName } from "../components/icons.tsx";
-import { Pill } from "../components/ui/pill.tsx";
+import { Link, type LinkProps, useLocation } from "@tanstack/react-router";
+import { Icon, type IconName } from "../components/icons.tsx";
 import { cx } from "../lib/cx.ts";
 import { orgStore } from "../lib/org-store.ts";
 import { isOrgAdmin, ORG_ROLE_LABEL } from "../lib/roles.ts";
@@ -11,52 +10,70 @@ import { UserCard } from "./user-card.tsx";
 interface NavEntry {
   label: string;
   icon: IconName;
-  /** Chưa có thì mục bị mờ, không bấm được. */
+  /** Không có thì mục chỉ là nhãn: màn danh sách chưa có, mở chi tiết từ màn khác (`hint` nói cách mở). */
   to?: LinkProps["to"];
-  /** Mốc sẽ làm màn này (docs/architecture.md mục 12). */
-  milestone?: string;
-  /** Chỉ mở được khi đã thuộc một tổ chức. */
-  needsOrg?: boolean;
+  /** Đường dẫn bắt đầu bằng chuỗi này thì mục sáng lên, kể cả khi mục không có `to` (vd. /runs/<id>). */
+  match?: string;
+  hint?: string;
   /** Chỉ quản trị tổ chức dùng được; ẩn với người khác trong tổ chức. */
   adminOnly?: boolean;
 }
 
-const WORK: NavEntry[] = [
-  { label: "Việc", icon: "board", milestone: "M3" },
-  { label: "Dự án", icon: "grid", milestone: "M2" },
-  { label: "Máy", icon: "server", milestone: "M3" },
-  { label: "Tri thức", icon: "book", milestone: "M4" },
+/*
+ * Route của Máy, Chi phí, Thông báo do task khác thêm (màn theo Machines/Costs/Notifications.dc.html). Ép kiểu tới khi
+ * các route đó có trong routeTree; trước đó bấm vào sẽ ra trang "Không tìm thấy trang".
+ */
+const pending = (path: string) => path as LinkProps["to"];
+
+const GROUPS: { title: string; entries: NavEntry[] }[] = [
+  {
+    title: "Làm việc hằng ngày",
+    entries: [
+      { label: "Bảng việc", icon: "columns", to: "/tasks", match: "/tasks" },
+      { label: "Lượt chạy", icon: "play", match: "/runs/", hint: "Mở lượt chạy từ Bảng việc" },
+      { label: "Máy", icon: "monitor", to: pending("/machines"), match: "/machines" },
+    ],
+  },
+  {
+    title: "Dự án và quản trị",
+    entries: [
+      { label: "Dự án", icon: "folder", match: "/projects/", hint: "Mở dự án từ Bảng việc" },
+      { label: "Thành viên", icon: "users", to: "/admin/members", match: "/admin/members" },
+      { label: "Đội và hệ thống", icon: "network", to: "/admin/teams", match: "/admin/teams" },
+      { label: "Thông báo", icon: "bell", to: pending("/notifications"), match: "/notifications" },
+      { label: "Chi phí và token", icon: "chart", to: pending("/admin/costs"), match: "/admin/costs" },
+      {
+        label: "Cài đặt đăng nhập",
+        icon: "lock",
+        to: "/admin/sign-in-settings",
+        match: "/admin/sign-in-settings",
+        adminOnly: true,
+      },
+    ],
+  },
 ];
 
-const ADMIN: NavEntry[] = [
-  { label: "Đội và hệ thống", icon: "users", to: "/admin/teams", needsOrg: true },
-  { label: "Thành viên", icon: "mail", to: "/admin/members", needsOrg: true },
-  { label: "Đăng nhập", icon: "key", to: "/admin/sign-in-settings", needsOrg: true, adminOnly: true },
-  { label: "Cài đặt tổ chức", icon: "gear" },
-];
+const item = "flex items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav";
+const on = "bg-sel font-semibold text-sel-fg";
+const off = "font-medium text-body";
 
-const item = "flex items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav text-muted";
-
-function NavItem({ entry, hasOrg }: { entry: NavEntry; hasOrg: boolean }) {
+function NavItem({ entry, hasOrg, pathname }: { entry: NavEntry; hasOrg: boolean; pathname: string }) {
+  const active = entry.match !== undefined && pathname.startsWith(entry.match);
   const body = (
     <>
       <Icon name={entry.icon} />
       {entry.label}
-      {entry.milestone && (
-        <Pill small className="ml-auto">
-          {entry.milestone}
-        </Pill>
-      )}
     </>
   );
-  if (!entry.to || (entry.needsOrg && !hasOrg)) {
-    const reason = entry.milestone
-      ? `Có từ mốc ${entry.milestone}`
-      : entry.needsOrg
-        ? "Cần thuộc một tổ chức"
-        : "Chưa có";
+  // Mọi màn ở đây là dữ liệu của một tổ chức; chưa thuộc tổ chức nào thì chưa mở được.
+  if (!hasOrg || !entry.to) {
     return (
-      <span aria-disabled="true" title={reason} className={cx(item, "opacity-50")}>
+      <span
+        aria-disabled={active ? undefined : "true"}
+        aria-current={active ? "page" : undefined}
+        title={hasOrg ? entry.hint : "Cần thuộc một tổ chức"}
+        className={cx(item, active ? on : cx(off, "opacity-50"))}
+      >
         {body}
       </span>
     );
@@ -64,37 +81,46 @@ function NavItem({ entry, hasOrg }: { entry: NavEntry; hasOrg: boolean }) {
   return (
     <Link
       to={entry.to}
-      className={cx(item, "hover:bg-subtle")}
-      activeProps={{ className: "bg-sel font-medium text-sel-fg hover:bg-sel" }}
+      aria-current={active ? "page" : undefined}
+      className={cx(item, active ? on : cx(off, "hover:bg-subtle"))}
     >
       {body}
     </Link>
   );
 }
 
+/** Thanh bên theo thiết kế Sidebar.dc.html: logo, ô chọn tổ chức, hai nhóm mục, người đang đăng nhập. */
 export function Sidebar({ className }: { className?: string }) {
   const { orgs, current, canCreateOrg } = useOrgs();
+  const { pathname } = useLocation();
+  const hasOrg = current !== null;
   return (
     <aside
       className={cx(
-        "sticky top-0 h-dvh flex-col gap-0.5 overflow-y-auto border-r border-line bg-surface px-2.5 py-3",
+        "sticky top-0 h-dvh flex-col gap-5 overflow-y-auto border-r border-line bg-surface px-3 py-4",
         className,
       )}
     >
-      <Brand className="mb-3 self-start px-2.5" />
+      <div className="flex items-center gap-2.5 px-1.5 py-1">
+        <img src="/xdev-hive-icon.svg" alt="" className="size-7" />
+        <span className="text-xl font-semibold text-ink">xDev Hive</span>
+      </div>
       <OrgSwitcher
         orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
         currentId={current?.org.id}
         onSelect={orgStore.set}
         canCreate={canCreateOrg}
       />
-      <nav aria-label="Điều hướng chính">
-        {WORK.map((entry) => (
-          <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
-        ))}
-        <div className="px-2.5 pt-3 pb-1 text-2xs font-semibold tracking-caps text-muted uppercase">Quản trị</div>
-        {ADMIN.filter((entry) => !entry.adminOnly || !current || isOrgAdmin(current.org.role)).map((entry) => (
-          <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
+      <nav aria-label="Điều hướng chính" className="grid gap-5">
+        {GROUPS.map((group) => (
+          <div key={group.title} className="grid gap-0.5">
+            <div className="px-2.5 pb-1.5 text-2xs font-semibold tracking-caps text-muted uppercase">{group.title}</div>
+            {group.entries
+              .filter((entry) => !entry.adminOnly || !current || isOrgAdmin(current.org.role))
+              .map((entry) => (
+                <NavItem key={entry.label} entry={entry} hasOrg={hasOrg} pathname={pathname} />
+              ))}
+          </div>
         ))}
       </nav>
       <UserCard />
