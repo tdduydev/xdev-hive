@@ -202,7 +202,7 @@ describe("notify và gửi", () => {
           event: "project.provision_failed",
           title,
           body: "Saga dừng ở bước tạo repo",
-          link: "https://hive.example.com/du-an/1",
+          link: "https://hive.example.com/projects/1",
         }),
       );
     const mine = async (ids: string[]) => (await notificationRows(ids)).filter((r) => r.channel_id === ch.id);

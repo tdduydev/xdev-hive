@@ -1,4 +1,4 @@
-export const LOGIN_PATH = "/dang-nhap";
+export const LOGIN_PATH = "/login";
 
 const BASE = "http://hive.invalid";
 
@@ -32,7 +32,7 @@ export interface Destination {
 }
 
 /** Trang mở lời mời: người được mời thường chưa có tài khoản, nên phải xem được lời mời trước khi đăng nhập. */
-export const INVITE_PREFIX = "/moi/";
+export const INVITE_PREFIX = "/invite/";
 
 /** Nơi phải chuyển tới trước khi vào `to`, hoặc null nếu được vào. */
 export function authRedirect(to: Destination, signedIn: boolean): string | null {
@@ -40,4 +40,29 @@ export function authRedirect(to: Destination, signedIn: boolean): string | null 
   if (signedIn) return onLogin ? safeRedirect(to.redirect) : null;
   if (to.pathname.startsWith(INVITE_PREFIX)) return null;
   return onLogin ? null : loginHref(safeRedirect(to.href));
+}
+
+/*
+ * Đường dẫn tiếng Việt cũ. Link mời, thông báo và email đã gửi trước khi đổi tên vẫn trỏ tới đây, nên phải mở được.
+ * Khớp theo đoạn đầu trọn vẹn (`/moi` không khớp `/moi-khac`), phần còn lại, query và hash giữ nguyên.
+ */
+const LEGACY_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ["/dang-nhap", "/login"],
+  ["/moi", "/invite"],
+  ["/dong-y-mcp", "/mcp/consent"],
+  ["/tao-to-chuc", "/orgs/new"],
+  ["/quan-tri/doi", "/admin/teams"],
+  ["/quan-tri/thanh-vien", "/admin/members"],
+  ["/quan-tri/dang-nhap", "/admin/sign-in-settings"],
+  ["/quan-tri/may", "/admin/machines"],
+  ["/viec", "/tasks"],
+  ["/du-an", "/projects"],
+];
+
+/** Địa chỉ mới thay cho đường dẫn tiếng Việt cũ, hoặc null nếu `to` không phải đường dẫn cũ. */
+export function legacyRedirect(to: Pick<Destination, "pathname" | "href">): string | null {
+  for (const [from, next] of LEGACY_PREFIXES) {
+    if (to.pathname === from || to.pathname.startsWith(`${from}/`)) return next + to.href.slice(from.length);
+  }
+  return null;
 }

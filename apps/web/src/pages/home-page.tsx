@@ -27,10 +27,10 @@ export function HomePage() {
                 đây khi có.
               </p>
               <div className="mt-2 flex flex-wrap justify-center gap-2">
-                <Link to="/quan-tri/doi" className={buttonClass()}>
+                <Link to="/admin/teams" className={buttonClass()}>
                   Đội và hệ thống
                 </Link>
-                <Link to="/quan-tri/thanh-vien" className={buttonClass()}>
+                <Link to="/admin/members" className={buttonClass()}>
                   Thành viên
                 </Link>
               </div>

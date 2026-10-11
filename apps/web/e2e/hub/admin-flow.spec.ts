@@ -25,12 +25,12 @@ async function signUp(request: APIRequestContext, user: User): Promise<string> {
 
 async function signIn(page: Page, user: User) {
   await page.goto("/");
-  await expect(page).toHaveURL("/dang-nhap");
+  await expect(page).toHaveURL("/login");
   await page.getByText("Đăng nhập bằng email và mật khẩu").click();
   await page.getByLabel("Email", { exact: true }).fill(user.email);
   await page.getByLabel("Mật khẩu").fill(user.password);
   await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
-  await page.waitForURL((url) => url.pathname !== "/dang-nhap");
+  await page.waitForURL((url) => url.pathname !== "/login");
 }
 
 const teamList = (page: Page) => page.getByRole("navigation", { name: "Danh sách đội" });
@@ -41,7 +41,7 @@ test("người đầu tiên: tạo tổ chức, đội đầu tiên, rồi thêm
   await signIn(page, OWNER);
 
   // Hub chưa có tổ chức nào nên người đầu tiên vào thẳng màn tạo tổ chức.
-  await expect(page).toHaveURL("/tao-to-chuc");
+  await expect(page).toHaveURL("/orgs/new");
   await expect(page.getByRole("heading", { name: "Tạo tổ chức" })).toBeVisible();
   await page.getByLabel("Tên tổ chức").fill("FPT Software xDev");
   const orgSlug = page.getByLabel("Định danh");
@@ -50,7 +50,7 @@ test("người đầu tiên: tạo tổ chức, đội đầu tiên, rồi thêm
   await page.getByLabel("Tên miền email (không bắt buộc)").fill("example.com");
   await page.getByRole("button", { name: "Tiếp: tạo đội" }).click();
 
-  await expect(page).toHaveURL("/tao-to-chuc?buoc=doi");
+  await expect(page).toHaveURL("/orgs/new?buoc=doi");
   await expect(page.getByRole("heading", { name: "Tạo đội đầu tiên" })).toBeVisible();
   await page.getByLabel("Tên đội").fill("Thanh toán");
   await expect(page.getByLabel("Định danh")).toHaveValue("thanh-toan");
@@ -62,7 +62,7 @@ test("người đầu tiên: tạo tổ chức, đội đầu tiên, rồi thêm
   await expect(page.getByLabel("Thêm vào đội").locator("option:checked")).toHaveText("Thanh toán");
   await page.getByRole("button", { name: "Để sau" }).click();
 
-  await expect(page).toHaveURL(/\/quan-tri\/doi\?doi=/);
+  await expect(page).toHaveURL(/\/admin\/teams\?doi=/);
   await expect(switcher(page)).toContainText("FPT Software xDev");
   await expect(switcher(page)).toContainText("Chủ sở hữu");
   await expect(teamList(page).getByRole("link", { name: /Thanh toán/ })).toContainText("0 hệ thống · 1 người");
@@ -111,7 +111,7 @@ test("thêm người vào đội, đổi vai trò trong đội và vai trò tổ
   ]);
 
   await signIn(page, OWNER);
-  await page.goto("/quan-tri/doi");
+  await page.goto("/admin/teams");
   await teamList(page)
     .getByRole("link", { name: /Thanh toán/ })
     .click();
@@ -131,7 +131,7 @@ test("thêm người vào đội, đổi vai trò trong đội và vai trò tổ
   await expect(page.getByLabel(`Vai trò của ${MEMBER.name} trong đội`)).toHaveValue("viewer");
 
   await page.locator("aside").getByRole("link", { name: "Thành viên" }).click();
-  await expect(page).toHaveURL("/quan-tri/thanh-vien");
+  await expect(page).toHaveURL("/admin/members");
   await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab", { name: "Lời mời · 0" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Chờ duyệt · 0" })).toBeVisible();
@@ -222,7 +222,7 @@ test("mời người: tạo lời mời, mở link ở phiên khác, đăng ký 
   await dialog.getByRole("button", { name: "Tạo lời mời" }).click();
 
   const linkField = dialog.getByLabel(`Link mời cho ${INVITEE.email}`, { exact: true });
-  await expect(linkField).toHaveValue(new RegExp(`^${WEB_URL}/moi/[A-Za-z0-9_-]{43}$`));
+  await expect(linkField).toHaveValue(new RegExp(`^${WEB_URL}/invite/[A-Za-z0-9_-]{43}$`));
   const link = await linkField.inputValue();
   await dialog.getByRole("button", { name: `Chép link mời cho ${INVITEE.email}` }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
@@ -266,7 +266,7 @@ test("mời người: tạo lời mời, mở link ở phiên khác, đăng ký 
 
 test("thu hồi lời mời: link cũ báo không tìm thấy", async ({ page }) => {
   await signIn(page, OWNER);
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
   await page.getByRole("button", { name: "Mời người" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("Email").fill("thu-hoi@e2e.test");
@@ -296,7 +296,7 @@ test("duyệt người chờ: duyệt thì thành thành viên, từ chối thì
   }
 
   await signIn(page, OWNER);
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
   await expect(page.getByText(khoa.email)).toHaveCount(0);
   await page.getByRole("tab", { name: "Chờ duyệt · 2" }).click();
   await expect(page.getByRole("row", { name: new RegExp(khoa.name) })).toContainText("Chờ duyệt");
@@ -324,7 +324,7 @@ test("duyệt người chờ: duyệt thì thành thành viên, từ chối thì
 test("cài đặt đăng nhập: callback URL theo tổ chức, lỗi Issuer của hub hiện tiếng Việt", async ({ page }) => {
   await signIn(page, OWNER);
   await page.locator("aside").getByRole("link", { name: "Đăng nhập" }).click();
-  await expect(page).toHaveURL("/quan-tri/dang-nhap");
+  await expect(page).toHaveURL("/admin/sign-in-settings");
   const { rows } = await db.query<{ id: string }>("select id from hive.orgs where slug = 'fpt-xdev'");
   await expect(page.getByLabel("Callback URL (dán vào cấu hình app bên nhà cung cấp)")).toHaveValue(
     `${WEB_URL}/api/auth/sso/callback/org-${rows[0]?.id}`,
