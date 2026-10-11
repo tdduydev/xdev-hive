@@ -1,0 +1,112 @@
+import type { Machine } from "@xdev-hive/contracts";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import type pg from "pg";
+import { recordAudit } from "../audit/index.ts";
+import { type Tx, withTenant } from "../platform/index.ts";
+import { requireTeamRole } from "../tenancy/index.ts";
+import { FleetError } from "./errors.ts";
+import { machines, machineTokens } from "./schema.ts";
+import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
+
+export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
+  id: m.id,
+  teamId: m.teamId,
+  name: m.name,
+  os: m.os,
+  version: m.version,
+  clis: m.clis,
+  capacity: m.capacity,
+  status: m.status,
+  lastSeenAt: m.lastSeenAt?.toISOString() ?? null,
+  createdAt: m.createdAt.toISOString(),
+});
+
+export async function listMachines(tx: Tx, userId: string, teamId: string): Promise<Machine[]> {
+  await requireTeamRole(tx, userId, teamId, "admin");
+  const rows = await tx.select().from(machines).where(eq(machines.teamId, teamId)).orderBy(asc(machines.name));
+  return rows.map(toMachine);
+}
+
+/**
+ * Thu hồi máy: xoá mọi machine token để lần nối sau bị từ chối, giữ dòng máy để còn lịch sử run. Kết nối WSS đang mở
+ * do người gọi đóng (gateway có thể ở tiến trình khác; heartbeat kế tiếp cũng tự đóng khi thấy máy đã bị thu hồi).
+ */
+export async function revokeMachine(tx: Tx, userId: string, machineId: string): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  await tx.delete(machineTokens).where(eq(machineTokens.machineId, machineId));
+  const [row] = await tx
+    .update(machines)
+    .set({ status: "revoked", revokedAt: found.revokedAt ?? sql`now()` })
+    .where(eq(machines.id, machineId))
+    .returning();
+  if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await recordAudit(tx, {
+    action: "machine.revoke",
+    targetType: "machine",
+    targetId: machineId,
+    data: { name: row.name, teamId: row.teamId },
+  });
+  return toMachine(row);
+}
+
+/** Máy đã xác thực bằng machine token; gateway giữ thông tin này suốt phiên. */
+export interface AuthedMachine {
+  id: string;
+  orgId: string;
+  teamId: string;
+  name: string;
+}
+
+/** Tìm máy theo machine token. Trả null khi token sai, đã bị thu hồi, hoặc máy đã bị thu hồi. */
+export async function authenticateMachine(pool: pg.Pool, token: string): Promise<AuthedMachine | null> {
+  if (!token.startsWith(MACHINE_PREFIX)) return null;
+  const hash = hashToken(token);
+  const [found] = await withTokenLookup(pool, hash, (tx) =>
+    tx
+      .select({ machineId: machineTokens.machineId, orgId: machineTokens.orgId })
+      .from(machineTokens)
+      .where(eq(machineTokens.tokenHash, hash)),
+  );
+  if (!found) return null;
+  const [row] = await withTenant(pool, { orgId: found.orgId }, (tx) =>
+    tx
+      .select({ id: machines.id, orgId: machines.orgId, teamId: machines.teamId, name: machines.name })
+      .from(machines)
+      .where(and(eq(machines.id, found.machineId), isNull(machines.revokedAt))),
+  );
+  return row ?? null;
+}
+
+export interface MachineInfo {
+  os: string;
+  version: string;
+  clis: string[];
+  capacity: number;
+}
+
+/**
+ * Ghi máy đang online. Trả false khi máy vừa bị thu hồi, để gateway đóng kết nối. Điều kiện revoked_at is null nằm
+ * trong câu UPDATE nên không có khe giữa lúc kiểm và lúc ghi.
+ */
+export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: MachineInfo): Promise<boolean> {
+  const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
+    tx
+      .update(machines)
+      .set({ ...info, status: "online", lastSeenAt: sql`now()` })
+      .where(and(eq(machines.id, m.id), isNull(machines.revokedAt)))
+      .returning({ id: machines.id }),
+  );
+  return rows.length > 0;
+}
+
+/** Ghi máy offline khi kết nối đóng. Không đụng máy đã bị thu hồi. */
+export async function markOffline(pool: pg.Pool, m: AuthedMachine): Promise<void> {
+  await withTenant(pool, { orgId: m.orgId }, (tx) =>
+    tx
+      .update(machines)
+      .set({ status: "offline", lastSeenAt: sql`now()` })
+      .where(and(eq(machines.id, m.id), isNull(machines.revokedAt))),
+  );
+}

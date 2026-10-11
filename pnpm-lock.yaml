@@ -220,10 +220,10 @@ importers:
         version: 7.0.8
       '@orpc/openapi':
         specifier: ^1.15.5
-        version: 1.15.5
+        version: 1.15.5(ws@8.22.0)
       '@orpc/server':
         specifier: ^1.15.5
-        version: 1.15.5
+        version: 1.15.5(ws@8.22.0)
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -239,6 +239,9 @@ importers:
       pg:
         specifier: ^8.23.1
         version: 8.23.1
+      ws:
+        specifier: ^8.22.0
+        version: 8.22.0
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^12.2.0
@@ -246,6 +249,9 @@ importers:
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
+      '@types/ws':
+        specifier: ^8.18.2
+        version: 8.18.2
       drizzle-kit:
         specifier: ^0.31.11
         version: 0.31.11
@@ -310,10 +316,10 @@ importers:
     devDependencies:
       '@orpc/openapi':
         specifier: ^1.15.5
-        version: 1.15.5
+        version: 1.15.5(ws@8.22.0)
       '@orpc/zod':
         specifier: ^1.15.5
-        version: 1.15.5(@orpc/contract@1.15.5)(@orpc/server@1.15.5)(zod@4.6.5)
+        version: 1.15.5(@orpc/contract@1.15.5)(@orpc/server@1.15.5(ws@8.22.0))(ws@8.22.0)(zod@4.6.5)
 
 packages:
 
@@ -1654,6 +1660,9 @@ packages:
 
   '@types/ssh2@1.15.6':
     resolution: {integrity: sha512-oGdxhBqcRTwSTKFm+9EiKzkNVYRLEFkcW44lhguvBalGJbWfGnDt/ezwSUZc+SF9m9bMc3VyklNAtp7zICjS5w==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
@@ -3296,6 +3305,18 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
+  ws@8.22.0:
+    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xcase@2.0.1:
     resolution: {integrity: sha512-UmFXIPU+9Eg3E9m/728Bii0lAIuoc+6nbrNUKaRPJOFp91ih44qqGlWtxMB6kXFrRD6po+86ksHM5XHCfk6iPw==}
 
@@ -3942,12 +3963,12 @@ snapshots:
 
   '@orpc/interop@1.15.5': {}
 
-  '@orpc/json-schema@1.15.5':
+  '@orpc/json-schema@1.15.5(ws@8.22.0)':
     dependencies:
       '@orpc/contract': 1.15.5
       '@orpc/interop': 1.15.5
-      '@orpc/openapi': 1.15.5
-      '@orpc/server': 1.15.5
+      '@orpc/openapi': 1.15.5(ws@8.22.0)
+      '@orpc/server': 1.15.5(ws@8.22.0)
       '@orpc/shared': 1.15.5
       json-schema-typed: 8.0.2
     transitivePeerDependencies:
@@ -3965,13 +3986,13 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/openapi@1.15.5':
+  '@orpc/openapi@1.15.5(ws@8.22.0)':
     dependencies:
       '@orpc/client': 1.15.5
       '@orpc/contract': 1.15.5
       '@orpc/interop': 1.15.5
       '@orpc/openapi-client': 1.15.5
-      '@orpc/server': 1.15.5
+      '@orpc/server': 1.15.5(ws@8.22.0)
       '@orpc/shared': 1.15.5
       '@orpc/standard-server': 1.15.5
       json-schema-typed: 8.0.2
@@ -3982,7 +4003,7 @@ snapshots:
       - fastify
       - ws
 
-  '@orpc/server@1.15.5':
+  '@orpc/server@1.15.5(ws@8.22.0)':
     dependencies:
       '@orpc/client': 1.15.5
       '@orpc/contract': 1.15.5
@@ -3995,6 +4016,8 @@ snapshots:
       '@orpc/standard-server-node': 1.15.5
       '@orpc/standard-server-peer': 1.15.5
       cookie: 1.1.1
+    optionalDependencies:
+      ws: 8.22.0
     transitivePeerDependencies:
       - '@opentelemetry/api'
       - fastify
@@ -4057,12 +4080,12 @@ snapshots:
     transitivePeerDependencies:
       - '@opentelemetry/api'
 
-  '@orpc/zod@1.15.5(@orpc/contract@1.15.5)(@orpc/server@1.15.5)(zod@4.6.5)':
+  '@orpc/zod@1.15.5(@orpc/contract@1.15.5)(@orpc/server@1.15.5(ws@8.22.0))(ws@8.22.0)(zod@4.6.5)':
     dependencies:
       '@orpc/contract': 1.15.5
-      '@orpc/json-schema': 1.15.5
-      '@orpc/openapi': 1.15.5
-      '@orpc/server': 1.15.5
+      '@orpc/json-schema': 1.15.5(ws@8.22.0)
+      '@orpc/openapi': 1.15.5(ws@8.22.0)
+      '@orpc/server': 1.15.5(ws@8.22.0)
       '@orpc/shared': 1.15.5
       escape-string-regexp: 5.0.0
       wildcard-match: 5.1.6
@@ -4417,6 +4440,10 @@ snapshots:
   '@types/ssh2@1.15.6':
     dependencies:
       '@types/node': 18.19.130
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 24.19.2
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true
@@ -5899,6 +5926,8 @@ snapshots:
       strip-ansi: 7.2.0
 
   wrappy@1.0.2: {}
+
+  ws@8.22.0: {}
 
   xcase@2.0.1: {}
 
