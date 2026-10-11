@@ -49,7 +49,16 @@ export const jobReject = z.object({ ...envelope("job_reject"), runId, attempt, r
  * Sự kiện của run. Bảng ở mục 5 gọi loại sự kiện là `type`, nhưng `type` đã là khoá phân biệt của gói, nên ở đây
  * đổi thành `event`.
  */
-export const runEventKind = z.enum(["phase", "plan", "tool_call", "cost", "approval_needed", "check_result"]);
+export const runEventKind = z.enum([
+  "phase",
+  "plan",
+  "tool_call",
+  "cost",
+  "approval_needed",
+  "check_result",
+  // Báo cáo của agent (tóm tắt, bằng chứng); kiểm tra `agentReport` của chính sách kết quả dựa vào sự kiện này.
+  "agent_report",
+]);
 export const runEvent = z.object({
   ...envelope("run_event"),
   runId,

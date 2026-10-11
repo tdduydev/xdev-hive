@@ -9,6 +9,7 @@ import {
   type ProviderFactory,
   type RepoInfo,
   type ScmAuthMode,
+  type WebhookEvent,
 } from "../scm/index.ts";
 import { findSystem } from "../tenancy/index.ts";
 import {
@@ -24,6 +25,9 @@ import {
 import { projectProvisionSteps, projects } from "./schema.ts";
 import { describeFailure, StepFailure, TEMPLATE_BRANCH } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
+
+/** Issue và bình luận để giao việc từ issue; push và PR để chuyển trạng thái task, run. */
+const WEBHOOK_EVENTS = ["push", "pull_request", "issues", "issue_comment"] as const satisfies WebhookEvent[];
 
 export interface ProvisionDeps {
   /** Pool của hive_app. Job chạy với tenant là tổ chức trong payload, không có người dùng. */
@@ -165,9 +169,9 @@ async function execute(step: StepRow, c: StepContext): Promise<StepOutput> {
     }
     case "add-webhook": {
       if (!project.webhookSecretEnc) throw new StepFailure("NO_WEBHOOK_SECRET", "Dự án chưa có secret webhook.", null);
-      const url = String(step.params.url ?? webhookUrl(c.deps.publicUrl));
+      const url = String(step.params.url ?? webhookUrl(c.deps.publicUrl, project.id));
       const secret = decryptSecret(c.deps.masterKey, project.webhookSecretEnc, webhookSecretContext(project.id));
-      const hook = await provider.addWebhook(ref, { url, secret, events: ["push", "pull_request"] });
+      const hook = await provider.addWebhook(ref, { url, secret, events: WEBHOOK_EVENTS });
       return { result: { hookId: hook.id, url } };
     }
   }
