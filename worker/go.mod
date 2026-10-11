@@ -3,8 +3,8 @@ module github.com/tdduydev/xdev-hive/worker
 go 1.27.2
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/oapi-codegen/runtime v1.2.0
-	nhooyr.io/websocket v1.8.17
 )
 
 require (
