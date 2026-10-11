@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -26,6 +27,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/service"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
 )
 
@@ -45,6 +47,8 @@ func main() {
 		os.Exit(run(os.Args[2:]))
 	case "config":
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
+	case "service":
+		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
@@ -52,7 +56,93 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | config [--json]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | config [--json] | service install|uninstall|status>")
+}
+
+func serviceCommand(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status")
+		return 2
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("service "+action, flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "file cấu hình")
+	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
+	dryRun := fs.Bool("dry-run", false, "chỉ in nội dung và lệnh dự kiến")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	path, err := pathOr(*configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if action == "install" {
+		cfg, err := config.Load(path)
+		if err != nil || cfg.MachineToken == "" {
+			fmt.Fprintf(stderr, "Máy chưa đăng ký; chạy `hive-worker register --hub URL --token MÃ --config %s` trước.\n", path)
+			return 1
+		}
+		if *capacity < 1 {
+			fmt.Fprintln(stderr, "capacity phải lớn hơn 0")
+			return 2
+		}
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	user, _ := user.Current()
+	username := ""
+	if user != nil {
+		username = user.Username
+	}
+	plan, err := service.Build(runtime.GOOS, exe, home, os.Getenv("PATH"), func() string {
+		if *configPath != "" {
+			return path
+		}
+		return ""
+	}(), *capacity)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	manager := service.Manager{}
+	switch action {
+	case "install":
+		if err := manager.Install(plan, *dryRun, stdout); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if *dryRun {
+			return 0
+		}
+		fmt.Fprintf(stdout, "Đã cài dịch vụ tại %s. Log: %s\n", plan.File, plan.Log)
+		if runtime.GOOS == "linux" {
+			fmt.Fprintf(stdout, "Để chạy khi chưa đăng nhập: loginctl enable-linger %s\n", username)
+		}
+	case "uninstall":
+		if err := manager.Uninstall(plan); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "Đã gỡ dịch vụ worker.")
+	case "status":
+		if !manager.Status(plan, stdout) {
+			return 1
+		}
+	default:
+		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status")
+		return 2
+	}
+	return 0
 }
 
 // knownCLIs là các agent CLI hub biết giao việc (khớp enum cli trong packages/contracts).
@@ -246,6 +336,10 @@ func run(args []string) int {
 	var rejected *channel.RejectedError
 	if errors.As(err, &rejected) {
 		fmt.Fprintln(os.Stderr, err)
+		// launchd KeepAlive với SuccessfulExit=false sẽ dừng hẳn sau khi hub thu hồi máy.
+		if os.Getenv("HIVE_WORKER_LAUNCHD") == "1" {
+			return 0
+		}
 		return 3
 	}
 	if err != nil {

@@ -2,7 +2,7 @@
 // rồi báo cáo bằng tool MCP task_update như agent thật. Nhờ vậy kiểm được luồng worker → hub → PR mà không gọi AI.
 // Worker chạy: node scripts/e2e-fake-cli.ts "<prompt>" trong worktree của run.
 import { execFileSync } from "node:child_process";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 
 const prompt = process.argv[2] ?? "";
 // Máy CI không có danh tính git global; đặt qua biến môi trường để không đụng cấu hình của worktree.
@@ -16,8 +16,16 @@ const gitEnv = {
 const git = (...args: string[]) => execFileSync("git", args, { env: gitEnv, encoding: "utf8" }).trim();
 
 console.log(`[cli giả] nhận việc: ${prompt.split("\n")[0]}`);
-appendFileSync("README.md", `\n## Ghi chú của agent giả\n\n${prompt}\n`);
-git("add", "README.md");
+// Dấu [e2e-file:tên] cho ca nhiều task song song: mỗi task ghi file riêng để PR không xung đột nhau.
+const own = /\[e2e-file:([\w.-]+)\]/.exec(prompt)?.[1];
+const target = own ? `e2e-notes/${own}` : "README.md";
+if (own) {
+  mkdirSync("e2e-notes", { recursive: true });
+  writeFileSync(target, `Ghi chú của agent giả\n\n${prompt}\n`);
+} else {
+  appendFileSync(target, `\n## Ghi chú của agent giả\n\n${prompt}\n`);
+}
+git("add", target);
 git("commit", "--quiet", "-m", "docs: ghi chú của agent giả (e2e)");
 const sha = git("rev-parse", "HEAD");
 console.log(`[cli giả] đã commit ${sha}`);

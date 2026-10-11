@@ -76,6 +76,8 @@ type jobSpec struct {
 	Branch      string `json:"branch"`
 	TimeoutSec  int    `json:"timeoutSec"`
 	SetupScript string `json:"setupScript"`
+	// Budget là trần chi phí của run (hub lấy từ settings.budget của dự án); thiếu là không giới hạn.
+	Budget runner.Budget `json:"budget"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -98,7 +100,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{RunID: o.RunID, Kind: s.Kind, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Env: env}
+	j := runner.Job{RunID: o.RunID, Kind: s.Kind, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Budget: s.Budget, Env: env}
 	if j.BaseBranch == "" {
 		j.BaseBranch = "main"
 	}
