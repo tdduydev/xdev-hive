@@ -24,12 +24,14 @@ const KindReview = "review"
 type Job struct {
 	RunID                                           string
 	Kind                                            string // "code" (mặc định) hoặc KindReview
+	Budget                                          Budget
+	RunPermissions                                  string
+	gitRoots                                        []string
 	Attempt                                         int
 	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
 	Env                                             map[string]string
 	Timeout                                         time.Duration
 	SetupScript                                     string
-	Budget                                          Budget
 }
 
 type Event struct {
@@ -195,6 +197,16 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
 		defer cancel()
 	}
+	// Git ghi index trong gitdir riêng và objects/refs trong bare cache ngoài worktree.
+	gitDir, err := gitOutput(ctx, work, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return err
+	}
+	cacheRoot, err := filepath.Abs(cache)
+	if err != nil {
+		return err
+	}
+	job.gitRoots = []string{cacheRoot, strings.TrimSpace(gitDir), filepath.Join(cacheRoot, "objects"), filepath.Join(cacheRoot, "refs"), filepath.Join(cacheRoot, "logs")}
 	// Vượt trần chi phí thì dừng CLI theo đường huỷ (SIGINT, chờ grace rồi kill).
 	runCtx, stopForBudget := context.WithCancel(runCtx)
 	defer stopForBudget()
@@ -202,12 +214,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err != nil {
 		return err
 	}
-
 	if cmd.cleanup != nil {
 		defer cmd.cleanup()
 	}
-	cmd.Dir = work
-	cmd.Env = mergeEnv(os.Environ(), job.Env)
+	process := cmd.Cmd
+	process.Dir = work
+	process.Env = mergeEnv(os.Environ(), job.Env)
 	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
 	// "file already closed" (hay gặp trên macOS). Để exec tự chép log: Wait chờ chép xong rồi mới trả về.
 	usage, stopMeter := startMeter(job, sink, stopForBudget)
@@ -217,14 +229,14 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			_ = stopMeter()
 		}
 	}()
-	cmd.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
-	cmd.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
+	process.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
+	process.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
 	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
-	cmd.WaitDelay = r.grace()
-	if err := startProcess(cmd.Cmd); err != nil {
+	process.WaitDelay = r.grace()
+	if err := startProcess(process); err != nil {
 		return err
 	}
-	waitErr := waitProcess(runCtx, cmd.Cmd, r.grace)
+	waitErr := waitProcess(runCtx, process, r.grace)
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
@@ -372,6 +384,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 		configured, ok = fromEnv[j.CLI]
 	}
 	if !ok {
+		if j.RunPermissions != "" && j.RunPermissions != "workspace" && j.RunPermissions != "full" {
+			return nil, fmt.Errorf("chế độ quyền run không hợp lệ: %s", j.RunPermissions)
+		}
 		switch j.CLI {
 		case "claude":
 			mcpFile, err := claudeMCPConfig(j.Env)
@@ -385,12 +400,31 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
+			if j.RunPermissions == "full" {
+				args = append(args, "--permission-mode", "bypassPermissions")
+			} else {
+				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
+				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
+			}
 			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
 		case "codex":
 			url := mcpURL(j.Env)
-			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
+			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
+			}
+			if j.RunPermissions == "full" {
+				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+			} else {
+				args = append(args, "-s", "workspace-write", "-c", `approval_policy="never"`)
+				if len(j.gitRoots) > 0 {
+					roots, err := json.Marshal(j.gitRoots)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, "-c", "sandbox_workspace_write.writable_roots="+string(roots))
+				}
 			}
 			args = append(args, j.Prompt)
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
@@ -399,7 +433,23 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
-			return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			args = append(args, "--skip-trust")
+			if j.RunPermissions == "full" {
+				args = append(args, "--approval-mode", "yolo")
+				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			}
+			policy, err := os.CreateTemp("", "xdev-hive-policy-*.toml")
+			if err != nil {
+				return nil, err
+			}
+			_, writeErr := policy.WriteString("[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"allow\"\npriority = 100\n")
+			closeErr := policy.Close()
+			if err := errors.Join(writeErr, closeErr); err != nil {
+				_ = os.Remove(policy.Name())
+				return nil, err
+			}
+			args = append(args, "--approval-mode", "auto_edit", "--policy", policy.Name())
+			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}
