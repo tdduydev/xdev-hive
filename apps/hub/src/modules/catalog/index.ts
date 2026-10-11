@@ -12,6 +12,8 @@ export {
   type ProvisionJob,
   projectView,
   retryStep,
+  webhookSecretContext,
+  webhookUrl,
 } from "./projects.ts";
 export { catalogRouter } from "./router.ts";
 export {
@@ -24,3 +26,4 @@ export {
   runProvision,
 } from "./saga.ts";
 export { renderTemplate, TEMPLATE_ID, TEMPLATE_VERSION, type TemplateFile, type TemplateInput } from "./template.ts";
+export { findWebhookTarget } from "./webhook-target.ts";

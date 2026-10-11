@@ -16163,6 +16163,33 @@
                               "leaderChat",
                               "sandbox"
                             ]
+                          },
+                          "issueIntake": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "label": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100
+                              },
+                              "mention": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "label",
+                              "mention"
+                            ],
+                            "default": {
+                              "enabled": false,
+                              "label": "hive",
+                              "mention": "hive"
+                            }
                           }
                         },
                         "required": [
@@ -16996,6 +17023,33 @@
                             "leaderChat",
                             "sandbox"
                           ]
+                        },
+                        "issueIntake": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "mention": {
+                              "type": "string",
+                              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "label",
+                            "mention"
+                          ],
+                          "default": {
+                            "enabled": false,
+                            "label": "hive",
+                            "mention": "hive"
+                          }
                         }
                       },
                       "required": [
@@ -17831,6 +17885,33 @@
                                 "leaderChat",
                                 "sandbox"
                               ]
+                            },
+                            "issueIntake": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "mention": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "label",
+                                "mention"
+                              ],
+                              "default": {
+                                "enabled": false,
+                                "label": "hive",
+                                "mention": "hive"
+                              }
                             }
                           },
                           "required": [
@@ -18819,6 +18900,33 @@
                                 "leaderChat",
                                 "sandbox"
                               ]
+                            },
+                            "issueIntake": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "mention": {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "label",
+                                "mention"
+                              ],
+                              "default": {
+                                "enabled": false,
+                                "label": "hive",
+                                "mention": "hive"
+                              }
                             }
                           },
                           "required": [
