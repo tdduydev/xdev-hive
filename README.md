@@ -51,6 +51,31 @@ HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <use
   Dùng HTTPS thì để `HIVE_BIND` mặc định và thêm `--profile https` (Caddy).
 - User không thuộc nhóm docker thì đặt `HIVE_REMOTE_DOCKER="sudo docker"`.
 
-Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret, rồi chạy
-`docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
+### Người quản trị đầu tiên
+
+Hub không cho tự đăng ký: chỉ người được mời mới có tài khoản, bằng mọi cách đăng nhập (email + mật khẩu, GitHub,
+GitLab). Riêng SSO, người có email đúng tên miền tổ chức đã khai được vào theo chính sách của tổ chức (vào thẳng hoặc
+chờ duyệt). Lúc hub mới chạy chưa có ai để gửi lời mời, nên khai email người quản trị hub trong `HIVE_ORG_CREATORS`
+(cách nhau bằng dấu phẩy). Những email này được tạo tài khoản khi chưa có lời mời và được tạo tổ chức.
+
+```sh
+HIVE_ORG_CREATORS=duy@example.com HIVE_PUBLIC_URL=https://hive.example.com deploy/remote.sh <user>@<máy-chủ>
+```
+
+Sau đó người quản trị mở hub và đăng nhập bằng GitHub hoặc GitLab có email đó (đã xác minh với nhà cung cấp), rồi tạo
+tổ chức, cấu hình SSO và gửi lời mời. Hub chưa bật GitHub/GitLab thì đăng ký bằng email + mật khẩu qua API (web chưa có
+form đăng ký cho trường hợp này), rồi đăng nhập bằng email ở `/dang-nhap`:
+
+```sh
+curl -X POST https://hive.example.com/api/auth/sign-up/email -H 'content-type: application/json' \
+  -H 'origin: https://hive.example.com' \
+  -d '{"name":"Duy","email":"duy@example.com","password":"<ít nhất 10 ký tự>"}'
+```
+
+Đăng ký bằng email không xác minh hộp thư: ai biết email trong `HIVE_ORG_CREATORS` mà đăng ký trước sẽ chiếm tài khoản
+đó, nên đăng ký ngay sau khi hub chạy. `HIVE_ALLOW_EMAIL_SIGNUP=1` tắt hẳn quy tắc chỉ nhận người được mời, chỉ dùng khi
+dev.
+
+Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu, secret và `HIVE_ORG_CREATORS`,
+rồi chạy `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
 cho hàng đợi), chạy migration rồi khởi động API. Health: `/api/v1/health`.

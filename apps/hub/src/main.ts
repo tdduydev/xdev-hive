@@ -37,6 +37,7 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
+        orgCreators: config.orgCreators,
         hooks: pool
           ? authHooks(pool, {
               onMemberPending: (tx, member) =>

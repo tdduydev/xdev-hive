@@ -67,6 +67,7 @@ export function authHooks(pool: pg.Pool, opts: { onMemberPending?: MemberPending
   const invites = invitationService(pool);
   return {
     inviteValid: (token, email) => invites.valid(token, email),
+    invitePending: (email) => invites.pendingFor(email),
     acceptInvite: async (token, user) => {
       await invites.accept(token, user);
     },
