@@ -53,6 +53,7 @@ export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
   AccessCheck,
   BranchRules,
+  CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,

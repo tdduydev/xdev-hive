@@ -37,6 +37,11 @@ export interface ScmEventContext {
   projectId: string;
   deliveryRowId: string;
   intake: IssueIntake;
+  /**
+   * Việc làm sau khi transaction commit: gọi ra GitHub/GitLab, gửi gói tới máy. Làm trong transaction thì delivery
+   * rollback rồi chạy lại sẽ bình luận hai lần. Lỗi của việc này chỉ ghi log, không làm delivery chạy lại.
+   */
+  afterCommit(fn: () => Promise<void> | void): void;
 }
 
 /**
@@ -125,9 +130,12 @@ export async function processScmEventJob(
   pool: pg.Pool,
   registry: ScmEventRegistry,
   job: ScmEventJob,
+  logger: Pick<Console, "warn"> = console,
 ): Promise<ScmJobOutcome> {
+  const after: Array<() => Promise<void> | void> = [];
+  let outcome: ScmJobOutcome;
   try {
-    return await withTenant(pool, { orgId: job.orgId }, async (tx) => {
+    outcome = await withTenant(pool, { orgId: job.orgId }, async (tx) => {
       // Khoá dòng: pg-boss giao lại job (tiến trình chết sau commit, trước khi báo xong) thì lần sau chờ rồi thấy
       // `processed` và bỏ qua, không chạy handler hai lần.
       const [row] = await tx
@@ -142,6 +150,7 @@ export async function processScmEventJob(
         projectId: job.projectId,
         deliveryRowId: job.deliveryRowId,
         intake: job.intake,
+        afterCommit: (fn) => after.push(fn),
       };
       for (const event of job.events) {
         for (const handler of registry.handlersFor(event.kind)) await handler(event, ctx);
@@ -165,6 +174,14 @@ export async function processScmEventJob(
     ).catch(() => {});
     throw e;
   }
+  for (const fn of after) {
+    try {
+      await fn();
+    } catch (e) {
+      logger.warn(`Việc sau commit của delivery ${job.deliveryRowId} lỗi`, e);
+    }
+  }
+  return outcome;
 }
 
 /** Đăng ký xử lý job `scm.event` ở tiến trình có vai trò `jobs`. */

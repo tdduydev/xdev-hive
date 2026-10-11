@@ -62,6 +62,10 @@ export interface WebhookInput {
   events: WebhookEvent[];
 }
 
+export interface CommentOptions {
+  pullRequest?: boolean;
+}
+
 export interface AccessCheck {
   canCreate: boolean;
   missingScopes: string[];
@@ -78,6 +82,11 @@ export interface GitProvider {
   protectBranch(ref: RepoRef, branch: string, rules: BranchRules): Promise<void>;
   /** GitLab là merge request; `number` là iid. PR cùng head/base đang mở thì trả lại PR đó. */
   openPR(ref: RepoRef, input: PullRequestInput): Promise<{ number: number; url: string }>;
+  /**
+   * Bình luận vào issue (GitLab: theo iid). `pullRequest` để bình luận vào PR: GitHub dùng chung API của issue,
+   * GitLab thì merge request có API note riêng.
+   */
+  commentOnIssue(ref: RepoRef, number: number, body: string, opts?: CommentOptions): Promise<{ id: string }>;
   /** Webhook cùng URL đã có thì cập nhật secret và sự kiện, không tạo thêm. */
   addWebhook(ref: RepoRef, input: WebhookInput): Promise<{ id: string }>;
   /** Webhook không còn thì coi như đã xoá. */
