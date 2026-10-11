@@ -5238,7 +5238,7 @@
             }
           ],
           "isUnique": true,
-          "where": "kind = 'leader' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
+          "where": "leader_thread_id is not null and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
           "concurrently": false,
           "method": "btree",
           "with": {}

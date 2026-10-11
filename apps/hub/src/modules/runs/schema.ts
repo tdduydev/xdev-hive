@@ -112,10 +112,12 @@ export const runs = hive
       uniqueIndex("runs_task_active")
         .on(t.taskId)
         .where(sql`kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
+      // Lọc theo leader_thread_id (chỉ run leader có) thay cho kind = 'leader': migration thêm giá trị enum 'leader' trong
+      // cùng transaction, mà Postgres cấm dùng giá trị enum chưa commit (55P04) khi nâng cấp database đã có run_kind.
       uniqueIndex("runs_leader_thread_active")
         .on(t.leaderThreadId)
         .where(
-          sql`kind = 'leader' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`,
+          sql`leader_thread_id is not null and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`,
         ),
       // Hai lần verify (hay lập kế hoạch) chạy chồng nhau của run cha không tạo được hai run con cùng sống.
       uniqueIndex("runs_review_active")

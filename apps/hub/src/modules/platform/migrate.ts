@@ -65,11 +65,11 @@ export async function bootstrapRoles(
 }
 
 /** Chạy migration bằng hive_owner. */
-export async function runMigrations(ownerUrl: string): Promise<void> {
+export async function runMigrations(ownerUrl: string, migrationsFolder = MIGRATIONS): Promise<void> {
   const pool = new pg.Pool({ connectionString: ownerUrl, max: 1 });
   try {
     await migrate(drizzle(pool), {
-      migrationsFolder: MIGRATIONS,
+      migrationsFolder,
       migrationsSchema: "hive",
       migrationsTable: "migrations",
     });
