@@ -611,7 +611,10 @@ export async function startWorker(api: HubClient, teamId: string, tmp: string, s
       HIVE_WORKER_CLI_OVERRIDES: JSON.stringify({
         [CLI]: sandbox
           ? { path: "node", args: ["/opt/hive/e2e-fake-cli.ts", "{{prompt}}"] }
-          : { path: process.execPath, args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}", join(tmp, "parallel")] },
+          : {
+              path: process.execPath,
+              args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}", join(tmp, "parallel")],
+            },
       }),
     });
     await mkdir(join(tmp, "home"), { recursive: true });
@@ -640,7 +643,9 @@ export async function startWorker(api: HubClient, teamId: string, tmp: string, s
     { env: workerEnv },
   );
   console.log(`  ${out.split("\n")[0]}`);
-  const args = sandbox ? ["host", "--image", sandbox.image, "--memory", "512m", "--cpus", "1"] : ["run", "--capacity", "2"];
+  const args = sandbox
+    ? ["host", "--image", sandbox.image, "--memory", "512m", "--cpus", "1"]
+    : ["run", "--capacity", "2"];
   const worker = startProc("worker", bin, [...args, "--config", config], {
     env: workerEnv,
     log: join(tmp, "worker.log"),
