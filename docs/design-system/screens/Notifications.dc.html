@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Kênh thông báo</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent)}a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
+  <dc-import name="Sidebar" active="notifications" hint-size="240px,1000px"></dc-import>
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <header style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 2px; max-width: 640px;">
+        <div style="font-size: 12.5px; color: var(--muted);">Quản trị / Acme</div>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.3; font-weight: 600; color: var(--ink);">Kênh thông báo</h1>
+        <p style="margin: 0; font-size: 13px; color: var(--muted);">Nhóm quản trị nhận tin khi có việc cần người: run lỗi, cần người xem, khởi tạo dự án lỗi, máy mất kết nối, người chờ duyệt, merge lỗi.</p>
+      </div>
+      <button type="button" onClick="{{newChannel}}" style="height: 36px; padding: 0 14px; display: flex; align-items: center; gap: 6px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>Thêm kênh</button>
+    </header>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+      <section style="flex: 3 1 560px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto;">
+        <table style="width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13.5px;">
+          <thead>
+            <tr style="background: var(--subtle); text-align: left; font-size: 13px; color: var(--muted);">
+              <th style="padding: 10px 12px; font-weight: 500;">Kênh</th>
+              <th style="padding: 10px 12px; font-weight: 500;">Sự kiện</th>
+              <th style="padding: 10px 12px; font-weight: 500;">Lần gửi gần nhất</th>
+              <th style="padding: 10px 12px; font-weight: 500;">Bật</th>
+            </tr>
+          </thead>
+          <tbody>
+            <sc-for list="{{channels}}" as="c" hint-placeholder-count="3">
+              <tr onClick="{{c.pick}}" style="{{c.row}}">
+                <td style="padding: 10px 12px; min-width: 220px;"><div style="display: flex; flex-direction: column; line-height: 1.35;"><button type="button" onClick="{{c.pick}}" style="padding: 0; background: none; border: 0; text-align: left; font: inherit; font-weight: 600; color: var(--ink); cursor: pointer;">{{c.name}}</button><span style="font-size: 12px; color: var(--muted);">{{c.kindLabel}} · <span style="font-family: var(--font-mono);">{{c.target}}</span></span></div></td>
+                <td style="padding: 10px 12px;"><div style="display: flex; flex-wrap: wrap; gap: 4px;"><sc-for list="{{c.events}}" as="ev" hint-placeholder-count="2"><span style="padding: 1px 8px; border-radius: 7px; background: var(--subtle); color: var(--body); font-size: 12px;">{{ev}}</span></sc-for></div></td>
+                <td style="padding: 10px 12px; font-size: 12.5px;"><span style="{{c.lastStyle}}">{{c.last}}</span></td>
+                <td style="padding: 10px 12px;"><span style="{{c.switchStyle}}">{{c.enabledLabel}}</span></td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </section>
+      <section aria-label="Sửa kênh" style="flex: 2 1 360px; min-width: 0; box-sizing: border-box; padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 14px;">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600; color: var(--ink);">{{formTitle}}</h2>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="ch-name" style="font-size: 13px; font-weight: 500; color: var(--ink);">Tên kênh</label>
+          <input id="ch-name" value="{{form.name}}" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit;">
+        </div>
+        <div role="group" aria-label="Loại kênh" style="display: flex; padding: 3px; gap: 3px; background: var(--subtle); border-radius: 10px;">
+          <button type="button" onClick="{{pickTelegram}}" aria-pressed="{{isTelegramStr}}" style="{{segTelegram}}">Telegram</button>
+          <button type="button" onClick="{{pickEmail}}" aria-pressed="{{isEmailStr}}" style="{{segEmail}}">Email</button>
+        </div>
+        <sc-if value="{{isTelegram}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="tg-token" style="font-size: 13px; font-weight: 500; color: var(--ink);">Token bot</label>
+              <input id="tg-token" type="password" value="1234567890:AAH-bimat-cua-bot" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;">
+              <span style="font-size: 12px; color: var(--muted);">Lấy từ @BotFather. Hub mã hoá token và không hiện lại.</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="tg-chat" style="font-size: 13px; font-weight: 500; color: var(--ink);">Chat id</label>
+              <input id="tg-chat" value="-1001873402" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;">
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{isEmail}}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+              <div style="grid-column: span 2; display: flex; flex-direction: column; gap: 6px;"><label for="smtp-host" style="font-size: 13px; font-weight: 500; color: var(--ink);">Máy chủ SMTP</label><input id="smtp-host" value="10.0.4.12" aria-invalid="true" aria-describedby="smtp-err" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--bad); border-radius: 8px; background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;"></div>
+              <div style="display: flex; flex-direction: column; gap: 6px;"><label for="smtp-port" style="font-size: 13px; font-weight: 500; color: var(--ink);">Cổng</label><input id="smtp-port" value="587" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;"></div>
+            </div>
+            <p id="smtp-err" style="margin: -6px 0 0; font-size: 12px; color: var(--bad);">Máy chủ SMTP trỏ vào địa chỉ nội bộ. Dùng máy chủ SMTP công khai, hoặc nhờ quản trị hub bật HIVE_NOTIFY_ALLOW_PRIVATE.</p>
+            <div style="display: flex; flex-direction: column; gap: 6px;"><label for="smtp-tls" style="font-size: 13px; font-weight: 500; color: var(--ink);">Mã hoá</label>
+              <select id="smtp-tls" style="height: 36px; box-sizing: border-box; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit;"><option>STARTTLS bắt buộc (587)</option><option>TLS ngay từ đầu (465)</option><option>Không mã hoá (máy chủ nội bộ)</option></select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;"><label for="smtp-to" style="font-size: 13px; font-weight: 500; color: var(--ink);">Người nhận</label><input id="smtp-to" value="ops@acme.vn, lan@acme.vn" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit;"></div>
+          </div>
+        </sc-if>
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px;">
+          <legend style="padding: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--ink);">Nhận khi</legend>
+          <sc-for list="{{eventOptions}}" as="o" hint-placeholder-count="6">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--body);"><input type="checkbox" checked="{{o.checked}}">{{o.label}}</label>
+          </sc-for>
+        </fieldset>
+        <sc-if value="{{tested}}" hint-placeholder-val="{{ false }}">
+          <div role="status" style="display: flex; gap: 8px; padding: 10px 12px; background: var(--ok-bg); color: var(--ok); border-radius: 10px; font-size: 13px;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="m3.5 8.5 3 3 6-7"></path></svg>Đã gửi tin thử tới Telegram -1001873402.</div>
+        </sc-if>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end;">
+          <button type="button" onClick="{{test}}" style="height: 36px; padding: 0 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">Gửi tin thử</button>
+          <button type="button" style="height: 36px; padding: 0 14px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;">Lưu kênh</button>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { selected: 'tg', kind: 'telegram', tested: false }; }
+  renderVals() {
+    const label = { 'run.failed': 'Run lỗi', 'run.needs_review': 'Run cần người xem', 'project.provision_failed': 'Khởi tạo dự án lỗi', 'machine.offline': 'Máy mất kết nối', 'member.pending': 'Người chờ duyệt', 'merge.failed': 'Merge lỗi' };
+    const data = [
+      { id: 'tg', name: 'Telegram nhóm quản trị', kind: 'telegram', target: '-1001873402', events: ['run.failed', 'merge.failed', 'machine.offline'], on: true, last: 'Đã gửi 14:08', bad: false },
+      { id: 'mail', name: 'Email trực ban', kind: 'email', target: 'ops@acme.vn, lan@acme.vn qua smtp.acme.vn:587', events: ['project.provision_failed', 'member.pending', 'run.needs_review'], on: true, last: 'Đã gửi hôm qua', bad: false },
+      { id: 'old', name: 'Email nội bộ cũ', kind: 'email', target: 'it@acme.local qua 10.0.4.12:25', events: ['run.failed'], on: false, last: 'Lỗi: SMTP trỏ vào địa chỉ nội bộ', bad: true },
+    ];
+    const channels = data.map((c) => ({
+      ...c, kindLabel: c.kind === 'telegram' ? 'Telegram' : 'Email', events: c.events.map((e) => label[e]),
+      enabledLabel: c.on ? 'Đang bật' : 'Đã tắt',
+      switchStyle: c.on ? 'display: inline-flex; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: var(--ok-bg); color: var(--ok);' : 'display: inline-flex; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: var(--subtle); color: var(--muted);',
+      lastStyle: c.bad ? 'color: var(--bad);' : 'color: var(--muted);',
+      row: 'border-top: 1px solid var(--line); cursor: pointer;' + (this.state.selected === c.id ? ' background: var(--sel);' : ''),
+      pick: () => this.setState({ selected: c.id, kind: c.kind, tested: false }),
+    }));
+    const current = data.find((c) => c.id === this.state.selected);
+    const segOn = 'flex: 1; height: 32px; border: 0; border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; box-shadow: var(--shadow-app); cursor: pointer;';
+    const segOff = 'flex: 1; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-weight: 500; cursor: pointer;';
+    const isTelegram = this.state.kind === 'telegram';
+    const chosen = current ? current.events : ['run.failed'];
+    return {
+      theme: this.props.dark ? 'dark' : 'light', channels,
+      formTitle: current ? 'Sửa kênh' : 'Thêm kênh thông báo',
+      form: { name: current ? current.name : '' },
+      isTelegram, isEmail: !isTelegram, isTelegramStr: isTelegram ? 'true' : 'false', isEmailStr: isTelegram ? 'false' : 'true',
+      segTelegram: isTelegram ? segOn : segOff, segEmail: isTelegram ? segOff : segOn,
+      pickTelegram: () => this.setState({ kind: 'telegram' }), pickEmail: () => this.setState({ kind: 'email' }),
+      eventOptions: Object.keys(label).map((k) => ({ label: label[k], checked: chosen.includes(k) })),
+      tested: this.state.tested && isTelegram, test: () => this.setState({ tested: true }),
+      newChannel: () => this.setState({ selected: null, kind: 'telegram', tested: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>
