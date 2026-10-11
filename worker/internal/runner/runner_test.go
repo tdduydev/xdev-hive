@@ -358,7 +358,7 @@ func TestCLICommandFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(cmd.Args[0]) != "codex" || len(cmd.Args) != 12 || cmd.Args[1] != "exec" || cmd.Args[len(cmd.Args)-1] != "p" {
+	if filepath.Base(cmd.Args[0]) != "codex" || !strings.Contains(strings.Join(cmd.Args[1:], " "), "exec --json") || cmd.Args[len(cmd.Args)-1] != "p" {
 		t.Fatalf("lệnh mặc định = %v", cmd.Args)
 	}
 	// Runner.CLICommands do code đặt thắng biến môi trường.
@@ -450,6 +450,22 @@ func TestClaudeMCPFileCleanup(t *testing.T) {
 }
 
 func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows does not execute the POSIX shell fixture below; validate the command cleanup hook directly.
+		cmd, err := (Runner{}).cliCommand(Job{CLI: "claude", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := cmd.Args[len(cmd.Args)-1]
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		}
+		cmd.cleanup()
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("file MCP còn sau cleanup: %v", err)
+		}
+		return
+	}
 	remote, base := makeRemote(t)
 	for _, cancelRun := range []bool{false, true} {
 		name := "failure"

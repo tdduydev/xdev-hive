@@ -20,7 +20,7 @@ rồi giao cho các agent.
 - docs/architecture.md: module của hub, mô hình dữ liệu, giao thức worker, thứ tự mốc M0–M8.
 - docs/decisions.md: phạm vi, stack, phiên bản đã chốt.
 - AGENTS.md: lệnh, quy ước, cách chạy test có database.
-- docs/ui/m1-dang-nhap-to-chuc.html: mockup giao diện M1.
+- docs/ui/m1-login-orgs.html: mockup giao diện M1.
 
 TẠO PLAN bằng plan_create, mỗi task vừa đúng một PR, có acceptance rõ và dependsOn đúng.
 Danh sách task (giữ id, có thể tách nhỏ hơn nếu một task quá một PR):
@@ -41,7 +41,7 @@ M1c – API tổ chức (backend, module tenancy của hub):
   người đăng nhập SSO lần đầu (vào hàng chờ duyệt hoặc tự thêm làm thành viên), duyệt người chờ.
   Acceptance: test luồng OIDC đầy đủ với IdP giả lập (oauth2-mock-server hoặc tương đương).
 
-M1d – Giao diện (web, chỉ làm khi người quản trị đã duyệt mockup docs/ui/m1-dang-nhap-to-chuc.html):
+M1d – Giao diện (web, chỉ làm khi người quản trị đã duyệt mockup docs/ui/m1-login-orgs.html):
 - M1d-shell: TanStack Router, token màu/chữ theo mockup, khung app (sidebar, chọn tổ chức),
   client đăng nhập. Acceptance: Playwright mở được trang, đúng light/dark.
 - M1d-login (dependsOn M1d-shell, M1c-org): màn Đăng nhập và Tạo tổ chức theo mockup màn 1–2.
@@ -49,7 +49,7 @@ M1d – Giao diện (web, chỉ làm khi người quản trị đã duyệt mock
 - M1d-sso (dependsOn M1d-admin, M1c-sso): màn Cài đặt đăng nhập.
 
 Chuẩn bị M2 và M3 (chạy song song với M1, không đụng module tenancy):
-- M2-mockup: vẽ mockup HTML tự chứa docs/ui/m2-du-an.html cho danh sách dự án, wizard tạo dự án
+- M2-mockup: vẽ mockup HTML tự chứa docs/ui/m2-projects.html cho danh sách dự án, wizard tạo dự án
   (repo mới/có sẵn, GitHub/GitLab, template, máy, quyền) và màn tiến trình. Không viết code giao
   diện. Acceptance: người quản trị duyệt.
 - M2-gitprovider: interface GitProvider trong module scm (checkAccess, getRepo, createRepo,

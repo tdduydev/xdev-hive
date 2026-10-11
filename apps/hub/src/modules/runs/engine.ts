@@ -906,7 +906,7 @@ export function createRunsEngine(deps: RunsDeps) {
         title: outcome === "failed" ? `Run của ${key} thất bại` : `${key} cần người xem lại`,
         body: body.join("\n"),
         // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
-        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/viec/${task.key}` : null,
+        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.key}` : null,
       },
       { jobs: deps.jobs },
     );

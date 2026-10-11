@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { fakeHub, USER } from "./fake-hub.ts";
 
-test("đã đăng nhập: mở /dang-nhap thì vào /, thấy khung app như mockup", async ({ page }) => {
+test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
-  await page.goto("/dang-nhap");
+  await page.goto("/login");
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();
@@ -49,7 +49,7 @@ test("đăng xuất thì về trang đăng nhập", async ({ page }) => {
   });
   await page.goto("/");
   await page.locator("aside").getByRole("button", { name: "Đăng xuất" }).click();
-  await expect(page).toHaveURL("/dang-nhap");
+  await expect(page).toHaveURL("/login");
   await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
 });
@@ -62,7 +62,7 @@ for (const [scheme, canvas, surface, accent, onAccent] of [
   test(`màu theo chế độ ${scheme} của hệ điều hành, đúng token mockup`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
     await fakeHub(page);
-    await page.goto("/dang-nhap");
+    await page.goto("/login");
     const card = page.getByRole("heading", { name: "Đăng nhập" }).locator("..");
     await expect(page.locator("body")).toHaveCSS("background-color", canvas);
     await expect(card).toHaveCSS("background-color", surface);
