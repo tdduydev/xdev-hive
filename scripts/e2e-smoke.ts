@@ -698,7 +698,7 @@ async function followRun(api: HubClient, runId: string, signal: AbortSignal): Pr
   return null;
 }
 
-/** Mẫu log worker in ra khi nhận job_offer mà chưa có code xử lý (main chưa có PR #14 M3-worker-jobs). */
+/** Mẫu log worker in ra khi nhận gói nó không xử lý; với job_offer là lỗi thật, báo ngay thay vì chờ hết giờ. */
 const UNHANDLED_OFFER = /Chưa xử lý gói từ hub.*JobOffer/;
 
 async function runTask(api: HubClient, projectId: string, worker: Proc) {
@@ -716,13 +716,11 @@ async function runTask(api: HubClient, projectId: string, worker: Proc) {
   try {
     const outcome = await Promise.race([
       followRun(api, run.id, abort.signal).then((s) => ({ kind: "end" as const, state: s })),
-      worker.waitForLine(UNHANDLED_OFFER).then((line) => ({ kind: "pending" as const, line })),
+      worker.waitForLine(UNHANDLED_OFFER).then((line) => ({ kind: "unhandled" as const, line })),
       delay(RUN_TIMEOUT_MS, undefined, { signal: abort.signal }).then(() => ({ kind: "timeout" as const })),
     ]);
-    if (outcome.kind === "pending") {
-      throw new Pending(
-        "Worker trên main chưa nhận job (log: Chưa xử lý gói JobOffer). Chờ PR #14 M3-worker-jobs nối WSS với runner.",
-      );
+    if (outcome.kind === "unhandled") {
+      throw new Error(`Worker không nhận job: ${outcome.line}`);
     }
     if (outcome.kind === "timeout") {
       const now = await api.get<Run>(`/api/v1/runs/${run.id}`);

@@ -10,7 +10,7 @@ import (
 )
 
 func startProcess(c *exec.Cmd) error { return c.Start() }
-func waitProcess(ctx context.Context, c *exec.Cmd, grace time.Duration) error {
+func waitProcess(ctx context.Context, c *exec.Cmd, grace func() time.Duration) error {
 	done := make(chan error, 1)
 	go func() { done <- c.Wait() }()
 	select {
@@ -19,7 +19,7 @@ func waitProcess(ctx context.Context, c *exec.Cmd, grace time.Duration) error {
 	case <-ctx.Done():
 	}
 	_ = exec.Command("taskkill", "/PID", itoa(c.Process.Pid), "/T").Run()
-	t := time.NewTimer(grace)
+	t := time.NewTimer(grace())
 	defer t.Stop()
 	select {
 	case err := <-done:
