@@ -48,9 +48,26 @@ HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <use
 - Lần sau, script giữ nguyên secret và chỉ thêm biến mới còn thiếu. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
   `HIVE_POSTGRES_IMAGE`, `HIVE_NODE_IMAGE` đặt theo tham số của lệnh.
 - `HIVE_BIND=0.0.0.0` cho máy chủ LAN không có HTTPS. Khi đó cổng `/mcp` tự tắt vì `HIVE_PUBLIC_URL` không phải https.
+- Muốn agent trong run vẫn gọi `task_update`, `memory_search` qua http trong mạng tin cậy, đặt `HIVE_MCP_ALLOW_HTTP=1`
+  (mặc định tắt). Khi đó `/mcp` chỉ nhận run token của agent: token OAuth hay request không có run token bị 401, còn
+  `/.well-known` và đăng nhập OAuth cho người dùng vẫn chỉ bật khi https. Run token đi qua http trần, nên chỉ bật cờ này
+  khi mạng giữa máy chủ và máy chạy worker là mạng tin cậy. Hub ghi một dòng cảnh báo lúc khởi động.
   Dùng HTTPS thì để `HIVE_BIND` mặc định và thêm `--profile https` (Caddy).
 - User không thuộc nhóm docker thì đặt `HIVE_REMOTE_DOCKER="sudo docker"`.
 
 Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret, rồi chạy
 `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
 cho hàng đợi), chạy migration rồi khởi động API. Health: `/api/v1/health`.
+
+### Worker chạy nền
+
+Đăng ký máy một lần bằng `hive-worker register --hub URL --token MÃ`. Sau đó cài worker chạy nền bằng
+`hive-worker service install [--config PATH] [--capacity N]`; xem trạng thái bằng `hive-worker service status`
+và gỡ bằng `hive-worker service uninstall`. Dùng `--dry-run` để xem nội dung dịch vụ và các lệnh trước khi cài.
+
+Linux cài systemd user service. Mặc định service chỉ chạy trong phiên đăng nhập; dùng `loginctl enable-linger USER`
+để worker tiếp tục chạy khi người dùng chưa đăng nhập. Log xem bằng `journalctl --user -u hive-worker`.
+macOS cài LaunchAgent và ghi log vào `~/Library/Logs/xdev-hive/worker.log`. Khi hub từ chối máy, LaunchAgent
+thoát thành công và không tự khởi động lại liên tục; đăng ký lại rồi chạy `service install` để nạp lại.
+Windows tạo tác vụ Task Scheduler ở mức quyền thường, chạy lúc đăng nhập và ghi log vào
+`%LOCALAPPDATA%\xdev-hive\worker.log`.

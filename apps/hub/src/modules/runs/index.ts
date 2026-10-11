@@ -13,6 +13,8 @@ export { createMcpRunTokens, registerMcpTools } from "./mcp.ts";
 export { evaluatePolicy, matchGlob } from "./policy.ts";
 export { eventsAfter, getRun, listRuns, logsAfter } from "./queries.ts";
 export { type RunsRouterDeps, runsRouter } from "./router.ts";
+// Bảng runs cho module cost tổng hợp token và chi phí (costs.summary).
+export { runEvents, runs } from "./schema.ts";
 export { RUNS_CHANNEL } from "./state.ts";
 export { parseCursor, RunNotifier, type RunStreamDeps, runStreamHandler } from "./stream.ts";
 // Ký và kiểm chữ ký run token; cổng MCP dùng createMcpRunTokens (kiểm thêm run còn chạy).
