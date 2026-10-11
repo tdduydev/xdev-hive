@@ -17,7 +17,8 @@
     "deps": "depcruise apps packages --config .dependency-cruiser.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm deps && pnpm test",
     "openapi": "pnpm --filter @xdev-hive/contracts openapi",
-    "e2e:smoke": "node scripts/e2e-smoke.ts"
+    "e2e:smoke": "node scripts/e2e-smoke.ts",
+    "e2e:sandbox": "node scripts/e2e-sandbox.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",

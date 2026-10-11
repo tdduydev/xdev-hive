@@ -83,6 +83,33 @@ jobs:
       # Chế độ mặc định: Postgres qua Testcontainers (Docker có sẵn trên runner), không ra mạng ngoài.
       - run: pnpm e2e:smoke
 
+  sandbox-e2e:
+    name: E2E sandbox (gVisor)
+    runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER || '["self-hosted","Linux","X64","hive-ci"]') }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: worker/go.mod
+          cache: false
+      - run: pnpm install --frozen-lockfile
+      # Mã 77 là bỏ qua do thiếu Docker/runsc; trên runner gVisor đã chuẩn bị, đây vẫn là CI chưa đạt.
+      - run: pnpm e2e:sandbox
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sandbox-e2e-result
+          path: .e2e/sandbox/result.json
+          if-no-files-found: warn
+
   image:
     name: Docker image (build only)
     runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER || '["self-hosted","Linux","X64","hive-ci"]') }}
