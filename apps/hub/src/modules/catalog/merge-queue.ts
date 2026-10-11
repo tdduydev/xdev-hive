@@ -443,6 +443,8 @@ async function saveDecision(
       {
         orgId: saved.orgId,
         event: "merge.failed",
+        eventKey: saved.id,
+        recipientIds: [saved.enqueuedBy],
         title: `Không merge được PR #${saved.prNumber} của ${project.key}`,
         body: [saved.branch ? `Nhánh ${saved.branch}` : "", decision.note, "PR đã ra khỏi hàng merge."]
           .filter(Boolean)

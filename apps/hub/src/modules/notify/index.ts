@@ -7,6 +7,15 @@ export {
   updateChannel,
 } from "./channels.ts";
 export {
+  cleanupInbox,
+  INBOX_CLEANUP_QUEUE,
+  inboxCleanupQueue,
+  listInbox,
+  markInboxRead,
+  registerInboxCleanupWorker,
+  unreadInboxCount,
+} from "./inbox.ts";
+export {
   type DeliverDeps,
   type DeliverOutcome,
   deliverNotification,
@@ -20,5 +29,5 @@ export {
   notifyQueue,
   registerNotifyWorker,
 } from "./notify.ts";
-export { type NotifyDeps, notifyRouter } from "./router.ts";
+export { inboxRouter, type NotifyDeps, notifyRouter } from "./router.ts";
 export { DeliveryError, escapeHtml, type SendDeps, send, telegramText } from "./send.ts";

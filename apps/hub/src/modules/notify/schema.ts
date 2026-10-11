@@ -53,6 +53,36 @@ export const notificationChannels = hive
   )
   .enableRLS();
 
+const ownInbox = sql`org_id = hive.ctx_org() and user_id = hive.ctx_user()`;
+
+export const inboxItems = hive
+  .table(
+    "inbox_items",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      userId: text("user_id").notNull(),
+      event: text("event").notNull(),
+      eventKey: text("event_key").notNull(),
+      title: text("title").notNull(),
+      body: text("body").notNull(),
+      link: text("link"),
+      // Con trỏ dùng Date của JavaScript, nên độ chính xác trong DB cũng phải là mili giây để không mất mục.
+      createdAt: timestamp("created_at", { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+      readAt: timestamp("read_at", { withTimezone: true, precision: 3 }),
+    },
+    (t) => [
+      unique("inbox_items_recipient_event").on(t.orgId, t.userId, t.event, t.eventKey),
+      index("inbox_items_recipient_created").on(t.orgId, t.userId, t.createdAt, t.id),
+      index("inbox_items_recipient_unread").on(t.orgId, t.userId).where(sql`read_at is null`),
+      index("inbox_items_read_at").on(t.readAt).where(sql`read_at is not null`),
+      pgPolicy("inbox_items_rw", { for: "all", to: hiveApp, using: ownInbox, withCheck: ownInbox }),
+      // Nghiệp vụ và job ghi cho người nhận khác người thao tác; quyền đọc/sửa vẫn chỉ thuộc người nhận.
+      pgPolicy("inbox_items_insert", { for: "insert", to: hiveApp, withCheck: inOrg }),
+    ],
+  )
+  .enableRLS();
+
 /**
  * Mỗi lần gửi một sự kiện qua một kênh. Ghi cùng transaction với nghiệp vụ phát sự kiện; việc gửi thật chạy sau bằng
  * job notify.deliver, nên GitHub/Telegram/SMTP chậm hay lỗi không làm nghiệp vụ rollback.

@@ -1,6 +1,6 @@
 import { implement, ORPCError } from "@orpc/server";
 import { contract, type NotificationTestResult } from "@xdev-hive/contracts";
-import { type MasterKey, type RequestContext, withTenant } from "../platform/index.ts";
+import { type Jobs, type MasterKey, type RequestContext, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import {
   type ChannelRecord,
@@ -10,7 +10,19 @@ import {
   removeChannel,
   updateChannel,
 } from "./channels.ts";
+import { listInbox, markInboxRead, unreadInboxCount } from "./inbox.ts";
 import { DeliveryError, type SendDeps, send } from "./send.ts";
+
+export function inboxRouter(deps: OrgDeps & { jobs?: Jobs | undefined }) {
+  const { authed, inOrg } = orgMiddlewares(deps);
+  const os = implement(contract.inbox).$context<RequestContext>().use(authed);
+  return {
+    list: os.list.use(inOrg).handler(({ context: { tx }, input }) => listInbox(tx, input)),
+    unreadCount: os.unreadCount.use(inOrg).handler(({ context: { tx } }) => unreadInboxCount(tx)),
+    markRead: os.markRead.use(inOrg).handler(({ context: { tx }, input }) => markInboxRead(tx, input.ids, deps.jobs)),
+    markAllRead: os.markAllRead.use(inOrg).handler(({ context: { tx } }) => markInboxRead(tx, undefined, deps.jobs)),
+  };
+}
 
 export interface NotifyDeps extends OrgDeps, SendDeps {
   masterKey?: MasterKey | undefined;
