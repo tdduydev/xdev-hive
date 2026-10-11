@@ -1,8 +1,8 @@
-import type { RunStartInput, TaskStatus } from "@xdev-hive/contracts";
+import { type OutcomeCheck, type RunStartInput, type TaskStatus, TERMINAL_RUN_STATES } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { loadProject, type ProjectRow } from "../catalog/index.ts";
+import { enqueueMerge, loadProject, type ProjectRow } from "../catalog/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -14,7 +14,15 @@ import {
   sendToMachine,
 } from "../fleet/index.ts";
 import { notify } from "../notify/index.ts";
-import { ConflictError, type Jobs, type MasterKey, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  type Jobs,
+  type MasterKey,
+  NotFoundError,
+  type Tx,
+  withTenant,
+} from "../platform/index.ts";
 import {
   isGitProviderError,
   loadConnection,
@@ -24,7 +32,8 @@ import {
 } from "../scm/index.ts";
 import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
 import { createMcpRunTokens } from "./mcp.ts";
-import { evaluatePolicy, type Outcome } from "./policy.ts";
+import { evaluatePolicy, evaluateReviewRun, type Outcome, type ReviewEvidence } from "./policy.ts";
+import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
 import {
@@ -92,6 +101,50 @@ const pgError = (e: unknown) => ((e as { cause?: unknown }).cause ?? e) as { cod
 
 const runNotFound = () => new NotFoundError("RUN_NOT_FOUND", "Không tìm thấy run trong tổ chức.");
 
+type ReviewCheck = Extract<OutcomeCheck, { check: "review" }>;
+const reviewCheckOf = (policy: OutcomeCheck[]) => policy.find((c): c is ReviewCheck => c.check === "review");
+const exitOf = (data: Record<string, unknown>) => (typeof data.exit === "number" ? data.exit : null);
+
+/** Gói run_result sau cùng của lần thử hiện tại. */
+async function resultOf(tx: Tx, run: RunRow): Promise<Record<string, unknown>> {
+  const [row] = await tx
+    .select({ data: runEvents.data })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "result")))
+    .orderBy(desc(runEvents.id))
+    .limit(1);
+  return row?.data ?? {};
+}
+
+/** Run review mới nhất của run code. */
+async function reviewRunOf(tx: Tx, parentId: string): Promise<RunRow | null> {
+  const [row] = await tx
+    .select()
+    .from(runs)
+    .where(eq(runs.parentRunId, parentId))
+    .orderBy(desc(runs.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Báo cáo review_submit sau cùng của lần thử hiện tại: agent gọi lại thì lần sau thay lần trước. */
+async function reviewReportOf(tx: Tx, run: RunRow): Promise<ReviewReport | null> {
+  const [row] = await tx
+    .select({ data: runEvents.data })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "review_report")))
+    .orderBy(desc(runEvents.id))
+    .limit(1);
+  return row ? parseReviewReport(row.data) : null;
+}
+
+function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
+  if (child.state === "succeeded" && report) return { status: "done", score: report.score, by: child.cli };
+  if (child.state === "cancelled") return { status: "failed", reason: "run review đã bị huỷ." };
+  const why = child.result?.reasons[0];
+  return { status: "failed", reason: why ?? `run review kết thúc ở trạng thái ${child.state}.` };
+}
+
 /** Chỉ dẫn đã ghi cho run (mọi lần thử): run giao lại sau khi mất máy vẫn mang theo chỉ dẫn người review đã gửi. */
 async function instructionsOf(tx: Tx, runId: string): Promise<string[]> {
   const rows = await tx
@@ -115,8 +168,22 @@ function buildSpec(
   project: ProjectRow,
   cli: string,
   instructions: string[],
+  parentPrUrl: string | null,
 ): Record<string, unknown> {
-  const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
+  // Run review đọc nhánh của run cha (run.branch) so với nhánh chính; worker không push và không đòi commit.
+  const prompt =
+    run.kind === "review"
+      ? reviewPrompt({
+          taskKey: task.key,
+          title: task.title,
+          body: task.body,
+          branch: run.branch,
+          baseBranch: project.defaultBranch ?? "main",
+          prUrl: parentPrUrl,
+        })
+      : task.body
+        ? `${task.title}\n\n${task.body}`
+        : task.title;
   return {
     kind: run.kind,
     taskId: task.id,
@@ -248,6 +315,9 @@ export function createRunsEngine(deps: RunsDeps) {
       const machine = await pickMachine(tx, run);
       if (!machine) return null;
       const instructions = await instructionsOf(tx, run.id);
+      const [parent] = run.parentRunId
+        ? await tx.select({ prUrl: runs.prUrl }).from(runs).where(eq(runs.id, run.parentRunId))
+        : [];
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
@@ -264,7 +334,7 @@ export function createRunsEngine(deps: RunsDeps) {
           runId: run.id,
           attempt: run.attempt,
           ttl: offerTtlSec,
-          spec: buildSpec(run, task, project, cli, instructions),
+          spec: buildSpec(run, task, project, cli, instructions, parent?.prUrl ?? null),
         } satisfies OutgoingMessage,
       };
     });
@@ -320,7 +390,8 @@ export function createRunsEngine(deps: RunsDeps) {
         { machineId: machine.id, offerMachineId: null, offerExpiresAt: null, startedAt: run.startedAt ?? new Date() },
         { machineId: machine.id, leaseId: lease.id },
       );
-      await setTaskStatus(tx, run.taskId, "running");
+      // Task của run review đã ở running theo run cha đang kiểm kết quả.
+      if (run.kind === "code") await setTaskStatus(tx, run.taskId, "running");
       await schedule({ kind: "lease", orgId: run.orgId, runId: run.id, leaseId: lease.id }, expiresAt, tx);
       return { run: leased, lease };
     });
@@ -527,17 +598,25 @@ export function createRunsEngine(deps: RunsDeps) {
 
   // ---- verifying ---------------------------------------------------------------------------------------------
 
-  /** Chạy chính sách kết quả, mở PR khi thành công. Gọi ra nhà cung cấp Git ngoài transaction. */
+  /** Chạy chính sách kết quả của run đang verifying. Gọi ra nhà cung cấp Git ngoài transaction. */
   async function verify(orgId: string, runId: string): Promise<void> {
+    const kind = await tenant(orgId, async (tx) => {
+      const [run] = await tx.select({ kind: runs.kind, state: runs.state }).from(runs).where(eq(runs.id, runId));
+      return run?.state === "verifying" ? run.kind : null;
+    });
+    if (kind === "code") await verifyCode(orgId, runId);
+    else if (kind === "review") await verifyReview(orgId, runId);
+  }
+
+  /**
+   * Run code: mở PR khi thành công. Chính sách có kiểm tra `review` và dự án bật review chéo thì chưa kết luận: mở PR,
+   * tạo run review cho CLI `by`, giữ run ở verifying tới khi run review xong rồi chạy lại chính sách với điểm review.
+   */
+  async function verifyCode(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
       const [run] = await tx.select().from(runs).where(eq(runs.id, runId));
       if (run?.state !== "verifying") return null;
-      const [result] = await tx
-        .select({ data: runEvents.data })
-        .from(runEvents)
-        .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "result")))
-        .orderBy(desc(runEvents.id))
-        .limit(1);
+      const data = await resultOf(tx, run);
       const [report] = await tx
         .select({ id: runEvents.id })
         .from(runEvents)
@@ -546,21 +625,38 @@ export function createRunsEngine(deps: RunsDeps) {
       const project = await loadProject(tx, run.projectId);
       const task = await loadTask(tx, run.taskId);
       const conn = project && deps.masterKey ? await loadConnection(tx, deps.masterKey, project.scmConnectionId) : null;
-      return { run, data: result?.data ?? {}, hasAgentReport: Boolean(report), project, task, conn };
+      // Đọc cờ lúc verify thay vì lúc giao: dự án tắt review chéo giữa chừng thì run đang chờ không tạo run review nữa.
+      const reviewCheck = project?.settings.features.crossReview ? reviewCheckOf(run.policySnapshot) : undefined;
+      const child = reviewCheck ? await reviewRunOf(tx, run.id) : null;
+      const childReport = child?.state === "succeeded" ? await reviewReportOf(tx, child) : null;
+      return { run, data, hasAgentReport: Boolean(report), project, task, conn, reviewCheck, child, childReport };
     });
     if (!ctx) return;
-    const { run, data, project, task } = ctx;
+    const { run, data, project, task, reviewCheck, child } = ctx;
+    if (child && !TERMINAL_RUN_STATES.includes(child.state)) {
+      // Run review còn chạy: không kết luận. Run review xong sẽ gọi lại verify; hẹn lại ở đây chỉ là lưới an toàn khi
+      // hub chết đúng lúc run review kết thúc.
+      await schedule({ kind: "verify", orgId, runId }, new Date(Date.now() + verifyRetrySec * 1000));
+      return;
+    }
+    let review: ReviewEvidence | undefined;
+    if (reviewCheck) review = child ? reviewEvidence(child, ctx.childReport) : { status: "pending" };
     const report = (data.report ?? null) as Record<string, unknown> | null;
     const ev = evaluatePolicy(run.policySnapshot, {
-      exit: typeof data.exit === "number" ? data.exit : 1,
+      exit: exitOf(data) ?? 1,
       headSha: typeof data.headSha === "string" ? data.headSha : null,
       report,
       hasAgentReport: ctx.hasAgentReport,
+      review,
     });
     let outcome = ev.outcome;
-    const reasons = [...ev.reasons];
-    let prUrl: string | null = null;
-    if (outcome === "succeeded" && ev.hasChanges) {
+    let checks = ev.checks;
+    let reasons = [...ev.reasons];
+    let awaitingReview = ev.awaitingReview;
+    // Lần chạy lại sau review: PR đã mở từ lần trước, số PR lấy lại từ URL để vẫn vào được hàng merge.
+    let prUrl = run.prUrl;
+    let prNumber = prNumberOf(prUrl);
+    if ((outcome === "succeeded" || awaitingReview) && ev.hasChanges && !prUrl) {
       try {
         if (!project || !task) throw new Error("Dự án hoặc task không còn.");
         if (!ctx.conn) throw new Error("Hub chưa cấu hình HIVE_MASTER_KEY hoặc dự án mất kết nối Git.");
@@ -570,10 +666,11 @@ export function createRunsEngine(deps: RunsDeps) {
             head: run.branch,
             base: project.defaultBranch ?? "main",
             title: `${task.key}: ${task.title}`,
-            body: prBody(task, run, ev.checks),
+            body: prBody(task, run, checks),
           },
         );
         prUrl = pr.url;
+        prNumber = pr.number;
       } catch (e) {
         // Lỗi tạm thời: để run ở verifying, hẹn giờ verify sẽ thử lại.
         if (isGitProviderError(e) && e.retryable) throw e;
@@ -581,19 +678,63 @@ export function createRunsEngine(deps: RunsDeps) {
         reasons.push(`Không mở được PR: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    await tenant(orgId, async (tx) => {
+    if (awaitingReview && !prUrl) {
+      // Review chéo đọc diff của PR; không có PR thì để người xem.
+      awaitingReview = false;
+      outcome = "needs_review";
+      checks = checks.map((c) =>
+        c.check === "review" && c.passed === null ? { ...c, message: "Không có PR để review chéo; cần người xem." } : c,
+      );
+      reasons = [...checks.filter((c) => c.passed !== true).map((c) => c.message), ...reasons.slice(ev.reasons.length)];
+    }
+    const result: RunResult = {
+      exit: exitOf(data),
+      commitCount: ev.commitCount,
+      changedFiles: ev.changedFiles,
+      checks,
+      reasons,
+      report,
+    };
+    const after = await tenant(orgId, async (tx) => {
       const locked = await lockRun(tx, runId);
-      if (locked?.state !== "verifying") return;
-      const result: RunResult = {
-        exit: typeof data.exit === "number" ? data.exit : null,
-        commitCount: ev.commitCount,
-        changedFiles: ev.changedFiles,
-        checks: ev.checks,
-        reasons,
-        report,
-      };
+      if (locked?.state !== "verifying") return null;
+      if (awaitingReview && reviewCheck) {
+        // Lần verify khác chạy chồng đã tạo run review.
+        if (await reviewRunOf(tx, locked.id)) return null;
+        const child = await createReviewRun(tx, locked, reviewCheck.by);
+        // Ghi kết quả tạm để người xem thấy run đang chờ review nào; trạng thái giữ verifying.
+        await tx.update(runs).set({ prUrl, result, updatedAt: sql`now()` }).where(eq(runs.id, locked.id));
+        await hubEvent(tx, locked, "review_requested", { reviewRunId: child.id, by: reviewCheck.by, prUrl });
+        await notifyRun(tx, locked.id);
+        return () => background(dispatch(orgId, child.id), "Không giao được run review");
+      }
       await transition(tx, locked, outcome, { result, prUrl, finishedAt: new Date() }, { reasons, prUrl });
       await setTaskStatus(tx, locked.taskId, taskStatusFor(outcome, prUrl));
+      // Chế độ auto: PR của run đạt chính sách vào thẳng hàng merge, cùng transaction để không có run succeeded mà
+      // PR bị bỏ quên ngoài hàng. Chế độ review chờ người đưa vào hàng.
+      if (
+        outcome === "succeeded" &&
+        prNumber !== null &&
+        project?.settings.merge.mode === "auto" &&
+        project.settings.features.mergeQueue
+      ) {
+        await enqueueMerge(
+          tx,
+          {
+            projectId: locked.projectId,
+            prNumber,
+            prUrl,
+            branch: locked.branch,
+            runId: locked.id,
+            taskId: locked.taskId,
+            by: locked.createdBy,
+          },
+          { jobs: deps.jobs },
+        ).catch((e: unknown) => {
+          // Vừa tắt merge queue sau lúc đọc dự án: run vẫn xong, PR chờ người như chế độ review.
+          if (!(e instanceof BadRequestError)) throw e;
+        });
+      }
       await recordAudit(tx, {
         action: "run.finish",
         actorUserId: null,
@@ -602,7 +743,134 @@ export function createRunsEngine(deps: RunsDeps) {
         data: { outcome, prUrl, taskId: locked.taskId },
       });
       await notifyOutcome(tx, locked, task, outcome, reasons, prUrl);
+      return null;
     });
+    after?.();
+  }
+
+  /**
+   * Run review con của run code: cùng task, cùng nhánh, CLI là `by` của kiểm tra review (trùng CLI của run cha vẫn
+   * cho, để dự án chỉ có một loại CLI vẫn dùng được). Chính sách cố định nên policy_snapshot rỗng.
+   */
+  async function createReviewRun(tx: Tx, parent: RunRow, by: ReviewCheck["by"]): Promise<RunRow> {
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: parent.orgId,
+        teamId: parent.teamId,
+        taskId: parent.taskId,
+        projectId: parent.projectId,
+        kind: "review",
+        parentRunId: parent.id,
+        cli: by,
+        branch: parent.branch,
+        policySnapshot: [],
+        timeoutSec: parent.timeoutSec,
+        createdBy: parent.createdBy,
+      })
+      .returning();
+    if (!row) throw new Error("Không ghi được run review.");
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: "review", parentRunId: parent.id });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "run.start",
+      actorUserId: null,
+      targetType: "run",
+      targetId: row.id,
+      data: { taskId: row.taskId, cli: by, kind: "review", parentRunId: parent.id },
+    });
+    return row;
+  }
+
+  /**
+   * Run review: succeeded khi agent đã gọi review_submit (tương đương `agentReport` trên `review_report`). Xong thì
+   * đăng nhận xét lên PR của run cha và chạy lại chính sách của run cha.
+   */
+  async function verifyReview(orgId: string, runId: string): Promise<void> {
+    const ctx = await tenant(orgId, async (tx) => {
+      const [run] = await tx.select().from(runs).where(eq(runs.id, runId));
+      if (run?.state !== "verifying") return null;
+      const data = await resultOf(tx, run);
+      const review = await reviewReportOf(tx, run);
+      const [parent] = run.parentRunId ? await tx.select().from(runs).where(eq(runs.id, run.parentRunId)) : [];
+      const project = await loadProject(tx, run.projectId);
+      const conn =
+        review && project && deps.masterKey ? await loadConnection(tx, deps.masterKey, project.scmConnectionId) : null;
+      return { run, data, review, parent: parent ?? null, project, conn };
+    });
+    if (!ctx) return;
+    const { run, data, review } = ctx;
+    const report = (data.report ?? null) as Record<string, unknown> | null;
+    const ev = evaluateReviewRun({ exit: exitOf(data) ?? 1, report, score: review?.score ?? null });
+    const finished = await tenant(orgId, async (tx) => {
+      const locked = await lockRun(tx, runId);
+      if (locked?.state !== "verifying") return false;
+      const result: RunResult = {
+        exit: exitOf(data),
+        commitCount: null,
+        changedFiles: [],
+        checks: ev.checks,
+        reasons: ev.reasons,
+        report,
+      };
+      await transition(
+        tx,
+        locked,
+        ev.outcome,
+        { result, finishedAt: new Date() },
+        { reasons: ev.reasons, score: review?.score ?? null },
+      );
+      await recordAudit(tx, {
+        action: "run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: locked.id,
+        data: { outcome: ev.outcome, kind: "review", parentRunId: locked.parentRunId, score: review?.score ?? null },
+      });
+      await reviewFinished(tx, locked);
+      return true;
+    });
+    if (!finished) return;
+    if (ev.outcome === "succeeded" && review) {
+      background(postReview(ctx, review), `Không đăng được review của run ${run.id} lên PR`);
+    }
+    if (run.parentRunId) background(verify(orgId, run.parentRunId), `verifying run ${run.parentRunId} lỗi`);
+  }
+
+  /**
+   * Run review kết thúc theo bất kỳ đường nào (xong, lỗi, hết lượt, bị huỷ): hẹn chạy lại verify của run cha trong
+   * cùng transaction, để hub chết ngay sau commit thì hẹn giờ vẫn kết luận được run cha.
+   */
+  async function reviewFinished(tx: Tx, run: RunRow): Promise<void> {
+    if (run.kind !== "review" || !run.parentRunId) return;
+    await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
+  }
+
+  /** Đăng điểm, tóm tắt và tối đa 20 phát hiện lên PR của run cha. Lỗi chỉ ghi log: kết quả đã nằm trên hub. */
+  async function postReview(
+    ctx: {
+      run: RunRow;
+      parent: RunRow | null;
+      project: ProjectRow | null;
+      conn: Awaited<ReturnType<typeof loadConnection>> | null;
+    },
+    review: ReviewReport,
+  ): Promise<void> {
+    const number = prNumberOf(ctx.parent?.prUrl ?? null);
+    if (!ctx.parent || !ctx.project || number === null) return;
+    if (!ctx.conn) {
+      log.warn(`Không đăng được review lên PR của run ${ctx.parent.id}: thiếu khoá chủ hoặc kết nối Git.`);
+      return;
+    }
+    const body = reviewComment(review, {
+      by: ctx.run.cli,
+      minScore: reviewCheckOf(ctx.parent.policySnapshot)?.minScore ?? null,
+    });
+    await deps
+      .providerFactory(ctx.conn)
+      .commentOnIssue({ owner: ctx.project.repoOwner, name: ctx.project.repoName }, number, body, {
+        pullRequest: true,
+      });
   }
 
   /** Run kết thúc mà cần người (lỗi, hoặc cần review tay) thì báo nhóm quản trị, cùng transaction với kết quả. */
@@ -683,7 +951,7 @@ export function createRunsEngine(deps: RunsDeps) {
           { attempt: run.attempt + 1, machineId: null, rejectedBy: [], offerMachineId: null, offerExpiresAt: null },
           { retry: run.attempt + 1 },
         );
-        await setTaskStatus(tx, run.taskId, "queued");
+        if (run.kind === "code") await setTaskStatus(tx, run.taskId, "queued");
         return { requeued: true };
       }
       const reasons = [`Mất kết nối với máy; đã thử ${run.attempt}/${run.maxAttempts} lần.`];
@@ -697,7 +965,6 @@ export function createRunsEngine(deps: RunsDeps) {
         },
         { reasons },
       );
-      await setTaskStatus(tx, run.taskId, "todo");
       await recordAudit(tx, {
         action: "run.finish",
         actorUserId: null,
@@ -705,7 +972,13 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: run.id,
         data: { outcome: "failed", reasons },
       });
-      await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
+      if (run.kind === "code") {
+        await setTaskStatus(tx, run.taskId, "todo");
+        await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
+      } else {
+        // Run review hết lượt: run cha kết luận (và báo nhóm quản trị nếu cần) thay cho nó.
+        await reviewFinished(tx, run);
+      }
       return null;
     });
     if (out && "recheckAt" in out) await schedule(t, out.recheckAt);
@@ -729,7 +1002,8 @@ export function createRunsEngine(deps: RunsDeps) {
       { finishedAt: new Date(), offerMachineId: null, offerExpiresAt: null },
       data,
     );
-    await setTaskStatus(tx, run.taskId, "todo");
+    if (run.kind === "code") await setTaskStatus(tx, run.taskId, "todo");
+    else await reviewFinished(tx, run);
     return row;
   }
 

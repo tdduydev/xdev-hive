@@ -1,6 +1,6 @@
 import { outcomeCheck } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { evaluatePolicy, matchGlob } from "./policy.ts";
+import { evaluatePolicy, evaluateReviewRun, matchGlob } from "./policy.ts";
 
 const policy = (...checks: unknown[]) => checks.map((c) => outcomeCheck.parse(c));
 const sha = "a".repeat(40);
@@ -55,6 +55,59 @@ describe("evaluatePolicy", () => {
     expect(r.outcome).toBe("needs_review");
     expect(r.reasons).toHaveLength(2);
     expect(r.checks.filter((c) => c.passed === null)).toHaveLength(2);
+  });
+});
+
+describe("evaluatePolicy với review chéo", () => {
+  const hard = policy({ check: "changes" }, { check: "review", by: "codex", minScore: 7 });
+  const soft = policy({ check: "changes" }, { check: "review", required: false, by: "codex", minScore: 7 });
+
+  it("chưa có run review → chờ review, chưa kết luận", () => {
+    const r = evaluatePolicy(hard, { ...ok, review: { status: "pending" } });
+    expect(r.awaitingReview).toBe(true);
+    expect(r.checks[1]).toMatchObject({ check: "review", passed: null });
+  });
+
+  it("kiểm tra khác đã không đạt hoặc không có commit → không chờ review", () => {
+    const empty = evaluatePolicy(hard, {
+      ...ok,
+      headSha: null,
+      report: { commitCount: 0 },
+      review: { status: "pending" },
+    });
+    expect(empty).toMatchObject({ outcome: "no_changes", awaitingReview: false });
+    expect(empty.checks[1]?.message).toContain("Bỏ qua");
+  });
+
+  it("điểm đạt ngưỡng → succeeded; điểm thấp: bắt buộc → failed, mềm → needs_review", () => {
+    const good = evaluatePolicy(hard, { ...ok, review: { status: "done", score: 8, by: "codex" } });
+    expect(good).toMatchObject({ outcome: "succeeded", awaitingReview: false });
+    expect(good.checks[1]).toMatchObject({ passed: true, message: expect.stringContaining("8/10") });
+    const low = { ...ok, review: { status: "done", score: 4, by: "codex" } as const };
+    expect(evaluatePolicy(hard, low).outcome).toBe("failed");
+    expect(evaluatePolicy(soft, low).outcome).toBe("needs_review");
+  });
+
+  it("run review lỗi → kiểm tra review không đạt", () => {
+    const failed = { ...ok, review: { status: "failed", reason: "hết lượt thử" } as const };
+    const r = evaluatePolicy(hard, failed);
+    expect(r.outcome).toBe("failed");
+    expect(r.reasons[0]).toContain("hết lượt thử");
+    expect(evaluatePolicy(soft, failed).outcome).toBe("needs_review");
+  });
+
+  it("tắt tính năng (không có review) → như cũ: cần người xem", () => {
+    const r = evaluatePolicy(hard, ok);
+    expect(r).toMatchObject({ outcome: "needs_review", awaitingReview: false });
+    expect(r.checks[1]?.passed).toBeNull();
+  });
+});
+
+describe("evaluateReviewRun", () => {
+  it("đã nộp review → succeeded; chưa nộp hoặc thoát lỗi → failed", () => {
+    expect(evaluateReviewRun({ exit: 0, report: null, score: 6 }).outcome).toBe("succeeded");
+    expect(evaluateReviewRun({ exit: 0, report: null, score: null }).outcome).toBe("failed");
+    expect(evaluateReviewRun({ exit: 1, report: { error: "x" }, score: 9 }).outcome).toBe("failed");
   });
 });
 

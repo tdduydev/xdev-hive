@@ -6,10 +6,12 @@ import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { z } from "zod";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
 import { type Auth, createAuth } from "./modules/identity/index.ts";
+import { createMcpEndpoint, McpToolRegistry } from "./modules/mcp/index.ts";
 import { createPool, parseMasterKey } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine, runTokenKey, signRunToken } from "./modules/runs/index.ts";
 import { createMemoryProvider } from "./modules/scm/index.ts";
@@ -69,8 +71,8 @@ function tokenFor(s: Seeded, opts: { attempt?: number; ttlSec?: number; now?: nu
   ).token;
 }
 
-async function connect(token: string): Promise<Client> {
-  const transport = new StreamableHTTPClientTransport(new URL(`${baseURL}/mcp`), {
+async function connect(token: string, path = "/mcp"): Promise<Client> {
+  const transport = new StreamableHTTPClientTransport(new URL(`${baseURL}${path}`), {
     requestInit: { headers: { authorization: `Bearer ${token}` } },
   });
   const client = new Client({ name: "agent-thu", version: "1.0.0" });
@@ -128,7 +130,18 @@ beforeAll(async () => {
   });
   // Không truyền runTokens: app phải tự lấy bộ kiểm run token từ lõi giao run.
   const app = createApp({ config: { port: 0, version: "t", publicUrl: baseURL }, auth, pool, runs: engine });
-  fetchApp = (req) => app.fetch(req);
+  // Tool giả để kiểm cơ chế mở quyền theo loại run trước khi module review đăng ký tool thật.
+  const registry = new McpToolRegistry();
+  registry.register({ name: "task_get", description: "Đọc task.", input: z.object({}), handler: async () => null });
+  registry.register({
+    name: "review_submit",
+    description: "Gửi review.",
+    input: z.object({}),
+    runKinds: ["review"],
+    handler: async () => ({ recorded: true }),
+  });
+  const reviewEndpoint = createMcpEndpoint({ auth, pool, registry, version: "t", runTokens: engine.mcpRunTokens });
+  fetchApp = (req) => (new URL(req.url).pathname === "/mcp-types" ? reviewEndpoint(req) : app.fetch(req));
 });
 
 afterAll(async () => {
@@ -141,11 +154,20 @@ afterAll(async () => {
 describe("run token ở /mcp", () => {
   it("tools/list có task_get, task_update", async () => {
     const client = await connect(tokenFor(seeded.a as Seeded));
-    const names = (await client.listTools()).tools.map((t) => t.name);
-    expect(names).toEqual(expect.arrayContaining(["task_get", "task_update", "hive_whoami"]));
+    const listed = await client.listTools();
+    console.log("MCP_LEAN_BYTES", Buffer.byteLength(JSON.stringify(listed)));
+    const names = listed.tools.map((t) => t.name);
+    expect(names.sort()).toEqual(
+      ["task_get", "task_update", "memory_search", "doc_get", "doc_list", "skill_get", "skill_list"].sort(),
+    );
+    const bytes = Buffer.byteLength(JSON.stringify(listed));
+    // Đo tools/list tại 639cbba trước thay đổi: JSON kết quả client, UTF-8, không kèm envelope JSON-RPC.
+    expect(bytes).toBeLessThan(4500);
+    expect(bytes).toBeLessThan(11_383 * 0.4);
+    expect(listed.tools.every((tool) => !("org" in (tool.inputSchema.properties ?? {})))).toBe(true);
   });
 
-  it("task_get không truyền key trả task và run hiện tại; hive_whoami cho biết là run", async () => {
+  it("task_get không truyền key trả task và run hiện tại", async () => {
     const a = seeded.a as Seeded;
     const client = await connect(tokenFor(a));
     const got = json(await client.callTool({ name: "task_get", arguments: {} }));
@@ -155,8 +177,35 @@ describe("run token ở /mcp", () => {
     });
     const byKey = json(await client.callTool({ name: "task_get", arguments: { key: a.key } }));
     expect(byKey).toMatchObject({ task: { id: a.taskId }, run: { id: a.runId } });
-    const me = json(await client.callTool({ name: "hive_whoami", arguments: {} }));
-    expect(me).toMatchObject({ kind: "run", runId: a.runId, org: { id: org.orgId } });
+  });
+
+  it("task_get cắt nội dung dài, full lấy đủ nội dung và metadata", async () => {
+    const a = seeded.a as Seeded;
+    const body = "Ghi chú. ".repeat(1000);
+    await admin.query("update hive.tasks set body = $1 where id = $2", [body, a.taskId]);
+    const client = await connect(tokenFor(a));
+    const compact = json(await client.callTool({ name: "task_get", arguments: {} }));
+    expect(compact).toMatchObject({ task: { body: body.slice(0, 2000), truncated: true } });
+    expect(compact.task).not.toHaveProperty("source");
+    const full = json(await client.callTool({ name: "task_get", arguments: { full: true } }));
+    expect(full).toMatchObject({ task: { body, source: {} } });
+    await admin.query("update hive.tasks set body = 'Mô tả' where id = $1", [a.taskId]);
+  });
+
+  it("review_submit chỉ được list và call khi loại run trong database là review", async () => {
+    const a = seeded.a as Seeded;
+    const client = await connect(tokenFor(a), "/mcp-types");
+    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(["task_get"]);
+    await expect(client.callTool({ name: "review_submit", arguments: {} })).rejects.toThrow();
+    await admin.query("update hive.runs set kind = 'review' where id = $1", [a.runId]);
+    try {
+      const reviewer = await connect(tokenFor(a), "/mcp-types");
+      expect((await reviewer.listTools()).tools.map((tool) => tool.name)).toEqual(["task_get", "review_submit"]);
+      expect(json(await reviewer.callTool({ name: "review_submit", arguments: {} }))).toEqual({ recorded: true });
+    } finally {
+      await admin.query("update hive.runs set kind = 'code' where id = $1", [a.runId]);
+    }
+    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(["task_get"]);
   });
 
   it("task_update ghi run_event agent_report cho lần thử hiện tại và audit kèm runId", async () => {
