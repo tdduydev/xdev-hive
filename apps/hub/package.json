@@ -27,6 +27,7 @@
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.13",
     "pg": "^8.23.1",
+    "pg-boss": "^12.37.1",
     "ws": "^8.22.0"
   },
   "devDependencies": {
