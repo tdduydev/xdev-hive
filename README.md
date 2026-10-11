@@ -1,6 +1,15 @@
-# xDev Hive
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/design-system/assets/logos/png/xdev-hive-dark.png">
+    <img alt="xDev Hive" src="docs/design-system/assets/logos/png/xdev-hive-light.png" width="300">
+  </picture>
+</p>
 
-**A self-hosted control plane for teams that run coding agents.**
+<p align="center"><b>A self-hosted control plane for teams that run coding agents.</b></p>
+
+<p align="center">English · <a href="README.vi.md">Tiếng Việt</a></p>
+
+# xDev Hive
 
 xDev Hive lets several teams in one organization hand work to coding-agent CLIs (Claude Code, Codex, Gemini CLI),
 run those agents on their own machines or in sandboxes, share memory, docs and skills between runs, and review and
@@ -28,6 +37,8 @@ answers those questions while the agents keep running where your code and creden
   CI must pass before each merge.
 - **Plan mode.** For projects that want it, an agent first writes a plan in a read-only run; a human approves, edits or
   rejects it before any code is written.
+- **Leader chat.** Talk to a leader agent about a project; it can only propose actions (create or assign tasks, change
+  settings, …), and nothing happens until someone with the right permission approves the proposal.
 - **Shared knowledge over MCP.** Agents in a run get a scoped MCP gateway with memory search, docs, skills and task
   updates, using a short-lived run token. Teams curate memory, documents and skills in the hub.
 - **Costs and budgets.** Token usage and cost are recorded per run, task, CLI and machine. Projects can cap cost per
