@@ -2,7 +2,7 @@ import type { RunStartInput, TaskStatus } from "@xdev-hive/contracts";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { loadProject, type ProjectRow } from "../catalog/index.ts";
+import { enqueueMerge, loadProject, type ProjectRow } from "../catalog/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -14,7 +14,15 @@ import {
   sendToMachine,
 } from "../fleet/index.ts";
 import { notify } from "../notify/index.ts";
-import { ConflictError, type Jobs, type MasterKey, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  type Jobs,
+  type MasterKey,
+  NotFoundError,
+  type Tx,
+  withTenant,
+} from "../platform/index.ts";
 import {
   isGitProviderError,
   loadConnection,
@@ -560,6 +568,7 @@ export function createRunsEngine(deps: RunsDeps) {
     let outcome = ev.outcome;
     const reasons = [...ev.reasons];
     let prUrl: string | null = null;
+    let prNumber: number | null = null;
     if (outcome === "succeeded" && ev.hasChanges) {
       try {
         if (!project || !task) throw new Error("Dự án hoặc task không còn.");
@@ -574,6 +583,7 @@ export function createRunsEngine(deps: RunsDeps) {
           },
         );
         prUrl = pr.url;
+        prNumber = pr.number;
       } catch (e) {
         // Lỗi tạm thời: để run ở verifying, hẹn giờ verify sẽ thử lại.
         if (isGitProviderError(e) && e.retryable) throw e;
@@ -594,6 +604,31 @@ export function createRunsEngine(deps: RunsDeps) {
       };
       await transition(tx, locked, outcome, { result, prUrl, finishedAt: new Date() }, { reasons, prUrl });
       await setTaskStatus(tx, locked.taskId, taskStatusFor(outcome, prUrl));
+      // Chế độ auto: PR của run đạt chính sách vào thẳng hàng merge, cùng transaction để không có run succeeded mà
+      // PR bị bỏ quên ngoài hàng. Chế độ review chờ người đưa vào hàng.
+      if (
+        outcome === "succeeded" &&
+        prNumber !== null &&
+        project?.settings.merge.mode === "auto" &&
+        project.settings.features.mergeQueue
+      ) {
+        await enqueueMerge(
+          tx,
+          {
+            projectId: locked.projectId,
+            prNumber,
+            prUrl,
+            branch: locked.branch,
+            runId: locked.id,
+            taskId: locked.taskId,
+            by: locked.createdBy,
+          },
+          { jobs: deps.jobs },
+        ).catch((e: unknown) => {
+          // Vừa tắt merge queue sau lúc đọc dự án: run vẫn xong, PR chờ người như chế độ review.
+          if (!(e instanceof BadRequestError)) throw e;
+        });
+      }
       await recordAudit(tx, {
         action: "run.finish",
         actorUserId: null,
