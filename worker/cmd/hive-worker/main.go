@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -150,7 +151,12 @@ func run(args []string) int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	err = (channel.Config{HubURL: cfg.HubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: detectCLIs(), Capacity: *capacity, Logger: slog.Default()}).Run(ctx)
+	dataDir, err := os.UserCacheDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	err = (channel.Config{HubURL: cfg.HubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: detectCLIs(), Capacity: *capacity, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}).Run(ctx)
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
 	if errors.As(err, &rejected) {
