@@ -26,7 +26,13 @@ export function createMcpRunTokens(opts: {
       if (!claims) return null;
       const run = await withTenant(opts.pool, { orgId: claims.org_id }, async (tx) => {
         const [row] = await tx
-          .select({ state: runs.state, attempt: runs.attempt, taskId: runs.taskId, createdBy: runs.createdBy })
+          .select({
+            kind: runs.kind,
+            state: runs.state,
+            attempt: runs.attempt,
+            taskId: runs.taskId,
+            createdBy: runs.createdBy,
+          })
           .from(runs)
           .where(eq(runs.id, claims.run_id));
         return row;
@@ -39,6 +45,7 @@ export function createMcpRunTokens(opts: {
         userId: run.createdBy,
         orgId: claims.org_id,
         runId: claims.run_id,
+        runKind: run.kind,
         taskId: claims.task_id,
         attempt: claims.attempt,
         clientId: `run:${claims.run_id}`,
@@ -67,13 +74,13 @@ export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
     name: "task_get",
     title: "Xem task",
-    description:
-      "Đọc task. Trong run (HIVE_RUN_TOKEN) bỏ trống key để lấy task của run hiện tại; ngoài run phải truyền key.",
+    description: "Đọc task theo key hoặc task của run hiện tại.",
     input: z.object({
-      key: z.string().min(1).max(100).optional().describe("Key của task, vd. HD-12. Bỏ trống để lấy task của run."),
+      key: z.string().min(1).max(100).optional().describe("Key task; bỏ trống để lấy task của run."),
+      full: z.boolean().optional().describe("Lấy đầy đủ nội dung task."),
     }),
     readOnly: true,
-    handler: async ({ key }, { tx, principal }) => {
+    handler: async ({ key, full }, { tx, principal }) => {
       let task: Task;
       if (key) {
         task = toTask(await taskByKeyForUser(tx, principal.userId, key, "viewer"));
@@ -85,21 +92,30 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         if (!row) throw new NotFoundError("TASK_NOT_FOUND", "Không tìm thấy task của run.");
         task = toTask(row);
       }
-      if (principal.kind !== "run" || task.id !== principal.taskId) return { task };
+      const result = full
+        ? task
+        : {
+            id: task.id,
+            key: task.key,
+            title: task.title,
+            status: task.status,
+            type: task.type,
+            body: task.body.slice(0, 2000),
+            truncated: task.body.length > 2000,
+          };
+      if (principal.kind !== "run" || task.id !== principal.taskId) return { task: result };
       const [run] = await tx
         .select({ id: runs.id, state: runs.state, attempt: runs.attempt, branch: runs.branch })
         .from(runs)
         .where(eq(runs.id, principal.runId ?? ""));
-      return { task, run: run ?? null };
+      return { task: result, run: run ?? null };
     },
   });
 
   registry.register({
     name: "task_update",
     title: "Báo cáo task",
-    description:
-      "Gửi báo cáo của agent cho task của run hiện tại (tóm tắt việc đã làm, bằng chứng). status là đề xuất của " +
-      "agent (review hoặc done); trạng thái thật của task do chính sách kết quả quyết định khi run kết thúc.",
+    description: "Ghi báo cáo và đề xuất trạng thái cho task của run hiện tại.",
     input: z.object({
       status: z.enum(["review", "done"]).optional().describe("Đề xuất trạng thái task sau run."),
       note: z.string().min(1).max(20_000).describe("Báo cáo: đã làm gì, kiểm tra ra sao, còn vướng gì."),
