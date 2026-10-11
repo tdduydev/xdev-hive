@@ -4,7 +4,7 @@ import { cx } from "../../lib/cx.ts";
 /** Bảng theo mockup; cuộn ngang trên màn hẹp thay vì bóp cột. */
 export function Table({ className, ...props }: ComponentProps<"table">) {
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0 overflow-x-auto">
       <table className={cx("w-full min-w-130 border-collapse text-label", className)} {...props} />
     </div>
   );

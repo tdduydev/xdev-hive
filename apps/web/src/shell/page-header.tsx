@@ -14,5 +14,5 @@ export function PageHeader({ crumb, title, children }: { crumb?: string; title: 
 }
 
 export function PageBody({ children }: { children: ReactNode }) {
-  return <div className="grid content-start gap-4 p-6">{children}</div>;
+  return <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4 p-6">{children}</div>;
 }
