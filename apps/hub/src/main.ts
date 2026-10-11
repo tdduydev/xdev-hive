@@ -10,7 +10,7 @@ import {
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
-import { notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
+import { notify, notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import {
@@ -26,6 +26,7 @@ const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
 if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
+let jobs: ReturnType<typeof createJobs> | undefined;
 const auth =
   config.authDatabaseUrl && config.authSecret
     ? createAuth({
@@ -36,13 +37,28 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
-        hooks: pool ? authHooks(pool) : undefined,
+        hooks: pool
+          ? authHooks(pool, {
+              onMemberPending: (tx, member) =>
+                notify(
+                  tx,
+                  {
+                    orgId: member.orgId,
+                    event: "member.pending",
+                    title: `${member.email} chờ duyệt vào tổ chức`,
+                    body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
+                    link: `${config.publicUrl ?? `http://localhost:${config.port}`}/quan-tri/thanh-vien`,
+                  },
+                  { jobs },
+                ),
+            })
+          : undefined,
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
 else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp.");
 
-const jobs = config.jobsDatabaseUrl
+jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
       queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
@@ -93,7 +109,7 @@ if (roles.includes("jobs") && jobs) {
     runs?.registerScmHandlers();
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
-    await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey });
+    await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
   }
 }
 

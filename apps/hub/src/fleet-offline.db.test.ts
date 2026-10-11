@@ -23,11 +23,17 @@ beforeAll(async () => {
   const key = parseMasterKey(randomBytes(32).toString("base64"));
   channelId = (
     await withTenant(pool, { orgId: org.orgId, userId: org.user("admin") }, (tx) =>
-      createChannel(tx, key, org.user("admin"), {
-        name: "Máy mất kết nối",
-        events: ["machine.offline"],
-        config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["admin@example.com"] },
-      }),
+      createChannel(
+        tx,
+        key,
+        org.user("admin"),
+        {
+          name: "Máy mất kết nối",
+          events: ["machine.offline"],
+          config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["admin@example.com"] },
+        },
+        { lookup: async () => [{ address: "8.8.8.8", family: 4 }] },
+      ),
     )
   ).id;
   await jobs.start();

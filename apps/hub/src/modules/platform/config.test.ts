@@ -56,3 +56,11 @@ describe("loadConfig: thông báo máy offline", () => {
     expect(() => loadConfig({ HIVE_MACHINE_OFFLINE_NOTIFY_SEC: value })).toThrow(/HIVE_MACHINE_OFFLINE_NOTIFY_SEC/);
   });
 });
+
+describe("loadConfig: SMTP nội bộ", () => {
+  it("mặc định chặn và chỉ bật khi HIVE_NOTIFY_ALLOW_PRIVATE=1", () => {
+    expect(loadConfig({}).notifyAllowPrivate).toBe(false);
+    expect(loadConfig({ HIVE_NOTIFY_ALLOW_PRIVATE: "true" }).notifyAllowPrivate).toBe(false);
+    expect(loadConfig({ HIVE_NOTIFY_ALLOW_PRIVATE: "1" }).notifyAllowPrivate).toBe(true);
+  });
+});
