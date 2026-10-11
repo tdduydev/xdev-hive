@@ -1,0 +1,1 @@
+ALTER TABLE "hive"."machines" ADD COLUMN "offline_notified_at" timestamp with time zone;

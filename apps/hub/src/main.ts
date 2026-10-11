@@ -2,7 +2,12 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
-import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
+import {
+  attachWorkerGateway,
+  fleetOfflineQueue,
+  registerFleetOfflineWorker,
+  registerRunHandlers,
+} from "./modules/fleet/index.ts";
 import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
 import { notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
@@ -40,7 +45,7 @@ else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL khô
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue],
+      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -78,6 +83,11 @@ if (roles.includes("jobs") && jobs) {
     });
   }
   if (pool) {
+    await registerFleetOfflineWorker(jobs, {
+      pool,
+      publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+      notifyAfterSec: config.machineOfflineNotifySec,
+    });
     // Mọi sự kiện Git vào audit; module runs xử lý PR merge/đóng, issue có nhãn và bình luận nhắc bot.
     onScmEvent("*", auditScmEvent);
     runs?.registerScmHandlers();
@@ -98,7 +108,13 @@ if (roles.includes("api")) {
     },
   );
   // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
-  if (pool) attachWorkerGateway(server as Server, { pool });
+  if (pool)
+    attachWorkerGateway(server as Server, {
+      pool,
+      jobs,
+      publicUrl: config.publicUrl,
+      offlineNotifySec: config.machineOfflineNotifySec,
+    });
 }
 
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.

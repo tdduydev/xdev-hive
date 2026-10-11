@@ -15,6 +15,7 @@ export interface HubConfig {
   databaseUrl?: string | undefined;
   /** Kết nối bằng role hive_jobs cho pg-boss. Không đặt thì hub chạy không có hàng đợi (không tạo được dự án). */
   jobsDatabaseUrl?: string | undefined;
+  machineOfflineNotifySec?: number | undefined;
   /** Vai trò tiến trình (docs/architecture.md mục 1). Mặc định chạy cả api và jobs trong một tiến trình. */
   roles?: HubRole[] | undefined;
   /** Khoá chủ mã hoá secret (token Git, secret webhook). */
@@ -92,6 +93,10 @@ export function loadConfig(env: Env = process.env): HubConfig {
   const port = Number(env.HIVE_PORT ?? 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error(`HIVE_PORT không hợp lệ: ${env.HIVE_PORT}`);
   const authDatabaseUrl = env.HIVE_DATABASE_AUTH_URL;
+  const offlineNotifySec = Number(env.HIVE_MACHINE_OFFLINE_NOTIFY_SEC ?? 300);
+  if (!Number.isInteger(offlineNotifySec) || offlineNotifySec < 1) {
+    throw new Error(`HIVE_MACHINE_OFFLINE_NOTIFY_SEC không hợp lệ: ${env.HIVE_MACHINE_OFFLINE_NOTIFY_SEC}`);
+  }
   const authSecret = env.HIVE_AUTH_SECRET;
   // Secret ngắn làm cookie phiên dễ bị giả; bắt buộc khi đã bật đăng nhập.
   if (authDatabaseUrl && (!authSecret || authSecret.length < 32)) {
@@ -104,6 +109,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
     databaseUrl: env.HIVE_DATABASE_URL,
     jobsDatabaseUrl: env.HIVE_DATABASE_JOBS_URL,
+    machineOfflineNotifySec: offlineNotifySec,
     roles: roles(env),
     masterKey: masterKey(env),
     orgCreators: (env.HIVE_ORG_CREATORS ?? "")
