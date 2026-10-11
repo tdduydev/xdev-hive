@@ -225,6 +225,13 @@
       "when": 1791733157317,
       "tag": "0031_wealthy_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791734363008,
+      "tag": "0032_merge_queue_ci_state",
+      "breakpoints": true
     }
   ]
 }
