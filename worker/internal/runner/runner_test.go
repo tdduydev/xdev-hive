@@ -192,3 +192,46 @@ func mustOut(t *testing.T, args ...string) string {
 	}
 	return string(b)
 }
+
+func TestCLICommandFromEnv(t *testing.T) {
+	t.Setenv(CLIOverridesEnv, `{"claude": {"path": "/opt/fake-claude", "args": ["--task", "{{prompt}}"]}}`)
+	cmd, err := (Runner{}).cliCommand(Job{CLI: "claude", Prompt: "sửa README"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Path != "/opt/fake-claude" || strings.Join(cmd.Args[1:], " ") != "--task sửa README" {
+		t.Fatalf("lệnh = %s %v", cmd.Path, cmd.Args)
+	}
+	// CLI không có trong biến môi trường vẫn dùng lệnh mặc định.
+	cmd, err = (Runner{}).cliCommand(Job{CLI: "codex", Prompt: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(cmd.Args[0]) != "codex" || strings.Join(cmd.Args[1:], " ") != "exec p" {
+		t.Fatalf("lệnh mặc định = %v", cmd.Args)
+	}
+	// Runner.CLICommands do code đặt thắng biến môi trường.
+	cmd, err = (Runner{CLICommands: map[string]Command{"claude": {Path: "/opt/khac", Args: []string{"{{prompt}}"}}}}).cliCommand(Job{CLI: "claude", Prompt: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.Path != "/opt/khac" {
+		t.Fatalf("lệnh = %s", cmd.Path)
+	}
+}
+
+func TestCommandsFromEnvRejectsBadValue(t *testing.T) {
+	for _, raw := range []string{`{"claude":`, `{"claude": {"args": ["x"]}}`} {
+		t.Setenv(CLIOverridesEnv, raw)
+		if _, err := CommandsFromEnv(); err == nil {
+			t.Fatalf("%s: cần báo lỗi", raw)
+		}
+		if _, err := (Runner{}).cliCommand(Job{CLI: "claude", Prompt: "p"}); err == nil {
+			t.Fatalf("%s: cliCommand cần báo lỗi thay vì chạy lệnh mặc định", raw)
+		}
+	}
+	t.Setenv(CLIOverridesEnv, " ")
+	if m, err := CommandsFromEnv(); err != nil || len(m) != 0 {
+		t.Fatalf("biến trống: %v, %v", m, err)
+	}
+}

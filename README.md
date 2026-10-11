@@ -26,6 +26,8 @@ cd worker && go run ./cmd/hive-worker check --hub http://localhost:3000
 
 Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.md](AGENTS.md).
 
+Chạy thử trọn luồng (Postgres, hub, đăng ký, dự án, worker, task, run, PR): `pnpm e2e:smoke`. Cần Docker (Testcontainers), Go và git; mặc định dùng repo git cục bộ và CLI giả, không ra mạng ngoài. Biến môi trường cho GitHub thật, CLI thật hay Postgres có sẵn ghi ở đầu [scripts/e2e-smoke.ts](scripts/e2e-smoke.ts).
+
 ## Triển khai
 
 Sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret an toàn, rồi chạy `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role khi có admin URL, chạy migration rồi khởi động API. Mặc định hub chỉ bind localhost; bật HTTPS với `--profile https` và đặt `HIVE_PUBLIC_URL` thành hostname công khai. Health: `/api/v1/health`.
