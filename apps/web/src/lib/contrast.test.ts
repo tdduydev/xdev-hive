@@ -54,13 +54,13 @@ const pairs: [string, string, number][] = [
   ["bad", "bad-bg", 4.5],
 ];
 
-describe.each(themes)("tỉ lệ tương phản WCAG, theme %s", (theme) => {
-  it.each(pairs)("%s trên %s đạt %s:1", (fg, bg, min) => {
+describe.each(themes)("WCAG contrast ratios for theme %s", (theme) => {
+  it.each(pairs)("%s on %s meets %s:1", (fg, bg, min) => {
     expect(ratio(token(fg, theme), token(bg, theme))).toBeGreaterThanOrEqual(min);
   });
 });
 
-describe("styles.css khớp tokens.json", () => {
+describe("styles.css matches tokens.json", () => {
   // Khối sáng nằm trong @theme; khối tối trong @media (prefers-color-scheme: dark).
   const darkAt = css.indexOf("prefers-color-scheme: dark");
   const blocks: Record<Theme, string> = { light: css.slice(0, darkAt), dark: css.slice(darkAt) };

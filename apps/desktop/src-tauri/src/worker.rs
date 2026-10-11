@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn bat_ket_noi_online_roi_tat() {
+    fn connects_online_then_stops() {
         let mut w = Worker::default();
         assert_eq!(w.handle(Event::Start, 0), vec![Action::Spawn]);
         assert_eq!(w.status(), &Status::Starting);
@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn bao_mot_lan_khi_mat_ket_noi_qua_mot_phut() {
+    fn reports_once_when_disconnected_over_a_minute() {
         let mut w = Worker::default();
         w.handle(Event::Start, 0);
         w.handle(line(r#"{"status":"online"}"#), 0);
@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn khong_noi_duoc_tu_dau_cung_bao() {
+    fn reports_when_never_connected() {
         let mut w = Worker::default();
         w.handle(Event::Start, 0);
         w.handle(line(r#"{"status":"connecting"}"#), 10);
@@ -309,7 +309,7 @@ mod tests {
     }
 
     #[test]
-    fn hub_tu_choi_may_thi_khong_chay_lai() {
+    fn no_restart_when_hub_rejects_machine() {
         let mut w = Worker::default();
         w.handle(Event::Start, 0);
         let actions = w.handle(Event::Exited(Some(EXIT_REJECTED)), 1);
@@ -322,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn thoat_bat_thuong_thi_chay_lai_cho_lau_dan() {
+    fn restarts_with_growing_delay_on_abnormal_exit() {
         let mut w = Worker::default();
         w.handle(Event::Start, 0);
         let mut waits = vec![];
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn bo_qua_dong_khong_phai_trang_thai() {
+    fn ignores_non_status_lines() {
         let mut w = Worker::default();
         w.handle(Event::Start, 0);
         w.handle(line("time=... level=INFO msg=hello"), 1);

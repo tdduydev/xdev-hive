@@ -353,7 +353,7 @@ describe("saga khởi tạo", () => {
     expect(notes).toHaveLength(1);
     expect(notes[0].title).toContain("dừng ở bước protect-branch");
     expect(notes[0].body).toContain("không đủ quyền");
-    expect(notes[0].link).toMatch(/^https:\/\/hive\.example\.com\/du-an\//);
+    expect(notes[0].link).toMatch(/^https:\/\/hive\.example\.com\/projects\//);
 
     const view = await as("tadmin", (tx) => getProvision(tx, deps, org.user("tadmin"), id));
     const protect = view.steps.find((s) => s.kind === "protect-branch");

@@ -35,7 +35,7 @@ const methodOf = (p: Pending): AuthMethod => (p === "github" || p === "gitlab" ?
 
 /** Màn 1 của mockup: SSO trên cùng, rồi GitHub/GitLab, email + mật khẩu nằm trong phần mở thêm. */
 export function LoginPage() {
-  const search = useSearch({ from: "/dang-nhap" });
+  const search = useSearch({ from: "/login" });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const target = safeRedirect(search.redirect);
