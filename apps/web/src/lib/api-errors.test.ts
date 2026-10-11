@@ -46,6 +46,19 @@ describe("formError", () => {
       message: "Cần vai trò quản trị của tổ chức trở lên.",
     }));
   it("mất mạng", () => expect(formError(new TypeError("x")).message).toMatch(/Không kết nối được hub/));
+  it("lỗi nghiệp vụ gắn vào ô theo mã của hub", () =>
+    expect(
+      formError(
+        defined("BAD_REQUEST", "Không đọc được cấu hình OIDC từ Issuer URL.", { code: "SSO_DISCOVERY_FAILED" }),
+        { SSO_DISCOVERY_FAILED: "issuer" },
+      ),
+    ).toEqual({ field: "issuer", message: "Không đọc được cấu hình OIDC từ Issuer URL." }));
+  it("mã không có trong bảng thì hiện chung", () =>
+    expect(
+      formError(defined("CONFLICT", "Đã có người đăng nhập bằng SSO này.", { code: "SSO_HAS_ACCOUNTS" }), {
+        SSO_DISCOVERY_FAILED: "issuer",
+      }),
+    ).toEqual({ message: "Đã có người đăng nhập bằng SSO này." }));
 });
 
 describe("shouldRetry", () => {

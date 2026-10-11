@@ -3,7 +3,7 @@ import { Icon, type IconName } from "../components/icons.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { cx } from "../lib/cx.ts";
 import { orgStore } from "../lib/org-store.ts";
-import { ORG_ROLE_LABEL } from "../lib/roles.ts";
+import { isOrgAdmin, ORG_ROLE_LABEL } from "../lib/roles.ts";
 import { useOrgs } from "./org-context.ts";
 import { OrgSwitcher } from "./org-switcher.tsx";
 import { UserCard } from "./user-card.tsx";
@@ -15,10 +15,10 @@ interface NavEntry {
   to?: LinkProps["to"];
   /** Mốc sẽ làm màn này (docs/architecture.md mục 12). */
   milestone?: string;
-  /** Màn đang được làm ở task khác, chưa có mốc riêng. */
-  soon?: boolean;
   /** Chỉ mở được khi đã thuộc một tổ chức. */
   needsOrg?: boolean;
+  /** Chỉ quản trị tổ chức dùng được; ẩn với người khác trong tổ chức. */
+  adminOnly?: boolean;
 }
 
 const WORK: NavEntry[] = [
@@ -28,11 +28,10 @@ const WORK: NavEntry[] = [
   { label: "Tri thức", icon: "book", milestone: "M4" },
 ];
 
-// "Đăng nhập" (cài đặt SSO) làm cùng API lời mời và SSO ở task M1c-invite-sso; gắn `to` khi có route.
 const ADMIN: NavEntry[] = [
   { label: "Đội và hệ thống", icon: "users", to: "/quan-tri/doi", needsOrg: true },
   { label: "Thành viên", icon: "mail", to: "/quan-tri/thanh-vien", needsOrg: true },
-  { label: "Đăng nhập", icon: "key", soon: true },
+  { label: "Đăng nhập", icon: "key", to: "/quan-tri/dang-nhap", needsOrg: true, adminOnly: true },
   { label: "Cài đặt tổ chức", icon: "gear" },
 ];
 
@@ -43,9 +42,9 @@ function NavItem({ entry, hasOrg }: { entry: NavEntry; hasOrg: boolean }) {
     <>
       <Icon name={entry.icon} />
       {entry.label}
-      {(entry.milestone || entry.soon) && (
+      {entry.milestone && (
         <Pill small className="ml-auto">
-          {entry.milestone ?? "Sắp có"}
+          {entry.milestone}
         </Pill>
       )}
     </>
@@ -53,11 +52,9 @@ function NavItem({ entry, hasOrg }: { entry: NavEntry; hasOrg: boolean }) {
   if (!entry.to || (entry.needsOrg && !hasOrg)) {
     const reason = entry.milestone
       ? `Có từ mốc ${entry.milestone}`
-      : entry.soon
-        ? "Sắp có"
-        : entry.needsOrg
-          ? "Cần thuộc một tổ chức"
-          : "Chưa có";
+      : entry.needsOrg
+        ? "Cần thuộc một tổ chức"
+        : "Chưa có";
     return (
       <span aria-disabled="true" title={reason} className={cx(item, "opacity-50")}>
         {body}
@@ -95,7 +92,7 @@ export function Sidebar({ className }: { className?: string }) {
           <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
         ))}
         <div className="px-2.5 pt-3 pb-1 text-2xs font-semibold tracking-caps text-faint uppercase">Quản trị</div>
-        {ADMIN.map((entry) => (
+        {ADMIN.filter((entry) => !entry.adminOnly || !current || isOrgAdmin(current.org.role)).map((entry) => (
           <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
         ))}
       </nav>

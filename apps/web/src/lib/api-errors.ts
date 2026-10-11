@@ -46,12 +46,17 @@ function topField(path: unknown): string | undefined {
   return typeof key === "string" ? key : undefined;
 }
 
-/** Lỗi để hiện trên form: gắn vào đúng ô khi hub chỉ ra được trường sai, còn lại hiện chung. */
-export function formError(error: unknown): FormError {
+/**
+ * Lỗi để hiện trên form: gắn vào đúng ô khi hub chỉ ra được trường sai, còn lại hiện chung. `byCode` gắn lỗi nghiệp
+ * vụ của hub (`data.code`, vd. SSO_DISCOVERY_FAILED) vào ô liên quan, cho form biết lỗi đó thuộc ô nào.
+ */
+export function formError(error: unknown, byCode: Record<string, string> = {}): FormError {
   const message = apiErrorMessage(error);
   if (!(error instanceof ORPCError)) return { message };
   const data: unknown = error.data;
   if (error.code === "CONFLICT" && isRecord(data) && data.code === "SLUG_TAKEN") return { field: "slug", message };
+  const coded = isRecord(data) && typeof data.code === "string" ? byCode[data.code] : undefined;
+  if (coded) return { field: coded, message };
   if (error.code === "BAD_REQUEST" && isRecord(data) && Array.isArray(data.issues)) {
     const issue = data.issues[0] as Issue | undefined;
     const field = topField(issue?.path);
