@@ -51,11 +51,12 @@ type SinkFunc func(Event) error
 func (f SinkFunc) Emit(e Event) error { return f(e) }
 
 type Result struct {
-	Status       string   `json:"status"`
-	HeadSHA      string   `json:"headSha,omitempty"`
-	CommitCount  int      `json:"commitCount"`
-	ChangedFiles []string `json:"changedFiles"`
-	Error        string   `json:"error,omitempty"`
+	Status       string     `json:"status"`
+	HeadSHA      string     `json:"headSha,omitempty"`
+	CommitCount  int        `json:"commitCount"`
+	ChangedFiles []string   `json:"changedFiles"`
+	DiffStats    *DiffStats `json:"-"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
@@ -267,21 +268,15 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	count := 0
 	_, _ = fmt.Sscanf(strings.TrimSpace(countText), "%d", &count)
-	filesText, err := gitOutput(ctx, work, "diff", "--name-only", "origin/"+job.BaseBranch+"...HEAD")
+	stats, err := collectDiffStats(ctx, work, "origin/"+job.BaseBranch)
 	if err != nil {
 		return err
-	}
-	files := []string{}
-	for _, f := range strings.Split(strings.TrimSpace(filesText), "\n") {
-		if f != "" {
-			files = append(files, f)
-		}
 	}
 	sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
-	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: files}
+	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: stats.ChangedFiles, DiffStats: stats}
 	if count == 0 {
 		done.Status = "no_changes"
 	} else {
