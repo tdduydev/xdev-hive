@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emailDomain, initials } from "./people.ts";
+import { emailDomain, initials, matchesPerson } from "./people.ts";
 
 describe("initials", () => {
   it.each([
@@ -21,4 +21,18 @@ describe("emailDomain", () => {
     "%j không hợp lệ",
     (email) => expect(emailDomain(email)).toBeNull(),
   );
+});
+
+describe("matchesPerson", () => {
+  const ha = { name: "Lê Hà", email: "ha.le@fpt.com" };
+  it.each([
+    ["", true],
+    ["  ", true],
+    ["ha", true],
+    ["HÀ", true],
+    ["le ha", true],
+    ["fpt.com", true],
+    ["minh", false],
+  ])("%j → %s", (q, want) => expect(matchesPerson(ha, q)).toBe(want));
+  it("đ khớp d", () => expect(matchesPerson({ name: "Trần Đức Duy", email: "duy@fpt.com" }, "duc")).toBe(true));
 });

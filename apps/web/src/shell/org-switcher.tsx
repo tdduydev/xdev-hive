@@ -1,4 +1,6 @@
 import { Menu } from "@base-ui/react/menu";
+import { Link } from "@tanstack/react-router";
+import { Icon } from "../components/icons.tsx";
 import { cx } from "../lib/cx.ts";
 
 export interface OrgOption {
@@ -12,12 +14,17 @@ export interface OrgSwitcherProps {
   orgs: OrgOption[];
   currentId?: string | undefined;
   onSelect?: ((id: string) => void) | undefined;
+  /** Hiện mục "Tạo tổ chức" (người đầu tiên của hub hoặc người được quản trị hub cho phép). */
+  canCreate?: boolean | undefined;
 }
 
 const orgInitial = (name: string) => (Array.from(name.trim())[0] ?? "?").toUpperCase();
 
-/** Ô chọn tổ chức ở đầu sidebar. Danh sách tổ chức có khi API tổ chức (M1c) xong; trước đó hiện trạng thái chờ lời mời. */
-export function OrgSwitcher({ orgs, currentId, onSelect }: OrgSwitcherProps) {
+const menuItem =
+  "flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav outline-none data-highlighted:bg-subtle";
+
+/** Ô chọn tổ chức ở đầu sidebar. Chọn tổ chức khác thì mọi lời gọi API sau đó gửi header của tổ chức đó. */
+export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: OrgSwitcherProps) {
   const current = orgs.find((o) => o.id === currentId) ?? orgs[0];
   return (
     <Menu.Root>
@@ -51,15 +58,26 @@ export function OrgSwitcher({ orgs, currentId, onSelect }: OrgSwitcherProps) {
                   <Menu.RadioItem
                     key={org.id}
                     value={org.id}
-                    className="flex cursor-pointer items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav outline-none data-checked:font-medium data-checked:text-sel-fg data-highlighted:bg-subtle"
+                    className={cx(menuItem, "data-checked:font-medium data-checked:text-sel-fg")}
                   >
                     <span className="grid size-6 shrink-0 place-items-center rounded-md bg-accent text-xs font-semibold text-white">
                       {orgInitial(org.name)}
                     </span>
-                    <span className="min-w-0 truncate">{org.name}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate">{org.name}</span>
+                      <small className="block truncate text-xs font-normal text-muted">{org.role}</small>
+                    </span>
                   </Menu.RadioItem>
                 ))}
               </Menu.RadioGroup>
+            )}
+            {canCreate && (
+              <Menu.LinkItem render={<Link to="/tao-to-chuc" />} className={cx(menuItem, "mt-1 text-muted")}>
+                <span className="grid size-6 shrink-0 place-items-center">
+                  <Icon name="plus" />
+                </span>
+                Tạo tổ chức
+              </Menu.LinkItem>
             )}
           </Menu.Popup>
         </Menu.Positioner>
