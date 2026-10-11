@@ -1,8 +1,13 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { fleetContract } from "./fleet.ts";
+import { projectsContract } from "./projects.ts";
+import { scmContract } from "./scm.ts";
 import { tenancyContract } from "./tenancy.ts";
 
+export * from "./projects.ts";
+export * from "./repo-url.ts";
+export * from "./scm.ts";
 export * from "./tenancy.ts";
 
 // Lỗi kiểm tra đầu vào được trả thẳng cho người dùng (hub) và hiện trên form (web), nên dùng tiếng Việt cho mọi
@@ -40,6 +45,8 @@ export const contract = {
   },
   ...fleetContract,
   ...tenancyContract,
+  scmConnections: scmContract,
+  projects: projectsContract,
 };
 
 export type Contract = typeof contract;

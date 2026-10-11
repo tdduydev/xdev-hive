@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { type MasterKey, parseMasterKey } from "./secrets.ts";
+
 export interface OAuthAppConfig {
   clientId: string;
   clientSecret: string;
@@ -10,6 +13,12 @@ export interface HubConfig {
   publicUrl?: string | undefined;
   /** Kết nối bằng role hive_app; mọi truy vấn dữ liệu tổ chức đi qua đây. */
   databaseUrl?: string | undefined;
+  /** Kết nối bằng role hive_jobs cho pg-boss. Không đặt thì hub chạy không có hàng đợi (không tạo được dự án). */
+  jobsDatabaseUrl?: string | undefined;
+  /** Vai trò tiến trình (docs/architecture.md mục 1). Mặc định chạy cả api và jobs trong một tiến trình. */
+  roles?: HubRole[] | undefined;
+  /** Khoá chủ mã hoá secret (token Git, secret webhook). */
+  masterKey?: MasterKey | undefined;
   /** Email được tạo thêm tổ chức sau khi hub đã có tổ chức đầu tiên (HIVE_ORG_CREATORS, cách nhau bằng dấu phẩy). */
   orgCreators?: string[] | undefined;
   authDatabaseUrl?: string | undefined;
@@ -19,7 +28,28 @@ export interface HubConfig {
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
 }
 
+export type HubRole = "api" | "jobs";
+const ROLES: readonly HubRole[] = ["api", "jobs"];
+
 type Env = Record<string, string | undefined>;
+
+function roles(env: Env): HubRole[] {
+  const list = (env.HIVE_ROLES ?? "api,jobs")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean);
+  for (const r of list) if (!ROLES.includes(r as HubRole)) throw new Error(`HIVE_ROLES có vai trò lạ: ${r}`);
+  return list as HubRole[];
+}
+
+/** Khoá chủ đọc từ biến môi trường hoặc file mount (secret của Docker/Kubernetes), không cả hai. */
+function masterKey(env: Env): MasterKey | undefined {
+  if (env.HIVE_MASTER_KEY && env.HIVE_MASTER_KEY_FILE) {
+    throw new Error("Chỉ đặt một trong HIVE_MASTER_KEY và HIVE_MASTER_KEY_FILE.");
+  }
+  if (env.HIVE_MASTER_KEY_FILE) return parseMasterKey(readFileSync(env.HIVE_MASTER_KEY_FILE, "utf8"));
+  return env.HIVE_MASTER_KEY ? parseMasterKey(env.HIVE_MASTER_KEY) : undefined;
+}
 
 function oauthApp(env: Env, prefix: string): OAuthAppConfig | undefined {
   const clientId = env[`${prefix}_CLIENT_ID`];
@@ -44,6 +74,9 @@ export function loadConfig(env: Env = process.env): HubConfig {
     version: env.HIVE_VERSION ?? "0.0.0-dev",
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
     databaseUrl: env.HIVE_DATABASE_URL,
+    jobsDatabaseUrl: env.HIVE_DATABASE_JOBS_URL,
+    roles: roles(env),
+    masterKey: masterKey(env),
     orgCreators: (env.HIVE_ORG_CREATORS ?? "")
       .split(",")
       .map((e) => e.trim().toLowerCase())
