@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Token lấy từ mockup đã duyệt docs/ui/m1-dang-nhap-to-chuc.html (biến CSS ở đầu file mockup).
+ * Token lấy từ mockup đã duyệt docs/ui/m1-login-orgs.html (biến CSS ở đầu file mockup).
  * Bảng màu, cỡ chữ, bo góc, bóng mặc định của Tailwind bị xoá (`initial`) để class chỉ dùng được token của Hive:
  * cần màu, cỡ chữ, bo góc hay bóng mới thì thêm token ở đây, không viết giá trị tuỳ ý trong class.
  * Tên khác mockup ở chỗ trùng tiện ích Tailwind (`text-text`, `bg-bg`):

@@ -35,11 +35,11 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * Trang mở link mời /moi/<mã>. Đứng ngoài khung app và mở được khi chưa đăng nhập: người được mời thường chưa có
+ * Trang mở link mời /invite/<mã>. Đứng ngoài khung app và mở được khi chưa đăng nhập: người được mời thường chưa có
  * tài khoản. Xem trước lời mời, cho đăng nhập hoặc đăng ký bằng email kèm mã mời, rồi nhận lời mời và vào tổ chức.
  */
 export function InvitePage() {
-  const { token } = useParams({ from: "/moi/$token" });
+  const { token } = useParams({ from: "/invite/$token" });
   const { data: me } = useSuspenseQuery(meQuery);
   // Vừa đăng ký xong: phiên mới làm trang đổi sang phần "nhận lời mời" trong lúc chờ chuyển trang; giữ màn chờ.
   const [entering, setEntering] = useState(false);
@@ -125,7 +125,7 @@ function HomeLink({ signedIn }: { signedIn: boolean }) {
       Về trang chủ
     </Link>
   ) : (
-    <Link to="/dang-nhap" className={buttonClass({ variant: "primary" })}>
+    <Link to="/login" className={buttonClass({ variant: "primary" })}>
       Đăng nhập
     </Link>
   );
@@ -299,7 +299,7 @@ function SignUpForInvite({
       </div>
       <div className="grid gap-1.5">
         {/* Đăng nhập rồi quay lại đúng trang này để nhận lời mời; trang đăng nhập có đủ SSO, GitHub, GitLab, email. */}
-        <Link to="/dang-nhap" search={{ redirect: `/moi/${token}` }} className={buttonClass({ block: true })}>
+        <Link to="/login" search={{ redirect: `/invite/${token}` }} className={buttonClass({ block: true })}>
           <Icon name="key" />
           Đã có tài khoản: đăng nhập để nhận lời mời
         </Link>

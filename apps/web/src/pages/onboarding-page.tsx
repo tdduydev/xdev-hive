@@ -74,7 +74,7 @@ function Heading({ title, children }: { title: ReactNode; children: ReactNode })
 
 /** Màn 2 của mockup: tạo tổ chức, rồi đội đầu tiên, rồi mời người. Mỗi bước là một trang, tải lại vẫn ở đúng bước. */
 export function OnboardingPage() {
-  const { buoc, doi } = useSearch({ from: "/session/tao-to-chuc" });
+  const { buoc, doi } = useSearch({ from: "/session/orgs/new" });
   const { current } = useOrgs();
   const step = buoc === "moi" ? 2 : buoc === "doi" ? 1 : 0;
   return (
@@ -117,7 +117,7 @@ function OrgStep() {
       orgStore.set(org.id);
       // Bước sau chỉ mở khi đã thuộc tổ chức, và route kiểm điều đó trên cache: tải lại cache trước khi chuyển bước.
       await queryClient.fetchQuery({ ...orgsMineQuery, staleTime: 0 });
-      await navigate({ to: "/tao-to-chuc", search: { buoc: "doi" } });
+      await navigate({ to: "/orgs/new", search: { buoc: "doi" } });
     },
     onError: (error) => {
       const { field, message } = formError(error);
@@ -192,7 +192,7 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
       api.teams.create.call({ ...input, color: nextTeamColor(0), adminUserId: me.id }),
     onSuccess: async (team) => {
       await queryClient.invalidateQueries({ queryKey: api.teams.key() });
-      await navigate({ to: "/tao-to-chuc", search: { buoc: "moi", doi: team.id } });
+      await navigate({ to: "/orgs/new", search: { buoc: "moi", doi: team.id } });
     },
     onError: (error) => {
       const { field, message } = formError(error);
@@ -228,7 +228,7 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
       />
       {failure && <Alert>{failure}</Alert>}
       <div className="flex justify-end gap-2">
-        <Link to="/quan-tri/doi" className={buttonClass({ variant: "ghost" })}>
+        <Link to="/admin/teams" className={buttonClass({ variant: "ghost" })}>
           Để sau
         </Link>
         <Button type="submit" variant="primary" disabled={busy}>
@@ -242,7 +242,7 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
 function InviteStep({ teamId }: { teamId: string | undefined }) {
   const { current } = useOrgs();
   const navigate = useNavigate();
-  const leave = () => navigate({ to: "/quan-tri/doi", search: teamId ? { doi: teamId } : {} });
+  const leave = () => navigate({ to: "/admin/teams", search: teamId ? { doi: teamId } : {} });
   if (!current)
     return (
       <p aria-busy="true" className="text-muted">

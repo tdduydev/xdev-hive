@@ -1,7 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cx } from "../lib/cx.ts";
 
-// Đường vẽ chép từ <symbol> trong mockup docs/ui/m1-dang-nhap-to-chuc.html; riêng `logout` vẽ thêm cho nút đăng xuất.
+// Đường vẽ chép từ <symbol> trong mockup docs/ui/m1-login-orgs.html; riêng `logout` vẽ thêm cho nút đăng xuất.
 const line = { fill: "none", stroke: "currentColor", strokeWidth: 1.8 } as const;
 const round = { ...line, strokeLinecap: "round" } as const;
 
