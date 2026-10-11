@@ -51,7 +51,7 @@ export function McpConsentPage() {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-105 gap-4 p-7">
         <Brand />
-        <h1 className="mt-1 text-3xl font-bold text-ink">Cho phép công cụ dùng hub?</h1>
+        <h1 className="mt-1 font-display text-3xl font-semibold text-ink">Cho phép công cụ dùng hub?</h1>
         <p className="text-muted">
           <span className="font-medium text-ink">{clientHost || "Một ứng dụng"}</span> muốn gọi các tool MCP của hub
           thay bạn, với đúng quyền của bạn trong từng tổ chức.
@@ -63,7 +63,7 @@ export function McpConsentPage() {
             ))}
           </ul>
         )}
-        <p className="text-xs text-faint break-all">Mã client: {clientId}</p>
+        <p className="text-xs text-muted break-all">Mã client: {clientId}</p>
         {failure && <Alert>{failure}</Alert>}
         <div className="grid grid-cols-2 gap-2">
           <Button disabled={pending !== null} onClick={() => answer(false)}>

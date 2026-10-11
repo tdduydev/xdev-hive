@@ -13,7 +13,9 @@
       "!apps/desktop/src-tauri",
       "!docs/history",
       "!docs/diagrams",
-      "!docs/ui"
+      "!docs/ui",
+      "!docs/design-system",
+      "!apps/web/public"
     ]
   },
   "formatter": {
