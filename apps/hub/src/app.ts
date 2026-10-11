@@ -7,7 +7,7 @@ import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
-import { type Embedder, knowledgeRouter } from "./modules/knowledge/index.ts";
+import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import {
@@ -100,6 +100,7 @@ export function createApp({
     const registry = new McpToolRegistry();
     tenancyMcpTools(registry);
     runsMcpTools(registry);
+    knowledgeMcpTools(registry, { embedder, jobs });
     const mcp = createMcpEndpoint({
       auth,
       pool,
