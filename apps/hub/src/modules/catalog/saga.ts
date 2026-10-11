@@ -267,6 +267,8 @@ export async function runProvision(
           {
             orgId: job.orgId,
             event: "project.provision_failed",
+            eventKey: `${step.id}:${step.attempts + 1}`,
+            recipientIds: [project.createdBy],
             title: `Khởi tạo dự án ${project.key} dừng ở bước ${step.kind}`,
             body: `${error.message}\nSửa nguyên nhân rồi chạy lại bước này trên trang dự án.`,
             link: `${deps.publicUrl.replace(/\/+$/, "")}/projects/${project.key}`,

@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { NotificationEvent } from "@xdev-hive/contracts";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type pg from "pg";
 import { type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
+import { notificationRecipients } from "../tenancy/index.ts";
 import { decryptConfig } from "./channels.ts";
-import { notificationChannels, notifications } from "./schema.ts";
+import { inboxItems, notificationChannels, notifications } from "./schema.ts";
 import { DeliveryError, type SendDeps, send } from "./send.ts";
 
 export const NOTIFY_QUEUE = "notify.deliver";
@@ -29,6 +31,9 @@ export interface NotifyInput {
   event: NotificationEvent;
   title: string;
   body: string;
+  /** Khoá ổn định của lần phát sự kiện, để job chạy lại không tạo thêm mục hộp thư. */
+  eventKey?: string | undefined;
+  recipientIds?: string[] | undefined;
   /** Đường dẫn tới trang liên quan trên web Hive; chỉ nhận http(s). */
   link?: string | null | undefined;
 }
@@ -54,16 +59,40 @@ function safeLink(link: string | null | undefined): string | null {
 }
 
 /**
- * Gửi sự kiện cho nhóm quản trị: một dòng notifications cho mỗi kênh đang bật nhận loại sự kiện này, ghi trong cùng
- * transaction của nghiệp vụ. Job gửi chỉ thành hình khi transaction commit, nên nghiệp vụ rollback thì không ai nhận
- * thông báo về việc không xảy ra. Trả id các dòng đã ghi.
+ * Hộp thư và kênh gửi cùng transaction nghiệp vụ, nên rollback không để lại thông báo về việc không xảy ra.
+ * Trả id nhật ký gửi kênh để giữ hợp đồng với các caller hiện có; hộp thư không phụ thuộc cấu hình kênh.
  */
 export async function notify(tx: Tx, input: NotifyInput, opts: NotifyOptions = {}): Promise<string[]> {
+  const recipients = await notificationRecipients(
+    tx,
+    input.recipientIds ?? (input.event === "machine.offline" || input.event === "member.pending" ? undefined : []),
+  );
+  if (recipients.length > 0) {
+    const eventKey = input.eventKey ?? randomUUID();
+    await tx
+      .insert(inboxItems)
+      .values(
+        recipients.map((userId) => ({
+          orgId: input.orgId,
+          userId,
+          event: input.event,
+          eventKey,
+          title: clip(input.title.trim(), TITLE_MAX),
+          body: clip(input.body.trim(), BODY_MAX),
+          link: safeLink(input.link),
+        })),
+      )
+      .onConflictDoNothing();
+  }
   const channels = await tx
     .select({ id: notificationChannels.id })
     .from(notificationChannels)
     .where(
-      and(eq(notificationChannels.enabled, true), sql`${notificationChannels.events} @> array[${input.event}]::text[]`),
+      and(
+        eq(notificationChannels.orgId, input.orgId),
+        eq(notificationChannels.enabled, true),
+        sql`${notificationChannels.events} @> array[${input.event}]::text[]`,
+      ),
     );
   if (channels.length === 0) return [];
   const rows = await tx

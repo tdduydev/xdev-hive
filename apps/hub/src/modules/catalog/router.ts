@@ -12,6 +12,7 @@ import {
   listProjects,
   retryStep,
 } from "./projects.ts";
+import { updateProjectSettings } from "./settings.ts";
 
 export function catalogRouter(deps: CatalogDeps & OrgDeps) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
@@ -46,5 +47,8 @@ export function catalogRouter(deps: CatalogDeps & OrgDeps) {
       .handler(({ context: { tx, user }, input }) =>
         removeMergeAs(tx, deps, user.id, { projectId: input.id, entryId: input.entryId }),
       ),
+    updateSettings: os.updateSettings
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => updateProjectSettings(tx, user.id, input.key, input.settings)),
   };
 }

@@ -16,11 +16,13 @@ import { Input } from "../components/ui/input.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
 import { Select } from "../components/ui/select.tsx";
+import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "../lib/notification-channels.ts";
 import { isOrgAdmin } from "../lib/roles.ts";
 import { useOrg } from "../shell/org-context.ts";
 import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { Inbox } from "./notification-inbox.tsx";
 
 export function NotificationsPage() {
   const { org } = useOrg();
@@ -28,12 +30,9 @@ export function NotificationsPage() {
     <>
       <PageHeader title="Thông báo" />
       <PageBody>
-        <EmptyState
-          title="Thông báo cá nhân chưa khả dụng"
-          description="Hiện thông báo được gửi qua các kênh của tổ chức. Hộp thông báo cá nhân và đánh dấu đã đọc đang được chuẩn bị."
-        />
-        <section aria-label="Kênh nhận thông báo" className="grid gap-3">
-          <h2 className="text-lg font-semibold text-ink">Kênh nhận thông báo</h2>
+        <Inbox key={org.id} />
+        <section aria-label="Kênh nhận thông báo" className="grid min-w-0 gap-3">
+          <h2 className="text-lg font-semibold text-ink">Kênh thông báo</h2>
           {isOrgAdmin(org.role) ? (
             <Channels key={org.id} />
           ) : (
@@ -69,47 +68,66 @@ function Channels() {
           Thêm kênh
         </Button>
       </div>
-      {channels.isPending ? (
-        <LoadingState label="Đang tải kênh thông báo…" />
-      ) : channels.isError ? (
-        <LoadFailure error={channels.error} retry={channels.refetch} />
-      ) : channels.data.length === 0 ? (
-        <EmptyState
-          title="Chưa có kênh thông báo"
-          description="Thêm kênh đầu tiên để nhận thông báo về run, merge và hoạt động của tổ chức."
-        />
-      ) : (
-        <Card>
-          <ul className="divide-y divide-line">
-            {channels.data.map((channel) => (
-              <ChannelRow
-                key={channel.id}
-                channel={channel}
-                onEdit={() => setDialog({ kind: "edit", channel })}
-                onRemove={() => setDialog({ kind: "remove", channel })}
-                refresh={refresh}
-              />
-            ))}
-          </ul>
-        </Card>
-      )}
-      <Dialog
-        open={dialog !== null}
-        onOpenChange={(open) => {
-          if (!open) setDialog(null);
-        }}
-      >
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
-          {dialog?.kind === "remove" ? (
-            <RemoveChannel channel={dialog.channel} onDone={done} onCancel={() => setDialog(null)} />
+      <div className="flex min-w-0 flex-wrap items-start gap-5">
+        <div className="min-w-0 flex-[3_1_560px]">
+          {channels.isPending ? (
+            <LoadingState label="Đang tải kênh thông báo…" />
+          ) : channels.isError ? (
+            <LoadFailure error={channels.error} retry={channels.refetch} />
+          ) : channels.data.length === 0 ? (
+            <EmptyState
+              title="Chưa có kênh thông báo"
+              description="Thêm kênh đầu tiên để nhận thông báo về run, merge và hoạt động của tổ chức."
+            />
           ) : (
-            dialog && (
+            <Card className="overflow-hidden">
+              <Table aria-label="Kênh thông báo">
+                <thead className="bg-subtle">
+                  <tr>
+                    <Th>Kênh</Th>
+                    <Th>Sự kiện</Th>
+                    <Th>Bật</Th>
+                    <Th>Thao tác</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channels.data.map((channel) => (
+                    <ChannelRow
+                      key={channel.id}
+                      channel={channel}
+                      selected={dialog?.kind === "edit" && dialog.channel.id === channel.id}
+                      onEdit={() => setDialog({ kind: "edit", channel })}
+                      onRemove={() => setDialog({ kind: "remove", channel })}
+                      refresh={refresh}
+                    />
+                  ))}
+                </tbody>
+              </Table>
+            </Card>
+          )}
+        </div>
+        {dialog && dialog.kind !== "remove" && (
+          <Card className="min-w-0 flex-[2_1_360px] p-5">
+            <section aria-label="Sửa kênh">
               <ChannelForm
+                key={dialog.kind === "edit" ? dialog.channel.id : "create"}
                 channel={dialog.kind === "edit" ? dialog.channel : undefined}
                 onDone={done}
                 onCancel={() => setDialog(null)}
               />
-            )
+            </section>
+          </Card>
+        )}
+      </div>
+      <Dialog
+        open={dialog?.kind === "remove"}
+        onOpenChange={(open) => {
+          if (!open) setDialog(null);
+        }}
+      >
+        <DialogContent>
+          {dialog?.kind === "remove" && (
+            <RemoveChannel channel={dialog.channel} onDone={done} onCancel={() => setDialog(null)} />
           )}
         </DialogContent>
       </Dialog>
@@ -122,8 +140,10 @@ function ChannelRow({
   onEdit,
   onRemove,
   refresh,
+  selected,
 }: {
   channel: NotificationChannel;
+  selected: boolean;
   onEdit: () => void;
   onRemove: () => void;
   refresh: () => Promise<unknown>;
@@ -143,21 +163,14 @@ function ChannelRow({
   });
   const busy = toggle.isPending || test.isPending;
   return (
-    <li className="grid min-w-0 gap-3 p-4 app:grid-cols-[minmax(0,1fr)_auto]">
-      <div className="grid min-w-0 gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <b className="break-all text-ink">{channel.name}</b>
-          <Pill>{channel.kind === "email" ? "Email / SMTP" : "Telegram"}</Pill>
-          <Pill tone={channel.enabled ? "ok" : "neutral"}>{channel.enabled ? "Đang bật" : "Đã tắt"}</Pill>
-        </div>
-        <p className="break-all text-sm text-muted">{channel.target}</p>
-        <ul aria-label={`Sự kiện của ${channel.name}`} className="flex flex-wrap gap-1.5">
-          {channel.events.map((event) => (
-            <li key={event}>
-              <Pill>{NOTIFICATION_EVENT_LABEL[event]}</Pill>
-            </li>
-          ))}
-        </ul>
+    <tr className={selected ? "bg-sel" : "hover:bg-subtle"}>
+      <Td className="min-w-55 max-w-80">
+        <button type="button" onClick={onEdit} className="cursor-pointer break-all text-left font-semibold text-ink">
+          {channel.name}
+        </button>
+        <p className="break-all text-sm text-muted">
+          {channel.kind === "email" ? "Email / SMTP" : "Telegram"} · {channel.target}
+        </p>
         {notice &&
           (notice.ok ? (
             <p role="status" className="break-words text-ok">
@@ -167,40 +180,54 @@ function ChannelRow({
             <Alert>{notice.message}</Alert>
           ))}
         {(toggle.isError || test.isError) && <Alert>{apiErrorMessage(toggle.error ?? test.error)}</Alert>}
-      </div>
-      <div className="flex flex-wrap items-start gap-2">
-        <Button
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            setNotice(null);
-            test.reset();
-            toggle.mutate();
-          }}
-          aria-label={`${channel.enabled ? "Tắt" : "Bật"} kênh ${channel.name}`}
-        >
-          {channel.enabled ? "Tắt" : "Bật"}
-        </Button>
-        <Button
-          size="sm"
-          disabled={busy}
-          onClick={() => {
-            setNotice(null);
-            toggle.reset();
-            test.mutate();
-          }}
-          aria-label={`Gửi thử qua ${channel.name}`}
-        >
-          {test.isPending ? "Đang gửi…" : "Gửi thử"}
-        </Button>
-        <Button size="sm" disabled={busy} onClick={onEdit} aria-label={`Sửa kênh ${channel.name}`}>
-          Sửa
-        </Button>
-        <Button size="sm" variant="danger" disabled={busy} onClick={onRemove} aria-label={`Xoá kênh ${channel.name}`}>
-          Xoá
-        </Button>
-      </div>
-    </li>
+      </Td>
+      <Td>
+        <ul aria-label={`Sự kiện của ${channel.name}`} className="flex flex-wrap gap-1.5">
+          {channel.events.map((event) => (
+            <li key={event}>
+              <Pill>{NOTIFICATION_EVENT_LABEL[event]}</Pill>
+            </li>
+          ))}
+        </ul>
+      </Td>
+      <Td>
+        <Pill tone={channel.enabled ? "ok" : "neutral"}>{channel.enabled ? "Đang bật" : "Đã tắt"}</Pill>
+      </Td>
+      <Td>
+        <div className="flex flex-wrap items-start gap-2">
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setNotice(null);
+              test.reset();
+              toggle.mutate();
+            }}
+            aria-label={`${channel.enabled ? "Tắt" : "Bật"} kênh ${channel.name}`}
+          >
+            {channel.enabled ? "Tắt" : "Bật"}
+          </Button>
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              setNotice(null);
+              toggle.reset();
+              test.mutate();
+            }}
+            aria-label={`Gửi thử qua ${channel.name}`}
+          >
+            {test.isPending ? "Đang gửi…" : "Gửi thử"}
+          </Button>
+          <Button size="sm" disabled={busy} onClick={onEdit} aria-label={`Sửa kênh ${channel.name}`}>
+            Sửa
+          </Button>
+          <Button size="sm" variant="danger" disabled={busy} onClick={onRemove} aria-label={`Xoá kênh ${channel.name}`}>
+            Xoá
+          </Button>
+        </div>
+      </Td>
+    </tr>
   );
 }
 
@@ -237,8 +264,8 @@ function ChannelForm({
   }
   return (
     <form noValidate className="grid min-w-0 gap-3.5" onSubmit={submit}>
-      <DialogTitle>{channel ? "Sửa kênh thông báo" : "Thêm kênh thông báo"}</DialogTitle>
-      <DialogDescription>Chọn nơi nhận và các sự kiện gửi cho nhóm quản trị.</DialogDescription>
+      <h3 className="text-2xl font-semibold text-ink">{channel ? "Sửa kênh thông báo" : "Thêm kênh thông báo"}</h3>
+      <p className="text-muted">Chọn nơi nhận và các sự kiện gửi cho nhóm quản trị.</p>
       <fieldset disabled={busy} className="grid min-w-0 gap-3.5">
         <Field>
           <FieldLabel>Tên kênh</FieldLabel>

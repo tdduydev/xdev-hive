@@ -34,6 +34,9 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			if got == nil || got.Status != tc.status {
 				t.Fatalf("result = %#v", got)
 			}
+			if got.DiffStats == nil || got.DiffStats.AddedLines != got.CommitCount || got.DiffStats.DeletedLines != 0 {
+				t.Fatalf("diffStats = %#v, commitCount = %d", got.DiffStats, got.CommitCount)
+			}
 			cmd := exec.Command("git", "--git-dir", remote, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
 			present := cmd.Run() == nil
 			if present != tc.pushed {

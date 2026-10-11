@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { defaultProjectSettings, type ProjectSettings } from "@xdev-hive/contracts";
-import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
+import { type DiffStats, type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import WebSocket from "ws";
@@ -103,12 +103,25 @@ async function setSettings(change: (s: ProjectSettings) => void) {
 }
 
 /** Bật review chéo, chính sách: có commit + review của codex. */
-const crossReview = (opts: { required?: boolean; minScore?: number; enabled?: boolean } = {}) =>
+const crossReview = (
+  opts: {
+    required?: boolean;
+    minScore?: number;
+    enabled?: boolean;
+    when?: { minChangedLines?: number; paths?: string[] };
+  } = {},
+) =>
   setSettings((s) => {
     s.features.crossReview = opts.enabled ?? true;
     s.outcome.default = [
       { check: "changes", required: true },
-      { check: "review", required: opts.required ?? true, by: "codex", minScore: opts.minScore ?? 7 },
+      {
+        check: "review",
+        required: opts.required ?? true,
+        by: "codex",
+        minScore: opts.minScore ?? 7,
+        ...(opts.when ? { when: opts.when } : {}),
+      },
     ];
   });
 
@@ -241,8 +254,14 @@ class FakeWorker {
     return { spec: offer.spec, runToken: lease.runToken };
   }
 
-  async finish(runId: string, exit: number, report: Record<string, unknown>, headSha: string | null = sha) {
-    const seq = this.sendRun({ type: "run_result", runId, attempt: 1, exit, headSha, report });
+  async finish(
+    runId: string,
+    exit: number,
+    report: Record<string, unknown>,
+    headSha: string | null = sha,
+    diffStats?: DiffStats,
+  ) {
+    const seq = this.sendRun({ type: "run_result", runId, attempt: 1, exit, headSha, report, diffStats });
     await this.next("ack", (a) => a.runId === runId && a.uptoSeq === seq);
   }
 
@@ -286,6 +305,88 @@ async function codeThenReview(w: FakeWorker) {
 // ---- Kịch bản -----------------------------------------------------------------------------------------------
 
 describe("review chéo", () => {
+  it.each([
+    { name: "diff nhỏ", lines: 12, path: "src/a.ts", stats: true, conditional: true, review: false },
+    { name: "đạt ngưỡng dòng", lines: 100, path: "src/a.ts", stats: true, conditional: true, review: true },
+    {
+      name: "đụng identity",
+      lines: 1,
+      path: "apps/hub/src/modules/identity/service.ts",
+      stats: true,
+      conditional: true,
+      review: true,
+    },
+    {
+      name: "migration nhị phân",
+      lines: 0,
+      path: "apps/hub/db/migrations/data.bin",
+      stats: true,
+      conditional: true,
+      review: true,
+    },
+    { name: "schema ở root", lines: 1, path: "schema.ts", stats: true, conditional: true, review: true },
+    { name: "đụng GitHub", lines: 1, path: ".github/workflows/ci.yml", stats: true, conditional: true, review: true },
+    { name: "worker cũ", lines: 12, path: "src/a.ts", stats: false, conditional: true, review: true },
+    { name: "không khai when", lines: 12, path: "src/a.ts", stats: true, conditional: false, review: true },
+  ])("review chọn lọc: $name", async (tc) => {
+    await crossReview(
+      tc.conditional
+        ? {
+            when: {
+              minChangedLines: 100,
+              paths: ["apps/hub/src/modules/identity/**", "**/migrations/**", "**/schema.ts", ".github/**"],
+            },
+          }
+        : {},
+    );
+    const w = await FakeWorker.connect(await seedMachine(`selective-${taskNo}-${tag}`));
+    const { runId } = await queueRun();
+    await w.take(runId);
+    await w.finish(
+      runId,
+      0,
+      { commitCount: 1, changedFiles: [tc.path] },
+      sha,
+      tc.stats
+        ? {
+            addedLines: Math.ceil(tc.lines / 2),
+            deletedLines: Math.floor(tc.lines / 2),
+            changedFiles: [tc.path],
+          }
+        : undefined,
+    );
+    if (tc.review) {
+      await until(async () => (await reviewRunsOf(runId)).length === 1);
+      expect((await runRow(runId)).state).toBe("verifying");
+      const [child] = await reviewRunsOf(runId);
+      const { runToken, spec } = await w.take(child.id);
+      expect(String(spec.prompt)).toContain("không đọc toàn bộ repo");
+      await submit(await mcp(runToken), { score: 8, summary: "Đạt yêu cầu." });
+      await w.finish(child.id, 0, {});
+      await until(async () => (await runRow(runId)).state === "succeeded");
+      expect((await runRow(runId)).result.checks[1]?.skipped).not.toBe(true);
+    } else {
+      await until(async () => (await runRow(runId)).state === "succeeded");
+      expect(await reviewRunsOf(runId)).toHaveLength(0);
+      const row = await runRow(runId);
+      expect(row.result.checks[1]).toMatchObject({
+        check: "review",
+        required: true,
+        passed: null,
+        skipped: true,
+        message: expect.stringContaining("diff 12 dòng"),
+      });
+      expect(row.result.reasons).toEqual([]);
+      const { rows } = await admin.query(
+        "select data from hive.audit_log where target_id = $1 and action = 'run.finish'",
+        [runId],
+      );
+      expect(rows[0]?.data.checks[1]).toMatchObject({ skipped: true, message: row.result.checks[1].message });
+      await engine.verify(org.orgId, runId);
+      expect(await reviewRunsOf(runId)).toHaveLength(0);
+    }
+  });
+
   it("run code → run review của codex → điểm đạt → run cha succeeded, nhận xét lên PR", async () => {
     await crossReview();
     const w = await FakeWorker.connect(await seedMachine(`ok-${tag}`));
@@ -347,10 +448,13 @@ describe("review chéo", () => {
     ]);
     expect(await taskStatus(taskId)).toBe("review");
 
-    await until(async () => [...provider.repos.values()][0]?.comments.some((c) => c.body.includes("8/10")) ?? false);
-    const comment = [...provider.repos.values()][0]?.comments.find((c) => c.body.includes("8/10"));
+    const prNumber = Number(/(\d+)$/.exec(done.pr_url)?.[1]);
+    const matchingComment = () =>
+      [...provider.repos.values()][0]?.comments.find((c) => c.number === prNumber && c.body.includes("8/10"));
+    await until(async () => Boolean(matchingComment()));
+    const comment = matchingComment();
     expect(comment?.pullRequest).toBe(true);
-    expect(comment?.number).toBe(Number(/(\d+)$/.exec(done.pr_url)?.[1]));
+    expect(comment?.number).toBe(prNumber);
     expect(comment?.body).toContain("Đúng yêu cầu");
     expect(comment?.body).toContain("src/f19.ts:20");
     expect(comment?.body).not.toContain("src/f20.ts");
@@ -413,6 +517,11 @@ describe("review chéo", () => {
       message: expect.stringContaining("CLI chết"),
     });
     expect(await taskStatus(soft.taskId)).toBe("review");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event from hive.inbox_items where org_id = $1 and event_key = $2",
+      [org.orgId, `${soft.runId}:1:needs_review`],
+    );
+    expect(inbox).toEqual([{ user_id: (await runRow(soft.runId)).created_by, event: "run.needs_review" }]);
 
     await crossReview({ required: true });
     const hard = await codeThenReview(w);

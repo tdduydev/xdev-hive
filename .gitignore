@@ -7,6 +7,8 @@ coverage/
 .env.*
 !.env.example
 .DS_Store
+# Dump và .env sao lưu chứa dữ liệu/secret của bản triển khai.
+backups/
 # Go
 worker/bin/
 # Tauri

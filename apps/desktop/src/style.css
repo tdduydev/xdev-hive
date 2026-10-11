@@ -1,65 +1,11 @@
-:root {
-  --bg: #faf9fc;
-  --surface: #ffffff;
-  --subtle: #f2f1f5;
-  --sunken: #f3f2f6;
-  --ink: #28262e;
-  --text: #35323b;
-  --muted: #6b6772;
-  --faint: #96929c;
-  --line: #e9e7ed;
-  --line2: #dad7e1;
-  --accent: #7b61ff;
-  --accent-h: #694eeb;
-  --sel: #f0ecff;
-  --sel-fg: #543acf;
-  --sel-bd: #c4b8ff;
-  --ok: #0f7a4a;
-  --ok-bg: #e6f6ee;
-  --warn: #9a5b00;
-  --warn-bg: #fff4db;
-  --bad: #c62828;
-  --bad-bg: #fdecec;
-  --shadow: 0 4px 12px -2px rgba(20, 39, 69, 0.1), 0 2px 4px rgba(20, 39, 69, 0.05);
-  --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e0e11;
-    --surface: #1d1c20;
-    --subtle: #171619;
-    --sunken: #171619;
-    --ink: #ffffff;
-    --text: #f2f2f3;
-    --muted: #a9a9a9;
-    --faint: #77777b;
-    --line: #2a292d;
-    --line2: #343337;
-    --accent: #7b61ff;
-    --accent-h: #8c75ff;
-    --sel: #2d2545;
-    --sel-fg: #b3a5ff;
-    --sel-bd: #5c4fa0;
-    --ok: #4ade9b;
-    --ok-bg: #1d392c;
-    --warn: #f5b544;
-    --warn-bg: #3d3423;
-    --bad: #ff8a8a;
-    --bad-bg: #45233a;
-    --shadow: 0 6px 16px -4px rgba(0, 0, 0, 0.45);
-    color-scheme: dark;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
 body {
   margin: 0;
   padding: 32px 24px;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--canvas);
+  color: var(--body);
   font: 14px / 1.55 var(--sans);
 }
 .card {
@@ -69,7 +15,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-app);
 }
 .brand {
   display: flex;
@@ -80,18 +26,18 @@ body {
   font-weight: 600;
 }
 .mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: white;
+  display: block;
+  width: 40px;
+  height: 40px;
 }
 h1 {
   margin: 20px 0 8px;
   color: var(--ink);
+  font-family: var(--display);
   font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 .lead,
 .hint,
@@ -104,6 +50,7 @@ form {
   margin-top: 20px;
 }
 label {
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink);
 }
@@ -117,7 +64,7 @@ input,
 textarea {
   width: 100%;
   padding: 10px;
-  border: 1px solid var(--line2);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--surface);
   margin-bottom: 8px;
@@ -127,20 +74,27 @@ button {
   border-radius: 8px;
   padding: 10px 14px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   cursor: pointer;
 }
-button:hover {
-  background: var(--accent-h);
+button:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: wait;
 }
 .secondary {
   color: var(--sel-fg);
   background: var(--sel);
-  border-color: var(--sel-bd);
+  border-color: var(--sel-line);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--subtle);
+}
+textarea {
+  font-family: var(--mono);
+  font-size: 12.5px;
 }
 summary {
   cursor: pointer;
@@ -164,6 +118,6 @@ details label {
   overflow-wrap: anywhere;
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

@@ -1,5 +1,5 @@
 {
-  "id": "88310754-ff95-44a8-bfe5-e86122b64526",
+  "id": "bb5cf519-6543-45e8-82a1-8baff1995962",
   "prevId": "cf1d34e0-f9d3-4c04-a744-97003466674e",
   "version": "7",
   "dialect": "postgresql",
@@ -179,12 +179,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "ci_state": {
-          "name": "ci_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "run_id": {
           "name": "run_id",
           "type": "uuid",
@@ -341,12 +335,7 @@
           "withCheck": "org_id = hive.ctx_org()"
         }
       },
-      "checkConstraints": {
-        "merge_queue_entries_ci_state": {
-          "name": "merge_queue_entries_ci_state",
-          "value": "\"hive\".\"merge_queue_entries\".\"ci_state\" in ('success', 'pending', 'failure', 'none')"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "hive.project_provision_steps": {
@@ -3541,6 +3530,175 @@
           "value": "(updated_by_user_id is null) <> (updated_by_run_id is null)"
         }
       },
+      "isRLSEnabled": true
+    },
+    "hive.inbox_items": {
+      "name": "inbox_items",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_key": {
+          "name": "event_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "link": {
+          "name": "link",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "read_at": {
+          "name": "read_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "inbox_items_recipient_created": {
+          "name": "inbox_items_recipient_created",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "inbox_items_recipient_unread": {
+          "name": "inbox_items_recipient_unread",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "read_at is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "inbox_items_read_at": {
+          "name": "inbox_items_read_at",
+          "columns": [
+            {
+              "expression": "read_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "read_at is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "inbox_items_recipient_event": {
+          "name": "inbox_items_recipient_event",
+          "nullsNotDistinct": false,
+          "columns": ["org_id", "user_id", "event", "event_key"]
+        }
+      },
+      "policies": {
+        "inbox_items_rw": {
+          "name": "inbox_items_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org() and user_id = hive.ctx_user()",
+          "withCheck": "org_id = hive.ctx_org() and user_id = hive.ctx_user()"
+        },
+        "inbox_items_insert": {
+          "name": "inbox_items_insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
+          "to": ["hive_app"],
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "hive.notification_channels": {

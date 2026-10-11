@@ -69,6 +69,25 @@ describe("file mẫu dùng chung với worker Go", async () => {
 });
 
 describe("ràng buộc gói", () => {
+  it("run_result nhận worker cũ; số liệu diff phải đầy đủ và không âm", () => {
+    const base = {
+      type: "run_result",
+      v: 1,
+      id: "r",
+      runId: "run",
+      attempt: 1,
+      seq: 0,
+      exit: 0,
+      headSha: null,
+      report: null,
+    };
+    expect(workerToHub.safeParse(base).success).toBe(true);
+    expect(
+      workerToHub.safeParse({ ...base, diffStats: { addedLines: -1, deletedLines: 0, changedFiles: [] } }).success,
+    ).toBe(false);
+    expect(workerToHub.safeParse({ ...base, diffStats: { addedLines: 12 } }).success).toBe(false);
+  });
+
   it("run_event dùng `event`, không nhận loại sự kiện lạ", () => {
     const base = { type: "run_event", v: 1, id: "e", runId: "r", attempt: 1, seq: 0, data: {} };
     expect(workerToHub.safeParse({ ...base, event: "phase" }).success).toBe(true);

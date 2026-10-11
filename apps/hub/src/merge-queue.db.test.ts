@@ -286,6 +286,11 @@ describe("xử lý hàng", () => {
       link: failed.prUrl,
     });
     expect(note?.body).toContain("CI không đạt.");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event, link from hive.inbox_items where org_id = $1 and event_key = $2",
+      [p.orgId, failed.id],
+    );
+    expect(inbox).toEqual([{ user_id: org.user("tmember"), event: "merge.failed", link: failed.prUrl }]);
     expect(await step(p)).toBe("next");
     expect(await entry(p, ok)).toMatchObject({ state: "merged" });
   });
