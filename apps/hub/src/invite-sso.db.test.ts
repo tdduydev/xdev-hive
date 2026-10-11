@@ -381,6 +381,7 @@ describe("SSO (OIDC) theo tổ chức", () => {
       callbackUrl: `${PUBLIC_URL}/api/auth/sso/callback/org-${orgId}`,
       join: "pending",
       provider: null,
+      domainVerification: null,
     });
   });
 

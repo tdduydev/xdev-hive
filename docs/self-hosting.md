@@ -61,15 +61,10 @@ list the hub administrators in `HIVE_ORG_CREATORS` (comma separated). Those peop
 create an account without an invitation: with GitHub or GitLab using that verified email, or with email and password
 **while the hub has no organization yet**.
 
-If GitHub and GitLab sign-in are not configured, create the first account with the API, then sign in at `/login`:
-
-```sh
-curl -X POST https://hive.example.com/api/auth/sign-up/email -H 'content-type: application/json' \
-  -H 'origin: https://hive.example.com' \
-  -d '{"name":"Admin","email":"admin@example.com","password":"<at least 10 characters>"}'
-```
-
-Run this in your own terminal so the password does not end up in shell transcripts you share. Email sign-up does not
+While the hub has no organization, `/login` shows a *Tạo tài khoản quản trị đầu tiên* (create the first administrator account) form (name, email,
+password of at least 10 characters). Use an address listed in `HIVE_ORG_CREATORS`; the hub rejects every other address
+with the same error, so the page does not reveal which addresses are allowed. The form disappears once an organization
+exists. Email sign-up does not
 verify the mailbox: whoever registers an address listed in `HIVE_ORG_CREATORS` first owns that account. That is why the
 hub only opens this path while no organization exists; register right after the first deploy. Once an organization
 exists, other administrators join through GitHub/GitLab or invitations. `HIVE_ALLOW_EMAIL_SIGNUP=1` disables the
@@ -79,14 +74,12 @@ invite-only rule entirely and is meant for development only.
 
 Organization SSO only creates accounts and auto-joins people (directly or pending approval, per policy) when the SSO
 domain is verified. Each domain belongs to at most one organization, and public mail domains (gmail.com, outlook.com,
-…) are rejected. Until DNS TXT verification is available in the UI, a hub administrator verifies ownership out of band
-and marks the domain in the database:
-
-```sql
-UPDATE auth."ssoProvider" SET "domainVerified" = true WHERE "providerId" = 'org-<organization id>';
-```
-
-Changing the domain in the SSO settings clears the verification. Every day the hub deletes accounts older than 7 days
+…) are rejected. An organization administrator proves ownership on the sign-in settings page (`/admin/login`): request a TXT
+record, publish it at `_xdev-hive-verification.<domain>`, then run the check from the same page. The hub stores only a hash of the code, and the
+record expires if it is not checked in time. An organization that verifies a domain takes it over from an organization
+that only declared it without verification (both sides get an audit entry). SSO routing uses exact domain matches;
+subdomains only follow a parent domain that is verified. Changing the domain in the SSO settings clears the
+verification. Every day the hub deletes accounts older than 7 days
 that belong to no organization and have no pending invitation (addresses in `HIVE_ORG_CREATORS` are kept), for example
 accounts whose invitation was revoked.
 

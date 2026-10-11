@@ -1,6 +1,6 @@
 import { invitationsRouter } from "./invitations.ts";
 import { orgMembersRouter } from "./members.ts";
-import { orgsRouter } from "./orgs.ts";
+import { hubSetupRouter, orgsRouter } from "./orgs.ts";
 import { procedures, type TenancyDeps } from "./procedures.ts";
 import { ssoProvidersRouter } from "./sso.ts";
 import { systemsRouter } from "./systems.ts";
@@ -11,6 +11,7 @@ export function tenancyRouter(deps: TenancyDeps) {
   const p = procedures(deps);
   return {
     orgs: orgsRouter(p, deps),
+    hubSetup: hubSetupRouter(p, deps),
     teams: teamsRouter(p),
     teamMembers: teamMembersRouter(p),
     systems: systemsRouter(p),
