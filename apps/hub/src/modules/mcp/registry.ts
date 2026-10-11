@@ -22,6 +22,8 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = und
   title?: string | undefined;
   description: string;
   input: Input;
+  /** Tool bổ sung chỉ cho các loại run này; loại run lấy từ database, không từ tham số client. */
+  runKinds?: readonly string[] | undefined;
   /** Tool chỉ đọc; client MCP dùng gợi ý này để khỏi hỏi người dùng trước khi gọi. */
   readOnly?: boolean | undefined;
   /**
@@ -60,7 +62,22 @@ export class McpToolRegistry {
     return this.#memberships(tx, userId);
   }
 
-  list(): McpTool<z.ZodObject, unknown>[] {
-    return [...this.#tools.values()];
+  list(principal?: McpPrincipal): McpTool<z.ZodObject, unknown>[] {
+    const tools = [...this.#tools.values()];
+    if (!principal || principal.kind === "user") return tools;
+    return tools.filter(
+      (tool) =>
+        RUN_TOOLS.has(tool.name) || (principal.runKind !== undefined && tool.runKinds?.includes(principal.runKind)),
+    );
   }
 }
+
+const RUN_TOOLS = new Set([
+  "task_get",
+  "task_update",
+  "memory_search",
+  "doc_get",
+  "doc_list",
+  "skill_get",
+  "skill_list",
+]);

@@ -38,7 +38,7 @@ export const runKind = z.enum(["code", "review"]);
 export const checkOutcome = z.object({
   check: z.string(),
   required: z.boolean(),
-  /** null khi hub chưa hỗ trợ kiểm tra này (command, review, ci). */
+  /** null khi hub chưa hỗ trợ kiểm tra này (command, ci), hoặc review chéo đang tắt hay chưa có kết quả. */
   passed: z.boolean().nullable(),
   message: z.string(),
 });
@@ -54,12 +54,26 @@ export const runResultView = z.object({
 });
 export type RunResultView = z.output<typeof runResultView>;
 
+/** Token và chi phí luỹ kế của run qua mọi lần thử, từ sự kiện cost của worker. */
+export const runCost = z.object({
+  tokensIn: z.number().int(),
+  tokensOut: z.number().int(),
+  cacheRead: z.number().int(),
+  cacheWrite: z.number().int(),
+  /** null khi CLI không báo USD (Codex, Gemini). */
+  costUsd: z.number().nullable(),
+  turns: z.number().int().nullable(),
+});
+export type RunCost = z.output<typeof runCost>;
+
 export const run = z.object({
   id,
   taskId: id,
   projectId: id,
   teamId: id,
   kind: runKind,
+  /** Run review chéo: run code mà nó review. null với run code. */
+  parentRunId: id.nullable(),
   state: runState,
   attempt: z.number().int(),
   maxAttempts: z.number().int(),
@@ -76,6 +90,7 @@ export const run = z.object({
   headSha: z.string().nullable(),
   prUrl: z.string().nullable(),
   timeoutSec: z.number().int(),
+  cost: runCost,
   createdBy: z.string(),
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().nullable(),

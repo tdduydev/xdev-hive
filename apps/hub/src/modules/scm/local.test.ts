@@ -119,6 +119,73 @@ describe("createLocalProvider", () => {
     expect(isGitProviderError(noBranch, "not_found")).toBe(true);
   });
 
+  it("getPR tính mergeable bằng git, mergePR merge thật vào nhánh chính", async () => {
+    const repo = { owner: "e2e", name: "mq" };
+    await scm.createRepo({ ...repo, visibility: "private", defaultBranch: "main", marker });
+    const mqDir = join(opts.root, "e2e", "mq.git");
+    const head = await scm.commitFiles(repo, {
+      branch: "ai/MQ-1",
+      fromBranch: "main",
+      message: "feat: một",
+      files: [{ path: "a.txt", content: "một\n" }],
+    });
+    const pr = await scm.openPR(repo, { head: "ai/MQ-1", base: "main", title: "MQ-1", body: "" });
+    expect(await scm.getPR(repo, pr.number)).toMatchObject({
+      number: pr.number,
+      state: "open",
+      head: "ai/MQ-1",
+      headSha: head.sha,
+      base: "main",
+      mergeable: "clean",
+    });
+    expect(await scm.getPR(repo, 999_999_999)).toBeNull();
+    expect(await scm.checksFor(repo, head.sha)).toBe("none");
+
+    // Nhánh chính tiến nhưng không đụng file của PR: vẫn clean, squash giữ cả hai thay đổi.
+    await scm.commitFiles(repo, { branch: "main", message: "chore: b", files: [{ path: "b.txt", content: "b\n" }] });
+    expect((await scm.getPR(repo, pr.number))?.mergeable).toBe("clean");
+    const stale = await scm.mergePR(repo, pr.number, { method: "squash", sha: "0".repeat(40) }).catch((e) => e);
+    expect(isGitProviderError(stale, "conflict")).toBe(true);
+    const { sha } = await scm.mergePR(repo, pr.number, { method: "squash", sha: head.sha });
+    expect(git("--git-dir", mqDir, "rev-parse", "main")).toBe(sha);
+    expect(git("--git-dir", mqDir, "rev-list", "--parents", "-n1", "main").split(" ")).toHaveLength(2);
+    expect(git("--git-dir", mqDir, "show", "main:a.txt")).toBe("một");
+    expect(git("--git-dir", mqDir, "show", "main:b.txt")).toBe("b");
+    expect(await scm.getPR(repo, pr.number)).toMatchObject({ state: "merged" });
+    const saved = JSON.parse(readFileSync(fileURLToPath(pr.url), "utf8")) as LocalPullRequest;
+    expect(saved).toMatchObject({ state: "merged", mergeSha: sha });
+    const again = await scm.mergePR(repo, pr.number, { method: "squash", sha: head.sha }).catch((e) => e);
+    expect(isGitProviderError(again, "conflict")).toBe(true);
+  });
+
+  it("xung đột với nhánh chính thì conflict; merge giữ head làm cha thứ hai", async () => {
+    const repo = { owner: "e2e", name: "mq2" };
+    await scm.createRepo({ ...repo, visibility: "private", defaultBranch: "main", marker });
+    const mqDir = join(opts.root, "e2e", "mq2.git");
+    const x = await scm.commitFiles(repo, {
+      branch: "ai/X",
+      fromBranch: "main",
+      message: "x",
+      files: [{ path: "README.md", content: "x\n" }],
+    });
+    const y = await scm.commitFiles(repo, {
+      branch: "ai/Y",
+      fromBranch: "main",
+      message: "y",
+      files: [{ path: "y.txt", content: "y\n" }],
+    });
+    const px = await scm.openPR(repo, { head: "ai/X", base: "main", title: "X", body: "" });
+    const py = await scm.openPR(repo, { head: "ai/Y", base: "main", title: "Y", body: "" });
+    await scm.commitFiles(repo, { branch: "main", message: "đổi", files: [{ path: "README.md", content: "z\n" }] });
+    expect((await scm.getPR(repo, px.number))?.mergeable).toBe("conflict");
+    const err = await scm.mergePR(repo, px.number, { method: "squash", sha: x.sha }).catch((e) => e);
+    expect(isGitProviderError(err, "conflict")).toBe(true);
+    await scm.mergePR(repo, py.number, { method: "merge", sha: y.sha });
+    const parents = git("--git-dir", mqDir, "rev-list", "--parents", "-n1", "main").split(" ");
+    expect(parents).toHaveLength(3);
+    expect(parents[2]).toBe(y.sha);
+  });
+
   it("chặn owner hoặc tên repo thoát khỏi thư mục gốc", async () => {
     for (const bad of [
       { owner: "..", name: "web" },

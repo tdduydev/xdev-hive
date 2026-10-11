@@ -5,8 +5,9 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
+import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
-import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
+import { type Auth, mcpMode, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { notifyRouter } from "./modules/notify/index.ts";
@@ -77,6 +78,7 @@ export function createApp({
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
     runs: runsRouter({ auth, pool, engine: runs }),
+    costs: costsRouter({ auth, pool }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -107,13 +109,16 @@ export function createApp({
     if (result.kind === "none") return c.body(null, 204);
     return c.json(result.update, 200);
   });
-  if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
+  const mode = auth && pool ? mcpMode(String(auth.options.baseURL), config.mcpAllowHttp ?? false) : "off";
+  if (auth && pool && mode !== "off") {
     // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
-    // tự trả các đường này khi request đi qua handler của Better Auth.
-    app.on(["GET", "HEAD"], "/.well-known/*", async (c) => {
-      const res = await auth.handler(c.req.raw);
-      return res.status === 404 ? c.notFound() : res;
-    });
+    // tự trả các đường này khi request đi qua handler của Better Auth. Chế độ chỉ-run-token không có plugin mcp.
+    if (mode === "full") {
+      app.on(["GET", "HEAD"], "/.well-known/*", async (c) => {
+        const res = await auth.handler(c.req.raw);
+        return res.status === 404 ? c.notFound() : res;
+      });
+    }
     const registry = new McpToolRegistry();
     tenancyMcpTools(registry);
     runsMcpTools(registry);
@@ -124,6 +129,7 @@ export function createApp({
       registry,
       version: config.version,
       runTokens: runTokens ?? runs?.mcpRunTokens,
+      runTokensOnly: mode === "run",
     });
     // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
     app.all("/mcp", (c) => mcp(c.req.raw));

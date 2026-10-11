@@ -142,7 +142,10 @@ describe("projects.create: phân quyền", () => {
 
 describe("projects.create dryRun", () => {
   it("trả kế hoạch các bước, không ghi gì", async () => {
-    const before = (await admin.query("select count(*)::int as n from hive.projects")).rows[0].n;
+    // Đếm trong tổ chức của file này: file test khác chạy song song trên cùng database cũng tạo dự án.
+    const count = async () =>
+      (await admin.query("select count(*)::int as n from hive.projects where org_id = $1", [org.orgId])).rows[0].n;
+    const before = await count();
     const r = await dryRunCreate(app, deps, actor("tadmin"), input({ dryRun: true }));
     expect(r.projectId).toBeNull();
     expect(r.steps.map((s) => s.kind)).toEqual([
@@ -154,7 +157,7 @@ describe("projects.create dryRun", () => {
     ]);
     expect(r.steps[3]?.title).toContain("cần 1 người duyệt");
     expect(r.warnings).toEqual([]);
-    expect((await admin.query("select count(*)::int as n from hive.projects")).rows[0].n).toBe(before);
+    expect(await count()).toBe(before);
   });
 
   it("bỏ bảo vệ nhánh và webhook thì không có hai bước đó", async () => {
