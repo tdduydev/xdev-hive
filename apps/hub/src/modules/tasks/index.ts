@@ -8,6 +8,7 @@ export {
   loadTask,
   setTaskStatus,
   type TaskRow,
+  taskByKeyForUser,
   taskForUser,
   toTask,
   updateTask,

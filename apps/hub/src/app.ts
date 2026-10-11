@@ -9,7 +9,13 @@ import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
-import { RunNotifier, type RunsEngine, runStreamHandler, runsRouter } from "./modules/runs/index.ts";
+import {
+  RunNotifier,
+  type RunsEngine,
+  runStreamHandler,
+  registerMcpTools as runsMcpTools,
+  runsRouter,
+} from "./modules/runs/index.ts";
 import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
@@ -23,7 +29,7 @@ export interface AppDeps {
   auth?: Auth | undefined;
   /** Pool của role hive_app (HIVE_DATABASE_URL). Không có khi chạy test đơn vị không cần database. */
   pool?: pg.Pool | undefined;
-  /** Kiểm run token cho /mcp; module runs sẽ cung cấp. Bỏ trống thì cổng chỉ nhận token OAuth của người dùng. */
+  /** Kiểm run token cho /mcp; bỏ trống thì lấy từ lõi giao run, không có cả hai thì cổng chỉ nhận token OAuth. */
   runTokens?: RunTokenVerifier | undefined;
   /** Hàng đợi pg-boss; không có thì không tạo được dự án. */
   jobs?: Jobs | undefined;
@@ -81,7 +87,14 @@ export function createApp({
     });
     const registry = new McpToolRegistry();
     tenancyMcpTools(registry);
-    const mcp = createMcpEndpoint({ auth, pool, registry, version: config.version, runTokens });
+    runsMcpTools(registry);
+    const mcp = createMcpEndpoint({
+      auth,
+      pool,
+      registry,
+      version: config.version,
+      runTokens: runTokens ?? runs?.mcpRunTokens,
+    });
     // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
     app.all("/mcp", (c) => mcp(c.req.raw));
   }
