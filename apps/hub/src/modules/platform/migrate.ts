@@ -36,6 +36,8 @@ export async function bootstrapRoles(adminUrl: string, pw: RolePasswords): Promi
       );
       await client.query(`grant connect on database ${ident(db)} to ${role}`);
     }
+    // Better Auth gọi bảng không kèm schema; search_path của hive_auth trỏ vào schema auth.
+    await client.query("alter role hive_auth set search_path = auth");
     // Không ai ngoài chủ được tạo bảng trong public; dữ liệu của hub nằm trong schema hive.
     await client.query("revoke create on schema public from public");
     await client.query("create schema if not exists hive authorization hive_owner");
