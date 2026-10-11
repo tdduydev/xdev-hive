@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { meQuery } from "./lib/me.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
-import { authRedirect } from "./lib/redirect.ts";
+import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
@@ -27,8 +27,11 @@ export interface RouterContext {
 }
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
-  // Guard đặt ở gốc để cả đường dẫn không tồn tại cũng chuyển về /dang-nhap khi chưa đăng nhập.
+  // Guard đặt ở gốc để cả đường dẫn không tồn tại cũng chuyển về /login khi chưa đăng nhập.
   beforeLoad: async ({ context, location }) => {
+    // Đường dẫn cũ đổi trước khi xét đăng nhập, để `?redirect=` sau đăng nhập đã là đường dẫn mới.
+    const moved = legacyRedirect(location);
+    if (moved) throw redirect({ href: moved, replace: true });
     const me = await context.queryClient.ensureQueryData(meQuery);
     const { redirect: back } = location.search as { redirect?: unknown };
     const href = authRedirect({ pathname: location.pathname, href: location.href, redirect: back }, me !== null);
@@ -42,22 +45,22 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/dang-nhap",
+  path: "/login",
   validateSearch: validateLoginSearch,
   component: LoginPage,
 });
 
-/** Link mời /moi/<mã>: mở được khi chưa đăng nhập (lib/redirect.ts), đứng ngoài khung app như trang đăng nhập. */
+/** Link mời /invite/<mã>: mở được khi chưa đăng nhập (lib/redirect.ts), đứng ngoài khung app như trang đăng nhập. */
 const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/moi/$token",
+  path: "/invite/$token",
   component: InvitePage,
 });
 
 /** Trang đồng ý của luồng OAuth cho client MCP; đứng riêng ngoài khung app vì người dùng đến từ CLI. */
 const mcpConsentRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/dong-y-mcp",
+  path: "/mcp/consent",
   component: McpConsentPage,
 });
 
@@ -75,12 +78,12 @@ const sessionRoute = createRoute({
  */
 const onboardingRoute = createRoute({
   getParentRoute: () => sessionRoute,
-  path: "/tao-to-chuc",
+  path: "/orgs/new",
   validateSearch: validateOnboardingSearch,
   beforeLoad: async ({ context, search }) => {
     const mine = await context.queryClient.ensureQueryData(orgsMineQuery);
     if (!search.buoc && !mine.canCreateOrg) throw redirect({ to: "/", replace: true });
-    if (search.buoc && mine.orgs.length === 0) throw redirect({ to: "/tao-to-chuc", replace: true });
+    if (search.buoc && mine.orgs.length === 0) throw redirect({ to: "/orgs/new", replace: true });
   },
   component: OnboardingPage,
 });
@@ -92,7 +95,7 @@ const appRoute = createRoute({
   beforeLoad: async ({ context }) => {
     const mine = await context.queryClient.ensureQueryData(orgsMineQuery);
     // Người đầu tiên của hub vào thẳng màn tạo tổ chức; người khác chưa có tổ chức thì ở trang chủ chờ lời mời.
-    if (mine.orgs.length === 0 && mine.canCreateOrg) throw redirect({ to: "/tao-to-chuc", replace: true });
+    if (mine.orgs.length === 0 && mine.canCreateOrg) throw redirect({ to: "/orgs/new", replace: true });
   },
   component: AppShell,
 });
@@ -112,21 +115,21 @@ const inOrgRoute = createRoute({
 
 const teamsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
-  path: "/quan-tri/doi",
+  path: "/admin/teams",
   validateSearch: validateTeamsSearch,
   component: TeamsPage,
 });
 
 const membersRoute = createRoute({
   getParentRoute: () => inOrgRoute,
-  path: "/quan-tri/thanh-vien",
+  path: "/admin/members",
   validateSearch: validateMembersSearch,
   component: MembersPage,
 });
 
 const loginSettingsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
-  path: "/quan-tri/dang-nhap",
+  path: "/admin/sign-in-settings",
   component: LoginSettingsPage,
 });
 

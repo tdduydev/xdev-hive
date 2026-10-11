@@ -22,11 +22,11 @@ import (
 const KindReview = "review"
 
 type Job struct {
-	Kind                                            string
+	RunID                                           string
+	Kind                                            string // "code" (mặc định) hoặc KindReview
 	Budget                                          Budget
 	RunPermissions                                  string
 	gitRoots                                        []string
-	RunID                                           string
 	Attempt                                         int
 	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
 	Env                                             map[string]string

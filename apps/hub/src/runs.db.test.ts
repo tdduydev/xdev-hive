@@ -644,7 +644,7 @@ describe("thông báo cho nhóm quản trị", () => {
     expect(failed).toMatchObject({
       event: "run.failed",
       title: `Run của ${task.key} thất bại`,
-      link: `${publicUrl}/viec/${task.key}`,
+      link: `${publicUrl}/tasks/${task.key}`,
     });
     expect(failed.body).toContain("Agent thoát lỗi");
 
