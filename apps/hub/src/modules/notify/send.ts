@@ -1,5 +1,6 @@
 import type { NotificationChannelConfig } from "@xdev-hive/contracts";
 import nodemailer from "nodemailer";
+import { PrivateSmtpHostError, resolveSmtpHost, type SmtpHostDeps } from "./smtp-host.ts";
 
 /** Cấu hình kênh sau khi qua zod (đã có giá trị mặc định). */
 export type TelegramConfig = Extract<NotificationChannelConfig, { kind: "telegram" }>;
@@ -15,7 +16,7 @@ export interface Message {
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export interface SendDeps {
+export interface SendDeps extends SmtpHostDeps {
   /** Test thay fetch giả cho Telegram. */
   fetch?: FetchLike | undefined;
   /** Địa chỉ API Telegram; test trỏ sang máy chủ giả. */
@@ -99,9 +100,17 @@ function emailText(m: Message): string {
   return m.link ? `${m.body}\n\nMở trong xDev Hive: ${m.link}\n` : `${m.body}\n`;
 }
 
-async function sendEmail(config: EmailConfig, m: Message): Promise<void> {
+async function sendEmail(config: EmailConfig, m: Message, deps: SendDeps): Promise<void> {
+  let host: string;
+  try {
+    host = await resolveSmtpHost(config.host, deps);
+  } catch (e) {
+    if (e instanceof PrivateSmtpHostError) throw new DeliveryError(e.message, true);
+    throw new DeliveryError("Không phân giải được máy chủ SMTP", false);
+  }
   const transport = nodemailer.createTransport({
-    host: config.host,
+    host,
+    tls: { servername: config.host },
     port: config.port,
     secure: config.tls === "implicit",
     // Có mật khẩu thì không gửi qua kênh trần: starttls bắt buộc nâng cấp, không lặng lẽ gửi plaintext khi máy chủ
@@ -134,7 +143,7 @@ async function sendEmail(config: EmailConfig, m: Message): Promise<void> {
 export async function send(config: ChannelConfig, m: Message, deps: SendDeps = {}): Promise<void> {
   try {
     if (config.kind === "telegram") await sendTelegram(config, m, deps);
-    else await sendEmail(config, m);
+    else await sendEmail(config, m, deps);
   } catch (e) {
     const err = e instanceof DeliveryError ? e : new DeliveryError(e instanceof Error ? e.message : String(e), false);
     throw new DeliveryError(redact(err.message, config), err.permanent);
