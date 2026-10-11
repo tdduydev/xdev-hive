@@ -5,6 +5,7 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
+import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
@@ -77,6 +78,7 @@ export function createApp({
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
     runs: runsRouter({ auth, pool, engine: runs }),
+    costs: costsRouter({ auth, pool }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });

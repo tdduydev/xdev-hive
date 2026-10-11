@@ -59,6 +59,21 @@ export const runEventKind = z.enum([
   // Báo cáo của agent (tóm tắt, bằng chứng); kiểm tra `agentReport` của chính sách kết quả dựa vào sự kiện này.
   "agent_report",
 ]);
+/**
+ * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
+ * và một lần cuối trước run_result. Trường CLI không báo là null.
+ */
+export const costEventData = z.object({
+  inputTokens: z.number().int().min(0),
+  outputTokens: z.number().int().min(0),
+  cacheReadTokens: z.number().int().min(0),
+  cacheWriteTokens: z.number().int().min(0),
+  costUsd: z.number().min(0).nullable(),
+  turns: z.number().int().min(0).nullable(),
+  model: z.string().max(200).nullable(),
+});
+export type CostEventData = z.output<typeof costEventData>;
+
 export const runEvent = z.object({
   ...envelope("run_event"),
   runId,
