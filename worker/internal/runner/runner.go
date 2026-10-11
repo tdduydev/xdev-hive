@@ -2,7 +2,6 @@
 package runner
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -199,24 +198,23 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	cmd.Dir = work
 	cmd.Env = mergeEnv(os.Environ(), job.Env)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
+	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
+	// "file already closed" (hay gặp trên macOS). Để exec tự chép log: Wait chờ chép xong rồi mới trả về.
+	cmd.Stdout = &logWriter{sink: sink, job: job, name: "stdout"}
+	cmd.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
+	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
+	cmd.WaitDelay = r.grace()
 	if err := startProcess(cmd); err != nil {
 		return err
 	}
-	logErr := make(chan error, 2)
-	go func() { logErr <- stream(runCtx, stdout, sink, job, "stdout") }()
-	go func() { logErr <- stream(runCtx, stderr, sink, job, "stderr") }()
 	waitErr := waitProcess(runCtx, cmd, r.grace)
-	e1, e2 := <-logErr, <-logErr
-	if waitErr != nil || e1 != nil || e2 != nil {
-		e := errors.Join(waitErr, e1, e2)
+	if errors.Is(waitErr, exec.ErrWaitDelay) {
+		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
+		waitErr = nil
+	}
+	// CLI bắt SIGINT rồi thoát 0 khi hết giờ hay bị huỷ vẫn là run dở dang.
+	if waitErr != nil || runCtx.Err() != nil {
+		e := errors.Join(waitErr, runCtx.Err())
 		status := "failed"
 		if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
 			status = "timeout"
@@ -423,27 +421,26 @@ func runSetup(ctx context.Context, dir, script string, env map[string]string) er
 	c.Stderr = os.Stderr
 	return c.Run()
 }
-func stream(ctx context.Context, r io.Reader, s Sink, j Job, name string) error {
-	br := bufio.NewReader(r)
-	var offset int64
-	buf := make([]byte, 16*1024)
-	for {
-		n, e := br.Read(buf)
-		if n > 0 {
-			data := append([]byte(nil), buf[:n]...)
-			if err := s.Emit(Event{Type: "log", RunID: j.RunID, Attempt: j.Attempt, Stream: name, Offset: offset, Data: data}); err != nil {
-				return err
-			}
-			offset += int64(n)
+
+// logWriter đẩy log của CLI lên sink, cắt theo khối 16 KiB như trước để một event không quá lớn.
+type logWriter struct {
+	sink   Sink
+	job    Job
+	name   string
+	offset int64
+}
+
+func (w *logWriter) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		n := min(len(p), 16*1024)
+		data := append([]byte(nil), p[:n]...)
+		if err := w.sink.Emit(Event{Type: "log", RunID: w.job.RunID, Attempt: w.job.Attempt, Stream: w.name, Offset: w.offset, Data: data}); err != nil {
+			return written, err
 		}
-		if e != nil {
-			if errors.Is(e, io.EOF) {
-				return nil
-			}
-			return e
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+		w.offset += int64(n)
+		written += n
+		p = p[n:]
 	}
+	return written, nil
 }
