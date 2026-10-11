@@ -5,3 +5,5 @@ The xDev Hive logo: blue gradient X with HIVE / DEV HUB lettering.
 - `xdev-hive-icon.svg`: the X on a `brand-navy` rounded tile, 1024×1024. App icon, favicon, tray.
 
 The two wordmark files set the X as Space Grotesk 600 text; load Space Grotesk on the page or the X falls back to Inter. The icon draws the X as a path and needs no font.
+
+`png/` holds both wordmarks rendered with Space Grotesk and cropped, for places that cannot load web fonts (GitHub README).
