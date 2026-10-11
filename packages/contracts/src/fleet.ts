@@ -6,12 +6,16 @@ const id = z.uuid("Mã không hợp lệ.");
 // `code` ổn định để client phân biệt lý do mà không phải đọc message.
 const reason = z.object({ code: z.string() }).optional();
 
+export const machineKind = z.enum(["worker", "host"]);
+export type MachineKind = z.output<typeof machineKind>;
+
 export const machineStatus = z.enum(["online", "offline", "paused", "revoked"]);
 export type MachineStatus = z.output<typeof machineStatus>;
 
 export const machine = z.object({
   id,
   teamId: id,
+  kind: machineKind,
   /** Định danh máy tự chọn khi đăng ký, cũng là `machineId` trong gói hello. */
   name: z.string(),
   os: z.string(),
@@ -78,7 +82,7 @@ export const fleetContract = {
         tags: ["fleet"],
       })
       .errors(userErrors)
-      .input(z.object({ teamId: id }))
+      .input(z.object({ teamId: id, kind: machineKind.default("worker") }))
       .output(registrationOutput),
     revoke: oc
       .route({ method: "POST", path: "/v1/machines/{machineId}/revoke", summary: "Thu hồi máy", tags: ["fleet"] })

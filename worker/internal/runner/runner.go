@@ -25,6 +25,8 @@ const KindReview = "review"
 const KindPlan = "plan"
 
 type Job struct {
+	Execution                                       string
+	SandboxPolicy                                   *SandboxJobConfig
 	RunID                                           string
 	Kind                                            string // "code" (mặc định), KindReview hoặc KindPlan
 	Budget                                          Budget
@@ -33,10 +35,14 @@ type Job struct {
 	Attempt                                         int
 	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
 	Env                                             map[string]string
+	SetupEnv                                        map[string]string
 	Timeout                                         time.Duration
 	SetupScript                                     string
 	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
-	Steers <-chan Steer
+	Steers           <-chan Steer
+	EnvironmentImage string
+	workspace        string
+	repoCache        string
 }
 
 type Event struct {
@@ -102,6 +108,7 @@ func CommandsFromEnv() (map[string]Command, error) {
 type Runner struct {
 	DataDir     string
 	CLICommands map[string]Command
+	Sandbox     *SandboxConfig
 	KillGrace   time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
@@ -118,6 +125,12 @@ func (r Runner) grace() time.Duration {
 func Run(ctx context.Context, job Job, sink Sink) error { return (Runner{}).Run(ctx, job, sink) }
 
 func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
+	if job.Execution == "sandbox" && (job.SandboxPolicy == nil || r.Sandbox == nil) {
+		return fmt.Errorf("job sandbox thiếu policy hoặc runner host")
+	}
+	if job.SandboxPolicy != nil && job.Execution != "sandbox" || job.Execution == "worker" && r.Sandbox != nil {
+		return fmt.Errorf("loại thực thi job không khớp runner")
+	}
 	if err := validate(job); err != nil {
 		return err
 	}
@@ -148,6 +161,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	_ = os.RemoveAll(work)
 	digest := sha256.Sum256([]byte(job.RepoURL))
 	cache := filepath.Join(r.DataDir, "repos", fmt.Sprintf("%x.git", digest[:12]))
+	job.repoCache = cache
 	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
 	var result *Result
 	defer func() {
@@ -198,8 +212,29 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
+	job.workspace = work
+	if job.SandboxPolicy != nil {
+		config, cleanup, err := r.prepareSandboxPolicy(ctx, job.SandboxPolicy)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		r.Sandbox = &config
+		defer r.removeSandbox(context.Background(), job.RunID)
+		job.EnvironmentImage = job.SandboxPolicy.Image.BaseImage
+		job.SetupScript, err = verifySandboxSetup(work, job.SandboxPolicy.Image.SetupScriptHash)
+		if err != nil {
+			return err
+		}
+	}
 	if job.SetupScript != "" {
-		if err := runSetup(ctx, work, job.SetupScript, job.Env); err != nil {
+		var err error
+		if r.Sandbox != nil {
+			err = r.runSandboxSetup(ctx, job, work)
+		} else {
+			err = runSetup(ctx, work, job.SetupScript, mergeMap(job.Env, job.SetupEnv))
+		}
+		if err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
@@ -223,6 +258,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		return err
 	}
 	job.gitRoots = []string{cacheRoot, strings.TrimSpace(gitDir), filepath.Join(cacheRoot, "objects"), filepath.Join(cacheRoot, "refs"), filepath.Join(cacheRoot, "logs")}
+	if r.Sandbox != nil {
+		job.gitRoots = []string{"/workspace", cacheRoot, strings.TrimSpace(gitDir)}
+	}
 	// Vượt trần chi phí thì dừng CLI theo đường huỷ (SIGINT, chờ grace rồi kill).
 	runCtx, stopForBudget := context.WithCancel(runCtx)
 	defer stopForBudget()
@@ -236,6 +274,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	process := cmd.Cmd
 	process.Dir = work
 	process.Env = mergeEnv(os.Environ(), job.Env)
+	if r.Sandbox != nil {
+		process, err = r.sandboxCommand(job, work, cmd.Cmd.Args)
+		if err != nil {
+			return err
+		}
+		defer r.removeSandbox(context.Background(), job.RunID)
+	}
 	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
 	// "file already closed" (hay gặp trên macOS). Để exec tự chép log: Wait chờ chép xong rồi mới trả về.
 	usage, stopMeter := startMeter(job, sink, stopForBudget)
@@ -343,6 +388,17 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	return nil
 }
 
+func mergeMap(base, extra map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(extra))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range extra {
+		merged[key] = value
+	}
+	return merged
+}
+
 // ReapOrphans dọn worktree của những run không còn được worker giữ lease.
 func ReapOrphans(dataDir string, liveRunIDs []string) error {
 	root := filepath.Join(dataDir, "runs")
@@ -428,6 +484,10 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 		switch j.CLI {
 		case "claude":
 			mcpFile, err := claudeMCPConfig(j.Env)
+			if r.Sandbox != nil {
+				mcpFile, err = claudeMCPConfigAt(j.workspace, j.Env)
+				mcpFile = "/workspace/" + filepath.Base(mcpFile)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -501,6 +561,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
 			}
 			policy, err := os.CreateTemp("", "xdev-hive-policy-*.toml")
+			if r.Sandbox != nil {
+				policy, err = os.CreateTemp(j.workspace, ".hive-worker-policy-*.toml")
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -511,6 +574,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				return nil, err
 			}
 			args = append(args, "--approval-mode", "auto_edit", "--policy", policy.Name())
+			if r.Sandbox != nil {
+				args[len(args)-1] = "/workspace/" + filepath.Base(policy.Name())
+			}
 			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
@@ -525,7 +591,11 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 }
 
 func claudeMCPConfig(env map[string]string) (string, error) {
-	file, err := os.CreateTemp("", "xdev-hive-mcp-*.json")
+	return claudeMCPConfigAt("", env)
+}
+
+func claudeMCPConfigAt(dir string, env map[string]string) (string, error) {
+	file, err := os.CreateTemp(dir, ".hive-worker-mcp-*.json")
 	if err != nil {
 		return "", fmt.Errorf("tạo cấu hình MCP tạm: %w", err)
 	}

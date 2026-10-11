@@ -281,6 +281,13 @@
       "when": 1791738961730,
       "tag": "0039_legacy_import",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791739579675,
+      "tag": "0040_sandbox_policy",
+      "breakpoints": true
     }
   ]
 }

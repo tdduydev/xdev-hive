@@ -61,7 +61,7 @@ export function fleetRouter(deps: FleetDeps) {
       ),
       createRegistration: machinesOs.createRegistration.handler(async ({ context, input }) => {
         const { token, expiresAt } = await inOrg(context.headers, (tx, userId) =>
-          createRegistration(tx, userId, input.teamId),
+          createRegistration(tx, userId, input.teamId, input.kind),
         );
         return {
           token,
