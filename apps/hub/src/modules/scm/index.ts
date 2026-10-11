@@ -50,7 +50,7 @@ export {
   scmEventQueue,
   scmEvents,
 } from "./handlers.ts";
-export { createMemoryProvider, type MemoryProvider, type MemoryRepo } from "./memory.ts";
+export { createMemoryProvider, type MemoryProvider, type MemoryPull, type MemoryRepo } from "./memory.ts";
 export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
   AccessCheck,

@@ -396,6 +396,144 @@ describe("GitLab webhook", () => {
   });
 });
 
+describe("GitLab merge request cho merge queue", () => {
+  const MR = `${P}/merge_requests/7`;
+  const mr = (over: Record<string, unknown> = {}) => ({
+    iid: 7,
+    web_url: "https://gitlab.example/grp/sub/web/-/merge_requests/7",
+    state: "opened",
+    draft: false,
+    source_branch: "ai/t-1",
+    target_branch: "main",
+    sha: "a".repeat(40),
+    detailed_merge_status: "mergeable",
+    ...over,
+  });
+
+  it("getPR đọc trạng thái merge request", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: MR, method: "GET" }).reply(200, mr(), JSON_HEADERS);
+    expect(await gl.getPR(ref, 7)).toEqual({
+      number: 7,
+      url: "https://gitlab.example/grp/sub/web/-/merge_requests/7",
+      state: "open",
+      draft: false,
+      head: "ai/t-1",
+      headSha: "a".repeat(40),
+      base: "main",
+      mergeable: "clean",
+    });
+  });
+
+  it.each([
+    ["mergeable", "clean"],
+    ["conflict", "conflict"],
+    ["need_rebase", "behind"],
+    ["checking", "unknown"],
+    ["unchecked", "unknown"],
+    ["preparing", "unknown"],
+    ["approvals_syncing", "unknown"],
+    ["not_approved", "blocked"],
+    ["ci_must_pass", "blocked"],
+    ["discussions_not_resolved", "blocked"],
+  ])("detailed_merge_status %s → %s", async (status, mergeable) => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: MR, method: "GET" }).reply(200, mr({ detailed_merge_status: status }), JSON_HEADERS);
+    expect((await gl.getPR(ref, 7))?.mergeable).toBe(mergeable);
+  });
+
+  it.each([
+    [{ has_conflicts: true, merge_status: "cannot_be_merged" }, "conflict"],
+    [{ has_conflicts: false, merge_status: "can_be_merged" }, "clean"],
+    [{ has_conflicts: false, merge_status: "cannot_be_merged" }, "blocked"],
+    [{ has_conflicts: false, merge_status: "checking" }, "unknown"],
+    [{ has_conflicts: false, merge_status: "unchecked" }, "unknown"],
+  ])("GitLab cũ không có detailed_merge_status: %j → %s", async (fields, mergeable) => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: MR, method: "GET" })
+      .reply(200, mr({ detailed_merge_status: undefined, ...fields }), JSON_HEADERS);
+    expect((await gl.getPR(ref, 7))?.mergeable).toBe(mergeable);
+  });
+
+  it("merged, closed, bản nháp kiểu cũ (work_in_progress), locked, không có MR", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: MR, method: "GET" }).reply(200, mr({ state: "merged" }), JSON_HEADERS);
+    pool.intercept({ path: MR, method: "GET" }).reply(200, mr({ state: "closed" }), JSON_HEADERS);
+    pool
+      .intercept({ path: MR, method: "GET" })
+      .reply(
+        200,
+        mr({ draft: undefined, work_in_progress: true, detailed_merge_status: "draft_status" }),
+        JSON_HEADERS,
+      );
+    pool.intercept({ path: MR, method: "GET" }).reply(200, mr({ state: "locked" }), JSON_HEADERS);
+    pool.intercept({ path: MR, method: "GET" }).reply(404, notFound, JSON_HEADERS);
+    expect((await gl.getPR(ref, 7))?.state).toBe("merged");
+    expect((await gl.getPR(ref, 7))?.state).toBe("closed");
+    expect(await gl.getPR(ref, 7)).toMatchObject({ draft: true, mergeable: "blocked" });
+    expect(await gl.getPR(ref, 7)).toMatchObject({ state: "open", mergeable: "unknown" });
+    expect(await gl.getPR(ref, 7)).toBeNull();
+  });
+
+  it("updatePRBranch gọi rebase; 409 là conflict", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${MR}/rebase`, method: "PUT" }).reply(202, { rebase_in_progress: true }, JSON_HEADERS);
+    pool.intercept({ path: `${MR}/rebase`, method: "PUT" }).reply(409, { message: "Rebase in progress" }, JSON_HEADERS);
+    await gl.updatePRBranch(ref, 7, "a".repeat(40));
+    expect((await rejected(gl.updatePRBranch(ref, 7, "a".repeat(40)))).code).toBe("conflict");
+  });
+
+  it.each([
+    [[{ status: "success" }], "success"],
+    [[{ status: "failed" }], "failure"],
+    [[{ status: "canceled" }], "failure"],
+    [[{ status: "running" }], "pending"],
+    [[{ status: "pending" }], "pending"],
+    [[{ status: "created" }], "pending"],
+    [[{ status: "manual" }], "pending"],
+    [[{ status: "skipped" }], "none"],
+    [[], "none"],
+  ])("checksFor %j → %s", async (body, state) => {
+    const { gl, pool } = setup();
+    const sha = "b".repeat(40);
+    pool
+      .intercept({ path: `${P}/pipelines?sha=${sha}&order_by=id&sort=desc&per_page=1`, method: "GET" })
+      .reply(200, body, JSON_HEADERS);
+    expect(await gl.checksFor(ref, sha)).toBe(state);
+  });
+
+  it("mergePR gửi sha và squash, trả sha của commit trên nhánh chính", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${MR}/merge`, method: "PUT" })
+      .reply(200, http.json(mr({ state: "merged", merge_commit_sha: "m".repeat(40) })), JSON_HEADERS);
+    pool
+      .intercept({ path: `${MR}/merge`, method: "PUT" })
+      .reply(200, http.json(mr({ state: "merged", merge_commit_sha: null, squash_commit_sha: null })), JSON_HEADERS);
+    expect(await gl.mergePR(ref, 7, { method: "squash", sha: "a".repeat(40) })).toEqual({ sha: "m".repeat(40) });
+    expect(await gl.mergePR(ref, 7, { method: "merge", sha: "a".repeat(40) })).toEqual({ sha: null });
+    expect(http.calls.map((c) => c.body)).toEqual([
+      { sha: "a".repeat(40), squash: true },
+      { sha: "a".repeat(40), squash: false },
+    ]);
+  });
+
+  it.each([
+    [405, "conflict"],
+    [406, "conflict"],
+    [409, "conflict"],
+    [422, "invalid"],
+    [429, "rate_limited"],
+  ] as const)("mergePR lỗi %i → %s", async (status, code) => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${MR}/merge`, method: "PUT" }).reply(status, { message: "x" }, JSON_HEADERS);
+    const e = await rejected(gl.mergePR(ref, 7, { method: "squash", sha: "a".repeat(40) }));
+    expect(e.code).toBe(code);
+    expect(e.status).toBe(status);
+  });
+});
+
 describe("GitLab lỗi HTTP", () => {
   it.each([
     [401, "unauthorized"],

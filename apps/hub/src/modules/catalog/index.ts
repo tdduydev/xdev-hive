@@ -1,4 +1,24 @@
 // Dự án, mẫu file cho agent, saga khởi tạo. Module khác chỉ import file này.
+
+export {
+  type EnqueueMergeInput,
+  enqueueMerge,
+  enqueueMergeAs,
+  listQueue,
+  MERGE_ATTEMPTS,
+  MERGE_MAX_WAIT_MS,
+  MERGE_QUEUE,
+  MERGE_RECHECK_SEC,
+  type MergeDeps,
+  type MergeJob,
+  type MergeStep,
+  mergeQueue,
+  processMergeQueue,
+  queueForUser,
+  registerMergeWorker,
+  removeEntry,
+  removeMergeAs,
+} from "./merge-queue.ts";
 export {
   type CatalogDeps,
   createProject,
