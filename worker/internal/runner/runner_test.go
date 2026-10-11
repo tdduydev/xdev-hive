@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
@@ -198,6 +199,19 @@ func TestFakeCLIHelper(t *testing.T) {
 		time.Sleep(30 * time.Second)
 		os.Exit(0)
 	}
+	switch os.Getenv("HIVE_FAKE_MODE") {
+	case "usage-ok":
+		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
+		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)
+		os.Exit(0)
+	case "usage-loop":
+		// CLI giả tiêu 100 token mỗi lượt và không tự dừng: runner phải dừng nó khi vượt trần.
+		for i := 0; i < 1500; i++ {
+			fmt.Printf(`{"type":"assistant","message":{"id":"m%d","usage":{"input_tokens":0,"output_tokens":100}}}`+"\n", i)
+			time.Sleep(20 * time.Millisecond)
+		}
+		os.Exit(0)
+	}
 	// Run review phải thấy code của nhánh cha trong worktree.
 	if f := os.Getenv("HIVE_FAKE_EXPECT_FILE"); f != "" {
 		if _, err := os.Stat(f); err != nil {
@@ -297,7 +311,7 @@ func TestCLICommandFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(cmd.Args[0]) != "codex" || strings.Join(cmd.Args[1:], " ") != "exec p" {
+	if filepath.Base(cmd.Args[0]) != "codex" || strings.Join(cmd.Args[1:], " ") != "exec --json p" {
 		t.Fatalf("lệnh mặc định = %v", cmd.Args)
 	}
 	// Runner.CLICommands do code đặt thắng biến môi trường.
@@ -323,5 +337,68 @@ func TestCommandsFromEnvRejectsBadValue(t *testing.T) {
 	t.Setenv(CLIOverridesEnv, " ")
 	if m, err := CommandsFromEnv(); err != nil || len(m) != 0 {
 		t.Fatalf("biến trống: %v, %v", m, err)
+	}
+}
+
+func TestRunnerReportsCostAndStopsOverBudget(t *testing.T) {
+	remote, base := makeRemote(t)
+	claude := map[string]Command{"claude": {Path: os.Args[0], Args: []string{"-test.run=TestFakeCLIHelper", "--", "helper"}}}
+	maxTok := int64(250)
+	for _, tc := range []struct {
+		name, mode, status string
+		budget             Budget
+	}{
+		{"cost-ok", "usage-ok", "no_changes", Budget{}},
+		{"cost-over", "usage-loop", "failed", Budget{MaxTokens: &maxTok}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var events []Event
+			r := Runner{DataDir: t.TempDir(), CLICommands: claude, KillGrace: 2 * time.Second}
+			job := Job{RunID: tc.name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + tc.name, CLI: "claude", Timeout: 20 * time.Second, Budget: tc.budget, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": tc.mode}}
+			start := time.Now()
+			_ = r.Run(context.Background(), job, SinkFunc(func(e Event) error { mu.Lock(); events = append(events, e); mu.Unlock(); return nil }))
+			if time.Since(start) > 10*time.Second {
+				t.Fatal("runner không dừng CLI khi vượt trần")
+			}
+			res := lastResult(events)
+			if res == nil || res.Status != tc.status {
+				t.Fatalf("result = %+v", res)
+			}
+			// Sự kiện cost cuối nằm trước run_result.
+			var last *Usage
+			for _, e := range events {
+				if e.Type == "cost" {
+					last = e.Cost
+				}
+				if e.Type == "result" && last == nil {
+					t.Fatal("không có sự kiện cost trước kết quả")
+				}
+			}
+			if last == nil {
+				t.Fatal("không có sự kiện cost")
+			}
+			if tc.mode == "usage-ok" {
+				if last.OutputTokens != 9 || last.CostUSD == nil || *last.CostUSD != 0.5 || last.Model == nil || *last.Model != "claude-test" {
+					t.Fatalf("cost cuối = %+v", last)
+				}
+				return
+			}
+			if !strings.HasPrefix(res.Error, "Vượt ngân sách: token ") || last.OutputTokens <= maxTok {
+				t.Fatalf("lỗi = %q, cost cuối = %+v", res.Error, last)
+			}
+		})
+	}
+}
+
+func TestClaudeDefaultCommandPassesBudget(t *testing.T) {
+	t.Setenv(CLIOverridesEnv, "")
+	usd := 2.5
+	cmd, err := (Runner{}).cliCommand(Job{CLI: "claude", Prompt: "p", Budget: Budget{MaxCostUSD: &usd}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cmd.Args[1:], " "); got != "-p p --output-format stream-json --verbose --max-budget-usd 2.5" {
+		t.Fatalf("lệnh = %s", got)
 	}
 }
