@@ -13,6 +13,7 @@ func TestHealthOK(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"status":"ok","version":"1.2.3","time":"2026-10-11T00:00:00Z"}`))
 	}))
 	defer srv.Close()
