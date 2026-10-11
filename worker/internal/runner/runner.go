@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -50,10 +51,34 @@ type Result struct {
 	Error        string   `json:"error,omitempty"`
 }
 
+// Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
 type Command struct {
-	Path string
-	Args []string
+	Path string   `json:"path"`
+	Args []string `json:"args"`
 }
+
+// CLIOverridesEnv thay lệnh của từng CLI mà không phải build lại worker, để scripts/e2e-smoke.ts trỏ "claude" tới
+// một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}.
+const CLIOverridesEnv = "HIVE_WORKER_CLI_OVERRIDES"
+
+// CommandsFromEnv đọc HIVE_WORKER_CLI_OVERRIDES; biến trống thì trả map rỗng.
+func CommandsFromEnv() (map[string]Command, error) {
+	raw := strings.TrimSpace(os.Getenv(CLIOverridesEnv))
+	if raw == "" {
+		return map[string]Command{}, nil
+	}
+	var m map[string]Command
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return nil, fmt.Errorf("%s không phải JSON hợp lệ: %w", CLIOverridesEnv, err)
+	}
+	for name, c := range m {
+		if c.Path == "" {
+			return nil, fmt.Errorf("%s: CLI %q thiếu path", CLIOverridesEnv, name)
+		}
+	}
+	return m, nil
+}
+
 type Runner struct {
 	DataDir     string
 	CLICommands map[string]Command
@@ -261,6 +286,14 @@ func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
 
 func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 	configured, ok := r.CLICommands[j.CLI]
+	if !ok {
+		// Runner.CLICommands do code đặt thắng biến môi trường; biến môi trường thắng lệnh mặc định.
+		fromEnv, err := CommandsFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		configured, ok = fromEnv[j.CLI]
+	}
 	if !ok {
 		switch j.CLI {
 		case "claude":
