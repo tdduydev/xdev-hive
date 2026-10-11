@@ -203,7 +203,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
       <form class="field" onsubmit="event.preventDefault()">
         <label for="sso-email">Email công ty</label>
         <input class="in-f" id="sso-email" type="email" placeholder="ten@congty.vn" value="duy@example.com">
-        <span class="hint">Tên miền example.com dùng SSO của FPT (Azure AD).</span>
+        <span class="hint">Tên miền example.com dùng SSO của Acme (Azure AD).</span>
         <button class="btn primary block" type="submit"><svg class="i"><use href="#key"/></svg>Tiếp tục với SSO</button>
       </form>
       <div class="divider">hoặc</div>
@@ -230,9 +230,9 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
   <div class="card onb">
     <div class="steps"><span class="on"><i>1</i>Tổ chức</span>·<span><i>2</i>Đội đầu tiên</span>·<span><i>3</i>Mời người</span></div>
     <div><h1 style="margin:0;font-size:22px;color:var(--ink)">Tạo tổ chức</h1><p style="margin:4px 0 0;color:var(--muted)">Tổ chức chứa các đội, hệ thống và dự án. Bạn là chủ sở hữu.</p></div>
-    <div class="field"><label for="org-name">Tên tổ chức</label><input class="in-f" id="org-name" value="FPT Software xDev"></div>
+    <div class="field"><label for="org-name">Tên tổ chức</label><input class="in-f" id="org-name" value="Acme Software xDev"></div>
     <div class="field"><label for="org-slug">Định danh</label>
-      <div class="prefix"><span>hive.example.com/</span><input class="in-f" id="org-slug" value="fpt-xdev"></div>
+      <div class="prefix"><span>hive.example.com/</span><input class="in-f" id="org-slug" value="acme-dev"></div>
       <span class="hint" style="color:var(--ok)">Còn trống. Dùng trong đường dẫn và trong lệnh của agent.</span>
     </div>
     <div class="field"><label for="org-domain">Tên miền email (không bắt buộc)</label><input class="in-f" id="org-domain" value="example.com">
@@ -245,7 +245,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
 <template id="shell">
   <div class="app">
     <aside class="side">
-      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Chủ sở hữu</small></span></div>
+      <div class="switcher"><span class="avatar">F</span><span><b>Acme Software xDev</b><small>Chủ sở hữu</small></span></div>
       <nav class="nav">
         <a class="dim"><svg class="i"><use href="#board"/></svg>Việc<span class="soon pill">M3</span></a>
         <a class="dim"><svg class="i"><use href="#grid"/></svg>Dự án<span class="soon pill">M2</span></a>
@@ -343,7 +343,7 @@ dialog .act{display:flex;gap:8px;justify-content:flex-end}
           <div class="field"><label for="oidc-secret">Client secret</label><input class="in-f" id="oidc-secret" value="••••••••••••3kQ9"><span class="hint">Để trống nếu không đổi.</span></div>
         </div>
         <div class="field"><label for="cb">Callback URL (dán vào cấu hình app bên nhà cung cấp)</label>
-          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.example.com/api/auth/sso/callback/fpt-azure"><button class="btn" type="button">Chép</button></div></div>
+          <div class="copy"><input class="in-f" id="cb" readonly value="https://hive.example.com/api/auth/sso/callback/acme-azure"><button class="btn" type="button">Chép</button></div></div>
         <div class="field"><label for="oidc-map">Khi người mới đăng nhập SSO lần đầu</label>
           <select class="in-f" id="oidc-map"><option>Vào hàng chờ duyệt (khuyên dùng)</option><option>Tự thêm vào tổ chức với vai trò Thành viên, chưa thuộc đội nào</option></select></div>
         <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button">Thử đăng nhập</button><button class="btn primary" type="button">Lưu</button></div>

@@ -4,8 +4,8 @@ import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 const at = "2026-10-01T03:00:00.000Z";
 const ORG_A = {
   id: "0a0a0a0a-0000-4000-8000-00000000000a",
-  slug: "fpt-xdev",
-  name: "FPT Software xDev",
+  slug: "acme-dev",
+  name: "Acme Software xDev",
   role: "owner",
 };
 const ORG_B = { id: "0b0b0b0b-0000-4000-8000-00000000000b", slug: "noi-bo", name: "Nội bộ", role: "member" };
@@ -106,7 +106,7 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   expect(orgsOf("orgs/mine")).toEqual([undefined]);
 
   await switcher(page).click();
-  await page.getByRole("menuitemradio", { name: /FPT Software xDev/ }).click();
+  await page.getByRole("menuitemradio", { name: /Acme Software xDev/ }).click();
   await expect(switcher(page)).toContainText("Chủ sở hữu");
   await expect(page.getByRole("button", { name: "Tạo đội" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hệ thống", exact: true })).toBeVisible();
@@ -115,7 +115,7 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   expect(await page.evaluate(() => localStorage.getItem("hive.org"))).toBe(ORG_A.id);
 
   await page.reload();
-  await expect(switcher(page)).toContainText("FPT Software xDev");
+  await expect(switcher(page)).toContainText("Acme Software xDev");
 });
 
 const PROJECT = {
@@ -129,13 +129,13 @@ const PROJECT = {
     mode: "existing",
     connectionId: "6e6e6e6e-0000-4000-8000-000000000002",
     kind: "github",
-    owner: "fpt",
+    owner: "acme",
     name: "web",
     defaultBranch: "main",
     visibility: null,
-    httpUrl: "https://github.com/fpt/web",
-    sshUrl: "git@github.com:fpt/web.git",
-    webUrl: "https://github.com/fpt/web",
+    httpUrl: "https://github.com/acme/web",
+    sshUrl: "git@github.com:acme/web.git",
+    webUrl: "https://github.com/acme/web",
   },
   settings: {
     merge: { mode: "review", requiredApprovals: 1 },
@@ -406,15 +406,15 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
 
   await page.getByRole("tab", { name: "Lời mời · 1" }).click();
   await expect(page).toHaveURL("/admin/members?xem=loi-moi");
-  const vy = page.getByRole("row", { name: /vy\.ngo@fpt\.com/ });
+  const vy = page.getByRole("row", { name: /vy\.ngo@example\.com/ });
   await expect(vy).toContainText("Chờ nhận");
   await expect(vy).toContainText("Thanh toán");
   await expect(vy).toContainText("chỉ xem");
   await expect(vy).toContainText("18/10/2026");
-  await expect(page.getByRole("row", { name: /minh\.pham@fpt\.com/ })).toContainText("Đã nhận");
+  await expect(page.getByRole("row", { name: /minh\.pham@example\.com/ })).toContainText("Đã nhận");
   // Lời mời đã dùng thì hub không cho thu hồi.
   await expect(page.getByRole("button", { name: "Thu hồi lời mời cho minh.pham@example.com" })).toHaveCount(0);
-  await expect(page.getByRole("row", { name: /cu@fpt\.com/ })).toContainText("Hết hạn");
+  await expect(page.getByRole("row", { name: /cu@example\.com/ })).toContainText("Hết hạn");
 
   await page.getByRole("button", { name: "Thu hồi lời mời cho vy.ngo@example.com" }).click();
   await expect(vy).toHaveCount(0);
@@ -519,7 +519,7 @@ test("mời người: lỗi của hub hiện tiếng Việt, quản trị không
   await page.getByRole("button", { name: "Mời người" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Vai trò tổ chức").locator("option")).toHaveText(["Thành viên"]);
-  await dialog.getByLabel("Email").fill("a@example.com, b@example.vn");
+  await dialog.getByLabel("Email").fill("a@example.com, b@example.org");
   await dialog.getByRole("button", { name: "Tạo lời mời" }).click();
   await expect(dialog.getByText("Email không hợp lệ.", { exact: true })).toBeVisible();
   await expect(dialog.getByLabel("Email")).toHaveAttribute("aria-invalid", "true");
@@ -640,7 +640,9 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   });
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Đang bật");
   // Tên miền mới khai luôn chưa xác minh: hub chưa cho SSO tạo tài khoản, chính sách người mới chưa áp dụng.
-  await expect(methods).toContainText("login.microsoftonline.com · example.com (chưa xác minh) · người mới: cần lời mời");
+  await expect(methods).toContainText(
+    "login.microsoftonline.com · example.com (chưa xác minh) · người mới: cần lời mời",
+  );
   await expect(page.getByText(/Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới/)).toBeVisible();
   // Secret chỉ ghi: lưu xong thì ô trống, hub không trả secret về.
   await expect(page.getByLabel("Client secret")).toHaveValue("");
@@ -652,7 +654,12 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const configured = {
     ...SSO_NONE,
-    provider: { issuer: "https://idp.example.com", domain: "example.com", domainVerified: true, clientIdLastFour: "ab12" },
+    provider: {
+      issuer: "https://idp.example.com",
+      domain: "example.com",
+      domainVerified: true,
+      clientIdLastFour: "ab12",
+    },
   };
   const hub = await fakeHub(page, {
     signedIn: true,

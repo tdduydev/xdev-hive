@@ -108,7 +108,7 @@ describe("tạo tổ chức", () => {
 
   it("định danh sai quy tắc bị từ chối bằng thông báo tiếng Việt", async () => {
     for (const slug of ["A", "Thanh_Toan", "-abc", "abc-", "a".repeat(41)]) {
-      const res = await api("owner", "POST", "/orgs", { name: "FPT", slug });
+      const res = await api("owner", "POST", "/orgs", { name: "Acme", slug });
       expect(res.status, slug).toBe(400);
       expect(res.json.message).toMatch(/Định danh|Dữ liệu không hợp lệ/);
     }
@@ -116,14 +116,14 @@ describe("tạo tổ chức", () => {
 
   it("người đầu tiên tạo tổ chức và thành chủ sở hữu", async () => {
     const res = await api("owner", "POST", "/orgs", {
-      name: "FPT Software xDev",
-      slug: "fpt-xdev",
-      emailDomain: "example.com",
+      name: "Acme Dev",
+      slug: "acme-dev",
+      emailDomain: "Example.com",
     });
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
-      name: "FPT Software xDev",
-      slug: "fpt-xdev",
+      name: "Acme Dev",
+      slug: "acme-dev",
       emailDomain: "example.com",
       role: "owner",
     });
@@ -149,9 +149,9 @@ describe("tạo tổ chức", () => {
   });
 
   it("trùng định danh trả CONFLICT nêu rõ định danh", async () => {
-    const res = await api("creator", "POST", "/orgs", { name: "Trùng", slug: "fpt-xdev" }, null);
+    const res = await api("creator", "POST", "/orgs", { name: "Trùng", slug: "acme-dev" }, null);
     expect(res.status).toBe(409);
-    expect(res.json.message).toContain('"fpt-xdev"');
+    expect(res.json.message).toContain('"acme-dev"');
     expect(res.json.data?.code).toBe("SLUG_TAKEN");
   });
 });
@@ -184,9 +184,9 @@ describe("chọn tổ chức", () => {
 
   it("orgs.update cần quản trị trở lên", async () => {
     expect((await api("member", "PATCH", `/orgs/${orgA}`, { name: "Đổi" })).status).toBe(403);
-    const res = await api("admin", "PATCH", `/orgs/${orgA}`, { name: "FPT xDev" });
+    const res = await api("admin", "PATCH", `/orgs/${orgA}`, { name: "Acme xDev" });
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ name: "FPT xDev", slug: "fpt-xdev" });
+    expect(res.json).toMatchObject({ name: "Acme xDev", slug: "acme-dev" });
   });
 });
 

@@ -545,7 +545,7 @@ textarea.in{height:auto;min-height:72px;padding:9px 10px;line-height:1.5;resize:
           <!-- Màn 1: danh sách -->
           <div id="v-list" role="tabpanel" aria-labelledby="tab-list" hidden>
             <div class="bar">
-              <div><div class="crumb">Hub · FPT xDev</div><h3>Dự án</h3></div>
+              <div><div class="crumb">Hub · Acme xDev</div><h3>Dự án</h3></div>
               <span class="sp"></span>
               <button class="btn" type="button">Thêm repo có sẵn</button>
               <button class="btn primary" type="button" data-go="wiz">+ Tạo dự án</button>
@@ -1342,7 +1342,7 @@ export interface GitProvider {
   // Provider đổi kết nối và owner
   const syncProv = () => {
     const gl = $("#prov-gl").checked;
-    $("#conn").innerHTML = gl ? "<option>gitlab-fpt · token tổ chức</option>" : "<option>github-xdev · token tổ chức</option>";
+    $("#conn").innerHTML = gl ? "<option>gitlab-acme · token tổ chức</option>" : "<option>github-xdev · token tổ chức</option>";
     $("#owner").textContent = gl ? "xdev/backend /" : "xdev-team /";
     $("#conn-hint").textContent = gl ? "Token tạo được project trong nhóm xdev/backend" : "Token tạo được repo trong xdev-team";
     syncPlan();

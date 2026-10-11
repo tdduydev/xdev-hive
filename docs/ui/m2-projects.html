@@ -344,7 +344,7 @@ pre.yaml i{font-style:normal;color:var(--faint)}
 <template id="shell">
   <div class="app">
     <aside class="side">
-      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
+      <div class="switcher"><span class="avatar">F</span><span><b>Acme Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
       <nav class="nav">
         <a class="dim"><svg class="i"><use href="#board"/></svg>Việc<span class="soon pill">M3</span></a>
         <a data-nav="list" class="proj"><svg class="i"><use href="#grid"/></svg>Dự án</a>
@@ -885,7 +885,7 @@ const sync = () => {
   const name = mode === "new" ? $("#rname").value : "billing-export";
   $("#owner").textContent = `${owner} /`;
   $("#conn").innerHTML = gl
-    ? "<option>GitLab gitlab.example.vn · nhóm thanh-toan/hoa-don</option>"
+    ? "<option>GitLab gitlab.example.com · nhóm thanh-toan/hoa-don</option>"
     : "<option>GitHub App xDev Hive · tổ chức xdev-team</option>";
   $("#conn-hint").textContent = gl
     ? "Token nhóm có vai trò Maintainer, tạo được project."
