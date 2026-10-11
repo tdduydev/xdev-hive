@@ -298,12 +298,15 @@ function SignUpForInvite({
         hoặc
       </div>
       <div className="grid gap-1.5">
-        {/* Đăng nhập rồi quay lại đúng trang này để nhận lời mời; trang đăng nhập có đủ SSO, GitHub, GitLab, email. */}
+        {/* Đăng nhập rồi quay lại đúng trang này để nhận lời mời; trang đăng nhập có đủ SSO, GitHub, GitLab, email.
+            GitHub/GitLab lần đầu cũng tạo được tài khoản nhờ lời mời này, nếu email ở đó trùng email được mời. */}
         <Link to="/login" search={{ redirect: `/invite/${token}` }} className={buttonClass({ block: true })}>
           <Icon name="key" />
-          Đã có tài khoản: đăng nhập để nhận lời mời
+          Đăng nhập bằng GitHub, GitLab hoặc tài khoản đã có
         </Link>
-        <small className="text-center text-xs text-muted">Đăng nhập bằng đúng {invite.email}.</small>
+        <small className="text-center text-xs text-muted">
+          Dùng tài khoản có email {invite.email} (đã xác minh với GitHub/GitLab).
+        </small>
       </div>
     </>
   );

@@ -341,6 +341,14 @@ async function ssoSignIn(email: string, pick: object = { email }): Promise<{ coo
   return { cookie: cookieOf(done), location: done.headers.get("location") ?? "" };
 }
 
+/** Hub chưa có API xác minh tên miền (TXT DNS); tới lúc đó quản trị hub đặt cột này trong database. */
+async function verifyDomain(verified: boolean) {
+  await admin.query(`update auth."ssoProvider" set "domainVerified" = $1 where "providerId" = $2`, [
+    verified,
+    `org-${orgId}`,
+  ]);
+}
+
 async function userIdOf(cookie: string) {
   const me = await send(app, "GET", "/api/v1/me", { cookie });
   expect(me.status).toBe(200);
@@ -393,14 +401,24 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect((await api("member", "PUT", "/sso", ssoBody())).status).toBe(403);
   });
 
-  it("quản trị lưu cấu hình; secret không bao giờ trả về", async () => {
+  it("quản trị lưu cấu hình; secret không bao giờ trả về; tên miền mới khai chưa được xác minh", async () => {
     const res = await api("admin", "PUT", "/sso", ssoBody());
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({
       join: "pending",
-      provider: { issuer: idp.issuer, domain: CORP, clientIdLastFour: idp.clientId.slice(-4) },
+      provider: { issuer: idp.issuer, domain: CORP, domainVerified: false, clientIdLastFour: idp.clientId.slice(-4) },
     });
     expect(JSON.stringify(res.json)).not.toContain(idp.clientSecret);
+  });
+
+  it("tên miền chưa xác minh: người mới đăng nhập SSO không được tạo tài khoản", async () => {
+    const email = mail("chua-xac-minh", CORP);
+    const { cookie, location } = await ssoSignIn(email);
+    expect(location).toMatch(/[?&]error=SIGN_UP_NOT_INVITED/);
+    expect(cookie).not.toMatch(/session_token=/);
+    expect((await admin.query(`select 1 from auth."user" where email = $1`, [email])).rows).toHaveLength(0);
+    await verifyDomain(true);
+    expect((await api("admin", "GET", "/sso")).json).toMatchObject({ provider: { domainVerified: true } });
   });
 
   it("người mới đăng nhập SSO, chính sách chờ duyệt: vào org_members ở trạng thái pending", async () => {
@@ -444,10 +462,15 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect(await membership(id)).toEqual({ role: "member", status: "blocked" });
   });
 
-  it("email khác tên miền đã khai thì không được thêm vào tổ chức", async () => {
+  it("email khác tên miền đã khai, không có lời mời: không tạo tài khoản", async () => {
     // Plugin tìm nhà cung cấp theo tên miền của email, nên email lạ phải chọn nhà cung cấp bằng providerId.
-    const { cookie } = await ssoSignIn(mail("khach", `khac-${run}.test`), { providerId: `org-${orgId}` });
-    expect(await membership(await userIdOf(cookie))).toBeUndefined();
+    const { cookie, location } = await ssoSignIn(mail("khach", `khac-${run}.test`), { providerId: `org-${orgId}` });
+    expect(location).toMatch(/[?&]error=SIGN_UP_NOT_INVITED/);
+    expect(cookie).not.toMatch(/session_token=/);
+    const { rows } = await admin.query(`select 1 from auth."user" where email = $1`, [
+      mail("khach", `khac-${run}.test`),
+    ]);
+    expect(rows).toHaveLength(0);
   });
 
   it("đổi chính sách sang thành viên (giữ secret cũ): người mới vào thẳng, trạng thái active", async () => {
@@ -462,6 +485,18 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect(await membership(id)).toEqual({ role: "member", status: "active" });
     expect(await pendingNotifications()).toBe(notificationsBefore);
     expect((await api("", "GET", "/orgs/mine", undefined, null)).status).toBe(401);
+  });
+
+  it("bỏ xác minh tên miền: người đã có tài khoản SSO vẫn đăng nhập được nhưng không tự vào lại tổ chức", async () => {
+    const { cookie } = await ssoSignIn(mail("ra-vao", CORP));
+    const id = await userIdOf(cookie);
+    expect(await membership(id)).toEqual({ role: "member", status: "active" });
+    await admin.query("delete from hive.org_members where org_id = $1 and user_id = $2", [orgId, id]);
+    await verifyDomain(false);
+    const again = await ssoSignIn(mail("ra-vao", CORP));
+    expect(again.cookie).toMatch(/session_token=/);
+    expect(await membership(id)).toBeUndefined();
+    await verifyDomain(true);
   });
 
   it("đã có người đăng nhập thì không đổi được issuer", async () => {

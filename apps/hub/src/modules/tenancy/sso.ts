@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import {
@@ -27,18 +27,19 @@ const orgIdOf = (providerId: string) => {
 };
 
 /**
- * Xếp người vừa đăng nhập SSO vào tổ chức sở hữu nhà cung cấp, theo chính sách sso_join của tổ chức. Chỉ khi email
- * đúng tên miền đã khai: IdP của tổ chức có thể phát email ở tên miền khác (khách, đối tác), những người đó phải
- * được mời riêng. Đã có dòng thành viên (kể cả bị khoá) thì giữ nguyên, nên gọi lại ở mỗi lần đăng nhập vẫn an toàn.
+ * Xếp người vừa đăng nhập SSO vào tổ chức sở hữu nhà cung cấp, theo chính sách sso_join của tổ chức. Chỉ khi tên miền
+ * đã được xác minh là của tổ chức và email đúng tên miền đó: tên miền do quản trị tổ chức tự khai, và IdP của tổ chức
+ * phát được email bất kỳ (khách, đối tác, hay người của tổ chức khác); những người đó phải được mời riêng. Đã có dòng
+ * thành viên (kể cả bị khoá) thì giữ nguyên, nên gọi lại ở mỗi lần đăng nhập vẫn an toàn.
  */
 export type MemberPendingInput = { orgId: string; userId: string; email: string; name: string };
 export type MemberPendingCallback = (tx: Tx, member: MemberPendingInput) => Promise<unknown>;
 
 export function ssoProvisioning(pool: pg.Pool, onMemberPending?: MemberPendingCallback): AuthHooks["ssoSignedIn"] {
-  return async ({ providerId, domain, user }) => {
+  return async ({ providerId, domain, domainVerified, user }) => {
     const orgId = orgIdOf(providerId);
     const emailDomain = user.email.split("@").pop()?.toLowerCase();
-    if (!orgId || !emailDomain || emailDomain !== domain.toLowerCase()) return;
+    if (!orgId || !domainVerified || !emailDomain || emailDomain !== domain.toLowerCase()) return;
     await withTenant(pool, { userId: user.id, orgId }, async (tx) => {
       const [org] = await tx.select({ ssoJoin: orgs.ssoJoin }).from(orgs).where(eq(orgs.id, orgId));
       if (!org) return;
@@ -67,6 +68,12 @@ export function authHooks(pool: pg.Pool, opts: { onMemberPending?: MemberPending
   const invites = invitationService(pool);
   return {
     inviteValid: (token, email) => invites.valid(token, email),
+    invitePending: (email) => invites.pendingFor(email),
+    anyOrg: () =>
+      withTenant(pool, {}, async (tx) => {
+        const { rows } = await tx.execute<{ any: boolean }>(sql`select hive.any_org() as any`);
+        return rows[0]?.any !== false;
+      }),
     acceptInvite: async (token, user) => {
       await invites.accept(token, user);
     },

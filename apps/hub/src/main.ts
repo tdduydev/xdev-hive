@@ -20,7 +20,7 @@ import {
   registerScmEventWorker,
   scmEventQueue,
 } from "./modules/scm/index.ts";
-import { authHooks } from "./modules/tenancy/index.ts";
+import { authHooks, orphanUsersQueue, registerOrphanUsersWorker } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
@@ -37,6 +37,7 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
+        orgCreators: config.orgCreators,
         hooks: pool
           ? authHooks(pool, {
               onMemberPending: (tx, member) =>
@@ -68,7 +69,16 @@ else {
 jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, mergeQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
+      queues: [
+        provisionQueue,
+        mergeQueue,
+        runsTimerQueue,
+        scmEventQueue,
+        embedQueue,
+        notifyQueue,
+        fleetOfflineQueue,
+        orphanUsersQueue,
+      ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -119,6 +129,7 @@ if (roles.includes("jobs") && jobs) {
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
+    await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
   }
 }
 
