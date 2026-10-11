@@ -40,7 +40,12 @@ function pickOrg(orgs: McpOrgMembership[], requested: string | undefined): McpOr
  * Chạy một tool trong withTenant của tổ chức thuộc principal, rồi ghi audit trong cùng transaction. Lời gọi bị từ
  * chối trước khi chọn được tổ chức thì không có dòng audit, vì audit_log luôn thuộc một tổ chức.
  */
-async function runTool(deps: McpServerDeps, principal: McpPrincipal, tool: McpTool, raw: Record<string, unknown>) {
+async function runTool(
+  deps: McpServerDeps,
+  principal: McpPrincipal,
+  tool: McpTool<z.ZodObject, unknown>,
+  raw: Record<string, unknown>,
+) {
   const { org, ...args } = raw as { org?: string } & Record<string, unknown>;
   const { pool, registry } = deps;
   let orgId: string;
@@ -55,13 +60,14 @@ async function runTool(deps: McpServerDeps, principal: McpPrincipal, tool: McpTo
     );
     orgId = pickOrg(orgs, org).id;
   }
+  const prepared = tool.prepare ? await tool.prepare(args) : undefined;
   return withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
     // Xét lại trong transaction sẽ chạy tool: RLS chỉ lọc theo tổ chức trong context, không theo tư cách thành viên,
     // và người dùng có thể vừa bị khoá giữa hai transaction.
     if (principal.kind === "user" && !(await registry.memberships(tx, principal.userId)).some((o) => o.id === orgId)) {
       throw new McpToolError("Bạn không còn là thành viên của tổ chức này.");
     }
-    const result = await tool.handler(args, { tx, orgId, principal });
+    const result = await tool.handler(args, { tx, orgId, principal }, prepared);
     await recordAudit(tx, {
       action: `mcp.${tool.name}`,
       targetType: "mcp_tool",

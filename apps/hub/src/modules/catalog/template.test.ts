@@ -21,6 +21,22 @@ describe("mẫu xdev-standard", () => {
     expect(byPath["AGENTS.md"]).toContain("Hive project key: `hoa-don-xuat-file`");
   });
 
+  it("AGENTS.md hướng dẫn agent dùng đúng tên tool MCP của hub", () => {
+    const agents = byPath["AGENTS.md"] ?? "";
+    for (const tool of [
+      "task_get",
+      "memory_search",
+      "memory_write",
+      "doc_get",
+      "doc_propose",
+      "skill_get",
+      "task_update",
+    ])
+      expect(agents).toContain(`\`${tool}\``);
+    // Tên tool cũ không còn trên cổng; agent gọi theo sẽ lỗi.
+    expect(agents).not.toContain("memory_add");
+  });
+
   it("CLAUDE.md chỉ trỏ tới AGENTS.md", () => {
     expect(byPath["CLAUDE.md"]).toBe("@AGENTS.md\n");
   });
