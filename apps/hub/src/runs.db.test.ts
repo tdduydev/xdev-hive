@@ -333,6 +333,7 @@ describe("run từ đầu tới PR", () => {
       baseBranch: "main",
       cli: "claude",
       model: "claude-project-model",
+      runPermissions: "workspace",
       repoUrl: expect.stringContaining("gitlab.com"),
     });
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
@@ -440,6 +441,35 @@ describe("model theo cấu hình dự án", () => {
     const offer = await w.next("job_offer", (o) => o.runId === run.id);
     expect(offer.spec).toMatchObject({ model: "claude-override-model" });
     await w.close();
+  });
+});
+
+describe("quyền CLI theo cấu hình dự án", () => {
+  it("đưa chế độ full của dự án vào spec", async () => {
+    await withTenant(pool, { userId: org.user("admin"), orgId: org.orgId }, async (tx) => {
+      await tx.$client.query(
+        `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+        [projectId],
+      );
+    });
+    try {
+      const m = await seedMachine(`permissions-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const task = await newTask("Kiểm quyền CLI");
+        const run = await startRun(task.id);
+        const offer = await w.next("job_offer", (o) => o.runId === run.id);
+        expect(offer.spec).toMatchObject({ runPermissions: "full" });
+      } finally {
+        await w.close();
+      }
+    } finally {
+      await withTenant(pool, { userId: org.user("admin"), orgId: org.orgId }, async (tx) => {
+        await tx.$client.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [
+          projectId,
+        ]);
+      });
+    }
   });
 });
 
