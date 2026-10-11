@@ -6,7 +6,7 @@ export function PageHeader({ crumb, title, children }: { crumb?: string; title: 
     <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-6 py-4">
       <div>
         {crumb && <div className="text-sm text-muted">{crumb}</div>}
-        <h1 className="text-3xl font-bold text-ink">{title}</h1>
+        <h1 className="font-display text-3xl font-semibold text-ink">{title}</h1>
       </div>
       {children && <div className="ml-auto flex items-center gap-3">{children}</div>}
     </header>
