@@ -1,0 +1,5 @@
+package: hubclient
+generate:
+  models: true
+  client: true
+output: generated.go
