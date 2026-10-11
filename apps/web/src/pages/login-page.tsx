@@ -7,7 +7,7 @@ import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
-import { authClient } from "../lib/auth-client.ts";
+import { authClient, oauthContinuation } from "../lib/auth-client.ts";
 import { type AuthErrorLike, type AuthMethod, authErrorLabel } from "../lib/auth-errors.ts";
 import { meQuery } from "../lib/me.ts";
 import { emailDomain } from "../lib/people.ts";
@@ -55,14 +55,24 @@ export function LoginPage() {
   const callbacks = { callbackURL: target, errorCallbackURL: loginHref(target) };
 
   /** Gọi Better Auth; true nếu thành công. Với SSO và OAuth, authClient tự chuyển trình duyệt sang nhà cung cấp. */
-  async function attempt(kind: Pending, call: () => Promise<{ error: AuthErrorLike | null }>): Promise<boolean> {
+  async function attempt(
+    kind: Pending,
+    call: () => Promise<{ data?: unknown; error: AuthErrorLike | null }>,
+  ): Promise<boolean> {
     setPending(kind);
     setFailure(null);
     let error: AuthErrorLike | null;
+    let data: unknown;
     try {
-      ({ error } = await call());
+      ({ data, error } = await call());
     } catch {
       error = { status: 0 };
+    }
+    // Đang đăng nhập cho client MCP (CLI): hub trả bước kế tiếp của luồng authorize thay vì về trang của web.
+    const next = error ? null : oauthContinuation(data);
+    if (next) {
+      window.location.assign(next);
+      return false;
     }
     if (!error) return true;
     setFailure({ at: methodOf(kind), message: authErrorLabel(error, methodOf(kind)) });
