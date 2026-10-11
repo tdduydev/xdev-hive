@@ -23,10 +23,13 @@ export function HomePage() {
             <>
               <h2 className="text-lg font-semibold text-ink">{current.org.name}</h2>
               <p className="max-w-md text-muted">
-                Bạn là {ORG_ROLE_LABEL[current.org.role].toLowerCase()} của tổ chức này. Dự án và việc của đội sẽ hiện ở
-                đây khi có.
+                Bạn là {ORG_ROLE_LABEL[current.org.role].toLowerCase()} của tổ chức này. Việc của các dự án nằm ở bảng
+                việc.
               </p>
               <div className="mt-2 flex flex-wrap justify-center gap-2">
+                <Link to="/tasks" className={buttonClass({ variant: "primary" })}>
+                  Bảng việc
+                </Link>
                 <Link to="/admin/teams" className={buttonClass()}>
                   Đội và hệ thống
                 </Link>
