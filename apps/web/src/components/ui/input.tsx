@@ -10,8 +10,8 @@ export function Input({ className, ...props }: InputProps) {
   return (
     <BaseInput
       className={cx(
-        "h-9.5 w-full rounded-md border border-line-strong bg-surface px-2.75 placeholder:text-faint",
-        "focus:border-transparent focus:outline-2 focus:-outline-offset-1 focus:outline-accent data-invalid:border-bad",
+        "h-9.5 w-full rounded-md border border-line-strong bg-surface px-2.75 placeholder:text-muted",
+        "data-invalid:border-bad",
         className,
       )}
       {...props}

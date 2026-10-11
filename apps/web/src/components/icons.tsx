@@ -89,21 +89,15 @@ export function Icon({ name, className, ...props }: { name: IconName } & Compone
   );
 }
 
-/** Logo lục giác của Hive. */
-export function HiveLogo({ className }: { className?: string }) {
+/**
+ * Logo xDev Hive theo theme. Dùng nguyên file SVG của design system, không vẽ lại chữ X bằng font.
+ * Hai ảnh cùng có mặt, CSS ẩn một ảnh theo prefers-color-scheme (cùng cơ chế với token màu).
+ */
+export function Brand({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={cx("size-6.5 shrink-0", className)}>
-      <path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" className="fill-accent" />
-      <path d="M12 7l4.33 2.5v5L12 17l-4.33-2.5v-5z" className="fill-white" />
-    </svg>
-  );
-}
-
-export function Brand() {
-  return (
-    <div className="flex items-center gap-2.5 text-xl font-semibold text-ink">
-      <HiveLogo />
-      xDev Hive
-    </div>
+    <>
+      <img src="/xdev-hive-light.svg" alt="xDev Hive" className={cx("h-10 w-auto dark:hidden", className)} />
+      <img src="/xdev-hive-dark.svg" alt="xDev Hive" className={cx("hidden h-10 w-auto dark:block", className)} />
+    </>
   );
 }

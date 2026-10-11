@@ -14,7 +14,7 @@ export function Th({ className, ...props }: ComponentProps<"th">) {
   return (
     <th
       className={cx(
-        "border-b border-line px-3 py-2 text-left text-2xs font-semibold tracking-caps text-faint uppercase",
+        "border-b border-line px-3 py-2 text-left text-2xs font-semibold tracking-caps text-muted uppercase",
         className,
       )}
       {...props}
