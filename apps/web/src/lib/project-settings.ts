@@ -132,10 +132,7 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       maxTurns: num(form.maxTurns, "maxTurns", errors),
     },
     models: Object.fromEntries(
-      SETTINGS_CLIS.map((cli) => [
-        cli,
-        { code: model(form.models[cli].code), review: model(form.models[cli].review) },
-      ]),
+      SETTINGS_CLIS.map((cli) => [cli, { code: model(form.models[cli].code), review: model(form.models[cli].review) }]),
     ),
     runPermissions: { mode: form.runPermissions },
   };

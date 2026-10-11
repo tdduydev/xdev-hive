@@ -10,11 +10,9 @@ import { UserCard } from "./user-card.tsx";
 interface NavEntry {
   label: string;
   icon: IconName;
-  /** Không có thì mục chỉ là nhãn: màn danh sách chưa có, mở chi tiết từ màn khác (`hint` nói cách mở). */
-  to?: LinkProps["to"];
-  /** Đường dẫn bắt đầu bằng chuỗi này thì mục sáng lên, kể cả khi mục không có `to` (vd. /runs/<id>). */
+  to: NonNullable<LinkProps["to"]>;
+  /** Đường dẫn bắt đầu bằng chuỗi này thì mục sáng lên, kể cả màn con (vd. /runs/<id>). */
   match?: string;
-  hint?: string;
   /** Chỉ quản trị tổ chức dùng được; ẩn với người khác trong tổ chức. */
   adminOnly?: boolean;
 }
@@ -23,21 +21,21 @@ interface NavEntry {
  * Route của Máy, Chi phí, Thông báo do task khác thêm (màn theo Machines/Costs/Notifications.dc.html). Ép kiểu tới khi
  * các route đó có trong routeTree; trước đó bấm vào sẽ ra trang "Không tìm thấy trang".
  */
-const pending = (path: string) => path as LinkProps["to"];
+const pending = (path: string) => path as NonNullable<LinkProps["to"]>;
 
 const GROUPS: { title: string; entries: NavEntry[] }[] = [
   {
     title: "Làm việc hằng ngày",
     entries: [
       { label: "Bảng việc", icon: "columns", to: "/tasks", match: "/tasks" },
-      { label: "Lượt chạy", icon: "play", match: "/runs/", hint: "Mở lượt chạy từ Bảng việc" },
+      { label: "Lượt chạy", icon: "play", to: "/runs", match: "/runs" },
       { label: "Máy", icon: "monitor", to: pending("/machines"), match: "/machines" },
     ],
   },
   {
     title: "Dự án và quản trị",
     entries: [
-      { label: "Dự án", icon: "folder", match: "/projects/", hint: "Mở dự án từ Bảng việc" },
+      { label: "Dự án", icon: "folder", to: "/projects", match: "/projects" },
       { label: "Thành viên", icon: "users", to: "/admin/members", match: "/admin/members" },
       { label: "Đội và hệ thống", icon: "network", to: "/admin/teams", match: "/admin/teams" },
       { label: "Thông báo", icon: "bell", to: pending("/notifications"), match: "/notifications" },
@@ -66,12 +64,12 @@ function NavItem({ entry, hasOrg, pathname }: { entry: NavEntry; hasOrg: boolean
     </>
   );
   // Mọi màn ở đây là dữ liệu của một tổ chức; chưa thuộc tổ chức nào thì chưa mở được.
-  if (!hasOrg || !entry.to) {
+  if (!hasOrg) {
     return (
       <span
         aria-disabled={active ? undefined : "true"}
         aria-current={active ? "page" : undefined}
-        title={hasOrg ? entry.hint : "Cần thuộc một tổ chức"}
+        title="Cần thuộc một tổ chức"
         className={cx(item, active ? on : cx(off, "opacity-50"))}
       >
         {body}

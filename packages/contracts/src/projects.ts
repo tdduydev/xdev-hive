@@ -210,7 +210,10 @@ const outcomeChecksPatch = z
 const { merge, features } = projectSettings.shape;
 const budgetShape = projectBudget.shape;
 const modelName = z.string().trim().min(1).max(200);
-const cliModelsPatch = z.strictObject({ code: modelName.nullable().optional(), review: modelName.nullable().optional() });
+const cliModelsPatch = z.strictObject({
+  code: modelName.nullable().optional(),
+  review: modelName.nullable().optional(),
+});
 
 /**
  * Đổi một phần settings. Trường bỏ trống giữ nguyên; `null` ở trường không bắt buộc là bỏ cấu hình đó (về mặc định
