@@ -321,11 +321,17 @@ describe("saga khởi tạo", () => {
 
   it("lỗi giữa chừng thì dừng ở bước đó với cách sửa, báo nhóm quản trị; retryStep chạy tiếp từ bước lỗi", async () => {
     await withTenant(app, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
-      createChannel(tx, masterKey, org.user("admin"), {
-        name: `saga-${org.orgId.slice(0, 6)}`,
-        events: ["project.provision_failed"],
-        config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["qt@example.com"] },
-      }),
+      createChannel(
+        tx,
+        masterKey,
+        org.user("admin"),
+        {
+          name: `saga-${org.orgId.slice(0, 6)}`,
+          events: ["project.provision_failed"],
+          config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["qt@example.com"] },
+        },
+        { lookup: async () => [{ address: "8.8.8.8", family: 4 }] },
+      ),
     );
     const r = await createProject(app, deps, actor("tadmin"), input());
     const id = r.projectId as string;
