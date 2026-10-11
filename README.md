@@ -54,3 +54,44 @@ HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <use
 Tự chạy tại máy chủ: sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret, rồi chạy
 `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role (kể cả `hive_jobs`
 cho hàng đợi), chạy migration rồi khởi động API. Health: `/api/v1/health`.
+
+### Sao lưu và khôi phục
+
+Với bố cục của `deploy/remote.sh` (`<dir>/.env`, `<dir>/src`), chạy trên máy chủ:
+
+```sh
+cd <dir>/src
+deploy/backup.sh
+HIVE_BACKUP_KEEP=30 deploy/backup.sh
+deploy/restore.sh <dir>/backups/20261011T030000Z
+# Bỏ qua câu hỏi ghi đè .env khi chạy tự động:
+deploy/restore.sh <dir>/backups/20261011T030000Z --yes
+```
+
+- Backup gồm `hive.dump` (pg_dump custom), `.env` **có HIVE_MASTER_KEY**, và `SHA256SUMS`. Thư mục có quyền 700,
+  file có quyền 600. Dump được kiểm bằng `pg_restore --list`; lỗi thì trả mã khác 0 và giữ các bản cũ.
+- `HIVE_BACKUP_KEEP` đặt trong `<dir>/.env` hoặc môi trường lệnh, mặc định 14. Chỉ xoá bản cũ sau khi hoàn tất bản mới.
+  Nên chép cả thư mục backup sang nơi lưu trữ an toàn ngoài máy chủ; người đọc được `.env` cũng đọc được secret.
+- Restore kiểm checksum, dump và project trước khi dừng hub. Nếu `.env` khác, phải xác nhận hoặc dùng `--yes`.
+  SQL từ `pg_restore --clean --if-exists` được chạy bằng psql trong một transaction, giữ role, ownership và ACL.
+  Schema `pgboss` được xoá và dựng lại trong cùng transaction để tránh lỗi clean constraint của bảng partition.
+  Script nạp lại `.env`, đồng bộ mật khẩu postgres, tái tạo hub bằng image hiện có và chờ healthy tối đa 3 phút.
+- Restore **ghi đè dữ liệu hiện tại**. Sao lưu trước khi chạy. Chỉ dùng backup tin cậy và khôi phục vào cùng project
+  đã bootstrap, cùng phiên bản code/extension tương thích; không phải công cụ dựng lại toàn bộ máy chủ hay đổi project.
+  Dump không chứa role toàn cụm, mã nguồn, blob ngoài Postgres hay cấu hình hạ tầng. Nếu lỗi sau khi dừng hub,
+  hub được giữ dừng để tránh ghi thêm dữ liệu; sửa lỗi rồi chạy lại restore với cùng backup.
+- Backup/restore dùng khoá `<dir>/.backup-restore.lock` để tránh chạy chồng nhau. Không chạy đồng thời với deploy
+  hoặc đổi `.env`. Nếu tiến trình bị kill cưỡng bức, chỉ xoá khoá sau khi chắc chắn không còn backup/restore chạy.
+
+Từ máy dev, dùng bản script đã triển khai trên máy chủ:
+
+```sh
+deploy/remote-backup.sh <user>@<máy-chủ>
+HIVE_REMOTE_DIR=/opt/xdev-hive deploy/remote-backup.sh <user>@<máy-chủ> --cron "0 3 * * *"
+```
+
+Lệnh luôn backup ngay; `--cron` thêm lịch vào crontab của user SSH, chạy lại sẽ thay lịch của cùng `<dir>` và giữ
+các lịch khác. Cron dùng múi giờ máy chủ, ghi log quyền 600 tại `<dir>/backups/cron.log`; cần Docker trong PATH của
+cron. `HIVE_REMOTE_DOCKER="sudo -n docker"` khi cần sudo không tương tác. `.env` và dump không được tải về máy dev.
+
+Kiểm tra các nhánh lỗi và cron bằng `sh deploy/test-backup.sh` (Docker/SSH giả, không đụng bản triển khai thật).
