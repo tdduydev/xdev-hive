@@ -7,6 +7,7 @@ import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
+import { type Embedder, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import {
@@ -35,6 +36,8 @@ export interface AppDeps {
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
   providerFactory?: ProviderFactory | undefined;
+  /** Tạo embedding cho memory; không có thì chỉ tìm theo từ. */
+  embedder?: Embedder | undefined;
   /** Lõi giao run; không có thì xem được run nhưng không giao hay huỷ được (thiếu HIVE_AUTH_SECRET). */
   runs?: RunsEngine | undefined;
   /** Kết nối LISTEN cho SSE của run; bỏ trống thì tự tạo từ pool. */
@@ -48,6 +51,7 @@ export function createApp({
   runTokens,
   jobs,
   providerFactory,
+  embedder,
   runs,
   runNotifier,
   webDist = process.env.HIVE_WEB_DIST,
@@ -66,6 +70,7 @@ export function createApp({
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
     runs: runsRouter({ auth, pool, engine: runs }),
   };

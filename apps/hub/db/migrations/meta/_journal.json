@@ -148,6 +148,20 @@
       "when": 1791723162588,
       "tag": "0020_quyen_task_va_run",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791723460670,
+      "tag": "0021_tri_thuc",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791723461581,
+      "tag": "0022_ep_rls_tri_thuc",
+      "breakpoints": true
     }
   ]
 }

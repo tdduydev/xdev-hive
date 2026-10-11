@@ -4,6 +4,7 @@ import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
+import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import {
@@ -38,7 +39,7 @@ else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL khô
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, runsTimerQueue, scmEventQueue],
+      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -81,10 +82,16 @@ if (roles.includes("jobs") && jobs) {
   }
 }
 
+const embedder = config.embeddings ? createOpenAIEmbedder(config.embeddings) : undefined;
+if (roles.includes("jobs") && jobs && pool && embedder) await registerEmbedWorker(jobs, { pool, embedder });
+
 if (roles.includes("api")) {
-  const server = serve({ fetch: createApp({ config, auth, pool, jobs, runs }).fetch, port: config.port }, (info) => {
-    console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
-  });
+  const server = serve(
+    { fetch: createApp({ config, auth, pool, jobs, runs, embedder }).fetch, port: config.port },
+    (info) => {
+      console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
+    },
+  );
   // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
   if (pool) attachWorkerGateway(server as Server, { pool });
 }
