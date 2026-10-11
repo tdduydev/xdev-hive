@@ -7,6 +7,7 @@ import { validateRunsSearch } from "./lib/run-list.ts";
 import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
+import { LeaderPage, validateLeaderSearch } from "./pages/leader-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
 import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
 import { MachinesPage } from "./pages/machines-page.tsx";
@@ -170,6 +171,13 @@ const planRoute = createRoute({
   component: PlanPage,
 });
 
+const leaderRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/leader",
+  validateSearch: validateLeaderSearch,
+  component: LeaderPage,
+});
+
 const runsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs",
@@ -234,6 +242,7 @@ const routeTree = rootRoute.addChildren([
         sandboxAdminRoute,
         planRoute,
         runsRoute,
+        leaderRoute,
         runRoute,
         teamsRoute,
         membersRoute,
