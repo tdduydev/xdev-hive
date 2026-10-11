@@ -29,4 +29,22 @@ describe("McpToolRegistry", () => {
   it("báo lỗi rõ khi chưa module nào cung cấp danh sách tổ chức", () => {
     expect(() => new McpToolRegistry().memberships({} as never, "u")).toThrow(/Chưa có module/);
   });
+  it("tool bổ sung chỉ hiện cho đúng loại run, OAuth vẫn thấy đủ", () => {
+    const registry = new McpToolRegistry();
+    registry.register(tool("task_get"));
+    registry.register(tool("memory_write"));
+    registry.register({ ...tool("review_submit"), runKinds: ["review"] });
+    const principal = { kind: "run" as const, userId: "u", scopes: [] };
+    expect(registry.list(principal).map((t) => t.name)).toEqual(["task_get"]);
+    expect(registry.list({ ...principal, runKind: "code" }).map((t) => t.name)).toEqual(["task_get"]);
+    expect(registry.list({ ...principal, runKind: "review" }).map((t) => t.name)).toEqual([
+      "task_get",
+      "review_submit",
+    ]);
+    expect(registry.list({ ...principal, kind: "user" }).map((t) => t.name)).toEqual([
+      "task_get",
+      "memory_write",
+      "review_submit",
+    ]);
+  });
 });

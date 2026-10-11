@@ -20,6 +20,7 @@ import {
   setTaskStatus,
   type TaskRow,
 } from "../tasks/index.ts";
+import { taskBudgetExhausted } from "./cost.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, projectReady, type RunRow } from "./state.ts";
 
@@ -60,11 +61,12 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
 /** createdBy của task, run do webhook tạo: không có người dùng hub, ghi tài khoản trên nhà cung cấp Git. */
 const scmActor = (e: { provider: string; actor: string | null }) => `${e.provider}:${e.actor ?? "?"}`;
 
+/** Run code đang sống của task; run review chạy kèm lúc run cha verifying không nhận chỉ dẫn từ PR. */
 async function activeRunOf(tx: Tx, taskId: string): Promise<RunRow | null> {
   const [row] = await tx
     .select()
     .from(runs)
-    .where(and(eq(runs.taskId, taskId), notInArray(runs.state, [...FINISHED])))
+    .where(and(eq(runs.taskId, taskId), eq(runs.kind, "code"), notInArray(runs.state, [...FINISHED])))
     .limit(1);
   return row ?? null;
 }
@@ -306,6 +308,8 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
     reply = `Task ${task.key} đã ${task.status === "done" ? "xong" : "huỷ"}, Hive không chạy lại.`;
   } else if (!projectReady(project)) {
     reply = `Dự án chưa sẵn sàng, Hive chưa chạy lại task ${task.key} được.`;
+  } else if (await taskBudgetExhausted(tx, task.id, project.settings.budget)) {
+    reply = `Task ${task.key} đã dùng hết ngân sách của dự án, Hive không chạy lại.`;
   } else {
     const { afterCommit } = await deps.queueRun(tx, task, project, {
       cli: prRun.cli ?? project.settings.defaultCli ?? null,

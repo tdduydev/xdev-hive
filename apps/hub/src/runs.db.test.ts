@@ -3,8 +3,19 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
-import { defaultProjectSettings, type Run, type Task } from "@xdev-hive/contracts";
-import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
+import {
+  type CostSummary,
+  defaultProjectSettings,
+  type ProjectSettings,
+  type Run,
+  type Task,
+} from "@xdev-hive/contracts";
+import {
+  type CostEventData,
+  type HubToWorker,
+  hubToWorker,
+  PROTOCOL_VERSION,
+} from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import WebSocket from "ws";
@@ -45,6 +56,7 @@ let gateway: { close: () => Promise<void> };
 let unregister: () => void;
 let base = "";
 let cookie = "";
+let devUserId = "";
 
 beforeAll(async () => {
   org = await seedOrg(admin, `runs-${tag}`);
@@ -100,7 +112,8 @@ beforeAll(async () => {
     .getSetCookie()
     .map((c) => c.split(";")[0])
     .join("; ");
-  const userId = ((await res.json()) as { user: { id: string } }).user.id;
+  devUserId = ((await res.json()) as { user: { id: string } }).user.id;
+  const userId = devUserId;
   await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, 'member')", [
     org.orgId,
     userId,
@@ -633,5 +646,222 @@ describe("quyền", () => {
     const anon = await fetch(`http://${base}/api/v1/runs/${run.id}/stream`, { headers: { "x-hive-org": org.orgId } });
     expect(anon.status).toBe(401);
     await api("POST", `/v1/runs/${run.id}/cancel`);
+  });
+});
+
+describe("chi phí và ngân sách", () => {
+  const today = new Date().toISOString().slice(0, 10);
+  let costProject = "";
+  let budgetProject = "";
+  let userId = "";
+  let costTaskId = "";
+
+  beforeAll(async () => {
+    const seed = (key: string, settings?: ProjectSettings) =>
+      seedProject(admin, pool, {
+        orgId: org.orgId,
+        teamId: org.teamId,
+        systemId: org.systemId,
+        adminUserId: org.user("admin"),
+        masterKey,
+        key,
+        ...(settings ? { settings } : {}),
+      });
+    costProject = (await seed(`cp-${tag}`)).projectId;
+    budgetProject = (
+      await seed(`bp-${tag}`, {
+        ...defaultProjectSettings(),
+        budget: { perRunUsd: 0.4, perTaskUsd: 0.5, maxTurns: 7, perRunTokens: 100_000 },
+      })
+    ).projectId;
+    userId = devUserId;
+  });
+
+  const cost = (v: Partial<CostEventData> = {}) => ({
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    costUsd: null,
+    turns: null,
+    model: null,
+    ...v,
+  });
+
+  async function sendCost(w: FakeWorker, runId: string, attempt: number, data: Record<string, unknown>) {
+    const s = w.sendRun({ type: "run_event", runId, attempt, event: "cost", data });
+    await w.next("ack", (a) => a.runId === runId && a.uptoSeq === s);
+  }
+
+  async function costCols(id: string) {
+    const r = await runRow(id);
+    return {
+      tokensIn: Number(r.tokens_in),
+      tokensOut: Number(r.tokens_out),
+      cacheRead: Number(r.cache_read),
+      cacheWrite: Number(r.cache_write),
+      costUsd: r.cost_usd === null ? null : Number(r.cost_usd),
+      turns: r.turns,
+    };
+  }
+
+  it("sự kiện cost luỹ kế chỉ làm cột tăng, cộng qua các lần thử, bỏ gói của máy khác và gói sai dạng", async () => {
+    const m = await seedMachine(`cost-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Đo chi phí", { projectId: costProject });
+    costTaskId = task.id;
+    const run = await startRun(task.id);
+    expect(run.cost).toEqual({ tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, costUsd: null, turns: null });
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    // Dự án không đặt trần thì spec không có budget.
+    expect(offer.spec.budget).toBeUndefined();
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    const lease1 = await w.next("lease", (l) => l.runId === run.id);
+
+    const first = { inputTokens: 100, outputTokens: 10, cacheReadTokens: 1000, cacheWriteTokens: 50, costUsd: 0.1 };
+    await sendCost(w, run.id, 1, cost({ ...first, turns: 1, model: "claude-opus-5-5" }));
+    await sendCost(
+      w,
+      run.id,
+      1,
+      cost({
+        inputTokens: 300,
+        outputTokens: 40,
+        cacheReadTokens: 3000,
+        cacheWriteTokens: 80,
+        costUsd: 0.25,
+        turns: 3,
+      }),
+    );
+    const after = { tokensIn: 300, tokensOut: 40, cacheRead: 3000, cacheWrite: 80, costUsd: 0.25, turns: 3 };
+    expect(await costCols(run.id)).toEqual(after);
+    // Gói đến muộn mang số luỹ kế nhỏ hơn: không làm giảm.
+    await sendCost(w, run.id, 1, cost({ ...first, turns: 1 }));
+    // Sai dạng (worker cũ, số âm): ghi sự kiện nhưng không cộng.
+    await sendCost(w, run.id, 1, { inputTokens: -5 });
+    expect(await costCols(run.id)).toEqual(after);
+
+    // Máy khác gửi cost cho run không phải của nó: bị bỏ (fencing).
+    const other = await FakeWorker.connect(await seedMachine(`cost-x-${tag}`));
+    await sendCost(other, run.id, 1, cost({ inputTokens: 9_999_999, costUsd: 99 }));
+    await other.close();
+    expect(await costCols(run.id)).toEqual(after);
+
+    // Mất máy, run giao lại ở lần thử 2: số luỹ kế đếm lại từ 0 và cộng thêm vào tổng của run.
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease1.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run.id, leaseId: lease1.leaseId });
+    await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 2);
+    w.send({ type: "job_accept", runId: run.id, attempt: 2 });
+    await w.next("lease", (l) => l.runId === run.id && l.attempt === 2);
+    // Codex: không báo USD và lượt; cột USD giữ nguyên.
+    await sendCost(w, run.id, 2, cost({ inputTokens: 50, outputTokens: 5, cacheReadTokens: 10 }));
+    // Gói attempt 1 đến sau khi đã sang attempt 2: bỏ.
+    await sendCost(w, run.id, 1, cost({ inputTokens: 5000, costUsd: 5 }));
+    w.sendRun({ type: "run_result", runId: run.id, attempt: 2, exit: 0, headSha: null, report: { commitCount: 0 } });
+    await until(async () => (await runRow(run.id)).state === "no_changes");
+
+    const got = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(got.data.cost).toEqual({
+      tokensIn: 350,
+      tokensOut: 45,
+      cacheRead: 3010,
+      cacheWrite: 80,
+      costUsd: 0.25,
+      turns: 3,
+    });
+    await w.close();
+  });
+
+  it("spec mang trần của dự án; vượt trần thì failed; task đã tiêu hết ngân sách thì không giao thêm", async () => {
+    const m = await seedMachine(`budget-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Có ngân sách", { projectId: budgetProject });
+
+    const run1 = await startRun(task.id);
+    const offer1 = await w.next("job_offer", (o) => o.runId === run1.id);
+    expect(offer1.spec.budget).toEqual({ maxCostUsd: 0.4, maxTokens: 100_000, maxTurns: 7 });
+    w.send({ type: "job_accept", runId: run1.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run1.id);
+    await sendCost(w, run1.id, 1, cost({ inputTokens: 10, costUsd: 0.3, turns: 2 }));
+    w.sendRun({ type: "run_result", runId: run1.id, attempt: 1, exit: 0, headSha: null, report: { commitCount: 0 } });
+    await until(async () => (await runRow(run1.id)).state === "no_changes");
+
+    // Task đã tiêu 0.3/0.5: trần USD của run sau là phần còn lại (0.2), nhỏ hơn perRunUsd.
+    const run2 = await startRun(task.id);
+    const offer2 = await w.next("job_offer", (o) => o.runId === run2.id);
+    expect((offer2.spec.budget as { maxCostUsd: number }).maxCostUsd).toBeCloseTo(0.2, 9);
+    w.send({ type: "job_accept", runId: run2.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run2.id);
+    // Worker dừng CLI vì vượt trần: gửi usage cuối rồi kết quả failed.
+    await sendCost(w, run2.id, 1, cost({ inputTokens: 10, costUsd: 0.25, turns: 3 }));
+    w.sendRun({
+      type: "run_result",
+      runId: run2.id,
+      attempt: 1,
+      exit: 1,
+      headSha: null,
+      report: { status: "failed", error: "Vượt ngân sách: chi phí $0.2500 > $0.2000" },
+    });
+    await until(async () => (await runRow(run2.id)).state === "failed");
+
+    const refused = await api<{ message: string; data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id });
+    expect(refused.status).toBe(400);
+    expect(refused.data.message).toBe("Task đã dùng hết ngân sách");
+    expect(refused.data.data?.code).toBe("TASK_BUDGET_EXHAUSTED");
+    expect(await w.has("job_offer")).toBe(false);
+    await w.close();
+  });
+
+  it("costs.summary: chỉ quản trị đội; nhóm theo task, CLI, máy, ngày; lọc theo khoảng ngày", async () => {
+    const q = (params: Record<string, string>) =>
+      api<CostSummary & { message?: string }>(
+        "GET",
+        `/v1/costs/summary?${new URLSearchParams({ projectId: costProject, from: today, to: today, ...params })}`,
+      );
+    // Người dùng là thành viên đội, chưa phải quản trị.
+    const denied = await q({ groupBy: "task" });
+    expect(denied.status).toBe(403);
+    // Dự án không thấy được thì báo không tồn tại.
+    expect((await q({ projectId: randomUUID() })).status).toBe(404);
+
+    await admin.query("update hive.team_members set role = 'admin' where team_id = $1 and user_id = $2", [
+      org.teamId,
+      userId,
+    ]);
+    try {
+      const byTask = await q({ groupBy: "task" });
+      expect(byTask.status).toBe(200);
+      expect(byTask.data.groups).toEqual([
+        { key: costTaskId, runs: 1, tokensIn: 350, tokensOut: 45, cacheRead: 3010, cacheWrite: 80, costUsd: 0.25 },
+      ]);
+      expect(byTask.data.total).toEqual({
+        runs: 1,
+        tokensIn: 350,
+        tokensOut: 45,
+        cacheRead: 3010,
+        cacheWrite: 80,
+        costUsd: 0.25,
+      });
+      const byCli = await q({ groupBy: "cli" });
+      expect(byCli.data.groups.map((g) => [g.key, g.runs])).toEqual([["claude", 1]]);
+      const byMachine = await q({ groupBy: "machine" });
+      const machineId = (
+        await runRow((await admin.query("select id from hive.runs where task_id = $1", [costTaskId])).rows[0].id)
+      ).machine_id;
+      expect(byMachine.data.groups.map((g) => g.key)).toEqual([machineId]);
+      const byDay = await q({});
+      expect(byDay.data).toMatchObject({ groupBy: "day", groups: [{ key: today, runs: 1 }] });
+      // Khoảng ngày không có run.
+      const empty = await q({ from: "2020-01-01", to: "2020-01-31" });
+      expect(empty.data).toMatchObject({ groups: [], total: { runs: 0, costUsd: 0 } });
+      expect((await q({ from: today, to: "2020-01-01" })).status).toBe(400);
+    } finally {
+      await admin.query("update hive.team_members set role = 'member' where team_id = $1 and user_id = $2", [
+        org.teamId,
+        userId,
+      ]);
+    }
   });
 });

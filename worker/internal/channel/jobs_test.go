@@ -122,6 +122,17 @@ func TestDecodeJobPassesLeaseEnvironment(t *testing.T) {
 	}
 }
 
+func TestDecodeJobKeepsReviewKind(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"review","repoUrl":"https://git.example/a.git","cli":"claude","branch":"ai/HD-1"}`)}
+	job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Kind != runner.KindReview || job.Branch != "ai/HD-1" {
+		t.Fatalf("job = %+v", job)
+	}
+}
+
 func TestOfferExpiresAndCancelFreesSlot(t *testing.T) {
 	j := testJobs(t, 1)
 	now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
@@ -202,5 +213,47 @@ func TestRecoverInterruptedRun(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(active, "*")); len(left) != 0 {
 		t.Fatalf("marker còn lại: %v", left)
+	}
+}
+
+func TestDecodeJobBudget(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"claude","budget":{"maxCostUsd":1.5,"maxTurns":40}}`)}
+	job, err := decodeJob(offer, Lease{}, "https://hub.example", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := job.Budget
+	if b.MaxCostUSD == nil || *b.MaxCostUSD != 1.5 || b.MaxTurns == nil || *b.MaxTurns != 40 || b.MaxTokens != nil {
+		t.Fatalf("budget = %+v", b)
+	}
+}
+
+func TestCostEventCarriesUsage(t *testing.T) {
+	j := testJobs(t, 1)
+	run := &activeRun{runID: "run-c", attempt: 1, leaseID: "lease-c", cancel: func() {}}
+	sink, err := j.newSink(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []any
+	sink.send = func(v any) error { sent = append(sent, v); return nil }
+	cost := 0.25
+	if err := sink.Emit(runner.Event{Type: "cost", RunID: "run-c", Attempt: 1, Cost: &runner.Usage{InputTokens: 10, OutputTokens: 5, CostUSD: &cost}}); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Type  string         `json:"type"`
+		Event string         `json:"event"`
+		Data  map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(mustJSON(sent[0]), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Type != "run_event" || got.Event != "cost" || got.Data["inputTokens"] != float64(10) || got.Data["costUsd"] != 0.25 {
+		t.Fatalf("gói = %+v", got)
+	}
+	// Trường CLI không báo vẫn có mặt với giá trị null để hub phân biệt "không biết" với 0.
+	if v, ok := got.Data["turns"]; !ok || v != nil {
+		t.Fatalf("turns = %v, %v", v, ok)
 	}
 }
