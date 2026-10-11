@@ -31,7 +31,7 @@ export interface AuthHooks {
   ssoSignedIn(input: {
     providerId: string;
     domain: string;
-    /** Tên miền đã được xác minh là của tổ chức. Chưa có API xác minh nên chỉ quản trị hub đặt được. */
+    /** Tên miền đã được xác minh là của tổ chức (bản ghi TXT, identity/sso.ts). */
     domainVerified: boolean;
     user: { id: string; email: string; name: string };
   }): Promise<void>;
@@ -152,8 +152,38 @@ const SIGN_UP_DENIED = {
 type SignUpDenial = (typeof SIGN_UP_DENIED)[keyof typeof SIGN_UP_DENIED];
 
 interface SsoProviderRow {
+  providerId: string;
   domain: string;
   domainVerified?: boolean | null;
+}
+
+type ProviderFinder = {
+  findOne<T>(q: { model: string; where: { field: string; value: string | boolean }[] }): Promise<T | null>;
+  findMany<T>(q: { model: string; where: { field: string; value: string | boolean }[] }): Promise<T[]>;
+};
+
+/**
+ * Nhà cung cấp SSO cho một tên miền email. Plugin SSO tự tìm theo hậu tố (`x@sub.congty.vn` vào IdP của `congty.vn`)
+ * với mọi nhà cung cấp, nên một tổ chức khai tên miền mà không chứng minh được vẫn hứng luồng đăng nhập của tên miền
+ * con. Hub chọn theo thứ tự: khớp đúng và đã xác minh; tên miền cha đã xác minh (giữ DNS của tên miền cha là giữ cả
+ * tên miền con), dài nhất trước; khớp đúng nhưng chưa xác minh (vẫn đăng nhập được, chỉ không tự tạo tài khoản).
+ */
+export async function ssoProviderForDomain(adapter: ProviderFinder, rawDomain: string): Promise<SsoProviderRow | null> {
+  const domain = rawDomain.trim().toLowerCase();
+  if (!domain) return null;
+  const exact = await adapter.findOne<SsoProviderRow>({
+    model: "ssoProvider",
+    where: [{ field: "domain", value: domain }],
+  });
+  if (exact?.domainVerified === true) return exact;
+  const verified = await adapter.findMany<SsoProviderRow>({
+    model: "ssoProvider",
+    where: [{ field: "domainVerified", value: true }],
+  });
+  const parent = verified
+    .filter((p) => domain.endsWith(`.${p.domain.toLowerCase()}`))
+    .sort((a, b) => b.domain.length - a.domain.length)[0];
+  return parent ?? exact;
 }
 
 interface SignUpAttempt {
@@ -279,6 +309,16 @@ export function authConfig(o: AuthOptions) {
       // Cùng quy tắc với validateUserInfo nhưng chạy trước khi Better Auth tra email: không có lời mời thì không cho
       // dò xem email nào đã có tài khoản qua lỗi "email đã tồn tại".
       before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path === "/sign-in/sso") {
+          const body = (ctx.body ?? {}) as { providerId?: unknown; organizationSlug?: unknown; domain?: unknown };
+          if (body.providerId || body.organizationSlug) return;
+          const domain = typeof body.domain === "string" && body.domain ? body.domain : emailOf(body)?.split("@")[1];
+          if (!domain) return;
+          const provider = await ssoProviderForDomain(ctx.context.adapter, domain);
+          // Cùng lỗi với plugin khi không có nhà cung cấp, để web báo "chưa có SSO cho tên miền này".
+          if (!provider) throw new APIError("NOT_FOUND", { message: "No provider found for the issuer" });
+          return { context: { body: { ...body, providerId: provider.providerId } } };
+        }
         if (ctx.path !== "/sign-up/email") return;
         const email = emailOf(ctx.body) ?? "";
         if (notAscii(email))

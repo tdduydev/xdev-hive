@@ -1,7 +1,7 @@
 import { implement, ORPCError, os } from "@orpc/server";
 import { tenancyContract } from "@xdev-hive/contracts";
 import type pg from "pg";
-import type { Auth } from "../identity/index.ts";
+import type { Auth, TxtResolver } from "../identity/index.ts";
 import { ConflictError, type RequestContext, withTenant } from "../platform/index.ts";
 import { requireOrgRole } from "./permissions.ts";
 
@@ -13,6 +13,8 @@ export interface TenancyDeps {
   orgCreators?: string[] | undefined;
   /** Địa chỉ web mà người được mời mở link; link mời là `${publicUrl}/invite/<mã>`. */
   publicUrl?: string | undefined;
+  /** Tra bản ghi TXT khi xác minh tên miền SSO; bỏ trống thì dùng DNS của máy. Test thay bằng DNS giả. */
+  resolveTxt?: TxtResolver | undefined;
 }
 
 export interface SessionUser {
