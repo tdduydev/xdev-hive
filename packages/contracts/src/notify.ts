@@ -8,6 +8,7 @@ export const notificationEvent = z.enum([
   "project.provision_failed",
   "machine.offline",
   "member.pending",
+  "merge.failed",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
 

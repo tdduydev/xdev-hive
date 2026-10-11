@@ -28,6 +28,13 @@ export const healthOutput = z.object({
   version: z.string(),
   time: z.iso.datetime(),
 });
+export const desktopUpdateOutput = z.object({
+  version: z.string(),
+  notes: z.string().nullable(),
+  pub_date: z.string().nullable(),
+  url: z.url(),
+  signature: z.string(),
+});
 export type Health = z.output<typeof healthOutput>;
 
 /** Người đang đăng nhập. */
@@ -44,6 +51,21 @@ export const contract = {
     health: oc
       .route({ method: "GET", path: "/v1/health", summary: "Trạng thái hub", tags: ["system"] })
       .output(healthOutput),
+    desktopUpdate: oc
+      .route({
+        method: "GET",
+        path: "/v1/desktop/updates/{os}/{arch}/{currentVersion}",
+        summary: "Kiểm tra cập nhật desktop",
+        tags: ["system"],
+      })
+      .input(
+        z.object({
+          os: z.enum(["macos", "linux", "windows"]),
+          arch: z.enum(["aarch64", "x86_64"]),
+          currentVersion: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/),
+        }),
+      )
+      .output(desktopUpdateOutput.nullable()),
   },
   me: {
     get: oc

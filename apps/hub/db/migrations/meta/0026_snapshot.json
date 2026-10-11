@@ -1,5 +1,5 @@
 {
-  "id": "d35499ea-f8f6-4298-afdb-2a4f5c106928",
+  "id": "42d01000-8faa-450b-9ca6-548f4e372122",
   "prevId": "5ff65b40-e8fc-44c4-85c0-c799c2c6fa1d",
   "version": "7",
   "dialect": "postgresql",
@@ -730,6 +730,12 @@
         },
         "last_seen_at": {
           "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "offline_notified_at": {
+          "name": "offline_notified_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -4024,12 +4030,6 @@
           "notNull": true,
           "default": "'code'"
         },
-        "parent_run_id": {
-          "name": "parent_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "state": {
           "name": "state",
           "type": "run_state",
@@ -4171,22 +4171,6 @@
             }
           ],
           "isUnique": true,
-          "where": "kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "runs_review_active": {
-          "name": "runs_review_active",
-          "columns": [
-            {
-              "expression": "parent_run_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
           "where": "state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
           "concurrently": false,
           "method": "btree",
@@ -4250,18 +4234,7 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "runs_parent_run_id_org_id_runs_id_org_id_fk": {
-          "name": "runs_parent_run_id_org_id_runs_id_org_id_fk",
-          "tableFrom": "runs",
-          "tableTo": "runs",
-          "schemaTo": "hive",
-          "columnsFrom": ["parent_run_id", "org_id"],
-          "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "runs_id_org": {
