@@ -152,12 +152,15 @@ type Ack struct {
 	UptoSeq int64  `json:"uptoSeq"`
 }
 
+// Steer: Attempt và SteerID do hub mới gửi. Chỉ khi có SteerID worker mới báo lại bằng run_event "steer_result".
 type Steer struct {
-	Type  string `json:"type"`
-	V     int    `json:"v"`
-	ID    string `json:"id"`
-	RunID string `json:"runId"`
-	Input string `json:"input"`
+	Type    string `json:"type"`
+	V       int    `json:"v"`
+	ID      string `json:"id"`
+	RunID   string `json:"runId"`
+	Attempt int    `json:"attempt,omitempty"`
+	SteerID string `json:"steerId,omitempty"`
+	Input   string `json:"input"`
 }
 
 type ApprovalResult struct {

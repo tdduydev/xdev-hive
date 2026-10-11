@@ -1,13 +1,16 @@
 package runner
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -201,6 +204,11 @@ func TestFakeCLIHelper(t *testing.T) {
 		os.Exit(0)
 	}
 	switch os.Getenv("HIVE_FAKE_MODE") {
+	case "stream":
+		fakeStreamCLI()
+	case "wait":
+		time.Sleep(300 * time.Millisecond)
+		os.Exit(0)
 	case "usage-ok":
 		fmt.Println(`{"type":"assistant","message":{"id":"m1","model":"claude-test","usage":{"input_tokens":3,"output_tokens":7}}}`)
 		fmt.Println(`{"type":"result","usage":{"input_tokens":3,"output_tokens":9},"total_cost_usd":0.5,"num_turns":1}`)
@@ -237,6 +245,54 @@ func TestFakeCLIHelper(t *testing.T) {
 		if err := c.Run(); err != nil {
 			os.Exit(3)
 		}
+	}
+	os.Exit(0)
+}
+
+// fakeStreamCLI làm như `claude -p --input-format stream-json --replay-user-messages`: đọc tin user từ stdin, phát lại
+// tin đã nhận (cùng uuid), in result khi đủ HIVE_FAKE_STEERS chỉ dẫn sau prompt, rồi chỉ thoát khi stdin đóng như
+// Claude thật. stdin đóng sớm hơn (runner đóng trước lượt cuối) thì thoát mã 5.
+func fakeStreamCLI() {
+	want, _ := strconv.Atoi(os.Getenv("HIVE_FAKE_STEERS"))
+	record, err := os.OpenFile(os.Getenv("HIVE_FAKE_RECORD"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		os.Exit(7)
+	}
+	lines := make(chan []byte)
+	go func() {
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(nil, 1<<20)
+		for sc.Scan() {
+			lines <- append([]byte(nil), sc.Bytes()...)
+		}
+		close(lines)
+	}()
+	for got := -1; got < want; got++ {
+		select {
+		case b, ok := <-lines:
+			if !ok {
+				os.Exit(5)
+			}
+			var m struct {
+				Type    string `json:"type"`
+				UUID    string `json:"uuid"`
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(b, &m) != nil || m.Type != "user" || m.UUID == "" {
+				os.Exit(8)
+			}
+			content, _ := json.Marshal(m.Message.Content)
+			_, _ = fmt.Fprintf(record, "%s\n", content)
+			fmt.Printf(`{"type":"user","uuid":%q,"isReplay":true,"message":{"role":"user","content":%s}}`+"\n", m.UUID, content)
+		case <-time.After(10 * time.Second):
+			os.Exit(6)
+		}
+	}
+	_ = record.Close()
+	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"num_turns":1}`)
+	for range lines {
 	}
 	os.Exit(0)
 }
@@ -331,8 +387,8 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 		cli, model string
 		want       []string
 	}{
-		{"claude", "sonnet", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"claude", "", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"claude", "sonnet", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"claude", "", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"codex", "gpt-test", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
 		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
 		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
@@ -349,6 +405,10 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		}()
 		args := cmd.Args[1:]
+		// Chỉ Claude nhận prompt qua stdin; CLI khác vẫn nhận prompt trong tham số.
+		if wantInput := map[bool]string{true: InputStreamJSON}[tc.cli == "claude"]; cmd.input != wantInput {
+			t.Fatalf("%s input = %q", tc.cli, cmd.input)
+		}
 		if tc.cli == "claude" {
 			extra := 1
 			if tc.model != "" {
@@ -539,7 +599,7 @@ func TestClaudeDefaultCommandPassesBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := strings.Join(cmd.Args[1:], " ")
-	if !strings.HasPrefix(got, "-p p --output-format stream-json --verbose --setting-sources project --strict-mcp-config --mcp-config ") || !strings.HasSuffix(got, " --max-budget-usd 2.5") {
+	if !strings.HasPrefix(got, "-p --input-format stream-json --output-format stream-json --verbose --replay-user-messages --setting-sources project --strict-mcp-config --mcp-config ") || !strings.HasSuffix(got, " --max-budget-usd 2.5") {
 		t.Fatalf("lệnh = %s", got)
 	}
 	path := cmd.Args[len(cmd.Args)-3]

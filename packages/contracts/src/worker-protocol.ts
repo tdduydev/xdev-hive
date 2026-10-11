@@ -58,6 +58,8 @@ export const runEventKind = z.enum([
   "check_result",
   // Báo cáo của agent (tóm tắt, bằng chứng); kiểm tra `agentReport` của chính sách kết quả dựa vào sự kiện này.
   "agent_report",
+  // Worker báo chỉ dẫn (gói `steer` có steerId) đã đưa được vào agent đang chạy hay chưa.
+  "steer_result",
 ]);
 /**
  * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
@@ -73,6 +75,17 @@ export const costEventData = z.object({
   model: z.string().max(200).nullable(),
 });
 export type CostEventData = z.output<typeof costEventData>;
+
+/**
+ * `data` của sự kiện `steer_result`. `applied` chỉ true khi CLI đã nhận chỉ dẫn vào phiên đang chạy; false khi CLI
+ * không nhận tin giữa chừng (codex exec, gemini -p) hoặc agent đã xong trước khi đọc tới, và `reason` nói vì sao.
+ */
+export const steerResultData = z.object({
+  steerId: z.string().min(1).max(64),
+  applied: z.boolean(),
+  reason: z.string().max(500).optional(),
+});
+export type SteerResultData = z.output<typeof steerResultData>;
 
 export const runEvent = z.object({
   ...envelope("run_event"),
@@ -154,7 +167,17 @@ export const lease = z.object({
 
 export const ack = z.object({ ...envelope("ack"), runId, uptoSeq: seq });
 
-export const steer = z.object({ ...envelope("steer"), runId, input: z.string().max(100_000) });
+/**
+ * Chỉ dẫn thêm cho run đang chạy. `steerId` (id sự kiện `steer` ở hub) và `attempt` là trường thêm sau: worker chỉ trả
+ * `run_event` loại `steer_result` khi có `steerId`, vì hub cũ đóng kết nối khi gặp loại sự kiện lạ.
+ */
+export const steer = z.object({
+  ...envelope("steer"),
+  runId,
+  attempt: attempt.optional(),
+  steerId: z.string().min(1).max(64).optional(),
+  input: z.string().max(100_000),
+});
 
 // runId để worker chuyển câu trả lời tới đúng tiến trình agent; bảng ở mục 5 chỉ ghi requestId và decision.
 export const approvalResult = z.object({
