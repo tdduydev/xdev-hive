@@ -348,6 +348,8 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         token: input.secret,
         pushEvents: input.events.includes("push"),
         mergeRequestsEvents: input.events.includes("pull_request"),
+        issuesEvents: input.events.includes("issues"),
+        noteEvents: input.events.includes("issue_comment"),
         enableSslVerification: true,
       };
       const hooks = (await gl.projectHooks.all(id)) as unknown as Array<{ id: number; url: string }>;

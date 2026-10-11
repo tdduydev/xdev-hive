@@ -4,12 +4,12 @@ import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type pg from "pg";
-import { catalogRouter } from "./modules/catalog/index.ts";
+import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
-import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
+import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
 import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
@@ -59,6 +59,13 @@ export function createApp({
   const app = new Hono();
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  // Webhook đọc thân request dạng byte để kiểm HMAC, nên đi thẳng qua Hono, không qua oRPC.
+  const hooks = {
+    pool,
+    jobs,
+    resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
+  };
+  app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
   if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
     // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
     // tự trả các đường này khi request đi qua handler của Better Auth.

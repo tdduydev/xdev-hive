@@ -5,7 +5,13 @@ import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index
 import { attachWorkerGateway } from "./modules/fleet/index.ts";
 import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
-import { defaultProviderFactory } from "./modules/scm/index.ts";
+import {
+  auditScmEvent,
+  defaultProviderFactory,
+  onScmEvent,
+  registerScmEventWorker,
+  scmEventQueue,
+} from "./modules/scm/index.ts";
 import { authHooks } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
@@ -31,7 +37,7 @@ else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL khô
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue],
+      queues: [provisionQueue, scmEventQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -49,6 +55,11 @@ if (roles.includes("jobs") && jobs) {
       providerFactory: defaultProviderFactory,
       publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
     });
+  }
+  if (pool) {
+    // Handler mẫu: mọi sự kiện Git vào audit. Module tasks/runs đăng ký thêm handler của mình ở đây.
+    onScmEvent("*", auditScmEvent);
+    await registerScmEventWorker(jobs, { pool });
   }
 }
 
