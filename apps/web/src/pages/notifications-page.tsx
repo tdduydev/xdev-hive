@@ -168,9 +168,7 @@ function ChannelRow({
         <button type="button" onClick={onEdit} className="cursor-pointer break-all text-left font-semibold text-ink">
           {channel.name}
         </button>
-        <p className="break-all text-sm text-muted">
-          {channel.kind === "email" ? "Email / SMTP" : "Telegram"} · {channel.target}
-        </p>
+        <p className="break-all text-sm text-muted">{channel.target}</p>
         {notice &&
           (notice.ok ? (
             <p role="status" className="break-words text-ok">
