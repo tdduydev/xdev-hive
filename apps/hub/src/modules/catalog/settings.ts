@@ -28,6 +28,22 @@ export function applySettingsPatch(current: ProjectSettings, patch: ProjectSetti
     };
   }
   if (patch.features) next.features = assign(current.features, patch.features);
+  if (patch.runPermissions !== undefined) {
+    if (patch.runPermissions === null) delete next.runPermissions;
+    else next.runPermissions = patch.runPermissions;
+  }
+  if (patch.models) {
+    const models: Record<string, unknown> = { ...current.models };
+    for (const [cli, value] of Object.entries(patch.models)) {
+      if (!value) continue;
+      const merged = assign(current.models?.[cli as keyof typeof patch.models], value);
+      // CLI không còn model nào thì bỏ hẳn để settings đã lưu không giữ object rỗng.
+      if (Object.keys(merged).length > 0) models[cli] = merged;
+      else delete models[cli];
+    }
+    if (Object.keys(models).length > 0) next.models = models;
+    else delete next.models;
+  }
   if (patch.issueIntake) next.issueIntake = assign(current.issueIntake, patch.issueIntake);
   if (patch.defaultCli !== undefined) next.defaultCli = patch.defaultCli;
   if (patch.budget !== undefined) {

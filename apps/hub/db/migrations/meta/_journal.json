@@ -295,6 +295,13 @@
       "when": 1791740527768,
       "tag": "0041_leader_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791742144969,
+      "tag": "0042_runs_search_index",
+      "breakpoints": true
     }
   ]
 }

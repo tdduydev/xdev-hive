@@ -27,6 +27,7 @@ export {
   type TaskRow,
   taskByKeyForUser,
   taskForUser,
+  taskSummaries,
   toTask,
   updateTask,
 } from "./tasks.ts";
