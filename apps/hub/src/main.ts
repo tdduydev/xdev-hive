@@ -10,7 +10,13 @@ import {
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
-import { notify, notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
+import {
+  inboxCleanupQueue,
+  notify,
+  notifyQueue,
+  registerInboxCleanupWorker,
+  registerNotifyWorker,
+} from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import {
@@ -45,6 +51,7 @@ const auth =
                   {
                     orgId: member.orgId,
                     event: "member.pending",
+                    eventKey: member.userId,
                     title: `${member.email} chờ duyệt vào tổ chức`,
                     body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
                     link: `${config.publicUrl ?? `http://localhost:${config.port}`}/admin/members`,
@@ -68,7 +75,16 @@ else {
 jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, mergeQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue, fleetOfflineQueue],
+      queues: [
+        provisionQueue,
+        mergeQueue,
+        runsTimerQueue,
+        scmEventQueue,
+        embedQueue,
+        notifyQueue,
+        inboxCleanupQueue,
+        fleetOfflineQueue,
+      ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -119,6 +135,7 @@ if (roles.includes("jobs") && jobs) {
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
+    await registerInboxCleanupWorker(jobs, pool);
   }
 }
 

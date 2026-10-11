@@ -85,6 +85,16 @@ export const outcomeCheck = z.discriminatedUnion("check", [
     required,
     by: z.enum(["claude", "codex", "gemini"]),
     minScore: z.number().min(0).max(10).default(7),
+    when: z
+      .object({
+        minChangedLines: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        paths: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
+      })
+      .refine(
+        (w) => w.minChangedLines !== undefined || w.paths !== undefined,
+        "Điều kiện review cần ngưỡng số dòng hoặc đường dẫn.",
+      )
+      .optional(),
   }),
   z.object({ check: z.literal("ci"), required }),
 ]);
@@ -180,6 +190,58 @@ export const projectSettings = z.object({
   budget: projectBudget.optional(),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
+
+// Bản vá dùng strictObject ở mọi tầng: zod mặc định lặng lẽ bỏ khoá lạ, người gõ sai tên (`mergeQueu`) sẽ tưởng đã
+// đổi được. Kết quả sau khi vá vẫn được hub kiểm lại bằng projectSettings.
+const outcomeChecksPatch = z
+  .array(
+    z.discriminatedUnion("check", [
+      outcomeCheck.options[0].strict(),
+      outcomeCheck.options[1].strict(),
+      outcomeCheck.options[2].strict(),
+      outcomeCheck.options[3].strict(),
+      outcomeCheck.options[4].strict(),
+    ]),
+  )
+  .max(20);
+const { merge, features } = projectSettings.shape;
+const budgetShape = projectBudget.shape;
+
+/**
+ * Đổi một phần settings. Trường bỏ trống giữ nguyên; `null` ở trường không bắt buộc là bỏ cấu hình đó (về mặc định
+ * hoặc không giới hạn). Mảng chính sách kết quả thay cả mảng, vì thứ tự các bước có nghĩa.
+ */
+export const projectSettingsPatch = z
+  .strictObject({
+    merge: z
+      .strictObject({
+        mode: merge.shape.mode.optional(),
+        requiredApprovals: merge.shape.requiredApprovals.optional(),
+        method: mergeMethod.nullable().optional(),
+        requireCi: z.boolean().nullable().optional(),
+      })
+      .optional(),
+    outcome: z
+      .strictObject({
+        default: outcomeChecksPatch.optional(),
+        byType: z.record(z.string().regex(/^[a-z][a-z0-9-]{0,39}$/), outcomeChecksPatch.nullable()).optional(),
+      })
+      .optional(),
+    features: features.partial().strict().optional(),
+    issueIntake: issueIntakeSettings.partial().strict().optional(),
+    defaultCli: cli.nullable().optional(),
+    budget: z
+      .strictObject({
+        perRunUsd: budgetShape.perRunUsd.unwrap().nullable().optional(),
+        perTaskUsd: budgetShape.perTaskUsd.unwrap().nullable().optional(),
+        maxTurns: budgetShape.maxTurns.unwrap().nullable().optional(),
+        perRunTokens: budgetShape.perRunTokens.unwrap().nullable().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .refine((p) => Object.keys(p).length > 0, "Bản vá settings không có trường nào để đổi.");
+export type ProjectSettingsPatch = z.output<typeof projectSettingsPatch>;
 
 /**
  * Mặc định khi dự án chưa khai báo: task code kiểm `changes` (chưa biết lệnh test của repo nên chưa có `command`),
@@ -366,4 +428,12 @@ export const projectsContract = {
   )
     .input(z.object({ id, entryId: id }))
     .output(mergeQueueEntry),
+  updateSettings: orgRoute(
+    "PATCH",
+    "/v1/projects/{key}/settings",
+    "Đổi một phần settings của dự án, trả settings sau khi đổi (quản trị đội sở hữu hoặc quản trị tổ chức)",
+    "projects",
+  )
+    .input(z.object({ key: projectKey, settings: projectSettingsPatch }))
+    .output(projectSettings),
 };

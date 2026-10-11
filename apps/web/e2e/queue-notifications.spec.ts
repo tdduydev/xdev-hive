@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   defaultProjectSettings,
+  type InboxItem,
   type MergeQueueEntry,
   type MergeQueueState,
   type NotificationChannel,
@@ -70,6 +71,16 @@ function entry(state: MergeQueueState, number: number, position: number | null):
   };
 }
 
+const inboxItem: InboxItem = {
+  id: "30000000-0000-4000-8000-000000000001",
+  event: "run.failed",
+  title: "Run TASK-40 thất bại",
+  body: "Kiểm tra kết quả chạy và thử lại khi đã sửa lỗi.",
+  link: "https://hive.example.com/tasks/TASK-40",
+  createdAt: at,
+  readAt: null,
+};
+
 const queueEntries = () => [
   entry("queued", 128, 2),
   entry("waiting", 127, 1),
@@ -94,6 +105,8 @@ async function setup(page: Page, rpc: Record<string, RpcHandler> = {}, role = "o
       "teamMembers/list": () =>
         ok([{ userId: USER.id, name: USER.name, email: USER.email, image: null, teamId, role: teamRole }]),
       "notificationChannels/list": () => ok([channel]),
+      "inbox/list": () => ok({ items: [inboxItem], nextCursor: null }),
+      "inbox/unreadCount": () => ok({ count: 1 }),
       ...rpc,
     },
   });
@@ -121,8 +134,8 @@ test("queue preserves order, shows history and confirms removal/retry with tenan
   });
   await page.goto("/projects/hive/merge-queue");
   const active = page.getByRole("region", { name: "Đang trong hàng" });
-  await expect(active.getByRole("listitem").first()).toContainText("PR #127");
-  await expect(active.getByRole("listitem").nth(1)).toContainText("PR #128");
+  await expect(active.getByRole("row").nth(1)).toContainText("PR #127");
+  await expect(active.getByRole("row").nth(2)).toContainText("PR #128");
   await expect(page.getByText("Chờ CI.", { exact: true })).toBeVisible();
   await expect(page.getByText("CI không đạt.", { exact: true })).toBeVisible();
   await expect(page.getByText("c1d2e3f4a5b6789012345678901234567890abcdef")).toBeVisible();
@@ -211,7 +224,7 @@ test("viewer sees queue without actions and organization member cannot load chan
   await expect(page.getByText("CI không đạt.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Đưa .*PR/ })).toHaveCount(0);
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "Thông báo cá nhân chưa khả dụng" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Hộp thư cá nhân" })).toContainText(inboxItem.title);
   await expect(page.getByText(/Chỉ chủ sở hữu và quản trị tổ chức/)).toBeVisible();
   expect(hub.rpcCalls.some((call) => call.path.startsWith("notificationChannels/"))).toBe(false);
 });
@@ -295,7 +308,7 @@ test("email configuration validates recipients before sending SMTP settings", as
   await page.getByLabel("Email gửi", { exact: true }).fill("hive@example.com");
   await page.getByLabel("Email nhận", { exact: true }).fill("invalid");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sửa kênh" }).getByRole("alert")).toBeVisible();
   expect(hub.rpcCalls.some((call) => call.path === "notificationChannels/create")).toBe(false);
   await page.getByLabel("Email nhận", { exact: true }).fill("ops@example.com, oncall@example.com");
   await page.getByRole("button", { name: "Lưu kênh" }).click();
@@ -366,9 +379,167 @@ for (const scheme of ["light", "dark"] as const) {
     });
     await page.goto("/notifications");
     await expect(page.getByText(channel.name, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: `Sửa kênh ${channel.name}` }).click();
+    await expect(page.getByRole("region", { name: "Sửa kênh" })).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`notifications-${scheme}.png`),
       fullPage: true,
     });
   });
 }
+
+test("inbox paginates, filters and marks one or all read using the tenant API", async ({ page }) => {
+  const second: InboxItem = {
+    ...inboxItem,
+    id: "30000000-0000-4000-8000-000000000002",
+    title: "Merge cần kiểm tra",
+    event: "merge.failed",
+  };
+  const alreadyRead: InboxItem = {
+    ...inboxItem,
+    id: "30000000-0000-4000-8000-000000000003",
+    title: "Run đã xem",
+    readAt: at,
+    link: "javascript:alert(1)",
+  };
+  let items = [inboxItem, second, alreadyRead];
+  const cursor = `${at}~${inboxItem.id}`;
+  const hub = await setup(
+    page,
+    {
+      "inbox/list": (raw) => {
+        const input = raw as { unreadOnly: boolean; cursor?: string };
+        const filtered = items.filter((item) => !input.unreadOnly || !item.readAt);
+        return ok(
+          input.cursor
+            ? { items: filtered.slice(1), nextCursor: null }
+            : { items: filtered.slice(0, 1), nextCursor: filtered.length > 1 ? cursor : null },
+        );
+      },
+      "inbox/unreadCount": () => ok({ count: items.filter((item) => !item.readAt).length }),
+      "inbox/markRead": (raw) => {
+        const { ids } = raw as { ids: string[] };
+        items = items.map((item) => (ids.includes(item.id) ? { ...item, readAt: at } : item));
+        return ok({ count: ids.length });
+      },
+      "inbox/markAllRead": () => {
+        items = items.map((item) => ({ ...item, readAt: at }));
+        return ok({ count: 1 });
+      },
+    },
+    "member",
+  );
+  await page.goto("/notifications");
+  const inbox = page.getByRole("region", { name: "Hộp thư cá nhân" });
+  await expect(inbox).toContainText("2 chưa đọc");
+  await expect(inbox.getByRole("heading", { name: second.title })).toHaveCount(0);
+  await inbox.getByRole("button", { name: "Tải thêm thông báo" }).click();
+  await expect(inbox.getByRole("heading", { name: second.title })).toBeVisible();
+  await expect(inbox.getByRole("button", { name: "Tải thêm thông báo" })).toHaveCount(0);
+  await expect(inbox.locator('a[href^="javascript:"]')).toHaveCount(0);
+  expect(
+    hub.rpcCalls.find((call) => call.path === "inbox/list" && (call.input as { cursor?: string }).cursor)?.input,
+  ).toEqual({ cursor, limit: 30, unreadOnly: false });
+  await page.getByLabel("Chỉ hiện chưa đọc").check();
+  await expect(inbox.getByRole("heading", { name: alreadyRead.title })).toHaveCount(0);
+  await inbox.getByRole("button", { name: `Đánh dấu đã đọc: ${inboxItem.title}` }).click();
+  await expect(inbox.getByRole("heading", { name: inboxItem.title })).toHaveCount(0);
+  await expect(inbox.getByRole("heading", { name: second.title })).toBeVisible();
+  await expect(inbox).toContainText("1 chưa đọc");
+  expect(hub.rpcCalls.find((call) => call.path === "inbox/markRead")?.input).toEqual({ ids: [inboxItem.id] });
+  await inbox.getByRole("button", { name: "Đánh dấu tất cả đã đọc" }).click();
+  await expect(inbox.getByRole("heading", { name: "Không có thông báo chưa đọc" })).toBeVisible();
+  await expect(inbox).toContainText("0 chưa đọc");
+  await page.getByLabel("Chỉ hiện chưa đọc").uncheck();
+  await expect(inbox.getByRole("heading", { name: inboxItem.title })).toBeVisible();
+  await expect(inbox.getByRole("button", { name: /Đánh dấu đã đọc:/ })).toHaveCount(0);
+  expect(hub.rpcCalls.filter((call) => call.path.startsWith("inbox/")).every((call) => call.org === orgId)).toBe(true);
+});
+
+test("inbox loading, list and read failures can recover", async ({ page }) => {
+  let broken = true;
+  let readBroken = true;
+  await setup(
+    page,
+    {
+      "inbox/list": () =>
+        broken ? fail("FORBIDDEN", 403, "Không tải được hộp thư.") : ok({ items: [inboxItem], nextCursor: null }),
+      "inbox/markRead": () => (readBroken ? fail("CONFLICT", 409, "Chưa đánh dấu được thông báo.") : ok({ count: 1 })),
+    },
+    "member",
+  );
+  let release: () => void = () => {};
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/rpc/inbox/list?**", async (route) => {
+    await hold;
+    await route.fallback();
+  });
+  await page.goto("/notifications");
+  const inbox = page.getByRole("region", { name: "Hộp thư cá nhân" });
+  await expect(inbox.getByRole("status")).toContainText("Đang tải thông báo…");
+  release();
+  await expect(inbox.getByRole("alert")).toContainText("Không tải được hộp thư.");
+  broken = false;
+  await inbox.getByRole("button", { name: "Tải lại" }).click();
+  await inbox.getByRole("button", { name: `Đánh dấu đã đọc: ${inboxItem.title}` }).click();
+  await expect(inbox.getByRole("alert")).toContainText("Chưa đánh dấu được thông báo.");
+  readBroken = false;
+  await inbox.getByRole("button", { name: `Đánh dấu đã đọc: ${inboxItem.title}` }).click();
+  await expect(inbox.getByRole("alert")).toHaveCount(0);
+});
+
+test("inbox retains earlier pages when loading more fails", async ({ page }) => {
+  let broken = true;
+  await setup(
+    page,
+    {
+      "inbox/list": (raw) => {
+        const { cursor } = raw as { cursor?: string };
+        if (!cursor) return ok({ items: [inboxItem], nextCursor: `${at}~${inboxItem.id}` });
+        return broken
+          ? fail("INTERNAL_SERVER_ERROR", 500, "Không tải được trang tiếp theo.")
+          : ok({
+              items: [{ ...inboxItem, id: "30000000-0000-4000-8000-000000000002", title: "Thông báo tiếp theo" }],
+              nextCursor: null,
+            });
+      },
+    },
+    "member",
+  );
+  await page.goto("/notifications");
+  const inbox = page.getByRole("region", { name: "Hộp thư cá nhân" });
+  await inbox.getByRole("button", { name: "Tải thêm thông báo" }).click();
+  await expect(inbox.getByRole("alert")).toBeVisible();
+  await expect(inbox.getByRole("heading", { name: inboxItem.title })).toBeVisible();
+  broken = false;
+  await inbox.getByRole("button", { name: "Tải lại" }).click();
+  await expect(inbox.getByRole("heading", { name: "Thông báo tiếp theo" })).toBeVisible();
+  await expect(inbox.getByRole("alert")).toHaveCount(0);
+});
+
+test("queue manual enqueue validates the PR number and reports API conflicts", async ({ page }) => {
+  let broken = true;
+  const hub = await setup(page, {
+    "projects/enqueueMerge": (raw) =>
+      broken
+        ? fail("CONFLICT", 409, "PR đã ở trong hàng.")
+        : ok(entry("queued", (raw as { prNumber: number }).prNumber, 5)),
+  });
+  await page.goto("/projects/hive/merge-queue");
+  await page.getByLabel("Số PR", { exact: true }).fill("0");
+  await page.getByRole("button", { name: "Đưa vào hàng", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Nhập số PR là số nguyên dương.");
+  expect(hub.rpcCalls.some((call) => call.path === "projects/enqueueMerge")).toBe(false);
+  await page.getByLabel("Số PR", { exact: true }).fill("133");
+  await page.getByRole("button", { name: "Đưa vào hàng", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("PR đã ở trong hàng.");
+  broken = false;
+  await page.getByRole("button", { name: "Đưa vào hàng", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Đã đưa PR vào hàng.");
+  expect(hub.rpcCalls.filter((call) => call.path === "projects/enqueueMerge").at(-1)?.input).toEqual({
+    id: projectId,
+    prNumber: 133,
+  });
+});
