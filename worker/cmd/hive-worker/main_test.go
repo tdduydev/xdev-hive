@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
@@ -109,5 +110,55 @@ func TestDetectCLIsUsesOverrides(t *testing.T) {
 	t.Setenv(runner.CLIOverridesEnv, fmt.Sprintf(`{"claude": {"path": %q}, "codex": {"path": %q}}`, exe, filepath.Join(t.TempDir(), "khong-co")))
 	if got := detectCLIs(); len(got) != 1 || got[0] != "claude" {
 		t.Fatalf("detectCLIs = %v", got)
+	}
+}
+
+func TestRegisterJSONAndConfigNeverPrintToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"00000000-0000-4000-8000-000000000001","orgId":"00000000-0000-4000-8000-000000000002","teamId":"00000000-0000-4000-8000-000000000003","machineId":"may-json","machineToken":"hwm_secret"}`))
+	}))
+	defer srv.Close()
+	path := filepath.Join(t.TempDir(), "worker.json")
+
+	var stdout, stderr bytes.Buffer
+	if code := showConfig([]string{"--config", path, "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("config trước khi đăng ký: mã %d, %s", code, stderr.String())
+	}
+	var before configView
+	if err := json.Unmarshal(stdout.Bytes(), &before); err != nil || before.Registered || before.ConfigPath != path {
+		t.Fatalf("config trước khi đăng ký = %s, %v", stdout.String(), err)
+	}
+
+	stdout.Reset()
+	if code := register([]string{"--hub", srv.URL, "--token", "hwr_abc", "--config", path, "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("register --json: mã %d, %s", code, stderr.String())
+	}
+	var reg configView
+	if err := json.Unmarshal(stdout.Bytes(), &reg); err != nil || !reg.Registered || reg.MachineID != "may-json" || reg.HubURL != srv.URL {
+		t.Fatalf("register --json = %s, %v", stdout.String(), err)
+	}
+
+	stdout.Reset()
+	if code := showConfig([]string{"--config", path, "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("config: mã %d", code)
+	}
+	var after configView
+	if err := json.Unmarshal(stdout.Bytes(), &after); err != nil || !after.Registered || after.MachineID != "may-json" || after.TeamID == "" {
+		t.Fatalf("config sau khi đăng ký = %s, %v", stdout.String(), err)
+	}
+	if strings.Contains(stdout.String(), "hwm_secret") {
+		t.Fatal("config in ra machine token")
+	}
+}
+
+func TestStatusPrinterWritesJSONLines(t *testing.T) {
+	var out bytes.Buffer
+	p := statusPrinter(&out)
+	p(channel.Status{State: "connecting"})
+	p(channel.Status{State: "disconnected", Error: "mất mạng"})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || lines[0] != `{"status":"connecting"}` || lines[1] != `{"status":"disconnected","error":"mất mạng"}` {
+		t.Fatalf("dòng trạng thái = %q", lines)
 	}
 }

@@ -6,7 +6,11 @@
   "scripts": {
     "tauri": "tauri",
     "app:dev": "tauri dev",
-    "app:build": "tauri build"
+    "app:build": "tauri build",
+    "build": "node scripts/build-frontend.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "sidecar:build": "node scripts/build-sidecar.ts",
+    "prepare:app": "pnpm build && pnpm sidecar:build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.2"

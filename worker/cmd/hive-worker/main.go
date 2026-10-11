@@ -1,9 +1,12 @@
 // hive-worker chạy trên máy dev (và ở chế độ host trên runner server), gọi ra hub để nhận run.
-// Lệnh: version, check, register (đổi mã đăng ký lấy machine token), run (nối WSS tới hub).
+// Lệnh: version, check, register (đổi mã đăng ký lấy machine token), run (nối WSS tới hub), config (xem cấu hình).
+// Cờ --json/--status-json cho app desktop đọc kết quả và trạng thái thay vì đọc chữ cho người.
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -40,6 +43,8 @@ func main() {
 		os.Exit(register(os.Args[2:], os.Stdout, os.Stderr))
 	case "run":
 		os.Exit(run(os.Args[2:]))
+	case "config":
+		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
@@ -47,7 +52,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] | run>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | config [--json]>")
 }
 
 // knownCLIs là các agent CLI hub biết giao việc (khớp enum cli trong packages/contracts).
@@ -92,11 +97,13 @@ func register(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("register", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub")
-	token := fs.String("token", "", "mã đăng ký admin đội tạo trên web (dùng một lần, hết hạn sau 1 giờ)")
+	// HIVE_REGISTRATION_TOKEN cho app desktop: tham số dòng lệnh hiện trong danh sách tiến trình, biến môi trường thì không.
+	token := fs.String("token", envOr("HIVE_REGISTRATION_TOKEN", ""), "mã đăng ký admin đội tạo trên web (dùng một lần, hết hạn sau 1 giờ)")
 	hostname, _ := os.Hostname()
 	machine := fs.String("machine", defaultMachineID(hostname), "tên máy trên hub")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
 	configPath := fs.String("config", "", "file cấu hình (mặc định theo hệ điều hành)")
+	asJSON := fs.Bool("json", false, "in kết quả dạng JSON (cho app desktop)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -128,7 +135,55 @@ func register(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Đã đăng ký nhưng không lưu được token: %v\nXin admin đội tạo mã mới rồi chạy lại.\n", err)
 		return 1
 	}
+	if *asJSON {
+		_ = json.NewEncoder(stdout).Encode(configView{Registered: true, HubURL: *hub, MachineID: reg.MachineID, TeamID: reg.TeamID, ConfigPath: path})
+		return 0
+	}
 	fmt.Fprintf(stdout, "Đã đăng ký máy %s. Cấu hình lưu ở %s.\nChạy `hive-worker run` để nhận việc.\n", reg.MachineID, path)
+	return 0
+}
+
+// configView là cấu hình in ra cho người hay app đọc. Không bao giờ có machine token.
+type configView struct {
+	Registered bool   `json:"registered"`
+	HubURL     string `json:"hubUrl,omitempty"`
+	MachineID  string `json:"machineId,omitempty"`
+	TeamID     string `json:"teamId,omitempty"`
+	ConfigPath string `json:"configPath"`
+}
+
+func showConfig(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("config", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "file cấu hình (mặc định theo hệ điều hành)")
+	asJSON := fs.Bool("json", false, "in dạng JSON (cho app desktop)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	path, err := pathOr(*configPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	view := configView{ConfigPath: path}
+	cfg, err := config.Load(path)
+	switch {
+	case errors.Is(err, config.ErrNotRegistered):
+	case err != nil:
+		fmt.Fprintln(stderr, err)
+		return 1
+	default:
+		view = configView{Registered: true, HubURL: cfg.HubURL, MachineID: cfg.MachineID, TeamID: cfg.TeamID, ConfigPath: path}
+	}
+	if *asJSON {
+		_ = json.NewEncoder(stdout).Encode(view)
+		return 0
+	}
+	if !view.Registered {
+		fmt.Fprintf(stdout, "Máy chưa đăng ký (cấu hình sẽ lưu ở %s).\n", path)
+		return 0
+	}
+	fmt.Fprintf(stdout, "Máy %s, hub %s. Cấu hình ở %s.\n", view.MachineID, view.HubURL, path)
 	return 0
 }
 
@@ -144,6 +199,8 @@ func run(args []string) int {
 	configPath := fs.String("config", "", "file cấu hình (mặc định theo hệ điều hành)")
 	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub (mặc định lấy từ file cấu hình)")
 	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
+	statusJSON := fs.Bool("status-json", false, "in trạng thái kết nối ra stdout, mỗi dòng một JSON (cho app desktop); log vẫn ra stderr")
+	stdinControl := fs.Bool("stdin-control", false, `dừng khi đọc dòng "stop" hoặc hết stdin (app desktop chạy worker làm sidecar)`)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -162,12 +219,29 @@ func run(args []string) int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
+	if *stdinControl {
+		// App desktop giữ stdin của sidecar: dòng "stop" là lệnh dừng êm (Windows không có SIGTERM), EOF nghĩa là app đã
+		// thoát hoặc chết, nên worker cũng dừng thay vì chạy mồ côi.
+		go func() {
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				if strings.TrimSpace(scanner.Text()) == "stop" {
+					break
+				}
+			}
+			cancel()
+		}()
+	}
 	dataDir, err := os.UserCacheDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	err = (channel.Config{HubURL: cfg.HubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: detectCLIs(), Capacity: *capacity, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}).Run(ctx)
+	cc := channel.Config{HubURL: cfg.HubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: detectCLIs(), Capacity: *capacity, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}
+	if *statusJSON {
+		cc.OnStatus = statusPrinter(os.Stdout)
+	}
+	err = cc.Run(ctx)
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
 	if errors.As(err, &rejected) {
@@ -179,6 +253,12 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// statusPrinter in mỗi trạng thái thành một dòng JSON. Encoder ghi cả dòng trong một lần Write nên không lẫn dòng.
+func statusPrinter(w io.Writer) func(channel.Status) {
+	enc := json.NewEncoder(w)
+	return func(s channel.Status) { _ = enc.Encode(s) }
 }
 
 func check(args []string) int {

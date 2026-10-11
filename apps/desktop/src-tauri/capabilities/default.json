@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Quyền mặc định của cửa sổ chính",
-  "windows": ["main"],
-  "permissions": ["core:default"]
+  "identifier": "register",
+  "description": "Cửa sổ đăng ký cục bộ: tách lệnh, đăng ký máy, xin quyền thông báo. Cửa sổ web của hub không có quyền nào.",
+  "windows": ["register"],
+  "permissions": [
+    "core:default",
+    "allow-parse-registration",
+    "allow-register-worker",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission"
+  ]
 }
