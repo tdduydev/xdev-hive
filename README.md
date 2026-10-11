@@ -28,6 +28,43 @@ Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.m
 
 Chạy thử trọn luồng (Postgres, hub, đăng ký, dự án, worker, task, run, PR): `pnpm e2e:smoke`. Cần Docker (Testcontainers), Go và git; mặc định dùng repo git cục bộ và CLI giả, không ra mạng ngoài. Script bật merge queue qua API `projects.updateSettings`, chạy worker với `--capacity 2`, kiểm hai run cùng repo chạy đồng thời và đều thành công, rồi kiểm hai PR merge tuần tự và nhánh chính chứa cả hai thay đổi. CLI giả chờ nhau tối đa 45 giây để ca chạy nối tiếp bị phát hiện. Biến môi trường cho GitHub thật, CLI thật hay Postgres có sẵn ghi ở đầu [scripts/e2e-smoke.ts](scripts/e2e-smoke.ts).
 
+## Chuyển tri thức từ hub cũ
+
+Đặt bản sao SQLite và mã tham khảo hệ cũ trong `.legacy/` (được Git và Biome bỏ qua). Không commit dữ liệu thật.
+Lệnh dùng `HIVE_DATABASE_URL` của **hive_app**, nạp `apps/hub/.env` nếu có; database đích cần chạy migration trước.
+Tạo sẵn tổ chức, đội, hệ thống và dự án đích. Chạy thử trước khi chuyển:
+
+```sh
+pnpm --filter @xdev-hive/hub import:legacy --db ../../.legacy/hub.db --org example --dry-run
+pnpm --filter @xdev-hive/hub import:legacy --db ../../.legacy/hub.db --org example --project-map old-app=new-app
+```
+
+`--db` tính từ `apps/hub`; cũng nhận đường dẫn tuyệt đối. `--project-map` nhận các cặp project key cách nhau bằng dấu
+phẩy. Key không có ánh xạ giữ nguyên. Dự án không tồn tại trong tổ chức đích báo lỗi; không chuyển nhầm sang cấp
+tổ chức. Tài liệu và memory cấp hệ thống cũ chuyển vào đội của hệ thống cùng slug; slug phải duy nhất trong tổ chức.
+Key tài liệu hệ thống trở thành `team/<team>/legacy-system/<system>/<path>`.
+
+Lệnh báo số mục nguồn thêm, bỏ qua và lỗi theo memory, tài liệu, phiên bản, skill và asset; không in nội dung, tác
+giả, key hay locator. Mã kết thúc: `0` thành công, `1` có bản ghi lỗi, `2` không chạy được lệnh. Bản ghi lỗi được
+rollback riêng. Dry-run dùng transaction chỉ đọc và không khởi động hàng đợi hay gọi embedding.
+
+Mỗi tổ chức nhận **một nguồn hub cũ**. `legacy_imports` lưu ID nguồn và ID đích; chạy lại không nhân đôi hoặc ghi đè
+thay đổi ở hub mới. Chỉ nạp lịch sử của snapshot lần đầu, không đồng bộ các chỉnh sửa tiếp theo của hub cũ. Memory
+`context` đổi thành `note`; memory dài chia thành các phần tối đa 2.000 ký tự, số báo cáo vẫn đếm mục nguồn. Memory
+chờ duyệt giữ `status=pending`, không hiện trong danh sách/tìm kiếm và không tự được duyệt qua thao tác thay memory.
+Tác giả khớp email với thành viên đích thì dùng ID user mới; còn lại ghi “hệ cũ”, không tạo tài khoản đăng nhập.
+Tài liệu đã xoá được bỏ qua. Metadata thư mục, parent, paths và SHA của tệp memory được giữ trong sổ import; hub mới
+chưa dựng lại cây thư mục hay theo dõi SHA từ metadata này.
+
+Vector SQLite không được đọc. Khi cấu hình embedding, cần thêm `HIVE_DATABASE_JOBS_URL`; memory đã duyệt gửi job
+`knowledge-embed` trong cùng transaction và tiến trình hub `jobs` tính lại vector. Không có embedding thì tìm theo từ.
+
+Asset chỉ chuyển metadata vào `legacy_doc_assets` với `status=missing`; mọi phiên bản tài liệu liên quan có dấu
+“tệp đính kèm từ hệ cũ chưa được chuyển”, giữ nguyên link. Khi có lại SeaweedFS, lấy blob theo `storage_locator`,
+kiểm tra `size` và `sha256`, đưa vào kho blob đích rồi lưu locator mới và đổi trạng thái thành `available` trong
+`withTenant()` của tổ chức. Lưu phiên bản tài liệu/skill mới với URL tệp mới và bỏ dấu thiếu tệp; giữ nguyên các
+phiên bản lịch sử. Chưa có lệnh tự động tải blob hoặc API phục vụ asset trong task này.
+
 ## Triển khai
 
 Lên một máy chủ có Docker và docker compose v2, từ máy dev:

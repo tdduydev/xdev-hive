@@ -8,6 +8,7 @@
   "files": {
     "includes": [
       "**",
+      "!.legacy",
       "!**/dist",
       "!**/openapi.json",
       "!apps/desktop/src-tauri",
