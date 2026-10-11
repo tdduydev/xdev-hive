@@ -17,7 +17,6 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +29,8 @@ import type {
   Project,
   ProjectCreateInput,
   ProjectCreateResult,
+  ProjectSettings,
+  ProjectSettingsPatch,
   ProvisionView,
   Run,
   RunEventView,
@@ -85,21 +86,22 @@ const STEPS = {
   tenant: "3. Đăng ký, tổ chức, đội, hệ thống",
   scm: `4. Kết nối Git (${GITHUB ? "GitHub" : "local"})`,
   project: "5. Dự án mới, provision tới active",
-  worker: "6. Worker: build, đăng ký, online",
+  worker: "6. Worker: build, đăng ký, online, capacity 2",
   run: "7. Task, run, theo dõi SSE",
   succeeded: "8a. Run succeeded",
   review: "8b. Task sang review",
   pr: "8c. PR tồn tại",
   report: "8d. Agent báo cáo qua MCP",
   worktree: "8e. Worktree trên worker đã gỡ",
-  mergeOn: "9a. Bật merge queue, merge.mode auto",
+  mergeOn: "9a. API settings: bật merge queue, merge.mode auto",
   mqEnqueue: "9b. PR của run tự vào hàng merge",
   mqMerged: "9c. Job catalog-merge xử lý tới merged",
   mqMain: "9d. Nhánh chính có thay đổi của agent",
   mqDone: "9e. Mục ở Đã xong kèm mergeSha",
-  parQueue: "10a. Hai task song song, hai PR vào hàng",
-  parOrder: "10b. Merge tuần tự đúng thứ tự hàng",
-  parMain: "10c. Nhánh chính chứa cả hai thay đổi",
+  parRuns: "10a. Hai run cùng repo chạy đồng thời, đều succeeded",
+  parQueue: "10b. Hai PR vào hàng merge",
+  parOrder: "10c. Merge tuần tự đúng thứ tự hàng",
+  parMain: "10d. Nhánh chính chứa cả hai thay đổi",
   cleanup: "11. Dọn dẹp",
 } as const;
 type StepKey = keyof typeof STEPS;
@@ -368,8 +370,6 @@ const state: {
 // ---- 1. Postgres ---------------------------------------------------------------------------------------------------
 
 interface DbUrls {
-  /** Superuser: chỉ để bật tính năng dự án mà hub chưa có API đổi settings. */
-  adminUrl: string;
   appUrl: string;
   authUrl: string;
   jobsUrl: string;
@@ -417,7 +417,6 @@ async function startPostgres(): Promise<DbUrls> {
     env: { ...base, HIVE_DATABASE_OWNER_URL: url("hive_owner", pw.owner) },
   });
   return {
-    adminUrl,
     appUrl: url("hive_app", pw.app),
     authUrl: url("hive_auth", pw.auth),
     jobsUrl: url("hive_jobs", pw.jobs),
@@ -607,7 +606,10 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
       XDG_CACHE_HOME: join(tmp, "cache"),
       LocalAppData: join(tmp, "cache"),
       HIVE_WORKER_CLI_OVERRIDES: JSON.stringify({
-        [CLI]: { path: process.execPath, args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}"] },
+        [CLI]: {
+          path: process.execPath,
+          args: [join(ROOT, "scripts", "e2e-fake-cli.ts"), "{{prompt}}", join(tmp, "parallel")],
+        },
       }),
     });
     await mkdir(join(tmp, "home"), { recursive: true });
@@ -633,7 +635,7 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
     { env: workerEnv },
   );
   console.log(`  ${out.split("\n")[0]}`);
-  const worker = startProc("worker", bin, ["run", "--config", config], {
+  const worker = startProc("worker", bin, ["run", "--config", config, "--capacity", "2"], {
     env: workerEnv,
     log: join(tmp, "worker.log"),
   });
@@ -641,7 +643,7 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
   const machine = await waitFor(
     `máy ${names.machine} online`,
     async () => {
-      const list = await api.get<Array<{ id: string; name: string; status: string; clis: string[] }>>(
+      const list = await api.get<Array<{ id: string; name: string; status: string; clis: string[]; capacity: number }>>(
         `/api/v1/teams/${teamId}/machines`,
       );
       return list.find((m) => m.name === names.machine && m.status === "online");
@@ -649,6 +651,7 @@ async function startWorker(api: HubClient, teamId: string, tmp: string) {
     { timeoutMs: 30_000, alive: worker },
   );
   console.log(`  Máy ${machine.name} online, CLI: ${machine.clis.join(", ") || "(không có)"}`);
+  if (machine.capacity !== 2) throw new Error(`Worker báo capacity ${machine.capacity}, cần 2.`);
   if (!machine.clis.includes(CLI)) throw new Error(`Worker không có CLI ${CLI}; hub sẽ không giao run.`);
   return { bin, machineId: machine.id, worker };
 }
@@ -732,9 +735,9 @@ const readmeTask: TaskSpec = {
  * Hai task chạy song song phải sửa file khác nhau: cùng sửa cuối README thì PR sau xung đột với nhánh chính sau khi
  * PR trước merge. CLI giả đọc dấu [e2e-file:...] trong prompt để ghi file riêng.
  */
-const fileTask = (name: string): TaskSpec => ({
+const fileTask = (name: string, peer: string): TaskSpec => ({
   title: `Thêm file ${name} (e2e)`,
-  body: `[e2e-file:${name}] Thêm file ghi chú ${name} (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
+  body: `[e2e-file:${name}] [e2e-peer:${peer}] Thêm file ghi chú ${name} (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
 });
 
 async function runTask(api: HubClient, projectId: string, worker: Proc, spec: TaskSpec = readmeTask) {
@@ -836,39 +839,20 @@ async function checkWorktree(run: Run) {
 
 const MERGE_TIMEOUT_MS = 90_000;
 
-/** Hub chưa có API đổi settings dự án: bật merge queue bằng SQL, rồi đọc lại qua API công khai để chắc đã có hiệu lực. */
-async function enableMergeQueue(api: HubClient, db: DbUrls, projectId: string) {
-  interface PgClient {
-    connect(): Promise<void>;
-    query(sql: string, params: unknown[]): Promise<{ rowCount: number | null }>;
-    end(): Promise<void>;
-  }
-  // pg là dependency của hub, không của gốc repo.
-  const { Client } = createRequire(join(ROOT, "apps", "hub", "package.json"))("pg") as {
-    Client: new (cfg: { connectionString: string }) => PgClient;
+async function enableMergeQueue(api: HubClient, project: Project) {
+  // Provider local luôn trả checks "none"; tắt yêu cầu CI để kiểm được luồng merge tại máy.
+  const settings: ProjectSettingsPatch = {
+    features: { mergeQueue: true },
+    merge: { mode: "auto", requireCi: false },
   };
-  const client = new Client({ connectionString: db.adminUrl });
-  await client.connect();
-  try {
-    // requireCi false vì provider local luôn trả checks "none".
-    const res = await client.query(
-      `update hive.projects set settings = settings || jsonb_build_object(
-         'features', (settings->'features') || '{"mergeQueue": true}'::jsonb,
-         'merge', (settings->'merge') || '{"mode": "auto", "requireCi": false}'::jsonb)
-       where id = $1`,
-      [projectId],
-    );
-    if (res.rowCount !== 1) throw new Error(`Cập nhật settings dự án ảnh hưởng ${res.rowCount} dòng, cần 1.`);
-  } finally {
-    await client.end();
+  const updated = await api.request<ProjectSettings>("PATCH", `/api/v1/projects/${project.key}/settings`, { settings });
+  const now = await api.get<Project>(`/api/v1/projects/${project.id}`);
+  for (const value of [updated, now.settings]) {
+    if (!value.features.mergeQueue || value.merge.mode !== "auto" || value.merge.requireCi !== false) {
+      throw new Error(`Settings dự án chưa đổi: ${JSON.stringify({ features: value.features, merge: value.merge })}`);
+    }
   }
-  const now = await api.get<Project>(`/api/v1/projects/${projectId}`);
-  if (!now.settings.features.mergeQueue || now.settings.merge.mode !== "auto") {
-    throw new Error(
-      `Settings dự án chưa đổi: ${JSON.stringify({ features: now.settings.features, merge: now.settings.merge })}`,
-    );
-  }
-  console.log(`  features.mergeQueue=true, merge ${JSON.stringify(now.settings.merge)}`);
+  console.log(`  projects.updateSettings: features.mergeQueue=true, merge ${JSON.stringify(now.settings.merge)}`);
 }
 
 const listQueue = (api: HubClient, projectId: string) =>
@@ -947,20 +931,33 @@ async function checkDone(api: HubClient, project: Project, runId: string) {
 }
 
 /**
- * Hai task tạo cùng lúc, hai PR vào hàng, merge lần lượt. Worker để capacity 1: với capacity 2, hai run cùng repo fetch
- * đồng thời vào một repo cache và tranh khoá ref (lỗi của worker, ghi trong mô tả PR), nên run chạy nối nhau. Provider local không bao giờ trả "behind" (chỉ xét xung đột),
- * nên bước "cập nhật nhánh PR theo nhánh chính" của hàng không được kiểm ở đây và không giả lập: PR sau vẫn merge
- * được trên nhánh chính đã tiến vì hai task sửa file khác nhau.
+ * Provider local không trả "behind", nên ca này kiểm merge tuần tự với hai file khác nhau; bước cập nhật nhánh PR
+ * theo nhánh chính cần kiểm riêng với GitHub/GitLab thật. CLI giả chờ nhau để ca chạy nối tiếp không thể đạt.
  */
 async function runParallel(api: HubClient, project: Project, worker: Proc, localGit: LocalGit | null) {
   if (!localGit) throw new Pending("Ca song song chỉ chạy với provider local.");
-  const a = fileTask(`par-a-${stamp}.md`);
-  const b = fileTask(`par-b-${stamp}.md`);
-  const [ra, rb] = await Promise.all([runTask(api, project.id, worker, a), runTask(api, project.id, worker, b)]);
-  for (const r of [ra, rb]) {
-    if (r.run.state !== "succeeded")
-      throw new Error(`Run ${r.run.id} ${r.run.state}: ${(r.run.result?.reasons ?? []).join("; ")}`);
-  }
+  const first = `par-a-${stamp}.md`;
+  const second = `par-b-${stamp}.md`;
+  const [ra, rb] = await Promise.all([
+    runTask(api, project.id, worker, fileTask(first, second)),
+    runTask(api, project.id, worker, fileTask(second, first)),
+  ]);
+  const intervals = await Promise.all(
+    [ra.run, rb.run].map(async (run) => {
+      if (run.state !== "succeeded")
+        throw new Error(`Run ${run.id} ${run.state}: ${(run.result?.reasons ?? []).join("; ")}`);
+      const events = await api.get<RunEventView[]>(`/api/v1/runs/${run.id}/events?after=0&limit=1000`);
+      const phases = events.filter((e) => e.type === "phase" && e.attempt === run.attempt);
+      const start = phases.find((e) => e.data.phase === "running");
+      const end = phases.find((e) => e.data.phase === "verifying");
+      if (!start || !end) throw new Error(`Run ${run.id} thiếu pha running hoặc verifying.`);
+      console.log(`  Run ${run.id}: succeeded, running ${start.createdAt} → ${end.createdAt}`);
+      return { start: Date.parse(start.createdAt), end: Date.parse(end.createdAt) };
+    }),
+  );
+  const overlapMs = Math.min(...intervals.map((r) => r.end)) - Math.max(...intervals.map((r) => r.start));
+  if (!(overlapMs > 0)) throw new Error("Hai run thành công nhưng không chạy đồng thời trên cùng repo.");
+  console.log(`  Hai run trên ${project.repo.httpUrl} chạy đồng thời ${fmtMs(overlapMs)}.`);
   return [ra.run, rb.run] as const;
 }
 
@@ -1063,7 +1060,7 @@ async function main(): Promise<number> {
     state.repoUrl = project.repo.httpUrl ?? undefined;
     const { worker } = await step("worker", () => startWorker(api, team.id, tmp));
     // Bật trước run đầu: chế độ auto đưa PR vào hàng ngay lúc run succeeded.
-    await step("mergeOn", () => enableMergeQueue(api, db, project.id));
+    await step("mergeOn", () => enableMergeQueue(api, project));
     const { task, run } = await step("run", () => runTask(api, project.id, worker));
 
     await check("succeeded", async () => {
@@ -1104,21 +1101,22 @@ async function main(): Promise<number> {
 
     // Ca hai: hai task song song.
     let par: readonly [Run, Run] | undefined;
-    await check("parQueue", async () => {
-      const [r1, r2] = await runParallel(api, project, worker, localGit);
-      par = [r1, r2];
-      const entries = await waitFor(
-        "hai mục vào hàng",
-        async () => {
-          const list = (await listQueue(api, project.id)).filter((x) => x.runId === r1.id || x.runId === r2.id);
-          return list.length === 2 ? list : null;
-        },
-        { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
-      );
-      console.log(`  ${entries.map((e) => `#${e.prNumber}:${e.state}`).join(", ")}`);
+    await check("parRuns", async () => {
+      par = await runParallel(api, project, worker, localGit);
     });
     if (par) {
       const [r1, r2] = par;
+      await check("parQueue", async () => {
+        const entries = await waitFor(
+          "hai mục vào hàng",
+          async () => {
+            const list = (await listQueue(api, project.id)).filter((x) => x.runId === r1.id || x.runId === r2.id);
+            return list.length === 2 ? list : null;
+          },
+          { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
+        );
+        console.log(`  ${entries.map((e) => `#${e.prNumber}:${e.state}`).join(", ")}`);
+      });
       await check("parOrder", async () => {
         const done = await Promise.all([waitMerged(api, project.id, r1.id), waitMerged(api, project.id, r2.id)]);
         const byQueue = [...done].sort((x, y) => x.createdAt.localeCompare(y.createdAt));
