@@ -3,6 +3,7 @@ import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   GitProvider,
@@ -10,6 +11,7 @@ import type {
   PullRequestInput,
   RepoInfo,
   RepoRef,
+  ScmUser,
   WebhookInput,
 } from "./types.ts";
 
@@ -23,12 +25,15 @@ export interface MemoryRepo {
   protection: Map<string, BranchRules>;
   hooks: Map<string, WebhookInput>;
   pulls: Array<{ number: number; head: string; base: string; title: string; url: string }>;
+  comments: Array<{ id: string; number: number; body: string; pullRequest: boolean }>;
 }
 
 export interface MemoryProvider extends GitProvider {
   readonly repos: Map<string, MemoryRepo>;
   /** Owner mà provider có quyền tạo repo; owner khác thì checkAccess báo thiếu quyền. */
   readonly owners: Set<string>;
+  /** Login hoặc id (dạng chuỗi) của người push được vào mọi repo; mặc định không ai. */
+  readonly pushers: Set<string>;
   readonly calls: Array<{ method: Method; args: unknown[] }>;
   /** Mọi lời gọi `method` ném lỗi này cho tới khi gọi lại với null. */
   fail(method: Method, error: GitProviderError | null): void;
@@ -48,6 +53,7 @@ export function createMemoryProvider(
 ): MemoryProvider {
   const repos = new Map<string, MemoryRepo>();
   const ownerSet = new Set(owners);
+  const pushers = new Set<string>();
   const failures = new Map<Method, GitProviderError>();
   const calls: MemoryProvider["calls"] = [];
   let seq = 0;
@@ -72,6 +78,7 @@ export function createMemoryProvider(
       protection: new Map(),
       hooks: new Map(),
       pulls: [],
+      comments: [],
     };
     repos.set(key(ref), repo);
     return repo;
@@ -95,6 +102,7 @@ export function createMemoryProvider(
     kind,
     repos,
     owners: ownerSet,
+    pushers,
     calls,
     fail(method, error) {
       if (error) failures.set(method, error);
@@ -153,6 +161,19 @@ export function createMemoryProvider(
       const url = `${repo.info.webUrl}/pull/${number}`;
       repo.pulls.push({ number, head: input.head, base: input.base, title: input.title, url });
       return { number, url };
+    }),
+
+    commentOnIssue: track("commentOnIssue", (ref: RepoRef, number: number, body: string, opts?: CommentOptions) => {
+      const repo = need(ref);
+      seq += 1;
+      const id = String(seq);
+      repo.comments.push({ id, number, body, pullRequest: opts?.pullRequest ?? false });
+      return { id };
+    }),
+
+    canPush: track("canPush", (ref: RepoRef, user: ScmUser) => {
+      need(ref);
+      return (user.login !== null && pushers.has(user.login)) || (user.id !== null && pushers.has(String(user.id)));
     }),
 
     addWebhook: track("addWebhook", (ref: RepoRef, input: WebhookInput) => {

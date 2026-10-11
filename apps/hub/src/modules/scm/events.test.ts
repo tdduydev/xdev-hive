@@ -15,6 +15,7 @@ describe("GitHub", () => {
         kind: "pull_request.opened",
         repo: "Codertocat/Hello-World",
         actor: "Codertocat",
+        actorId: 21031067,
         pullRequest: {
           number: 2,
           title: "Update the README with new information.",
@@ -55,6 +56,7 @@ describe("GitHub", () => {
         kind: "push",
         repo: "Codertocat/Hello-World",
         actor: "Codertocat",
+        actorId: 21031067,
         branch: "master",
         sha: "6113728f27ae82c7b1a177c8d03f9e96e0adf246",
       },
@@ -72,6 +74,7 @@ describe("GitHub", () => {
         kind: "issue.opened",
         repo: "Codertocat/Hello-World",
         actor: "Codertocat",
+        actorId: 21031067,
         issue: {
           number: 1,
           title: "Spelling error in the README file",
@@ -148,6 +151,7 @@ describe("GitLab", () => {
         kind: "pull_request.opened",
         repo: "flightjs/flight-management",
         actor: "agarcia",
+        actorId: 1,
         pullRequest: {
           number: 16,
           title: "Add input validation to booking form",
@@ -182,6 +186,7 @@ describe("GitLab", () => {
         kind: "push",
         repo: "mike/diaspora",
         actor: "jsmith",
+        actorId: 4,
         branch: "master",
         sha: "da1560886d4f094c3e6c9ef40349f7d38b5d27d7",
       },
@@ -201,6 +206,7 @@ describe("GitLab", () => {
         kind: "issue.opened",
         repo: "gitlabhq/gitlab-test",
         actor: "root",
+        actorId: 1,
         issue: {
           number: 23,
           title: "New API: create/update/delete file",
@@ -241,6 +247,7 @@ describe("GitLab", () => {
         kind: "issue.commented",
         repo: "gitlab-org/gitlab-test",
         actor: "root",
+        actorId: 1,
         issue: {
           number: 17,
           title: "test",
