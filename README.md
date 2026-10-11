@@ -99,3 +99,16 @@ các lịch khác. Cron dùng múi giờ máy chủ, ghi log quyền 600 tại `
 cron. `HIVE_REMOTE_DOCKER="sudo -n docker"` khi cần sudo không tương tác. `.env` và dump không được tải về máy dev.
 
 Kiểm tra các nhánh lỗi và cron bằng `sh deploy/test-backup.sh` (Docker/SSH giả, không đụng bản triển khai thật).
+
+### Worker chạy nền
+
+Đăng ký máy một lần bằng `hive-worker register --hub URL --token MÃ`. Sau đó cài worker chạy nền bằng
+`hive-worker service install [--config PATH] [--capacity N]`; xem trạng thái bằng `hive-worker service status`
+và gỡ bằng `hive-worker service uninstall`. Dùng `--dry-run` để xem nội dung dịch vụ và các lệnh trước khi cài.
+
+Linux cài systemd user service. Mặc định service chỉ chạy trong phiên đăng nhập; dùng `loginctl enable-linger USER`
+để worker tiếp tục chạy khi người dùng chưa đăng nhập. Log xem bằng `journalctl --user -u hive-worker`.
+macOS cài LaunchAgent và ghi log vào `~/Library/Logs/xdev-hive/worker.log`. Khi hub từ chối máy, LaunchAgent
+thoát thành công và không tự khởi động lại liên tục; đăng ký lại rồi chạy `service install` để nạp lại.
+Windows tạo tác vụ Task Scheduler ở mức quyền thường, chạy lúc đăng nhập và ghi log vào
+`%LOCALAPPDATA%\xdev-hive\worker.log`.
