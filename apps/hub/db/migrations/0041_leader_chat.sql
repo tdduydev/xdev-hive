@@ -45,7 +45,7 @@ ALTER TABLE "hive"."chat_messages" ADD CONSTRAINT "chat_messages_thread_id_org_i
 CREATE INDEX "approvals_org_status_expiry" ON "hive"."approvals" USING btree ("org_id","status","expires_at");--> statement-breakpoint
 CREATE INDEX "chat_messages_thread_created" ON "hive"."chat_messages" USING btree ("thread_id","created_at");--> statement-breakpoint
 CREATE INDEX "chat_threads_org_updated" ON "hive"."chat_threads" USING btree ("org_id","updated_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "runs_leader_thread_active" ON "hive"."runs" USING btree ("leader_thread_id") WHERE kind = 'leader' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled');--> statement-breakpoint
+CREATE UNIQUE INDEX "runs_leader_thread_active" ON "hive"."runs" USING btree ("leader_thread_id") WHERE leader_thread_id is not null and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled');--> statement-breakpoint
 CREATE POLICY "approvals_rw" ON "hive"."approvals" AS PERMISSIVE FOR ALL TO "hive_app" USING (org_id = hive.ctx_org()) WITH CHECK (org_id = hive.ctx_org());--> statement-breakpoint
 CREATE POLICY "chat_messages_rw" ON "hive"."chat_messages" AS PERMISSIVE FOR ALL TO "hive_app" USING (org_id = hive.ctx_org()) WITH CHECK (org_id = hive.ctx_org());--> statement-breakpoint
 CREATE POLICY "chat_threads_rw" ON "hive"."chat_threads" AS PERMISSIVE FOR ALL TO "hive_app" USING (org_id = hive.ctx_org()) WITH CHECK (org_id = hive.ctx_org());--> statement-breakpoint
