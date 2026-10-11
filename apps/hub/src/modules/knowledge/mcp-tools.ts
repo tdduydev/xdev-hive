@@ -23,10 +23,12 @@ import { getSkill, listSkills } from "./skills.ts";
  * đọc tiếp (offset) thay vì đổ nguyên tài liệu 200k ký tự.
  */
 export const MCP_LIMITS = {
-  searchDefault: 8,
+  searchDefault: 5,
   searchMax: 20,
-  listMax: 200,
-  pageChars: 40_000,
+  listDefault: 10,
+  listMax: 50,
+  pageChars: 8000,
+  memoryChars: 500,
 } as const;
 
 /**
@@ -41,26 +43,70 @@ async function knowledgePrincipal(tx: Tx, p: McpPrincipal): Promise<Principal> {
   return { kind: "run", runId: p.runId, projectId: task.projectId };
 }
 
-/** Cắt nội dung dài thành trang; agent gọi lại với nextOffset để đọc tiếp. */
-function page(content: string, offset: number) {
-  const slice = content.slice(offset, offset + MCP_LIMITS.pageChars);
+/** Giữ offset để client cũ vẫn đọc tiếp được tài liệu và skill. */
+function page(content: string, offset: number, maxChars = MCP_LIMITS.pageChars as number) {
+  const slice = content.slice(offset, offset + maxChars);
   const end = offset + slice.length;
-  return { content: slice, offset, totalChars: content.length, nextOffset: end < content.length ? end : null };
+  return {
+    content: slice,
+    offset,
+    totalChars: content.length,
+    truncated: end < content.length,
+    nextOffset: end < content.length ? end : null,
+  };
 }
 
-function capped<T>(items: T[]) {
-  return { items: items.slice(0, MCP_LIMITS.listMax), truncated: items.length > MCP_LIMITS.listMax };
+function capped<T>(items: T[], limit = MCP_LIMITS.listDefault as number, offset = 0) {
+  const end = offset + limit;
+  const truncated = items.length > end;
+  return { items: items.slice(offset, end), truncated, nextOffset: truncated ? end : null };
 }
 
-const PROJECT = projectRef
-  .optional()
-  .describe("Project key (ghi trong AGENTS.md) hoặc id dự án. Trong run bỏ trống để dùng dự án của run.");
-const OFFSET = z
-  .number()
-  .int()
-  .min(0)
-  .optional()
-  .describe(`Đọc tiếp từ ký tự này (nextOffset của lần gọi trước). Mỗi lần trả tối đa ${MCP_LIMITS.pageChars} ký tự.`);
+const PROJECT = projectRef.optional().describe("Dự án; mặc định là dự án của run.");
+const OFFSET = z.number().int().min(0).optional().describe("Vị trí đọc tiếp từ nextOffset.");
+const LIST_OFFSET = z.number().int().min(0).optional().describe("Vị trí bắt đầu danh sách.");
+const LIMIT = z.number().int().min(1).max(MCP_LIMITS.listMax).optional().describe("Số mục; mặc định 10.");
+
+/** Bỏ heading trong code fence để ví dụ Markdown không trở thành mục tài liệu. */
+function sections(content: string) {
+  const headings: { title: string; start: number; level: number }[] = [];
+  let offset = 0;
+  let fence: { char: string; length: number } | undefined;
+  for (const line of content.split("\n")) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (marker) {
+      const run = marker[1] ?? "";
+      if (!fence) fence = { char: run[0] ?? "", length: run.length };
+      else if (run[0] === fence.char && run.length >= fence.length && !marker[2]?.trim()) fence = undefined;
+    } else if (!fence) {
+      const match = /^ {0,3}(#{1,6})(?:[ \t]+|$)(.*)$/.exec(line);
+      if (match)
+        headings.push({
+          title: (match[2] ?? "")
+            .trim()
+            .replace(/[ \t]+#+$/, "")
+            .trim(),
+          start: offset,
+          level: match[1]?.length ?? 1,
+        });
+    }
+    offset += line.length + 1;
+  }
+  return headings;
+}
+
+function docPage(content: string, section: string | undefined, offset: number, maxChars: number) {
+  const headings = sections(content);
+  if (section) {
+    const index = headings.findIndex((h) => h.title === section);
+    const selected = headings[index];
+    if (!selected) throw new NotFoundError("DOC_SECTION_NOT_FOUND", "Không tìm thấy mục tài liệu.");
+    const end = headings.slice(index + 1).find((h) => h.level <= selected.level)?.start ?? content.length;
+    content = content.slice(selected.start, end);
+  }
+  const result = page(content, offset, maxChars);
+  return { ...result, ...(result.truncated ? { headings: headings.map((h) => h.title) } : {}) };
+}
 
 const notFound = () => new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
 
@@ -69,10 +115,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "memory_search",
     title: "Tìm memory",
-    description:
-      "Tìm memory (quyết định, quy ước, cái bẫy, ghi chú) của dự án, đội và tổ chức, theo từ và theo nghĩa. Gọi ở " +
-      "đầu phiên làm việc và trước khi quyết định điều gì. Trong run mặc định tìm trong dự án của run. " +
-      `Trả tối đa ${MCP_LIMITS.searchMax} kết quả, mỗi memory tối đa 2000 ký tự.`,
+    description: "Tìm memory liên quan trong dự án, đội và tổ chức.",
     input: z.object({
       project: PROJECT,
       query: z.string().trim().min(1).max(500).describe("Câu hoặc từ khoá cần tìm."),
@@ -99,7 +142,8 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
           id: m.id,
           kind: m.kind,
           scope: m.scope.level,
-          content: m.content,
+          content: m.content.slice(0, MCP_LIMITS.memoryChars),
+          truncated: m.content.length > MCP_LIMITS.memoryChars,
           files: m.files,
           createdAt: m.createdAt,
           author: m.author,
@@ -111,10 +155,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "memory_write",
     title: "Ghi memory",
-    description:
-      "Ghi một memory ngắn cho lần sau: quyết định đã chốt (decision), quy ước (convention), cái bẫy (gotcha), ghi " +
-      "chú (note). Mỗi memory một ý, tối đa 2000 ký tự, nêu cả lý do. Trong run ghi vào dự án của run và không ghi " +
-      "được sang dự án khác; ngoài run phải truyền project.",
+    description: "Ghi một quyết định, quy ước, cái bẫy hoặc ghi chú cho dự án.",
     input: z.object({
       project: PROJECT,
       kind: memoryKind.describe("decision | convention | gotcha | note"),
@@ -140,19 +181,20 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "doc_list",
     title: "Danh sách tài liệu",
-    description:
-      "Liệt kê tài liệu đọc được (key, tiêu đề, phiên bản), không kèm nội dung. Key có dạng org/..., team/<đội>/..., " +
-      `project/<project key>/...; lọc bằng prefix. Trong run chỉ có tài liệu áp dụng cho dự án của run. Tối đa ${MCP_LIMITS.listMax} mục.`,
+    description: "Liệt kê tài liệu đọc được theo tiền tố key.",
     input: z.object({
-      prefix: z.string().max(200).optional().describe("Tiền tố của key, vd. project/hoa-don/ hoặc org/."),
+      prefix: z.string().max(200).optional().describe("Tiền tố key tài liệu."),
+      limit: LIMIT,
+      offset: LIST_OFFSET,
     }),
     readOnly: true,
-    handler: async ({ prefix }, { tx, principal }) => {
+    handler: async ({ prefix, limit, offset }, { tx, principal }) => {
       const docs = await listDocs(tx, await knowledgePrincipal(tx, principal), { prefix });
-      const { items, truncated } = capped(docs);
+      const { items, truncated, nextOffset } = capped(docs, limit, offset);
       return {
         docs: items.map((d) => ({ key: d.key, title: d.title, version: d.version, updatedAt: d.updatedAt })),
         truncated,
+        nextOffset,
       };
     },
   });
@@ -160,19 +202,22 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "doc_get",
     title: "Đọc tài liệu",
-    description:
-      "Đọc tài liệu theo key, bản mới nhất. Ghi lại version để làm baseVersion khi gọi doc_propose. Tài liệu dài " +
-      `được chia trang ${MCP_LIMITS.pageChars} ký tự; gọi lại với offset = nextOffset để đọc tiếp.`,
-    input: z.object({ key: docKey.describe("Key tài liệu, lấy từ doc_list."), offset: OFFSET }),
+    description: "Đọc tài liệu hoặc một mục theo tiêu đề.",
+    input: z.object({
+      key: docKey.describe("Key tài liệu."),
+      offset: OFFSET,
+      section: z.string().min(1).max(500).optional().describe("Tiêu đề mục cần đọc."),
+      maxChars: z.number().int().min(1).max(40_000).optional().describe("Giới hạn ký tự; mặc định 8000."),
+    }),
     readOnly: true,
-    handler: async ({ key, offset }, { tx, principal }) => {
+    handler: async ({ key, offset, section, maxChars }, { tx, principal }) => {
       const d = await getDoc(tx, await knowledgePrincipal(tx, principal), { key });
       return {
         key: d.key,
         title: d.title,
         version: d.version,
         updatedAt: d.updatedAt,
-        ...page(d.content, offset ?? 0),
+        ...docPage(d.content, section, offset ?? 0, maxChars ?? MCP_LIMITS.pageChars),
       };
     },
   });
@@ -180,10 +225,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "doc_propose",
     title: "Đề xuất sửa tài liệu",
-    description:
-      "Đề xuất nội dung mới cho một tài liệu (hoặc tạo tài liệu mới với baseVersion 0). Agent không sửa tài liệu " +
-      "trực tiếp: quản trị đội duyệt rồi mới thành phiên bản mới. content là toàn bộ nội dung mới, không phải diff. " +
-      "baseVersion lệch bản hiện tại thì bị từ chối: đọc lại bằng doc_get rồi đề xuất lại.",
+    description: "Đề xuất toàn bộ nội dung mới của tài liệu để quản trị duyệt.",
     input: z.object({
       key: docKey.describe("Key tài liệu."),
       baseVersion: z.number().int().min(0).describe("version đọc được từ doc_get; 0 khi tạo tài liệu mới."),
@@ -207,16 +249,16 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "skill_list",
     title: "Danh sách skill",
-    description:
-      "Liệt kê skill (tên, mô tả). Trong run trả bộ skill áp dụng cho dự án của run: trùng tên thì skill của dự án " +
-      `thắng skill của đội, của đội thắng của tổ chức. Đọc nội dung bằng skill_get. Tối đa ${MCP_LIMITS.listMax} mục.`,
+    description: "Liệt kê skill áp dụng cho dự án.",
     input: z.object({
-      project: PROJECT.describe("Ngoài run: project key để lấy bộ skill áp dụng cho dự án đó. Trong run bỏ trống."),
+      project: PROJECT,
+      limit: LIMIT,
+      offset: LIST_OFFSET,
     }),
     readOnly: true,
-    handler: async ({ project }, { tx, principal }) => {
+    handler: async ({ project, limit, offset }, { tx, principal }) => {
       const skills = await listSkills(tx, await knowledgePrincipal(tx, principal), { project });
-      const { items, truncated } = capped(skills);
+      const { items, truncated, nextOffset } = capped(skills, limit, offset);
       return {
         skills: items.map((s) => ({
           name: s.name,
@@ -225,6 +267,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
           version: s.version,
         })),
         truncated,
+        nextOffset,
       };
     },
   });
@@ -232,9 +275,7 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   registry.register({
     name: "skill_get",
     title: "Đọc skill",
-    description:
-      "Đọc nội dung SKILL.md theo tên. Trong run lấy skill áp dụng cho dự án của run; ngoài run truyền project, bỏ " +
-      `trống thì chỉ tìm skill cấp tổ chức. Nội dung dài được chia trang ${MCP_LIMITS.pageChars} ký tự.`,
+    description: "Đọc nội dung skill theo tên.",
     input: z.object({
       name: skillName.describe("Tên skill, lấy từ skill_list."),
       project: PROJECT,

@@ -27,6 +27,8 @@ export interface HubConfig {
   allowEmailSignUp?: boolean | undefined;
   /** SMTP nội bộ chỉ được phép khi người vận hành chủ động bật cờ. */
   notifyAllowPrivate?: boolean | undefined;
+  /** Mở /mcp cho agent trong run khi HIVE_PUBLIC_URL là http (mạng tin cậy). OAuth của người dùng vẫn chỉ chạy qua https. */
+  mcpAllowHttp?: boolean | undefined;
   github?: OAuthAppConfig | undefined;
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
   /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
@@ -123,6 +125,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
     notifyAllowPrivate: env.HIVE_NOTIFY_ALLOW_PRIVATE === "1",
+    mcpAllowHttp: env.HIVE_MCP_ALLOW_HTTP === "1",
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),
