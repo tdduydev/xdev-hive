@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chi phí và token</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent)}a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1060px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
+  <dc-import name="Sidebar" active="costs" hint-size="240px,1060px"></dc-import>
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <header style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 12.5px; color: var(--muted);">Quản trị / Acme / Đội Thanh toán</div>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.3; font-weight: 600; color: var(--ink);">Chi phí và token</h1>
+      </div>
+      <div role="group" aria-label="Khoảng thời gian" style="display: flex; padding: 3px; gap: 3px; background: var(--subtle); border-radius: 10px;">
+        <sc-for list="{{periods}}" as="p" hint-placeholder-count="3">
+          <button type="button" onClick="{{p.pick}}" aria-pressed="{{p.pressed}}" style="{{p.style}}">{{p.label}}</button>
+        </sc-for>
+      </div>
+    </header>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <sc-for list="{{stats}}" as="st" hint-placeholder-count="4">
+        <div style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+          <span style="font-size: 12px; color: var(--muted);">{{st.label}}</span>
+          <span style="font-family: var(--font-display); font-size: 28px; line-height: 1.15; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;">{{st.value}}</span>
+          <span style="font-size: 12px; color: var(--muted);">{{st.hint}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <section style="padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Chi phí theo ngày (USD, Claude)</h2>
+        <span style="font-size: 12px; color: var(--muted);">Ngày tính theo UTC. Codex không báo USD nên không có trong biểu đồ.</span>
+      </div>
+      <div style="display: flex; gap: 8px; height: 200px;">
+        <div aria-hidden="true" style="display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; width: 28px; padding-bottom: 18px;"><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span></div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+          <div role="img" aria-label="Chi phí mỗi ngày trong 14 ngày, cao nhất 7,10 USD ngày 09/10" style="flex: 1; display: flex; align-items: flex-end; gap: 6px; border-bottom: 1px solid var(--line-strong); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 25%;">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="14">
+              <div title="{{b.tip}}" style="{{b.style}}"></div>
+            </sc-for>
+          </div>
+          <div aria-hidden="true" style="display: flex; gap: 6px; font-size: 11px; color: var(--muted); padding-top: 4px; font-variant-numeric: tabular-nums;">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="14"><span style="flex: 1; text-align: center;">{{b.day}}</span></sc-for>
+          </div>
+        </div>
+      </div>
+    </section>
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+      <section style="flex: 3 1 520px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap;">
+          <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Theo {{groupLabel}}</h2>
+          <div role="group" aria-label="Nhóm theo" style="display: flex; gap: 4px;">
+            <sc-for list="{{groups}}" as="g" hint-placeholder-count="3"><button type="button" onClick="{{g.pick}}" aria-pressed="{{g.pressed}}" style="{{g.style}}">{{g.label}}</button></sc-for>
+          </div>
+        </div>
+        <table style="width: 100%; min-width: 520px; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums;">
+          <thead><tr style="background: var(--subtle); font-size: 13px; color: var(--muted);">
+            <th style="padding: 10px 12px; font-weight: 500; text-align: left;">{{groupLabel}}</th>
+            <th style="padding: 10px 12px; font-weight: 500; text-align: right;">USD</th>
+            <th style="padding: 10px 12px; font-weight: 500; text-align: right;">Token vào</th>
+            <th style="padding: 10px 12px; font-weight: 500; text-align: right;">Token ra</th>
+            <th style="padding: 10px 12px; font-weight: 500; text-align: right;">Run</th>
+          </tr></thead>
+          <tbody>
+            <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+              <tr style="border-top: 1px solid var(--line); height: 44px;">
+                <td style="padding: 8px 12px; color: var(--ink); font-weight: 500;">{{r.name}}</td>
+                <td style="padding: 8px 12px; text-align: right; color: var(--ink);">{{r.usd}}</td>
+                <td style="padding: 8px 12px; text-align: right;">{{r.tin}}</td>
+                <td style="padding: 8px 12px; text-align: right;">{{r.tout}}</td>
+                <td style="padding: 8px 12px; text-align: right;">{{r.runs}}</td>
+              </tr>
+            </sc-for>
+          </tbody>
+        </table>
+      </section>
+      <section style="flex: 2 1 320px; min-width: 0; box-sizing: border-box; padding: 16px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ink);">Ngân sách dự án payment-api</h2>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 6px;"><label for="b-run" style="font-size: 13px; font-weight: 500; color: var(--ink);">Mỗi run (USD)</label><input id="b-run" value="2,00" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums;"></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><label for="b-task" style="font-size: 13px; font-weight: 500; color: var(--ink);">Mỗi việc (USD)</label><input id="b-task" value="10,00" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums;"></div>
+          <div style="display: flex; flex-direction: column; gap: 6px;"><label for="b-turns" style="font-size: 13px; font-weight: 500; color: var(--ink);">Số lượt tối đa</label><input id="b-turns" value="40" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-variant-numeric: tabular-nums;"></div>
+        </div>
+        <p style="margin: 0; font-size: 12px; color: var(--muted);">Vượt trần mỗi run thì hub dừng run và ghi lý do. Việc đã tiêu hết trần mỗi việc thì không giao run mới.</p>
+        <h3 style="margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--ink);">Run bị dừng vì vượt ngân sách</h3>
+        <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+          <li style="display: flex; justify-content: space-between; gap: 8px;"><span><span style="font-family: var(--font-mono); font-size: 12.5px;">TASK-31</span> <span style="color: var(--muted);">2,03 / 2,00 USD</span></span><span style="padding: 1px 8px; border-radius: 7px; background: var(--warn-bg); color: var(--warn); font-size: 12px;">Vượt trần run</span></li>
+          <li style="display: flex; justify-content: space-between; gap: 8px;"><span><span style="font-family: var(--font-mono); font-size: 12.5px;">TASK-28</span> <span style="color: var(--muted);">41 / 40 lượt</span></span><span style="padding: 1px 8px; border-radius: 7px; background: var(--warn-bg); color: var(--warn); font-size: 12px;">Vượt số lượt</span></li>
+        </ul>
+        <div style="display: flex; justify-content: flex-end;"><button type="button" style="height: 36px; padding: 0 14px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;">Lưu ngân sách</button></div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1060}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { period: '14d', group: 'cli' }; }
+  renderVals() {
+    const seg = (on) => on
+      ? 'height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-app); cursor: pointer;'
+      : 'height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;';
+    const periods = [['7d', '7 ngày'], ['14d', '14 ngày'], ['30d', '30 ngày']].map(([k, label]) => ({ label, pressed: this.state.period === k ? 'true' : 'false', style: seg(this.state.period === k), pick: () => this.setState({ period: k }) }));
+    const days = ['28', '29', '30', '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'];
+    const usd = [2.4, 3.1, 1.2, 0.6, 4.8, 5.2, 3.9, 0.4, 6.3, 5.7, 4.1, 7.1, 6.2, 4.9];
+    const bars = usd.map((v, i) => ({
+      day: days[i], tip: days[i] + ': ' + v.toFixed(2).replace('.', ',') + ' USD',
+      style: 'flex: 1; min-width: 0; border-radius: 4px 4px 0 0; background: ' + (i === usd.length - 1 ? 'var(--brand-blue)' : 'var(--accent)') + '; height: ' + ((v / 8) * 100).toFixed(1) + '%;',
+    }));
+    const stats = [
+      { label: 'Chi phí 14 ngày', value: '55,90 USD', hint: 'Claude; tăng 12% so với 14 ngày trước' },
+      { label: 'Token vào', value: '21,4 triệu', hint: '68% đọc từ cache' },
+      { label: 'Token ra', value: '1,1 triệu', hint: 'Claude và Codex' },
+      { label: 'Số run', value: '186', hint: '2 run dừng vì vượt ngân sách' },
+    ];
+    const tables = {
+      cli: [
+        { name: 'Claude', usd: '55,90', tin: '14,8 triệu', tout: '0,72 triệu', runs: '121' },
+        { name: 'Codex', usd: 'không báo', tin: '6,6 triệu', tout: '0,38 triệu', runs: '65' },
+      ],
+      machine: [
+        { name: 'mac-mini-lan', usd: '31,20', tin: '9,1 triệu', tout: '0,47 triệu', runs: '84' },
+        { name: 'linux-build-01', usd: '18,40', tin: '9,9 triệu', tout: '0,48 triệu', runs: '79' },
+        { name: 'win-dev-03', usd: '6,30', tin: '2,4 triệu', tout: '0,15 triệu', runs: '23' },
+      ],
+      task: [
+        { name: 'TASK-38 Đổi route web sang tiếng Anh', usd: '2,05', tin: '0,61 triệu', tout: '0,03 triệu', runs: '2' },
+        { name: 'TASK-41 Thêm phân trang cho API giao dịch', usd: '1,18', tin: '0,40 triệu', tout: '0,02 triệu', runs: '1' },
+        { name: 'TASK-40 Nâng Go lên 1.27 trong worker', usd: '0,96', tin: '0,33 triệu', tout: '0,02 triệu', runs: '1' },
+      ],
+    };
+    const glabel = { cli: 'CLI', machine: 'máy', task: 'việc' };
+    const groups = [['cli', 'CLI'], ['machine', 'Máy'], ['task', 'Việc']].map(([k, label]) => ({
+      label, pressed: this.state.group === k ? 'true' : 'false', pick: () => this.setState({ group: k }),
+      style: this.state.group === k ? 'height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--sel-line); background: var(--sel); color: var(--sel-fg); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;' : 'height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--body); font: inherit; font-size: 12.5px; cursor: pointer;',
+    }));
+    return { theme: this.props.dark ? 'dark' : 'light', periods, bars, stats, groups, rows: tables[this.state.group], groupLabel: glabel[this.state.group] };
+  }
+}
+</script>
+</body>
+</html>
