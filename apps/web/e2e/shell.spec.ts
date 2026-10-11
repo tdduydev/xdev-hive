@@ -19,11 +19,14 @@ test("đã đăng nhập: mở /dang-nhap thì vào /, thấy khung app như moc
     await expect(nav.locator("[aria-disabled=true]").filter({ hasText: label })).toContainText(milestone);
   }
   await expect(nav.getByText("Quản trị", { exact: true })).toBeVisible();
-  // Chưa thuộc tổ chức nào nên mục quản trị cũng mờ; "Đăng nhập" (cài đặt SSO) làm ở task khác nên ghi "Sắp có".
+  // Chưa thuộc tổ chức nào nên mục quản trị cũng mờ.
   for (const label of ["Đội và hệ thống", "Thành viên", "Đăng nhập", "Cài đặt tổ chức"]) {
     await expect(nav.locator("[aria-disabled=true]").filter({ hasText: label })).toBeVisible();
   }
-  await expect(nav.locator("[aria-disabled=true]").filter({ hasText: "Đăng nhập" })).toContainText("Sắp có");
+  await expect(nav.locator("[aria-disabled=true]").filter({ hasText: "Đăng nhập" })).toHaveAttribute(
+    "title",
+    "Cần thuộc một tổ chức",
+  );
 
   const aside = page.locator("aside");
   await expect(aside.getByText(USER.name)).toBeVisible();
