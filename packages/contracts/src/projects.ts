@@ -105,7 +105,11 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+export const runPermissionMode = z.enum(["workspace", "full"]);
+
 export const projectSettings = z.object({
+  /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
+  runPermissions: z.object({ mode: runPermissionMode }).optional(),
   /** Model được dùng theo CLI và loại run; bỏ trống thì CLI chọn mặc định. */
   models: z
     .object({

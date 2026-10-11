@@ -207,7 +207,7 @@ func TestCLICommandFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(cmd.Args[0]) != "codex" || len(cmd.Args) != 7 || cmd.Args[1] != "exec" || cmd.Args[len(cmd.Args)-1] != "p" {
+	if filepath.Base(cmd.Args[0]) != "codex" || len(cmd.Args) != 11 || cmd.Args[1] != "exec" || cmd.Args[len(cmd.Args)-1] != "p" {
 		t.Fatalf("lệnh mặc định = %v", cmd.Args)
 	}
 	// Runner.CLICommands do code đặt thắng biến môi trường.
@@ -228,8 +228,8 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 	}{
 		{"claude", "sonnet", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"claude", "", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"codex", "gpt-test", []string{"exec", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
-		{"codex", "", []string{"exec", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
+		{"codex", "gpt-test", []string{"exec", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
+		{"codex", "", []string{"exec", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
 		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
 		{"gemini", "", []string{"-p", "prompt"}},
 	} {
@@ -244,6 +244,15 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			}
 		}()
 		args := cmd.Args[1:]
+		// Quyền được kiểm riêng ở TestRunPermissionArguments; ở đây kiểm model và MCP.
+		switch tc.cli {
+		case "claude":
+			args = args[:len(args)-4]
+		case "codex":
+			args = append(append([]string(nil), args[:len(args)-5]...), args[len(args)-1])
+		case "gemini":
+			args = args[:len(args)-5]
+		}
 		if tc.cli == "claude" {
 			extra := 1
 			if tc.model != "" {
