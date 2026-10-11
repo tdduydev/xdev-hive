@@ -75,7 +75,7 @@ async function invite(email: string, org = orgId) {
   });
   expect(res.status).toBe(200);
   const [inv] = ((await res.json()) as { invitations: { link: string }[] }).invitations;
-  return inv?.link.split("/moi/")[1] ?? "";
+  return inv?.link.split("/invite/")[1] ?? "";
 }
 
 /** Thu hồi lời mời là xoá dòng (invitations.revoke). */
@@ -144,7 +144,7 @@ function fakeProviderFetch(input: RequestInfo | URL, init?: RequestInit): Promis
 async function oauthSignIn(target: App, user: OAuthUser, provider: "github" | "gitlab" = "github") {
   nextUser[provider] = user;
   const start = await send(target, "POST", "/api/auth/sign-in/social", {
-    body: { provider, callbackURL: "/", errorCallbackURL: "/dang-nhap" },
+    body: { provider, callbackURL: "/", errorCallbackURL: "/login" },
   });
   expect(start.status).toBe(200);
   const { url } = (await start.json()) as { url: string };
@@ -176,7 +176,7 @@ const oauthUser = (email: string, verified = true): OAuthUser => ({
 async function ssoSignIn(email: string) {
   idp.signInAs({ sub: `sub-${email}`, email, name: email.split("@")[0] ?? email });
   const start = await send(app, "POST", "/api/auth/sign-in/sso", {
-    body: { providerId: `org-${orgId}`, callbackURL: "/", errorCallbackURL: "/dang-nhap" },
+    body: { providerId: `org-${orgId}`, callbackURL: "/", errorCallbackURL: "/login" },
   });
   expect(start.status).toBe(200);
   const { url } = (await start.json()) as { url: string };
@@ -410,7 +410,7 @@ describe("GitHub", () => {
   it("người mới không có lời mời: chuyển về trang đăng nhập kèm mã lỗi, không tạo người dùng, không có phiên", async () => {
     const email = mail("gh-la");
     const r = await githubSignIn(app, oauthUser(email));
-    expect(r.location.pathname).toBe("/dang-nhap");
+    expect(r.location.pathname).toBe("/login");
     expect(r.error).toBe("SIGN_UP_NOT_INVITED");
     expect(r.description).toMatch(/Hub chỉ nhận người được mời/);
     expect(r.sessionCookie).toBe(false);

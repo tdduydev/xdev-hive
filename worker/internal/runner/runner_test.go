@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +33,9 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 			got := lastResult(events)
 			if got == nil || got.Status != tc.status {
 				t.Fatalf("result = %#v", got)
+			}
+			if got.DiffStats == nil || got.DiffStats.AddedLines != got.CommitCount || got.DiffStats.DeletedLines != 0 {
+				t.Fatalf("diffStats = %#v, commitCount = %d", got.DiffStats, got.CommitCount)
 			}
 			cmd := exec.Command("git", "--git-dir", remote, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
 			present := cmd.Run() == nil
@@ -311,7 +315,7 @@ func TestCLICommandFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Base(cmd.Args[0]) != "codex" || strings.Join(cmd.Args[1:], " ") != "exec --json p" {
+	if filepath.Base(cmd.Args[0]) != "codex" || !strings.Contains(strings.Join(cmd.Args[1:], " "), "exec --json") || cmd.Args[len(cmd.Args)-1] != "p" {
 		t.Fatalf("lệnh mặc định = %v", cmd.Args)
 	}
 	// Runner.CLICommands do code đặt thắng biến môi trường.
@@ -321,6 +325,145 @@ func TestCLICommandFromEnv(t *testing.T) {
 	}
 	if cmd.Path != "/opt/khac" {
 		t.Fatalf("lệnh = %s", cmd.Path)
+	}
+}
+
+func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
+	env := map[string]string{"HIVE_HUB_URL": "https://hub.example/", "HIVE_RUN_TOKEN": "run-secret"}
+	for _, tc := range []struct {
+		cli, model string
+		want       []string
+	}{
+		{"claude", "sonnet", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"claude", "", []string{"-p", "prompt", "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
+		{"codex", "gpt-test", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "-m", "gpt-test", "prompt"}},
+		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
+		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
+		{"gemini", "", []string{"-p", "prompt"}},
+	} {
+		j := Job{CLI: tc.cli, Model: tc.model, Prompt: "prompt", Env: env}
+		cmd, err := (Runner{}).cliCommand(j)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if cmd.cleanup != nil {
+				cmd.cleanup()
+			}
+		}()
+		args := cmd.Args[1:]
+		if tc.cli == "claude" {
+			extra := 1
+			if tc.model != "" {
+				extra = 3
+			}
+			if len(args) != len(tc.want)+extra || strings.Join(args[:len(tc.want)], "\x00") != strings.Join(tc.want, "\x00") || (tc.model != "" && (args[len(tc.want)+1] != "--model" || args[len(tc.want)+2] != tc.model)) {
+				t.Fatalf("claude args = %q", args)
+			}
+			path := args[len(tc.want)]
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
+				t.Fatalf("MCP mode = %o", info.Mode().Perm())
+			}
+			b, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{`"xdev-hive"`, `"https://hub.example/mcp"`, `"Authorization":"Bearer run-secret"`} {
+				if !strings.Contains(string(b), want) {
+					t.Fatalf("MCP config thiếu %s: %s", want, b)
+				}
+			}
+		} else if strings.Join(args, "\x00") != strings.Join(tc.want, "\x00") {
+			t.Fatalf("%s args = %q, want %q", tc.cli, args, tc.want)
+		}
+	}
+}
+
+func TestClaudeMCPFileCleanup(t *testing.T) {
+	path, err := claudeMCPConfig(map[string]string{"HIVE_HUB_URL": "https://hub", "HIVE_RUN_TOKEN": "token"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("MCP config còn sau cleanup: %v", err)
+	}
+}
+
+func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows does not execute the POSIX shell fixture below; validate the command cleanup hook directly.
+		cmd, err := (Runner{}).cliCommand(Job{CLI: "claude", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := cmd.Args[len(cmd.Args)-1]
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal(err)
+		}
+		cmd.cleanup()
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("file MCP còn sau cleanup: %v", err)
+		}
+		return
+	}
+	remote, base := makeRemote(t)
+	for _, cancelRun := range []bool{false, true} {
+		name := "failure"
+		if cancelRun {
+			name = "cancelled"
+		}
+		t.Run(name, func(t *testing.T) {
+			bin := t.TempDir()
+			capture := filepath.Join(t.TempDir(), "mcp-path")
+			fake := filepath.Join(bin, "claude")
+			script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = \"--mcp-config\" ]; then shift; printf '%s' \"$1\" > \"$HIVE_CAPTURE_MCP\"; break; fi; shift; done\n"
+			if cancelRun {
+				script += "sleep 30\n"
+			} else {
+				script += "exit 7\n"
+			}
+			if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			data := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			go func() {
+				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
+			}()
+			limit := time.Now().Add(5 * time.Second)
+			for {
+				if _, err := os.Stat(capture); err == nil {
+					break
+				}
+				if time.Now().After(limit) {
+					t.Fatal("CLI không ghi lại đường dẫn MCP")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if cancelRun {
+				cancel()
+			}
+			if err := <-done; err == nil {
+				t.Fatal("run phải kết thúc lỗi")
+			}
+			pathBytes, err := os.ReadFile(capture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(string(pathBytes)); !os.IsNotExist(err) {
+				t.Fatalf("file MCP còn sau run %s: %v", name, err)
+			}
+		})
 	}
 }
 
@@ -398,7 +541,12 @@ func TestClaudeDefaultCommandPassesBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(cmd.Args[1:], " "); got != "-p p --output-format stream-json --verbose --max-budget-usd 2.5" {
+	got := strings.Join(cmd.Args[1:], " ")
+	if !strings.HasPrefix(got, "-p p --output-format stream-json --verbose --setting-sources project --strict-mcp-config --mcp-config ") || !strings.HasSuffix(got, " --max-budget-usd 2.5") {
 		t.Fatalf("lệnh = %s", got)
+	}
+	path := cmd.Args[len(cmd.Args)-3]
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
 	}
 }

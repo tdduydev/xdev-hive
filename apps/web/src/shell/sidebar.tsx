@@ -1,5 +1,5 @@
 import { Link, type LinkProps } from "@tanstack/react-router";
-import { Icon, type IconName } from "../components/icons.tsx";
+import { Brand, Icon, type IconName } from "../components/icons.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { cx } from "../lib/cx.ts";
 import { orgStore } from "../lib/org-store.ts";
@@ -29,9 +29,9 @@ const WORK: NavEntry[] = [
 ];
 
 const ADMIN: NavEntry[] = [
-  { label: "Đội và hệ thống", icon: "users", to: "/quan-tri/doi", needsOrg: true },
-  { label: "Thành viên", icon: "mail", to: "/quan-tri/thanh-vien", needsOrg: true },
-  { label: "Đăng nhập", icon: "key", to: "/quan-tri/dang-nhap", needsOrg: true, adminOnly: true },
+  { label: "Đội và hệ thống", icon: "users", to: "/admin/teams", needsOrg: true },
+  { label: "Thành viên", icon: "mail", to: "/admin/members", needsOrg: true },
+  { label: "Đăng nhập", icon: "key", to: "/admin/sign-in-settings", needsOrg: true, adminOnly: true },
   { label: "Cài đặt tổ chức", icon: "gear" },
 ];
 
@@ -81,6 +81,7 @@ export function Sidebar({ className }: { className?: string }) {
         className,
       )}
     >
+      <Brand className="mb-3 self-start px-2.5" />
       <OrgSwitcher
         orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
         currentId={current?.org.id}
@@ -91,7 +92,7 @@ export function Sidebar({ className }: { className?: string }) {
         {WORK.map((entry) => (
           <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
         ))}
-        <div className="px-2.5 pt-3 pb-1 text-2xs font-semibold tracking-caps text-faint uppercase">Quản trị</div>
+        <div className="px-2.5 pt-3 pb-1 text-2xs font-semibold tracking-caps text-muted uppercase">Quản trị</div>
         {ADMIN.filter((entry) => !entry.adminOnly || !current || isOrgAdmin(current.org.role)).map((entry) => (
           <NavItem key={entry.label} entry={entry} hasOrg={current !== null} />
         ))}

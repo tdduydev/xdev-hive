@@ -89,7 +89,7 @@ async function membership(userId: string) {
   return rows[0];
 }
 
-const tokenOf = (link: string) => link.split("/moi/")[1] ?? "";
+const tokenOf = (link: string) => link.split("/invite/")[1] ?? "";
 
 beforeAll(async () => {
   idp = await startMockIdp();
@@ -107,7 +107,7 @@ beforeAll(async () => {
           event: "member.pending",
           title: `${member.email} chờ duyệt vào tổ chức`,
           body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
-          link: `${PUBLIC_URL}/quan-tri/thanh-vien`,
+          link: `${PUBLIC_URL}/admin/members`,
         }),
     }),
   };
@@ -159,7 +159,7 @@ describe("tạo và quản lý lời mời", () => {
     const created = res.json.invitations as { id: string; email: string; link: string; expiresAt: string }[];
     expect(created.map((c) => c.email)).toEqual([mail("ha"), mail("minh")]);
     for (const c of created) {
-      expect(c.link).toMatch(new RegExp(`^${PUBLIC_URL}/moi/[A-Za-z0-9_-]{43}$`));
+      expect(c.link).toMatch(new RegExp(`^${PUBLIC_URL}/invite/[A-Za-z0-9_-]{43}$`));
       const days = (Date.parse(c.expiresAt) - Date.now()) / 86_400_000;
       expect(days).toBeGreaterThan(6.9);
       expect(days).toBeLessThanOrEqual(7);

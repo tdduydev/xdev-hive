@@ -61,8 +61,8 @@ export interface AuthOptions {
 }
 
 /** Trang web Better Auth chuyển người dùng tới trong luồng OAuth của client MCP. */
-export const MCP_LOGIN_PAGE = "/dang-nhap";
-export const MCP_CONSENT_PAGE = "/dong-y-mcp";
+export const MCP_LOGIN_PAGE = "/login";
+export const MCP_CONSENT_PAGE = "/mcp/consent";
 
 /** Định danh tài nguyên (RFC 8707) của cổng MCP: token cấp cho client MCP có `aud` đúng bằng chuỗi này. */
 export function mcpResource(baseURL: string): string {

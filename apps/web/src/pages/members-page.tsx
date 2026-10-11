@@ -52,7 +52,7 @@ function Loading() {
 export function MembersPage() {
   const { org, api } = useOrg();
   const navigate = useNavigate();
-  const { xem } = useSearch({ from: "/session/app/in-org/quan-tri/thanh-vien" });
+  const { xem } = useSearch({ from: "/session/app/in-org/admin/members" });
   const admin = isOrgAdmin(org.role);
   const members = useQuery(api.orgMembers.list.queryOptions());
   const invitations = useQuery(api.invitations.list.queryOptions({ enabled: admin }));
@@ -88,7 +88,7 @@ export function MembersPage() {
         value={current}
         onValueChange={(value: MembersTab) =>
           navigate({
-            to: "/quan-tri/thanh-vien",
+            to: "/admin/members",
             search: value === "dang-hoat-dong" ? {} : { xem: value },
             replace: true,
           })

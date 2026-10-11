@@ -1,6 +1,6 @@
 {
-  "id": "f511f2fb-6d86-4b42-8f6a-b083fbec4a8f",
-  "prevId": "772848c6-2fc5-43be-ba6b-846789d48a82",
+  "id": "ade474fb-c505-4763-b475-75e8afede132",
+  "prevId": "16fcefa8-8089-46f1-a0c6-83667bdf88b0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4301,6 +4301,12 @@
         },
         "cli": {
           "name": "cli",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model": {
+          "name": "model",
           "type": "text",
           "primaryKey": false,
           "notNull": false

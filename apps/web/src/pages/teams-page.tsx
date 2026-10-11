@@ -59,7 +59,7 @@ function useRefreshTeams() {
 export function TeamsPage() {
   const me = useMe();
   const { org, api } = useOrg();
-  const { doi } = useSearch({ from: "/session/app/in-org/quan-tri/doi" });
+  const { doi } = useSearch({ from: "/session/app/in-org/admin/teams" });
   const teams = useQuery(api.teams.list.queryOptions());
   const members = useQuery(api.orgMembers.list.queryOptions());
   const orgAdmin = isOrgAdmin(org.role);
@@ -128,7 +128,7 @@ function TeamList({ teams, selectedId }: { teams: TeamWithCounts[]; selectedId: 
           return (
             <Link
               key={team.id}
-              to="/quan-tri/doi"
+              to="/admin/teams"
               search={{ doi: team.id }}
               aria-current={on ? "page" : undefined}
               className={cx("flex items-center gap-2.5 rounded-md p-2.5", on ? "bg-sel" : "hover:bg-subtle")}
@@ -592,7 +592,7 @@ function CreateTeamForm({
     onSuccess: async (team) => {
       await refresh();
       onDone();
-      await navigate({ to: "/quan-tri/doi", search: { doi: team.id } });
+      await navigate({ to: "/admin/teams", search: { doi: team.id } });
     },
     onError: (error) => {
       const { field, message } = formError(error);

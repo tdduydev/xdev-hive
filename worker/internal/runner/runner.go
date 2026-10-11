@@ -22,14 +22,14 @@ import (
 const KindReview = "review"
 
 type Job struct {
-	RunID                                    string
-	Kind                                     string // "code" (mặc định) hoặc KindReview
-	Attempt                                  int
-	RepoURL, BaseBranch, Branch, CLI, Prompt string
-	Env                                      map[string]string
-	Timeout                                  time.Duration
-	SetupScript                              string
-	Budget                                   Budget
+	RunID                                           string
+	Kind                                            string // "code" (mặc định) hoặc KindReview
+	Attempt                                         int
+	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
+	Env                                             map[string]string
+	Timeout                                         time.Duration
+	SetupScript                                     string
+	Budget                                          Budget
 }
 
 type Event struct {
@@ -51,11 +51,12 @@ type SinkFunc func(Event) error
 func (f SinkFunc) Emit(e Event) error { return f(e) }
 
 type Result struct {
-	Status       string   `json:"status"`
-	HeadSHA      string   `json:"headSha,omitempty"`
-	CommitCount  int      `json:"commitCount"`
-	ChangedFiles []string `json:"changedFiles"`
-	Error        string   `json:"error,omitempty"`
+	Status       string     `json:"status"`
+	HeadSHA      string     `json:"headSha,omitempty"`
+	CommitCount  int        `json:"commitCount"`
+	ChangedFiles []string   `json:"changedFiles"`
+	DiffStats    *DiffStats `json:"-"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
@@ -203,6 +204,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err != nil {
 		return err
 	}
+
+	if cmd.cleanup != nil {
+		defer cmd.cleanup()
+	}
 	cmd.Dir = work
 	cmd.Env = mergeEnv(os.Environ(), job.Env)
 	// Không dùng StdoutPipe: Wait đóng đầu đọc ngay khi process thoát, goroutine đọc log còn dở sẽ gặp
@@ -218,10 +223,10 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	cmd.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
 	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
 	cmd.WaitDelay = r.grace()
-	if err := startProcess(cmd); err != nil {
+	if err := startProcess(cmd.Cmd); err != nil {
 		return err
 	}
-	waitErr := waitProcess(runCtx, cmd, r.grace)
+	waitErr := waitProcess(runCtx, cmd.Cmd, r.grace)
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
@@ -267,21 +272,15 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	count := 0
 	_, _ = fmt.Sscanf(strings.TrimSpace(countText), "%d", &count)
-	filesText, err := gitOutput(ctx, work, "diff", "--name-only", "origin/"+job.BaseBranch+"...HEAD")
+	stats, err := collectDiffStats(ctx, work, "origin/"+job.BaseBranch)
 	if err != nil {
 		return err
-	}
-	files := []string{}
-	for _, f := range strings.Split(strings.TrimSpace(filesText), "\n") {
-		if f != "" {
-			files = append(files, f)
-		}
 	}
 	sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
-	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: files}
+	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: stats.ChangedFiles, DiffStats: stats}
 	if count == 0 {
 		done.Status = "no_changes"
 	} else {
@@ -344,7 +343,12 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 }
 func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
 
-func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
+type cliExecCmd struct {
+	*exec.Cmd
+	cleanup func()
+}
+
+func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 	configured, ok := r.CLICommands[j.CLI]
 	if !ok {
 		// Runner.CLICommands do code đặt thắng biến môi trường; biến môi trường thắng lệnh mặc định.
@@ -357,19 +361,32 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 	if !ok {
 		switch j.CLI {
 		case "claude":
-			// stream-json ở chế độ -p bắt buộc có --verbose (claude 2.1 báo lỗi nếu thiếu).
-			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose"}
-			// Claude tự dừng khi chạm trần USD (result subtype error_max_budget_usd); runner chỉ biết USD của Claude ở
-			// tin result cuối nên cần cờ này để dừng giữa chừng. Claude 2.1 không có cờ giới hạn lượt trong --help.
+			mcpFile, err := claudeMCPConfig(j.Env)
+			if err != nil {
+				return nil, err
+			}
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
 			}
-			configured = Command{Path: "claude", Args: args}
+			if j.Model != "" {
+				args = append(args, "--model", j.Model)
+			}
+			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
 		case "codex":
-			// --json in sự kiện JSONL; usage nằm ở sự kiện turn.completed.
-			configured = Command{Path: "codex", Args: []string{"exec", "--json", j.Prompt}}
+			url := mcpURL(j.Env)
+			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			if j.Model != "" {
+				args = append(args, "-m", j.Model)
+			}
+			args = append(args, j.Prompt)
+			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
-			configured = Command{Path: "gemini", Args: []string{"-p", j.Prompt}}
+			args := []string{"-p", j.Prompt}
+			if j.Model != "" {
+				args = append(args, "-m", j.Model)
+			}
+			return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}
@@ -379,7 +396,34 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 			configured.Args[i] = strings.ReplaceAll(configured.Args[i], "{{prompt}}", j.Prompt)
 		}
 	}
-	return exec.Command(configured.Path, configured.Args...), nil
+	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...)}, nil
+}
+
+func claudeMCPConfig(env map[string]string) (string, error) {
+	file, err := os.CreateTemp("", "xdev-hive-mcp-*.json")
+	if err != nil {
+		return "", fmt.Errorf("tạo cấu hình MCP tạm: %w", err)
+	}
+	if err := file.Chmod(0600); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	config := map[string]any{"mcpServers": map[string]any{"xdev-hive": map[string]any{"type": "http", "url": mcpURL(env), "headers": map[string]string{"Authorization": "Bearer " + env["HIVE_RUN_TOKEN"]}}}}
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+func mcpURL(env map[string]string) string {
+	return strings.TrimRight(env["HIVE_HUB_URL"], "/") + "/mcp"
 }
 func emit(s Sink, e Event) error { return s.Emit(e) }
 func validate(j Job) error {
