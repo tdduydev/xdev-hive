@@ -81,6 +81,8 @@ export const run = z.object({
   maxAttempts: z.number().int(),
   /** Máy đang giữ (hoặc giữ lần cuối) run. */
   machineId: id.nullable(),
+  /** Tên máy để hiện cho người xem (người không quản trị đội không gọi được machines.list); null khi chưa có máy. */
+  machineName: z.string().nullable(),
   /** CLI yêu cầu; null là máy nào có CLI cũng được. */
   cli: cli.nullable(),
   model: z.string().nullable(),
@@ -138,15 +140,35 @@ export const runStartInput = z.object({
 });
 export type RunStartInput = z.output<typeof runStartInput>;
 
+export const runSteerInput = z.object({
+  id,
+  input: z.string().trim().min(1, "Chỉ dẫn không được để trống.").max(4000, "Chỉ dẫn dài tối đa 4.000 ký tự."),
+});
+export type RunSteerInput = z.output<typeof runSteerInput>;
+
+/**
+ * sent: đã gửi tới máy đang chạy agent. pending: run chưa tới máy, chỉ dẫn vào prompt khi giao. closing: run đang kiểm
+ * kết quả, đang huỷ hoặc đã xong nên không nhận nữa.
+ */
+export const runSteerStatus = z.enum(["sent", "pending", "closing"]);
+export type RunSteerStatus = z.output<typeof runSteerStatus>;
+
 export const runsContract = {
   start: orgRoute("POST", "/v1/runs", "Giao task cho agent (thành viên đội)", "runs").input(runStartInput).output(run),
   list: orgRoute("GET", "/v1/tasks/{taskId}/runs", "Các run của task, mới nhất trước", "runs")
     .input(z.object({ taskId: id }))
     .output(z.array(run)),
+  latest: orgRoute("GET", "/v1/runs", "Run code mới nhất của mỗi task, lọc theo dự án", "runs")
+    // Bảng việc cần run gần nhất của mọi task trong một lần gọi, thay vì gọi runs.list cho từng task.
+    .input(z.object({ projectId: id.optional() }))
+    .output(z.array(run)),
   get: orgRoute("GET", "/v1/runs/{id}", "Thông tin run", "runs").input(z.object({ id })).output(run),
   cancel: orgRoute("POST", "/v1/runs/{id}/cancel", "Huỷ run (thành viên đội)", "runs")
     .input(z.object({ id }))
     .output(run),
+  steer: orgRoute("POST", "/v1/runs/{id}/steer", "Gửi chỉ dẫn cho agent của run (thành viên đội)", "runs")
+    .input(runSteerInput)
+    .output(z.object({ status: runSteerStatus })),
   events: orgRoute("GET", "/v1/runs/{id}/events", "Sự kiện của run sau con trỏ `after`", "runs")
     .input(z.object({ id, after: cursor, limit }))
     .output(z.array(runEventView)),
