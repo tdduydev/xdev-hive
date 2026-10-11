@@ -4,6 +4,8 @@ const port = 4174;
 
 export default defineConfig({
   testDir: "e2e",
+  // e2e/hub cần hub thật và Docker, chạy riêng bằng playwright.hub.config.ts.
+  testIgnore: "hub/**",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? "github" : "list",

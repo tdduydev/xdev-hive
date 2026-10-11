@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
 import { attachWorkerGateway } from "./modules/fleet/index.ts";
-import { createAuth } from "./modules/identity/index.ts";
+import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import {
   auditScmEvent,
@@ -32,6 +32,7 @@ const auth =
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
+else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp.");
 
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
