@@ -1,4 +1,4 @@
-import type { Task } from "@xdev-hive/contracts";
+import { planContent, type Task } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import type pg from "pg";
 import { z } from "zod";
@@ -71,8 +71,8 @@ const runNotActive = () =>
   new ConflictError("RUN_NOT_ACTIVE", "Run không còn chạy hoặc đã sang lần thử khác; báo cáo không được ghi.");
 
 /**
- * Tool cho agent trong run: đọc task, gửi báo cáo cho kiểm tra `agentReport` của chính sách kết quả, và nộp kết quả
- * review chéo (chỉ run review).
+ * Tool cho agent trong run: đọc task, gửi báo cáo cho kiểm tra `agentReport` của chính sách kết quả, nộp kết quả
+ * review chéo (chỉ run review) và nộp kế hoạch (chỉ run plan).
  */
 export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
@@ -156,6 +156,32 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       await hubEvent(tx, run, "review_report", report);
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, recorded: "review_report", score: report.score };
+    },
+  });
+
+  registry.register({
+    name: "plan_submit",
+    title: "Nộp kế hoạch",
+    description:
+      "Chỉ dành cho run lập kế hoạch (plan mode): nộp tóm tắt, các bước, file dự kiến đụng, rủi ro và câu hỏi cho " +
+      "người duyệt. Hub giữ kế hoạch chờ người duyệt; duyệt xong mới có run viết code theo kế hoạch. Gọi lại thì lần " +
+      "sau cùng được tính.",
+    input: planContent,
+    runKinds: ["plan"],
+    // Claude Code ở `--permission-mode plan` từ chối mọi tool MCP không có readOnlyHint, kể cả khi --allowedTools có
+    // tên tool (đã thử trên claude 2.1.296). Tool chỉ ghi kế hoạch lên hub, không đụng repo hay máy của agent.
+    readOnly: true,
+    handler: async (content, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      // Run code mà tự nộp kế hoạch được thì người duyệt duyệt một kế hoạch không ai chờ.
+      if (run.kind !== "plan") {
+        throw new ForbiddenError("PLAN_RUN_REQUIRED", "Chỉ run lập kế hoạch mới gọi được plan_submit.");
+      }
+      await hubEvent(tx, run, "plan_report", content);
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "plan_report", steps: content.steps.length };
     },
   });
 }

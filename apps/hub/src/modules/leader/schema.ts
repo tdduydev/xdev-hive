@@ -50,6 +50,7 @@ export const chatMessages = hive
       threadId: uuid("thread_id").notNull(),
       role: chatRole("role").notNull(),
       content: text("content").notNull(),
+      senderId: text("sender_id"),
       runId: uuid("run_id"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },

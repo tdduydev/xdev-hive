@@ -143,6 +143,7 @@ export const projectSettings = z.object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
           leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       codex: z
@@ -150,6 +151,7 @@ export const projectSettings = z.object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
           leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
       gemini: z
@@ -157,6 +159,7 @@ export const projectSettings = z.object({
           code: z.string().trim().min(1).max(200).optional(),
           review: z.string().trim().min(1).max(200).optional(),
           leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
     })
