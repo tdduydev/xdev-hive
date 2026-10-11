@@ -3,8 +3,10 @@ import { contract } from "@xdev-hive/contracts";
 import type { HubConfig, RequestContext } from "../platform/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate } from "./desktop-updates.ts";
 
-export function systemRouter(config: HubConfig) {
-  const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
+export function systemRouter(
+  config: HubConfig,
+  desktopReleases: DesktopReleaseCache = new DesktopReleaseCache(config.desktopReleases),
+) {
   const os = implement(contract.system).$context<RequestContext>();
   return {
     health: os.health.handler(() => ({
