@@ -1,5 +1,11 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { projectsContract } from "./projects.ts";
+import { scmContract } from "./scm.ts";
+
+export * from "./projects.ts";
+export * from "./repo-url.ts";
+export * from "./scm.ts";
 
 /** Trạng thái hub. Worker Go gọi qua OpenAPI (GET /api/v1/health) trước khi mở WSS. */
 export const healthOutput = z.object({
@@ -30,6 +36,8 @@ export const contract = {
       .errors({ UNAUTHORIZED: { message: "Chưa đăng nhập." } })
       .output(meOutput),
   },
+  scmConnections: scmContract,
+  projects: projectsContract,
 };
 
 export type Contract = typeof contract;

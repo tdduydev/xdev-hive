@@ -50,6 +50,20 @@
       "when": 1791719201148,
       "tag": "0006_quyen_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791720545680,
+      "tag": "0007_du_an_va_ket_noi_git",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791720555230,
+      "tag": "0008_quyen_du_an",
+      "breakpoints": true
     }
   ]
 }
