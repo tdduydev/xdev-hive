@@ -31,6 +31,20 @@ async function currentOrg(tx: Tx, orgId: string) {
   return row;
 }
 
+/** Trang đăng nhập hỏi trước khi có phiên; chỉ lộ một bit: hub đã có tổ chức nào chưa. */
+export function hubSetupRouter({ base }: Procedures, deps: TenancyDeps) {
+  return {
+    get: base.hubSetup.get.handler(async () => {
+      // Không có database (test đơn vị) thì coi như hub đã dựng xong: không mời ai đăng ký.
+      if (!deps.pool) return { firstAdminSignUp: false };
+      return withTenant(deps.pool, {}, async (tx) => {
+        const { rows } = await tx.execute<{ any: boolean }>(sql`select hive.any_org() as any`);
+        return { firstAdminSignUp: rows[0]?.any === false };
+      });
+    }),
+  };
+}
+
 export function orgsRouter({ authed, inOrg }: Procedures, deps: TenancyDeps) {
   const creators = deps.orgCreators ?? [];
   return {

@@ -11,7 +11,8 @@ import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field
 import { Input } from "../components/ui/input.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { Select } from "../components/ui/select.tsx";
-import { apiErrorMessage, formError } from "../lib/api-errors.ts";
+import { apiErrorCode, apiErrorMessage, formError } from "../lib/api-errors.ts";
+import { formatDay } from "../lib/format.ts";
 import { isOrgAdmin } from "../lib/roles.ts";
 import {
   checkSsoForm,
@@ -34,7 +35,17 @@ const SSO_ERROR_FIELDS: Record<string, keyof SsoFormValues> = {
 
 // Hub chỉ cho SSO tự tạo tài khoản và tự thêm người vào tổ chức khi tên miền đã xác minh (apps/hub, identity/auth.ts).
 const DOMAIN_UNVERIFIED =
-  "Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới và chưa tự thêm người vào tổ chức: người mới vào bằng link mời. Hub chưa có bước tự xác minh tên miền, hãy báo quản trị hub.";
+  "Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới và chưa tự thêm người vào tổ chức: người mới vào bằng link mời. Xác minh tên miền bằng bản ghi TXT ở phần bên dưới.";
+
+/** Lấy bản ghi TXT; kết quả là cấu hình SSO mới, ghi thẳng vào cache để cả trang cập nhật. */
+function useRequestVerification() {
+  const { api } = useOrg();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (domain?: string) => api.ssoProviders.requestDomainVerification.call(domain ? { domain } : {}),
+    onSuccess: (next) => queryClient.setQueryData(api.ssoProviders.get.queryKey(), next),
+  });
+}
 
 /** Màn 5 của mockup: các cách đăng nhập của tổ chức và form SSO (OIDC). Chỉ quản trị tổ chức xem được. */
 export function LoginSettingsPage() {
@@ -59,6 +70,7 @@ export function LoginSettingsPage() {
       <>
         <Methods settings={settings.data} />
         <SsoForm settings={settings.data} defaultDomain={org.emailDomain} />
+        <DomainVerification settings={settings.data} />
       </>
     );
 
@@ -140,6 +152,9 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
   const [secret, setSecret] = useState("");
   const [saved, setSaved] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Tên miền đang bị tổ chức khác giữ: tổ chức này giành lại được nếu chứng minh giữ DNS (hub kiểm bản ghi TXT).
+  const [taken, setTaken] = useState<string | null>(null);
+  const claim = useRequestVerification();
   const refresh = (next: SsoSettings) => queryClient.setQueryData(api.ssoProviders.get.queryKey(), next);
   const save = useMutation({
     mutationFn: (input: SsoInput) => api.ssoProviders.upsert.call(input),
@@ -148,7 +163,8 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
       setSaved(true);
       refresh(next);
     },
-    onError: (error) => {
+    onError: (error, input) => {
+      setTaken(apiErrorCode(error) === "SSO_DOMAIN_TAKEN" ? input.domain : null);
       const { field, message } = formError(error, SSO_ERROR_FIELDS);
       if (field === "issuer" || field === "domain" || field === "clientId" || field === "clientSecret")
         setErrors({ [field]: message });
@@ -171,6 +187,8 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
     setErrors(local);
     setFailure(null);
     setSaved(false);
+    setTaken(null);
+    claim.reset();
     if (Object.values(local).some(Boolean)) return;
     const join = SSO_JOINS.find((j) => j === form.get("join")) ?? "pending";
     const { clientSecret, ...rest } = values;
@@ -214,7 +232,15 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
               spellCheck={false}
             />
             {errors.domain ? (
-              <FieldError>{errors.domain}</FieldError>
+              <>
+                <FieldError>{errors.domain}</FieldError>
+                {taken && !claim.isSuccess && (
+                  <Button size="sm" onClick={() => claim.mutate(taken)} disabled={claim.isPending}>
+                    {claim.isPending ? "Đang lấy bản ghi…" : `Xác minh ${taken} bằng bản ghi TXT`}
+                  </Button>
+                )}
+                {claim.isError && <FieldError>{apiErrorMessage(claim.error)}</FieldError>}
+              </>
             ) : provider && !provider.domainVerified ? (
               <FieldHint>{DOMAIN_UNVERIFIED}</FieldHint>
             ) : (
@@ -292,6 +318,106 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
           <RemoveSso onDone={() => setRemoving(false)} onRemoved={refresh} />
         </DialogContent>
       </Dialog>
+    </Card>
+  );
+}
+
+/**
+ * Chứng minh tổ chức giữ tên miền: quản trị thêm bản ghi TXT vào DNS rồi bấm Kiểm tra. Đã xác minh thì SSO tự tạo tài
+ * khoản cho người trong tên miền và áp chính sách người mới; tên miền đang bị tổ chức chưa xác minh giữ thì hub gỡ
+ * khỏi tổ chức đó.
+ */
+function DomainVerification({ settings }: { settings: SsoSettings }) {
+  const { api } = useOrg();
+  const queryClient = useQueryClient();
+  const request = useRequestVerification();
+  const [checked, setChecked] = useState(false);
+  const check = useMutation({
+    mutationFn: () => api.ssoProviders.checkDomainVerification.call(),
+    onMutate: () => setChecked(false),
+    onSuccess: (next) => {
+      setChecked(true);
+      queryClient.setQueryData(api.ssoProviders.get.queryKey(), next);
+    },
+  });
+  const provider = settings.provider;
+  const pending = settings.domainVerification;
+  if (!provider && !pending) return null;
+
+  const verified = provider?.domainVerified === true && !pending;
+  // Bản ghi đang chờ là của tên miền khác (vd. tên miền đang giành): vẫn cho lấy bản ghi cho tên miền đang cấu hình.
+  const canRequest = provider !== null && !provider.domainVerified && pending?.domain !== provider.domain;
+  const status = verified ? (
+    <Pill tone="ok">Đã xác minh</Pill>
+  ) : pending?.verified ? (
+    <Pill tone="warn">Chờ lưu cấu hình</Pill>
+  ) : (
+    <Pill>Chưa xác minh</Pill>
+  );
+
+  return (
+    <Card className="grid gap-3.5 px-4.5 py-4">
+      <div className="flex items-center gap-2.5">
+        <h2 className="text-lg font-semibold text-ink">Xác minh tên miền</h2>
+        <span className="ml-auto">{status}</span>
+      </div>
+      {verified && provider ? (
+        <p className="text-muted">
+          Tên miền {provider.domain} đã được xác minh là của tổ chức. Có thể xoá bản ghi TXT khỏi DNS.
+        </p>
+      ) : pending ? (
+        <>
+          <p className="text-muted">
+            Thêm bản ghi TXT dưới đây vào DNS của {pending.domain}, đợi DNS cập nhật (vài phút tới vài giờ) rồi bấm Kiểm
+            tra. Bản ghi dùng được tới {formatDay(pending.expiresAt)}.
+          </p>
+          <div className="grid grid-cols-1 items-start gap-3.5 app:grid-cols-2">
+            <Field>
+              <FieldLabel>Tên bản ghi (TXT)</FieldLabel>
+              <CopyField value={pending.recordName} copyLabel="tên bản ghi TXT" />
+            </Field>
+            <Field>
+              <FieldLabel>Giá trị</FieldLabel>
+              <CopyField value={pending.recordValue} copyLabel="giá trị bản ghi TXT" />
+            </Field>
+          </div>
+          {pending.verified && (
+            <p role="status" className="rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+              DNS đã khớp. Lưu cấu hình SSO với tên miền {pending.domain} để hoàn tất xác minh.
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-muted">
+          Chứng minh tổ chức giữ tên miền {provider?.domain} bằng một bản ghi TXT trên DNS. Tên miền đang bị tổ chức
+          chưa xác minh khác khai thì sẽ chuyển về tổ chức bạn.
+        </p>
+      )}
+      {check.isError && <Alert>{apiErrorMessage(check.error)}</Alert>}
+      {request.isError && <Alert>{apiErrorMessage(request.error)}</Alert>}
+      {checked && verified && provider && (
+        <p role="status" className="rounded-lg bg-ok-bg px-3.5 py-2.5 text-label text-ok">
+          Đã xác minh tên miền {provider.domain}.
+        </p>
+      )}
+      {!verified && (
+        <div className="flex justify-end gap-2">
+          {canRequest && (
+            <Button
+              variant={pending ? "default" : "primary"}
+              onClick={() => request.mutate(undefined)}
+              disabled={request.isPending}
+            >
+              {request.isPending ? "Đang lấy…" : `Lấy bản ghi TXT cho ${provider.domain}`}
+            </Button>
+          )}
+          {pending && !pending.verified && (
+            <Button variant="primary" onClick={() => check.mutate()} disabled={check.isPending}>
+              {check.isPending ? "Đang kiểm tra…" : "Kiểm tra"}
+            </Button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

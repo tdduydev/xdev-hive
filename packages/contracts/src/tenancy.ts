@@ -121,6 +121,28 @@ export const ssoSettings = z.object({
       clientIdLastFour: z.string().nullable(),
     })
     .nullable(),
+  /**
+   * Bản ghi TXT đang chờ để chứng minh tổ chức giữ tên miền. `verified`: DNS đã khớp nhưng cấu hình SSO chưa dùng tên
+   * miền này (chưa cấu hình, hoặc đang khai tên miền khác); lưu cấu hình với tên miền đó thì nhận xác minh luôn.
+   */
+  domainVerification: z
+    .object({
+      domain: z.string(),
+      /** Tên bản ghi TXT đầy đủ, vd. `_xdev-hive-verification.congty.vn`. */
+      recordName: z.string(),
+      recordValue: z.string(),
+      expiresAt: z.iso.datetime(),
+      verified: z.boolean(),
+    })
+    .nullable(),
+});
+/** Trạng thái dựng hub, đọc được khi chưa đăng nhập. */
+export const hubSetup = z.object({
+  /**
+   * Hub chưa có tổ chức nào: trang đăng nhập hiện form tạo tài khoản người quản trị đầu tiên. Không nói email nào được
+   * tạo (HIVE_ORG_CREATORS); hub tự từ chối email ngoài danh sách bằng cùng mã lỗi như mọi trường hợp khác.
+   */
+  firstAdminSignUp: z.boolean(),
 });
 export type Org = z.output<typeof org>;
 export type MyOrg = z.output<typeof myOrg>;
@@ -133,6 +155,7 @@ export type Invitation = z.output<typeof invitation>;
 export type CreatedInvitation = z.output<typeof createdInvitation>;
 export type InvitationPreview = z.output<typeof invitationPreview>;
 export type SsoSettings = z.output<typeof ssoSettings>;
+export type HubSetup = z.output<typeof hubSetup>;
 
 const ORG_HEADER = "Tổ chức lấy từ header `x-hive-org`.";
 const route = (
@@ -163,6 +186,17 @@ export const tenancyContract = {
       .errors(errors)
       .input(z.object({ orgId: id, name: name.optional(), slug: slug.optional(), emailDomain: emailDomain.nullish() }))
       .output(myOrg),
+  },
+  hubSetup: {
+    get: oc
+      .route({
+        method: "GET",
+        path: "/v1/setup",
+        summary: "Trạng thái dựng hub (không cần đăng nhập)",
+        tags: ["orgs"],
+      })
+      .errors(errors)
+      .output(hubSetup),
   },
   teams: {
     list: route("GET", "/v1/teams", "Danh sách đội kèm số hệ thống, số người", "teams").output(z.array(teamWithCounts)),
@@ -288,5 +322,24 @@ export const tenancyContract = {
       )
       .output(ssoSettings),
     remove: route("DELETE", "/v1/sso", "Gỡ SSO của tổ chức (quản trị)", "sso").output(ssoSettings),
+    requestDomainVerification: route(
+      "POST",
+      "/v1/sso/domain-verification",
+      "Lấy bản ghi TXT để xác minh tên miền SSO (quản trị)",
+      "sso",
+    )
+      .input(
+        z.object({
+          /** Bỏ trống thì dùng tên miền của cấu hình SSO đang lưu. */
+          domain: emailDomain.optional(),
+        }),
+      )
+      .output(ssoSettings),
+    checkDomainVerification: route(
+      "POST",
+      "/v1/sso/domain-verification/check",
+      "Kiểm bản ghi TXT và xác minh tên miền SSO (quản trị)",
+      "sso",
+    ).output(ssoSettings),
   },
 };
