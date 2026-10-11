@@ -1,5 +1,5 @@
 import type { Task, TaskCreateInput, TaskStatus, TaskUpdateInput } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
@@ -34,6 +34,16 @@ export function toTask(t: TaskRow): Task {
 export async function loadTask(tx: Tx, id: string): Promise<TaskRow | null> {
   const [row] = await tx.select().from(tasks).where(eq(tasks.id, id));
   return row ?? null;
+}
+
+/** Mã và tiêu đề của nhiều task trong một truy vấn, cho danh sách run. Không kiểm quyền; người gọi đã lọc theo đội. */
+export async function taskSummaries(tx: Tx, ids: string[]): Promise<Map<string, { key: string; title: string }>> {
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: tasks.id, key: tasks.key, title: tasks.title })
+    .from(tasks)
+    .where(inArray(tasks.id, ids));
+  return new Map(rows.map((r) => [r.id, { key: r.key, title: r.title }]));
 }
 
 /** Task mà người dùng có ít nhất vai trò `min` trong đội sở hữu; không thấy được thì báo như không tồn tại. */

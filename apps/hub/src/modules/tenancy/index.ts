@@ -8,6 +8,7 @@ export {
   requireTeamRole,
   type TeamRole,
   teamRoleOf,
+  visibleTeamIds,
 } from "./permissions.ts";
 export { ORG_HEADER, type OrgDeps, orgMiddlewares, type SessionUser, type TenancyDeps } from "./procedures.ts";
 export { tenancyRouter } from "./router.ts";

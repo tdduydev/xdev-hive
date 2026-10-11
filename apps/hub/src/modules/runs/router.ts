@@ -4,7 +4,7 @@ import { recordAudit } from "../audit/index.ts";
 import { ConflictError, type RequestContext, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import { type RunsEngine, runForUser } from "./engine.ts";
-import { getRun, latestRuns, listEvents, listLogs, listRuns, withMachineNames } from "./queries.ts";
+import { getRun, latestRuns, listEvents, listLogs, listRuns, searchRuns, withMachineNames } from "./queries.ts";
 
 export interface RunsRouterDeps extends OrgDeps {
   /** Không có khi hub thiếu HIVE_AUTH_SECRET (không ký được run token): chỉ xem được, không giao hay huỷ được. */
@@ -61,6 +61,7 @@ export function runsRouter(deps: RunsRouterDeps) {
     latest: os.latest
       .use(inOrg)
       .handler(({ context: { tx, user }, input }) => latestRuns(tx, user.id, input.projectId)),
+    search: os.search.use(inOrg).handler(({ context: { tx, user }, input }) => searchRuns(tx, user.id, input)),
     list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listRuns(tx, user.id, input.taskId)),
     get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getRun(tx, user.id, input.id)),
     events: os.events
