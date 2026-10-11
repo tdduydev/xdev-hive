@@ -8,6 +8,7 @@ const hiveApp = pgRole("hive_app").existing();
 const inOrg = sql`org_id = hive.ctx_org()`;
 
 export const scmKind = hive.enum("scm_kind", ["github", "gitlab"]);
+export const scmAuthMode = hive.enum("scm_auth_mode", ["app", "token"]);
 
 /**
  * Kết nối GitHub App hoặc GitLab của một tổ chức. Khoá ngoại tới orgs nằm trong migration viết tay, vì schema của
@@ -25,10 +26,15 @@ export const scmConnections = hive
       baseUrl: text("base_url"),
       /** GitHub: org đã cài App. GitLab: group hay dùng. Gợi ý sẵn khi tạo dự án. */
       defaultOwner: text("default_owner"),
+      /**
+       * GitHub: "app" (GitHub App) hoặc "token" (PAT). Mặc định "app" vì mọi kết nối GitHub có trước cột này đều là
+       * App. GitLab ghi "token".
+       */
+      authMode: scmAuthMode("auth_mode").notNull().default("app"),
       // Không bí mật, để người quản trị nhận ra kết nối mà không phải giải mã.
       appId: text("app_id"),
       installationId: integer("installation_id"),
-      /** JSON của secret (khoá riêng GitHub App hoặc token GitLab), mã hoá envelope với ngữ cảnh là id dòng. */
+      /** JSON của secret (khoá riêng GitHub App, token GitHub hoặc token GitLab), mã hoá envelope với ngữ cảnh là id dòng. */
       secretEnc: text("secret_enc").notNull(),
       createdBy: text("created_by").notNull(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

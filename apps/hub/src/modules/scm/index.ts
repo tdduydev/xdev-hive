@@ -1,12 +1,14 @@
 // Lớp gọi GitHub/GitLab và kết nối Git của tổ chức. Module khác chỉ import file này.
 export {
   createConnection,
+  createProviderFactory,
   defaultProviderFactory,
   listConnections,
   loadConnection,
   type ProviderFactory,
   type ResolvedConnection,
   removeConnection,
+  type ScmAuthMode,
   type ScmConnectionRecord,
 } from "./connections.ts";
 export {

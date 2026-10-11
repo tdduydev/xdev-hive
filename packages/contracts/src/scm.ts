@@ -4,6 +4,10 @@ import { id, orgRoute } from "./common.ts";
 export const scmKind = z.enum(["github", "gitlab"]);
 export type ScmKind = z.output<typeof scmKind>;
 
+/** Cách hub xác thực với GitHub. GitLab luôn là token. */
+export const scmAuthMode = z.enum(["app", "token"]);
+export type ScmAuthMode = z.output<typeof scmAuthMode>;
+
 /** GitHub: org. GitLab: đường dẫn group hoặc user, có thể lồng (`a/b`). */
 export const repoOwner = z
   .string()
@@ -15,20 +19,37 @@ const httpsUrl = z
   .refine((u) => u.startsWith("https://"), "Chỉ nhận địa chỉ https.")
   .transform((u) => u.replace(/\/+$/, ""));
 
+const githubCommon = {
+  kind: z.literal("github"),
+  name,
+  /** Bỏ trống với github.com. GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
+  baseUrl: httpsUrl.optional(),
+  defaultOwner: repoOwner,
+};
+
 export const scmConnectionCreateInput = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("github"),
-    name,
-    /** Bỏ trống với github.com. GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
-    baseUrl: httpsUrl.optional(),
-    defaultOwner: repoOwner,
-    appId: z.string().regex(/^\d{1,12}$/, "App ID là số."),
-    privateKey: z
-      .string()
-      .max(20_000)
-      .refine((k) => k.includes("PRIVATE KEY-----"), "Khoá riêng phải ở dạng PEM của GitHub App."),
-    installationId: z.number().int().positive(),
-  }),
+  z.discriminatedUnion("authMode", [
+    z.object({
+      ...githubCommon,
+      // Mặc định "app" để client gửi theo hợp đồng cũ (chưa có authMode) vẫn chạy.
+      authMode: z.literal("app").default("app"),
+      appId: z.string().regex(/^\d{1,12}$/, "App ID là số."),
+      privateKey: z
+        .string()
+        .max(20_000)
+        .refine((k) => k.includes("PRIVATE KEY-----"), "Khoá riêng phải ở dạng PEM của GitHub App."),
+      installationId: z.number().int().positive(),
+    }),
+    z.object({
+      ...githubCommon,
+      /**
+       * Fine-grained PAT (Administration, Contents, Pull requests, Webhooks: Read and write) hoặc PAT cổ điển có
+       * scope `repo`. Cho đội chưa tạo GitHub App.
+       */
+      authMode: z.literal("token"),
+      token: z.string().trim().min(8, "Token quá ngắn.").max(500),
+    }),
+  ]),
   z.object({
     kind: z.literal("gitlab"),
     name,
@@ -47,6 +68,8 @@ export const scmConnection = z.object({
   name: z.string(),
   baseUrl: z.string().nullable(),
   defaultOwner: z.string().nullable(),
+  /** GitLab luôn là "token". */
+  authMode: scmAuthMode,
   /** GitHub App id, installation id: không bí mật, giúp người quản trị nhận ra kết nối. */
   appId: z.string().nullable(),
   installationId: z.number().int().nullable(),
@@ -59,6 +82,8 @@ export const scmConnectionTestResult = z.object({
   owner: z.string().nullable(),
   canCreate: z.boolean(),
   missingScopes: z.array(z.string()),
+  /** Quyền không đọc được trước (fine-grained token không cho xem quyền của chính nó); chỉ lộ ra khi gọi thật. */
+  unverifiedScopes: z.array(z.string()),
   message: z.string(),
 });
 export type ScmConnectionTestResult = z.output<typeof scmConnectionTestResult>;

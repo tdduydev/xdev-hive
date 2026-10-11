@@ -2,12 +2,14 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { type ProjectCreateInput, projectCreateInput } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import pg from "pg";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { MockAgent, fetch as undiciFetch } from "undici";
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { createJobs, createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import {
   createConnection,
   createMemoryProvider,
+  createProviderFactory,
   GitProviderError,
   type MemoryProvider,
   type ProviderFactory,
@@ -522,5 +524,90 @@ describe("qua pg-boss thật", () => {
     while ((await projectState(id)) !== "active" && Date.now() < deadline)
       await new Promise((ok) => setTimeout(ok, 200));
     expect(await projectState(id)).toBe("active");
+  });
+});
+
+const JSON_HEADERS = { headers: { "content-type": "application/json" } };
+
+/** Giả lập GitHub bằng MockAgent riêng (không dùng dispatcher toàn cục); mock-http của scm nằm ngoài index.ts. */
+function mockHttp() {
+  const agent = new MockAgent();
+  agent.disableNetConnect();
+  const fetch = async (input: string | URL | Request, init?: RequestInit) =>
+    (await undiciFetch(input as never, { ...(init as object), dispatcher: agent } as never)) as unknown as Response;
+  return { agent, fetch };
+}
+
+describe("projects.create dryRun với kết nối GitHub chế độ token", () => {
+  let tokenConnId = "";
+  let http: ReturnType<typeof mockHttp>;
+  beforeAll(async () => {
+    const conn = await as("owner", (tx) =>
+      createConnection(tx, masterKey, org.user("owner"), {
+        kind: "github",
+        authMode: "token",
+        name: "GitHub token của đội",
+        defaultOwner: "xdev-team",
+        token: "github_pat_khong_dung_that",
+      }),
+    );
+    tokenConnId = conn.id;
+  });
+  afterEach(async () => {
+    http.agent.assertNoPendingInterceptors();
+    await http.agent.close();
+  });
+
+  const tokenDeps = (): CatalogDeps => {
+    http = mockHttp();
+    return { ...deps, providerFactory: createProviderFactory({ fetch: http.fetch }) };
+  };
+  const repoInput = (owner: string) => {
+    const i = input({ dryRun: true });
+    return { ...i, repo: { ...i.repo, connectionId: tokenConnId, owner } } as typeof i;
+  };
+
+  it("fine-grained token trong org: kế hoạch đủ bước, cảnh báo quyền chưa kiểm được", async () => {
+    const d = tokenDeps();
+    const i = repoInput("xdev-team");
+    const pool = http.agent.get("https://api.github.com");
+    pool.intercept({ path: "/user", method: "GET" }).reply(200, { login: "duy" }, JSON_HEADERS);
+    pool.intercept({ path: "/orgs/xdev-team", method: "GET" }).reply(200, { login: "xdev-team" }, JSON_HEADERS);
+    pool
+      .intercept({ path: `/repos/xdev-team/${i.repo.mode === "new" ? i.repo.name : ""}`, method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    const r = await dryRunCreate(app, d, actor("tadmin"), i);
+    expect(r).toMatchObject({ dryRun: true, projectId: null, state: "planned" });
+    expect(r.steps.map((s) => s.kind)).toContain("create-repo");
+    expect(r.warnings.map((w) => w.code)).toEqual(["SCOPES_UNVERIFIED"]);
+  });
+
+  it("PAT cổ điển, repo dưới tài khoản của chính chủ token: không cảnh báo", async () => {
+    const d = tokenDeps();
+    const i = repoInput("duy");
+    const pool = http.agent.get("https://api.github.com");
+    pool
+      .intercept({ path: "/user", method: "GET" })
+      .reply(200, { login: "duy" }, { headers: { "content-type": "application/json", "x-oauth-scopes": "repo" } });
+    pool
+      .intercept({ path: `/repos/duy/${i.repo.mode === "new" ? i.repo.name : ""}`, method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    const r = await dryRunCreate(app, d, actor("tadmin"), i);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("PAT cổ điển thiếu scope repo: cảnh báo ACCESS_MISSING", async () => {
+    const d = tokenDeps();
+    const i = repoInput("duy");
+    const pool = http.agent.get("https://api.github.com");
+    pool
+      .intercept({ path: "/user", method: "GET" })
+      .reply(200, { login: "duy" }, { headers: { "content-type": "application/json", "x-oauth-scopes": "" } });
+    pool
+      .intercept({ path: `/repos/duy/${i.repo.mode === "new" ? i.repo.name : ""}`, method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    const r = await dryRunCreate(app, d, actor("tadmin"), i);
+    expect(r.warnings.map((w) => w.code)).toEqual(["ACCESS_MISSING"]);
+    expect(r.warnings[0]?.message).toContain("repo");
   });
 });

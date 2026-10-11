@@ -1,5 +1,5 @@
 import type { ProvisionStepKind } from "@xdev-hive/contracts";
-import { type GitProviderKind, isGitProviderError } from "../scm/index.ts";
+import { type GitProviderKind, isGitProviderError, type ScmAuthMode } from "../scm/index.ts";
 import type { StepError } from "./schema.ts";
 
 /** Nhánh đưa file mẫu vào repo có sẵn qua PR, không commit thẳng vào nhánh chính. */
@@ -96,7 +96,18 @@ function appSettings(kind: GitProviderKind, owner: string): string {
     : `Người quản trị group ${owner} trên GitLab kiểm lại token của kết nối`;
 }
 
-function forbiddenFix(step: ProvisionStepKind, kind: GitProviderKind, owner: string): string {
+const GITHUB_TOKEN_PERM: Partial<Record<ProvisionStepKind, string>> = {
+  "create-repo": "Administration",
+  "protect-branch": "Administration",
+  "add-webhook": "Webhooks",
+  "commit-template": "Contents và Pull requests",
+  "link-repo": "Metadata (đọc) trên repo này",
+};
+
+function forbiddenFix(step: ProvisionStepKind, kind: GitProviderKind, owner: string, authMode: ScmAuthMode): string {
+  if (kind === "github" && authMode === "token") {
+    return `Token GitHub thiếu quyền ${GITHUB_TOKEN_PERM[step] ?? "còn thiếu"} (ghi) trong ${owner}. Fine-grained token: chủ token sửa quyền và chọn đúng resource owner (org cần duyệt token nếu bật duyệt); PAT cổ điển: cần scope repo. Cập nhật token trong Quản trị → Kết nối Git. ${RETRY}`;
+  }
   if (kind === "github") {
     const perm: Partial<Record<ProvisionStepKind, string>> = {
       "create-repo": "Administration (ghi)",
@@ -112,7 +123,13 @@ function forbiddenFix(step: ProvisionStepKind, kind: GitProviderKind, owner: str
 }
 
 /** Đổi lỗi của một bước thành thông báo tiếng Việt kèm cách sửa, lưu vào project_provision_steps.error. */
-export function describeFailure(step: ProvisionStepKind, kind: GitProviderKind, owner: string, e: unknown): StepError {
+export function describeFailure(
+  step: ProvisionStepKind,
+  kind: GitProviderKind,
+  owner: string,
+  e: unknown,
+  authMode: ScmAuthMode = "app",
+): StepError {
   if (e instanceof StepFailure) return { code: e.code, message: e.message, fix: e.fix };
   if (isGitProviderError(e)) {
     const message = e.message;
@@ -124,7 +141,7 @@ export function describeFailure(step: ProvisionStepKind, kind: GitProviderKind, 
           fix: `Kết nối Git không còn dùng được (token hết hạn, bị thu hồi hoặc app đã bị gỡ). Cập nhật kết nối trong Quản trị → Kết nối Git. ${RETRY}`,
         };
       case "forbidden":
-        return { code: "SCM_FORBIDDEN", message, fix: forbiddenFix(step, kind, owner) };
+        return { code: "SCM_FORBIDDEN", message, fix: forbiddenFix(step, kind, owner, authMode) };
       case "not_found":
         return {
           code: "SCM_NOT_FOUND",
