@@ -116,7 +116,9 @@ user and CPU, memory and PID limits. The only way out is the egress proxy, which
 On the runner host (Linux):
 
 1. Install gVisor from the [official instructions](https://gvisor.dev/docs/user_guide/install/) and register it with
-   Docker (`sudo runsc install && sudo systemctl reload docker`). Check with
+   Docker, allowing containers to connect to the egress proxy's Unix socket (gVisor blocks host Unix sockets by
+   default, and the runner host refuses to start without this):
+   `sudo runsc install -- --host-uds=open && sudo systemctl reload docker`. Check with
    `docker run --rm --runtime=runsc --network=none busybox dmesg | head -1`, which should print `Starting gVisor...`.
 2. Create a **host** registration token (the web app does not offer this yet; call
    `POST /api/v1/teams/{teamId}/machines/registrations` with `{"kind":"host"}` as a team administrator), register the
