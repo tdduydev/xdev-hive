@@ -326,6 +326,33 @@ describe("GitHub openPR", () => {
   });
 });
 
+describe("GitHub commentOnIssue", () => {
+  it("bình luận vào issue; PR dùng cùng API của issue", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: "/repos/acme/web/issues/12/comments", method: "POST" })
+      .reply(
+        201,
+        http.json({ id: 901, html_url: "https://github.com/acme/web/issues/12#issuecomment-901" }),
+        JSON_HEADERS,
+      );
+    pool
+      .intercept({ path: "/repos/acme/web/issues/5/comments", method: "POST" })
+      .reply(201, http.json({ id: 902 }), JSON_HEADERS);
+    expect(await gh.commentOnIssue(ref, 12, "Đã tạo task HD-3")).toEqual({ id: "901" });
+    expect(await gh.commentOnIssue(ref, 5, "Đã nhận", { pullRequest: true })).toEqual({ id: "902" });
+    expect(http.calls.map((c) => c.body)).toEqual([{ body: "Đã tạo task HD-3" }, { body: "Đã nhận" }]);
+  });
+
+  it("thiếu quyền issues (403) thì báo lỗi forbidden", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: "/repos/acme/web/issues/12/comments", method: "POST" })
+      .reply(403, { message: "Resource not accessible by integration" }, JSON_HEADERS);
+    expect((await rejected(gh.commentOnIssue(ref, 12, "x"))).code).toBe("forbidden");
+  });
+});
+
 describe("GitHub webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",

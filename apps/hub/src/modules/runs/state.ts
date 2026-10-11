@@ -1,5 +1,6 @@
 import type { Run, RunState } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
+import type { ProjectRow } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { runEvents, runs } from "./schema.ts";
 
@@ -89,4 +90,9 @@ export async function transition(
 export async function lockRun(tx: Tx, id: string): Promise<RunRow | null> {
   const [row] = await tx.select().from(runs).where(eq(runs.id, id)).for("update");
   return row ?? null;
+}
+
+/** Dự án đã có repo để giao run. */
+export function projectReady(p: ProjectRow | null): p is ProjectRow & { repoHttpUrl: string; defaultBranch: string } {
+  return p?.state === "active" && Boolean(p.repoHttpUrl) && Boolean(p.defaultBranch);
 }

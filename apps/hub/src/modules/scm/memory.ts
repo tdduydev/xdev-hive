@@ -3,6 +3,7 @@ import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   GitProvider,
@@ -23,6 +24,7 @@ export interface MemoryRepo {
   protection: Map<string, BranchRules>;
   hooks: Map<string, WebhookInput>;
   pulls: Array<{ number: number; head: string; base: string; title: string; url: string }>;
+  comments: Array<{ id: string; number: number; body: string; pullRequest: boolean }>;
 }
 
 export interface MemoryProvider extends GitProvider {
@@ -72,6 +74,7 @@ export function createMemoryProvider(
       protection: new Map(),
       hooks: new Map(),
       pulls: [],
+      comments: [],
     };
     repos.set(key(ref), repo);
     return repo;
@@ -153,6 +156,14 @@ export function createMemoryProvider(
       const url = `${repo.info.webUrl}/pull/${number}`;
       repo.pulls.push({ number, head: input.head, base: input.base, title: input.title, url });
       return { number, url };
+    }),
+
+    commentOnIssue: track("commentOnIssue", (ref: RepoRef, number: number, body: string, opts?: CommentOptions) => {
+      const repo = need(ref);
+      seq += 1;
+      const id = String(seq);
+      repo.comments.push({ id, number, body, pullRequest: opts?.pullRequest ?? false });
+      return { id };
     }),
 
     addWebhook: track("addWebhook", (ref: RepoRef, input: WebhookInput) => {

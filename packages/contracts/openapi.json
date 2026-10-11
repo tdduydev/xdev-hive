@@ -16190,6 +16190,21 @@
                               "label": "hive",
                               "mention": "hive"
                             }
+                          },
+                          "defaultCli": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "claude",
+                                  "codex",
+                                  "gemini"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -17050,6 +17065,21 @@
                             "label": "hive",
                             "mention": "hive"
                           }
+                        },
+                        "defaultCli": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "claude",
+                                "codex",
+                                "gemini"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -17912,6 +17942,21 @@
                                 "label": "hive",
                                 "mention": "hive"
                               }
+                            },
+                            "defaultCli": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "claude",
+                                    "codex",
+                                    "gemini"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -18927,6 +18972,21 @@
                                 "label": "hive",
                                 "mention": "hive"
                               }
+                            },
+                            "defaultCli": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "claude",
+                                    "codex",
+                                    "gemini"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [

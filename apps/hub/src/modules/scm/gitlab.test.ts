@@ -317,6 +317,27 @@ describe("GitLab openPR", () => {
   });
 });
 
+describe("GitLab commentOnIssue", () => {
+  it("issue dùng note của issue, merge request dùng note của merge request", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/issues/17/notes`, method: "POST", headers: { "private-token": "glpat-test" } })
+      .reply(201, http.json({ id: 1241 }), JSON_HEADERS);
+    pool
+      .intercept({ path: `${P}/merge_requests/3/notes`, method: "POST" })
+      .reply(201, http.json({ id: 1242 }), JSON_HEADERS);
+    expect(await gl.commentOnIssue(ref, 17, "Đã tạo task HD-3")).toEqual({ id: "1241" });
+    expect(await gl.commentOnIssue(ref, 3, "Đã nhận", { pullRequest: true })).toEqual({ id: "1242" });
+    expect(http.calls.map((c) => c.body)).toEqual([{ body: "Đã tạo task HD-3" }, { body: "Đã nhận" }]);
+  });
+
+  it("issue không còn (404) thì báo not_found", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/issues/17/notes`, method: "POST" }).reply(404, notFound, JSON_HEADERS);
+    expect((await rejected(gl.commentOnIssue(ref, 17, "x"))).code).toBe("not_found");
+  });
+});
+
 describe("GitLab webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",

@@ -16,6 +16,7 @@ import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,
@@ -339,6 +340,16 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         if (labels) await gl.mergeRequests.edit(id, mr.iid, { addLabels: labels });
       }
       return { number: mr.iid, url: mr.web_url };
+    },
+
+    async commentOnIssue(ref: RepoRef, number: number, body: string, opts?: CommentOptions) {
+      const kind = opts?.pullRequest ? "merge_requests" : "issues";
+      const note = await rest<{ id: number }>(
+        "POST",
+        `projects/${encodeURIComponent(projectPath(ref))}/${kind}/${number}/notes`,
+        { body },
+      );
+      return { id: String(note.id) };
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {
