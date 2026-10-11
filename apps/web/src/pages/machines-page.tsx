@@ -36,24 +36,25 @@ function MachineStatus({ status, busy }: { status: "online" | "offline" | "pause
 
 function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () => void }) {
   const { api } = useOrg();
+  const [kind, setKind] = useState<"worker" | "host">("worker");
   const registration = useMutation({
     gcTime: 0,
-    mutationFn: () => api.machines.createRegistration.call({ teamId }),
+    mutationFn: () => api.machines.createRegistration.call({ teamId, kind }),
   });
   const [copied, setCopied] = useState(false);
   const [os, setOs] = useState<"macOS" | "Linux" | "Windows">("macOS");
   const command = registration.data?.command;
-  const hubUrl = command?.match(/--hub\s+(\S+)/)?.[1]?.replace(/\/$/, "");
-  const commands =
-    command && hubUrl
-      ? {
-          macOS: ["brew install xdev/tap/hive-worker", command, "hive-worker service install"],
-          Linux: [`curl -fsSL ${hubUrl}/install.sh | sh`, command, "sudo hive-worker service install"],
-          Windows: [`irm ${hubUrl}/install.ps1 | iex`, command, "hive-worker service install"],
-        }
-      : null;
-  const steps = commands?.[os] ?? [];
-  const stepTitles = ["Cài worker", "Đăng ký máy với hub", "Chạy worker như dịch vụ hệ thống"];
+  // Chưa có bản build sẵn: cài từ mã nguồn công khai bằng Go. Service cài cho user hiện tại nên không dùng sudo.
+  const install = "go install github.com/tdduydev/xdev-hive/worker/cmd/hive-worker@main";
+  const steps = command
+    ? kind === "host"
+      ? [install, command, "hive-worker host --image <image môi trường của dự án>"]
+      : [install, command, "hive-worker service install"]
+    : [];
+  const stepTitles =
+    kind === "host"
+      ? ["Cài worker (cần Go 1.27)", "Đăng ký runner host với hub", "Chạy runner host"]
+      : ["Cài worker (cần Go 1.27)", "Đăng ký máy với hub", "Chạy worker như dịch vụ hệ thống"];
 
   async function copy(value: string) {
     try {
@@ -71,13 +72,37 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
         Mã đăng ký chỉ dùng một lần và hết hạn sau một giờ. Hãy hoàn tất cài đặt trước khi đóng cửa sổ này.
       </DialogDescription>
       {registration.isIdle && (
-        <Button variant="primary" onClick={() => registration.mutate()}>
-          Tạo mã đăng ký
-        </Button>
+        <>
+          <fieldset className="grid gap-1.5 border-0 p-0">
+            <legend className="mb-1 text-sm font-medium">Loại máy</legend>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="machine-kind" checked={kind === "worker"} onChange={() => setKind("worker")} />
+              <span>
+                <b className="font-medium">Máy dev</b>
+                <span className="block text-muted">
+                  Chạy agent bằng CLI đã đăng nhập sẵn trên máy (macOS, Linux, Windows).
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="radio" name="machine-kind" checked={kind === "host"} onChange={() => setKind("host")} />
+              <span>
+                <b className="font-medium">Runner host (sandbox)</b>
+                <span className="block text-muted">
+                  Máy chủ Linux chạy mỗi run trong container gVisor cho dự án bật sandbox. Cần Docker và runsc cấu hình
+                  --host-uds=open.
+                </span>
+              </span>
+            </label>
+          </fieldset>
+          <Button variant="primary" onClick={() => registration.mutate()}>
+            Tạo mã đăng ký
+          </Button>
+        </>
       )}
       {registration.isPending && <Loading />}
       {registration.isError && <Alert>{apiErrorMessage(registration.error)}</Alert>}
-      {registration.data && commands && (
+      {registration.data && command && (
         <div className="grid gap-3">
           <div className="grid gap-1">
             <label htmlFor="registration-token" className="text-sm font-medium">
@@ -101,20 +126,22 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
             </p>
           </div>
           <div className="grid gap-3">
-            <fieldset className="flex gap-2 border-0 p-0">
-              <legend className="sr-only">Hệ điều hành</legend>
-              {(["macOS", "Linux", "Windows"] as const).map((item) => (
-                <Button
-                  key={item}
-                  size="sm"
-                  variant={os === item ? "primary" : "default"}
-                  aria-pressed={os === item}
-                  onClick={() => setOs(item)}
-                >
-                  {item}
-                </Button>
-              ))}
-            </fieldset>
+            {kind === "worker" && (
+              <fieldset className="flex gap-2 border-0 p-0">
+                <legend className="sr-only">Hệ điều hành</legend>
+                {(["macOS", "Linux", "Windows"] as const).map((item) => (
+                  <Button
+                    key={item}
+                    size="sm"
+                    variant={os === item ? "primary" : "default"}
+                    aria-pressed={os === item}
+                    onClick={() => setOs(item)}
+                  >
+                    {item}
+                  </Button>
+                ))}
+              </fieldset>
+            )}
             {steps.map((value, index) => (
               <div key={stepTitles[index]} className="grid gap-1">
                 <b className="text-sm">
@@ -135,7 +162,13 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
           <p aria-live="polite" className="text-sm text-muted">
             {copied
               ? "Đã chép vào bộ nhớ tạm."
-              : "Linux cài systemd user service, macOS cài LaunchAgent, Windows tạo tác vụ khi đăng nhập."}
+              : kind === "host"
+                ? "Runner host chỉ chạy trên Linux và từ chối khởi động nếu Docker chưa có runtime runsc."
+                : os === "Linux"
+                  ? "Linux cài systemd user service; chạy loginctl enable-linger để worker chạy cả khi chưa đăng nhập."
+                  : os === "macOS"
+                    ? "macOS cài LaunchAgent cho user hiện tại."
+                    : "Windows tạo tác vụ Task Scheduler chạy khi đăng nhập."}
           </p>
           <DialogActions>
             <Button onClick={onClose}>Đóng</Button>
