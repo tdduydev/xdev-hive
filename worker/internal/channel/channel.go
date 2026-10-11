@@ -329,8 +329,7 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 			c.Logger.Info("Hub yêu cầu thoát: không nhận job mới, chờ run đang chạy xong")
 			jobs.drain()
 		case *Steer:
-			// CLI chạy không tương tác (-p, exec) nên chưa nhận thêm chỉ dẫn giữa chừng; hub đưa chỉ dẫn vào lần chạy sau.
-			c.Logger.Info("Chưa hỗ trợ chỉ dẫn cho run đang chạy", "run", m.RunID)
+			jobs.steer(m)
 		default:
 			c.Logger.Info("Chưa xử lý gói từ hub", "type", fmt.Sprintf("%T", m))
 		}

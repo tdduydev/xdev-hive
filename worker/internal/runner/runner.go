@@ -30,6 +30,8 @@ type Job struct {
 	Timeout                                         time.Duration
 	SetupScript                                     string
 	Budget                                          Budget
+	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
+	Steers <-chan Steer
 }
 
 type Event struct {
@@ -43,6 +45,8 @@ type Event struct {
 	Result  *Result `json:"result,omitempty"`
 	// Cost có ở sự kiện "cost": usage luỹ kế của lần chạy CLI.
 	Cost *Usage `json:"cost,omitempty"`
+	// Steer có ở sự kiện "steer_result".
+	Steer *SteerResult `json:"steer,omitempty"`
 }
 
 type Sink interface{ Emit(Event) error }
@@ -58,14 +62,17 @@ type Result struct {
 	Error        string   `json:"error,omitempty"`
 }
 
-// Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
+// Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job. Input là InputStreamJSON khi
+// CLI đọc prompt và chỉ dẫn giữa chừng từ stdin; để trống thì stdin không nối gì.
 type Command struct {
-	Path string   `json:"path"`
-	Args []string `json:"args"`
+	Path  string   `json:"path"`
+	Args  []string `json:"args"`
+	Input string   `json:"input,omitempty"`
 }
 
 // CLIOverridesEnv thay lệnh của từng CLI mà không phải build lại worker, để scripts/e2e-smoke.ts trỏ "claude" tới
-// một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}.
+// một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}; thêm
+// "input": "stream-json" nếu CLI giả đọc prompt từ stdin như Claude.
 const CLIOverridesEnv = "HIVE_WORKER_CLI_OVERRIDES"
 
 // CommandsFromEnv đọc HIVE_WORKER_CLI_OVERRIDES; biến trống thì trả map rỗng.
@@ -220,12 +227,31 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}()
 	cmd.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
 	cmd.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
+	steer := newSteering(job.CLI, func(res SteerResult) {
+		if res.SteerID != "" {
+			_ = emit(sink, Event{Type: "steer_result", RunID: job.RunID, Attempt: job.Attempt, Steer: &res})
+		}
+	})
+	// Chạy trước khi defer gửi run_result: chỉ dẫn tới lúc verifying vẫn được báo là chưa áp dụng, sau đó thì thôi.
+	defer steer.shutdown()
+	var stdin io.WriteCloser
+	if cmd.input == InputStreamJSON {
+		if stdin, err = cmd.StdinPipe(); err != nil {
+			return err
+		}
+		cmd.Stdout = io.MultiWriter(cmd.Stdout, steer)
+	}
 	// Process con của CLI chạy nền có thể giữ pipe mãi; chỉ chờ log thêm chừng này sau khi CLI thoát.
 	cmd.WaitDelay = r.grace()
 	if err := startProcess(cmd.Cmd); err != nil {
 		return err
 	}
+	if stdin != nil {
+		steer.attach(stdin, job.Prompt)
+	}
+	steer.listen(job.Steers)
 	waitErr := waitProcess(runCtx, cmd.Cmd, r.grace)
+	steer.finish()
 	if errors.Is(waitErr, exec.ErrWaitDelay) {
 		// CLI đã thoát thành công, chỉ là process con còn giữ pipe: không coi là lỗi của run.
 		waitErr = nil
@@ -351,6 +377,8 @@ func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
 type cliExecCmd struct {
 	*exec.Cmd
 	cleanup func()
+	// input là Command.Input: InputStreamJSON thì runner gửi prompt và chỉ dẫn qua stdin.
+	input string
 }
 
 func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
@@ -370,14 +398,15 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if err != nil {
 				return nil, err
 			}
-			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			// Prompt đi qua stdin (stream-json) để còn gửi thêm chỉ dẫn khi agent đang chạy; xem steering.
+			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
 			}
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
-			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
+			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }, input: InputStreamJSON}, nil
 		case "codex":
 			url := mcpURL(j.Env)
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
@@ -401,7 +430,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			configured.Args[i] = strings.ReplaceAll(configured.Args[i], "{{prompt}}", j.Prompt)
 		}
 	}
-	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...)}, nil
+	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...), input: configured.Input}, nil
 }
 
 func claudeMCPConfig(env map[string]string) (string, error) {

@@ -105,6 +105,11 @@ export const runEventView = z.object({
   attempt: z.number().int(),
   /** seq của worker; null với sự kiện do hub ghi (chuyển trạng thái). */
   seq: z.number().int().nullable(),
+  /**
+   * Chỉ dẫn thêm là sự kiện `steer` (`input`, `by`, `sent`: đã gửi tới máy; `delivered` luôn false vì bảng chỉ thêm).
+   * Đã vào agent hay chưa nằm ở sự kiện `steer_result` sau đó, có `steerId` bằng `id` của sự kiện `steer`, `applied`
+   * và `reason`. Không có `steer_result` là worker chưa trả lời (worker cũ, run đã xong): coi như chưa áp dụng.
+   */
   type: z.string(),
   data: z.record(z.string(), z.unknown()),
   createdAt: z.iso.datetime(),

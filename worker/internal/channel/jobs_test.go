@@ -257,3 +257,48 @@ func TestCostEventCarriesUsage(t *testing.T) {
 		t.Fatalf("turns = %v, %v", v, ok)
 	}
 }
+
+// Chỉ dẫn chỉ tới run đang chạy đúng lần thử; run không có trên máy (đã xong, chưa nhận lease) thì bỏ và ghi log.
+func TestSteerReachesOnlyMatchingRun(t *testing.T) {
+	var logs strings.Builder
+	j := testJobs(t, 1)
+	j.log = slog.New(slog.NewTextHandler(&logs, nil))
+	run := &activeRun{runID: "run-1", attempt: 2, cancel: func() {}, steers: make(chan runner.Steer, steerBuffer)}
+	j.active["run-1"] = run
+
+	j.steer(&Steer{RunID: "run-x", SteerID: "1", Input: "a"})
+	j.steer(&Steer{RunID: "run-1", Attempt: 1, SteerID: "2", Input: "b"})
+	j.steer(&Steer{RunID: "run-1", Attempt: 2, SteerID: "3", Input: "c"})
+	// Hub cũ không gửi attempt.
+	j.steer(&Steer{RunID: "run-1", Input: "d"})
+	close(run.steers)
+	var got []runner.Steer
+	for s := range run.steers {
+		got = append(got, s)
+	}
+	if len(got) != 2 || got[0] != (runner.Steer{ID: "3", Input: "c"}) || got[1] != (runner.Steer{Input: "d"}) {
+		t.Fatalf("run nhận %+v", got)
+	}
+	for _, want := range []string{"Bỏ chỉ dẫn cho run không chạy trên máy", "run=run-x", "Bỏ chỉ dẫn của lần thử khác"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Fatalf("log thiếu %q:\n%s", want, logs.String())
+		}
+	}
+}
+
+func TestSteerResultEventCarriesOutcome(t *testing.T) {
+	j := testJobs(t, 1)
+	sink, err := j.newSink(&activeRun{runID: "run-1", attempt: 1, cancel: func() {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []any
+	sink.send = func(v any) error { sent = append(sent, v); return nil }
+	if err := sink.Emit(runner.Event{Type: "steer_result", RunID: "run-1", Attempt: 1, Steer: &runner.SteerResult{SteerID: "42", Reason: "CLI codex chưa nhận chỉ dẫn giữa chừng"}}); err != nil {
+		t.Fatal(err)
+	}
+	ev, ok := sent[0].(RunEvent)
+	if !ok || ev.Event != "steer_result" || string(ev.Data) != `{"steerId":"42","applied":false,"reason":"CLI codex chưa nhận chỉ dẫn giữa chừng"}` {
+		t.Fatalf("gói = %#v (%s)", sent[0], ev.Data)
+	}
+}
