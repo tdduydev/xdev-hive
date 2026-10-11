@@ -135,6 +135,7 @@ describe("vào hàng và bỏ khỏi hàng", () => {
       state: "queued",
       position: 1,
       prUrl: null,
+      ciState: null,
       enqueuedBy: org.user("tmember"),
     });
     expect((await enqueue(p, n, "tadmin")).id).toBe(e.id);
@@ -252,16 +253,20 @@ describe("xử lý hàng", () => {
     const sha = provider.setPull(p.ref, n, {}).headSha;
     await enqueue(p, n);
     expect(await step(p)).toBe("wait");
-    expect(await entry(p, n)).toMatchObject({ state: "waiting", note: expect.stringContaining("Chờ CI") });
+    expect(await entry(p, n)).toMatchObject({
+      state: "waiting",
+      ciState: "none",
+      note: expect.stringContaining("Chờ CI"),
+    });
     provider.setChecks(p.ref, sha, "pending");
     expect(await step(p)).toBe("wait");
-    expect(await entry(p, n)).toMatchObject({ state: "waiting", note: "Chờ CI." });
+    expect(await entry(p, n)).toMatchObject({ state: "waiting", ciState: "pending", note: "Chờ CI." });
     const since = (await admin.query("select waiting_since from hive.merge_queue_entries where pr_number = $1", [n]))
       .rows;
     expect(since.some((r) => r.waiting_since !== null)).toBe(true);
     provider.setChecks(p.ref, sha, "success");
     expect(await step(p)).toBe("next");
-    expect(await entry(p, n)).toMatchObject({ state: "merged" });
+    expect(await entry(p, n)).toMatchObject({ state: "merged", ciState: "success" });
   });
 
   it("CI đỏ → failed, có thông báo merge.failed kèm link PR; hàng đi tiếp", async () => {
@@ -273,7 +278,7 @@ describe("xử lý hàng", () => {
     await enqueue(p, ok);
     expect(await step(p)).toBe("next");
     const failed = await entry(p, red);
-    expect(failed).toMatchObject({ state: "failed", note: "CI không đạt.", position: null });
+    expect(failed).toMatchObject({ state: "failed", ciState: "failure", note: "CI không đạt.", position: null });
     const [note] = await notes(p);
     expect(note).toMatchObject({
       event: "merge.failed",
@@ -283,6 +288,24 @@ describe("xử lý hàng", () => {
     expect(note?.body).toContain("CI không đạt.");
     expect(await step(p)).toBe("next");
     expect(await entry(p, ok)).toMatchObject({ state: "merged" });
+  });
+
+  it("clears the CI snapshot when a new head is waiting for a branch update", async () => {
+    const p = await newProject(settings({ requireCi: true }));
+    const n = await openPR(p, "ai/ci-snapshot");
+    const oldSha = provider.setPull(p.ref, n, {}).headSha;
+    provider.setChecks(p.ref, oldSha, "pending");
+    await enqueue(p, n);
+    expect(await step(p)).toBe("wait");
+    expect(await entry(p, n)).toMatchObject({ ciState: "pending", headSha: oldSha });
+
+    provider.setPull(p.ref, n, { headSha: "updated-head", mergeable: "behind" });
+    expect(await step(p)).toBe("wait");
+    expect(await entry(p, n)).toMatchObject({ state: "updating", ciState: null, headSha: "updated-head" });
+    const fresh = provider.setPull(p.ref, n, {}).headSha;
+    provider.setChecks(p.ref, fresh, "success");
+    expect(await step(p)).toBe("next");
+    expect(await entry(p, n)).toMatchObject({ state: "merged", ciState: "success", headSha: fresh });
   });
 
   it("xung đột với nhánh chính → failed", async () => {
