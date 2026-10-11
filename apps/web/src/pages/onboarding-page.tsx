@@ -49,7 +49,7 @@ function Steps({ current }: { current: number }) {
           <span
             className={cx(
               "grid size-5.5 place-items-center rounded-full border text-2xs font-semibold",
-              i === current && "border-accent bg-accent text-white",
+              i === current && "border-accent bg-accent text-on-accent",
               i < current && "border-transparent bg-ok-bg text-ok",
               i > current && "border-line-strong",
             )}
@@ -66,7 +66,7 @@ function Steps({ current }: { current: number }) {
 function Heading({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div>
-      <h1 className="flex items-center gap-2 text-4xl font-bold text-ink">{title}</h1>
+      <h1 className="flex items-center gap-2 font-display text-4xl font-semibold text-ink">{title}</h1>
       <p className="mt-1 text-muted">{children}</p>
     </div>
   );

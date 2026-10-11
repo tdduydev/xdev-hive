@@ -31,8 +31,8 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
       <Menu.Trigger className="mb-2.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-line p-2 text-left hover:bg-subtle data-popup-open:bg-subtle">
         <span
           className={cx(
-            "grid size-7 shrink-0 place-items-center rounded-md text-label font-semibold text-white",
-            current ? "bg-accent" : "bg-faint",
+            "grid size-7 shrink-0 place-items-center rounded-md text-label font-semibold text-on-accent",
+            current ? "bg-accent" : "bg-muted",
           )}
         >
           {current ? orgInitial(current.name) : "?"}
@@ -60,7 +60,7 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
                     value={org.id}
                     className={cx(menuItem, "data-checked:font-medium data-checked:text-sel-fg")}
                   >
-                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-accent text-xs font-semibold text-white">
+                    <span className="grid size-6 shrink-0 place-items-center rounded-md bg-accent text-xs font-semibold text-on-accent">
                       {orgInitial(org.name)}
                     </span>
                     <span className="min-w-0">

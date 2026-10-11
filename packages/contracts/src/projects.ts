@@ -105,6 +105,19 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+/**
+ * Trần chi phí của dự án. Mỗi trường bỏ trống là không giới hạn. Worker dừng run vượt trần như khi huỷ; hub từ chối
+ * giao thêm run cho task đã tiêu hết perTaskUsd. Codex không báo USD nên trần USD chỉ có tác dụng với Claude; dùng
+ * perRunTokens để giới hạn CLI khác.
+ */
+export const projectBudget = z.object({
+  perRunUsd: z.number().positive().max(100_000).optional(),
+  perTaskUsd: z.number().positive().max(100_000).optional(),
+  maxTurns: z.number().int().min(1).max(10_000).optional(),
+  /** Token input + output + ghi cache của một run (không tính đọc cache). */
+  perRunTokens: z.number().int().min(1).max(1_000_000_000).optional(),
+});
+export type ProjectBudget = z.output<typeof projectBudget>;
 export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type MergeMethod = z.output<typeof mergeMethod>;
 
@@ -140,6 +153,8 @@ export const projectSettings = z.object({
    * Không đặt mặc định để settings đã lưu trước đó vẫn hợp lệ.
    */
   defaultCli: cli.nullable().optional(),
+  /** Trần chi phí; không có là không giới hạn (docs/decisions.md: mặc định chỉ theo dõi chi phí). */
+  budget: projectBudget.optional(),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
 

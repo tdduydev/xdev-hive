@@ -27,7 +27,7 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-110 gap-4 p-7">
         <Brand />
-        <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">{title}</h1>
+        <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight text-ink">{title}</h1>
         {children}
       </Card>
     </main>
@@ -294,7 +294,7 @@ function SignUpForInvite({
           {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản và vào tổ chức"}
         </Button>
       </form>
-      <div className="flex items-center gap-2.5 text-xs text-faint before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+      <div className="flex items-center gap-2.5 text-xs text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
         hoặc
       </div>
       <div className="grid gap-1.5">

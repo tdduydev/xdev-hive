@@ -8,7 +8,7 @@ import {
   registerFleetOfflineWorker,
   registerRunHandlers,
 } from "./modules/fleet/index.ts";
-import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
+import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
 import { notify, notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
@@ -56,7 +56,14 @@ const auth =
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
-else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp.");
+else {
+  const mode = mcpMode(config.publicUrl ?? "", config.mcpAllowHttp ?? false);
+  if (mode === "run") console.warn("MCP qua http chỉ cho agent trong run, chỉ dùng trong mạng tin cậy.");
+  else if (mode === "off")
+    console.warn(
+      "HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp (bật HIVE_MCP_ALLOW_HTTP=1 để cho agent trong run dùng qua http).",
+    );
+}
 
 jobs = config.jobsDatabaseUrl
   ? createJobs({
