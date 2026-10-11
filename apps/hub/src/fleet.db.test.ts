@@ -47,13 +47,13 @@ afterAll(async () => {
 const quietLogger = { info: () => {}, warn: () => {}, error: () => {} };
 
 /** Seed mã đăng ký thẳng bằng superuser: luồng tạo mã của admin đội đã có test riêng ở module fleet. */
-async function registrationToken(expiresIn = "1 hour"): Promise<string> {
+async function registrationToken(expiresIn = "1 hour", kind: "worker" | "host" = "worker"): Promise<string> {
   const token = `hwr_${randomBytes(32).toString("base64url")}`;
   const hash = createHash("sha256").update(token).digest("hex");
   await admin.query(
-    `insert into hive.registration_tokens (org_id, team_id, token_hash, expires_at, created_by)
-     values ($1, $2, $3, now() + $4::interval, 'u')`,
-    [orgId, teamId, hash, expiresIn],
+    `insert into hive.registration_tokens (org_id, team_id, token_hash, expires_at, created_by, kind)
+     values ($1, $2, $3, now() + $4::interval, 'u', $5)`,
+    [orgId, teamId, hash, expiresIn, kind],
   );
   return token;
 }
@@ -66,9 +66,9 @@ function postRegister(body: unknown) {
   });
 }
 
-async function registerMachine(name: string) {
+async function registerMachine(name: string, kind: "worker" | "host" = "worker") {
   const res = await postRegister({
-    registrationToken: await registrationToken(),
+    registrationToken: await registrationToken("1 hour", kind),
     machineId: name,
     os: "darwin",
     version: "0.2.0",
@@ -282,4 +282,25 @@ describe("WSS /ws/worker", () => {
     expect((await w.closed).code).toBe(CLOSE.revoked);
     expect((await machineRow(m.id)).status).toBe("revoked");
   });
+});
+
+it("accepts only the runner mode authorized by the registration token", async () => {
+  const dev = await registerMachine(`dev-mode-${tag}`);
+  const fakeHost = new Worker(dev.machineToken);
+  await fakeHost.opened();
+  fakeHost.hello(dev.machineId, { runnerMode: "host" });
+  expect((await fakeHost.closed).code).toBe(CLOSE.machineMismatch);
+  expect((await machineRow(dev.id)).status).toBe("offline");
+  const host = await registerMachine(`host-mode-${tag}`, "host");
+  const wrongMode = new Worker(host.machineToken);
+  await wrongMode.opened();
+  wrongMode.hello(host.machineId);
+  expect((await wrongMode.closed).code).toBe(CLOSE.machineMismatch);
+  const correct = new Worker(host.machineToken);
+  await correct.opened();
+  correct.hello(host.machineId, { runnerMode: "host", cpuCount: 8, memoryMB: 16384 });
+  expect((await correct.next()).type).toBe("welcome");
+  expect((await machineRow(host.id)).status).toBe("online");
+  correct.ws.close();
+  await correct.closed;
 });

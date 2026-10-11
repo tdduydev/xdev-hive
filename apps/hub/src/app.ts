@@ -19,6 +19,7 @@ import {
   registerMcpTools as runsMcpTools,
   runsRouter,
 } from "./modules/runs/index.ts";
+import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
@@ -79,6 +80,7 @@ export function createApp({
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
+    sandbox: sandboxRouter({ auth, pool }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
