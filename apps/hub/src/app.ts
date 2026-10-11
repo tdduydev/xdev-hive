@@ -8,8 +8,10 @@ import { catalogRouter } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, meRouter } from "./modules/identity/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
+import { RunNotifier, type RunsEngine, runStreamHandler, runsRouter } from "./modules/runs/index.ts";
 import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
+import { tasksRouter } from "./modules/tasks/index.ts";
 import { tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
@@ -24,9 +26,22 @@ export interface AppDeps {
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
   providerFactory?: ProviderFactory | undefined;
+  /** Lõi giao run; không có thì xem được run nhưng không giao hay huỷ được (thiếu HIVE_AUTH_SECRET). */
+  runs?: RunsEngine | undefined;
+  /** Kết nối LISTEN cho SSE của run; bỏ trống thì tự tạo từ pool. */
+  runNotifier?: RunNotifier | undefined;
 }
 
-export function createApp({ config, auth, pool, jobs, providerFactory, webDist = process.env.HIVE_WEB_DIST }: AppDeps) {
+export function createApp({
+  config,
+  auth,
+  pool,
+  jobs,
+  providerFactory,
+  runs,
+  runNotifier,
+  webDist = process.env.HIVE_WEB_DIST,
+}: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
   const shared = {
     auth,
@@ -41,6 +56,8 @@ export function createApp({ config, auth, pool, jobs, providerFactory, webDist =
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
+    runs: runsRouter({ auth, pool, engine: runs }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -48,6 +65,9 @@ export function createApp({ config, auth, pool, jobs, providerFactory, webDist =
   const app = new Hono();
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
+  const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
+  app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",

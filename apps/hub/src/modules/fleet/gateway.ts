@@ -19,6 +19,31 @@ export const CLOSE = {
 } as const;
 
 type Heartbeat = Extract<WorkerToHub, { type: "heartbeat" }>;
+type Hello = Extract<WorkerToHub, { type: "hello" }>;
+export type RunMessage = Exclude<WorkerToHub, { type: "hello" | "heartbeat" }>;
+
+/** Xử lý gói của run. Module runs đăng ký qua registerRunHandlers; fleet không import runs. */
+export interface RunHandlers {
+  /** Máy vừa qua bước hello (online, có slot trống): cơ hội giao run đang chờ. */
+  onHello?: (machine: AuthedMachine, msg: Hello) => Promise<void>;
+  /** Gia hạn lease và lấy lệnh huỷ cho heartbeat. */
+  onHeartbeat?: (machine: AuthedMachine, msg: Heartbeat) => Promise<{ renewed: string[]; cancel: string[] }>;
+  /** Gói của run (job_accept, run_event, log_chunk…). */
+  onMessage?: (machine: AuthedMachine, msg: RunMessage) => Promise<void>;
+}
+
+let registered: RunHandlers = {};
+
+/**
+ * Đăng ký xử lý gói của run cho mọi gateway trong tiến trình. Trả hàm gỡ đăng ký (dùng trong test). Option truyền
+ * thẳng vào attachWorkerGateway thắng handler đăng ký ở đây.
+ */
+export function registerRunHandlers(handlers: RunHandlers): () => void {
+  registered = handlers;
+  return () => {
+    if (registered === handlers) registered = {};
+  };
+}
 
 export interface GatewayOptions {
   /** Pool của role hive_app. */
@@ -27,12 +52,13 @@ export interface GatewayOptions {
   /** Thời gian chờ gói hello sau khi nâng cấp kết nối. */
   helloTimeoutMs?: number;
   /**
-   * Gia hạn lease và lấy lệnh huỷ cho heartbeat. Module runs gắn vào đây; chưa gắn thì không gia hạn lease nào, vì
-   * hub chưa giao run nào.
+   * Gia hạn lease và lấy lệnh huỷ cho heartbeat. Bỏ trống thì dùng handler đăng ký qua registerRunHandlers; không có
+   * handler nào thì không gia hạn lease nào, vì hub chưa giao run nào.
    */
-  onHeartbeat?: (machine: AuthedMachine, msg: Heartbeat) => Promise<{ renewed: string[]; cancel: string[] }>;
-  /** Gói của run (job_accept, run_event, log_chunk…). Module runs xử lý; chưa gắn thì bỏ qua. */
-  onMessage?: (machine: AuthedMachine, msg: Exclude<WorkerToHub, { type: "hello" | "heartbeat" }>) => Promise<void>;
+  onHeartbeat?: RunHandlers["onHeartbeat"];
+  /** Gói của run (job_accept, run_event, log_chunk…). Không có handler thì bỏ qua. */
+  onMessage?: RunHandlers["onMessage"];
+  onHello?: RunHandlers["onHello"];
   logger?: Pick<Console, "info" | "warn" | "error">;
 }
 
@@ -103,7 +129,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         registerConnection(machine.id, ws);
         sendToMachine(machine.id, { type: "welcome", sessionId: session, heartbeatSec });
         log.info(`Máy ${machine.name} (${machine.id}) đã kết nối, phiên ${session}`);
-        return touch();
+        touch();
+        await (opts.onHello ?? registered.onHello)?.(machine, msg);
+        return;
       }
       touch();
       switch (msg.type) {
@@ -111,12 +139,13 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
         case "heartbeat": {
           if (!(await markOnline(opts.pool, machine))) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
-          const { renewed, cancel } = (await opts.onHeartbeat?.(machine, msg)) ?? { renewed: [], cancel: [] };
+          const onHeartbeat = opts.onHeartbeat ?? registered.onHeartbeat;
+          const { renewed, cancel } = (await onHeartbeat?.(machine, msg)) ?? { renewed: [], cancel: [] };
           sendToMachine(machine.id, { type: "heartbeat_ack", renewed, cancel });
           return;
         }
         default:
-          if (opts.onMessage) await opts.onMessage(machine, msg);
+          await (opts.onMessage ?? registered.onMessage)?.(machine, msg);
       }
     };
 
