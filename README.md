@@ -48,6 +48,10 @@ HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <use
 - Lần sau, script giữ nguyên secret và chỉ thêm biến mới còn thiếu. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
   `HIVE_POSTGRES_IMAGE`, `HIVE_NODE_IMAGE` đặt theo tham số của lệnh.
 - `HIVE_BIND=0.0.0.0` cho máy chủ LAN không có HTTPS. Khi đó cổng `/mcp` tự tắt vì `HIVE_PUBLIC_URL` không phải https.
+- Muốn agent trong run vẫn gọi `task_update`, `memory_search` qua http trong mạng tin cậy, đặt `HIVE_MCP_ALLOW_HTTP=1`
+  (mặc định tắt). Khi đó `/mcp` chỉ nhận run token của agent: token OAuth hay request không có run token bị 401, còn
+  `/.well-known` và đăng nhập OAuth cho người dùng vẫn chỉ bật khi https. Run token đi qua http trần, nên chỉ bật cờ này
+  khi mạng giữa máy chủ và máy chạy worker là mạng tin cậy. Hub ghi một dòng cảnh báo lúc khởi động.
   Dùng HTTPS thì để `HIVE_BIND` mặc định và thêm `--profile https` (Caddy).
 - User không thuộc nhóm docker thì đặt `HIVE_REMOTE_DOCKER="sudo docker"`.
 

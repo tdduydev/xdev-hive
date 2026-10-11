@@ -6,7 +6,9 @@ export {
   createAuth,
   MCP_CONSENT_PAGE,
   MCP_LOGIN_PAGE,
+  type McpMode,
   mcpEnabled,
+  mcpMode,
   mcpResource,
   type OAuthApp,
 } from "./auth.ts";
