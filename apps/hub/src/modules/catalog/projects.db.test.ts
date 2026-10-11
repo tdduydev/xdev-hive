@@ -354,10 +354,14 @@ describe("saga khởi tạo", () => {
     expect(notes[0].title).toContain("dừng ở bước protect-branch");
     expect(notes[0].body).toContain("không đủ quyền");
     expect(notes[0].link).toMatch(/^https:\/\/hive\.example\.com\/projects\//);
-
     const view = await as("tadmin", (tx) => getProvision(tx, deps, org.user("tadmin"), id));
     const protect = view.steps.find((s) => s.kind === "protect-branch");
     const done = view.steps.find((s) => s.kind === "create-repo");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event, link from hive.inbox_items where org_id = $1 and event_key like $2",
+      [org.orgId, `${protect?.id}:%`],
+    );
+    expect(inbox).toEqual([{ user_id: org.user("tadmin"), event: "project.provision_failed", link: notes[0].link }]);
     expect(protect?.state).toBe("failed");
 
     expect(

@@ -3,6 +3,7 @@ export { findSystem, type SystemRef } from "./lookup.ts";
 export { registerMcpTools } from "./mcp-tools.ts";
 export { orphanUsersQueue, purgeOrphanUsers, registerOrphanUsersWorker } from "./orphans.ts";
 export {
+  notificationRecipients,
   type OrgRole,
   orgRoleOf,
   requireOrgRole,

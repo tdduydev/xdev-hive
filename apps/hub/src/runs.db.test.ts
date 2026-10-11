@@ -647,8 +647,14 @@ describe("thông báo cho nhóm quản trị", () => {
       link: `${publicUrl}/tasks/${task.key}`,
     });
     expect(failed.body).toContain("Agent thoát lỗi");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event, link from hive.inbox_items where org_id = $1 and event_key = $2",
+      [org.orgId, `${run.id}:1:failed`],
+    );
+    expect(inbox).toEqual([{ user_id: devUserId, event: "run.failed", link: `${publicUrl}/tasks/${task.key}` }]);
 
     const lost = await newTask("Máy mất giữa chừng");
+    await admin.query("update hive.tasks set created_by = $1 where id = $2", [org.user("tmember"), lost.id]);
     const run2 = await startRun(lost.id);
     await admin.query("update hive.runs set max_attempts = 1 where id = $1", [run2.id]);
     await w.next("job_offer", (o) => o.runId === run2.id);
@@ -661,6 +667,16 @@ describe("thông báo cho nhóm quản trị", () => {
     const [gone] = await notes(lost.key);
     expect(gone).toMatchObject({ event: "run.failed" });
     expect(gone.body).toContain("Mất kết nối với máy");
+    expect(
+      (
+        await admin.query("select user_id from hive.inbox_items where org_id = $1 and event_key = $2", [
+          org.orgId,
+          `${run2.id}:1:failed`,
+        ])
+      ).rows
+        .map((r) => r.user_id)
+        .sort(),
+    ).toEqual([devUserId, org.user("tmember")].sort());
     await w.close();
   });
 });

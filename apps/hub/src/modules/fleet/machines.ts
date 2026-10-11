@@ -186,6 +186,7 @@ export async function checkMachineOffline(
       {
         orgId: job.orgId,
         event: "machine.offline",
+        eventKey: `${job.machineId}:${job.offlineAt}`,
         title: `Máy ${row.name} mất kết nối hơn ${delayMinutes} phút`,
         body: `Đội ${row.teamName}.`,
         link: `${publicUrl.replace(/\/+$/, "")}/admin/machines`,
