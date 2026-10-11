@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { fleetContract } from "./fleet.ts";
 import { tenancyContract } from "./tenancy.ts";
 
 export * from "./tenancy.ts";
@@ -37,7 +38,10 @@ export const contract = {
       .errors({ UNAUTHORIZED: { message: "Chưa đăng nhập." } })
       .output(meOutput),
   },
+  ...fleetContract,
   ...tenancyContract,
 };
 
 export type Contract = typeof contract;
+
+export * from "./fleet.ts";

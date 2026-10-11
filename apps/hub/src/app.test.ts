@@ -50,6 +50,13 @@ describe("me khi chưa có đăng nhập", () => {
   });
 });
 
+describe("API máy khi chưa có đăng nhập", () => {
+  it("GET /api/v1/teams/{teamId}/machines trả 401", async () => {
+    const res = await app.request("/api/v1/teams/00000000-0000-4000-8000-000000000000/machines");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("API tổ chức khi chưa có đăng nhập", () => {
   it("GET /api/v1/orgs/mine trả 401 kèm thông báo tiếng Việt", async () => {
     const res = await app.request("/api/v1/orgs/mine");
