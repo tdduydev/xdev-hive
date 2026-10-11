@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
+    "@better-auth/oauth-provider": "^1.7.7",
     "@better-auth/sso": "^1.7.7",
     "@orpc/client": "^1.15.5",
     "@orpc/contract": "^1.15.5",

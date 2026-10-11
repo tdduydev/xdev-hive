@@ -5,6 +5,7 @@ import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect } from "./lib/redirect.ts";
 import { HomePage } from "./pages/home-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
+import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { MembersPage } from "./pages/members-page.tsx";
 import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
@@ -42,6 +43,13 @@ const loginRoute = createRoute({
   path: "/dang-nhap",
   validateSearch: validateLoginSearch,
   component: LoginPage,
+});
+
+/** Trang đồng ý của luồng OAuth cho client MCP; đứng riêng ngoài khung app vì người dùng đến từ CLI. */
+const mcpConsentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dong-y-mcp",
+  component: McpConsentPage,
 });
 
 /** Mọi trang sau đăng nhập cần biết người dùng thuộc tổ chức nào; tải một lần ở đây. */
@@ -108,6 +116,7 @@ const membersRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  mcpConsentRoute,
   sessionRoute.addChildren([
     onboardingRoute,
     appRoute.addChildren([homeRoute, inOrgRoute.addChildren([teamsRoute, membersRoute])]),
