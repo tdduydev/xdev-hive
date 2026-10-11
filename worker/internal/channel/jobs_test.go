@@ -257,3 +257,48 @@ func TestCostEventCarriesUsage(t *testing.T) {
 		t.Fatalf("turns = %v, %v", v, ok)
 	}
 }
+
+func TestSandboxJobSnapshotDecodeAndModeGuard(t *testing.T) {
+	policy := `{"execution":"sandbox","sandbox":{"allowlist":["api.openai.com:443"],"image":{"baseImage":"node:24","setupScriptHash":"` + strings.Repeat("a", 64) + `"}},"cli":"codex"}`
+	offer := &JobOffer{RunID: "sandbox-run", Attempt: 1, Spec: json.RawMessage(policy)}
+	job, err := decodeJob(offer, Lease{}, "http://hub.test", "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Execution != "sandbox" || job.EnvironmentImage != "node:24" || job.SandboxPolicy == nil || len(job.SandboxPolicy.Allowlist) != 1 {
+		t.Fatalf("snapshot chưa tới runner: %+v", job)
+	}
+	dev := testJobs(t, 1)
+	dev.onOffer(offer)
+	if len(dev.offers) != 0 {
+		t.Fatal("worker máy dev không được nhận sandbox")
+	}
+	host := testJobs(t, 1)
+	host.cfg.Sandbox = &runner.SandboxConfig{}
+	host.onOffer(offer)
+	if len(host.offers) != 1 {
+		t.Fatal("host phải nhận sandbox có snapshot")
+	}
+	host.onOffer(&JobOffer{RunID: "ordinary", Attempt: 1, Spec: json.RawMessage(`{"execution":"worker","cli":"codex"}`)})
+	if _, ok := host.offers["ordinary"]; ok {
+		t.Fatal("host không được nhận job máy dev")
+	}
+}
+
+func TestSandboxJobRejectsMissingOrInvalidPolicy(t *testing.T) {
+	for _, spec := range []string{
+		`{"execution":"sandbox","cli":"codex"}`,
+		`{"execution":"other","cli":"codex"}`,
+		`{"execution":"sandbox","sandbox":{"allowlist":["a.com\n127.0.0.1"],"image":{"baseImage":"node:24","setupScriptHash":"` + strings.Repeat("a", 64) + `"}},"cli":"codex"}`,
+	} {
+		if _, err := decodeJob(&JobOffer{Spec: json.RawMessage(spec)}, Lease{}, "", ""); err == nil {
+			t.Fatalf("phải từ chối %s", spec)
+		}
+		j := testJobs(t, 1)
+		j.cfg.Sandbox = &runner.SandboxConfig{}
+		j.onOffer(&JobOffer{RunID: "run", Spec: json.RawMessage(spec)})
+		if len(j.offers) != 0 {
+			t.Fatal("không nhận job có snapshot sai")
+		}
+	}
+}

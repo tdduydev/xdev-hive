@@ -22,6 +22,8 @@ import (
 const KindReview = "review"
 
 type Job struct {
+	Execution                                       string
+	SandboxPolicy                                   *SandboxJobConfig
 	RunID                                           string
 	Kind                                            string // "code" (mặc định) hoặc KindReview
 	Budget                                          Budget
@@ -113,6 +115,12 @@ func (r Runner) grace() time.Duration {
 func Run(ctx context.Context, job Job, sink Sink) error { return (Runner{}).Run(ctx, job, sink) }
 
 func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
+	if job.Execution == "sandbox" && (job.SandboxPolicy == nil || r.Sandbox == nil) {
+		return fmt.Errorf("job sandbox thiếu policy hoặc runner host")
+	}
+	if job.SandboxPolicy != nil && job.Execution != "sandbox" || job.Execution == "worker" && r.Sandbox != nil {
+		return fmt.Errorf("loại thực thi job không khớp runner")
+	}
 	if err := validate(job); err != nil {
 		return err
 	}
@@ -189,6 +197,20 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		return err
 	}
 	job.workspace = work
+	if job.SandboxPolicy != nil {
+		config, cleanup, err := r.prepareSandboxPolicy(ctx, job.SandboxPolicy)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		r.Sandbox = &config
+		defer r.removeSandbox(context.Background(), job.RunID)
+		job.EnvironmentImage = job.SandboxPolicy.Image.BaseImage
+		job.SetupScript, err = verifySandboxSetup(work, job.SandboxPolicy.Image.SetupScriptHash)
+		if err != nil {
+			return err
+		}
+	}
 	if job.SetupScript != "" {
 		var err error
 		if r.Sandbox != nil {
