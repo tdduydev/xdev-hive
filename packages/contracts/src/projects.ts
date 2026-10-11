@@ -89,6 +89,21 @@ export const outcomeCheck = z.discriminatedUnion("check", [
 ]);
 export type OutcomeCheck = z.output<typeof outcomeCheck>;
 
+export const issueIntakeSettings = z.object({
+  enabled: z.boolean(),
+  /** Nhãn GitHub/GitLab có thể chứa khoảng trắng (`good first issue`). */
+  label: z.string().trim().min(1).max(100),
+  /** Tên bot được nhắc trong bình luận, không có `@`. */
+  mention: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,99}$/, "Tên chỉ gồm chữ, số, dấu chấm, gạch dưới, gạch ngang"),
+});
+export type IssueIntake = z.output<typeof issueIntakeSettings>;
+
+/** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
+export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
+
 export const projectSettings = z.object({
   merge: z.object({
     /** `review`: cần người duyệt. `auto`: tự merge khi đạt chính sách kết quả và CI. */
@@ -107,6 +122,11 @@ export const projectSettings = z.object({
     leaderChat: z.boolean(),
     sandbox: z.boolean(),
   }),
+  /**
+   * Giao việc từ issue GitHub/GitLab: issue gắn `label` thành task, bình luận nhắc `@mention` gửi tới bot. Có mặc
+   * định vì dự án tạo trước khi có mục này không có nó trong settings đã lưu.
+   */
+  issueIntake: issueIntakeSettings.default(() => ({ ...defaultIssueIntake })),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
 
@@ -128,6 +148,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
       },
     },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
+    issueIntake: { ...defaultIssueIntake },
   };
 }
 

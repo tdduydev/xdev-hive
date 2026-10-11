@@ -42,3 +42,34 @@ export const scmConnections = hive
     ],
   )
   .enableRLS();
+
+export const webhookDeliveryStatus = hive.enum("webhook_delivery_status", ["queued", "processed", "ignored", "failed"]);
+
+/**
+ * Mỗi lần GitHub/GitLab gọi webhook của một dự án. Mã giao nhận duy nhất theo nhà cung cấp: nhà cung cấp gửi lại
+ * (timeout, bấm "Redeliver") thì INSERT đụng ràng buộc và request được trả 200 mà không xử lý lần nữa. Khoá ngoại tới
+ * projects và orgs nằm trong migration viết tay, vì schema của module không được import bảng của module khác.
+ */
+export const webhookDeliveries = hive
+  .table(
+    "webhook_deliveries",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      projectId: uuid("project_id").notNull(),
+      provider: scmKind("provider").notNull(),
+      deliveryId: text("delivery_id").notNull(),
+      /** Tên sự kiện gốc kèm action, ví dụ `pull_request.closed`, `merge_request.merge`. */
+      event: text("event").notNull(),
+      receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+      processedAt: timestamp("processed_at", { withTimezone: true }),
+      status: webhookDeliveryStatus("status").notNull(),
+      error: text("error"),
+    },
+    (t) => [
+      unique("webhook_deliveries_provider_delivery").on(t.provider, t.deliveryId),
+      index("webhook_deliveries_org_project").on(t.orgId, t.projectId, t.receivedAt),
+      pgPolicy("webhook_deliveries_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+    ],
+  )
+  .enableRLS();
