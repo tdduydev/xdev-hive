@@ -15334,6 +15334,7 @@
                           "enum": [
                             "run.failed",
                             "run.needs_review",
+                            "plan.awaiting_approval",
                             "project.provision_failed",
                             "machine.offline",
                             "member.pending",
@@ -15726,11 +15727,12 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 6,
+                    "maxItems": 7,
                     "items": {
                       "enum": [
                         "run.failed",
                         "run.needs_review",
+                        "plan.awaiting_approval",
                         "project.provision_failed",
                         "machine.offline",
                         "member.pending",
@@ -15862,6 +15864,7 @@
                         "enum": [
                           "run.failed",
                           "run.needs_review",
+                          "plan.awaiting_approval",
                           "project.provision_failed",
                           "machine.offline",
                           "member.pending",
@@ -16266,11 +16269,12 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 6,
+                    "maxItems": 7,
                     "items": {
                       "enum": [
                         "run.failed",
                         "run.needs_review",
+                        "plan.awaiting_approval",
                         "project.provision_failed",
                         "machine.offline",
                         "member.pending",
@@ -16396,6 +16400,7 @@
                         "enum": [
                           "run.failed",
                           "run.needs_review",
+                          "plan.awaiting_approval",
                           "project.provision_failed",
                           "machine.offline",
                           "member.pending",
@@ -18269,6 +18274,11 @@
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 200
+                                  },
+                                  "plan": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   }
                                 }
                               },
@@ -18284,6 +18294,11 @@
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 200
+                                  },
+                                  "plan": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   }
                                 }
                               },
@@ -18296,6 +18311,11 @@
                                     "maxLength": 200
                                   },
                                   "review": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "plan": {
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 200
@@ -19285,6 +19305,11 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 200
+                                },
+                                "plan": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 }
                               }
                             },
@@ -19300,6 +19325,11 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 200
+                                },
+                                "plan": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
                                 }
                               }
                             },
@@ -19312,6 +19342,11 @@
                                   "maxLength": 200
                                 },
                                 "review": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "plan": {
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 200
@@ -20303,6 +20338,11 @@
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     }
                                   }
                                 },
@@ -20318,6 +20358,11 @@
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     }
                                   }
                                 },
@@ -20330,6 +20375,11 @@
                                       "maxLength": 200
                                     },
                                     "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "plan": {
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
@@ -21474,6 +21524,11 @@
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     }
                                   }
                                 },
@@ -21489,6 +21544,11 @@
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
+                                    },
+                                    "plan": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     }
                                   }
                                 },
@@ -21501,6 +21561,11 @@
                                       "maxLength": 200
                                     },
                                     "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "plan": {
                                       "type": "string",
                                       "minLength": 1,
                                       "maxLength": 200
@@ -24583,6 +24648,11 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 200
+                            },
+                            "plan": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
                             }
                           }
                         },
@@ -24598,6 +24668,11 @@
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 200
+                            },
+                            "plan": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
                             }
                           }
                         },
@@ -24610,6 +24685,11 @@
                               "maxLength": 200
                             },
                             "review": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "plan": {
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 200
@@ -33505,6 +33585,7 @@
                         "todo",
                         "queued",
                         "running",
+                        "awaiting_plan",
                         "review",
                         "done",
                         "cancelled"
@@ -33925,6 +34006,7 @@
                 "todo",
                 "queued",
                 "running",
+                "awaiting_plan",
                 "review",
                 "done",
                 "cancelled"
@@ -33986,6 +34068,7 @@
                           "todo",
                           "queued",
                           "running",
+                          "awaiting_plan",
                           "review",
                           "done",
                           "cancelled"
@@ -34448,6 +34531,7 @@
                         "todo",
                         "queued",
                         "running",
+                        "awaiting_plan",
                         "review",
                         "done",
                         "cancelled"
@@ -34961,6 +35045,7 @@
                         "todo",
                         "queued",
                         "running",
+                        "awaiting_plan",
                         "review",
                         "done",
                         "cancelled"
@@ -35422,6 +35507,7 @@
                         "todo",
                         "queued",
                         "running",
+                        "awaiting_plan",
                         "review",
                         "done",
                         "cancelled"
@@ -35477,6 +35563,3067 @@
                     "createdBy",
                     "createdAt",
                     "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/plan": {
+      "get": {
+        "operationId": "tasks.plans.get",
+        "summary": "Kế hoạch mới nhất của task (plan mode)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "tasks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "taskId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "planRunId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "status": {
+                      "enum": [
+                        "awaiting",
+                        "approved",
+                        "rejected",
+                        "superseded"
+                      ],
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object",
+                      "properties": {
+                        "summary": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 20000,
+                          "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                        },
+                        "steps": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 100,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "title": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              },
+                              "detail": {
+                                "type": "string",
+                                "maxLength": 10000
+                              }
+                            },
+                            "required": [
+                              "title"
+                            ]
+                          },
+                          "description": "Các bước sẽ làm, theo thứ tự."
+                        },
+                        "files": {
+                          "type": "array",
+                          "maxItems": 500,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "path": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 500
+                              },
+                              "change": {
+                                "enum": [
+                                  "add",
+                                  "modify",
+                                  "delete"
+                                ],
+                                "type": "string"
+                              },
+                              "reason": {
+                                "type": "string",
+                                "maxLength": 2000
+                              }
+                            },
+                            "required": [
+                              "path"
+                            ]
+                          },
+                          "default": [],
+                          "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                        },
+                        "risks": {
+                          "type": "array",
+                          "maxItems": 100,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "default": [],
+                          "description": "Rủi ro và cách giảm."
+                        },
+                        "questions": {
+                          "type": "array",
+                          "maxItems": 50,
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 4000
+                          },
+                          "default": [],
+                          "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                        }
+                      },
+                      "required": [
+                        "summary",
+                        "steps"
+                      ]
+                    },
+                    "editedContent": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20000,
+                              "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                            },
+                            "steps": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 100,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "detail": {
+                                    "type": "string",
+                                    "maxLength": 10000
+                                  }
+                                },
+                                "required": [
+                                  "title"
+                                ]
+                              },
+                              "description": "Các bước sẽ làm, theo thứ tự."
+                            },
+                            "files": {
+                              "type": "array",
+                              "maxItems": 500,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "change": {
+                                    "enum": [
+                                      "add",
+                                      "modify",
+                                      "delete"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  }
+                                },
+                                "required": [
+                                  "path"
+                                ]
+                              },
+                              "default": [],
+                              "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                            },
+                            "risks": {
+                              "type": "array",
+                              "maxItems": 100,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Rủi ro và cách giảm."
+                            },
+                            "questions": {
+                              "type": "array",
+                              "maxItems": 50,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                            }
+                          },
+                          "required": [
+                            "summary",
+                            "steps"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedBy": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "taskId",
+                    "runId",
+                    "planRunId",
+                    "revision",
+                    "status",
+                    "content",
+                    "editedContent",
+                    "note",
+                    "decidedBy",
+                    "decidedAt",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/plan/approve": {
+      "post": {
+        "operationId": "tasks.plans.approve",
+        "summary": "Duyệt kế hoạch, có thể kèm bản sửa và ghi chú; run code chạy theo kế hoạch đã duyệt (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "tasks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "planId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 10000
+                  },
+                  "content": {
+                    "type": "object",
+                    "properties": {
+                      "summary": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20000,
+                        "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                      },
+                      "steps": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 100,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "detail": {
+                              "type": "string",
+                              "maxLength": 10000
+                            }
+                          },
+                          "required": [
+                            "title"
+                          ]
+                        },
+                        "description": "Các bước sẽ làm, theo thứ tự."
+                      },
+                      "files": {
+                        "type": "array",
+                        "maxItems": 500,
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "path": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 500
+                            },
+                            "change": {
+                              "enum": [
+                                "add",
+                                "modify",
+                                "delete"
+                              ],
+                              "type": "string"
+                            },
+                            "reason": {
+                              "type": "string",
+                              "maxLength": 2000
+                            }
+                          },
+                          "required": [
+                            "path"
+                          ]
+                        },
+                        "default": [],
+                        "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                      },
+                      "risks": {
+                        "type": "array",
+                        "maxItems": 100,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "default": [],
+                        "description": "Rủi ro và cách giảm."
+                      },
+                      "questions": {
+                        "type": "array",
+                        "maxItems": 50,
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 4000
+                        },
+                        "default": [],
+                        "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                      }
+                    },
+                    "required": [
+                      "summary",
+                      "steps"
+                    ]
+                  }
+                },
+                "required": [
+                  "planId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "taskId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "runId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "planRunId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "status": {
+                          "enum": [
+                            "awaiting",
+                            "approved",
+                            "rejected",
+                            "superseded"
+                          ],
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20000,
+                              "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                            },
+                            "steps": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 100,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "detail": {
+                                    "type": "string",
+                                    "maxLength": 10000
+                                  }
+                                },
+                                "required": [
+                                  "title"
+                                ]
+                              },
+                              "description": "Các bước sẽ làm, theo thứ tự."
+                            },
+                            "files": {
+                              "type": "array",
+                              "maxItems": 500,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "change": {
+                                    "enum": [
+                                      "add",
+                                      "modify",
+                                      "delete"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  }
+                                },
+                                "required": [
+                                  "path"
+                                ]
+                              },
+                              "default": [],
+                              "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                            },
+                            "risks": {
+                              "type": "array",
+                              "maxItems": 100,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Rủi ro và cách giảm."
+                            },
+                            "questions": {
+                              "type": "array",
+                              "maxItems": 50,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                            }
+                          },
+                          "required": [
+                            "summary",
+                            "steps"
+                          ]
+                        },
+                        "editedContent": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "summary": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 20000,
+                                  "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                                },
+                                "steps": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "maxItems": 100,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "title": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 500
+                                      },
+                                      "detail": {
+                                        "type": "string",
+                                        "maxLength": 10000
+                                      }
+                                    },
+                                    "required": [
+                                      "title"
+                                    ]
+                                  },
+                                  "description": "Các bước sẽ làm, theo thứ tự."
+                                },
+                                "files": {
+                                  "type": "array",
+                                  "maxItems": 500,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "path": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 500
+                                      },
+                                      "change": {
+                                        "enum": [
+                                          "add",
+                                          "modify",
+                                          "delete"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "reason": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "path"
+                                    ]
+                                  },
+                                  "default": [],
+                                  "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                                },
+                                "risks": {
+                                  "type": "array",
+                                  "maxItems": 100,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4000
+                                  },
+                                  "default": [],
+                                  "description": "Rủi ro và cách giảm."
+                                },
+                                "questions": {
+                                  "type": "array",
+                                  "maxItems": 50,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4000
+                                  },
+                                  "default": [],
+                                  "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                                }
+                              },
+                              "required": [
+                                "summary",
+                                "steps"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "note": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decidedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decidedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "taskId",
+                        "runId",
+                        "planRunId",
+                        "revision",
+                        "status",
+                        "content",
+                        "editedContent",
+                        "note",
+                        "decidedBy",
+                        "decidedAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "run": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "taskId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "projectId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "teamId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "kind": {
+                          "enum": [
+                            "code",
+                            "review",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        "parentRunId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "enum": [
+                            "queued",
+                            "planning",
+                            "awaiting_plan",
+                            "leased",
+                            "preparing",
+                            "running",
+                            "awaiting_input",
+                            "verifying",
+                            "succeeded",
+                            "no_changes",
+                            "needs_review",
+                            "failed",
+                            "lost",
+                            "cancelling",
+                            "cancelled"
+                          ],
+                          "type": "string"
+                        },
+                        "attempt": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "machineId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cli": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "claude",
+                                "codex",
+                                "gemini"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "model": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "pinnedMachineId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "branch": {
+                          "type": "string"
+                        },
+                        "policySnapshot": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "changes"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "maxFiles": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "deny": {
+                                    "type": "array",
+                                    "maxItems": 50,
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "agentReport"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "command"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "run": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "timeout": {
+                                    "type": "string",
+                                    "pattern": "^\\d+(s|m|h)$",
+                                    "default": "15m"
+                                  }
+                                },
+                                "required": [
+                                  "check",
+                                  "run"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "review"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "by": {
+                                    "enum": [
+                                      "claude",
+                                      "codex",
+                                      "gemini"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "minScore": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10,
+                                    "default": 7
+                                  },
+                                  "when": {
+                                    "type": "object",
+                                    "properties": {
+                                      "minChangedLines": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "paths": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "maxItems": 50,
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "check",
+                                  "by"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "ci"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        "result": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "exit": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "commitCount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "changedFiles": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "checks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string"
+                                      },
+                                      "required": {
+                                        "type": "boolean"
+                                      },
+                                      "passed": {
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "skipped": {
+                                        "type": "boolean"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "check",
+                                      "required",
+                                      "passed",
+                                      "message"
+                                    ]
+                                  }
+                                },
+                                "reasons": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "exit",
+                                "commitCount",
+                                "changedFiles",
+                                "checks",
+                                "reasons"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "headSha": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "prUrl": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "timeoutSec": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cost": {
+                          "type": "object",
+                          "properties": {
+                            "tokensIn": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "tokensOut": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheRead": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheWrite": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "costUsd": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "turns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "tokensIn",
+                            "tokensOut",
+                            "cacheRead",
+                            "cacheWrite",
+                            "costUsd",
+                            "turns"
+                          ]
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "startedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "finishedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "taskId",
+                        "projectId",
+                        "teamId",
+                        "kind",
+                        "parentRunId",
+                        "state",
+                        "attempt",
+                        "maxAttempts",
+                        "machineId",
+                        "cli",
+                        "model",
+                        "pinnedMachineId",
+                        "branch",
+                        "policySnapshot",
+                        "result",
+                        "headSha",
+                        "prUrl",
+                        "timeoutSec",
+                        "cost",
+                        "createdBy",
+                        "createdAt",
+                        "startedAt",
+                        "finishedAt",
+                        "updatedAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "plan",
+                    "run"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tasks/{id}/plan/reject": {
+      "post": {
+        "operationId": "tasks.plans.reject",
+        "summary": "Từ chối kế hoạch kèm lý do; chọn lập lại thì agent lập kế hoạch mới (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "tasks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "planId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 10000
+                  },
+                  "replan": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "planId",
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plan": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "taskId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "runId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "planRunId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "revision": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "status": {
+                          "enum": [
+                            "awaiting",
+                            "approved",
+                            "rejected",
+                            "superseded"
+                          ],
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "object",
+                          "properties": {
+                            "summary": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 20000,
+                              "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                            },
+                            "steps": {
+                              "type": "array",
+                              "minItems": 1,
+                              "maxItems": 100,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "title": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "detail": {
+                                    "type": "string",
+                                    "maxLength": 10000
+                                  }
+                                },
+                                "required": [
+                                  "title"
+                                ]
+                              },
+                              "description": "Các bước sẽ làm, theo thứ tự."
+                            },
+                            "files": {
+                              "type": "array",
+                              "maxItems": 500,
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "path": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "change": {
+                                    "enum": [
+                                      "add",
+                                      "modify",
+                                      "delete"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "reason": {
+                                    "type": "string",
+                                    "maxLength": 2000
+                                  }
+                                },
+                                "required": [
+                                  "path"
+                                ]
+                              },
+                              "default": [],
+                              "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                            },
+                            "risks": {
+                              "type": "array",
+                              "maxItems": 100,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Rủi ro và cách giảm."
+                            },
+                            "questions": {
+                              "type": "array",
+                              "maxItems": 50,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4000
+                              },
+                              "default": [],
+                              "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                            }
+                          },
+                          "required": [
+                            "summary",
+                            "steps"
+                          ]
+                        },
+                        "editedContent": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "summary": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 20000,
+                                  "description": "Tóm tắt cách làm: hiểu yêu cầu ra sao, hướng giải quyết chính."
+                                },
+                                "steps": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "maxItems": 100,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "title": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 500
+                                      },
+                                      "detail": {
+                                        "type": "string",
+                                        "maxLength": 10000
+                                      }
+                                    },
+                                    "required": [
+                                      "title"
+                                    ]
+                                  },
+                                  "description": "Các bước sẽ làm, theo thứ tự."
+                                },
+                                "files": {
+                                  "type": "array",
+                                  "maxItems": 500,
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "path": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 500
+                                      },
+                                      "change": {
+                                        "enum": [
+                                          "add",
+                                          "modify",
+                                          "delete"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "reason": {
+                                        "type": "string",
+                                        "maxLength": 2000
+                                      }
+                                    },
+                                    "required": [
+                                      "path"
+                                    ]
+                                  },
+                                  "default": [],
+                                  "description": "File dự kiến đụng tới: đường dẫn, thêm/sửa/xoá, lý do."
+                                },
+                                "risks": {
+                                  "type": "array",
+                                  "maxItems": 100,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4000
+                                  },
+                                  "default": [],
+                                  "description": "Rủi ro và cách giảm."
+                                },
+                                "questions": {
+                                  "type": "array",
+                                  "maxItems": 50,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4000
+                                  },
+                                  "default": [],
+                                  "description": "Câu hỏi cho người duyệt; trả lời trong ghi chú khi duyệt."
+                                }
+                              },
+                              "required": [
+                                "summary",
+                                "steps"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "note": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decidedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decidedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "taskId",
+                        "runId",
+                        "planRunId",
+                        "revision",
+                        "status",
+                        "content",
+                        "editedContent",
+                        "note",
+                        "decidedBy",
+                        "decidedAt",
+                        "createdAt",
+                        "updatedAt"
+                      ]
+                    },
+                    "run": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "taskId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "projectId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "teamId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "kind": {
+                          "enum": [
+                            "code",
+                            "review",
+                            "plan"
+                          ],
+                          "type": "string"
+                        },
+                        "parentRunId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "enum": [
+                            "queued",
+                            "planning",
+                            "awaiting_plan",
+                            "leased",
+                            "preparing",
+                            "running",
+                            "awaiting_input",
+                            "verifying",
+                            "succeeded",
+                            "no_changes",
+                            "needs_review",
+                            "failed",
+                            "lost",
+                            "cancelling",
+                            "cancelled"
+                          ],
+                          "type": "string"
+                        },
+                        "attempt": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "maxAttempts": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "machineId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cli": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "claude",
+                                "codex",
+                                "gemini"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "model": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "pinnedMachineId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "branch": {
+                          "type": "string"
+                        },
+                        "policySnapshot": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "changes"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "maxFiles": {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991,
+                                    "exclusiveMinimum": 0
+                                  },
+                                  "deny": {
+                                    "type": "array",
+                                    "maxItems": 50,
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "agentReport"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "command"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "run": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  },
+                                  "timeout": {
+                                    "type": "string",
+                                    "pattern": "^\\d+(s|m|h)$",
+                                    "default": "15m"
+                                  }
+                                },
+                                "required": [
+                                  "check",
+                                  "run"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "review"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  },
+                                  "by": {
+                                    "enum": [
+                                      "claude",
+                                      "codex",
+                                      "gemini"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "minScore": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 10,
+                                    "default": 7
+                                  },
+                                  "when": {
+                                    "type": "object",
+                                    "properties": {
+                                      "minChangedLines": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "paths": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "maxItems": 50,
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "check",
+                                  "by"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "check": {
+                                    "const": "ci"
+                                  },
+                                  "required": {
+                                    "type": "boolean",
+                                    "default": true
+                                  }
+                                },
+                                "required": [
+                                  "check"
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        "result": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "exit": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "commitCount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "changedFiles": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "checks": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "check": {
+                                        "type": "string"
+                                      },
+                                      "required": {
+                                        "type": "boolean"
+                                      },
+                                      "passed": {
+                                        "anyOf": [
+                                          {
+                                            "type": "boolean"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "skipped": {
+                                        "type": "boolean"
+                                      },
+                                      "message": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "check",
+                                      "required",
+                                      "passed",
+                                      "message"
+                                    ]
+                                  }
+                                },
+                                "reasons": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "exit",
+                                "commitCount",
+                                "changedFiles",
+                                "checks",
+                                "reasons"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "headSha": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "prUrl": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "timeoutSec": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "cost": {
+                          "type": "object",
+                          "properties": {
+                            "tokensIn": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "tokensOut": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheRead": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheWrite": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "costUsd": {
+                              "anyOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "turns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "tokensIn",
+                            "tokensOut",
+                            "cacheRead",
+                            "cacheWrite",
+                            "costUsd",
+                            "turns"
+                          ]
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "startedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "finishedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "taskId",
+                        "projectId",
+                        "teamId",
+                        "kind",
+                        "parentRunId",
+                        "state",
+                        "attempt",
+                        "maxAttempts",
+                        "machineId",
+                        "cli",
+                        "model",
+                        "pinnedMachineId",
+                        "branch",
+                        "policySnapshot",
+                        "result",
+                        "headSha",
+                        "prUrl",
+                        "timeoutSec",
+                        "cost",
+                        "createdBy",
+                        "createdAt",
+                        "startedAt",
+                        "finishedAt",
+                        "updatedAt"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "plan",
+                    "run"
                   ]
                 }
               }
@@ -35893,7 +39040,8 @@
                     "kind": {
                       "enum": [
                         "code",
-                        "review"
+                        "review",
+                        "plan"
                       ],
                       "type": "string"
                     },
@@ -36747,7 +39895,8 @@
                       "kind": {
                         "enum": [
                           "code",
-                          "review"
+                          "review",
+                          "plan"
                         ],
                         "type": "string"
                       },
@@ -37600,7 +40749,8 @@
                     "kind": {
                       "enum": [
                         "code",
-                        "review"
+                        "review",
+                        "plan"
                       ],
                       "type": "string"
                     },
@@ -38452,7 +41602,8 @@
                     "kind": {
                       "enum": [
                         "code",
-                        "review"
+                        "review",
+                        "plan"
                       ],
                       "type": "string"
                     },

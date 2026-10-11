@@ -225,6 +225,20 @@
       "when": 1791733157317,
       "tag": "0031_wealthy_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791735527719,
+      "tag": "0032_plan_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791735529986,
+      "tag": "0033_plans_force_rls",
+      "breakpoints": true
     }
   ]
 }
