@@ -67,6 +67,7 @@ beforeAll(async () => {
     adminUserId: org.user("admin"),
     masterKey,
     key: `hd-${tag}`,
+    settings: { ...defaultProjectSettings(), models: { claude: { code: "claude-project-model" } } },
   });
   projectId = project.projectId;
   provider = createMemoryProvider("gitlab", ["xdev-team"]);
@@ -331,6 +332,7 @@ describe("run từ đầu tới PR", () => {
       branch: `ai/${task.key}`,
       baseBranch: "main",
       cli: "claude",
+      model: "claude-project-model",
       repoUrl: expect.stringContaining("gitlab.com"),
     });
     w.send({ type: "job_accept", runId: run.id, attempt: 1 });
@@ -424,6 +426,19 @@ describe("run từ đầu tới PR", () => {
     expect(evs.data.filter((e) => e.type === "phase")).toHaveLength(2);
     const lg = await api<Array<{ bytes: string }>>("GET", `/v1/runs/${run.id}/logs`);
     expect(lg.data).toHaveLength(1);
+    await w.close();
+  });
+});
+
+describe("model theo cấu hình dự án", () => {
+  it("đưa model cấu hình vào spec và cho người giao ghi đè", async () => {
+    const m = await seedMachine(`model-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Chọn model");
+    const run = await startRun(task.id, { model: "claude-override-model" });
+    expect(run.model).toBe("claude-override-model");
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({ model: "claude-override-model" });
     await w.close();
   });
 });
