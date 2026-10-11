@@ -14,12 +14,29 @@ import {
   sendToMachine,
 } from "../fleet/index.ts";
 import { ConflictError, type Jobs, type MasterKey, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
-import { isGitProviderError, loadConnection, type ProviderFactory } from "../scm/index.ts";
+import {
+  isGitProviderError,
+  loadConnection,
+  type ProviderFactory,
+  type ScmEventRegistry,
+  scmEvents,
+} from "../scm/index.ts";
 import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
 import { createMcpRunTokens } from "./mcp.ts";
 import { evaluatePolicy, type Outcome } from "./policy.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
-import { hubEvent, lockRun, notifyRun, ON_MACHINE, RUNS_CHANNEL, type RunRow, toRun, transition } from "./state.ts";
+import { registerScmHandlers } from "./scm-events.ts";
+import {
+  hubEvent,
+  lockRun,
+  notifyRun,
+  ON_MACHINE,
+  projectReady,
+  RUNS_CHANNEL,
+  type RunRow,
+  toRun,
+  transition,
+} from "./state.ts";
 import { runTokenKey, signRunToken } from "./token.ts";
 
 /** Hẹn giờ của run (hết hạn đề nghị job, kiểm lease, chạy lại verifying) đi qua một queue pg-boss. */
@@ -74,6 +91,16 @@ const pgError = (e: unknown) => ((e as { cause?: unknown }).cause ?? e) as { cod
 
 const runNotFound = () => new NotFoundError("RUN_NOT_FOUND", "Không tìm thấy run trong tổ chức.");
 
+/** Chỉ dẫn đã ghi cho run (mọi lần thử): run giao lại sau khi mất máy vẫn mang theo chỉ dẫn người review đã gửi. */
+async function instructionsOf(tx: Tx, runId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ data: runEvents.data })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, runId), eq(runEvents.type, "steer")))
+    .orderBy(asc(runEvents.id));
+  return rows.map((r) => r.data.input).filter((i): i is string => typeof i === "string");
+}
+
 /** Trạng thái task theo kết quả run: có PR thì chờ người review, không có gì để nộp hay lỗi thì quay về todo. */
 function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): TaskStatus {
   if (outcome === "succeeded") return prUrl ? "review" : "done";
@@ -81,7 +108,14 @@ function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): Ta
   return "todo";
 }
 
-function buildSpec(run: RunRow, task: TaskRow, project: ProjectRow, cli: string): Record<string, unknown> {
+function buildSpec(
+  run: RunRow,
+  task: TaskRow,
+  project: ProjectRow,
+  cli: string,
+  instructions: string[],
+): Record<string, unknown> {
+  const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
   return {
     kind: run.kind,
     taskId: task.id,
@@ -89,7 +123,10 @@ function buildSpec(run: RunRow, task: TaskRow, project: ProjectRow, cli: string)
     projectId: project.id,
     projectKey: project.key,
     title: task.title,
-    prompt: task.body ? `${task.title}\n\n${task.body}` : task.title,
+    prompt: instructions.length
+      ? `${prompt}\n\nChỉ dẫn thêm từ người review:\n${instructions.map((i) => `- ${i}`).join("\n")}`
+      : prompt,
+    instructions,
     cli,
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
@@ -209,6 +246,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (!task || !project) return null;
       const machine = await pickMachine(tx, run);
       if (!machine) return null;
+      const instructions = await instructionsOf(tx, run.id);
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
@@ -225,7 +263,7 @@ export function createRunsEngine(deps: RunsDeps) {
           runId: run.id,
           attempt: run.attempt,
           ttl: offerTtlSec,
-          spec: buildSpec(run, task, project, cli),
+          spec: buildSpec(run, task, project, cli, instructions),
         } satisfies OutgoingMessage,
       };
     });
@@ -692,18 +730,43 @@ export function createRunsEngine(deps: RunsDeps) {
 
   async function startRun(tx: Tx, userId: string, input: RunStartInput) {
     const task = await taskForUser(tx, userId, input.taskId, "member");
-    if (task.status === "cancelled" || task.status === "done") {
-      throw new ConflictError("TASK_CLOSED", "Task đã xong hoặc đã huỷ, không giao được.");
-    }
     const project = await loadProject(tx, task.projectId);
-    if (project?.state !== "active" || !project.repoHttpUrl || !project.defaultBranch) {
-      throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo, chưa giao task được.");
-    }
     if (input.machineId) {
       const m = await findMachine(tx, input.machineId);
       if (!m || m.teamId !== task.teamId || m.revoked) {
         throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy của đội sở hữu dự án.");
       }
+    }
+    const { row, afterCommit } = await queueRun(tx, task, project, {
+      cli: input.cli ?? task.preferredCli ?? null,
+      machineId: input.machineId ?? null,
+      createdBy: userId,
+    });
+    return { run: toRun(row), afterCommit };
+  }
+
+  /**
+   * Tạo run queued cho task, không kiểm quyền người dùng: startRun kiểm trước khi gọi, còn webhook (issue, bình luận
+   * trên PR) là hệ thống tự giao. `instructions` là chỉ dẫn thêm, ghi thành sự kiện `steer` để dispatch đưa vào prompt.
+   */
+  async function queueRun(
+    tx: Tx,
+    task: TaskRow,
+    project: ProjectRow | null,
+    opts: {
+      cli: RunRow["cli"];
+      machineId?: string | null;
+      createdBy: string;
+      /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
+      actorUserId?: string | null;
+      instructions?: string[];
+    },
+  ): Promise<{ row: RunRow; afterCommit: () => void }> {
+    if (task.status === "cancelled" || task.status === "done") {
+      throw new ConflictError("TASK_CLOSED", "Task đã xong hoặc đã huỷ, không giao được.");
+    }
+    if (!projectReady(project)) {
+      throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo, chưa giao task được.");
     }
     const outcome = project.settings.outcome;
     const policy = (task.type ? outcome.byType[task.type] : undefined) ?? outcome.default;
@@ -716,11 +779,11 @@ export function createRunsEngine(deps: RunsDeps) {
           teamId: task.teamId,
           taskId: task.id,
           projectId: project.id,
-          cli: input.cli ?? task.preferredCli ?? null,
-          pinnedMachineId: input.machineId ?? null,
+          cli: opts.cli,
+          pinnedMachineId: opts.machineId ?? null,
           branch: `ai/${task.key}`,
           policySnapshot: policy,
-          createdBy: userId,
+          createdBy: opts.createdBy,
         })
         .returning();
     } catch (e) {
@@ -731,17 +794,52 @@ export function createRunsEngine(deps: RunsDeps) {
       throw e;
     }
     if (!row) throw new Error("Không ghi được run.");
-    await hubEvent(tx, row, "state", { from: null, to: "queued", by: userId });
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: opts.createdBy });
+    for (const input of opts.instructions ?? []) {
+      await hubEvent(tx, row, "steer", { input, by: opts.createdBy, delivered: false });
+    }
     await notifyRun(tx, row.id);
     await setTaskStatus(tx, task.id, "queued");
     await recordAudit(tx, {
       action: "run.start",
+      actorUserId: opts.actorUserId,
       targetType: "run",
       targetId: row.id,
-      data: { taskId: task.id, cli: row.cli, machineId: row.pinnedMachineId },
+      data: { taskId: task.id, cli: row.cli, machineId: row.pinnedMachineId, by: opts.createdBy },
     });
     const { orgId, id } = row;
-    return { run: toRun(row), afterCommit: () => background(dispatch(orgId, id), "Không giao được run") };
+    return { row, afterCommit: () => background(dispatch(orgId, id), "Không giao được run") };
+  }
+
+  /**
+   * Thêm chỉ dẫn cho run chưa kết thúc. Máy đang chạy agent thì gửi gói `steer` sau commit; run chưa tới máy thì chỉ
+   * ghi lại, dispatch đưa vào prompt. Run đang kiểm kết quả hay đang huỷ thì không nhận nữa (`closing`).
+   */
+  async function steerRun(
+    tx: Tx,
+    runId: string,
+    input: string,
+    by: string,
+  ): Promise<{ status: "sent" | "pending" | "closing"; afterCommit: () => void }> {
+    const noop = () => {};
+    const run = await lockRun(tx, runId);
+    if (!run) throw runNotFound();
+    const onMachine = ON_MACHINE.includes(run.state) && run.state !== "cancelling" && run.machineId;
+    if (!onMachine && !["queued", "planning", "awaiting_plan", "lost"].includes(run.state)) {
+      return { status: "closing", afterCommit: noop };
+    }
+    await hubEvent(tx, run, "steer", { input, by, delivered: Boolean(onMachine) });
+    await notifyRun(tx, run.id);
+    if (!onMachine || !run.machineId) return { status: "pending", afterCommit: noop };
+    const machineId = run.machineId;
+    return {
+      status: "sent",
+      afterCommit: () => {
+        if (!send(machineId, { type: "steer", runId: run.id, input })) {
+          log.warn(`Không gửi được chỉ dẫn tới máy ${machineId} của run ${run.id}`);
+        }
+      },
+    };
   }
 
   async function cancelRun(tx: Tx, userId: string, id: string) {
@@ -782,8 +880,22 @@ export function createRunsEngine(deps: RunsDeps) {
     verify,
     fire,
     startRun,
+    queueRun,
+    steerRun,
     cancelRun,
     cancelRunsOfTask,
+    /** Đăng ký handler sự kiện Git (PR merge/đóng, issue có nhãn, bình luận nhắc bot) vào registry của scm. */
+    registerScmHandlers(registry: Pick<ScmEventRegistry, "on"> = scmEvents) {
+      return registerScmHandlers(registry, {
+        queueRun,
+        steerRun,
+        cancelRunsOfTask,
+        providerFactory: deps.providerFactory,
+        masterKey: deps.masterKey,
+        publicUrl: deps.publicUrl,
+        logger: log,
+      });
+    },
     /** Kiểm HIVE_RUN_TOKEN cho cổng /mcp; cùng khoá với token engine ký khi giao lease. */
     mcpRunTokens: createMcpRunTokens({ pool: deps.pool, authSecret: deps.authSecret, publicUrl: deps.publicUrl }),
     /** Xử lý hẹn giờ trên pg-boss; chỉ gọi ở tiến trình có vai trò `jobs` (cùng tiến trình với gateway). */

@@ -317,6 +317,44 @@ describe("GitLab openPR", () => {
   });
 });
 
+describe("GitLab commentOnIssue", () => {
+  it("issue dùng note của issue, merge request dùng note của merge request", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/issues/17/notes`, method: "POST", headers: { "private-token": "glpat-test" } })
+      .reply(201, http.json({ id: 1241 }), JSON_HEADERS);
+    pool
+      .intercept({ path: `${P}/merge_requests/3/notes`, method: "POST" })
+      .reply(201, http.json({ id: 1242 }), JSON_HEADERS);
+    expect(await gl.commentOnIssue(ref, 17, "Đã tạo task HD-3")).toEqual({ id: "1241" });
+    expect(await gl.commentOnIssue(ref, 3, "Đã nhận", { pullRequest: true })).toEqual({ id: "1242" });
+    expect(http.calls.map((c) => c.body)).toEqual([{ body: "Đã tạo task HD-3" }, { body: "Đã nhận" }]);
+  });
+
+  it("issue không còn (404) thì báo not_found", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/issues/17/notes`, method: "POST" }).reply(404, notFound, JSON_HEADERS);
+    expect((await rejected(gl.commentOnIssue(ref, 17, "x"))).code).toBe("not_found");
+  });
+});
+
+describe("GitLab canPush", () => {
+  it("Developer (30) trở lên thì push được, Reporter thì không; tra theo id, tính cả quyền từ group", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/members/all/41`, method: "GET" }).reply(200, { access_level: 30 }, JSON_HEADERS);
+    pool.intercept({ path: `${P}/members/all/42`, method: "GET" }).reply(200, { access_level: 20 }, JSON_HEADERS);
+    expect(await gl.canPush(ref, { login: "lan", id: 41 })).toBe(true);
+    expect(await gl.canPush(ref, { login: "khach", id: 42 })).toBe(false);
+  });
+
+  it("không phải thành viên (404) hoặc thiếu id thì false", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/members/all/99`, method: "GET" }).reply(404, notFound, JSON_HEADERS);
+    expect(await gl.canPush(ref, { login: "nguoi-la", id: 99 })).toBe(false);
+    expect(await gl.canPush(ref, { login: "lan", id: null })).toBe(false);
+  });
+});
+
 describe("GitLab webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",

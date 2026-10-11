@@ -5,6 +5,7 @@ import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,
@@ -13,6 +14,7 @@ import type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ScmUser,
   WebhookInput,
 } from "./types.ts";
 
@@ -434,6 +436,30 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         });
       }
       return { number: pr.number, url: pr.html_url };
+    },
+
+    async commentOnIssue(ref: RepoRef, number: number, body: string, _opts?: CommentOptions) {
+      // PR cũng là issue với GitHub: bình luận chung (không gắn dòng code) đi qua API của issue.
+      const c = await request<{ id: number }>("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+        owner: ref.owner,
+        repo: ref.name,
+        issue_number: number,
+        body,
+      });
+      return { id: String(c.id) };
+    },
+
+    async canPush(ref: RepoRef, user: ScmUser) {
+      if (!user.login) return false;
+      // `permission` gộp vai: maintain tính là write, triage tính là read. Người không phải cộng tác viên thì 404.
+      const r = await orNull(() =>
+        request<{ permission: string }>("GET /repos/{owner}/{repo}/collaborators/{username}/permission", {
+          owner: ref.owner,
+          repo: ref.name,
+          username: user.login,
+        }),
+      );
+      return r?.permission === "admin" || r?.permission === "write";
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {
