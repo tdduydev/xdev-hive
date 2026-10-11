@@ -70,6 +70,7 @@ type jobSpec struct {
 	Project     string `json:"project"`
 	ProjectKey  string `json:"projectKey"`
 	CLI         string `json:"cli"`
+	Model       string `json:"model"`
 	Prompt      string `json:"prompt"`
 	BaseBranch  string `json:"baseBranch"`
 	Branch      string `json:"branch"`
@@ -97,7 +98,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{RunID: o.RunID, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Env: env}
+	j := runner.Job{RunID: o.RunID, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Env: env}
 	if j.BaseBranch == "" {
 		j.BaseBranch = "main"
 	}

@@ -190,6 +190,13 @@
       "when": 1791729462176,
       "tag": "0026_uneven_morgan_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791730872508,
+      "tag": "0027_tiresome_hellcat",
+      "breakpoints": true
     }
   ]
 }

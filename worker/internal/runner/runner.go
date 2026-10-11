@@ -19,12 +19,12 @@ import (
 )
 
 type Job struct {
-	RunID                                    string
-	Attempt                                  int
-	RepoURL, BaseBranch, Branch, CLI, Prompt string
-	Env                                      map[string]string
-	Timeout                                  time.Duration
-	SetupScript                              string
+	RunID                                           string
+	Attempt                                         int
+	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
+	Env                                             map[string]string
+	Timeout                                         time.Duration
+	SetupScript                                     string
 }
 
 type Event struct {
@@ -184,23 +184,27 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err != nil {
 		return err
 	}
-	cmd.Dir = work
-	cmd.Env = mergeEnv(os.Environ(), job.Env)
-	stdout, err := cmd.StdoutPipe()
+	if cmd.cleanup != nil {
+		defer cmd.cleanup()
+	}
+	process := cmd.Cmd
+	process.Dir = work
+	process.Env = mergeEnv(os.Environ(), job.Env)
+	stdout, err := process.StdoutPipe()
 	if err != nil {
 		return err
 	}
-	stderr, err := cmd.StderrPipe()
+	stderr, err := process.StderrPipe()
 	if err != nil {
 		return err
 	}
-	if err := startProcess(cmd); err != nil {
+	if err := startProcess(process); err != nil {
 		return err
 	}
 	logErr := make(chan error, 2)
 	go func() { logErr <- stream(runCtx, stdout, sink, job, "stdout") }()
 	go func() { logErr <- stream(runCtx, stderr, sink, job, "stderr") }()
-	waitErr := waitProcess(runCtx, cmd, r.grace)
+	waitErr := waitProcess(runCtx, process, r.grace)
 	e1, e2 := <-logErr, <-logErr
 	if waitErr != nil || e1 != nil || e2 != nil {
 		e := errors.Join(waitErr, e1, e2)
@@ -300,7 +304,12 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 }
 func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
 
-func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
+type cliExecCmd struct {
+	*exec.Cmd
+	cleanup func()
+}
+
+func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 	configured, ok := r.CLICommands[j.CLI]
 	if !ok {
 		// Runner.CLICommands do code đặt thắng biến môi trường; biến môi trường thắng lệnh mặc định.
@@ -313,11 +322,29 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 	if !ok {
 		switch j.CLI {
 		case "claude":
-			configured = Command{Path: "claude", Args: []string{"-p", j.Prompt, "--output-format", "stream-json"}}
+			mcpFile, err := claudeMCPConfig(j.Env)
+			if err != nil {
+				return nil, err
+			}
+			args := []string{"-p", j.Prompt, "--output-format", "stream-json", "--verbose", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			if j.Model != "" {
+				args = append(args, "--model", j.Model)
+			}
+			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
 		case "codex":
-			configured = Command{Path: "codex", Args: []string{"exec", j.Prompt}}
+			url := mcpURL(j.Env)
+			args := []string{"exec", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			if j.Model != "" {
+				args = append(args, "-m", j.Model)
+			}
+			args = append(args, j.Prompt)
+			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
-			configured = Command{Path: "gemini", Args: []string{"-p", j.Prompt}}
+			args := []string{"-p", j.Prompt}
+			if j.Model != "" {
+				args = append(args, "-m", j.Model)
+			}
+			return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}
@@ -327,7 +354,34 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 			configured.Args[i] = strings.ReplaceAll(configured.Args[i], "{{prompt}}", j.Prompt)
 		}
 	}
-	return exec.Command(configured.Path, configured.Args...), nil
+	return &cliExecCmd{Cmd: exec.Command(configured.Path, configured.Args...)}, nil
+}
+
+func claudeMCPConfig(env map[string]string) (string, error) {
+	file, err := os.CreateTemp("", "xdev-hive-mcp-*.json")
+	if err != nil {
+		return "", fmt.Errorf("tạo cấu hình MCP tạm: %w", err)
+	}
+	if err := file.Chmod(0600); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	config := map[string]any{"mcpServers": map[string]any{"xdev-hive": map[string]any{"type": "http", "url": mcpURL(env), "headers": map[string]string{"Authorization": "Bearer " + env["HIVE_RUN_TOKEN"]}}}}
+	if err := json.NewEncoder(file).Encode(config); err != nil {
+		_ = file.Close()
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+func mcpURL(env map[string]string) string {
+	return strings.TrimRight(env["HIVE_HUB_URL"], "/") + "/mcp"
 }
 func emit(s Sink, e Event) error { return s.Emit(e) }
 func validate(j Job) error {
