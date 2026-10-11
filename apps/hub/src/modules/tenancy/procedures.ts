@@ -11,6 +11,8 @@ export interface TenancyDeps {
   pool?: pg.Pool | undefined;
   /** Email (chữ thường) được tạo thêm tổ chức sau tổ chức đầu tiên. */
   orgCreators?: string[] | undefined;
+  /** Địa chỉ web mà người được mời mở link; link mời là `${publicUrl}/moi/<mã>`. */
+  publicUrl?: string | undefined;
 }
 
 export interface SessionUser {
@@ -72,12 +74,16 @@ function selectedOrg(headers: Headers, input: unknown): string {
   return orgId;
 }
 
-/** Procedure của hợp đồng tenancy, dựng từ cùng middleware chọn tổ chức. */
+/**
+ * Procedure của hợp đồng tenancy, dựng từ cùng middleware chọn tổ chức. Thêm tầng `base` không cần đăng nhập (xem
+ * lời mời); `authed` dùng cho cả nhận lời mời.
+ */
 export function procedures(deps: TenancyDeps) {
   const m = orgMiddlewares(deps);
-  const authed = implement(tenancyContract).$context<RequestContext>().use(m.authed);
+  const base = implement(tenancyContract).$context<RequestContext>();
+  const authed = base.use(m.authed);
   const inOrg = authed.use(m.inOrg);
-  return { authed, inOrg };
+  return { base, authed, inOrg };
 }
 
 export type Procedures = ReturnType<typeof procedures>;

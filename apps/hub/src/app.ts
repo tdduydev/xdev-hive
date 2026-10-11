@@ -37,7 +37,7 @@ export function createApp({ config, auth, pool, jobs, providerFactory, webDist =
   const router = {
     system: systemRouter(config),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators }),
+    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),

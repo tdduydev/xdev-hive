@@ -99,6 +99,13 @@
       "when": 1791721289332,
       "tag": "0013_quyen_du_an",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791721643916,
+      "tag": "0014_chinh_sach_sso",
+      "breakpoints": true
     }
   ]
 }
