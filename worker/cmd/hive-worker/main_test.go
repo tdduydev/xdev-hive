@@ -168,3 +168,18 @@ func TestStatusPrinterWritesJSONLines(t *testing.T) {
 		t.Fatalf("dòng trạng thái = %q", lines)
 	}
 }
+
+func TestRunscAllowsHostUDS(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`{"path":"/usr/bin/runsc"}`:                                                      false,
+		`{"path":"/usr/bin/runsc","runtimeArgs":["--host-uds=open"]}`:                    true,
+		`{"path":"/usr/bin/runsc","runtimeArgs":["--platform=systrap","-host-uds=all"]}`: true,
+		`{"path":"/usr/bin/runsc","runtimeArgs":["--host-uds=none"]}`:                    false,
+		`{"path":"/usr/bin/runsc","runtimeArgs":["--host-uds=create"]}`:                  false,
+		`not json`: false,
+	} {
+		if got := runscAllowsHostUDS(json.RawMessage(raw)); got != want {
+			t.Errorf("%s: %v, muốn %v", raw, got, want)
+		}
+	}
+}

@@ -391,6 +391,9 @@ type durableSink struct {
 	send   func(any) error
 	log    *slog.Logger
 	result bool
+	// logOffset đếm byte log của cả stdout lẫn stderr: hub giữ một luồng terminal cho mỗi lần thử và bỏ chunk trùng
+	// offset, nên offset riêng của từng luồng làm stderr trùng với stdout và bị mất.
+	logOffset int64
 }
 
 func (j *jobs) newSink(run *activeRun) (*durableSink, error) {
@@ -415,7 +418,8 @@ func (s *durableSink) Emit(e runner.Event) error {
 	var msg any
 	switch e.Type {
 	case "log":
-		msg = LogChunk{Type: "log_chunk", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Offset: e.Offset, Bytes: e.Data}
+		msg = LogChunk{Type: "log_chunk", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Offset: s.logOffset, Bytes: e.Data}
+		s.logOffset += int64(len(e.Data))
 	case "result":
 		s.result = true
 		msg = resultMessage(e.RunID, e.Attempt, seq, e.Result)

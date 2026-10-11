@@ -449,6 +449,8 @@ func proxyUnix(client net.Conn, socket string) {
 	defer client.Close()
 	upstream, err := net.Dial("unix", socket)
 	if err != nil {
+		// Đóng im lặng thì CLI chỉ thấy "socket hang up"; ghi lý do để log của run cho biết vì sao mất mạng.
+		fmt.Fprintf(os.Stderr, "sandbox-init: không nối được egress proxy qua %s: %v\n", socket, err)
 		return
 	}
 	defer upstream.Close()
@@ -471,15 +473,37 @@ func checkHostRuntime(allowRunc bool) error {
 	if err := json.Unmarshal(output, &runtimes); err != nil {
 		return fmt.Errorf("không đọc được runtime Docker: %w", err)
 	}
-	_, dockerRunsc := runtimes["runsc"]
+	runsc, dockerRunsc := runtimes["runsc"]
 	_, runscBinary := exec.LookPath("runsc")
 	if dockerRunsc && runscBinary == nil {
+		if !runscAllowsHostUDS(runsc) {
+			return errors.New("runtime runsc của Docker chưa cho container nối unix socket của egress proxy; chạy: " +
+				"sudo runsc install -- --host-uds=open && sudo systemctl reload docker")
+		}
 		return nil
 	}
 	if allowRunc {
 		return nil
 	}
 	return errors.New("không tìm thấy runtime gVisor runsc trong Docker và PATH; cài runsc hoặc dùng --allow-runc chỉ cho phát triển")
+}
+
+// runscAllowsHostUDS: gVisor mặc định chặn container nối unix socket của máy chủ (host-uds=none), mà đường ra mạng
+// duy nhất của run là socket egress proxy được bind mount vào container.
+func runscAllowsHostUDS(raw json.RawMessage) bool {
+	var rt struct {
+		RuntimeArgs []string `json:"runtimeArgs"`
+	}
+	if err := json.Unmarshal(raw, &rt); err != nil {
+		return false
+	}
+	for _, arg := range rt.RuntimeArgs {
+		switch strings.TrimLeft(arg, "-") {
+		case "host-uds=open", "host-uds=all":
+			return true
+		}
+	}
+	return false
 }
 
 func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, statusJSON bool, hubURL string) int {

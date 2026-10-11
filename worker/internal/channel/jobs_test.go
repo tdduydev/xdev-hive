@@ -349,3 +349,35 @@ func TestSandboxJobRejectsMissingOrInvalidPolicy(t *testing.T) {
 		}
 	}
 }
+
+// stdout và stderr có offset riêng trong runner; hub bỏ chunk trùng offset của cùng lần thử, nên sink phải đánh offset
+// chung theo tổng byte đã gửi.
+func TestLogChunksShareOneOffsetAcrossStreams(t *testing.T) {
+	j := testJobs(t, 1)
+	sink, err := j.newSink(&activeRun{runID: "run-1", attempt: 1, cancel: func() {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent []any
+	sink.send = func(v any) error { sent = append(sent, v); return nil }
+	for _, e := range []runner.Event{
+		{Type: "log", RunID: "run-1", Attempt: 1, Stream: "stdout", Offset: 0, Data: []byte("abc")},
+		{Type: "log", RunID: "run-1", Attempt: 1, Stream: "stderr", Offset: 0, Data: []byte("lỗi\n")},
+		{Type: "log", RunID: "run-1", Attempt: 1, Stream: "stdout", Offset: 3, Data: []byte("de")},
+	} {
+		if err := sink.Emit(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var offsets []int64
+	for _, v := range sent {
+		chunk, ok := v.(LogChunk)
+		if !ok {
+			t.Fatalf("gói %T", v)
+		}
+		offsets = append(offsets, chunk.Offset)
+	}
+	if len(offsets) != 3 || offsets[0] != 0 || offsets[1] != 3 || offsets[2] != 3+int64(len("lỗi\n")) {
+		t.Fatalf("offset = %v", offsets)
+	}
+}
