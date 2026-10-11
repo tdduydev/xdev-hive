@@ -7,5 +7,7 @@ export {
   type TeamRole,
   teamRoleOf,
 } from "./permissions.ts";
+export { ORG_HEADER, type TenancyDeps } from "./procedures.ts";
+export { tenancyRouter } from "./router.ts";
 // Bảng của module khác cần khoá ngoại kép (team_id, org_id) tới teams.
 export { teams } from "./schema.ts";

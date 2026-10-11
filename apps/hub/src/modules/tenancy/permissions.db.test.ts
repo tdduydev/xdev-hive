@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { seedUsers } from "../../../test/seed.ts";
 import { createPool, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
 import { orgRoleOf, requireOrgRole, requireTeamRole, teamRoleOf } from "./index.ts";
 
@@ -18,6 +19,7 @@ const inA = <T>(fn: (tx: Tx) => Promise<T>) => withTenant(app, { userId: "caller
 
 beforeAll(async () => {
   const slug = () => `p-${randomUUID().slice(0, 8)}`;
+  await seedUsers(admin, ["owner", "admin", "tadmin", "tmember", "tviewer", "loner", "pending", "blocked", "only-b"]);
   await admin.query(
     "insert into hive.orgs (id, slug, name, created_by) values ($1, $2, 'A', 'owner'), ($3, $4, 'B', 'x')",
     [orgA, slug(), orgB, slug()],

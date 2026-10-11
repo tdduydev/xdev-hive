@@ -11,3 +11,25 @@ export class ForbiddenError extends Error {
     this.code = code;
   }
 }
+
+/** Đối tượng không có trong tổ chức đang làm việc. Lớp API đổi thành NOT_FOUND. */
+export class NotFoundError extends Error {
+  override readonly name = "NotFoundError";
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+/** Trùng định danh hoặc trạng thái không cho phép thao tác (vd. hạ chủ sở hữu cuối cùng). Đổi thành CONFLICT. */
+export class ConflictError extends Error {
+  override readonly name = "ConflictError";
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}

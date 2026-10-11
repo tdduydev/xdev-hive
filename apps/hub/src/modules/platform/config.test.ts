@@ -13,3 +13,9 @@ describe("loadConfig: đăng nhập", () => {
     expect(() => loadConfig({ HIVE_GITHUB_CLIENT_ID: "a" })).toThrow(/HIVE_GITHUB_CLIENT_SECRET/));
   it("không cấu hình GitHub thì bỏ qua", () => expect(loadConfig({}).github).toBeUndefined());
 });
+
+describe("loadConfig: người tạo tổ chức", () => {
+  it("tách danh sách email, bỏ khoảng trắng, chữ thường", () =>
+    expect(loadConfig({ HIVE_ORG_CREATORS: " A@x.vn, ,b@y.vn" }).orgCreators).toEqual(["a@x.vn", "b@y.vn"]));
+  it("không đặt thì rỗng", () => expect(loadConfig({}).orgCreators).toEqual([]));
+});
