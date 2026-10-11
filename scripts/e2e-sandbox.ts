@@ -117,6 +117,18 @@ interface ContainerView {
   };
 }
 
+/** Log cuối của CLI trong run: lý do agent thoát chỉ nằm ở đây, CI không có cách nào khác để thấy. */
+async function runLogTail(api: HubClient, runId: string): Promise<string> {
+  try {
+    const chunks = await api.get<Array<{ bytes: string }>>(`/api/v1/runs/${runId}/logs?after=0&limit=1000`);
+    const text = Buffer.concat(chunks.map((c) => Buffer.from(c.bytes, "base64"))).toString("utf8");
+    const lines = text.split("\n").filter((l) => l.trim());
+    return lines.length ? `Log cuối của run:\n${lines.slice(-40).join("\n")}` : "Run không có log.";
+  } catch (err) {
+    return `Không đọc được log của run: ${String(err)}`;
+  }
+}
+
 async function waitUntil<T>(
   api: HubClient,
   runId: string,
@@ -128,7 +140,7 @@ async function waitUntil<T>(
     if (state.worker?.exited) throw new Error("Runner host đã thoát khi chờ container.");
     const now = await api.get<Run>(`/api/v1/runs/${runId}`);
     if (["failed", "lost", "no_changes"].includes(now.state)) {
-      throw new Error(`Run ${now.state}: ${JSON.stringify(now.result)}`);
+      throw new Error(`Run ${now.state}: ${JSON.stringify(now.result)}\n${await runLogTail(api, runId)}`);
     }
     const evidence = await probe();
     if (evidence !== undefined) return evidence;
