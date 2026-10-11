@@ -33,6 +33,11 @@ describe("authRedirect", () => {
   it("chưa đăng nhập: trang chủ chuyển về /dang-nhap", () => expect(authRedirect(at("/"), false)).toBe("/dang-nhap"));
   it("chưa đăng nhập: trang khác (kể cả không tồn tại) chuyển về /dang-nhap và nhớ chỗ quay lại", () =>
     expect(authRedirect(at("/khong-co?a=1"), false)).toBe("/dang-nhap?redirect=%2Fkhong-co%3Fa%3D1"));
+  it("chưa đăng nhập: trang mở link mời xem được, không bị chuyển đi", () =>
+    expect(authRedirect(at("/moi/7Hk2abcdefghijklmnop"), false)).toBeNull());
+  it("đã đăng nhập: trang mở link mời", () => expect(authRedirect(at("/moi/7Hk2abcdefghijklmnop"), true)).toBeNull());
+  it("đăng nhập xong quay lại đúng link mời", () =>
+    expect(authRedirect(at("/dang-nhap?redirect=%2Fmoi%2Fabc", "/moi/abc"), true)).toBe("/moi/abc"));
   it("chưa đăng nhập: đang ở /dang-nhap thì ở yên", () =>
     expect(authRedirect(at("/dang-nhap?redirect=%2Fx", "/x"), false)).toBeNull());
   it("đã đăng nhập: vào trang bất kỳ", () => expect(authRedirect(at("/du-an"), true)).toBeNull());

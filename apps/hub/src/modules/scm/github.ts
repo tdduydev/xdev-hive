@@ -17,19 +17,30 @@ import type {
   WebhookInput,
 } from "./types.ts";
 
-export interface GitHubProviderOptions {
-  appId: number | string;
-  /** Khoá riêng PEM của GitHub App. */
-  privateKey: string;
-  /** Mỗi provider gắn với một lần cài đặt (một org). */
-  installationId: number;
+interface CommonOptions {
   /** GitHub Enterprise Server: `https://ghe.example.com/api/v3`. */
   baseUrl?: string;
   fetch?: FetchLike;
 }
 
+export interface GitHubAppOptions extends CommonOptions {
+  appId: number | string;
+  /** Khoá riêng PEM của GitHub App. */
+  privateKey: string;
+  /** Mỗi provider gắn với một lần cài đặt (một org). */
+  installationId: number;
+}
+
+export interface GitHubTokenOptions extends CommonOptions {
+  /** Fine-grained PAT, PAT cổ điển hoặc token OAuth của một tài khoản. */
+  token: string;
+}
+
+export type GitHubProviderOptions = GitHubAppOptions | GitHubTokenOptions;
+
 /** Quyền tối thiểu của GitHub App để tạo dự án: tạo repo, bảo vệ nhánh, commit, mở PR, gắn webhook. */
 const REQUIRED_PERMISSIONS = ["administration", "contents", "pull_requests", "repository_hooks"] as const;
+const REQUIRED_WRITE = REQUIRED_PERMISSIONS.map((p) => `${p}:write`);
 
 interface GhRepo {
   id: number;
@@ -74,6 +85,20 @@ function toRepoInfo(r: GhRepo): RepoInfo {
   };
 }
 
+/**
+ * Quyền endpoint đòi, GitHub gửi kèm 403 của fine-grained token và token App, ví dụ `administration=write`.
+ * Nhiều bộ quyền cách nhau bằng `;`, mỗi bộ đủ dùng; lấy bộ đầu để báo người quản trị cấp gì.
+ */
+function acceptedPermissions(headers: Record<string, string>): string[] {
+  const value = headers["x-accepted-github-permissions"];
+  if (!value) return [];
+  const [first = ""] = value.split(";");
+  return first
+    .split(",")
+    .map((p) => p.trim().replace("=", ":"))
+    .filter(Boolean);
+}
+
 /** Lỗi của Octokit (RequestError) có `status` và `response.headers`; đổi sang mã lỗi chung. */
 function toError(e: unknown): GitProviderError {
   if (e instanceof GitProviderError) return e;
@@ -81,7 +106,15 @@ function toError(e: unknown): GitProviderError {
   if (typeof err?.status === "number" && err.status > 0 && err.response) {
     const data = err.response.data as { message?: unknown } | undefined;
     const detail = typeof data?.message === "string" ? data.message : undefined;
-    return errorFromResponse("github", err.status, err.response.headers ?? {}, detail);
+    const headers = err.response.headers ?? {};
+    const mapped = errorFromResponse("github", err.status, headers, detail);
+    const missingScopes = mapped.code === "forbidden" ? acceptedPermissions(headers) : [];
+    if (missingScopes.length === 0) return mapped;
+    return new GitProviderError(mapped.code, `${mapped.message}: thiếu ${missingScopes.join(", ")}`, {
+      status: mapped.status,
+      missingScopes,
+      cause: e,
+    });
   }
   return networkError("github", e);
 }
@@ -123,11 +156,20 @@ async function orNull<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
-  const defaults: Record<string, unknown> = {};
-  if (opts.baseUrl) defaults.baseUrl = opts.baseUrl;
-  if (opts.fetch) defaults.request = { fetch: opts.fetch };
-  const app = new App({ appId: opts.appId, privateKey: opts.privateKey, Octokit: Octokit.defaults(defaults) });
+interface GhUser {
+  login: string;
+}
+
+/** Phần khác nhau giữa GitHub App và token: lấy Octokit đã xác thực, và kiểm quyền. */
+interface GitHubAuth {
+  octokit(): Promise<Octokit>;
+  checkAccess(owner: string): Promise<AccessCheck>;
+  /** Chỉ token người dùng mới tạo được repo dưới tài khoản cá nhân; null với GitHub App. */
+  viewer: (() => Promise<GhUser>) | null;
+}
+
+function appAuth(opts: GitHubAppOptions, BaseOctokit: typeof Octokit): GitHubAuth {
+  const app = new App({ appId: opts.appId, privateKey: opts.privateKey, Octokit: BaseOctokit });
 
   // Octokit tự làm mới token cài đặt khi gần hết hạn, nên chỉ cần tạo một lần.
   let installation: Promise<Octokit> | null = null;
@@ -145,6 +187,83 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
     }
     return o;
   };
+
+  async function checkAccess(owner: string): Promise<AccessCheck> {
+    const inst = await call(async () => {
+      const res = await app.octokit.request("GET /app/installations/{installation_id}", {
+        installation_id: opts.installationId,
+      });
+      return res.data as {
+        account: { login?: string; type?: string } | null;
+        permissions: Record<string, string | undefined>;
+      };
+    });
+    const missingScopes: string[] = REQUIRED_PERMISSIONS.filter((p) => {
+      const level = inst.permissions[p];
+      return level !== "write" && level !== "admin";
+    }).map((p) => `${p}:write`);
+    const login = inst.account?.login ?? "";
+    if (login.toLowerCase() !== owner.toLowerCase()) missingScopes.unshift(`installation:${owner}`);
+    // Token cài đặt chỉ tạo được repo trong org; tài khoản cá nhân cần token người dùng.
+    const isOrg = inst.account?.type === "Organization";
+    return { canCreate: isOrg && missingScopes.length === 0, missingScopes };
+  }
+
+  return { octokit, checkAccess, viewer: null };
+}
+
+function tokenAuth(opts: GitHubTokenOptions, BaseOctokit: typeof Octokit): GitHubAuth {
+  const o = new BaseOctokit({ auth: opts.token });
+  const octokit = async () => o;
+
+  // Chủ token không đổi trong đời provider; nhớ lại để createRepo không hỏi GitHub mỗi lần.
+  let me: Promise<GhUser> | null = null;
+  const viewer = () => {
+    me ??= call(async () => (await o.request("GET /user")).data as GhUser).catch((e: unknown) => {
+      me = null;
+      throw e;
+    });
+    return me;
+  };
+
+  async function checkAccess(owner: string): Promise<AccessCheck> {
+    const res = await call(() => o.request("GET /user"));
+    const login = (res.data as GhUser).login;
+    me ??= Promise.resolve({ login });
+    const missingScopes: string[] = [];
+    let unverifiedScopes: string[] = [];
+    const scopes = res.headers["x-oauth-scopes"];
+    if (typeof scopes === "string") {
+      // PAT cổ điển và token OAuth liệt kê scope trong header. `repo` gồm tạo repo, commit, PR và webhook.
+      const granted = scopes.split(",").map((x) => x.trim());
+      if (!granted.includes("repo")) missingScopes.push("repo");
+    } else {
+      // Fine-grained token không có header scope và không có API đọc quyền của chính nó; thử ghi để dò thì có
+      // thể tạo repo thật, nên chỉ báo các quyền cần cấp. Thiếu quyền sẽ lộ ở 403 (x-accepted-github-permissions).
+      unverifiedScopes = [...REQUIRED_WRITE];
+    }
+    if (login.toLowerCase() !== owner.toLowerCase()) {
+      // Owner không phải chính chủ token thì phải là org mà token thấy được.
+      const org = await orNull(() => call(() => o.request("GET /orgs/{org}", { org: owner })));
+      if (!org) missingScopes.unshift(`org:${owner}`);
+    }
+    return {
+      canCreate: missingScopes.length === 0,
+      missingScopes,
+      ...(unverifiedScopes.length ? { unverifiedScopes } : {}),
+    };
+  }
+
+  return { octokit, checkAccess, viewer };
+}
+
+export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
+  const defaults: Record<string, unknown> = {};
+  if (opts.baseUrl) defaults.baseUrl = opts.baseUrl;
+  if (opts.fetch) defaults.request = { fetch: opts.fetch };
+  const BaseOctokit = Octokit.defaults(defaults);
+  const auth = "token" in opts ? tokenAuth(opts, BaseOctokit) : appAuth(opts, BaseOctokit);
+  const octokit = auth.octokit;
 
   async function request<T>(route: string, params: Record<string, unknown> = {}): Promise<T> {
     return call(async () => {
@@ -185,43 +304,33 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
   return {
     kind: "github",
 
-    async checkAccess(owner) {
-      const inst = await call(async () => {
-        const res = await app.octokit.request("GET /app/installations/{installation_id}", {
-          installation_id: opts.installationId,
-        });
-        return res.data as {
-          account: { login?: string; type?: string } | null;
-          permissions: Record<string, string | undefined>;
-        };
-      });
-      const missingScopes: string[] = REQUIRED_PERMISSIONS.filter((p) => {
-        const level = inst.permissions[p];
-        return level !== "write" && level !== "admin";
-      }).map((p) => `${p}:write`);
-      const login = inst.account?.login ?? "";
-      if (login.toLowerCase() !== owner.toLowerCase()) missingScopes.unshift(`installation:${owner}`);
-      // Token cài đặt chỉ tạo được repo trong org; tài khoản cá nhân cần token người dùng.
-      const isOrg = inst.account?.type === "Organization";
-      return { canCreate: isOrg && missingScopes.length === 0, missingScopes } satisfies AccessCheck;
-    },
+    checkAccess: auth.checkAccess,
 
     getRepo,
 
     async createRepo(input: CreateRepoInput) {
       const existing = await getRepo(input);
       if (existing) return ensureDefaultBranch(assertOwnedRepo("github", existing, input), input.defaultBranch);
+      const personal = auth.viewer && (await auth.viewer()).login.toLowerCase() === input.owner.toLowerCase();
+      if (personal && input.visibility === "internal") {
+        throw new GitProviderError(
+          "invalid",
+          "GitHub: repo internal chỉ có trong org, không tạo dưới tài khoản cá nhân",
+        );
+      }
+      // Cần ít nhất một commit thì Git Data API mới dựng được tree cho commit kế tiếp.
+      const common = { name: input.name, description: describeWithMarker(input), auto_init: true };
       let created: RepoInfo;
       try {
         created = toRepoInfo(
-          await request<GhRepo>("POST /orgs/{org}/repos", {
-            org: input.owner,
-            name: input.name,
-            description: describeWithMarker(input),
-            visibility: input.visibility,
-            // Cần ít nhất một commit thì Git Data API mới dựng được tree cho commit kế tiếp.
-            auto_init: true,
-          }),
+          personal
+            ? // Repo dưới tài khoản của chính chủ token; endpoint này chỉ nhận cờ private.
+              await request<GhRepo>("POST /user/repos", { ...common, private: input.visibility !== "public" })
+            : await request<GhRepo>("POST /orgs/{org}/repos", {
+                ...common,
+                org: input.owner,
+                visibility: input.visibility,
+              }),
         );
       } catch (e) {
         // Hai lần chạy saga đua nhau: bên thua nhận 422 "name already exists".

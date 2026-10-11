@@ -10,17 +10,19 @@
     "dev": "node scripts/dev.ts",
     "dev:all": "node scripts/dev.ts",
     "build": "turbo run build",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck && tsc -p scripts",
     "test": "turbo run test",
     "lint": "biome check .",
     "format": "biome check --write .",
     "deps": "depcruise apps packages --config .dependency-cruiser.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm deps && pnpm test",
-    "openapi": "pnpm --filter @xdev-hive/contracts openapi"
+    "openapi": "pnpm --filter @xdev-hive/contracts openapi",
+    "e2e:smoke": "node scripts/e2e-smoke.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@swc/core": "^1.16.13",
+    "@testcontainers/postgresql": "^12.2.0",
     "@types/node": "^24.19.2",
     "dependency-cruiser": "^18.5.0",
     "turbo": "^2.11.7",

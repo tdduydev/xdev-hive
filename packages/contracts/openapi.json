@@ -13458,6 +13458,13 @@
                           }
                         ]
                       },
+                      "authMode": {
+                        "enum": [
+                          "app",
+                          "token"
+                        ],
+                        "type": "string"
+                      },
                       "appId": {
                         "anyOf": [
                           {
@@ -13491,6 +13498,7 @@
                       "name",
                       "baseUrl",
                       "defaultOwner",
+                      "authMode",
                       "appId",
                       "installationId",
                       "createdAt"
@@ -13846,46 +13854,90 @@
               "schema": {
                 "anyOf": [
                   {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "github"
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "github"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "baseUrl": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "defaultOwner": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9][\\w.-]{0,99}(\\/[\\w.-]+)*$"
+                          },
+                          "authMode": {
+                            "const": "app",
+                            "default": "app"
+                          },
+                          "appId": {
+                            "type": "string",
+                            "pattern": "^\\d{1,12}$"
+                          },
+                          "privateKey": {
+                            "type": "string",
+                            "maxLength": 20000
+                          },
+                          "installationId": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "exclusiveMinimum": 0
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "name",
+                          "defaultOwner",
+                          "appId",
+                          "privateKey",
+                          "installationId"
+                        ]
                       },
-                      "name": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 80
-                      },
-                      "baseUrl": {
-                        "type": "string",
-                        "format": "uri"
-                      },
-                      "defaultOwner": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z0-9][\\w.-]{0,99}(\\/[\\w.-]+)*$"
-                      },
-                      "appId": {
-                        "type": "string",
-                        "pattern": "^\\d{1,12}$"
-                      },
-                      "privateKey": {
-                        "type": "string",
-                        "maxLength": 20000
-                      },
-                      "installationId": {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991,
-                        "exclusiveMinimum": 0
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "github"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "baseUrl": {
+                            "type": "string",
+                            "format": "uri"
+                          },
+                          "defaultOwner": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9][\\w.-]{0,99}(\\/[\\w.-]+)*$"
+                          },
+                          "authMode": {
+                            "const": "token"
+                          },
+                          "token": {
+                            "type": "string",
+                            "minLength": 8,
+                            "maxLength": 500
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "name",
+                          "defaultOwner",
+                          "authMode",
+                          "token"
+                        ]
                       }
-                    },
-                    "required": [
-                      "kind",
-                      "name",
-                      "defaultOwner",
-                      "appId",
-                      "privateKey",
-                      "installationId"
                     ]
                   },
                   {
@@ -13967,6 +14019,13 @@
                         }
                       ]
                     },
+                    "authMode": {
+                      "enum": [
+                        "app",
+                        "token"
+                      ],
+                      "type": "string"
+                    },
                     "appId": {
                       "anyOf": [
                         {
@@ -14000,6 +14059,7 @@
                     "name",
                     "baseUrl",
                     "defaultOwner",
+                    "authMode",
                     "appId",
                     "installationId",
                     "createdAt"
@@ -14406,6 +14466,12 @@
                         "type": "string"
                       }
                     },
+                    "unverifiedScopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
                     "message": {
                       "type": "string"
                     }
@@ -14415,6 +14481,7 @@
                     "owner",
                     "canCreate",
                     "missingScopes",
+                    "unverifiedScopes",
                     "message"
                   ]
                 }

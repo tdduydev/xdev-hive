@@ -7,7 +7,7 @@ export interface AuthErrorLike {
   status?: number | undefined;
 }
 
-export type AuthMethod = "sso" | "social" | "email";
+export type AuthMethod = "sso" | "social" | "email" | "signup";
 
 const RETRY = "Phiên đăng nhập đã hết hạn hoặc bị mở ở tab khác. Thử đăng nhập lại.";
 const SSO_BROKEN = "Không dùng được SSO của tổ chức lúc này. Báo quản trị tổ chức kiểm tra cấu hình SSO.";
@@ -29,6 +29,15 @@ const LABELS: Record<string, string> = {
   OAUTH_PROVIDER_NOT_FOUND: "Hub chưa bật cách đăng nhập này. Dùng cách khác hoặc báo quản trị hub.",
   ACCESS_DENIED: "Bạn đã huỷ hoặc chưa cấp quyền ở trang của nhà cung cấp.",
   SIGNUP_DISABLED: "Tài khoản này chưa có trên hub. Nhờ quản trị tổ chức gửi lời mời.",
+  // Đăng ký bằng email: hai mã đầu do hook đăng ký của hub đặt (apps/hub, identity/auth.ts).
+  SIGN_UP_INVITE_REQUIRED: "Hub chỉ cho đăng ký bằng lời mời. Mở link mời mà quản trị tổ chức gửi cho bạn.",
+  SIGN_UP_INVITE_INVALID:
+    "Lời mời không còn dùng được cho email này (sai, hết hạn hoặc đã dùng). Nhờ quản trị tổ chức gửi lời mời mới.",
+  USER_ALREADY_EXISTS: "Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.",
+  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: "Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.",
+  PASSWORD_TOO_SHORT: "Mật khẩu quá ngắn, cần ít nhất 10 ký tự.",
+  PASSWORD_TOO_LONG: "Mật khẩu quá dài.",
+  EMAIL_PASSWORD_SIGN_UP_DISABLED: "Hub chưa bật đăng ký bằng email. Đăng nhập bằng SSO, GitHub hoặc GitLab.",
   STATE_MISMATCH: RETRY,
   STATE_NOT_FOUND: RETRY,
   INVALID_STATE: RETRY,
@@ -70,7 +79,6 @@ export function authErrorLabel(error: AuthErrorLike, method?: AuthMethod): strin
     return "Chưa có SSO cho tên miền email này. Dùng GitHub, GitLab hoặc email, hoặc hỏi quản trị tổ chức.";
   }
   if (status !== undefined && status >= 500) return "Hub đang gặp lỗi. Thử lại sau ít phút.";
-  return code
-    ? `Không đăng nhập được (mã ${code}). Thử lại hoặc báo quản trị hub.`
-    : "Không đăng nhập được. Thử lại hoặc báo quản trị hub.";
+  const failed = method === "signup" ? "Không tạo được tài khoản" : "Không đăng nhập được";
+  return code ? `${failed} (mã ${code}). Thử lại hoặc báo quản trị hub.` : `${failed}. Thử lại hoặc báo quản trị hub.`;
 }
