@@ -46,3 +46,11 @@ describe("loadConfig: embeddings", () => {
       loadConfig({ HIVE_EMBEDDINGS_URL: "http://ollama:11434/v1", HIVE_EMBEDDINGS_DIMENSIONS: "-3" }),
     ).toThrow(/HIVE_EMBEDDINGS_DIMENSIONS/));
 });
+
+describe("loadConfig: SMTP nội bộ", () => {
+  it("mặc định chặn và chỉ bật khi HIVE_NOTIFY_ALLOW_PRIVATE=1", () => {
+    expect(loadConfig({}).notifyAllowPrivate).toBe(false);
+    expect(loadConfig({ HIVE_NOTIFY_ALLOW_PRIVATE: "true" }).notifyAllowPrivate).toBe(false);
+    expect(loadConfig({ HIVE_NOTIFY_ALLOW_PRIVATE: "1" }).notifyAllowPrivate).toBe(true);
+  });
+});

@@ -24,6 +24,8 @@ export interface HubConfig {
   authDatabaseUrl?: string | undefined;
   authSecret?: string | undefined;
   allowEmailSignUp?: boolean | undefined;
+  /** SMTP nội bộ chỉ được phép khi người vận hành chủ động bật cờ. */
+  notifyAllowPrivate?: boolean | undefined;
   github?: OAuthAppConfig | undefined;
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
   /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
@@ -113,6 +115,7 @@ export function loadConfig(env: Env = process.env): HubConfig {
     authDatabaseUrl,
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
+    notifyAllowPrivate: env.HIVE_NOTIFY_ALLOW_PRIVATE === "1",
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),
