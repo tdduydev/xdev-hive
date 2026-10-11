@@ -24,6 +24,8 @@ interface Base {
   repo: string;
   /** Người gây ra sự kiện (login GitHub, username GitLab). */
   actor: string | null;
+  /** Id số của người đó: API thành viên của GitLab tra theo id, không theo username. */
+  actorId: number | null;
 }
 
 export interface PullRequestInfo {
@@ -141,6 +143,7 @@ export function normalizeGitHub(event: string, payload: unknown, opts: Normalize
       provider: "github",
       repo: need(str(at(payload, "repository", "full_name")), "repository.full_name"),
       actor: str(at(payload, "sender", "login")),
+      actorId: num(at(payload, "sender", "id")),
     };
     const action = str(at(payload, "action"));
     switch (event) {
@@ -235,6 +238,7 @@ export function normalizeGitLab(_event: string, payload: unknown, opts: Normaliz
       provider: "gitlab",
       repo: need(str(at(payload, "project", "path_with_namespace")), "project.path_with_namespace"),
       actor: str(at(payload, "user", "username")) ?? str(at(payload, "user_username")),
+      actorId: num(at(payload, "user", "id")) ?? num(at(payload, "user_id")),
     };
     const oa = at(payload, "object_attributes");
     const action = str(at(oa, "action"));

@@ -76,8 +76,9 @@ if (roles.includes("jobs") && jobs) {
     });
   }
   if (pool) {
-    // Handler mẫu: mọi sự kiện Git vào audit. Module tasks/runs đăng ký thêm handler của mình ở đây.
+    // Mọi sự kiện Git vào audit; module runs xử lý PR merge/đóng, issue có nhãn và bình luận nhắc bot.
     onScmEvent("*", auditScmEvent);
+    runs?.registerScmHandlers();
     await registerScmEventWorker(jobs, { pool });
   }
 }

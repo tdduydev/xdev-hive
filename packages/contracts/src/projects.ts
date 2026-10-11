@@ -2,6 +2,7 @@ import { z } from "zod";
 import { id, orgRoute } from "./common.ts";
 import { parseRepoUrl } from "./repo-url.ts";
 import { repoOwner, scmKind } from "./scm.ts";
+import { cli } from "./worker-protocol.ts";
 
 /** Agent dùng key này khi gọi MCP và nó nằm trong AGENTS.md, nên chỉ cho ký tự an toàn với URL và shell. */
 export const projectKey = z
@@ -127,6 +128,11 @@ export const projectSettings = z.object({
    * định vì dự án tạo trước khi có mục này không có nó trong settings đã lưu.
    */
   issueIntake: issueIntakeSettings.default(() => ({ ...defaultIssueIntake })),
+  /**
+   * CLI cho run không do người chọn (task từ issue, chạy lại theo bình luận). Bỏ trống thì máy nào có CLI cũng nhận.
+   * Không đặt mặc định để settings đã lưu trước đó vẫn hợp lệ.
+   */
+  defaultCli: cli.nullable().optional(),
 });
 export type ProjectSettings = z.output<typeof projectSettings>;
 
