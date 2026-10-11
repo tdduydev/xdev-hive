@@ -3,7 +3,7 @@ import { cx } from "../../lib/cx.ts";
 
 const variants = {
   default: "border-line-strong bg-surface text-ink hover:not-data-disabled:bg-subtle",
-  primary: "border-accent bg-accent text-white hover:not-data-disabled:bg-accent-hover",
+  primary: "border-accent bg-accent text-on-accent hover:not-data-disabled:bg-accent-hover",
   // Mockup không đổi nền khi rê chuột lên nút ghost; thêm nền nhạt để biết là bấm được.
   ghost: "border-transparent bg-transparent text-ink hover:not-data-disabled:bg-subtle",
 };
