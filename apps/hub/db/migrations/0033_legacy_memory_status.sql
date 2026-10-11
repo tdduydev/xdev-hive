@@ -1,0 +1,2 @@
+ALTER TABLE "hive"."memories" ADD COLUMN "status" text DEFAULT 'approved' NOT NULL;--> statement-breakpoint
+ALTER TABLE "hive"."memories" ADD CONSTRAINT "memories_status" CHECK (status in ('approved', 'pending'));
