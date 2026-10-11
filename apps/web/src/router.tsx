@@ -4,9 +4,11 @@ import { meQuery } from "./lib/me.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect } from "./lib/redirect.ts";
 import { HomePage } from "./pages/home-page.tsx";
+import { InvitePage } from "./pages/invite-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
+import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
-import { MembersPage } from "./pages/members-page.tsx";
+import { MembersPage, validateMembersSearch } from "./pages/members-page.tsx";
 import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
 import { TeamsPage, validateTeamsSearch } from "./pages/teams-page.tsx";
@@ -43,6 +45,13 @@ const loginRoute = createRoute({
   path: "/dang-nhap",
   validateSearch: validateLoginSearch,
   component: LoginPage,
+});
+
+/** Link mời /moi/<mã>: mở được khi chưa đăng nhập (lib/redirect.ts), đứng ngoài khung app như trang đăng nhập. */
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/moi/$token",
+  component: InvitePage,
 });
 
 /** Trang đồng ý của luồng OAuth cho client MCP; đứng riêng ngoài khung app vì người dùng đến từ CLI. */
@@ -111,15 +120,23 @@ const teamsRoute = createRoute({
 const membersRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/quan-tri/thanh-vien",
+  validateSearch: validateMembersSearch,
   component: MembersPage,
+});
+
+const loginSettingsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/quan-tri/dang-nhap",
+  component: LoginSettingsPage,
 });
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
+  inviteRoute,
   mcpConsentRoute,
   sessionRoute.addChildren([
     onboardingRoute,
-    appRoute.addChildren([homeRoute, inOrgRoute.addChildren([teamsRoute, membersRoute])]),
+    appRoute.addChildren([homeRoute, inOrgRoute.addChildren([teamsRoute, membersRoute, loginSettingsRoute])]),
   ]),
 ]);
 

@@ -31,9 +31,13 @@ export interface Destination {
   redirect?: unknown;
 }
 
+/** Trang mở lời mời: người được mời thường chưa có tài khoản, nên phải xem được lời mời trước khi đăng nhập. */
+export const INVITE_PREFIX = "/moi/";
+
 /** Nơi phải chuyển tới trước khi vào `to`, hoặc null nếu được vào. */
 export function authRedirect(to: Destination, signedIn: boolean): string | null {
   const onLogin = to.pathname === LOGIN_PATH;
   if (signedIn) return onLogin ? safeRedirect(to.redirect) : null;
+  if (to.pathname.startsWith(INVITE_PREFIX)) return null;
   return onLogin ? null : loginHref(safeRedirect(to.href));
 }

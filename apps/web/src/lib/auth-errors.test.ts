@@ -21,4 +21,14 @@ describe("authErrorLabel", () => {
   it("mã lạ: báo chung kèm mã", () =>
     expect(authErrorLabel({ code: "WEIRD_THING", status: 400 })).toMatch(/WEIRD_THING/));
   it("không có gì: vẫn có câu tiếng Việt", () => expect(authErrorLabel({})).toMatch(/^Không đăng nhập được/));
+  it("đăng ký: mã mời của hub không dùng được", () =>
+    expect(authErrorLabel({ code: "SIGN_UP_INVITE_INVALID", status: 403 }, "signup")).toMatch(/Lời mời không còn/));
+  it("đăng ký: email đã có tài khoản thì gợi ý đăng nhập", () =>
+    expect(authErrorLabel({ code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", status: 422 }, "signup")).toMatch(
+      /Đăng nhập để nhận lời mời/,
+    ));
+  it("đăng ký: mật khẩu ngắn", () =>
+    expect(authErrorLabel({ code: "PASSWORD_TOO_SHORT", status: 400 }, "signup")).toMatch(/ít nhất 10 ký tự/));
+  it("đăng ký: mã lạ nói rõ là không tạo được tài khoản", () =>
+    expect(authErrorLabel({ code: "WEIRD", status: 400 }, "signup")).toMatch(/^Không tạo được tài khoản \(mã WEIRD\)/));
 });
