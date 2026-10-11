@@ -403,7 +403,8 @@ func fakeCommands(mode string) map[string]Command {
 	if mode == "sleep" {
 		args = append(args, "helper-sleep")
 	}
-	return map[string]Command{"codex": {Path: os.Args[0], Args: args}}
+	// CLI giả cố tình commit ở chế độ "commit" để kiểm worker không push; khai ReadOnly như người cấu hình phải làm.
+	return map[string]Command{"codex": {Path: os.Args[0], Args: args, ReadOnly: true}}
 }
 func lastResult(events []Event) *Result {
 	for i := len(events) - 1; i >= 0; i-- {
@@ -552,34 +553,58 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 }
 
 // Run plan bật chế độ chỉ đọc của từng CLI; run code và run review giữ nguyên lệnh (TestDefaultCLIArgumentsAndClaudeMCPFile).
-func TestPlanCLIArgumentsAreReadOnly(t *testing.T) {
+// Mọi tổ hợp kind × CLI × quyền dự án: run chỉ đọc luôn có cờ chỉ đọc và không bao giờ có cờ ghi, kể cả khi dự án
+// bật quyền full; run code thì ngược lại. Cờ ghi đứng sau cờ chỉ đọc từng đè lên nó khi ghép hai PR (#43 và #64).
+func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
-	for _, tc := range []struct {
-		cli  string
-		want []string
-	}{
-		{"claude", []string{"--permission-mode", "plan"}},
-		{"codex", []string{"--sandbox", "read-only"}},
-		{"gemini", []string{"--approval-mode", "plan"}},
-	} {
-		for _, kind := range []string{KindPlan, KindLeader, "", KindReview} {
-			cmd, err := (Runner{}).cliCommand(Job{CLI: tc.cli, Kind: kind, Prompt: "prompt", Env: env})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cmd.cleanup != nil {
-				cmd.cleanup()
-			}
-			args := strings.Join(cmd.Args[1:], "\x00")
-			has := strings.Contains(args, strings.Join(tc.want, "\x00"))
-			if has != (kind == KindPlan || kind == KindLeader) {
-				t.Fatalf("%s kind=%q args = %q", tc.cli, kind, cmd.Args[1:])
-			}
-			// Prompt vẫn là đối số cuối của codex (cờ phải đứng trước nó).
-			if tc.cli == "codex" && cmd.Args[len(cmd.Args)-1] != "prompt" {
-				t.Fatalf("codex args = %q", cmd.Args[1:])
+	readOnlyFlags := map[string][]string{
+		"claude": {"--permission-mode", "plan"},
+		"codex":  {"--sandbox", "read-only"},
+		"gemini": {"--approval-mode", "plan"},
+	}
+	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools"}
+	for cli, want := range readOnlyFlags {
+		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader} {
+			for _, mode := range []string{"", "workspace", "full"} {
+				cmd, err := (Runner{}).cliCommand(Job{CLI: cli, Kind: kind, RunPermissions: mode, Prompt: "prompt", Env: env})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if cmd.cleanup != nil {
+					cmd.cleanup()
+				}
+				args := cmd.Args[1:]
+				joined := strings.Join(args, "\x00")
+				if got := strings.Contains(joined, strings.Join(want, "\x00")); got != readOnlyKind(kind) {
+					t.Fatalf("%s kind=%q mode=%q: cờ chỉ đọc = %v; args = %q", cli, kind, mode, got, args)
+				}
+				for _, w := range writeFlags {
+					if readOnlyKind(kind) && strings.Contains(joined, w) {
+						t.Fatalf("%s kind=%q mode=%q: run chỉ đọc có cờ ghi %q; args = %q", cli, kind, mode, w, args)
+					}
+				}
+				// Prompt vẫn là đối số cuối của codex (cờ phải đứng trước nó).
+				if cli == "codex" && args[len(args)-1] != "prompt" {
+					t.Fatalf("codex args = %q", args)
+				}
 			}
 		}
+	}
+}
+
+func TestReadOnlyKindsRejectUndeclaredOverrides(t *testing.T) {
+	plain := map[string]Command{"claude": {Path: "/bin/true"}}
+	declared := map[string]Command{"claude": {Path: "/bin/true", ReadOnly: true}}
+	for _, kind := range []string{KindReview, KindPlan, KindLeader} {
+		if _, err := (Runner{CLICommands: plain}).cliCommand(Job{CLI: "claude", Kind: kind, Prompt: "p"}); err == nil {
+			t.Fatalf("kind %s chạy được override chưa khai readOnly", kind)
+		}
+		if _, err := (Runner{CLICommands: declared}).cliCommand(Job{CLI: "claude", Kind: kind, Prompt: "p"}); err != nil {
+			t.Fatalf("kind %s: %v", kind, err)
+		}
+	}
+	if _, err := (Runner{CLICommands: plain}).cliCommand(Job{CLI: "claude", Kind: "code", Prompt: "p"}); err != nil {
+		t.Fatalf("run code không cần khai readOnly: %v", err)
 	}
 }
 
@@ -721,5 +746,29 @@ func TestClaudeDefaultCommandPassesBudget(t *testing.T) {
 	defer cmd.cleanup()
 	if got := strings.Join(cmd.Args[1:], " "); !strings.Contains(got, "--max-budget-usd 2.5") {
 		t.Fatalf("lệnh = %s", got)
+	}
+}
+
+func TestWriteReviewDiffForReadOnlyReviewer(t *testing.T) {
+	remote, base := makeRemote(t)
+	work := filepath.Join(t.TempDir(), "work")
+	must(t, "git", "clone", remote, work)
+	must(t, "git", "-C", work, "checkout", "-b", "ai/HD-9")
+	mustDir(t, work, "added.txt", "dòng mới của run cha")
+	must(t, "git", "-C", work, "add", ".")
+	must(t, "git", "-C", work, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "cha")
+	if err := writeReviewDiff(context.Background(), work, base); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := os.ReadFile(filepath.Join(work, ReviewDiffFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(diff), "+dòng mới của run cha") || !strings.Contains(string(diff), "added.txt") {
+		t.Fatalf("diff = %s", diff)
+	}
+	// File diff không được làm worktree review thành "có thay đổi".
+	if status := strings.TrimSpace(mustOut(t, "git", "-C", work, "status", "--porcelain")); status != "" {
+		t.Fatalf("git status = %q", status)
 	}
 }

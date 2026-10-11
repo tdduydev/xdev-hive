@@ -27,6 +27,12 @@ const KindPlan = "plan"
 // KindLeader là run hội thoại; CLI được giới hạn chỉ đọc như KindPlan.
 const KindLeader = "leader"
 
+// readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
+// lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
+func readOnlyKind(kind string) bool {
+	return kind == KindReview || kind == KindPlan || kind == KindLeader
+}
+
 type Job struct {
 	Execution                                       string
 	SandboxPolicy                                   *SandboxJobConfig
@@ -83,11 +89,15 @@ type Command struct {
 	Path  string   `json:"path"`
 	Args  []string `json:"args"`
 	Input string   `json:"input,omitempty"`
+	// ReadOnly: người cấu hình cam kết lệnh này không sửa file hay chạy lệnh ghi. Run chỉ đọc (review, plan, leader)
+	// chỉ dùng override có khai ReadOnly; worker không tự thêm cờ chỉ đọc vào lệnh do người dùng viết.
+	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
 // CLIOverridesEnv thay lệnh của từng CLI mà không phải build lại worker, để scripts/e2e-smoke.ts trỏ "claude" tới
 // một CLI giả. Giá trị là JSON: {"claude": {"path": "/usr/bin/node", "args": ["fake.ts", "{{prompt}}"]}}; thêm
-// "input": "stream-json" nếu CLI giả đọc prompt từ stdin như Claude.
+// "input": "stream-json" nếu CLI giả đọc prompt từ stdin như Claude, và "readOnly": true nếu lệnh được dùng cho run
+// review, plan, leader (worker từ chối override chưa khai).
 const CLIOverridesEnv = "HIVE_WORKER_CLI_OVERRIDES"
 
 // CommandsFromEnv đọc HIVE_WORKER_CLI_OVERRIDES; biến trống thì trả map rỗng.
@@ -204,6 +214,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			return err
 		}
 		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
+			return err
+		}
+		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
 	} else if job.Kind == KindPlan || job.Kind == KindLeader {
@@ -350,7 +363,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
 	}
-	if job.Kind == KindReview || job.Kind == KindPlan || job.Kind == KindLeader {
+	if readOnlyKind(job.Kind) {
 		// Run review và run plan không nộp code: hub chấm theo việc agent đã gọi review_submit hay plan_submit, nên không
 		// đếm commit, không push.
 		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
@@ -379,6 +392,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		done.Status = "no_changes"
 	} else {
 		if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "publishing"}); err != nil {
+			return err
+		}
+		// Đường trên đã trả về trước với run chỉ đọc; kiểm lại ngay trước lệnh push để lỗi ở đó không thành push thật.
+		if readOnlyKind(job.Kind) {
+			err := fmt.Errorf("run %s chỉ đọc: không push", job.Kind)
+			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
 		// push -u ghi upstream vào config chung của repo cache nên cũng phải giữ khoá.
@@ -480,6 +499,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 		}
 		configured, ok = fromEnv[j.CLI]
 	}
+	if ok && readOnlyKind(j.Kind) && !configured.ReadOnly {
+		return nil, fmt.Errorf("run %s chỉ đọc nhưng lệnh %s cấu hình riêng chưa khai \"readOnly\": true", j.Kind, j.CLI)
+	}
 	if !ok {
 		if j.RunPermissions != "" && j.RunPermissions != "workspace" && j.RunPermissions != "full" {
 			return nil, fmt.Errorf("chế độ quyền run không hợp lệ: %s", j.RunPermissions)
@@ -502,13 +524,13 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
-			if j.Kind == KindPlan || j.Kind == KindLeader {
+			if readOnlyKind(j.Kind) {
 				// Chế độ plan của Claude Code chặn sửa file và chạy lệnh (đã thử trên claude 2.1.296); tool MCP chỉ gọi được
 				// khi có readOnlyHint, hub đánh dấu plan_submit như vậy.
 				args = append(args, "--permission-mode", "plan")
 			}
 			switch {
-			case j.Kind == KindPlan || j.Kind == KindLeader:
+			case readOnlyKind(j.Kind):
 				// Giữ chế độ plan ở trên: thêm --permission-mode thứ hai sẽ ghi đè nó và mất tính chỉ đọc.
 			case j.RunPermissions == "full":
 				args = append(args, "--permission-mode", "bypassPermissions")
@@ -521,7 +543,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
-			if j.Kind == KindPlan || j.Kind == KindLeader {
+			if readOnlyKind(j.Kind) {
 				// Sandbox read-only chặn ghi file và lệnh ghi; tool MCP vẫn gọi được (đã thử trên codex-cli 0.162.1).
 				args = append(args, "--sandbox", "read-only")
 			}
@@ -529,7 +551,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args = append(args, "-m", j.Model)
 			}
 			// Run plan và leader giữ sandbox read-only ở trên, không nhận cờ quyền ghi.
-			if j.Kind == KindPlan || j.Kind == KindLeader {
+			if readOnlyKind(j.Kind) {
 				args = append(args, "-c", `approval_policy="never"`)
 			} else if j.RunPermissions == "full" {
 				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
@@ -547,7 +569,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
-			if j.Kind == KindPlan || j.Kind == KindLeader {
+			if readOnlyKind(j.Kind) {
 				// "plan (read-only mode)" theo gemini --help bản 0.63.0.
 				args = append(args, "--approval-mode", "plan")
 			}
@@ -556,7 +578,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			}
 			args = append(args, "--skip-trust")
 			// Run plan và leader không nhận policy cho phép shell hay chế độ yolo, vì chúng ghi đè chế độ plan chỉ đọc.
-			if j.Kind == KindPlan || j.Kind == KindLeader {
+			if readOnlyKind(j.Kind) {
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
 			}
 			if j.RunPermissions == "full" {
@@ -741,4 +763,47 @@ func startMeter(job Job, sink Sink, stop context.CancelFunc) (*meter, func() err
 		close(done)
 		return m.finish()
 	}
+}
+
+// ReviewDiffFile là diff của run cha mà worker ghi sẵn vào worktree của run review: CLI chạy chỉ đọc (Claude ở chế độ
+// plan không chạy được lệnh) nên người review đọc file này thay cho `git diff`.
+const ReviewDiffFile = ".hive-review.diff"
+
+// reviewDiffLimit giữ file vừa sức đọc của agent; diff lớn hơn bị cắt kèm dòng báo.
+const reviewDiffLimit = 1 << 20
+
+func writeReviewDiff(ctx context.Context, work, baseBranch string) error {
+	diff, err := gitOutput(ctx, work, "diff", "origin/"+baseBranch+"...HEAD")
+	if err != nil {
+		return err
+	}
+	if len(diff) > reviewDiffLimit {
+		diff = diff[:reviewDiffLimit] + "\n\n[hive] Diff dài quá 1 MB, phần sau bị cắt; mở từng file cần xem.\n"
+	}
+	// Không để file diff lọt vào trạng thái của git trong worktree review.
+	if err := appendExclude(work, ReviewDiffFile); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(work, ReviewDiffFile), []byte(diff), 0o644)
+}
+
+func appendExclude(work, name string) error {
+	dir, err := gitOutput(context.Background(), work, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return err
+	}
+	path := strings.TrimSpace(dir)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(work, path)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString("\n/" + name + "\n")
+	return err
 }
