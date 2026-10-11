@@ -158,7 +158,10 @@ export async function updateChannel(
       "Không đổi được loại kênh; hãy tạo kênh mới với loại khác.",
     );
   }
-  await validateSmtpHost(config ?? decryptConfig(master, input.id, current.configEnc), deps);
+  // Kiểm host khi đổi cấu hình hoặc bật lại kênh. Chỉ đổi tên, sự kiện hay tắt kênh thì không gọi DNS: DNS lỗi không
+  // được chặn người quản trị tắt một kênh đang hỏng.
+  const enabling = input.enabled === true && !current.enabled;
+  if (config || enabling) await validateSmtpHost(config ?? decryptConfig(master, input.id, current.configEnc), deps);
   let row: ChannelRecord | undefined;
   try {
     [row] = await tx

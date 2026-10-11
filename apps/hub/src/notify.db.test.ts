@@ -99,17 +99,9 @@ describe("kênh thông báo", () => {
         }),
       ),
     ).rejects.toMatchObject(blocked);
+    // Đổi tên hay tắt kênh không gọi DNS: kênh đang hỏng vẫn sửa và tắt được dù host bị chặn.
     await asUser(org, "admin", (tx) =>
-      updateChannel(
-        tx,
-        masterKey,
-        org.user("admin"),
-        {
-          id: channel.id,
-          name: `smtp-sua-${tag}`,
-        },
-        { allowPrivate: true },
-      ),
+      updateChannel(tx, masterKey, org.user("admin"), { id: channel.id, name: `smtp-sua-${tag}`, enabled: false }),
     );
     await asUser(org, "admin", (tx) => removeChannel(tx, org.user("admin"), channel.id));
   });
