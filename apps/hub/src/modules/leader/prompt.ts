@@ -1,0 +1,91 @@
+import { desc, eq } from "drizzle-orm";
+import { costSummary } from "../cost/index.ts";
+import { listOnlineMachines } from "../fleet/index.ts";
+import type { Tx } from "../platform/index.ts";
+import { runs } from "../runs/index.ts";
+import { listTasks } from "../tasks/index.ts";
+
+export const HISTORY_CHAR_BUDGET = 24_000;
+
+export interface ThreadMessage {
+  role: string;
+  content: string;
+}
+
+/**
+ * Lịch sử cuộc trò chuyện cắt theo ngân sách ký tự: luôn giữ tin đầu (đặt bối cảnh)
+ * và các tin gần nhất trong phần ngân sách còn lại, theo đúng thứ tự thời gian.
+ */
+export function formatTranscript(messages: ThreadMessage[], budget = HISTORY_CHAR_BUDGET): string {
+  const [first, ...rest] = messages;
+  if (!first) return "";
+  const firstCost = first.content.length + first.role.length + 4;
+  let remaining = Math.max(0, budget - firstCost);
+
+  const recent: ThreadMessage[] = [];
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const msg = rest[i];
+    if (!msg) continue;
+    const cost = msg.content.length + msg.role.length + 4;
+    if (cost > remaining) break;
+    recent.unshift(msg);
+    remaining -= cost;
+  }
+
+  const selected = [first, ...recent];
+  return selected.map((m) => `${m.role}: ${m.content}`).join("\n\n");
+}
+
+export function assembleLeaderPrompt(params: {
+  transcript: string;
+  projectName: string;
+  projectKey: string;
+  defaultBranch: string | null;
+  context: string;
+}): string {
+  return [
+    "Bạn là leader agent của dự án. Chỉ đọc repository và bối cảnh được cung cấp.",
+    "Trả lời người dùng bằng đúng một lần gọi MCP `leader_reply`.",
+    "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
+    `Dự án: ${params.projectName} (${params.projectKey}); nhánh chính: ${params.defaultBranch ?? "main"}.`,
+    "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
+    params.transcript,
+    "Bối cảnh dự án:",
+    params.context,
+  ].join("\n\n");
+}
+
+/** Lấy tóm tắt bối cảnh dự án (task mở, run gần đây, máy trực tuyến, chi phí). */
+export async function projectContext(tx: Tx, userId: string, projectId: string, teamId: string): Promise<string> {
+  const [todo, running] = await Promise.all([
+    listTasks(tx, userId, projectId, "todo"),
+    listTasks(tx, userId, projectId, "running"),
+  ]);
+  const recentRuns = await tx
+    .select({ kind: runs.kind, state: runs.state })
+    .from(runs)
+    .where(eq(runs.projectId, projectId))
+    .orderBy(desc(runs.createdAt))
+    .limit(5);
+  const machines = await listOnlineMachines(tx, teamId);
+  const today = new Date().toISOString().slice(0, 10);
+  const from = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let costs: string;
+  try {
+    const summary = await costSummary(tx, userId, { projectId, from, to: today, groupBy: "day" });
+    costs = `${summary.total.costUsd.toFixed(4)} USD trong 7 ngày`;
+  } catch {
+    costs = "không có quyền xem chi phí";
+  }
+  return [
+    `Task đang mở: ${
+      [...todo, ...running]
+        .slice(0, 10)
+        .map((t) => `${t.key} (${t.status}): ${t.title}`)
+        .join("; ") || "không có"
+    }`,
+    `Run gần đây: ${recentRuns.map((r) => `${r.kind}/${r.state}`).join(", ") || "không có"}`,
+    `Máy trực tuyến: ${machines.map((m) => `${m.name} [${m.clis.join(", ")}]`).join(", ") || "không có"}`,
+    `Chi phí: ${costs}`,
+  ].join("\n");
+}

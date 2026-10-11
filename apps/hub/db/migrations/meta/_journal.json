@@ -288,6 +288,13 @@
       "when": 1791739579675,
       "tag": "0040_sandbox_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791740527768,
+      "tag": "0041_leader_chat",
+      "breakpoints": true
     }
   ]
 }

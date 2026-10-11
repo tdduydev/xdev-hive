@@ -101,7 +101,7 @@ async function taskOfPullRequest(
 ): Promise<{ task: TaskRow; run: RunRow | null } | null> {
   const run = await runOfPullRequest(tx, projectId, pr.url, pr.number);
   if (run) {
-    const task = await loadTask(tx, run.taskId);
+    const task = run.taskId ? await loadTask(tx, run.taskId) : null;
     return task ? { task, run } : null;
   }
   if (!pr.head.startsWith(BRANCH_PREFIX)) return null;
@@ -285,7 +285,7 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
   const prRun = await runOfPullRequest(tx, ctx.projectId, e.target.url, e.target.number);
   // PR không do run nào mở: không phải việc của Hive.
   if (!prRun) return;
-  const task = await loadTask(tx, prRun.taskId);
+  const task = prRun.taskId ? await loadTask(tx, prRun.taskId) : null;
   const project = await loadProject(tx, ctx.projectId);
   if (!task || !project) return;
   const conn = await connectionOf(tx, deps, project);

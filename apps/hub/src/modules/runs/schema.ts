@@ -27,7 +27,7 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review", "plan"]);
+export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader"]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
@@ -50,8 +50,8 @@ export const runState = hive.enum("run_state", [
 export type RunResult = RunResultView & { report?: Record<string, unknown> | null };
 
 /**
- * Một lần giao task cho agent. Khoá ngoại tới tasks, projects, teams (bảng của module khác) nằm trong migration viết
- * tay. machine_id không có khoá ngoại: máy bị thu hồi vẫn giữ dòng, và run phải còn lịch sử kể cả khi máy bị xoá.
+ * Một lần giao việc cho agent. Run leader có thread/project nhưng không gắn task; khoá ngoại tới các bảng module khác
+ * nằm trong migration viết tay. machine_id không có khoá ngoại để giữ lịch sử sau khi máy bị xoá.
  */
 export const runs = hive
   .table(
@@ -60,8 +60,9 @@ export const runs = hive
       id: uuid("id").primaryKey().defaultRandom(),
       orgId: uuid("org_id").notNull(),
       teamId: uuid("team_id").notNull(),
-      taskId: uuid("task_id").notNull(),
+      taskId: uuid("task_id"),
       projectId: uuid("project_id").notNull(),
+      leaderThreadId: uuid("leader_thread_id"),
       kind: runKind("kind").notNull().default("code"),
       /**
        * Run review chéo và run lập kế hoạch trỏ tới run code chúng phục vụ; cùng task, cùng tổ chức (khoá kép như các
@@ -111,6 +112,11 @@ export const runs = hive
       uniqueIndex("runs_task_active")
         .on(t.taskId)
         .where(sql`kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
+      uniqueIndex("runs_leader_thread_active")
+        .on(t.leaderThreadId)
+        .where(
+          sql`kind = 'leader' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`,
+        ),
       // Hai lần verify (hay lập kế hoạch) chạy chồng nhau của run cha không tạo được hai run con cùng sống.
       uniqueIndex("runs_review_active")
         .on(t.parentRunId)

@@ -24,6 +24,7 @@ import { createApp } from "./app.ts";
 import { loadProject } from "./modules/catalog/index.ts";
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
+import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine } from "./modules/runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "./modules/scm/index.ts";
@@ -82,6 +83,8 @@ beforeAll(async () => {
     masterKey,
     providerFactory,
     logger: quiet,
+    leaderMessage: appendLeaderSystemMessage,
+    leaderQueuedPrompt: queuedLeaderPrompt,
   });
   unregister = registerRunHandlers(engine.handlers);
   const app = createApp({
@@ -308,6 +311,78 @@ const planV2 = {
   risks: ["Dữ liệu lớn làm truy vấn chậm."],
   questions: ["Có cần lọc theo chi nhánh không?"],
 };
+
+describe("leader run", () => {
+  it("gửi tin, trả lời chỉ đọc, đề xuất rồi thực hiện hành động sau khi duyệt", async () => {
+    const machine = await seedMachine(`leader-${tag}`);
+    const worker = await FakeWorker.connect(machine);
+    const created = await api<{ id: string }>("POST", "/v1/leader/threads", { projectId, title: "Hỗ trợ dự án" });
+    expect(created.status).toBe(200);
+    const threadId = created.data.id;
+    const sent = await api<{ message: { id: string }; runId: string }>(
+      "POST",
+      `/v1/leader/threads/${threadId}/messages`,
+      {
+        content: "Tạo task để thêm báo cáo doanh thu.",
+        cli: "claude",
+      },
+    );
+    expect(sent.status).toBe(200);
+    expect(sent.data.runId).toBeTruthy();
+    const { spec, runToken } = await worker.take(sent.data.runId);
+    expect(spec).toMatchObject({ kind: "leader", taskId: null, projectId });
+    expect(spec.prompt).toContain("Tạo task để thêm báo cáo doanh thu.");
+    expect(spec.prompt).toContain("leader_propose");
+
+    const agent = await mcp(runToken);
+    const tools = (await agent.listTools()).tools;
+    for (const name of ["leader_reply", "leader_propose"])
+      expect(tools.find((tool) => tool.name === name)?.annotations?.readOnlyHint).toBe(true);
+    expect(
+      (await agent.callTool({ name: "leader_reply", arguments: { threadId, content: "Tôi đề xuất tạo task." } }))
+        .isError,
+    ).not.toBe(true);
+    expect(
+      (
+        await agent.callTool({
+          name: "leader_propose",
+          arguments: {
+            threadId,
+            action: {
+              type: "task.create",
+              projectId,
+              title: "Thêm báo cáo doanh thu",
+              body: "Tạo báo cáo theo tháng.",
+            },
+            rationale: "Tách yêu cầu thành một task để đội triển khai.",
+          },
+        })
+      ).isError,
+    ).not.toBe(true);
+    await worker.finish(sent.data.runId, 0, { status: "succeeded" });
+    await until(async () => (await runRow(sent.data.runId)).state === "succeeded");
+
+    const { rows } = await admin.query("select id from hive.approvals where thread_id = $1", [threadId]);
+    expect(rows).toHaveLength(1);
+    const approved = await api<{ approval: { status: string }; result: unknown }>(
+      "POST",
+      `/v1/leader/approvals/${rows[0].id}/approve`,
+      {},
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.data.approval.status).toBe("approved");
+    const { rows: taskRows } = await admin.query("select id from hive.tasks where project_id = $1 and title = $2", [
+      projectId,
+      "Thêm báo cáo doanh thu",
+    ]);
+    expect(taskRows).toHaveLength(1);
+    const { rows: messages } = await admin.query("select role, content from hive.chat_messages where thread_id = $1", [
+      threadId,
+    ]);
+    expect(messages.map((message) => message.role)).toContain("leader");
+    expect(messages.some((message) => message.role === "system" && message.content.includes("được duyệt"))).toBe(true);
+  });
+});
 
 /** Giao task, máy nhận run plan, agent nộp kế hoạch rồi thoát: run code chờ duyệt. */
 async function planned(w: FakeWorker, plan: Record<string, unknown> = planV2) {

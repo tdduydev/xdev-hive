@@ -12,7 +12,7 @@ import { type DiffStats, diffStats, steerResultData } from "@xdev-hive/contracts
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { enqueueMerge, loadProject, type ProjectRow } from "../catalog/index.ts";
+import { enqueueMerge, loadProject, type ProjectRow, projectFor } from "../catalog/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -126,6 +126,10 @@ export interface RunsDeps {
   send?: ((machineId: string, msg: OutgoingMessage) => boolean) | undefined;
   isConnected?: ((machineId: string) => boolean) | undefined;
   logger?: Pick<Console, "warn" | "error"> | undefined;
+  leaderMessage?: ((tx: Tx, threadId: string, content: string) => Promise<void>) | undefined;
+  leaderQueuedPrompt?:
+    | ((tx: Tx, threadId: string, after: Date) => Promise<{ userId: string; projectId: string; prompt: string } | null>)
+    | undefined;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -230,6 +234,7 @@ interface SpecContext {
   rejectedPlan: PlanRow | null;
   /** Dự án bật sandbox: cấu hình image và allowlist cho runner host. */
   sandbox?: SandboxJobConfig | undefined;
+  leaderPrompt: string | null;
 }
 
 function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecContext): string {
@@ -256,6 +261,7 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
       rejected: rejected ? { plan: planMarkdown(planInForce(rejected)), reason: rejected.note } : null,
     });
   }
+  if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
   const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
   const plan = ctx.approvedPlan;
   return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
@@ -263,22 +269,23 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
 
 function buildSpec(
   run: RunRow,
-  task: TaskRow,
+  task: TaskRow | null,
   project: ProjectRow,
   cli: string,
   ctx: SpecContext,
 ): Record<string, unknown> {
-  const prompt = promptOf(run, task, project, ctx);
+  const taskPrompt = task ?? ({ id: "", key: "leader", title: "Trao đổi với leader", body: "" } as TaskRow);
+  const prompt = promptOf(run, taskPrompt, project, ctx);
   const { instructions, budget, sandbox } = ctx;
   return {
     kind: run.kind,
     execution: sandbox ? "sandbox" : "worker",
     ...(sandbox ? { sandbox } : {}),
-    taskId: task.id,
-    taskKey: task.key,
+    taskId: task?.id ?? null,
+    taskKey: task?.key ?? null,
     projectId: project.id,
     projectKey: project.key,
-    title: task.title,
+    title: task?.title ?? "Trao đổi với leader",
     prompt: instructions.length
       ? `${prompt}\n\nChỉ dẫn thêm từ người review:\n${instructions.map((i) => `- ${i}`).join("\n")}`
       : prompt,
@@ -377,7 +384,7 @@ export function createRunsEngine(deps: RunsDeps) {
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
         (run.cli
           ? m.clis.includes(run.cli)
-          : run.kind === "plan"
+          : run.kind === "plan" || run.kind === "leader"
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
             : m.clis.length > 0),
     );
@@ -408,9 +415,9 @@ export function createRunsEngine(deps: RunsDeps) {
       const run = await lockRun(tx, runId);
       if (run?.state !== "queued") return null;
       if (run.offerMachineId && run.offerExpiresAt && run.offerExpiresAt > new Date()) return null;
-      const task = await loadTask(tx, run.taskId);
+      const task = run.kind === "leader" ? null : run.taskId ? await loadTask(tx, run.taskId) : null;
       const project = await loadProject(tx, run.projectId);
-      if (!task || !project) return null;
+      if ((!task && run.kind !== "leader") || !project) return null;
       const machine = await pickMachine(tx, run, project);
       if (!machine) return null;
       // Run plan làm cho run code cha: chỉ dẫn đã gửi cho run cha (vd. bình luận nhắc bot) cũng là yêu cầu của kế hoạch.
@@ -419,12 +426,21 @@ export function createRunsEngine(deps: RunsDeps) {
         ...(await instructionsOf(tx, run.id)),
       ];
       const sandbox = project.settings.features.sandbox ? await loadSandboxJobConfig(tx, project.id) : undefined;
-      const budget = jobBudget(project.settings.budget, await taskSpentUsd(tx, task.id));
+      const budget = jobBudget(project.settings.budget, task ? await taskSpentUsd(tx, task.id) : 0);
       const [parent] = run.parentRunId
         ? await tx.select({ prUrl: runs.prUrl }).from(runs).where(eq(runs.id, run.parentRunId))
         : [];
       const approvedPlan = run.kind === "code" ? await approvedPlanOf(tx, run.id) : null;
-      const latest = run.kind === "plan" ? await latestPlanOf(tx, task.id) : null;
+      const latest = run.kind === "plan" && task ? await latestPlanOf(tx, task.id) : null;
+      const [leaderContext] =
+        run.kind === "leader"
+          ? await tx
+              .select({ prompt: runEvents.data })
+              .from(runEvents)
+              .where(and(eq(runEvents.runId, run.id), eq(runEvents.type, "leader_prompt")))
+              .orderBy(desc(runEvents.id))
+              .limit(1)
+          : [];
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
@@ -432,7 +448,9 @@ export function createRunsEngine(deps: RunsDeps) {
         .where(eq(runs.id, run.id));
       const cli =
         run.cli ??
-        (run.kind === "plan" ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
+        (run.kind === "plan" || run.kind === "leader"
+          ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
+          : machine.clis[0]) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
@@ -452,6 +470,7 @@ export function createRunsEngine(deps: RunsDeps) {
             approvedPlan,
             rejectedPlan: latest?.status === "rejected" ? latest : null,
             sandbox,
+            leaderPrompt: typeof leaderContext?.prompt.prompt === "string" ? leaderContext.prompt.prompt : null,
           }),
         } satisfies OutgoingMessage,
       };
@@ -517,7 +536,7 @@ export function createRunsEngine(deps: RunsDeps) {
         { machineId: machine.id, leaseId: lease.id },
       );
       // Task của run review đã ở running theo run cha đang kiểm kết quả. Run plan là agent bắt đầu làm task.
-      if (run.kind !== "review") await setTaskStatus(tx, run.taskId, "running");
+      if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "running");
       await schedule({ kind: "lease", orgId: run.orgId, runId: run.id, leaseId: lease.id }, expiresAt, tx);
       return { run: leased, lease };
     });
@@ -529,7 +548,7 @@ export function createRunsEngine(deps: RunsDeps) {
     }
     const { token } = signRunToken(tokenKey, deps.publicUrl, {
       runId: out.run.id,
-      taskId: out.run.taskId,
+      taskId: out.run.taskId ?? out.run.id,
       orgId: out.run.orgId,
       attempt: out.run.attempt,
       ttlSec: out.run.timeoutSec,
@@ -771,7 +790,47 @@ export function createRunsEngine(deps: RunsDeps) {
     if (run?.state !== "verifying") return;
     if (run.kind === "code") await verifyCode(orgId, runId);
     else if (run.kind === "review") await verifyReview(orgId, runId);
-    else await verifyPlan(orgId, runId);
+    else if (run.kind === "plan") await verifyPlan(orgId, runId);
+    else await verifyLeader(orgId, runId);
+  }
+
+  async function verifyLeader(orgId: string, runId: string): Promise<void> {
+    const afterCommit = await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "leader" || run.state !== "verifying" || !run.leaderThreadId) return null;
+      const data = await resultOf(tx, run);
+      const [reply] = await tx
+        .select({ id: runEvents.id })
+        .from(runEvents)
+        .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "leader_reply")))
+        .limit(1);
+      const succeeded = exitOf(data) === 0 && Boolean(reply);
+      const message = succeeded
+        ? "Leader đã hoàn tất lượt trả lời."
+        : exitOf(data) === 0
+          ? "Leader chưa gửi câu trả lời vào cuộc trò chuyện. Hãy thử gửi lại tin nhắn."
+          : "Leader run gặp lỗi hoặc hết thời gian. Hãy thử gửi lại tin nhắn.";
+      await transition(tx, run, succeeded ? "succeeded" : "failed", { finishedAt: new Date() }, { message });
+      await recordAudit(tx, {
+        action: "leader.run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: run.id,
+        data: { succeeded, threadId: run.leaderThreadId },
+      });
+      if (!succeeded) {
+        await deps.leaderMessage?.(tx, run.leaderThreadId, message);
+      }
+      const queued = await deps.leaderQueuedPrompt?.(tx, run.leaderThreadId, run.createdAt);
+      if (!queued) return undefined;
+      const next = await startLeaderRun(tx, queued.userId, {
+        threadId: run.leaderThreadId,
+        projectId: queued.projectId,
+        prompt: queued.prompt,
+      });
+      return next.afterCommit;
+    });
+    afterCommit?.();
   }
 
   /**
@@ -789,7 +848,7 @@ export function createRunsEngine(deps: RunsDeps) {
         .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "agent_report")))
         .limit(1);
       const project = await loadProject(tx, run.projectId);
-      const task = await loadTask(tx, run.taskId);
+      const task = run.taskId ? await loadTask(tx, run.taskId) : null;
       const conn = project && deps.masterKey ? await loadConnection(tx, deps.masterKey, project.scmConnectionId) : null;
       // Đọc cờ lúc verify thay vì lúc giao: dự án tắt review chéo giữa chừng thì run đang chờ không tạo run review nữa.
       const stats = diffStats.safeParse(data.diffStats);
@@ -895,7 +954,7 @@ export function createRunsEngine(deps: RunsDeps) {
         return () => background(dispatch(orgId, child.id), "Không giao được run review");
       }
       await transition(tx, locked, outcome, { result, prUrl, finishedAt: new Date() }, { reasons, prUrl });
-      await setTaskStatus(tx, locked.taskId, taskStatusFor(outcome, prUrl));
+      if (locked.taskId) await setTaskStatus(tx, locked.taskId, taskStatusFor(outcome, prUrl));
       // Chế độ auto: PR của run đạt chính sách vào thẳng hàng merge, cùng transaction để không có run succeeded mà
       // PR bị bỏ quên ngoài hàng. Chế độ review chờ người đưa vào hàng.
       if (
@@ -1081,6 +1140,7 @@ export function createRunsEngine(deps: RunsDeps) {
       // Run plan còn chạy: khi nó kết thúc, childFinished hẹn lại bước này.
       if (child && !TERMINAL_RUN_STATES.includes(child.state)) return;
       const content = child?.state === "succeeded" ? await planReportOf(tx, child) : null;
+      if (!run.taskId) return;
       const task = await loadTask(tx, run.taskId);
       if (child && content) {
         const plan = await recordPlan(tx, {
@@ -1266,7 +1326,7 @@ export function createRunsEngine(deps: RunsDeps) {
           { attempt: run.attempt + 1, machineId: null, rejectedBy: [], offerMachineId: null, offerExpiresAt: null },
           { retry: run.attempt + 1 },
         );
-        if (run.kind !== "review") await setTaskStatus(tx, run.taskId, "queued");
+        if (run.kind !== "review" && run.kind !== "leader" && run.taskId) await setTaskStatus(tx, run.taskId, "queued");
         return { requeued: true };
       }
       const reasons = [`Mất kết nối với máy; đã thử ${run.attempt}/${run.maxAttempts} lần.`];
@@ -1288,10 +1348,18 @@ export function createRunsEngine(deps: RunsDeps) {
         data: { outcome: "failed", reasons },
       });
       if (run.kind === "code") {
-        await setTaskStatus(tx, run.taskId, "todo");
-        await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
+        if (run.taskId) {
+          await setTaskStatus(tx, run.taskId, "todo");
+          await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
+        }
       } else {
-        // Run review hay run plan hết lượt: run cha kết luận (và báo nhóm quản trị nếu cần) thay cho nó.
+        if (run.kind === "leader" && run.leaderThreadId) {
+          await deps.leaderMessage?.(
+            tx,
+            run.leaderThreadId,
+            "Leader run mất kết nối sau nhiều lần thử. Hãy thử gửi lại tin nhắn.",
+          );
+        }
         await childFinished(tx, run);
       }
       return null;
@@ -1317,10 +1385,12 @@ export function createRunsEngine(deps: RunsDeps) {
       { finishedAt: new Date(), offerMachineId: null, offerExpiresAt: null },
       data,
     );
-    if (run.kind === "code") {
+    if (run.kind === "code" && run.taskId) {
       await setTaskStatus(tx, run.taskId, "todo");
       // Huỷ khi kế hoạch còn chờ duyệt: không còn run nào chạy theo kế hoạch đó.
       await supersedePlans(tx, run.id);
+    } else if (run.kind === "leader" && run.leaderThreadId) {
+      await deps.leaderMessage?.(tx, run.leaderThreadId, "Leader run đã bị huỷ.");
     } else await childFinished(tx, run);
     return row;
   }
@@ -1385,6 +1455,56 @@ export function createRunsEngine(deps: RunsDeps) {
       createdBy: userId,
     });
     return { run: toRun(row), afterCommit };
+  }
+
+  async function startLeaderRun(
+    tx: Tx,
+    userId: string,
+    input: { threadId: string; projectId: string; prompt: string; cli?: RunRow["cli"] },
+  ) {
+    const project = await projectFor(tx, userId, input.projectId, "member");
+    if (!projectReady(project)) throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo.");
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`runs:leader:${input.threadId}`}, 0))`);
+    const [active] = await tx
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(
+          eq(runs.leaderThreadId, input.threadId),
+          eq(runs.kind, "leader"),
+          notInArray(runs.state, [...TERMINAL_RUN_STATES]),
+        ),
+      )
+      .limit(1);
+    if (active) return { runId: active.id, afterCommit: () => undefined };
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: sql`hive.ctx_org()`,
+        teamId: project.teamId,
+        taskId: null,
+        projectId: project.id,
+        leaderThreadId: input.threadId,
+        kind: "leader",
+        cli: input.cli ?? null,
+        model: input.cli ? (project.settings.models?.[input.cli]?.leader ?? null) : null,
+        branch: `leader/${input.threadId}`,
+        policySnapshot: [],
+        createdBy: userId,
+      })
+      .returning();
+    if (!row) throw new Error("Không tạo được leader run.");
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: userId });
+    await hubEvent(tx, row, "leader_prompt", { prompt: input.prompt });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "leader.run.start",
+      targetType: "run",
+      targetId: row.id,
+      data: { threadId: input.threadId, projectId: project.id, cli: row.cli },
+    });
+    const { orgId, id } = row;
+    return { runId: id, afterCommit: () => background(dispatch(orgId, id), "Không giao được leader run") };
   }
 
   /**
@@ -1678,6 +1798,7 @@ export function createRunsEngine(deps: RunsDeps) {
     verify,
     fire,
     startRun,
+    startLeaderRun,
     queueRun,
     steerRun,
     cancelRun,
@@ -1723,9 +1844,16 @@ export async function runForUser(
 ): Promise<RunRow> {
   const [row] = await tx.select().from(runs).where(eq(runs.id, id));
   if (!row) throw runNotFound();
-  await taskForUser(tx, userId, row.taskId, min).catch((e: unknown) => {
-    if (e instanceof NotFoundError) throw runNotFound();
-    throw e;
-  });
+  if (row.kind === "leader") {
+    await projectFor(tx, userId, row.projectId, min).catch((e: unknown) => {
+      if (e instanceof NotFoundError) throw runNotFound();
+      throw e;
+    });
+  } else if (row.taskId) {
+    await taskForUser(tx, userId, row.taskId, min).catch((e: unknown) => {
+      if (e instanceof NotFoundError) throw runNotFound();
+      throw e;
+    });
+  } else throw runNotFound();
   return row;
 }

@@ -38,7 +38,8 @@ export function createMcpRunTokens(opts: {
           .where(eq(runs.id, claims.run_id));
         return row;
       });
-      if (!run || run.attempt !== claims.attempt || run.taskId !== claims.task_id) return null;
+      if (!run || run.attempt !== claims.attempt) return null;
+      if (run.kind !== "leader" && run.taskId !== claims.task_id) return null;
       if (!ON_MACHINE.includes(run.state)) return null;
       return {
         kind: "run",
@@ -47,7 +48,7 @@ export function createMcpRunTokens(opts: {
         orgId: claims.org_id,
         runId: claims.run_id,
         runKind: run.kind,
-        taskId: claims.task_id,
+        taskId: run.taskId ?? undefined,
         attempt: claims.attempt,
         clientId: `run:${claims.run_id}`,
         scopes: [],
