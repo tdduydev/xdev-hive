@@ -66,6 +66,27 @@ export interface CommentOptions {
   pullRequest?: boolean;
 }
 
+/**
+ * Trạng thái PR đủ để merge queue chọn bước tiếp. `mergeable`: clean là merge được ngay; behind là nhánh chính đã tiến
+ * và nhà cung cấp đòi cập nhật; conflict là xung đột; blocked là thiếu người duyệt, kiểm tra bắt buộc chưa đạt hoặc
+ * bản nháp; unknown là nhà cung cấp đang tính, hỏi lại sau.
+ */
+export interface PullRequestState {
+  number: number;
+  url: string;
+  state: "open" | "closed" | "merged";
+  draft: boolean;
+  head: string;
+  headSha: string;
+  base: string;
+  mergeable: "clean" | "behind" | "conflict" | "blocked" | "unknown";
+}
+
+/** Kết quả CI trên một commit, gộp mọi kiểm tra. `none`: không có CI nào báo về commit này. */
+export type ChecksState = "success" | "pending" | "failure" | "none";
+
+export type MergeMethod = "merge" | "squash" | "rebase";
+
 /** Người dùng trên GitHub/GitLab. GitHub tra quyền theo login, GitLab theo id. */
 export interface ScmUser {
   login: string | null;
@@ -100,6 +121,19 @@ export interface GitProvider {
    * hoặc thiếu login/id thì false; lỗi mạng, hết hạn mức thì ném lỗi để người gọi thử lại.
    */
   canPush(ref: RepoRef, user: ScmUser): Promise<boolean>;
+  /** PR theo số (GitLab: iid); null khi không có. */
+  getPR(ref: RepoRef, number: number): Promise<PullRequestState | null>;
+  /**
+   * Đưa nhánh của PR theo kịp nhánh chính (GitHub: update-branch, GitLab: rebase). `expectedHeadSha` để không cập
+   * nhật đè khi agent vừa push thêm (GitLab không hỗ trợ, bỏ qua). Không cập nhật được vì xung đột thì lỗi conflict.
+   */
+  updatePRBranch(ref: RepoRef, number: number, expectedHeadSha: string): Promise<void>;
+  checksFor(ref: RepoRef, sha: string): Promise<ChecksState>;
+  /**
+   * Merge PR nếu head vẫn là `sha`. Head đã đổi hoặc PR không còn merge được thì lỗi conflict, để merge queue xem lại
+   * PR thay vì merge commit chưa qua CI.
+   */
+  mergePR(ref: RepoRef, number: number, opts: { method: MergeMethod; sha: string }): Promise<{ sha: string | null }>;
   /** Webhook cùng URL đã có thì cập nhật secret và sự kiện, không tạo thêm. */
   addWebhook(ref: RepoRef, input: WebhookInput): Promise<{ id: string }>;
   /** Webhook không còn thì coi như đã xoá. */
