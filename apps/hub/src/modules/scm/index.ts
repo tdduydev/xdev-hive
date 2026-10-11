@@ -65,6 +65,7 @@ export type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ScmUser,
   WebhookEvent,
   WebhookInput,
 } from "./types.ts";

@@ -11,6 +11,7 @@ import type {
   PullRequestInput,
   RepoInfo,
   RepoRef,
+  ScmUser,
   WebhookInput,
 } from "./types.ts";
 
@@ -31,6 +32,8 @@ export interface MemoryProvider extends GitProvider {
   readonly repos: Map<string, MemoryRepo>;
   /** Owner mà provider có quyền tạo repo; owner khác thì checkAccess báo thiếu quyền. */
   readonly owners: Set<string>;
+  /** Login hoặc id (dạng chuỗi) của người push được vào mọi repo; mặc định không ai. */
+  readonly pushers: Set<string>;
   readonly calls: Array<{ method: Method; args: unknown[] }>;
   /** Mọi lời gọi `method` ném lỗi này cho tới khi gọi lại với null. */
   fail(method: Method, error: GitProviderError | null): void;
@@ -50,6 +53,7 @@ export function createMemoryProvider(
 ): MemoryProvider {
   const repos = new Map<string, MemoryRepo>();
   const ownerSet = new Set(owners);
+  const pushers = new Set<string>();
   const failures = new Map<Method, GitProviderError>();
   const calls: MemoryProvider["calls"] = [];
   let seq = 0;
@@ -98,6 +102,7 @@ export function createMemoryProvider(
     kind,
     repos,
     owners: ownerSet,
+    pushers,
     calls,
     fail(method, error) {
       if (error) failures.set(method, error);
@@ -164,6 +169,11 @@ export function createMemoryProvider(
       const id = String(seq);
       repo.comments.push({ id, number, body, pullRequest: opts?.pullRequest ?? false });
       return { id };
+    }),
+
+    canPush: track("canPush", (ref: RepoRef, user: ScmUser) => {
+      need(ref);
+      return (user.login !== null && pushers.has(user.login)) || (user.id !== null && pushers.has(String(user.id)));
     }),
 
     addWebhook: track("addWebhook", (ref: RepoRef, input: WebhookInput) => {

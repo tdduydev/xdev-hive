@@ -3,7 +3,7 @@
 // GitHub/GitLab.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -215,6 +215,23 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
       };
       await writeFile(file, `${JSON.stringify(pr, null, 2)}\n`);
       return { number: pr.number, url };
+    },
+
+    async commentOnIssue(ref, number, body, commentOpts) {
+      // Ghi bình luận cạnh file PR để script kiểm được Hive đã trả lời.
+      const dir = await need(ref);
+      const file = join(dir, "hive-comments.jsonl");
+      const id = String(Date.now());
+      await appendFile(
+        file,
+        `${JSON.stringify({ id, number, body, pullRequest: commentOpts?.pullRequest ?? false })}\n`,
+      );
+      return { id };
+    },
+
+    async canPush() {
+      // Chế độ thử chỉ có người chạy script.
+      return true;
     },
 
     async addWebhook(ref, input) {
