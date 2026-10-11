@@ -48,7 +48,7 @@ const auth =
                     event: "member.pending",
                     title: `${member.email} chờ duyệt vào tổ chức`,
                     body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
-                    link: `${config.publicUrl ?? `http://localhost:${config.port}`}/quan-tri/thanh-vien`,
+                    link: `${config.publicUrl ?? `http://localhost:${config.port}`}/admin/members`,
                   },
                   { jobs },
                 ),

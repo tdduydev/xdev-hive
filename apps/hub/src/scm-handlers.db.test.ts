@@ -244,7 +244,7 @@ describe("issue có nhãn giao việc", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]).toMatchObject({ state: "queued", cli: "codex", branch: `ai/${task.key}` });
     const comment = repo.comments.find((c) => c.number === 7);
-    expect(comment?.body).toContain(`[${task.key}](https://hive.example.com/viec/${task.key})`);
+    expect(comment?.body).toContain(`[${task.key}](https://hive.example.com/tasks/${task.key})`);
     expect(comment?.pullRequest).toBe(false);
     // Bình luận của bot không được tự nhắc bot, kẻo GitLab gửi lại thành vòng lặp.
     expect(comment?.body).not.toContain("@hive");

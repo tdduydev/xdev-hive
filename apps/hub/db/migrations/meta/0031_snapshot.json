@@ -1,5 +1,5 @@
 {
-  "id": "7843df39-44b1-489d-8e05-30cbdda4bcc3",
+  "id": "cf1d34e0-f9d3-4c04-a744-97003466674e",
   "prevId": "896e0fa8-0a6a-4a79-afe1-85727704c0bd",
   "version": "7",
   "dialect": "postgresql",
@@ -4282,6 +4282,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "branch": {
           "name": "branch",
           "type": "text",
@@ -5107,13 +5113,6 @@
           "for": "DELETE",
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
-        },
-        "invitations_owner_select": {
-          "name": "invitations_owner_select",
-          "as": "PERMISSIVE",
-          "for": "SELECT",
-          "to": ["hive_owner"],
-          "using": "true"
         }
       },
       "checkConstraints": {},

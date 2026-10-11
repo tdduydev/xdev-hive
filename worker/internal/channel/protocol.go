@@ -1,6 +1,10 @@
 package channel
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+)
 
 // Kiểu gói của giao thức worker ↔ hub (docs/architecture.md mục 5). Nguồn chuẩn là zod trong
 // packages/contracts/src/worker-protocol.ts; protocol_test.go đọc chung file mẫu với test TypeScript để hai bên khớp.
@@ -91,8 +95,9 @@ type RunResult struct {
 	Seq     int64  `json:"seq"`
 	Exit    int    `json:"exit"`
 	// HeadSHA nil khi agent không tạo commit; vẫn gửi `null` vì hợp đồng đòi có trường.
-	HeadSHA *string         `json:"headSha"`
-	Report  json.RawMessage `json:"report"`
+	HeadSHA   *string           `json:"headSha"`
+	Report    json.RawMessage   `json:"report"`
+	DiffStats *runner.DiffStats `json:"diffStats,omitempty"`
 }
 
 // ---- Hub → worker ----

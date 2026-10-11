@@ -188,7 +188,7 @@ export async function checkMachineOffline(
         event: "machine.offline",
         title: `Máy ${row.name} mất kết nối hơn ${delayMinutes} phút`,
         body: `Đội ${row.teamName}.`,
-        link: `${publicUrl.replace(/\/+$/, "")}/quan-tri/may`,
+        link: `${publicUrl.replace(/\/+$/, "")}/admin/machines`,
       },
       { jobs: opts.jobs },
     );

@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { fakeHub, USER } from "./fake-hub.ts";
 
-test("chưa đăng nhập: trang khác chuyển về /dang-nhap và hiện đủ ba cách đăng nhập", async ({ page }) => {
+test("chưa đăng nhập: trang khác chuyển về /login và hiện đủ ba cách đăng nhập", async ({ page }) => {
   const hub = await fakeHub(page);
-  await page.goto("/du-an/abc");
-  await expect(page).toHaveURL("/dang-nhap?redirect=%2Fdu-an%2Fabc");
+  await page.goto("/projects/abc");
+  await expect(page).toHaveURL("/login?redirect=%2Fprojects%2Fabc");
   expect(hub.meMethods).toContain("GET");
 
   await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
@@ -32,14 +32,14 @@ test("SSO: gọi sign-in/sso theo tên miền rồi chuyển sang trang của Id
   await page.route("https://idp.example.test/**", (route) =>
     route.fulfill({ contentType: "text/html", body: "IdP giả" }),
   );
-  await page.goto("/dang-nhap");
+  await page.goto("/login");
   await page.getByLabel("Email công ty").fill("Duy@FPT.com");
   await page.getByRole("button", { name: "Tiếp tục với SSO" }).click();
   await expect(page).toHaveURL("https://idp.example.test/authorize");
   expect(hub.authCalls).toEqual([
     {
       path: "/sign-in/sso",
-      body: { domain: "fpt.com", loginHint: "Duy@FPT.com", callbackURL: "/", errorCallbackURL: "/dang-nhap" },
+      body: { domain: "fpt.com", loginHint: "Duy@FPT.com", callbackURL: "/", errorCallbackURL: "/login" },
     },
   ]);
 });
@@ -48,7 +48,7 @@ test("SSO: báo lỗi tiếng Việt khi email sai và khi tên miền chưa có
   await fakeHub(page, {
     auth: { "/sign-in/sso": () => ({ status: 404, json: { message: "No provider found for the issuer" } }) },
   });
-  await page.goto("/dang-nhap");
+  await page.goto("/login");
   const email = page.getByLabel("Email công ty");
   await page.getByRole("button", { name: "Tiếp tục với SSO" }).click();
   await expect(page.getByText("Nhập email công ty, ví dụ ten@congty.vn.")).toBeVisible();
@@ -65,7 +65,7 @@ test("GitHub chưa bật trên hub thì báo rõ", async ({ page }) => {
       "/sign-in/social": () => ({ status: 404, json: { code: "PROVIDER_NOT_FOUND", message: "Provider not found" } }),
     },
   });
-  await page.goto("/dang-nhap");
+  await page.goto("/login");
   await page.getByRole("button", { name: "GitHub" }).click();
   await expect(page.getByRole("alert")).toHaveText(/Hub chưa bật cách đăng nhập này/);
   expect(hub.authCalls[0]?.body).toMatchObject({ provider: "github", callbackURL: "/" });
@@ -73,7 +73,7 @@ test("GitHub chưa bật trên hub thì báo rõ", async ({ page }) => {
 
 test("lỗi hub gửi về qua ?error= sau OAuth hiện bằng tiếng Việt", async ({ page }) => {
   await fakeHub(page);
-  await page.goto("/dang-nhap?error=access_denied");
+  await page.goto("/login?error=access_denied");
   await expect(page.getByRole("alert")).toHaveText("Bạn đã huỷ hoặc chưa cấp quyền ở trang của nhà cung cấp.");
 });
 
@@ -90,7 +90,7 @@ test("email: sai mật khẩu báo lỗi, đúng thì vào trang chủ", async (
     },
   });
   await page.goto("/");
-  await expect(page).toHaveURL("/dang-nhap");
+  await expect(page).toHaveURL("/login");
   await page.getByText("Đăng nhập bằng email và mật khẩu").click();
   await page.getByLabel("Email", { exact: true }).fill(USER.email);
   await page.getByLabel("Mật khẩu").fill("sai-mat-khau");

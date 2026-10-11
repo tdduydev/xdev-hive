@@ -9,7 +9,7 @@ function Centered({ title, children }: { title: string; children: ReactNode }) {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-105 gap-4 p-7">
         <Brand />
-        <h1 className="text-3xl font-bold text-ink">{title}</h1>
+        <h1 className="font-display text-3xl font-semibold text-ink">{title}</h1>
         {children}
       </Card>
     </main>
