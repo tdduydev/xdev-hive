@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 import { PROTOCOL_VERSION, type WorkerToHub, workerToHub } from "@xdev-hive/contracts/worker-protocol";
 import type pg from "pg";
 import { type WebSocket, WebSocketServer } from "ws";
+import type { Jobs } from "../platform/index.ts";
 import { registerConnection, sendToMachine, unregisterConnection } from "./connections.ts";
 import { type AuthedMachine, authenticateMachine, markOffline, markOnline } from "./machines.ts";
 
@@ -48,6 +49,9 @@ export function registerRunHandlers(handlers: RunHandlers): () => void {
 export interface GatewayOptions {
   /** Pool của role hive_app. */
   pool: pg.Pool;
+  jobs?: Jobs | undefined;
+  publicUrl?: string | undefined;
+  offlineNotifySec?: number | undefined;
   heartbeatSec?: number;
   /** Thời gian chờ gói hello sau khi nâng cấp kết nối. */
   helloTimeoutMs?: number;
@@ -165,7 +169,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
       if (!session || !unregisterConnection(machine.id, ws)) return;
       // Đợi các gói đang xử lý xong để markOffline không bị một heartbeat chạy sau ghi đè thành online.
       queue = queue.then(() =>
-        markOffline(opts.pool, machine).catch((error: unknown) => log.error("Không ghi được máy offline", error)),
+        markOffline(opts.pool, machine, { jobs: opts.jobs, notifyAfterSec: opts.offlineNotifySec }).catch(
+          (error: unknown) => log.error("Không ghi được máy offline", error),
+        ),
       );
     });
     ws.on("error", (error) => log.warn(`Kết nối của máy ${machine.id} lỗi`, error));

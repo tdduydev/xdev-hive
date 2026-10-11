@@ -46,3 +46,13 @@ describe("loadConfig: embeddings", () => {
       loadConfig({ HIVE_EMBEDDINGS_URL: "http://ollama:11434/v1", HIVE_EMBEDDINGS_DIMENSIONS: "-3" }),
     ).toThrow(/HIVE_EMBEDDINGS_DIMENSIONS/));
 });
+
+describe("loadConfig: thông báo máy offline", () => {
+  it("mặc định chờ 300 giây; đọc thời gian cấu hình", () => {
+    expect(loadConfig({}).machineOfflineNotifySec).toBe(300);
+    expect(loadConfig({ HIVE_MACHINE_OFFLINE_NOTIFY_SEC: "120" }).machineOfflineNotifySec).toBe(120);
+  });
+  it.each(["", "abc", "0", "-1", "1.5", "Infinity"])("từ chối thời gian sai: %s", (value) => {
+    expect(() => loadConfig({ HIVE_MACHINE_OFFLINE_NOTIFY_SEC: value })).toThrow(/HIVE_MACHINE_OFFLINE_NOTIFY_SEC/);
+  });
+});
