@@ -370,14 +370,15 @@ function EnqueueForm({ project, onDone }: { project: Project; onDone: () => Prom
         <label htmlFor={id} className="font-medium text-ink">
           Số PR
         </label>
-        <Input
-          id={id}
-          inputMode="numeric"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          className="w-22"
-          disabled={enqueue.isPending}
-        />
+        <div className="w-22 shrink-0">
+          <Input
+            id={id}
+            inputMode="numeric"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            disabled={enqueue.isPending}
+          />
+        </div>
         <Button type="submit" variant="primary" disabled={enqueue.isPending}>
           {enqueue.isPending ? "Đang đưa vào…" : "Đưa vào hàng"}
         </Button>

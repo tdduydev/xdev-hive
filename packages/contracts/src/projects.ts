@@ -115,6 +115,7 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+export const runPermissionMode = z.enum(["workspace", "full"]);
 /**
  * Trần chi phí của dự án. Mỗi trường bỏ trống là không giới hạn. Worker dừng run vượt trần như khi huỷ; hub từ chối
  * giao thêm run cho task đã tiêu hết perTaskUsd. Codex không báo USD nên trần USD chỉ có tác dụng với Claude; dùng
@@ -132,6 +133,8 @@ export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
 export type MergeMethod = z.output<typeof mergeMethod>;
 
 export const projectSettings = z.object({
+  /** `full` bỏ kiểm soát của CLI; chỉ nên dùng trong container của M6. */
+  runPermissions: z.object({ mode: runPermissionMode }).optional(),
   /** Model được dùng theo CLI và loại run; bỏ trống thì CLI chọn mặc định. */
   models: z
     .object({

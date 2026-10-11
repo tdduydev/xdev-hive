@@ -54,7 +54,7 @@ export function Inbox() {
           description="Thông báo dành cho bạn trong tổ chức này sẽ xuất hiện ở đây."
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <ul className="divide-y divide-line">
             {items.map((item) => {
               const url = externalUrl(item.link);
