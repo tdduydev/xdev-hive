@@ -2,7 +2,7 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { attachWorkerGateway } from "./modules/fleet/index.ts";
-import { createAuth } from "./modules/identity/index.ts";
+import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createPool, loadConfig } from "./modules/platform/index.ts";
 
 const config = loadConfig();
@@ -19,6 +19,7 @@ const auth =
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
+else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL không phải HTTPS: tắt cổng /mcp.");
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
 if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
 
