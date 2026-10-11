@@ -4,16 +4,28 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/main.ts",
+    "dev": "node --env-file-if-exists=.env --watch src/main.ts",
     "start": "node src/main.ts",
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:bootstrap": "node --env-file-if-exists=.env src/cli.ts db:bootstrap",
+    "db:migrate": "node --env-file-if-exists=.env src/cli.ts db:migrate",
+    "db:setup": "pnpm db:bootstrap && pnpm db:migrate",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.4",
     "@orpc/openapi": "^1.15.5",
     "@orpc/server": "^1.15.5",
     "@xdev-hive/contracts": "workspace:*",
-    "hono": "^4.13.13"
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.13",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^12.2.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "testcontainers": "^12.2.0"
   }
 }
