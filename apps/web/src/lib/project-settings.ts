@@ -26,6 +26,8 @@ export interface SettingsForm {
   requireCi: boolean;
   mergeQueue: boolean;
   planMode: boolean;
+  /** Run code chạy trên runner host trong container gVisor thay cho máy dev. */
+  sandbox: boolean;
   crossReview: boolean;
   reviewBy: SettingsCli;
   reviewMinScore: string;
@@ -55,6 +57,7 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     requireCi: s.merge.requireCi ?? false,
     mergeQueue: s.features.mergeQueue,
     planMode: s.features.planMode,
+    sandbox: s.features.sandbox,
     crossReview: s.features.crossReview,
     reviewBy: review?.by ?? "codex",
     reviewMinScore: text(review?.minScore ?? 7),
@@ -124,7 +127,12 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       method: form.mergeMethod || null,
       requireCi: form.requireCi,
     },
-    features: { planMode: form.planMode, crossReview: form.crossReview, mergeQueue: form.mergeQueue },
+    features: {
+      planMode: form.planMode,
+      crossReview: form.crossReview,
+      mergeQueue: form.mergeQueue,
+      sandbox: form.sandbox,
+    },
     outcome: { default: outcomeDefault },
     budget: {
       perRunUsd: num(form.perRunUsd, "perRunUsd", errors),
