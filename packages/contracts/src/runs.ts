@@ -32,7 +32,7 @@ export const TERMINAL_RUN_STATES: readonly RunState[] = [
   "cancelled",
 ];
 
-export const runKind = z.enum(["code", "review"]);
+export const runKind = z.enum(["code", "review", "leader"]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({

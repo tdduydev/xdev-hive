@@ -34,6 +34,8 @@ describe("McpToolRegistry", () => {
     registry.register(tool("task_get"));
     registry.register(tool("memory_write"));
     registry.register({ ...tool("review_submit"), runKinds: ["review"] });
+    registry.register({ ...tool("leader_reply"), runKinds: ["leader"] });
+    registry.register({ ...tool("leader_propose"), runKinds: ["leader"] });
     const principal = { kind: "run" as const, userId: "u", scopes: [] };
     expect(registry.list(principal).map((t) => t.name)).toEqual(["task_get"]);
     expect(registry.list({ ...principal, runKind: "code" }).map((t) => t.name)).toEqual(["task_get"]);
@@ -45,6 +47,10 @@ describe("McpToolRegistry", () => {
       "task_get",
       "memory_write",
       "review_submit",
+    ]);
+    expect(registry.list({ ...principal, runKind: "leader" }).map((t) => t.name)).toEqual([
+      "leader_reply",
+      "leader_propose",
     ]);
   });
 });

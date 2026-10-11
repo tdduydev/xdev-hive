@@ -9,6 +9,7 @@ import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
+import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { notifyRouter } from "./modules/notify/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
@@ -79,6 +80,7 @@ export function createApp({
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
+    leader: leaderRouter({ auth, pool, runs }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -123,6 +125,7 @@ export function createApp({
     tenancyMcpTools(registry);
     runsMcpTools(registry);
     knowledgeMcpTools(registry, { embedder, jobs });
+    leaderMcpTools(registry);
     const mcp = createMcpEndpoint({
       auth,
       pool,
