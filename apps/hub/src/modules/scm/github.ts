@@ -1,16 +1,19 @@
 import { App } from "@octokit/app";
 import { Octokit } from "@octokit/core";
 import { errorFromResponse, GitProviderError, isGitProviderError, networkError } from "./errors.ts";
-import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
+import { assertOwnedRepo, combineChecks, describeWithMarker, notMergeable } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  ChecksState,
   CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,
   GitProvider,
+  MergeMethod,
   PullRequestInput,
+  PullRequestState,
   RepoInfo,
   RepoRef,
   RepoVisibility,
@@ -60,6 +63,32 @@ interface GhPull {
   number: number;
   html_url: string;
 }
+
+interface GhPullFull extends GhPull {
+  state: "open" | "closed";
+  merged: boolean;
+  draft?: boolean;
+  head: { ref: string; sha: string };
+  base: { ref: string };
+  /** null khi GitHub đang tính lại (vừa đổi nhánh chính hay vừa push). */
+  mergeable: boolean | null;
+  mergeable_state?: string;
+}
+
+// unstable: kiểm tra không bắt buộc đang đỏ, vẫn merge được (CI do checksFor xét riêng).
+const GH_MERGEABLE: Record<string, PullRequestState["mergeable"]> = {
+  clean: "clean",
+  unstable: "clean",
+  has_hooks: "clean",
+  behind: "behind",
+  dirty: "conflict",
+  blocked: "blocked",
+  draft: "blocked",
+  unknown: "unknown",
+};
+
+// neutral, skipped, success là đạt; stale là chạy dở quá 14 ngày, coi như hỏng.
+const GH_FAILED = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"]);
 
 interface GhHook {
   id: number;
@@ -460,6 +489,86 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         }),
       );
       return r?.permission === "admin" || r?.permission === "write";
+    },
+
+    async getPR(ref: RepoRef, number: number) {
+      const pr = await orNull(() =>
+        request<GhPullFull>("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+        }),
+      );
+      if (!pr) return null;
+      const mergeable =
+        pr.mergeable === null
+          ? "unknown"
+          : (GH_MERGEABLE[pr.mergeable_state ?? ""] ?? (pr.mergeable ? "clean" : "conflict"));
+      return {
+        number: pr.number,
+        url: pr.html_url,
+        state: pr.merged ? "merged" : pr.state === "open" ? "open" : "closed",
+        draft: pr.draft ?? false,
+        head: pr.head.ref,
+        headSha: pr.head.sha,
+        base: pr.base.ref,
+        mergeable,
+      } satisfies PullRequestState;
+    },
+
+    async updatePRBranch(ref: RepoRef, number: number, expectedHeadSha: string) {
+      try {
+        await request("PUT /repos/{owner}/{repo}/pulls/{pull_number}/update-branch", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+          expected_head_sha: expectedHeadSha,
+        });
+      } catch (e) {
+        // 422: xung đột với nhánh chính, hoặc head đã khác expected_head_sha.
+        if (isGitProviderError(e, "invalid")) throw notMergeable(e);
+        throw e;
+      }
+    },
+
+    async checksFor(ref: RepoRef, sha: string): Promise<ChecksState> {
+      const repo = { owner: ref.owner, repo: ref.name, ref: sha };
+      // Hai nguồn CI của GitHub: commit status (CI ngoài, API cũ) và check run (GitHub Actions, App).
+      const status = await request<{ state: string; total_count: number }>(
+        "GET /repos/{owner}/{repo}/commits/{ref}/status",
+        repo,
+      );
+      const checks = await request<{ check_runs: Array<{ status: string; conclusion: string | null }> }>(
+        "GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
+        { ...repo, per_page: 100 },
+      );
+      const states: ChecksState[] = [];
+      // Không có status nào thì GitHub vẫn trả state "pending" với total_count 0.
+      if (status.total_count > 0) {
+        states.push(status.state === "success" ? "success" : status.state === "pending" ? "pending" : "failure");
+      }
+      for (const run of checks.check_runs) {
+        if (run.status !== "completed") states.push("pending");
+        else states.push(GH_FAILED.has(run.conclusion ?? "") ? "failure" : "success");
+      }
+      return combineChecks(states);
+    },
+
+    async mergePR(ref: RepoRef, number: number, opts: { method: MergeMethod; sha: string }) {
+      try {
+        const r = await request<{ sha?: string | null }>("PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+          merge_method: opts.method,
+          sha: opts.sha,
+        });
+        return { sha: r.sha ?? null };
+      } catch (e) {
+        // 405: chưa merge được (thiếu người duyệt, kiểm tra bắt buộc, xung đột). 409: head đã khác sha (có sẵn conflict).
+        if (isGitProviderError(e, "invalid") && e.status === 405) throw notMergeable(e);
+        throw e;
+      }
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {
