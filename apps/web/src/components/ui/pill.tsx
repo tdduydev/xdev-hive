@@ -13,9 +13,11 @@ export interface PillProps extends ComponentProps<"span"> {
   tone?: keyof typeof tones;
   /** Cỡ chữ nhỏ hơn, dùng cho nhãn mốc ở sidebar. */
   small?: boolean;
+  /** Chấm tròn trước chữ, cho nhãn trạng thái (bảng việc, run). */
+  dot?: boolean;
 }
 
-export function Pill({ tone = "neutral", small = false, className, ...props }: PillProps) {
+export function Pill({ tone = "neutral", small = false, dot = false, className, children, ...props }: PillProps) {
   return (
     <span
       className={cx(
@@ -25,6 +27,9 @@ export function Pill({ tone = "neutral", small = false, className, ...props }: P
         className,
       )}
       {...props}
-    />
+    >
+      {dot && <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />}
+      {children}
+    </span>
   );
 }
