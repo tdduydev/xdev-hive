@@ -1,0 +1,1 @@
+CREATE INDEX "runs_org_created" ON "hive"."runs" USING btree ("org_id","created_at","id");

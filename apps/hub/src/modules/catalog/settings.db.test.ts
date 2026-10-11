@@ -87,6 +87,28 @@ describe("projects.updateSettings: vá một phần", () => {
     expect(await stored(p.id)).not.toHaveProperty("budget");
   });
 
+  it("đổi quyền CLI của run và model theo CLI; null về mặc định", async () => {
+    const p = await newProject();
+    const a = await update("tadmin", p.key, {
+      runPermissions: { mode: "full" },
+      models: { claude: { code: "claude-opus-5-5", review: "claude-sonnet-5-5" }, codex: { code: "gpt-6" } },
+    });
+    expect(a.runPermissions).toEqual({ mode: "full" });
+    expect(a.models).toEqual({
+      claude: { code: "claude-opus-5-5", review: "claude-sonnet-5-5" },
+      codex: { code: "gpt-6" },
+    });
+    const b = await update("tadmin", p.key, {
+      runPermissions: null,
+      models: { claude: { review: null }, codex: { code: null } },
+    });
+    expect(b.runPermissions).toBeUndefined();
+    expect(b.models).toEqual({ claude: { code: "claude-opus-5-5" } });
+    const c = await update("tadmin", p.key, { models: { claude: { code: null } } });
+    expect(c.models).toBeUndefined();
+    expect(await stored(p.id)).not.toHaveProperty("models");
+  });
+
   it("quản trị tổ chức và chủ sở hữu đổi được dự án của mọi đội", async () => {
     const p = await newProject();
     expect((await update("admin", p.key, { features: { planMode: true } })).features.planMode).toBe(true);
@@ -150,6 +172,9 @@ describe("projects.updateSettings: kiểm dữ liệu", () => {
     ["ngân sách âm", { budget: { perRunUsd: -1 } }],
     ["maxTurns không nguyên", { budget: { maxTurns: 1.5 } }],
     ["CLI lạ", { defaultCli: "cursor" }],
+    ["CLI lạ trong models", { models: { cursor: { code: "x" } } }],
+    ["model rỗng", { models: { claude: { code: " " } } }],
+    ["chế độ quyền lạ", { runPermissions: { mode: "root" } }],
     ["tắt bằng null trường bắt buộc", { features: { mergeQueue: null } }],
   ])("từ chối %s", (_, patch) => {
     expect(projectSettingsPatch.safeParse(patch).success).toBe(false);
