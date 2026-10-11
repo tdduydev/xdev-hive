@@ -53,7 +53,8 @@ export interface PullRequestInput {
   labels?: string[];
 }
 
-export type WebhookEvent = "push" | "pull_request";
+/** Tên theo GitHub. `issue_comment` ở GitLab là note events, gồm cả bình luận trên merge request. */
+export type WebhookEvent = "push" | "pull_request" | "issues" | "issue_comment";
 
 export interface WebhookInput {
   url: string;
@@ -64,6 +65,8 @@ export interface WebhookInput {
 export interface AccessCheck {
   canCreate: boolean;
   missingScopes: string[];
+  /** Quyền cần có nhưng không đọc được trước; chỉ lộ ra khi gọi thật (fine-grained token). */
+  unverifiedScopes?: string[];
 }
 
 export interface GitProvider {

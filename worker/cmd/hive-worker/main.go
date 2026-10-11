@@ -22,6 +22,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/channel"
 	"github.com/tdduydev/xdev-hive/worker/internal/config"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
 )
 
@@ -53,9 +54,19 @@ func usage() {
 var knownCLIs = []string{"claude", "codex", "gemini"}
 
 func detectCLIs() []string {
+	// CLI ghi đè qua HIVE_WORKER_CLI_OVERRIDES (CLI giả của scripts/e2e-smoke.ts) tính là có khi lệnh của nó chạy được,
+	// để hub giao việc cho máy dù máy không cài CLI thật.
+	overrides, err := runner.CommandsFromEnv()
+	if err != nil {
+		slog.Warn("Bỏ qua CLI ghi đè", "error", err)
+	}
 	found := []string{}
 	for _, name := range knownCLIs {
-		if _, err := exec.LookPath(name); err == nil {
+		path := name
+		if c, ok := overrides[name]; ok {
+			path = c.Path
+		}
+		if _, err := exec.LookPath(path); err == nil {
 			found = append(found, name)
 		}
 	}

@@ -27,9 +27,14 @@ const userId = z.string().min(1, "Thiếu mã người dùng.");
 export const orgRole = z.enum(["owner", "admin", "member"]);
 export const teamRole = z.enum(["admin", "member", "viewer"]);
 export const memberStatus = z.enum(["active", "pending", "blocked"]);
+/** Người đăng nhập SSO lần đầu: vào hàng chờ duyệt, hay thành thành viên ngay (chưa thuộc đội nào). */
+export const ssoJoin = z.enum(["pending", "member"]);
+export const invitationStatus = z.enum(["pending", "accepted", "expired"]);
 export type OrgRole = z.output<typeof orgRole>;
 export type TeamRole = z.output<typeof teamRole>;
 export type MemberStatus = z.output<typeof memberStatus>;
+export type SsoJoin = z.output<typeof ssoJoin>;
+export type InvitationStatus = z.output<typeof invitationStatus>;
 
 // `code` ổn định để client phân biệt lý do (vd. LAST_OWNER) mà không phải đọc message.
 const reason = z.object({ code: z.string() }).optional();
@@ -75,6 +80,37 @@ export const orgMember = z.object({
   joinedAt: z.iso.datetime(),
   teams: z.array(z.object({ teamId: id, name: z.string(), role: teamRole })),
 });
+const email = z.email("Email không hợp lệ.").trim().toLowerCase();
+// Mã mời là chuỗi base64url sinh ngẫu nhiên; giới hạn độ dài để không băm chuỗi tuỳ ý quá lớn.
+const inviteToken = z.string().min(16, "Mã mời không hợp lệ.").max(128, "Mã mời không hợp lệ.");
+
+export const invitation = z.object({
+  id,
+  email: z.string(),
+  orgRole,
+  teamId: id.nullable(),
+  teamName: z.string().nullable(),
+  teamRole: teamRole.nullable(),
+  status: invitationStatus,
+  expiresAt: z.iso.datetime(),
+  createdAt: z.iso.datetime(),
+  acceptedAt: z.iso.datetime().nullable(),
+});
+/** Lời mời vừa tạo kèm link. Link chứa mã gốc, chỉ trả đúng một lần lúc tạo; hub chỉ giữ bản băm. */
+export const createdInvitation = z.object({ id, email: z.string(), link: z.url(), expiresAt: z.iso.datetime() });
+export const invitationPreview = z.object({
+  orgName: z.string(),
+  email: z.string(),
+  status: invitationStatus,
+  expiresAt: z.iso.datetime(),
+});
+export const ssoSettings = z.object({
+  /** Cố định theo tổ chức, nên callback URL dán vào nhà cung cấp không đổi khi cấu hình lại. */
+  providerId: z.string(),
+  callbackUrl: z.url(),
+  join: ssoJoin,
+  provider: z.object({ issuer: z.string(), domain: z.string(), clientIdLastFour: z.string().nullable() }).nullable(),
+});
 export type Org = z.output<typeof org>;
 export type MyOrg = z.output<typeof myOrg>;
 export type Team = z.output<typeof team>;
@@ -82,10 +118,18 @@ export type TeamWithCounts = z.output<typeof teamWithCounts>;
 export type System = z.output<typeof system>;
 export type TeamMember = z.output<typeof teamMember>;
 export type OrgMember = z.output<typeof orgMember>;
+export type Invitation = z.output<typeof invitation>;
+export type CreatedInvitation = z.output<typeof createdInvitation>;
+export type InvitationPreview = z.output<typeof invitationPreview>;
+export type SsoSettings = z.output<typeof ssoSettings>;
 
 const ORG_HEADER = "Tổ chức lấy từ header `x-hive-org`.";
-const route = (method: "GET" | "POST" | "PATCH" | "DELETE", path: `/v1/${string}`, summary: string, tag: string) =>
-  oc.route({ method, path, summary, tags: [tag], description: ORG_HEADER }).errors(errors);
+const route = (
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: `/v1/${string}`,
+  summary: string,
+  tag: string,
+) => oc.route({ method, path, summary, tags: [tag], description: ORG_HEADER }).errors(errors);
 
 export const tenancyContract = {
   orgs: {
@@ -164,5 +208,74 @@ export const tenancyContract = {
     setStatus: route("PATCH", "/v1/members/{userId}/status", "Duyệt hoặc khoá thành viên (quản trị)", "members")
       .input(z.object({ userId, status: z.enum(["active", "blocked"]) }))
       .output(z.object({ userId: z.string(), role: orgRole, status: memberStatus })),
+    approve: route("POST", "/v1/members/{userId}/approve", "Duyệt người đang chờ (quản trị)", "members")
+      .input(z.object({ userId }))
+      .output(z.object({ userId: z.string(), role: orgRole, status: memberStatus })),
+    deny: route(
+      "POST",
+      "/v1/members/{userId}/deny",
+      "Từ chối người đang chờ, chuyển sang bị khoá (quản trị)",
+      "members",
+    )
+      .input(z.object({ userId }))
+      .output(z.object({ userId: z.string(), role: orgRole, status: memberStatus })),
+  },
+  invitations: {
+    create: route(
+      "POST",
+      "/v1/invitations",
+      "Mời người vào tổ chức (quản trị; mời làm quản trị cần chủ sở hữu)",
+      "invitations",
+    )
+      .input(
+        z
+          .object({
+            emails: z.array(email).min(1, "Cần ít nhất một email.").max(50, "Mời tối đa 50 email mỗi lần."),
+            orgRole: z.enum(["admin", "member"]).default("member"),
+            teamId: id.optional(),
+            teamRole: teamRole.optional(),
+          })
+          .refine((v) => !v.teamRole || v.teamId, {
+            message: "Chọn đội trước khi chọn vai trò đội.",
+            path: ["teamRole"],
+          }),
+      )
+      .output(z.object({ invitations: z.array(createdInvitation) })),
+    list: route("GET", "/v1/invitations", "Lời mời của tổ chức (quản trị)", "invitations").output(z.array(invitation)),
+    revoke: route("DELETE", "/v1/invitations/{invitationId}", "Thu hồi lời mời chưa dùng (quản trị)", "invitations")
+      .input(z.object({ invitationId: id }))
+      .output(z.object({ ok: z.literal(true) })),
+    // Mã đi trong body chứ không trong query: query string hay bị ghi vào log của proxy.
+    preview: oc
+      .route({
+        method: "POST",
+        path: "/v1/invitations/preview",
+        summary: "Xem lời mời theo mã (không cần đăng nhập)",
+        tags: ["invitations"],
+      })
+      .errors(errors)
+      .input(z.object({ token: inviteToken }))
+      .output(invitationPreview),
+    accept: oc
+      .route({ method: "POST", path: "/v1/invitations/accept", summary: "Nhận lời mời", tags: ["invitations"] })
+      .errors(errors)
+      .input(z.object({ token: inviteToken }))
+      .output(myOrg),
+  },
+  ssoProviders: {
+    get: route("GET", "/v1/sso", "Cấu hình SSO (OIDC) của tổ chức (quản trị)", "sso").output(ssoSettings),
+    upsert: route("PUT", "/v1/sso", "Lưu cấu hình SSO (OIDC) của tổ chức (quản trị)", "sso")
+      .input(
+        z.object({
+          issuer: z.url({ protocol: /^https?$/, error: "Issuer URL không hợp lệ." }),
+          domain: emailDomain,
+          clientId: z.string().trim().min(1, "Thiếu Client ID."),
+          /** Bỏ trống khi sửa thì giữ secret cũ. */
+          clientSecret: z.string().min(1).optional(),
+          join: ssoJoin,
+        }),
+      )
+      .output(ssoSettings),
+    remove: route("DELETE", "/v1/sso", "Gỡ SSO của tổ chức (quản trị)", "sso").output(ssoSettings),
   },
 };

@@ -56,6 +56,26 @@ jobs:
       - run: go test ./...
       - run: go build -o bin/ ./cmd/hive-worker
 
+  e2e:
+    name: E2E smoke (Git cục bộ, CLI giả)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # Script build worker Go rồi chạy thật trên runner.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: worker/go.mod
+          cache: false
+      - run: pnpm install --frozen-lockfile
+      # Chế độ mặc định: Postgres qua Testcontainers (Docker có sẵn trên runner), không ra mạng ngoài.
+      - run: pnpm e2e:smoke
+
   image:
     name: Docker image (build only)
     runs-on: ubuntu-latest

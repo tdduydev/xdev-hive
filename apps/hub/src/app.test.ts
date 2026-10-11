@@ -50,6 +50,12 @@ describe("me khi chưa có đăng nhập", () => {
   });
 });
 
+describe("dự án và kết nối Git khi chưa đăng nhập", () => {
+  it.each(["/api/v1/projects", "/api/v1/scm-connections"])("GET %s trả 401", async (path) => {
+    expect((await app.request(path)).status).toBe(401);
+  });
+});
+
 describe("API máy khi chưa có đăng nhập", () => {
   it("GET /api/v1/teams/{teamId}/machines trả 401", async () => {
     const res = await app.request("/api/v1/teams/00000000-0000-4000-8000-000000000000/machines");
