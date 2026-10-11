@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Bảng việc</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--accent)}a:hover{color:var(--accent-hover)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
+  <dc-import name="Sidebar" active="tasks" hint-size="240px,1000px"></dc-import>
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+    <header style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; justify-content: space-between;">
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 12.5px; color: var(--muted);">Acme / Thanh toán / <span style="font-family: var(--font-mono);">payment-api</span></div>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 18px; line-height: 1.3; font-weight: 600; color: var(--ink);">Bảng việc</h1>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+        <label for="search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Tìm việc</label>
+        <input id="search" type="search" placeholder="Tìm theo mã hoặc tiêu đề" style="width: 240px; max-width: 100%; height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px;">
+        <button type="button" style="height: 36px; padding: 0 14px; display: flex; align-items: center; gap: 6px; background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>Tạo việc
+        </button>
+      </div>
+    </header>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+      <sc-for list="{{stats}}" as="st" hint-placeholder-count="4">
+        <div style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+          <span style="font-size: 12px; color: var(--muted);">{{st.label}}</span>
+          <span style="font-family: var(--font-display); font-size: 28px; line-height: 1.15; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;">{{st.value}}</span>
+          <span style="font-size: 12px; color: var(--muted);">{{st.hint}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div role="group" aria-label="Lọc theo trạng thái" style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <sc-for list="{{filters}}" as="f" hint-placeholder-count="5">
+        <button type="button" onClick="{{f.pick}}" aria-pressed="{{f.pressed}}" style="{{f.style}}">{{f.label}} <span style="font-variant-numeric: tabular-nums; opacity: .8;">{{f.count}}</span></button>
+      </sc-for>
+    </div>
+    <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto;">
+      <table style="width: 100%; min-width: 860px; border-collapse: collapse; font-size: 13.5px;">
+        <thead>
+          <tr style="background: var(--subtle); text-align: left; font-size: 13px; color: var(--muted);">
+            <th style="padding: 10px 12px; font-weight: 500;">Việc</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Trạng thái</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Agent và máy</th>
+            <th style="padding: 10px 12px; font-weight: 500;">Run gần nhất</th>
+            <th style="padding: 10px 12px; font-weight: 500; text-align: right;">Chi phí</th>
+            <th style="padding: 10px 12px; font-weight: 500;">PR</th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <tr style="border-top: 1px solid var(--line); height: 52px;">
+              <td style="padding: 8px 12px; min-width: 280px;">
+                <div style="display: flex; flex-direction: column; line-height: 1.35;">
+                  <a href="RunDetail.dc.html" style="font-family: var(--font-mono); font-size: 12.5px; text-decoration: none;">{{r.key}}</a>
+                  <span style="color: var(--ink); font-weight: 500;">{{r.title}}</span>
+                </div>
+              </td>
+              <td style="padding: 8px 12px; white-space: nowrap;"><span style="{{r.chip}}"><span style="{{r.dot}}"></span>{{r.status}}</span></td>
+              <td style="padding: 8px 12px; white-space: nowrap;"><span style="color: var(--ink);">{{r.cli}}</span> <span style="color: var(--muted); font-family: var(--font-mono); font-size: 12.5px;">{{r.machine}}</span></td>
+              <td style="padding: 8px 12px; white-space: nowrap; color: var(--muted);">{{r.when}}</td>
+              <td style="padding: 8px 12px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink);">{{r.cost}}</td>
+              <td style="padding: 8px 12px; white-space: nowrap; font-family: var(--font-mono); font-size: 12.5px;">{{r.pr}}</td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { filter: 'all' }; }
+  renderVals() {
+    const tone = {
+      running: ['var(--sel)', 'var(--sel-fg)'], queued: ['var(--subtle)', 'var(--muted)'],
+      waiting: ['var(--warn-bg)', 'var(--warn)'], review: ['var(--warn-bg)', 'var(--warn)'],
+      done: ['var(--ok-bg)', 'var(--ok)'], failed: ['var(--bad-bg)', 'var(--bad)'],
+    };
+    const all = [
+      { key: 'TASK-42', title: 'Sửa làm tròn tiền trong hoá đơn VAT', kind: 'running', status: 'Đang chạy', cli: 'Claude', machine: 'mac-mini-lan', when: 'chạy được 6 phút', cost: '0,42 USD', pr: '—' },
+      { key: 'TASK-41', title: 'Thêm phân trang cho API giao dịch', kind: 'review', status: 'Cần người xem', cli: 'Codex', machine: 'linux-build-01', when: 'xong 12 phút trước', cost: '1,18 USD', pr: '#128' },
+      { key: 'TASK-40', title: 'Nâng Go lên 1.27 trong worker', kind: 'waiting', status: 'Trong hàng merge · chờ CI', cli: 'Claude', machine: 'mac-mini-lan', when: 'xong 25 phút trước', cost: '0,96 USD', pr: '#127' },
+      { key: 'TASK-39', title: 'Viết test cho webhook GitLab', kind: 'failed', status: 'Lỗi', cli: 'Codex', machine: 'linux-build-01', when: '1 giờ trước · thử 3/3', cost: '0,31 USD', pr: '—' },
+      { key: 'TASK-38', title: 'Đổi route web sang tiếng Anh', kind: 'done', status: 'Đã merge', cli: 'Claude', machine: 'win-dev-03', when: 'hôm qua', cost: '2,05 USD', pr: '#124' },
+      { key: 'TASK-37', title: 'Hướng dẫn cài worker trên Windows', kind: 'queued', status: 'Chờ máy', cli: '—', machine: '', when: 'xếp hàng 3 phút', cost: '0,00 USD', pr: '—' },
+    ];
+    const groups = { all: null, running: ['running', 'queued'], review: ['review', 'waiting'], failed: ['failed'], done: ['done'] };
+    const filterDefs = [['all', 'Tất cả'], ['running', 'Đang chạy'], ['review', 'Chờ review và merge'], ['failed', 'Lỗi'], ['done', 'Xong']];
+    const count = (k) => (groups[k] ? all.filter((r) => groups[k].includes(r.kind)).length : all.length);
+    const chipBase = 'height: 32px; padding: 0 12px; border-radius: 9999px; font: inherit; font-size: 13px; cursor: pointer; ';
+    const filters = filterDefs.map(([k, label]) => ({
+      label, count: count(k), pressed: this.state.filter === k ? 'true' : 'false',
+      style: chipBase + (this.state.filter === k ? 'background: var(--sel); color: var(--sel-fg); border: 1px solid var(--sel-line); font-weight: 600;' : 'background: var(--surface); color: var(--body); border: 1px solid var(--line-strong);'),
+      pick: () => this.setState({ filter: k }),
+    }));
+    const rows = all.filter((r) => !groups[this.state.filter] || groups[this.state.filter].includes(r.kind)).map((r) => ({
+      ...r,
+      chip: `display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; background: ${tone[r.kind][0]}; color: ${tone[r.kind][1]};`,
+      dot: `width: 6px; height: 6px; border-radius: 9999px; background: currentColor;`,
+    }));
+    const stats = [
+      { label: 'Đang chạy', value: '3', hint: 'trên 2 máy' },
+      { label: 'Chờ review và merge', value: '4', hint: '2 PR trong hàng merge' },
+      { label: 'Lỗi trong 24 giờ', value: '1', hint: 'TASK-39, hết lượt thử' },
+      { label: 'Chi phí hôm nay', value: '4,92 USD', hint: 'ngân sách dự án 30 USD/ngày' },
+    ];
+    return { theme: this.props.dark ? 'dark' : 'light', filters, rows, stats };
+  }
+}
+</script>
+</body>
+</html>
