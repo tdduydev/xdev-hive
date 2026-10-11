@@ -23,7 +23,11 @@ export interface AuthHooks {
   /** Nhận lời mời ngay sau khi tài khoản được tạo. */
   acceptInvite(token: string, user: { id: string; email: string }): Promise<void>;
   /** Mỗi lần đăng nhập SSO thành công. Phải idempotent. */
-  ssoSignedIn(input: { providerId: string; domain: string; user: { id: string; email: string } }): Promise<void>;
+  ssoSignedIn(input: {
+    providerId: string;
+    domain: string;
+    user: { id: string; email: string; name: string };
+  }): Promise<void>;
 }
 
 export interface AuthOptions {
@@ -142,7 +146,7 @@ export function authConfig(o: AuthOptions) {
           await hooks?.ssoSignedIn({
             providerId: provider.providerId,
             domain: provider.domain,
-            user: { id: user.id, email: user.email },
+            user: { id: user.id, email: user.email, name: user.name },
           });
         },
       }),

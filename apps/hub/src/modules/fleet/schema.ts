@@ -47,6 +47,7 @@ export const machines = hive
       /** Khoá công khai máy gửi lúc đăng ký (mục 6). Chưa dùng tới khi có access token ngắn hạn. */
       publicKey: text("public_key"),
       lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+      offlineNotifiedAt: timestamp("offline_notified_at", { withTimezone: true }),
       /** Người tạo mã đăng ký mà máy đã dùng. */
       registeredBy: text("registered_by"),
       revokedAt: timestamp("revoked_at", { withTimezone: true }),

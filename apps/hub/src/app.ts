@@ -19,7 +19,7 @@ import {
   runsRouter,
 } from "./modules/runs/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { systemRouter } from "./modules/system/index.ts";
+import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
 import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
@@ -64,13 +64,15 @@ export function createApp({
     masterKey: config.masterKey,
     providerFactory: providerFactory ?? defaultProviderFactory,
   };
+  // Một cache cho cả route Hono (Tauri) và handler oRPC: manifest chỉ đọc một lần mỗi 5 phút.
+  const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   const router = {
-    system: systemRouter(config),
+    system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
-    notificationChannels: notifyRouter(shared),
+    notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
@@ -92,6 +94,19 @@ export function createApp({
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
+  // tauri-plugin-updater đòi 204 khi không có bản mới; handler oRPC cùng đường dẫn (để có trong OpenAPI) trả 200 với
+  // null, nên route này phải đứng trước handler /api.
+  app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {
+    const result = await findDesktopUpdate(
+      desktopReleases,
+      c.req.param("os"),
+      c.req.param("arch"),
+      c.req.param("currentVersion"),
+    );
+    if (result.kind === "bad-request") return c.json({ message: "Tham số phiên bản hoặc nền tảng không hợp lệ." }, 400);
+    if (result.kind === "none") return c.body(null, 204);
+    return c.json(result.update, 200);
+  });
   if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
     // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
     // tự trả các đường này khi request đi qua handler của Better Auth.
