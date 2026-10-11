@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fakeHub, USER } from "./fake-hub.ts";
+import { fakeHub, ok, USER } from "./fake-hub.ts";
 
 test("chưa đăng nhập: trang khác chuyển về /login và hiện đủ ba cách đăng nhập", async ({ page }) => {
   const hub = await fakeHub(page);
@@ -108,4 +108,52 @@ test("hub không trả lời thì hiện màn lỗi có nút thử lại", async
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Không kết nối được hub" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Thử lại" })).toBeVisible();
+});
+
+test("hub chưa có tổ chức: form tạo quản trị đầu tiên, từ chối email ngoài danh sách rồi tạo được", async ({
+  page,
+}) => {
+  const hub = await fakeHub(page, {
+    rpc: { "hubSetup/get": () => ok({ firstAdminSignUp: true }) },
+    auth: {
+      "/sign-up/email": (body, hub) => {
+        if ((body as { email: string }).email !== USER.email) {
+          return { status: 403, json: { code: "SIGN_UP_INVITE_REQUIRED", message: "Invite required" } };
+        }
+        hub.signedIn = true;
+        return { status: 200, json: { token: "t", user: USER } };
+      },
+    },
+  });
+  await page.goto("/login");
+  const form = page.getByRole("region", { name: "Tạo tài khoản quản trị đầu tiên" });
+  await expect(form).toBeVisible();
+
+  await form.getByLabel("Tên hiển thị").fill(USER.name);
+  await form.getByLabel("Email").fill(USER.email);
+  await form.getByLabel("Mật khẩu").fill("ngan");
+  await form.getByRole("button", { name: "Tạo tài khoản quản trị" }).click();
+  await expect(form.getByRole("alert")).toHaveText("Mật khẩu cần ít nhất 10 ký tự.");
+  expect(hub.authCalls.filter((c) => c.path === "/sign-up/email")).toHaveLength(0);
+
+  await form.getByLabel("Email").fill("nguoi-khac@example.com");
+  await form.getByLabel("Mật khẩu").fill("mat-khau-quan-tri-123");
+  await form.getByRole("button", { name: "Tạo tài khoản quản trị" }).click();
+  await expect(form.getByRole("alert")).toContainText("Dùng đúng email đã khai khi cài hub");
+
+  await form.getByLabel("Email").fill(USER.email);
+  await form.getByRole("button", { name: "Tạo tài khoản quản trị" }).click();
+  await expect(page).toHaveURL("/");
+  expect(hub.authCalls.filter((c) => c.path === "/sign-up/email").at(-1)?.body).toEqual({
+    name: USER.name,
+    email: USER.email,
+    password: "mat-khau-quan-tri-123",
+  });
+});
+
+test("hub đã có tổ chức: không hiện form tạo quản trị", async ({ page }) => {
+  await fakeHub(page, { rpc: { "hubSetup/get": () => ok({ firstAdminSignUp: false }) } });
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "Đăng nhập" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Tạo tài khoản quản trị đầu tiên" })).toHaveCount(0);
 });
