@@ -3,7 +3,7 @@ import { checkSsoForm, issuerHost } from "./sso.ts";
 
 const valid = {
   issuer: "https://login.microsoftonline.com/3f2a/v2.0",
-  domain: "fpt.com",
+  domain: "example.com",
   clientId: "8c1d5e2a",
   clientSecret: "bi-mat",
 };
@@ -14,9 +14,10 @@ describe("checkSsoForm", () => {
     expect(checkSsoForm({ ...valid, issuer: "login.microsoftonline.com" }, false).issuer).toMatch(/Issuer URL/);
     expect(checkSsoForm({ ...valid, issuer: "ftp://idp.vn" }, false).issuer).toMatch(/Issuer URL/);
   });
-  it("tên miền sai", () => expect(checkSsoForm({ ...valid, domain: "@fpt.com" }, false).domain).toMatch(/tên miền/));
+  it("tên miền sai", () =>
+    expect(checkSsoForm({ ...valid, domain: "@example.com" }, false).domain).toMatch(/tên miền/));
   it("tên miền viết hoa vẫn nhận (hub đổi về chữ thường)", () =>
-    expect(checkSsoForm({ ...valid, domain: "FPT.com" }, false).domain).toBeUndefined());
+    expect(checkSsoForm({ ...valid, domain: "Example.COM" }, false).domain).toBeUndefined());
   it("thiếu Client ID", () =>
     expect(checkSsoForm({ ...valid, clientId: "  " }, true).clientId).toBe("Nhập Client ID."));
   it("lần đầu phải có secret", () =>

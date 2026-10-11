@@ -125,7 +125,7 @@ describe("đăng nhập bằng GitHub và GitLab", () => {
 describe("SSO (OIDC)", () => {
   it("API đăng ký nhà cung cấp SSO của Better Auth bị tắt (hub tự quản lý qua /api/v1/sso)", async () => {
     const res = await post(app, "/api/auth/sso/register", {
-      providerId: "fpt-azure",
+      providerId: "acme-azure",
       issuer: "https://login.example.com",
       domain: "example.com",
       oidcConfig: { clientId: "a", clientSecret: "b" },

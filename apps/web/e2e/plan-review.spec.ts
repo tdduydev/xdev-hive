@@ -168,8 +168,8 @@ const PLANS = [
 ];
 
 const MEMBERS = [
-  { userId: "u1", name: "Trần Đức Duy", email: "duy@fpt.com", image: null, role: "member", status: "active" },
-  { userId: "u2", name: "Lê Minh Anh", email: "anh@fpt.com", image: null, role: "member", status: "active" },
+  { userId: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null, role: "member", status: "active" },
+  { userId: "u2", name: "Lê Minh Anh", email: "anh@example.com", image: null, role: "member", status: "active" },
 ].map((m) => ({
   ...m,
   joinedAt: "2026-10-01T00:00:00.000Z",

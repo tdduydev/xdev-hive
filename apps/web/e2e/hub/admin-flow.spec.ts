@@ -43,11 +43,11 @@ test("người đầu tiên: tạo tổ chức, đội đầu tiên, rồi thêm
   // Hub chưa có tổ chức nào nên người đầu tiên vào thẳng màn tạo tổ chức.
   await expect(page).toHaveURL("/orgs/new");
   await expect(page.getByRole("heading", { name: "Tạo tổ chức" })).toBeVisible();
-  await page.getByLabel("Tên tổ chức").fill("FPT Software xDev");
+  await page.getByLabel("Tên tổ chức").fill("Acme Software xDev");
   const orgSlug = page.getByLabel("Định danh");
-  await expect(orgSlug).toHaveValue("fpt-software-xdev");
-  await orgSlug.fill("fpt-xdev");
-  await page.getByLabel("Tên miền email (không bắt buộc)").fill("fpt.com");
+  await expect(orgSlug).toHaveValue("acme-software-xdev");
+  await orgSlug.fill("acme-dev");
+  await page.getByLabel("Tên miền email (không bắt buộc)").fill("example.com");
   await page.getByRole("button", { name: "Tiếp: tạo đội" }).click();
 
   await expect(page).toHaveURL("/orgs/new?buoc=doi");
@@ -63,7 +63,7 @@ test("người đầu tiên: tạo tổ chức, đội đầu tiên, rồi thêm
   await page.getByRole("button", { name: "Để sau" }).click();
 
   await expect(page).toHaveURL(/\/admin\/teams\?doi=/);
-  await expect(switcher(page)).toContainText("FPT Software xDev");
+  await expect(switcher(page)).toContainText("Acme Software xDev");
   await expect(switcher(page)).toContainText("Chủ sở hữu");
   await expect(teamList(page).getByRole("link", { name: /Thanh toán/ })).toContainText("0 hệ thống · 1 người");
   // Người tạo là quản trị của đội đầu tiên.
@@ -106,7 +106,7 @@ test("thêm người vào đội, đổi vai trò trong đội và vai trò tổ
   const memberId = await signUp(request, MEMBER);
   // Đưa người thứ hai vào tổ chức thẳng bằng SQL để thử đổi vai trò; luồng lời mời có test riêng ở dưới.
   await db.query("insert into hive.org_members (org_id, user_id) select id, $2 from hive.orgs where slug = $1", [
-    "fpt-xdev",
+    "acme-dev",
     memberId,
   ]);
 
@@ -185,7 +185,7 @@ test("đổi tổ chức ở sidebar: gửi header của tổ chức mới và n
   await page.getByRole("link", { name: "Để sau" }).click();
 
   const { rows } = await db.query<{ id: string; slug: string }>(
-    "select id, slug from hive.orgs where slug in ('fpt-xdev', 'phong-thi-nghiem')",
+    "select id, slug from hive.orgs where slug in ('acme-dev', 'phong-thi-nghiem')",
   );
   const idOf = (slug: string) => rows.find((r) => r.slug === slug)?.id;
   const sent: (string | undefined)[] = [];
@@ -198,13 +198,13 @@ test("đổi tổ chức ở sidebar: gửi header của tổ chức mới và n
   expect(await page.evaluate(() => localStorage.getItem("hive.org"))).toBe(idOf("phong-thi-nghiem"));
 
   await switcher(page).click();
-  await page.getByRole("menuitemradio", { name: /FPT Software xDev/ }).click();
+  await page.getByRole("menuitemradio", { name: /Acme Software xDev/ }).click();
   await expect(teamList(page).getByRole("link")).toHaveText([/CRM/, /Thanh toán/]);
-  expect(sent.at(-1)).toBe(idOf("fpt-xdev"));
-  expect(await page.evaluate(() => localStorage.getItem("hive.org"))).toBe(idOf("fpt-xdev"));
+  expect(sent.at(-1)).toBe(idOf("acme-dev"));
+  expect(await page.evaluate(() => localStorage.getItem("hive.org"))).toBe(idOf("acme-dev"));
 
   await page.reload();
-  await expect(switcher(page)).toContainText("FPT Software xDev");
+  await expect(switcher(page)).toContainText("Acme Software xDev");
   await expect(teamList(page).getByRole("link")).toHaveText([/CRM/, /Thanh toán/]);
 });
 
@@ -237,7 +237,7 @@ test("mời người: tạo lời mời, mở link ở phiên khác, đăng ký 
   const other = await browser.newContext({ locale: "vi-VN" });
   const guest = await other.newPage();
   await guest.goto(link);
-  await expect(guest.getByRole("heading", { name: "Lời mời vào FPT Software xDev" })).toBeVisible();
+  await expect(guest.getByRole("heading", { name: "Lời mời vào Acme Software xDev" })).toBeVisible();
   await expect(guest.getByLabel("Email")).toHaveValue(INVITEE.email);
   await guest.getByLabel("Họ và tên").fill(INVITEE.name);
   await guest.getByLabel("Mật khẩu").fill(INVITEE.password);
@@ -245,7 +245,7 @@ test("mời người: tạo lời mời, mở link ở phiên khác, đăng ký 
 
   await expect(guest).toHaveURL("/");
   await expect(guest.getByRole("heading", { name: `Chào ${INVITEE.name}` })).toBeVisible();
-  await expect(switcher(guest)).toContainText("FPT Software xDev");
+  await expect(switcher(guest)).toContainText("Acme Software xDev");
   await expect(switcher(guest)).toContainText("Thành viên");
   // Thành viên thường không thấy cài đặt đăng nhập của tổ chức.
   await expect(guest.locator("aside").getByRole("link", { name: "Đăng nhập" })).toHaveCount(0);
@@ -291,7 +291,7 @@ test("duyệt người chờ: duyệt thì thành thành viên, từ chối thì
     const id = await signUp(request, user);
     await db.query(
       "insert into hive.org_members (org_id, user_id, status) select id, $2, 'pending' from hive.orgs where slug = $1",
-      ["fpt-xdev", id],
+      ["acme-dev", id],
     );
   }
 
@@ -325,14 +325,14 @@ test("cài đặt đăng nhập: callback URL theo tổ chức, lỗi Issuer c�
   await signIn(page, OWNER);
   await page.locator("aside").getByRole("link", { name: "Đăng nhập" }).click();
   await expect(page).toHaveURL("/admin/sign-in-settings");
-  const { rows } = await db.query<{ id: string }>("select id from hive.orgs where slug = 'fpt-xdev'");
+  const { rows } = await db.query<{ id: string }>("select id from hive.orgs where slug = 'acme-dev'");
   await expect(page.getByLabel("Callback URL (dán vào cấu hình app bên nhà cung cấp)")).toHaveValue(
     `${WEB_URL}/api/auth/sso/callback/org-${rows[0]?.id}`,
   );
   await expect(
     page.getByRole("list", { name: "Các cách đăng nhập" }).getByRole("listitem").filter({ hasText: "SSO (OIDC)" }),
   ).toContainText("Chưa cấu hình");
-  await expect(page.getByLabel("Tên miền email")).toHaveValue("fpt.com");
+  await expect(page.getByLabel("Tên miền email")).toHaveValue("example.com");
 
   // Hub không đọc được discovery của issuer này (địa chỉ nội bộ, không có IdP): lỗi gắn vào ô Issuer.
   await page.getByLabel("Issuer URL").fill("http://127.0.0.1:9/oidc");

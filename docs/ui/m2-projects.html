@@ -344,7 +344,7 @@ pre.yaml i{font-style:normal;color:var(--faint)}
 <template id="shell">
   <div class="app">
     <aside class="side">
-      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
+      <div class="switcher"><span class="avatar">F</span><span><b>Acme Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
       <nav class="nav">
         <a class="dim"><svg class="i"><use href="#board"/></svg>Việc<span class="soon pill">M3</span></a>
         <a data-nav="list" class="proj"><svg class="i"><use href="#grid"/></svg>Dự án</a>
@@ -359,7 +359,7 @@ pre.yaml i{font-style:normal;color:var(--faint)}
         <a class="dim"><svg class="i"><use href="#key"/></svg>Kết nối Git<span class="soon pill">M2</span></a>
         <a class="dim"><svg class="i"><use href="#gear"/></svg>Cài đặt tổ chức</a>
       </nav>
-      <div class="me"><span class="av2">LH</span><span><b>Lê Hà</b><small>ha.le@fpt.com</small></span></div>
+      <div class="me"><span class="av2">LH</span><span><b>Lê Hà</b><small>ha.le@example.com</small></span></div>
     </aside>
     <div class="main"><slot></slot></div>
   </div>
@@ -543,7 +543,7 @@ pre.yaml i{font-style:normal;color:var(--faint)}
                 <tr><td><b>Đội Thanh toán</b> <span class="hint">8 người</span></td><td>Theo vai trò trong đội</td><td><span class="pill sel">Sở hữu hệ thống</span></td><td></td></tr>
                 <tr><td>Lê Hà <span class="hint">người tạo</span></td><td>Quản trị dự án</td><td><span class="pill">Mặc định</span></td><td></td></tr>
                 <tr><td>Đội CRM</td><td><select class="in-f" style="height:30px;width:150px" aria-label="Vai trò"><option>Thành viên</option><option selected>Chỉ xem</option></select></td><td><span class="pill">Cấp thêm</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
-                <tr><td>Ngô Vy <span class="hint">vy.ngo@fpt.com</span></td><td><select class="in-f" style="height:30px;width:150px" aria-label="Vai trò"><option selected>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">Cấp thêm</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+                <tr><td>Ngô Vy <span class="hint">vy.ngo@example.com</span></td><td><select class="in-f" style="height:30px;width:150px" aria-label="Vai trò"><option selected>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">Cấp thêm</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
               </tbody>
             </table></div>
             <div><button class="btn sm" type="button"><svg class="i"><use href="#plus"/></svg>Cấp quyền cho người hoặc đội khác</button></div>
@@ -885,7 +885,7 @@ const sync = () => {
   const name = mode === "new" ? $("#rname").value : "billing-export";
   $("#owner").textContent = `${owner} /`;
   $("#conn").innerHTML = gl
-    ? "<option>GitLab gitlab.fpt.vn · nhóm thanh-toan/hoa-don</option>"
+    ? "<option>GitLab gitlab.example.com · nhóm thanh-toan/hoa-don</option>"
     : "<option>GitHub App xDev Hive · tổ chức xdev-team</option>";
   $("#conn-hint").textContent = gl
     ? "Token nhóm có vai trò Maintainer, tạo được project."
