@@ -215,6 +215,11 @@ const outcomeChecksPatch = z
   .max(20);
 const { merge, features } = projectSettings.shape;
 const budgetShape = projectBudget.shape;
+const modelName = z.string().trim().min(1).max(200);
+const cliModelsPatch = z.strictObject({
+  code: modelName.nullable().optional(),
+  review: modelName.nullable().optional(),
+});
 
 /**
  * Đổi một phần settings. Trường bỏ trống giữ nguyên; `null` ở trường không bắt buộc là bỏ cấu hình đó (về mặc định
@@ -237,6 +242,16 @@ export const projectSettingsPatch = z
       })
       .optional(),
     features: features.partial().strict().optional(),
+    /** Đổi quyền CLI của run; `null` về mặc định (workspace). */
+    runPermissions: z.strictObject({ mode: runPermissionMode }).nullable().optional(),
+    /** Vá model theo từng CLI và loại run; `null` ở một ô là để CLI tự chọn. */
+    models: z
+      .strictObject({
+        claude: cliModelsPatch.optional(),
+        codex: cliModelsPatch.optional(),
+        gemini: cliModelsPatch.optional(),
+      })
+      .optional(),
     issueIntake: issueIntakeSettings.partial().strict().optional(),
     defaultCli: cli.nullable().optional(),
     budget: z
