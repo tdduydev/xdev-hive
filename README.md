@@ -26,7 +26,7 @@ cd worker && go run ./cmd/hive-worker check --hub http://localhost:3000
 
 Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.md](AGENTS.md).
 
-Chạy thử trọn luồng (Postgres, hub, đăng ký, dự án, worker, task, run, PR): `pnpm e2e:smoke`. Cần Docker (Testcontainers), Go và git; mặc định dùng repo git cục bộ và CLI giả, không ra mạng ngoài. Biến môi trường cho GitHub thật, CLI thật hay Postgres có sẵn ghi ở đầu [scripts/e2e-smoke.ts](scripts/e2e-smoke.ts).
+Chạy thử trọn luồng (Postgres, hub, đăng ký, dự án, worker, task, run, PR): `pnpm e2e:smoke`. Cần Docker (Testcontainers), Go và git; mặc định dùng repo git cục bộ và CLI giả, không ra mạng ngoài. Script bật merge queue qua API `projects.updateSettings`, chạy worker với `--capacity 2`, kiểm hai run cùng repo chạy đồng thời và đều thành công, rồi kiểm hai PR merge tuần tự và nhánh chính chứa cả hai thay đổi. CLI giả chờ nhau tối đa 45 giây để ca chạy nối tiếp bị phát hiện. Biến môi trường cho GitHub thật, CLI thật hay Postgres có sẵn ghi ở đầu [scripts/e2e-smoke.ts](scripts/e2e-smoke.ts).
 
 ## Triển khai
 
