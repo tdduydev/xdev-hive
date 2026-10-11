@@ -74,7 +74,7 @@ invite-only rule entirely and is meant for development only.
 
 Organization SSO only creates accounts and auto-joins people (directly or pending approval, per policy) when the SSO
 domain is verified. Each domain belongs to at most one organization, and public mail domains (gmail.com, outlook.com,
-…) are rejected. An organization administrator proves ownership on the sign-in settings page (`/admin/login`): request a TXT
+…) are rejected. An organization administrator proves ownership on the sign-in settings page (`/admin/sign-in-settings`): request a TXT
 record, publish it at `_xdev-hive-verification.<domain>`, then run the check from the same page. The hub stores only a hash of the code, and the
 record expires if it is not checked in time. An organization that verifies a domain takes it over from an organization
 that only declared it without verification (both sides get an audit entry). SSO routing uses exact domain matches;

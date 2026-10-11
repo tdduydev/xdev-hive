@@ -97,6 +97,7 @@ const paths = {
   ),
   bell: from16(<path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3zM6.5 14h3" />),
   chart: from16(<path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5" />),
+  chat: from16(<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2zM5 6.5h6M5 8.5h3.5" />),
   lock: from16(
     <>
       <rect x="3" y="7" width="10" height="7" rx="1.5" />
