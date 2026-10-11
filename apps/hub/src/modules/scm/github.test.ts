@@ -384,6 +384,127 @@ describe("GitHub canPush", () => {
   });
 });
 
+describe("GitHub PR cho merge queue", () => {
+  const PULL = "/repos/acme/web/pulls/5";
+  const sha = "a".repeat(40);
+  const pull = (over: Record<string, unknown> = {}) => ({
+    number: 5,
+    html_url: "https://github.com/acme/web/pull/5",
+    state: "open",
+    merged: false,
+    draft: false,
+    head: { ref: "ai/t-1", sha },
+    base: { ref: "main" },
+    mergeable: true,
+    mergeable_state: "clean",
+    ...over,
+  });
+
+  it("getPR đọc trạng thái PR", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: PULL, method: "GET" }).reply(200, pull(), JSON_HEADERS);
+    expect(await gh.getPR(ref, 5)).toEqual({
+      number: 5,
+      url: "https://github.com/acme/web/pull/5",
+      state: "open",
+      draft: false,
+      head: "ai/t-1",
+      headSha: sha,
+      base: "main",
+      mergeable: "clean",
+    });
+  });
+
+  it.each([
+    [{ mergeable_state: "clean" }, "clean"],
+    [{ mergeable_state: "unstable" }, "clean"],
+    [{ mergeable_state: "has_hooks" }, "clean"],
+    [{ mergeable_state: "behind" }, "behind"],
+    [{ mergeable: false, mergeable_state: "dirty" }, "conflict"],
+    [{ mergeable_state: "blocked" }, "blocked"],
+    [{ mergeable_state: "draft" }, "blocked"],
+    [{ mergeable_state: "unknown" }, "unknown"],
+    [{ mergeable: null, mergeable_state: "unknown" }, "unknown"],
+    [{ mergeable: true, mergeable_state: "la" }, "clean"],
+    [{ mergeable: false, mergeable_state: "la" }, "conflict"],
+  ])("%j → %s", async (fields, mergeable) => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: PULL, method: "GET" }).reply(200, pull(fields), JSON_HEADERS);
+    expect((await gh.getPR(ref, 5))?.mergeable).toBe(mergeable);
+  });
+
+  it("merged, closed, không có PR", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: PULL, method: "GET" }).reply(200, pull({ state: "closed", merged: true }), JSON_HEADERS);
+    pool.intercept({ path: PULL, method: "GET" }).reply(200, pull({ state: "closed" }), JSON_HEADERS);
+    pool.intercept({ path: PULL, method: "GET" }).reply(404, { message: "Not Found" }, JSON_HEADERS);
+    expect((await gh.getPR(ref, 5))?.state).toBe("merged");
+    expect((await gh.getPR(ref, 5))?.state).toBe("closed");
+    expect(await gh.getPR(ref, 5)).toBeNull();
+  });
+
+  it("updatePRBranch gửi expected_head_sha; 422 là conflict", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${PULL}/update-branch`, method: "PUT" })
+      .reply(202, http.json({ message: "Updating pull request branch." }), JSON_HEADERS);
+    pool
+      .intercept({ path: `${PULL}/update-branch`, method: "PUT" })
+      .reply(422, { message: "merge conflict between base and head" }, JSON_HEADERS);
+    await gh.updatePRBranch(ref, 5, sha);
+    expect(http.calls[0]?.body).toEqual({ expected_head_sha: sha });
+    expect((await rejected(gh.updatePRBranch(ref, 5, sha))).code).toBe("conflict");
+  });
+
+  const STATUS = `/repos/acme/web/commits/${sha}/status`;
+  const RUNS = `/repos/acme/web/commits/${sha}/check-runs?per_page=100`;
+  it.each([
+    [{ state: "pending", total_count: 0 }, [], "none"],
+    [{ state: "success", total_count: 1 }, [], "success"],
+    [{ state: "pending", total_count: 1 }, [], "pending"],
+    [{ state: "failure", total_count: 2 }, [], "failure"],
+    [{ state: "pending", total_count: 0 }, [{ status: "completed", conclusion: "success" }], "success"],
+    [{ state: "pending", total_count: 0 }, [{ status: "completed", conclusion: "skipped" }], "success"],
+    [{ state: "pending", total_count: 0 }, [{ status: "in_progress", conclusion: null }], "pending"],
+    [{ state: "success", total_count: 1 }, [{ status: "completed", conclusion: "timed_out" }], "failure"],
+    [
+      { state: "success", total_count: 1 },
+      [
+        { status: "queued", conclusion: null },
+        { status: "completed", conclusion: "cancelled" },
+      ],
+      "failure",
+    ],
+  ])("checksFor status %j, check run %j → %s", async (status, checkRuns, state) => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: STATUS, method: "GET" }).reply(200, status, JSON_HEADERS);
+    pool.intercept({ path: RUNS, method: "GET" }).reply(200, { check_runs: checkRuns }, JSON_HEADERS);
+    expect(await gh.checksFor(ref, sha)).toBe(state);
+  });
+
+  it("mergePR gửi cách merge và sha", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: `${PULL}/merge`, method: "PUT" })
+      .reply(200, http.json({ sha: "m".repeat(40), merged: true }), JSON_HEADERS);
+    expect(await gh.mergePR(ref, 5, { method: "rebase", sha })).toEqual({ sha: "m".repeat(40) });
+    expect(http.calls[0]?.body).toEqual({ merge_method: "rebase", sha });
+  });
+
+  it.each([
+    [405, "conflict"],
+    [409, "conflict"],
+    [422, "invalid"],
+    [429, "rate_limited"],
+  ] as const)("mergePR lỗi %i → %s", async (status, code) => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: `${PULL}/merge`, method: "PUT" }).reply(status, { message: "x" }, JSON_HEADERS);
+    const e = await rejected(gh.mergePR(ref, 5, { method: "squash", sha }));
+    expect(e.code).toBe(code);
+    expect(e.status).toBe(status);
+  });
+});
+
 describe("GitHub webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",

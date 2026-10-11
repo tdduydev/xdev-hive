@@ -136,3 +136,63 @@ export const projectProvisionSteps = hive
     ],
   )
   .enableRLS();
+
+// Cùng thứ tự với mergeQueueState trong contracts.
+export const mergeQueueState = hive.enum("merge_queue_state", [
+  "queued",
+  "updating",
+  "waiting",
+  "merging",
+  "merged",
+  "failed",
+  "removed",
+]);
+
+/** Trạng thái còn trong hàng; chỉ mục ở các trạng thái này mới chặn PR vào hàng lần nữa. */
+export const ACTIVE_MERGE_STATES = ["queued", "updating", "waiting", "merging"] as const;
+
+/**
+ * Hàng merge của dự án: mỗi dòng một PR, xử lý lần lượt theo created_at. Đặt ở catalog thay vì scm vì cần cấu hình
+ * dự án và quyền đội, mà scm không được import catalog. Khoá ngoại tới runs và tasks nằm trong migration viết tay.
+ */
+export const mergeQueueEntries = hive
+  .table(
+    "merge_queue_entries",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      projectId: uuid("project_id").notNull(),
+      /** GitLab: iid của merge request. */
+      prNumber: integer("pr_number").notNull(),
+      /** prUrl, branch, headSha null tới khi processMergeQueue đọc PR lần đầu (vào hàng qua API chỉ có số PR). */
+      prUrl: text("pr_url"),
+      branch: text("branch"),
+      headSha: text("head_sha"),
+      runId: uuid("run_id"),
+      taskId: uuid("task_id"),
+      state: mergeQueueState("state").notNull().default("queued"),
+      note: text("note"),
+      /** Số lần nhà cung cấp từ chối merge vì PR vừa đổi; quá giới hạn thì failed. */
+      attempts: integer("attempts").notNull().default(0),
+      /** Lúc bắt đầu chờ (CI, người duyệt, cập nhật nhánh); chờ quá lâu thì failed. */
+      waitingSince: timestamp("waiting_since", { withTimezone: true }),
+      mergeSha: text("merge_sha"),
+      enqueuedBy: text("enqueued_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+      finishedAt: timestamp("finished_at", { withTimezone: true }),
+    },
+    (t) => [
+      foreignKey({ columns: [t.projectId, t.orgId], foreignColumns: [projects.id, projects.orgId] }).onDelete(
+        "cascade",
+      ),
+      // Một PR chỉ có một mục đang hoạt động; mục đã xong giữ lại làm lịch sử, vào hàng lại được.
+      uniqueIndex("merge_queue_entries_active_pr")
+        .on(t.projectId, t.prNumber)
+        .where(sql`state in ('queued', 'updating', 'waiting', 'merging')`),
+      index("merge_queue_entries_project_created").on(t.projectId, t.createdAt),
+      index("merge_queue_entries_org").on(t.orgId),
+      orgScoped("merge_queue_entries"),
+    ],
+  )
+  .enableRLS();

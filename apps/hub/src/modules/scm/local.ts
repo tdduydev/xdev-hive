@@ -3,13 +3,13 @@
 // GitHub/GitLab.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { GitProviderError } from "./errors.ts";
 import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
-import type { GitProvider, GitProviderKind, RepoInfo, RepoRef } from "./types.ts";
+import type { GitProvider, GitProviderKind, PullRequestState, RepoInfo, RepoRef } from "./types.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,6 +67,10 @@ export interface LocalPullRequest {
   title: string;
   body: string;
   createdAt: string;
+  /** Không có nghĩa là đang mở (file ghi trước khi có merge queue). */
+  state?: PullRequestState["state"];
+  /** Commit trên nhánh chính sau khi mergePR. */
+  mergeSha?: string;
 }
 
 export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOptions): GitProvider {
@@ -150,6 +154,47 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     }
   };
 
+  /** File JSON của PR theo số; openPR đặt tên file theo head nên phải đọc từng file. */
+  const findPR = async (ref: RepoRef, number: number) => {
+    const names = await readdir(opts.prDir).catch(() => [] as string[]);
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const file = join(opts.prDir, name);
+      const pr = JSON.parse(await readFile(file, "utf8")) as LocalPullRequest;
+      if (pr.number === number && pr.owner === ref.owner && pr.name === ref.name) return { file, pr };
+    }
+    return null;
+  };
+
+  const maxPRNumber = async (ref: RepoRef) => {
+    let max = 0;
+    for (const name of await readdir(opts.prDir).catch(() => [] as string[])) {
+      if (!name.endsWith(".json")) continue;
+      const pr = JSON.parse(await readFile(join(opts.prDir, name), "utf8")) as LocalPullRequest;
+      if (pr.owner === ref.owner && pr.name === ref.name) max = Math.max(max, pr.number);
+    }
+    return max;
+  };
+
+  /**
+   * Tree khi merge head vào base, như nhà cung cấp tính. Xung đột thì null: `merge-tree --write-tree` thoát mã 1 và
+   * vẫn in tree có dấu xung đột, không được dùng.
+   */
+  const mergedTree = async (dir: string, base: string, head: string) => {
+    try {
+      return (await git(dir, ["merge-tree", "--write-tree", base, head])).split("\n")[0] as string;
+    } catch (e) {
+      if ((e as { code?: unknown }).code === 1) return null;
+      throw e;
+    }
+  };
+
+  const isAncestor = (dir: string, a: string, b: string) =>
+    git(dir, ["merge-base", "--is-ancestor", a, b]).then(
+      () => true,
+      () => false,
+    );
+
   return {
     kind,
 
@@ -203,7 +248,8 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
       const existing = await readFile(file, "utf8").catch(() => null);
       if (existing) return { number: (JSON.parse(existing) as LocalPullRequest).number, url };
       const pr: LocalPullRequest = {
-        number: (Date.now() % 1_000_000) + 1,
+        // Số kế tiếp trong repo như GitHub/GitLab; getPR tìm PR theo số nên không được trùng.
+        number: (await maxPRNumber(ref)) + 1,
         owner: ref.owner,
         name: ref.name,
         head: input.head,
@@ -232,6 +278,61 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     async canPush() {
       // Chế độ thử chỉ có người chạy script.
       return true;
+    },
+
+    async getPR(ref, number) {
+      const dir = await need(ref);
+      const found = await findPR(ref, number);
+      if (!found) return null;
+      const { pr, file } = found;
+      const state = pr.state ?? "open";
+      const headSha = (await branchSha(dir, pr.head)) ?? pr.headSha;
+      const baseSha = await branchSha(dir, pr.base);
+      let mergeable: PullRequestState["mergeable"] = "clean";
+      if (state === "open" && baseSha && !(await isAncestor(dir, baseSha, headSha))) {
+        // Nhánh chính đã tiến: không đòi cập nhật nhánh như bảo vệ nhánh nghiêm, chỉ xét xung đột.
+        if ((await mergedTree(dir, baseSha, headSha)) === null) mergeable = "conflict";
+      }
+      return {
+        number: pr.number,
+        url: pathToFileURL(file).href,
+        state,
+        draft: false,
+        head: pr.head,
+        headSha,
+        base: pr.base,
+        mergeable,
+      };
+    },
+
+    async updatePRBranch() {
+      // getPR không bao giờ trả behind nên không có gì để cập nhật.
+    },
+
+    async checksFor() {
+      return "none";
+    },
+
+    async mergePR(ref, number, mergeOpts) {
+      const dir = await need(ref);
+      const found = await findPR(ref, number);
+      if (!found) throw new GitProviderError("not_found", `local: không có PR ${number}`);
+      const { pr, file } = found;
+      const headSha = await branchSha(dir, pr.head);
+      const baseSha = await branchSha(dir, pr.base);
+      if ((pr.state ?? "open") !== "open" || !headSha || !baseSha || headSha !== mergeOpts.sha) {
+        throw new GitProviderError("conflict", `local: PR ${number} không còn merge được ở sha ${mergeOpts.sha}`);
+      }
+      const tree = await mergedTree(dir, baseSha, headSha);
+      if (tree === null) throw new GitProviderError("conflict", `local: PR ${number} xung đột với ${pr.base}`);
+      // squash và rebase đều thành một commit trên nhánh chính; chỉ merge giữ head làm cha thứ hai.
+      const parents = mergeOpts.method === "merge" ? ["-p", baseSha, "-p", headSha] : ["-p", baseSha];
+      const sha = await git(dir, ["commit-tree", tree, ...parents, "-m", `${pr.title} (#${pr.number})`]);
+      // Kèm sha cũ để update-ref từ chối khi nhánh chính vừa đổi, như nhà cung cấp từ chối merge đè.
+      await git(dir, ["update-ref", `refs/heads/${pr.base}`, sha, baseSha]);
+      const merged: LocalPullRequest = { ...pr, headSha, state: "merged", mergeSha: sha };
+      await writeFile(file, `${JSON.stringify(merged, null, 2)}\n`);
+      return { sha };
     },
 
     async addWebhook(ref, input) {

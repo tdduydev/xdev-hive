@@ -3,12 +3,15 @@ import { assertOwnedRepo, describeWithMarker } from "./shared.ts";
 import type {
   AccessCheck,
   BranchRules,
+  ChecksState,
   CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   GitProvider,
   GitProviderKind,
+  MergeMethod,
   PullRequestInput,
+  PullRequestState,
   RepoInfo,
   RepoRef,
   ScmUser,
@@ -24,8 +27,24 @@ export interface MemoryRepo {
   commits: Array<{ branch: string; message: string; sha: string; paths: string[] }>;
   protection: Map<string, BranchRules>;
   hooks: Map<string, WebhookInput>;
-  pulls: Array<{ number: number; head: string; base: string; title: string; url: string }>;
+  pulls: MemoryPull[];
   comments: Array<{ id: string; number: number; body: string; pullRequest: boolean }>;
+  /** Kết quả CI theo sha; sha không có trong map là `none`. */
+  checks: Map<string, ChecksState>;
+}
+
+export interface MemoryPull {
+  number: number;
+  head: string;
+  base: string;
+  title: string;
+  url: string;
+  state: PullRequestState["state"];
+  draft: boolean;
+  headSha: string;
+  mergeable: PullRequestState["mergeable"];
+  /** Có sau mergePR. */
+  merged?: { method: MergeMethod; sha: string };
 }
 
 export interface MemoryProvider extends GitProvider {
@@ -39,6 +58,9 @@ export interface MemoryProvider extends GitProvider {
   fail(method: Method, error: GitProviderError | null): void;
   /** Thêm repo có sẵn (không do hub tạo). */
   seedRepo(ref: RepoRef, opts?: { defaultBranch?: string; files?: Record<string, string> }): MemoryRepo;
+  /** Đổi trạng thái PR (merge tay, đóng, nhánh chính tiến...) như người dùng làm trên GitHub/GitLab. */
+  setPull(ref: RepoRef, number: number, patch: Partial<Omit<MemoryPull, "number">>): MemoryPull;
+  setChecks(ref: RepoRef, sha: string, state: ChecksState): void;
 }
 
 const key = (ref: RepoRef) => `${ref.owner}/${ref.name}`.toLowerCase();
@@ -79,6 +101,7 @@ export function createMemoryProvider(
       hooks: new Map(),
       pulls: [],
       comments: [],
+      checks: new Map(),
     };
     repos.set(key(ref), repo);
     return repo;
@@ -88,6 +111,17 @@ export function createMemoryProvider(
     const repo = repos.get(key(ref));
     if (!repo) throw new GitProviderError("not_found", `${host}: không tìm thấy ${ref.owner}/${ref.name}`);
     return repo;
+  };
+
+  const nextSha = () => {
+    seq += 1;
+    return seq.toString(16).padStart(40, "0");
+  };
+
+  const pull = (ref: RepoRef, number: number): MemoryPull => {
+    const pr = need(ref).pulls.find((p) => p.number === number);
+    if (!pr) throw new GitProviderError("not_found", `${host}: không có PR ${number}`);
+    return pr;
   };
 
   const track = <A extends unknown[], R>(method: Method, fn: (...args: A) => R) =>
@@ -113,6 +147,12 @@ export function createMemoryProvider(
       const files = repo.branches.get(repo.info.defaultBranch);
       for (const [p, c] of Object.entries(opts.files ?? {})) files?.set(p, c);
       return repo;
+    },
+    setPull(ref, number, patch) {
+      return Object.assign(pull(ref, number), patch);
+    },
+    setChecks(ref, sha, state) {
+      need(ref).checks.set(sha, state);
     },
 
     checkAccess: track("checkAccess", (owner: string): AccessCheck => {
@@ -141,8 +181,7 @@ export function createMemoryProvider(
         repo.branches.set(input.branch, files);
       }
       for (const f of input.files) files.set(f.path, f.content);
-      seq += 1;
-      const sha = seq.toString(16).padStart(40, "0");
+      const sha = nextSha();
       repo.commits.push({ branch: input.branch, message: input.message, sha, paths: input.files.map((f) => f.path) });
       return { sha };
     }),
@@ -159,8 +198,53 @@ export function createMemoryProvider(
       if (open) return { number: open.number, url: open.url };
       const number = repo.pulls.length + 1;
       const url = `${repo.info.webUrl}/pull/${number}`;
-      repo.pulls.push({ number, head: input.head, base: input.base, title: input.title, url });
+      const headSha = repo.commits.findLast((c) => c.branch === input.head)?.sha ?? nextSha();
+      repo.pulls.push({
+        number,
+        head: input.head,
+        base: input.base,
+        title: input.title,
+        url,
+        state: "open",
+        draft: input.draft ?? false,
+        headSha,
+        mergeable: "clean",
+      });
       return { number, url };
+    }),
+
+    getPR: track("getPR", (ref: RepoRef, number: number): PullRequestState | null => {
+      const pr = need(ref).pulls.find((p) => p.number === number);
+      if (!pr) return null;
+      const { number: n, url, state, draft, head, headSha, base, mergeable } = pr;
+      return { number: n, url, state, draft, head, headSha, base, mergeable };
+    }),
+
+    updatePRBranch: track("updatePRBranch", (ref: RepoRef, number: number, expectedHeadSha: string) => {
+      const pr = pull(ref, number);
+      if (pr.headSha !== expectedHeadSha || pr.mergeable === "conflict") {
+        throw new GitProviderError("conflict", `${host}: không cập nhật được nhánh của PR ${number}`);
+      }
+      // Cập nhật nhánh tạo commit mới trên head: CI phải chạy lại trên sha mới.
+      pr.headSha = nextSha();
+      pr.mergeable = "clean";
+    }),
+
+    checksFor: track("checksFor", (ref: RepoRef, sha: string) => need(ref).checks.get(sha) ?? "none"),
+
+    mergePR: track("mergePR", (ref: RepoRef, number: number, opts: { method: MergeMethod; sha: string }) => {
+      const repo = need(ref);
+      const pr = pull(ref, number);
+      if (pr.state !== "open" || pr.draft || pr.mergeable !== "clean" || pr.headSha !== opts.sha) {
+        throw new GitProviderError("conflict", `${host}: PR ${number} chưa merge được`);
+      }
+      const head = repo.branches.get(pr.head);
+      const base = repo.branches.get(pr.base);
+      if (head && base) for (const [path, content] of head) base.set(path, content);
+      const sha = nextSha();
+      pr.state = "merged";
+      pr.merged = { method: opts.method, sha };
+      return { sha };
     }),
 
     commentOnIssue: track("commentOnIssue", (ref: RepoRef, number: number, body: string, opts?: CommentOptions) => {
