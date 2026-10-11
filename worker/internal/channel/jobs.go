@@ -409,7 +409,9 @@ func resultMessage(runID string, attempt int, seq int64, r *runner.Result) RunRe
 	report, _ := json.Marshal(r)
 	var sha *string
 	exit := 1
+	var stats *runner.DiffStats
 	if r != nil {
+		stats = r.DiffStats
 		if r.HeadSHA != "" {
 			v := r.HeadSHA
 			sha = &v
@@ -418,7 +420,7 @@ func resultMessage(runID string, attempt int, seq int64, r *runner.Result) RunRe
 			exit = 0
 		}
 	}
-	return RunResult{Type: "run_result", V: protocolVersion, ID: newID(), RunID: runID, Attempt: attempt, Seq: seq, Exit: exit, HeadSHA: sha, Report: report}
+	return RunResult{Type: "run_result", V: protocolVersion, ID: newID(), RunID: runID, Attempt: attempt, Seq: seq, Exit: exit, HeadSHA: sha, Report: report, DiffStats: stats}
 }
 
 func safeID(s string) string { return strings.NewReplacer("/", "_", "\\", "_", ":", "_").Replace(s) }
