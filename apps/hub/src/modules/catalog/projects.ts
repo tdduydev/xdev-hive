@@ -56,7 +56,9 @@ export interface Actor {
 export type ProjectRow = typeof projects.$inferSelect;
 type StepRow = typeof projectProvisionSteps.$inferSelect;
 
-export const webhookUrl = (publicUrl: string) => `${publicUrl.replace(/\/+$/, "")}/hooks/git`;
+/** Mỗi dự án một URL: hub biết ngay dự án (và secret để kiểm chữ ký) từ đường dẫn, không phải đoán từ payload. */
+export const webhookUrl = (publicUrl: string, projectId: string | null) =>
+  `${publicUrl.replace(/\/+$/, "")}/hooks/git/${projectId ?? "<id dự án>"}`;
 export const webhookSecretContext = (projectId: string) => `projects:${projectId}:webhook`;
 export const repoMarker = (projectId: string) => `xdev-hive:${projectId}`;
 
@@ -93,7 +95,7 @@ function planFor(
     visibility: project.repoVisibility,
     protection: opts.protection,
     webhook: opts.webhook,
-    webhookUrl: webhookUrl(deps.publicUrl),
+    webhookUrl: webhookUrl(deps.publicUrl, project.id),
     templateFileCount,
   });
 }
@@ -242,7 +244,7 @@ async function prepare(tx: Tx, deps: CatalogDeps, actor: Actor, input: ProjectCr
   return { system, conn, repo, keyTaken: taken !== undefined };
 }
 
-function plan(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared): PlannedStep[] {
+function plan(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared, projectId: string | null): PlannedStep[] {
   return planSteps({
     mode: input.repo.mode,
     scmKind: p.conn.kind,
@@ -253,7 +255,7 @@ function plan(deps: CatalogDeps, input: ProjectCreateRequest, p: Prepared): Plan
     description: input.repo.mode === "new" ? input.repo.description : undefined,
     protection: input.protection,
     webhook: input.webhook,
-    webhookUrl: webhookUrl(deps.publicUrl),
+    webhookUrl: webhookUrl(deps.publicUrl, projectId),
     templateFileCount,
   });
 }
@@ -341,7 +343,7 @@ export async function dryRunCreate(
     ...localWarnings(deps, input, p),
     ...(await checkWithProvider(deps.providerFactory(p.conn), input, p)),
   ];
-  return { dryRun: true, projectId: null, state: "planned", steps: plannedView(plan(deps, input, p)), warnings };
+  return { dryRun: true, projectId: null, state: "planned", steps: plannedView(plan(deps, input, p, null)), warnings };
 }
 
 async function existingByIdempotencyKey(
@@ -431,7 +433,7 @@ export async function createProject(
       if (raced) return raced;
       throw new Error("Không tạo được dự án.");
     }
-    const steps = plan(deps, input, p);
+    const steps = plan(deps, input, p, id);
     await tx.insert(projectProvisionSteps).values(
       steps.map((s, i) => ({
         orgId: sql`hive.ctx_org()`,

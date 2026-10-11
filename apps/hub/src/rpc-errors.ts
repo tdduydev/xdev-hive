@@ -1,5 +1,5 @@
 import { ORPCError, ValidationError } from "@orpc/server";
-import { ConflictError, ForbiddenError, NotFoundError } from "./modules/platform/index.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "./modules/platform/index.ts";
 
 /**
  * Đổi lỗi nghiệp vụ của module thành lỗi oRPC ở một chỗ, để module không phụ thuộc oRPC và mọi router trả cùng
@@ -13,6 +13,7 @@ export async function mapDomainErrors<T>({ next }: { next: () => Promise<T> }): 
     if (error instanceof ForbiddenError) throw toORPC("FORBIDDEN", error);
     if (error instanceof NotFoundError) throw toORPC("NOT_FOUND", error);
     if (error instanceof ConflictError) throw toORPC("CONFLICT", error);
+    if (error instanceof BadRequestError) throw toORPC("BAD_REQUEST", error);
     if (error instanceof ORPCError && error.code === "BAD_REQUEST" && error.cause instanceof ValidationError) {
       throw new ORPCError("BAD_REQUEST", {
         message: validationMessage(error.cause),
@@ -24,7 +25,7 @@ export async function mapDomainErrors<T>({ next }: { next: () => Promise<T> }): 
   }
 }
 
-function toORPC(code: string, error: ForbiddenError | NotFoundError | ConflictError) {
+function toORPC(code: string, error: ForbiddenError | NotFoundError | ConflictError | BadRequestError) {
   return new ORPCError(code, { message: error.message, data: { code: error.code }, cause: error });
 }
 

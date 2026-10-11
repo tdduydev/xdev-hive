@@ -10,6 +10,8 @@ const hiveOwner = pgRole("hive_owner").existing();
 export const orgRole = hive.enum("org_role", ["owner", "admin", "member"]);
 export const memberStatus = hive.enum("member_status", ["active", "pending", "blocked"]);
 export const teamRole = hive.enum("team_role", ["admin", "member", "viewer"]);
+/** Người đăng nhập SSO lần đầu: vào hàng chờ duyệt (pending) hay thành thành viên ngay (member). */
+export const ssoJoin = hive.enum("sso_join", ["pending", "member"]);
 
 const inOrg = sql`org_id = hive.ctx_org()`;
 /** Policy chuẩn cho bảng thuộc một tổ chức: đọc và ghi chỉ trong tổ chức của context. */
@@ -25,6 +27,7 @@ export const orgs = hive
       slug: text("slug").notNull().unique(),
       name: text("name").notNull(),
       emailDomain: text("email_domain"),
+      ssoJoin: ssoJoin("sso_join").notNull().default("pending"),
       createdBy: text("created_by").notNull(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },

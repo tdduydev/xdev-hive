@@ -3,13 +3,17 @@ import { z } from "zod";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
 import { projectsContract } from "./projects.ts";
+import { runsContract } from "./runs.ts";
 import { scmContract } from "./scm.ts";
+import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 
 export * from "./knowledge.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
+export * from "./runs.ts";
 export * from "./scm.ts";
+export * from "./tasks.ts";
 export * from "./tenancy.ts";
 
 // Lỗi kiểm tra đầu vào được trả thẳng cho người dùng (hub) và hiện trên form (web), nên dùng tiếng Việt cho mọi
@@ -53,6 +57,8 @@ export const contract = {
   docs: docsContract,
   skills: skillsContract,
   proposals: proposalsContract,
+  tasks: tasksContract,
+  runs: runsContract,
 };
 
 export type Contract = typeof contract;

@@ -4,14 +4,23 @@ import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { RPCHandler } from "@orpc/server/fetch";
 import { Hono } from "hono";
 import type pg from "pg";
-import { catalogRouter } from "./modules/catalog/index.ts";
+import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
-import { type Auth, meRouter } from "./modules/identity/index.ts";
+import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, knowledgeRouter } from "./modules/knowledge/index.ts";
+import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
-import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
+import {
+  RunNotifier,
+  type RunsEngine,
+  runStreamHandler,
+  registerMcpTools as runsMcpTools,
+  runsRouter,
+} from "./modules/runs/index.ts";
+import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
-import { tenancyRouter } from "./modules/tenancy/index.ts";
+import { tasksRouter } from "./modules/tasks/index.ts";
+import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
@@ -21,21 +30,30 @@ export interface AppDeps {
   auth?: Auth | undefined;
   /** Pool của role hive_app (HIVE_DATABASE_URL). Không có khi chạy test đơn vị không cần database. */
   pool?: pg.Pool | undefined;
+  /** Kiểm run token cho /mcp; bỏ trống thì lấy từ lõi giao run, không có cả hai thì cổng chỉ nhận token OAuth. */
+  runTokens?: RunTokenVerifier | undefined;
   /** Hàng đợi pg-boss; không có thì không tạo được dự án. */
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
   providerFactory?: ProviderFactory | undefined;
   /** Tạo embedding cho memory; không có thì chỉ tìm theo từ. */
   embedder?: Embedder | undefined;
+  /** Lõi giao run; không có thì xem được run nhưng không giao hay huỷ được (thiếu HIVE_AUTH_SECRET). */
+  runs?: RunsEngine | undefined;
+  /** Kết nối LISTEN cho SSE của run; bỏ trống thì tự tạo từ pool. */
+  runNotifier?: RunNotifier | undefined;
 }
 
 export function createApp({
   config,
   auth,
   pool,
+  runTokens,
   jobs,
   providerFactory,
   embedder,
+  runs,
+  runNotifier,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -48,11 +66,13 @@ export function createApp({
   const router = {
     system: systemRouter(config),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators }),
+    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
+    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
+    runs: runsRouter({ auth, pool, engine: runs }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -60,6 +80,36 @@ export function createApp({
   const app = new Hono();
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
+  const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
+  app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
+  // Webhook đọc thân request dạng byte để kiểm HMAC, nên đi thẳng qua Hono, không qua oRPC.
+  const hooks = {
+    pool,
+    jobs,
+    resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
+  };
+  app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
+  if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
+    // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
+    // tự trả các đường này khi request đi qua handler của Better Auth.
+    app.on(["GET", "HEAD"], "/.well-known/*", async (c) => {
+      const res = await auth.handler(c.req.raw);
+      return res.status === 404 ? c.notFound() : res;
+    });
+    const registry = new McpToolRegistry();
+    tenancyMcpTools(registry);
+    runsMcpTools(registry);
+    const mcp = createMcpEndpoint({
+      auth,
+      pool,
+      registry,
+      version: config.version,
+      runTokens: runTokens ?? runs?.mcpRunTokens,
+    });
+    // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
+    app.all("/mcp", (c) => mcp(c.req.raw));
+  }
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
@@ -111,7 +161,7 @@ export function createApp({
           /* Đường dẫn SPA không phải file; trả entry point để client router xử lý. */
         }
       }
-      if (c.req.path.startsWith("/api/") || c.req.path.startsWith("/rpc/")) return c.notFound();
+      if (["/api/", "/rpc/", "/mcp", "/.well-known/"].some((p) => c.req.path.startsWith(p))) return c.notFound();
       try {
         return c.html(await readFile(resolve(root, "index.html"), "utf8"));
       } catch {

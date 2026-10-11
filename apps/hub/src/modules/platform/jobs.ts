@@ -24,6 +24,8 @@ export interface EnqueueOptions {
   tx?: Tx | undefined;
   /** Với queue policy `stately`: mỗi khoá chỉ một job chờ và một job đang chạy. */
   singletonKey?: string | undefined;
+  /** Chưa chạy trước thời điểm này (hẹn giờ kiểm lease, hết hạn đề nghị job). */
+  startAfter?: Date | undefined;
 }
 
 export interface Jobs {
@@ -95,6 +97,7 @@ export function createJobs(opts: JobsOptions): Jobs {
     async enqueue(queue, data, eo = {}) {
       const options: Parameters<PgBoss["send"]>[2] = {};
       if (eo.singletonKey) options.singletonKey = eo.singletonKey;
+      if (eo.startAfter) options.startAfter = eo.startAfter;
       if (eo.tx) {
         const client = eo.tx.$client;
         options.db = { executeSql: (text, values) => client.query(text, values) };

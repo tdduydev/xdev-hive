@@ -321,17 +321,19 @@ describe("GitLab webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",
     secret: "s3",
-    events: ["push" as const, "pull_request" as const],
+    events: ["push" as const, "pull_request" as const, "issues" as const, "issue_comment" as const],
   };
   const body = {
     url: input.url,
     token: "s3",
     push_events: true,
     merge_requests_events: true,
+    issues_events: true,
+    note_events: true,
     enable_ssl_verification: true,
   };
 
-  it("tạo webhook mới, pull_request đổi thành merge_requests_events", async () => {
+  it("tạo webhook mới, pull_request đổi thành merge_requests_events, issue_comment thành note_events", async () => {
     const { gl, pool } = setup();
     pool.intercept({ path: `${P}/hooks`, method: "GET" }).reply(200, [], JSON_HEADERS);
     pool.intercept({ path: `${P}/hooks`, method: "POST" }).reply(201, http.json({ id: 21 }), JSON_HEADERS);

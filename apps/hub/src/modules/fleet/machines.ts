@@ -110,3 +110,27 @@ export async function markOffline(pool: pg.Pool, m: AuthedMachine): Promise<void
       .where(and(eq(machines.id, m.id), isNull(machines.revokedAt))),
   );
 }
+
+/** Máy đang online của đội, để module runs chọn máy giao job. Máy bị thu hồi không có mặt. */
+export async function listOnlineMachines(
+  tx: Tx,
+  teamId: string,
+): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number }>> {
+  return tx
+    .select({ id: machines.id, name: machines.name, clis: machines.clis, capacity: machines.capacity })
+    .from(machines)
+    .where(and(eq(machines.teamId, teamId), eq(machines.status, "online"), isNull(machines.revokedAt)))
+    .orderBy(asc(machines.lastSeenAt));
+}
+
+/** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */
+export async function findMachine(
+  tx: Tx,
+  id: string,
+): Promise<{ id: string; teamId: string; revoked: boolean } | null> {
+  const [row] = await tx
+    .select({ id: machines.id, teamId: machines.teamId, revokedAt: machines.revokedAt })
+    .from(machines)
+    .where(eq(machines.id, id));
+  return row ? { id: row.id, teamId: row.teamId, revoked: row.revokedAt !== null } : null;
+}
