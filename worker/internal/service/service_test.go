@@ -2,19 +2,29 @@ package service
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 func TestBuildGoldenPlatforms(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	executable := filepath.Join(home, "hive worker")
+	config := filepath.Join(home, "worker config.json")
+	pathEnv := filepath.Join(home, "bin")
+	// LOCALAPPDATA belongs to the runner, so isolate it from the generated fixtures.
+	t.Setenv("LOCALAPPDATA", "")
 	tests := []struct{ goos, file, log, want string }{
-		{"linux", "/home/lin/.config/systemd/user/hive-worker.service", "journalctl --user -u hive-worker", "RestartPreventExitStatus=3\nEnvironment=HOME=\"/home/lin\"\nEnvironment=PATH=\"/usr/bin:/home/lin/bin\"\nEnvironment=HIVE_WORKER_CONFIG=\"/tmp/worker config.json\""},
-		{"darwin", "/home/mac/Library/LaunchAgents/dev.xdev-hive.worker.plist", "/home/mac/Library/Logs/xdev-hive/worker.log", "<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>"},
-		{"windows", "Task Scheduler: dev.xdev-hive.worker", "/home/dev/AppData/Local/xdev-hive/worker.log", "Task Scheduler task"},
+		{"linux", filepath.Join(home, ".config", "systemd", "user", "hive-worker.service"), "journalctl --user -u hive-worker", "RestartPreventExitStatus=3\nEnvironment=HOME=" + systemdQuote(home) + "\nEnvironment=PATH=" + systemdQuote(pathEnv) + "\nEnvironment=HIVE_WORKER_CONFIG=" + systemdQuote(config)},
+		{"darwin", filepath.Join(home, "Library", "LaunchAgents", ID+".plist"), filepath.Join(home, "Library", "Logs", "xdev-hive", "worker.log"), "<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>"},
+		{"windows", "Task Scheduler: dev.xdev-hive.worker", filepath.Join(home, "AppData", "Local", "xdev-hive", "worker.log"), "Task Scheduler task"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.goos, func(t *testing.T) {
-			p, err := Build(tc.goos, "/opt/hive worker", "/home/"+map[string]string{"linux": "lin", "darwin": "mac", "windows": "dev"}[tc.goos], "/usr/bin:/home/lin/bin", "/tmp/worker config.json", 4)
+			p, err := Build(tc.goos, executable, home, pathEnv, config, 4)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -31,6 +41,20 @@ func TestBuildGoldenPlatforms(t *testing.T) {
 				t.Fatalf("schtasks arguments = %v", p.Commands[0])
 			}
 		})
+	}
+}
+
+func TestBuildWindowsLocalAppData(t *testing.T) {
+	home := t.TempDir()
+	local := filepath.Join(home, "local app data")
+	t.Setenv("LOCALAPPDATA", local)
+	p, err := Build("windows", filepath.Join(home, "worker.exe"), home, "", "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(local, "xdev-hive", "worker.log")
+	if p.Log != want || !strings.Contains(strings.Join(p.Commands[0], " "), ` >> "`+want+`" 2>&1`) {
+		t.Fatalf("log=%q commands=%v", p.Log, p.Commands)
 	}
 }
 
@@ -54,11 +78,57 @@ func TestInstallDryRunDoesNotWriteOrRunCommands(t *testing.T) {
 }
 
 func TestInstallInjectsCommands(t *testing.T) {
-	p, _ := Build("linux", "/bin/worker", "/home/test", "/bin", "", 1)
+	for _, failAt := range []int{0, 1, 2} {
+		t.Run(strconv.Itoa(failAt), func(t *testing.T) {
+			home := t.TempDir()
+			p, err := Build("linux", filepath.Join(home, "worker"), home, "", "", 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			failure := errors.New("expected failure")
+			var calls [][]string
+			m := Manager{Run: func(name string, args ...string) error {
+				content, err := os.ReadFile(p.File)
+				if err != nil || string(content) != p.Content {
+					t.Fatalf("service file must be written before commands: content=%q err=%v", content, err)
+				}
+				calls = append(calls, append([]string{name}, args...))
+				if len(calls) == failAt {
+					return failure
+				}
+				return nil
+			}}
+			err = m.Install(p, false, &strings.Builder{})
+			wantCalls := len(p.Commands)
+			if failAt != 0 {
+				wantCalls = failAt
+				if !errors.Is(err, failure) {
+					t.Fatalf("expected command failure, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(calls, p.Commands[:wantCalls]) {
+				t.Fatalf("commands=%v want=%v", calls, p.Commands[:wantCalls])
+			}
+		})
+	}
+}
+
+func TestInstallWriteFailureDoesNotRunCommands(t *testing.T) {
+	home := t.TempDir()
+	p, err := Build("linux", filepath.Join(home, "worker"), home, "", "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(home, "not-a-directory")
+	if err := os.WriteFile(parent, []byte("occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A regular file cannot be a parent directory on any supported OS.
+	p.File = filepath.Join(parent, "hive-worker.service")
 	calls := 0
-	m := Manager{Run: func(name string, args ...string) error { calls++; return errors.New("expected failure") }}
-	// A deliberately invalid destination proves the command runner is only reached after a successful file write.
-	p.File = "/dev/null/hive-worker.service"
+	m := Manager{Run: func(string, ...string) error { calls++; return nil }}
 	if err := m.Install(p, false, &strings.Builder{}); err == nil || calls != 0 {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
