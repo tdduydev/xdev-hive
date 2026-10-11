@@ -10,11 +10,14 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
 const protocolVersion = 1
@@ -27,13 +30,62 @@ type Config struct {
 	Version    string
 	CLIs       []string
 	Capacity   int
-	Resume     []string
 	Logger     *slog.Logger
 	HTTP       *http.Client
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
 	// Heartbeat ghi đè chu kỳ heartbeat hub gửi trong welcome; 0 là theo hub. Chỉ dùng trong test.
 	Heartbeat time.Duration
+	// DataDir chứa repo cache, worktree của run, gói chờ ack (pending) và marker run đang chạy (active).
+	DataDir string
+	// Project là project key mặc định cho HIVE_PROJECT khi spec của job không có.
+	Project     string
+	CLICommands map[string]runner.Command
+	// StopTimeout là thời gian chờ run đang chạy dừng hẳn khi worker tắt; 0 là 30 giây.
+	StopTimeout time.Duration
+}
+
+type jobSpec struct {
+	Repo        string `json:"repo"`
+	RepoURL     string `json:"repoUrl"`
+	Project     string `json:"project"`
+	ProjectKey  string `json:"projectKey"`
+	CLI         string `json:"cli"`
+	Prompt      string `json:"prompt"`
+	BaseBranch  string `json:"baseBranch"`
+	Branch      string `json:"branch"`
+	TimeoutSec  int    `json:"timeoutSec"`
+	SetupScript string `json:"setupScript"`
+}
+
+func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
+	var s jobSpec
+	if err := json.Unmarshal(o.Spec, &s); err != nil {
+		return runner.Job{}, err
+	}
+	repo := s.RepoURL
+	if repo == "" {
+		repo = s.Repo
+	}
+	if repo != "" && !strings.Contains(repo, "://") && !strings.HasPrefix(repo, "git@") {
+		repo = "https://github.com/" + strings.Trim(repo, "/") + ".git"
+	}
+	switch {
+	case s.ProjectKey != "":
+		project = s.ProjectKey
+	case s.Project != "":
+		project = s.Project
+	}
+	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
+	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
+	j := runner.Job{RunID: o.RunID, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Env: env}
+	if j.BaseBranch == "" {
+		j.BaseBranch = "main"
+	}
+	if j.Branch == "" {
+		j.Branch = "ai/" + o.RunID
+	}
+	return j, nil
 }
 
 type UpgradeError struct{ Message UpgradeRequired }
@@ -63,6 +115,23 @@ func (c Config) Run(ctx context.Context) error {
 	if c.Logger == nil {
 		c.Logger = slog.Default()
 	}
+	if c.DataDir == "" {
+		d, err := os.UserCacheDir()
+		if err != nil {
+			return err
+		}
+		c.DataDir = filepath.Join(d, "xdev-hive", "worker")
+	}
+	if err := os.MkdirAll(filepath.Join(c.DataDir, "pending"), 0700); err != nil {
+		return err
+	}
+	if err := recoverInterrupted(c.DataDir, c.Logger); err != nil {
+		return fmt.Errorf("khôi phục run bị ngắt: %w", err)
+	}
+	// Vừa khởi động thì không còn CLI nào chạy: mọi worktree còn lại là của run đã chết.
+	if err := runner.ReapOrphans(c.DataDir, nil); err != nil {
+		return fmt.Errorf("dọn run cũ: %w", err)
+	}
 	if c.MinBackoff <= 0 {
 		c.MinBackoff = time.Second
 	}
@@ -72,18 +141,24 @@ func (c Config) Run(ctx context.Context) error {
 	if c.MaxBackoff < c.MinBackoff {
 		c.MaxBackoff = c.MinBackoff
 	}
+	if c.StopTimeout <= 0 {
+		c.StopTimeout = 30 * time.Second
+	}
+	jobs := newJobs(ctx, c)
+	// Worker tắt (Ctrl-C, dịch vụ dừng): run nhận lệnh huỷ theo ctx, chờ chúng ghi kết quả xuống đĩa rồi mới thoát.
+	defer jobs.wait(c.StopTimeout)
 	backoff := c.MinBackoff
 	for {
-		if err := ctx.Err(); err != nil {
+		if ctx.Err() != nil || jobs.finished() {
 			return nil
 		}
-		err := c.connect(ctx)
+		err := c.connect(ctx, jobs)
 		var upgrade *UpgradeError
 		var rejected *RejectedError
 		if errors.As(err, &upgrade) || errors.As(err, &rejected) {
 			return err
 		}
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || jobs.finished() {
 			return nil
 		}
 		c.Logger.Warn("Kênh worker mất kết nối, sẽ thử lại", "error", err)
@@ -91,6 +166,9 @@ func (c Config) Run(ctx context.Context) error {
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-jobs.done:
 			timer.Stop()
 			return nil
 		case <-timer.C:
@@ -102,7 +180,7 @@ func (c Config) Run(ctx context.Context) error {
 	}
 }
 
-func (c Config) connect(ctx context.Context) error {
+func (c Config) connect(ctx context.Context, jobs *jobs) error {
 	url, err := websocketURL(c.HubURL)
 	if err != nil {
 		return err
@@ -124,7 +202,7 @@ func (c Config) connect(ctx context.Context) error {
 		return err
 	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: nonNil(c.CLIs), Capacity: c.Capacity, ResumeRuns: nonNil(c.Resume)}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: nonNil(c.CLIs), Capacity: c.Capacity, ResumeRuns: jobs.runIDs()}
 	if err := conn.Write(ctx, websocket.MessageText, mustJSON(hello)); err != nil {
 		return fmt.Errorf("gửi hello: %w", err)
 	}
@@ -145,7 +223,7 @@ func (c Config) connect(ctx context.Context) error {
 			return err
 		}
 		c.Logger.Info("Đã kết nối hub", "sessionId", welcome.SessionID, "heartbeatSec", welcome.HeartbeatSec)
-		return c.session(ctx, conn, welcome)
+		return c.session(ctx, conn, welcome, jobs)
 	case "upgrade_required":
 		var upgrade UpgradeRequired
 		if err := json.Unmarshal(payload, &upgrade); err != nil {
@@ -157,9 +235,7 @@ func (c Config) connect(ctx context.Context) error {
 	}
 }
 
-// session giữ phiên sau welcome: gửi heartbeat theo chu kỳ hub yêu cầu (hub đóng kết nối nếu ba chu kỳ không nhận gói
-// nào) và đọc gói từ hub. Xử lý job (job_offer, cancel…) do module chạy job gắn vào sau.
-func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welcome) error {
+func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welcome, jobs *jobs) error {
 	interval := c.Heartbeat
 	if interval <= 0 {
 		interval = time.Duration(welcome.HeartbeatSec) * time.Second
@@ -170,6 +246,18 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() {
+		// Drain xong thì đóng phiên để Run thoát.
+		select {
+		case <-jobs.done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	if err := jobs.attach(ctx, conn); err != nil {
+		return err
+	}
+	defer jobs.detach(conn)
+	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -178,12 +266,8 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 				return
 			case <-ticker.C:
 			}
-			id, err := messageID()
-			if err != nil {
-				return
-			}
 			// Lỗi ghi sẽ hiện ra ở conn.Read bên dưới, nên không cần báo riêng.
-			if conn.Write(ctx, websocket.MessageText, mustJSON(Heartbeat{Type: "heartbeat", V: protocolVersion, ID: id, Runs: []HeartbeatRun{}})) != nil {
+			if jobs.write(jobs.heartbeat()) != nil {
 				return
 			}
 		}
@@ -201,6 +285,24 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 		switch m := msg.(type) {
 		case *HeartbeatAck:
 			c.Logger.Debug("Hub xác nhận heartbeat", "renewed", m.Renewed, "cancel", m.Cancel)
+			// Lease không còn (hết hạn, run đã giao máy khác, đang huỷ): dừng run, kết quả của nó hub sẽ bỏ.
+			for _, runID := range m.Cancel {
+				jobs.cancel(runID, defaultGrace)
+			}
+		case *JobOffer:
+			jobs.onOffer(m)
+		case *Lease:
+			jobs.onLease(m)
+		case *Ack:
+			ackPending(jobs.pending, m.RunID, m.UptoSeq)
+		case *Cancel:
+			jobs.cancel(m.RunID, time.Duration(m.GraceSec)*time.Second)
+		case *Drain:
+			c.Logger.Info("Hub yêu cầu thoát: không nhận job mới, chờ run đang chạy xong")
+			jobs.drain()
+		case *Steer:
+			// CLI chạy không tương tác (-p, exec) nên chưa nhận thêm chỉ dẫn giữa chừng; hub đưa chỉ dẫn vào lần chạy sau.
+			c.Logger.Info("Chưa hỗ trợ chỉ dẫn cho run đang chạy", "run", m.RunID)
 		default:
 			c.Logger.Info("Chưa xử lý gói từ hub", "type", fmt.Sprintf("%T", m))
 		}
