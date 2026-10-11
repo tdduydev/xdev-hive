@@ -1,7 +1,7 @@
 import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
-import { type RequestContext, withTenant } from "../platform/index.ts";
-import { type OrgScopeDeps, orgScope } from "../tenancy/index.ts";
+import type { RequestContext } from "../platform/index.ts";
+import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
 import {
   type CatalogDeps,
   createProject,
@@ -12,23 +12,25 @@ import {
   retryStep,
 } from "./projects.ts";
 
-export function catalogRouter(deps: CatalogDeps & OrgScopeDeps) {
-  const os = implement(contract.projects).$context<RequestContext>().use(orgScope(deps));
+export function catalogRouter(deps: CatalogDeps & OrgDeps) {
+  const { authed, inOrg, orgMember } = orgMiddlewares(deps);
+  const os = implement(contract.projects).$context<RequestContext>().use(authed);
   return {
-    create: os.create.handler(({ context: { pool, actor }, input }) =>
-      input.dryRun ? dryRunCreate(pool, deps, actor, input) : createProject(pool, deps, actor, input),
-    ),
-    list: os.list.handler(({ context: { pool, actor }, input }) =>
-      withTenant(pool, actor, (tx) => listProjects(tx, actor.userId, input.systemId)),
-    ),
-    get: os.get.handler(({ context: { pool, actor }, input }) =>
-      withTenant(pool, actor, (tx) => getProject(tx, actor.userId, input.id)),
-    ),
-    provision: os.provision.handler(({ context: { pool, actor }, input }) =>
-      withTenant(pool, actor, (tx) => getProvision(tx, deps, actor.userId, input.id)),
-    ),
-    retryStep: os.retryStep.handler(({ context: { pool, actor }, input }) =>
-      withTenant(pool, actor, (tx) => retryStep(tx, deps, actor, input.id, input.stepId)),
-    ),
+    // Chạy thử gọi ra GitHub/GitLab nên không giữ transaction (orgMember); tạo thật chỉ ghi database, job gửi
+    // trong cùng transaction.
+    create: os.create.use(orgMember).handler(({ context: { pool, user, orgId }, input }) => {
+      const actor = { userId: user.id, orgId };
+      return input.dryRun ? dryRunCreate(pool, deps, actor, input) : createProject(pool, deps, actor, input);
+    }),
+    list: os.list.use(inOrg).handler(({ context: { tx, user }, input }) => listProjects(tx, user.id, input.systemId)),
+    get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getProject(tx, user.id, input.id)),
+    provision: os.provision
+      .use(inOrg)
+      .handler(({ context: { tx, user }, input }) => getProvision(tx, deps, user.id, input.id)),
+    retryStep: os.retryStep
+      .use(inOrg)
+      .handler(({ context: { tx, user, orgId }, input }) =>
+        retryStep(tx, deps, { userId: user.id, orgId }, input.id, input.stepId),
+      ),
   };
 }

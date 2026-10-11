@@ -1,6 +1,8 @@
+import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
+import { attachWorkerGateway } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { defaultProviderFactory } from "./modules/scm/index.ts";
@@ -20,8 +22,9 @@ const auth =
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
-
 const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
+if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
+
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
@@ -47,9 +50,11 @@ if (roles.includes("jobs") && jobs) {
 }
 
 if (roles.includes("api")) {
-  serve({ fetch: createApp({ config, auth, pool, jobs }).fetch, port: config.port }, (info) => {
+  const server = serve({ fetch: createApp({ config, auth, pool, jobs }).fetch, port: config.port }, (info) => {
     console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
   });
+  // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
+  if (pool) attachWorkerGateway(server as Server, { pool });
 }
 
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.

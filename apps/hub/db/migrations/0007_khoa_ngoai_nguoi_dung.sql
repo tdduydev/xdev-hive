@@ -1,0 +1,3 @@
+ALTER TABLE "hive"."org_members" ADD CONSTRAINT "org_members_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "hive"."team_members" ADD CONSTRAINT "team_members_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE POLICY "orgs_owner_select" ON "hive"."orgs" AS PERMISSIVE FOR SELECT TO "hive_owner" USING (true);

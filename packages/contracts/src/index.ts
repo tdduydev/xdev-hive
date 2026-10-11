@@ -1,11 +1,18 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { fleetContract } from "./fleet.ts";
 import { projectsContract } from "./projects.ts";
 import { scmContract } from "./scm.ts";
+import { tenancyContract } from "./tenancy.ts";
 
 export * from "./projects.ts";
 export * from "./repo-url.ts";
 export * from "./scm.ts";
+export * from "./tenancy.ts";
+
+// Lỗi kiểm tra đầu vào được trả thẳng cho người dùng (hub) và hiện trên form (web), nên dùng tiếng Việt cho mọi
+// thông báo mặc định của zod. Schema nào cần câu rõ hơn thì tự ghi message riêng.
+z.config(z.locales.vi());
 
 /** Trạng thái hub. Worker Go gọi qua OpenAPI (GET /api/v1/health) trước khi mở WSS. */
 export const healthOutput = z.object({
@@ -36,8 +43,12 @@ export const contract = {
       .errors({ UNAUTHORIZED: { message: "Chưa đăng nhập." } })
       .output(meOutput),
   },
+  ...fleetContract,
+  ...tenancyContract,
   scmConnections: scmContract,
   projects: projectsContract,
 };
 
 export type Contract = typeof contract;
+
+export * from "./fleet.ts";
