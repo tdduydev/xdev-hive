@@ -9,8 +9,16 @@ import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
+import {
+  RunNotifier,
+  type RunsEngine,
+  runStreamHandler,
+  registerMcpTools as runsMcpTools,
+  runsRouter,
+} from "./modules/runs/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
+import { tasksRouter } from "./modules/tasks/index.ts";
 import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
@@ -21,12 +29,16 @@ export interface AppDeps {
   auth?: Auth | undefined;
   /** Pool của role hive_app (HIVE_DATABASE_URL). Không có khi chạy test đơn vị không cần database. */
   pool?: pg.Pool | undefined;
-  /** Kiểm run token cho /mcp; module runs sẽ cung cấp. Bỏ trống thì cổng chỉ nhận token OAuth của người dùng. */
+  /** Kiểm run token cho /mcp; bỏ trống thì lấy từ lõi giao run, không có cả hai thì cổng chỉ nhận token OAuth. */
   runTokens?: RunTokenVerifier | undefined;
   /** Hàng đợi pg-boss; không có thì không tạo được dự án. */
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
   providerFactory?: ProviderFactory | undefined;
+  /** Lõi giao run; không có thì xem được run nhưng không giao hay huỷ được (thiếu HIVE_AUTH_SECRET). */
+  runs?: RunsEngine | undefined;
+  /** Kết nối LISTEN cho SSE của run; bỏ trống thì tự tạo từ pool. */
+  runNotifier?: RunNotifier | undefined;
 }
 
 export function createApp({
@@ -36,6 +48,8 @@ export function createApp({
   runTokens,
   jobs,
   providerFactory,
+  runs,
+  runNotifier,
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
@@ -52,6 +66,8 @@ export function createApp({
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
+    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
+    runs: runsRouter({ auth, pool, engine: runs }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -59,6 +75,9 @@ export function createApp({
   const app = new Hono();
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
+  const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
+  app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
   // Webhook đọc thân request dạng byte để kiểm HMAC, nên đi thẳng qua Hono, không qua oRPC.
   const hooks = {
     pool,
@@ -75,7 +94,14 @@ export function createApp({
     });
     const registry = new McpToolRegistry();
     tenancyMcpTools(registry);
-    const mcp = createMcpEndpoint({ auth, pool, registry, version: config.version, runTokens });
+    runsMcpTools(registry);
+    const mcp = createMcpEndpoint({
+      auth,
+      pool,
+      registry,
+      version: config.version,
+      runTokens: runTokens ?? runs?.mcpRunTokens,
+    });
     // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
     app.all("/mcp", (c) => mcp(c.req.raw));
   }
