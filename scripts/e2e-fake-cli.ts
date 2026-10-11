@@ -2,7 +2,7 @@
 // rồi báo cáo bằng tool MCP task_update như agent thật. Nhờ vậy kiểm được luồng worker → hub → PR mà không gọi AI.
 // Worker chạy: node scripts/e2e-fake-cli.ts "<prompt>" trong worktree của run.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { probeProxy } from "./e2e-sandbox-probe.ts";
@@ -29,7 +29,13 @@ if (sandboxUrls) {
   const connection = { host: proxy.hostname, port: Number(proxy.port) };
   const allowed = await probeProxy(allowedUrl, connection);
   const blocked = await probeProxy(blockedUrl, connection);
-  const interfaces = readdirSync("/sys/class/net").sort();
+  // gVisor không có /sys/class/net; /proc/net/dev liệt kê cả card chưa có địa chỉ, chặt hơn os.networkInterfaces().
+  const interfaces = readFileSync("/proc/net/dev", "utf8")
+    .split("\n")
+    .slice(2)
+    .map((line) => line.split(":")[0]?.trim() ?? "")
+    .filter(Boolean)
+    .sort();
   writeFileSync("sandbox-network.json", JSON.stringify({ allowed, blocked, interfaces }, null, 2));
   console.log(
     `[cli giả] đã ghi kết quả mạng: ${allowed.status}, ${blocked.status}; card mạng ${interfaces.join(", ")}`,
