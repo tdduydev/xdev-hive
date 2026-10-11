@@ -22,6 +22,7 @@ import {
 import { requireOrgRole } from "../tenancy/index.ts";
 import { notificationChannels } from "./schema.ts";
 import { type ChannelConfig, targetOf } from "./send.ts";
+import { PrivateSmtpHostError, resolveSmtpHost, type SmtpHostDeps } from "./smtp-host.ts";
 
 export interface ChannelRecord {
   id: string;
@@ -80,17 +81,31 @@ export async function listChannels(tx: Tx, userId: string): Promise<ChannelRecor
   return tx.select(channelColumns).from(notificationChannels).orderBy(asc(notificationChannels.name));
 }
 
+async function validateSmtpHost(config: ChannelConfig, deps: SmtpHostDeps): Promise<void> {
+  if (config.kind !== "email") return;
+  try {
+    await resolveSmtpHost(config.host, deps);
+  } catch (e) {
+    throw new BadRequestError(
+      "NOTIFICATION_SMTP_HOST_INVALID",
+      e instanceof PrivateSmtpHostError ? e.message : "Không phân giải được máy chủ SMTP",
+    );
+  }
+}
+
 export async function createChannel(
   tx: Tx,
   master: MasterKey,
   userId: string,
   raw: NotificationChannelCreateInput,
+  deps: SmtpHostDeps = {},
 ): Promise<ChannelRecord> {
   await requireOrgRole(tx, userId, "admin");
   // Hàm public cho module khác: chạy lại zod để có giá trị mặc định (port, tls) dù người gọi không qua oRPC.
   const input = notificationChannelCreateInput.parse(raw);
   const id = randomUUID();
   const config = input.config as ChannelConfig;
+  await validateSmtpHost(config, deps);
   let row: ChannelRecord | undefined;
   try {
     [row] = await tx
@@ -126,11 +141,12 @@ export async function updateChannel(
   master: MasterKey,
   userId: string,
   raw: NotificationChannelUpdateInput,
+  deps: SmtpHostDeps = {},
 ): Promise<ChannelRecord> {
   await requireOrgRole(tx, userId, "admin");
   const input = notificationChannelUpdateInput.parse(raw);
   const [current] = await tx
-    .select(channelColumns)
+    .select({ ...channelColumns, configEnc: notificationChannels.configEnc })
     .from(notificationChannels)
     .where(eq(notificationChannels.id, input.id))
     .for("update");
@@ -142,6 +158,7 @@ export async function updateChannel(
       "Không đổi được loại kênh; hãy tạo kênh mới với loại khác.",
     );
   }
+  await validateSmtpHost(config ?? decryptConfig(master, input.id, current.configEnc), deps);
   let row: ChannelRecord | undefined;
   try {
     [row] = await tx
