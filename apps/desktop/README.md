@@ -14,6 +14,9 @@ pnpm --filter @xdev-hive/desktop app:dev
 `tauri dev` và `tauri build` tự chạy `pnpm prepare:app`. Lệnh này dựng giao diện đăng ký vào `dist/` và dựng
 `hive-worker` vào `src-tauri/binaries/hive-worker-<target triple>`. Cả hai thư mục không commit.
 
+Giao diện đăng ký lấy logo từ `docs/design-system/assets/logos/xdev-hive-icon.svg` và sinh `dist/tokens.css`
+từ `docs/design-system/tokens.json` khi build, dùng cùng nguồn nhận diện với web.
+
 Thử với cấu hình worker riêng, không đụng cấu hình thật của máy:
 
 ```sh
