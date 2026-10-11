@@ -153,6 +153,45 @@ export type RunSteerInput = z.output<typeof runSteerInput>;
 export const runSteerStatus = z.enum(["sent", "pending", "closing"]);
 export type RunSteerStatus = z.output<typeof runSteerStatus>;
 
+/** Nhóm trạng thái để lọc danh sách run; web và hub dùng chung một cách chia. */
+export const runStatusGroup = z.enum(["active", "waiting", "succeeded", "failed", "cancelled"]);
+export type RunStatusGroup = z.output<typeof runStatusGroup>;
+export const RUN_STATUS_GROUPS: Record<RunStatusGroup, readonly RunState[]> = {
+  active: ["queued", "planning", "leased", "preparing", "running", "verifying", "cancelling"],
+  /** Cần người: duyệt kế hoạch, trả lời agent, xem kết quả. */
+  waiting: ["awaiting_plan", "awaiting_input", "needs_review"],
+  succeeded: ["succeeded", "no_changes"],
+  failed: ["failed", "lost"],
+  cancelled: ["cancelled"],
+};
+
+export const runSearchInput = z.object({
+  status: runStatusGroup.optional(),
+  projectId: id.optional(),
+  cli: cli.optional(),
+  machineId: id.optional(),
+  /** `nextCursor` của trang trước; bỏ trống là trang đầu. */
+  cursor: id.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+export type RunSearchInput = z.output<typeof runSearchInput>;
+
+/** Run trong danh sách, kèm mã và tiêu đề task để không phải tải cả danh sách task. */
+export const runListItem = run.extend({ taskKey: z.string(), taskTitle: z.string() });
+export type RunListItem = z.output<typeof runListItem>;
+
+export const runSearchResult = z.object({
+  items: z.array(runListItem),
+  /** Id run cuối của trang; null khi đã hết. */
+  nextCursor: id.nullable(),
+  /**
+   * Máy đã chạy run mình thấy được, để làm ô lọc theo máy (người không quản trị đội không gọi được machines.list).
+   * Chỉ có ở trang đầu; trang sau trả mảng rỗng.
+   */
+  machines: z.array(z.object({ id, name: z.string() })),
+});
+export type RunSearchResult = z.output<typeof runSearchResult>;
+
 export const runsContract = {
   start: orgRoute("POST", "/v1/runs", "Giao task cho agent (thành viên đội)", "runs").input(runStartInput).output(run),
   list: orgRoute("GET", "/v1/tasks/{taskId}/runs", "Các run của task, mới nhất trước", "runs")
@@ -162,6 +201,14 @@ export const runsContract = {
     // Bảng việc cần run gần nhất của mọi task trong một lần gọi, thay vì gọi runs.list cho từng task.
     .input(z.object({ projectId: id.optional() }))
     .output(z.array(run)),
+  search: orgRoute(
+    "GET",
+    "/v1/runs/search",
+    "Run mình thấy được, mới nhất trước, lọc theo trạng thái, dự án, CLI, máy; phân trang bằng con trỏ",
+    "runs",
+  )
+    .input(runSearchInput)
+    .output(runSearchResult),
   get: orgRoute("GET", "/v1/runs/{id}", "Thông tin run", "runs").input(z.object({ id })).output(run),
   cancel: orgRoute("POST", "/v1/runs/{id}/cancel", "Huỷ run (thành viên đội)", "runs")
     .input(z.object({ id }))

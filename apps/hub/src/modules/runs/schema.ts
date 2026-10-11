@@ -118,6 +118,8 @@ export const runs = hive
       index("runs_task").on(t.taskId),
       // costs.summary lọc theo dự án và khoảng ngày.
       index("runs_project_created").on(t.projectId, t.createdAt),
+      // runs.search: mới nhất trước (quét ngược index), phân trang theo (created_at, id).
+      index("runs_org_created").on(t.orgId, t.createdAt, t.id),
       orgScoped("runs"),
     ],
   )
