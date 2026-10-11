@@ -1,4 +1,4 @@
-import { implement, ORPCError } from "@orpc/server";
+import { implement, ORPCError, os } from "@orpc/server";
 import { tenancyContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
@@ -24,15 +24,17 @@ export interface SessionUser {
 export const ORG_HEADER = "x-hive-org";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/**
- * Ba tầng procedure: `base` không cần đăng nhập (xem lời mời), `authed` chỉ cần đăng nhập (chọn hoặc tạo tổ chức,
- * nhận lời mời), `inOrg` chạy cả handler trong một transaction withTenant của tổ chức đang chọn. Handler và
- * recordAudit dùng chung transaction đó, nên thao tác và nhật ký cùng commit hoặc cùng rollback.
- */
-export function procedures(deps: TenancyDeps) {
-  const base = implement(tenancyContract).$context<RequestContext>();
+/** Phần TenancyDeps mà middleware chọn tổ chức cần; module khác (scm, catalog) chỉ cần truyền chừng này. */
+export type OrgDeps = Pick<TenancyDeps, "auth" | "pool">;
 
-  const authed = base.use(async ({ context, next }) => {
+/**
+ * Middleware chọn tổ chức, không gắn với hợp đồng nào để router của module khác dùng chung. `authed` chỉ cần đăng
+ * nhập; `inOrg` chạy cả handler trong một transaction withTenant của tổ chức đang chọn, nên handler và recordAudit
+ * cùng commit hoặc cùng rollback; `orgMember` chỉ kiểm tư cách thành viên trong transaction ngắn rồi để handler tự
+ * mở transaction, dành cho handler gọi ra GitHub/GitLab: không giữ kết nối database trong lúc chờ mạng.
+ */
+export function orgMiddlewares(deps: OrgDeps) {
+  const authed = os.$context<RequestContext>().middleware(async ({ context, next }) => {
     const session = deps.auth ? await deps.auth.api.getSession({ headers: context.headers }) : null;
     if (!session) throw new ORPCError("UNAUTHORIZED", { message: "Chưa đăng nhập." });
     if (!deps.pool) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa cấu hình HIVE_DATABASE_URL." });
@@ -40,12 +42,10 @@ export function procedures(deps: TenancyDeps) {
     return next({ context: { user: { id, name, email } satisfies SessionUser, pool: deps.pool } });
   });
 
-  const inOrg = authed.use(async ({ context, next }, input) => {
-    // Tham số orgId (đường dẫn /v1/orgs/{orgId}) thắng header, vì URL nói rõ người gọi muốn tổ chức nào.
-    const fromInput = (input as { orgId?: unknown } | undefined)?.orgId;
-    const orgId = typeof fromInput === "string" ? fromInput : context.headers.get(ORG_HEADER);
-    if (!orgId) throw new ORPCError("BAD_REQUEST", { message: `Chưa chọn tổ chức (header ${ORG_HEADER}).` });
-    if (!UUID.test(orgId)) throw new ORPCError("BAD_REQUEST", { message: "Mã tổ chức không hợp lệ." });
+  const authedContext = os.$context<RequestContext & { user: SessionUser; pool: pg.Pool }>();
+
+  const inOrg = authedContext.middleware(async ({ context, next }, input: unknown) => {
+    const orgId = selectedOrg(context.headers, input);
     const { user, pool } = context;
     return withTenant(pool, { userId: user.id, orgId }, async (tx) => {
       // RLS chỉ giới hạn theo tổ chức trong context, không theo tư cách thành viên: ai cũng đặt được header. Vì vậy
@@ -55,6 +55,34 @@ export function procedures(deps: TenancyDeps) {
     });
   });
 
+  const orgMember = authedContext.middleware(async ({ context, next }, input: unknown) => {
+    const orgId = selectedOrg(context.headers, input);
+    const { user, pool } = context;
+    const orgRole = await withTenant(pool, { userId: user.id, orgId }, (tx) => requireOrgRole(tx, user.id, "member"));
+    return next({ context: { orgId, orgRole } });
+  });
+
+  return { authed, inOrg, orgMember };
+}
+
+function selectedOrg(headers: Headers, input: unknown): string {
+  // Tham số orgId (đường dẫn /v1/orgs/{orgId}) thắng header, vì URL nói rõ người gọi muốn tổ chức nào.
+  const fromInput = (input as { orgId?: unknown } | undefined)?.orgId;
+  const orgId = typeof fromInput === "string" ? fromInput : headers.get(ORG_HEADER);
+  if (!orgId) throw new ORPCError("BAD_REQUEST", { message: `Chưa chọn tổ chức (header ${ORG_HEADER}).` });
+  if (!UUID.test(orgId)) throw new ORPCError("BAD_REQUEST", { message: "Mã tổ chức không hợp lệ." });
+  return orgId;
+}
+
+/**
+ * Procedure của hợp đồng tenancy, dựng từ cùng middleware chọn tổ chức. Thêm tầng `base` không cần đăng nhập (xem
+ * lời mời); `authed` dùng cho cả nhận lời mời.
+ */
+export function procedures(deps: TenancyDeps) {
+  const m = orgMiddlewares(deps);
+  const base = implement(tenancyContract).$context<RequestContext>();
+  const authed = base.use(m.authed);
+  const inOrg = authed.use(m.inOrg);
   return { base, authed, inOrg };
 }
 

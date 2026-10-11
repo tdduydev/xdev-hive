@@ -4,6 +4,7 @@
 package hubclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +17,189 @@ import (
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
+
+// Defines values for MachinesRevoke200JSONResponseBodyStatus.
+const (
+	MachinesRevoke200JSONResponseBodyStatusOffline MachinesRevoke200JSONResponseBodyStatus = "offline"
+	MachinesRevoke200JSONResponseBodyStatusOnline  MachinesRevoke200JSONResponseBodyStatus = "online"
+	MachinesRevoke200JSONResponseBodyStatusRevoked MachinesRevoke200JSONResponseBodyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the MachinesRevoke200JSONResponseBodyStatus enum.
+func (e MachinesRevoke200JSONResponseBodyStatus) Valid() bool {
+	switch e {
+	case MachinesRevoke200JSONResponseBodyStatusOffline:
+		return true
+	case MachinesRevoke200JSONResponseBodyStatusOnline:
+		return true
+	case MachinesRevoke200JSONResponseBodyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MachinesList200JSONResponseBodyStatus.
+const (
+	MachinesList200JSONResponseBodyStatusOffline MachinesList200JSONResponseBodyStatus = "offline"
+	MachinesList200JSONResponseBodyStatusOnline  MachinesList200JSONResponseBodyStatus = "online"
+	MachinesList200JSONResponseBodyStatusRevoked MachinesList200JSONResponseBodyStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the MachinesList200JSONResponseBodyStatus enum.
+func (e MachinesList200JSONResponseBodyStatus) Valid() bool {
+	switch e {
+	case MachinesList200JSONResponseBodyStatusOffline:
+		return true
+	case MachinesList200JSONResponseBodyStatusOnline:
+		return true
+	case MachinesList200JSONResponseBodyStatusRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkerRegisterJSONBodyClis.
+const (
+	Claude WorkerRegisterJSONBodyClis = "claude"
+	Codex  WorkerRegisterJSONBodyClis = "codex"
+	Gemini WorkerRegisterJSONBodyClis = "gemini"
+)
+
+// Valid indicates whether the value is a known member of the WorkerRegisterJSONBodyClis enum.
+func (e WorkerRegisterJSONBodyClis) Valid() bool {
+	switch e {
+	case Claude:
+		return true
+	case Codex:
+		return true
+	case Gemini:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkerRegisterJSONBodyOs.
+const (
+	Darwin  WorkerRegisterJSONBodyOs = "darwin"
+	Linux   WorkerRegisterJSONBodyOs = "linux"
+	Windows WorkerRegisterJSONBodyOs = "windows"
+)
+
+// Valid indicates whether the value is a known member of the WorkerRegisterJSONBodyOs enum.
+func (e WorkerRegisterJSONBodyOs) Valid() bool {
+	switch e {
+	case Darwin:
+		return true
+	case Linux:
+		return true
+	case Windows:
+		return true
+	default:
+		return false
+	}
+}
+
+// MachinesRevoke200JSONResponseBodyStatus defines parameters for MachinesRevoke.
+type MachinesRevoke200JSONResponseBodyStatus string
+
+// MachinesRevoke400JSONResponseBody0 defines parameters for MachinesRevoke.
+type MachinesRevoke400JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesRevoke400JSONResponseBody1 defines parameters for MachinesRevoke.
+type MachinesRevoke400JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesRevoke400JSONResponseBody defines parameters for MachinesRevoke.
+type MachinesRevoke400JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesRevoke401JSONResponseBody0 defines parameters for MachinesRevoke.
+type MachinesRevoke401JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesRevoke401JSONResponseBody1 defines parameters for MachinesRevoke.
+type MachinesRevoke401JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesRevoke401JSONResponseBody defines parameters for MachinesRevoke.
+type MachinesRevoke401JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesRevoke403JSONResponseBody0 defines parameters for MachinesRevoke.
+type MachinesRevoke403JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesRevoke403JSONResponseBody1 defines parameters for MachinesRevoke.
+type MachinesRevoke403JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesRevoke403JSONResponseBody defines parameters for MachinesRevoke.
+type MachinesRevoke403JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesRevoke404JSONResponseBody0 defines parameters for MachinesRevoke.
+type MachinesRevoke404JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesRevoke404JSONResponseBody1 defines parameters for MachinesRevoke.
+type MachinesRevoke404JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesRevoke404JSONResponseBody defines parameters for MachinesRevoke.
+type MachinesRevoke404JSONResponseBody struct {
+	union json.RawMessage
+}
 
 // MeGet401JSONResponseBody0 defines parameters for MeGet.
 type MeGet401JSONResponseBody0 struct {
@@ -38,6 +222,540 @@ type MeGet401JSONResponseBody1 struct {
 // MeGet401JSONResponseBody defines parameters for MeGet.
 type MeGet401JSONResponseBody struct {
 	union json.RawMessage
+}
+
+// MachinesList200JSONResponseBodyStatus defines parameters for MachinesList.
+type MachinesList200JSONResponseBodyStatus string
+
+// MachinesList400JSONResponseBody0 defines parameters for MachinesList.
+type MachinesList400JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesList400JSONResponseBody1 defines parameters for MachinesList.
+type MachinesList400JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesList400JSONResponseBody defines parameters for MachinesList.
+type MachinesList400JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesList401JSONResponseBody0 defines parameters for MachinesList.
+type MachinesList401JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesList401JSONResponseBody1 defines parameters for MachinesList.
+type MachinesList401JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesList401JSONResponseBody defines parameters for MachinesList.
+type MachinesList401JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesList403JSONResponseBody0 defines parameters for MachinesList.
+type MachinesList403JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesList403JSONResponseBody1 defines parameters for MachinesList.
+type MachinesList403JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesList403JSONResponseBody defines parameters for MachinesList.
+type MachinesList403JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesList404JSONResponseBody0 defines parameters for MachinesList.
+type MachinesList404JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesList404JSONResponseBody1 defines parameters for MachinesList.
+type MachinesList404JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesList404JSONResponseBody defines parameters for MachinesList.
+type MachinesList404JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesCreateRegistration400JSONResponseBody0 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration400JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesCreateRegistration400JSONResponseBody1 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration400JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesCreateRegistration400JSONResponseBody defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration400JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesCreateRegistration401JSONResponseBody0 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration401JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesCreateRegistration401JSONResponseBody1 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration401JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesCreateRegistration401JSONResponseBody defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration401JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesCreateRegistration403JSONResponseBody0 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration403JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesCreateRegistration403JSONResponseBody1 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration403JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesCreateRegistration403JSONResponseBody defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration403JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// MachinesCreateRegistration404JSONResponseBody0 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration404JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// MachinesCreateRegistration404JSONResponseBody1 defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration404JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// MachinesCreateRegistration404JSONResponseBody defines parameters for MachinesCreateRegistration.
+type MachinesCreateRegistration404JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// WorkerRegisterJSONBody defines parameters for WorkerRegister.
+type WorkerRegisterJSONBody struct {
+	Capacity          *int                          `json:"capacity,omitempty"`
+	Clis              *[]WorkerRegisterJSONBodyClis `json:"clis,omitempty"`
+	MachineId         string                        `json:"machineId"`
+	Os                WorkerRegisterJSONBodyOs      `json:"os"`
+	PublicKey         *string                       `json:"publicKey,omitempty"`
+	RegistrationToken string                        `json:"registrationToken"`
+	Version           string                        `json:"version"`
+}
+
+// WorkerRegisterJSONBodyClis defines parameters for WorkerRegister.
+type WorkerRegisterJSONBodyClis string
+
+// WorkerRegisterJSONBodyOs defines parameters for WorkerRegister.
+type WorkerRegisterJSONBodyOs string
+
+// WorkerRegister400JSONResponseBody0 defines parameters for WorkerRegister.
+type WorkerRegister400JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// WorkerRegister400JSONResponseBody1 defines parameters for WorkerRegister.
+type WorkerRegister400JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// WorkerRegister400JSONResponseBody defines parameters for WorkerRegister.
+type WorkerRegister400JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// WorkerRegister401JSONResponseBody0 defines parameters for WorkerRegister.
+type WorkerRegister401JSONResponseBody0 struct {
+	Code    interface{} `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// WorkerRegister401JSONResponseBody1 defines parameters for WorkerRegister.
+type WorkerRegister401JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// WorkerRegister401JSONResponseBody defines parameters for WorkerRegister.
+type WorkerRegister401JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// WorkerRegister409JSONResponseBody0 defines parameters for WorkerRegister.
+type WorkerRegister409JSONResponseBody0 struct {
+	Code interface{} `json:"code"`
+	Data *struct {
+		Code string `json:"code"`
+	} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  interface{} `json:"status"`
+}
+
+// WorkerRegister409JSONResponseBody1 defines parameters for WorkerRegister.
+type WorkerRegister409JSONResponseBody1 struct {
+	Code    string      `json:"code"`
+	Data    interface{} `json:"data,omitempty"`
+	Defined interface{} `json:"defined"`
+	Message string      `json:"message"`
+	Status  float32     `json:"status"`
+}
+
+// WorkerRegister409JSONResponseBody defines parameters for WorkerRegister.
+type WorkerRegister409JSONResponseBody struct {
+	union json.RawMessage
+}
+
+// WorkerRegisterJSONRequestBody defines body for WorkerRegister for application/json ContentType.
+type WorkerRegisterJSONRequestBody WorkerRegisterJSONBody
+
+// AsMachinesRevoke400JSONResponseBody0 returns the union data inside the MachinesRevoke400JSONResponseBody as a MachinesRevoke400JSONResponseBody0
+func (t MachinesRevoke400JSONResponseBody) AsMachinesRevoke400JSONResponseBody0() (MachinesRevoke400JSONResponseBody0, error) {
+	var body MachinesRevoke400JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke400JSONResponseBody0 overwrites any union data inside the MachinesRevoke400JSONResponseBody as the provided MachinesRevoke400JSONResponseBody0
+func (t *MachinesRevoke400JSONResponseBody) FromMachinesRevoke400JSONResponseBody0(v MachinesRevoke400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke400JSONResponseBody0 performs a merge with any union data inside the MachinesRevoke400JSONResponseBody, using the provided MachinesRevoke400JSONResponseBody0
+func (t *MachinesRevoke400JSONResponseBody) MergeMachinesRevoke400JSONResponseBody0(v MachinesRevoke400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesRevoke400JSONResponseBody1 returns the union data inside the MachinesRevoke400JSONResponseBody as a MachinesRevoke400JSONResponseBody1
+func (t MachinesRevoke400JSONResponseBody) AsMachinesRevoke400JSONResponseBody1() (MachinesRevoke400JSONResponseBody1, error) {
+	var body MachinesRevoke400JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke400JSONResponseBody1 overwrites any union data inside the MachinesRevoke400JSONResponseBody as the provided MachinesRevoke400JSONResponseBody1
+func (t *MachinesRevoke400JSONResponseBody) FromMachinesRevoke400JSONResponseBody1(v MachinesRevoke400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke400JSONResponseBody1 performs a merge with any union data inside the MachinesRevoke400JSONResponseBody, using the provided MachinesRevoke400JSONResponseBody1
+func (t *MachinesRevoke400JSONResponseBody) MergeMachinesRevoke400JSONResponseBody1(v MachinesRevoke400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesRevoke400JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesRevoke400JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesRevoke401JSONResponseBody0 returns the union data inside the MachinesRevoke401JSONResponseBody as a MachinesRevoke401JSONResponseBody0
+func (t MachinesRevoke401JSONResponseBody) AsMachinesRevoke401JSONResponseBody0() (MachinesRevoke401JSONResponseBody0, error) {
+	var body MachinesRevoke401JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke401JSONResponseBody0 overwrites any union data inside the MachinesRevoke401JSONResponseBody as the provided MachinesRevoke401JSONResponseBody0
+func (t *MachinesRevoke401JSONResponseBody) FromMachinesRevoke401JSONResponseBody0(v MachinesRevoke401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke401JSONResponseBody0 performs a merge with any union data inside the MachinesRevoke401JSONResponseBody, using the provided MachinesRevoke401JSONResponseBody0
+func (t *MachinesRevoke401JSONResponseBody) MergeMachinesRevoke401JSONResponseBody0(v MachinesRevoke401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesRevoke401JSONResponseBody1 returns the union data inside the MachinesRevoke401JSONResponseBody as a MachinesRevoke401JSONResponseBody1
+func (t MachinesRevoke401JSONResponseBody) AsMachinesRevoke401JSONResponseBody1() (MachinesRevoke401JSONResponseBody1, error) {
+	var body MachinesRevoke401JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke401JSONResponseBody1 overwrites any union data inside the MachinesRevoke401JSONResponseBody as the provided MachinesRevoke401JSONResponseBody1
+func (t *MachinesRevoke401JSONResponseBody) FromMachinesRevoke401JSONResponseBody1(v MachinesRevoke401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke401JSONResponseBody1 performs a merge with any union data inside the MachinesRevoke401JSONResponseBody, using the provided MachinesRevoke401JSONResponseBody1
+func (t *MachinesRevoke401JSONResponseBody) MergeMachinesRevoke401JSONResponseBody1(v MachinesRevoke401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesRevoke401JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesRevoke401JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesRevoke403JSONResponseBody0 returns the union data inside the MachinesRevoke403JSONResponseBody as a MachinesRevoke403JSONResponseBody0
+func (t MachinesRevoke403JSONResponseBody) AsMachinesRevoke403JSONResponseBody0() (MachinesRevoke403JSONResponseBody0, error) {
+	var body MachinesRevoke403JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke403JSONResponseBody0 overwrites any union data inside the MachinesRevoke403JSONResponseBody as the provided MachinesRevoke403JSONResponseBody0
+func (t *MachinesRevoke403JSONResponseBody) FromMachinesRevoke403JSONResponseBody0(v MachinesRevoke403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke403JSONResponseBody0 performs a merge with any union data inside the MachinesRevoke403JSONResponseBody, using the provided MachinesRevoke403JSONResponseBody0
+func (t *MachinesRevoke403JSONResponseBody) MergeMachinesRevoke403JSONResponseBody0(v MachinesRevoke403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesRevoke403JSONResponseBody1 returns the union data inside the MachinesRevoke403JSONResponseBody as a MachinesRevoke403JSONResponseBody1
+func (t MachinesRevoke403JSONResponseBody) AsMachinesRevoke403JSONResponseBody1() (MachinesRevoke403JSONResponseBody1, error) {
+	var body MachinesRevoke403JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke403JSONResponseBody1 overwrites any union data inside the MachinesRevoke403JSONResponseBody as the provided MachinesRevoke403JSONResponseBody1
+func (t *MachinesRevoke403JSONResponseBody) FromMachinesRevoke403JSONResponseBody1(v MachinesRevoke403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke403JSONResponseBody1 performs a merge with any union data inside the MachinesRevoke403JSONResponseBody, using the provided MachinesRevoke403JSONResponseBody1
+func (t *MachinesRevoke403JSONResponseBody) MergeMachinesRevoke403JSONResponseBody1(v MachinesRevoke403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesRevoke403JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesRevoke403JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesRevoke404JSONResponseBody0 returns the union data inside the MachinesRevoke404JSONResponseBody as a MachinesRevoke404JSONResponseBody0
+func (t MachinesRevoke404JSONResponseBody) AsMachinesRevoke404JSONResponseBody0() (MachinesRevoke404JSONResponseBody0, error) {
+	var body MachinesRevoke404JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke404JSONResponseBody0 overwrites any union data inside the MachinesRevoke404JSONResponseBody as the provided MachinesRevoke404JSONResponseBody0
+func (t *MachinesRevoke404JSONResponseBody) FromMachinesRevoke404JSONResponseBody0(v MachinesRevoke404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke404JSONResponseBody0 performs a merge with any union data inside the MachinesRevoke404JSONResponseBody, using the provided MachinesRevoke404JSONResponseBody0
+func (t *MachinesRevoke404JSONResponseBody) MergeMachinesRevoke404JSONResponseBody0(v MachinesRevoke404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesRevoke404JSONResponseBody1 returns the union data inside the MachinesRevoke404JSONResponseBody as a MachinesRevoke404JSONResponseBody1
+func (t MachinesRevoke404JSONResponseBody) AsMachinesRevoke404JSONResponseBody1() (MachinesRevoke404JSONResponseBody1, error) {
+	var body MachinesRevoke404JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesRevoke404JSONResponseBody1 overwrites any union data inside the MachinesRevoke404JSONResponseBody as the provided MachinesRevoke404JSONResponseBody1
+func (t *MachinesRevoke404JSONResponseBody) FromMachinesRevoke404JSONResponseBody1(v MachinesRevoke404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesRevoke404JSONResponseBody1 performs a merge with any union data inside the MachinesRevoke404JSONResponseBody, using the provided MachinesRevoke404JSONResponseBody1
+func (t *MachinesRevoke404JSONResponseBody) MergeMachinesRevoke404JSONResponseBody1(v MachinesRevoke404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesRevoke404JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesRevoke404JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
 }
 
 // AsMeGet401JSONResponseBody0 returns the union data inside the MeGet401JSONResponseBody as a MeGet401JSONResponseBody0
@@ -98,6 +816,688 @@ func (t MeGet401JSONResponseBody) MarshalJSON() ([]byte, error) {
 }
 
 func (t *MeGet401JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesList400JSONResponseBody0 returns the union data inside the MachinesList400JSONResponseBody as a MachinesList400JSONResponseBody0
+func (t MachinesList400JSONResponseBody) AsMachinesList400JSONResponseBody0() (MachinesList400JSONResponseBody0, error) {
+	var body MachinesList400JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList400JSONResponseBody0 overwrites any union data inside the MachinesList400JSONResponseBody as the provided MachinesList400JSONResponseBody0
+func (t *MachinesList400JSONResponseBody) FromMachinesList400JSONResponseBody0(v MachinesList400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList400JSONResponseBody0 performs a merge with any union data inside the MachinesList400JSONResponseBody, using the provided MachinesList400JSONResponseBody0
+func (t *MachinesList400JSONResponseBody) MergeMachinesList400JSONResponseBody0(v MachinesList400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesList400JSONResponseBody1 returns the union data inside the MachinesList400JSONResponseBody as a MachinesList400JSONResponseBody1
+func (t MachinesList400JSONResponseBody) AsMachinesList400JSONResponseBody1() (MachinesList400JSONResponseBody1, error) {
+	var body MachinesList400JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList400JSONResponseBody1 overwrites any union data inside the MachinesList400JSONResponseBody as the provided MachinesList400JSONResponseBody1
+func (t *MachinesList400JSONResponseBody) FromMachinesList400JSONResponseBody1(v MachinesList400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList400JSONResponseBody1 performs a merge with any union data inside the MachinesList400JSONResponseBody, using the provided MachinesList400JSONResponseBody1
+func (t *MachinesList400JSONResponseBody) MergeMachinesList400JSONResponseBody1(v MachinesList400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesList400JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesList400JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesList401JSONResponseBody0 returns the union data inside the MachinesList401JSONResponseBody as a MachinesList401JSONResponseBody0
+func (t MachinesList401JSONResponseBody) AsMachinesList401JSONResponseBody0() (MachinesList401JSONResponseBody0, error) {
+	var body MachinesList401JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList401JSONResponseBody0 overwrites any union data inside the MachinesList401JSONResponseBody as the provided MachinesList401JSONResponseBody0
+func (t *MachinesList401JSONResponseBody) FromMachinesList401JSONResponseBody0(v MachinesList401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList401JSONResponseBody0 performs a merge with any union data inside the MachinesList401JSONResponseBody, using the provided MachinesList401JSONResponseBody0
+func (t *MachinesList401JSONResponseBody) MergeMachinesList401JSONResponseBody0(v MachinesList401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesList401JSONResponseBody1 returns the union data inside the MachinesList401JSONResponseBody as a MachinesList401JSONResponseBody1
+func (t MachinesList401JSONResponseBody) AsMachinesList401JSONResponseBody1() (MachinesList401JSONResponseBody1, error) {
+	var body MachinesList401JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList401JSONResponseBody1 overwrites any union data inside the MachinesList401JSONResponseBody as the provided MachinesList401JSONResponseBody1
+func (t *MachinesList401JSONResponseBody) FromMachinesList401JSONResponseBody1(v MachinesList401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList401JSONResponseBody1 performs a merge with any union data inside the MachinesList401JSONResponseBody, using the provided MachinesList401JSONResponseBody1
+func (t *MachinesList401JSONResponseBody) MergeMachinesList401JSONResponseBody1(v MachinesList401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesList401JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesList401JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesList403JSONResponseBody0 returns the union data inside the MachinesList403JSONResponseBody as a MachinesList403JSONResponseBody0
+func (t MachinesList403JSONResponseBody) AsMachinesList403JSONResponseBody0() (MachinesList403JSONResponseBody0, error) {
+	var body MachinesList403JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList403JSONResponseBody0 overwrites any union data inside the MachinesList403JSONResponseBody as the provided MachinesList403JSONResponseBody0
+func (t *MachinesList403JSONResponseBody) FromMachinesList403JSONResponseBody0(v MachinesList403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList403JSONResponseBody0 performs a merge with any union data inside the MachinesList403JSONResponseBody, using the provided MachinesList403JSONResponseBody0
+func (t *MachinesList403JSONResponseBody) MergeMachinesList403JSONResponseBody0(v MachinesList403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesList403JSONResponseBody1 returns the union data inside the MachinesList403JSONResponseBody as a MachinesList403JSONResponseBody1
+func (t MachinesList403JSONResponseBody) AsMachinesList403JSONResponseBody1() (MachinesList403JSONResponseBody1, error) {
+	var body MachinesList403JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList403JSONResponseBody1 overwrites any union data inside the MachinesList403JSONResponseBody as the provided MachinesList403JSONResponseBody1
+func (t *MachinesList403JSONResponseBody) FromMachinesList403JSONResponseBody1(v MachinesList403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList403JSONResponseBody1 performs a merge with any union data inside the MachinesList403JSONResponseBody, using the provided MachinesList403JSONResponseBody1
+func (t *MachinesList403JSONResponseBody) MergeMachinesList403JSONResponseBody1(v MachinesList403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesList403JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesList403JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesList404JSONResponseBody0 returns the union data inside the MachinesList404JSONResponseBody as a MachinesList404JSONResponseBody0
+func (t MachinesList404JSONResponseBody) AsMachinesList404JSONResponseBody0() (MachinesList404JSONResponseBody0, error) {
+	var body MachinesList404JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList404JSONResponseBody0 overwrites any union data inside the MachinesList404JSONResponseBody as the provided MachinesList404JSONResponseBody0
+func (t *MachinesList404JSONResponseBody) FromMachinesList404JSONResponseBody0(v MachinesList404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList404JSONResponseBody0 performs a merge with any union data inside the MachinesList404JSONResponseBody, using the provided MachinesList404JSONResponseBody0
+func (t *MachinesList404JSONResponseBody) MergeMachinesList404JSONResponseBody0(v MachinesList404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesList404JSONResponseBody1 returns the union data inside the MachinesList404JSONResponseBody as a MachinesList404JSONResponseBody1
+func (t MachinesList404JSONResponseBody) AsMachinesList404JSONResponseBody1() (MachinesList404JSONResponseBody1, error) {
+	var body MachinesList404JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesList404JSONResponseBody1 overwrites any union data inside the MachinesList404JSONResponseBody as the provided MachinesList404JSONResponseBody1
+func (t *MachinesList404JSONResponseBody) FromMachinesList404JSONResponseBody1(v MachinesList404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesList404JSONResponseBody1 performs a merge with any union data inside the MachinesList404JSONResponseBody, using the provided MachinesList404JSONResponseBody1
+func (t *MachinesList404JSONResponseBody) MergeMachinesList404JSONResponseBody1(v MachinesList404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesList404JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesList404JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesCreateRegistration400JSONResponseBody0 returns the union data inside the MachinesCreateRegistration400JSONResponseBody as a MachinesCreateRegistration400JSONResponseBody0
+func (t MachinesCreateRegistration400JSONResponseBody) AsMachinesCreateRegistration400JSONResponseBody0() (MachinesCreateRegistration400JSONResponseBody0, error) {
+	var body MachinesCreateRegistration400JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration400JSONResponseBody0 overwrites any union data inside the MachinesCreateRegistration400JSONResponseBody as the provided MachinesCreateRegistration400JSONResponseBody0
+func (t *MachinesCreateRegistration400JSONResponseBody) FromMachinesCreateRegistration400JSONResponseBody0(v MachinesCreateRegistration400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration400JSONResponseBody0 performs a merge with any union data inside the MachinesCreateRegistration400JSONResponseBody, using the provided MachinesCreateRegistration400JSONResponseBody0
+func (t *MachinesCreateRegistration400JSONResponseBody) MergeMachinesCreateRegistration400JSONResponseBody0(v MachinesCreateRegistration400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesCreateRegistration400JSONResponseBody1 returns the union data inside the MachinesCreateRegistration400JSONResponseBody as a MachinesCreateRegistration400JSONResponseBody1
+func (t MachinesCreateRegistration400JSONResponseBody) AsMachinesCreateRegistration400JSONResponseBody1() (MachinesCreateRegistration400JSONResponseBody1, error) {
+	var body MachinesCreateRegistration400JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration400JSONResponseBody1 overwrites any union data inside the MachinesCreateRegistration400JSONResponseBody as the provided MachinesCreateRegistration400JSONResponseBody1
+func (t *MachinesCreateRegistration400JSONResponseBody) FromMachinesCreateRegistration400JSONResponseBody1(v MachinesCreateRegistration400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration400JSONResponseBody1 performs a merge with any union data inside the MachinesCreateRegistration400JSONResponseBody, using the provided MachinesCreateRegistration400JSONResponseBody1
+func (t *MachinesCreateRegistration400JSONResponseBody) MergeMachinesCreateRegistration400JSONResponseBody1(v MachinesCreateRegistration400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesCreateRegistration400JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesCreateRegistration400JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesCreateRegistration401JSONResponseBody0 returns the union data inside the MachinesCreateRegistration401JSONResponseBody as a MachinesCreateRegistration401JSONResponseBody0
+func (t MachinesCreateRegistration401JSONResponseBody) AsMachinesCreateRegistration401JSONResponseBody0() (MachinesCreateRegistration401JSONResponseBody0, error) {
+	var body MachinesCreateRegistration401JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration401JSONResponseBody0 overwrites any union data inside the MachinesCreateRegistration401JSONResponseBody as the provided MachinesCreateRegistration401JSONResponseBody0
+func (t *MachinesCreateRegistration401JSONResponseBody) FromMachinesCreateRegistration401JSONResponseBody0(v MachinesCreateRegistration401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration401JSONResponseBody0 performs a merge with any union data inside the MachinesCreateRegistration401JSONResponseBody, using the provided MachinesCreateRegistration401JSONResponseBody0
+func (t *MachinesCreateRegistration401JSONResponseBody) MergeMachinesCreateRegistration401JSONResponseBody0(v MachinesCreateRegistration401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesCreateRegistration401JSONResponseBody1 returns the union data inside the MachinesCreateRegistration401JSONResponseBody as a MachinesCreateRegistration401JSONResponseBody1
+func (t MachinesCreateRegistration401JSONResponseBody) AsMachinesCreateRegistration401JSONResponseBody1() (MachinesCreateRegistration401JSONResponseBody1, error) {
+	var body MachinesCreateRegistration401JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration401JSONResponseBody1 overwrites any union data inside the MachinesCreateRegistration401JSONResponseBody as the provided MachinesCreateRegistration401JSONResponseBody1
+func (t *MachinesCreateRegistration401JSONResponseBody) FromMachinesCreateRegistration401JSONResponseBody1(v MachinesCreateRegistration401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration401JSONResponseBody1 performs a merge with any union data inside the MachinesCreateRegistration401JSONResponseBody, using the provided MachinesCreateRegistration401JSONResponseBody1
+func (t *MachinesCreateRegistration401JSONResponseBody) MergeMachinesCreateRegistration401JSONResponseBody1(v MachinesCreateRegistration401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesCreateRegistration401JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesCreateRegistration401JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesCreateRegistration403JSONResponseBody0 returns the union data inside the MachinesCreateRegistration403JSONResponseBody as a MachinesCreateRegistration403JSONResponseBody0
+func (t MachinesCreateRegistration403JSONResponseBody) AsMachinesCreateRegistration403JSONResponseBody0() (MachinesCreateRegistration403JSONResponseBody0, error) {
+	var body MachinesCreateRegistration403JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration403JSONResponseBody0 overwrites any union data inside the MachinesCreateRegistration403JSONResponseBody as the provided MachinesCreateRegistration403JSONResponseBody0
+func (t *MachinesCreateRegistration403JSONResponseBody) FromMachinesCreateRegistration403JSONResponseBody0(v MachinesCreateRegistration403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration403JSONResponseBody0 performs a merge with any union data inside the MachinesCreateRegistration403JSONResponseBody, using the provided MachinesCreateRegistration403JSONResponseBody0
+func (t *MachinesCreateRegistration403JSONResponseBody) MergeMachinesCreateRegistration403JSONResponseBody0(v MachinesCreateRegistration403JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesCreateRegistration403JSONResponseBody1 returns the union data inside the MachinesCreateRegistration403JSONResponseBody as a MachinesCreateRegistration403JSONResponseBody1
+func (t MachinesCreateRegistration403JSONResponseBody) AsMachinesCreateRegistration403JSONResponseBody1() (MachinesCreateRegistration403JSONResponseBody1, error) {
+	var body MachinesCreateRegistration403JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration403JSONResponseBody1 overwrites any union data inside the MachinesCreateRegistration403JSONResponseBody as the provided MachinesCreateRegistration403JSONResponseBody1
+func (t *MachinesCreateRegistration403JSONResponseBody) FromMachinesCreateRegistration403JSONResponseBody1(v MachinesCreateRegistration403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration403JSONResponseBody1 performs a merge with any union data inside the MachinesCreateRegistration403JSONResponseBody, using the provided MachinesCreateRegistration403JSONResponseBody1
+func (t *MachinesCreateRegistration403JSONResponseBody) MergeMachinesCreateRegistration403JSONResponseBody1(v MachinesCreateRegistration403JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesCreateRegistration403JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesCreateRegistration403JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMachinesCreateRegistration404JSONResponseBody0 returns the union data inside the MachinesCreateRegistration404JSONResponseBody as a MachinesCreateRegistration404JSONResponseBody0
+func (t MachinesCreateRegistration404JSONResponseBody) AsMachinesCreateRegistration404JSONResponseBody0() (MachinesCreateRegistration404JSONResponseBody0, error) {
+	var body MachinesCreateRegistration404JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration404JSONResponseBody0 overwrites any union data inside the MachinesCreateRegistration404JSONResponseBody as the provided MachinesCreateRegistration404JSONResponseBody0
+func (t *MachinesCreateRegistration404JSONResponseBody) FromMachinesCreateRegistration404JSONResponseBody0(v MachinesCreateRegistration404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration404JSONResponseBody0 performs a merge with any union data inside the MachinesCreateRegistration404JSONResponseBody, using the provided MachinesCreateRegistration404JSONResponseBody0
+func (t *MachinesCreateRegistration404JSONResponseBody) MergeMachinesCreateRegistration404JSONResponseBody0(v MachinesCreateRegistration404JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMachinesCreateRegistration404JSONResponseBody1 returns the union data inside the MachinesCreateRegistration404JSONResponseBody as a MachinesCreateRegistration404JSONResponseBody1
+func (t MachinesCreateRegistration404JSONResponseBody) AsMachinesCreateRegistration404JSONResponseBody1() (MachinesCreateRegistration404JSONResponseBody1, error) {
+	var body MachinesCreateRegistration404JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMachinesCreateRegistration404JSONResponseBody1 overwrites any union data inside the MachinesCreateRegistration404JSONResponseBody as the provided MachinesCreateRegistration404JSONResponseBody1
+func (t *MachinesCreateRegistration404JSONResponseBody) FromMachinesCreateRegistration404JSONResponseBody1(v MachinesCreateRegistration404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMachinesCreateRegistration404JSONResponseBody1 performs a merge with any union data inside the MachinesCreateRegistration404JSONResponseBody, using the provided MachinesCreateRegistration404JSONResponseBody1
+func (t *MachinesCreateRegistration404JSONResponseBody) MergeMachinesCreateRegistration404JSONResponseBody1(v MachinesCreateRegistration404JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MachinesCreateRegistration404JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MachinesCreateRegistration404JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWorkerRegister400JSONResponseBody0 returns the union data inside the WorkerRegister400JSONResponseBody as a WorkerRegister400JSONResponseBody0
+func (t WorkerRegister400JSONResponseBody) AsWorkerRegister400JSONResponseBody0() (WorkerRegister400JSONResponseBody0, error) {
+	var body WorkerRegister400JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister400JSONResponseBody0 overwrites any union data inside the WorkerRegister400JSONResponseBody as the provided WorkerRegister400JSONResponseBody0
+func (t *WorkerRegister400JSONResponseBody) FromWorkerRegister400JSONResponseBody0(v WorkerRegister400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister400JSONResponseBody0 performs a merge with any union data inside the WorkerRegister400JSONResponseBody, using the provided WorkerRegister400JSONResponseBody0
+func (t *WorkerRegister400JSONResponseBody) MergeWorkerRegister400JSONResponseBody0(v WorkerRegister400JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWorkerRegister400JSONResponseBody1 returns the union data inside the WorkerRegister400JSONResponseBody as a WorkerRegister400JSONResponseBody1
+func (t WorkerRegister400JSONResponseBody) AsWorkerRegister400JSONResponseBody1() (WorkerRegister400JSONResponseBody1, error) {
+	var body WorkerRegister400JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister400JSONResponseBody1 overwrites any union data inside the WorkerRegister400JSONResponseBody as the provided WorkerRegister400JSONResponseBody1
+func (t *WorkerRegister400JSONResponseBody) FromWorkerRegister400JSONResponseBody1(v WorkerRegister400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister400JSONResponseBody1 performs a merge with any union data inside the WorkerRegister400JSONResponseBody, using the provided WorkerRegister400JSONResponseBody1
+func (t *WorkerRegister400JSONResponseBody) MergeWorkerRegister400JSONResponseBody1(v WorkerRegister400JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkerRegister400JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkerRegister400JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWorkerRegister401JSONResponseBody0 returns the union data inside the WorkerRegister401JSONResponseBody as a WorkerRegister401JSONResponseBody0
+func (t WorkerRegister401JSONResponseBody) AsWorkerRegister401JSONResponseBody0() (WorkerRegister401JSONResponseBody0, error) {
+	var body WorkerRegister401JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister401JSONResponseBody0 overwrites any union data inside the WorkerRegister401JSONResponseBody as the provided WorkerRegister401JSONResponseBody0
+func (t *WorkerRegister401JSONResponseBody) FromWorkerRegister401JSONResponseBody0(v WorkerRegister401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister401JSONResponseBody0 performs a merge with any union data inside the WorkerRegister401JSONResponseBody, using the provided WorkerRegister401JSONResponseBody0
+func (t *WorkerRegister401JSONResponseBody) MergeWorkerRegister401JSONResponseBody0(v WorkerRegister401JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWorkerRegister401JSONResponseBody1 returns the union data inside the WorkerRegister401JSONResponseBody as a WorkerRegister401JSONResponseBody1
+func (t WorkerRegister401JSONResponseBody) AsWorkerRegister401JSONResponseBody1() (WorkerRegister401JSONResponseBody1, error) {
+	var body WorkerRegister401JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister401JSONResponseBody1 overwrites any union data inside the WorkerRegister401JSONResponseBody as the provided WorkerRegister401JSONResponseBody1
+func (t *WorkerRegister401JSONResponseBody) FromWorkerRegister401JSONResponseBody1(v WorkerRegister401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister401JSONResponseBody1 performs a merge with any union data inside the WorkerRegister401JSONResponseBody, using the provided WorkerRegister401JSONResponseBody1
+func (t *WorkerRegister401JSONResponseBody) MergeWorkerRegister401JSONResponseBody1(v WorkerRegister401JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkerRegister401JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkerRegister401JSONResponseBody) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsWorkerRegister409JSONResponseBody0 returns the union data inside the WorkerRegister409JSONResponseBody as a WorkerRegister409JSONResponseBody0
+func (t WorkerRegister409JSONResponseBody) AsWorkerRegister409JSONResponseBody0() (WorkerRegister409JSONResponseBody0, error) {
+	var body WorkerRegister409JSONResponseBody0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister409JSONResponseBody0 overwrites any union data inside the WorkerRegister409JSONResponseBody as the provided WorkerRegister409JSONResponseBody0
+func (t *WorkerRegister409JSONResponseBody) FromWorkerRegister409JSONResponseBody0(v WorkerRegister409JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister409JSONResponseBody0 performs a merge with any union data inside the WorkerRegister409JSONResponseBody, using the provided WorkerRegister409JSONResponseBody0
+func (t *WorkerRegister409JSONResponseBody) MergeWorkerRegister409JSONResponseBody0(v WorkerRegister409JSONResponseBody0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWorkerRegister409JSONResponseBody1 returns the union data inside the WorkerRegister409JSONResponseBody as a WorkerRegister409JSONResponseBody1
+func (t WorkerRegister409JSONResponseBody) AsWorkerRegister409JSONResponseBody1() (WorkerRegister409JSONResponseBody1, error) {
+	var body WorkerRegister409JSONResponseBody1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWorkerRegister409JSONResponseBody1 overwrites any union data inside the WorkerRegister409JSONResponseBody as the provided WorkerRegister409JSONResponseBody1
+func (t *WorkerRegister409JSONResponseBody) FromWorkerRegister409JSONResponseBody1(v WorkerRegister409JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeWorkerRegister409JSONResponseBody1 performs a merge with any union data inside the WorkerRegister409JSONResponseBody, using the provided WorkerRegister409JSONResponseBody1
+func (t *WorkerRegister409JSONResponseBody) MergeWorkerRegister409JSONResponseBody1(v WorkerRegister409JSONResponseBody1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t WorkerRegister409JSONResponseBody) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *WorkerRegister409JSONResponseBody) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -181,10 +1581,39 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/health (the `SystemHealth` operationId).
 	SystemHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// MachinesRevoke Thu hồi máy
+	//
+	// Corresponds with POST /v1/machines/{machineId}/revoke (the `MachinesRevoke` operationId).
+	MachinesRevoke(ctx context.Context, machineId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// MeGet Người đang đăng nhập
 	//
 	// Corresponds with GET /v1/me (the `MeGet` operationId).
 	MeGet(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MachinesList Máy của đội
+	//
+	// Corresponds with GET /v1/teams/{teamId}/machines (the `MachinesList` operationId).
+	MachinesList(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// MachinesCreateRegistration Tạo mã đăng ký máy (dùng một lần, hết hạn sau 1 giờ)
+	//
+	// Corresponds with POST /v1/teams/{teamId}/machines/registrations (the `MachinesCreateRegistration` operationId).
+	MachinesCreateRegistration(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// WorkerRegisterWithBody Worker đổi mã đăng ký lấy machine token
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+	WorkerRegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// WorkerRegister Worker đổi mã đăng ký lấy machine token
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+	WorkerRegister(ctx context.Context, body WorkerRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // SystemHealth Trạng thái hub
@@ -202,11 +1631,90 @@ func (c *Client) SystemHealth(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// MachinesRevoke Thu hồi máy
+//
+// Corresponds with POST /v1/machines/{machineId}/revoke (the `MachinesRevoke` operationId).
+func (c *Client) MachinesRevoke(ctx context.Context, machineId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMachinesRevokeRequest(c.Server, machineId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // MeGet Người đang đăng nhập
 //
 // Corresponds with GET /v1/me (the `MeGet` operationId).
 func (c *Client) MeGet(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMeGetRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MachinesList Máy của đội
+//
+// Corresponds with GET /v1/teams/{teamId}/machines (the `MachinesList` operationId).
+func (c *Client) MachinesList(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMachinesListRequest(c.Server, teamId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// MachinesCreateRegistration Tạo mã đăng ký máy (dùng một lần, hết hạn sau 1 giờ)
+//
+// Corresponds with POST /v1/teams/{teamId}/machines/registrations (the `MachinesCreateRegistration` operationId).
+func (c *Client) MachinesCreateRegistration(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewMachinesCreateRegistrationRequest(c.Server, teamId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// WorkerRegisterWithBody Worker đổi mã đăng ký lấy machine token
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+func (c *Client) WorkerRegisterWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewWorkerRegisterRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// WorkerRegister Worker đổi mã đăng ký lấy machine token
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+func (c *Client) WorkerRegister(ctx context.Context, body WorkerRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewWorkerRegisterRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +1752,40 @@ func NewSystemHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewMachinesRevokeRequest constructs an http.Request for the MachinesRevoke method
+func NewMachinesRevokeRequest(server string, machineId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "machineId", machineId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines/%s/revoke", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewMeGetRequest constructs an http.Request for the MeGet method
 func NewMeGetRequest(server string) (*http.Request, error) {
 	var err error
@@ -267,6 +1809,114 @@ func NewMeGetRequest(server string) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewMachinesListRequest constructs an http.Request for the MachinesList method
+func NewMachinesListRequest(server string, teamId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamId", teamId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/teams/%s/machines", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewMachinesCreateRegistrationRequest constructs an http.Request for the MachinesCreateRegistration method
+func NewMachinesCreateRegistrationRequest(server string, teamId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamId", teamId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/teams/%s/machines/registrations", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewWorkerRegisterRequest calls the generic WorkerRegister builder with application/json body
+func NewWorkerRegisterRequest(server string, body WorkerRegisterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewWorkerRegisterRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewWorkerRegisterRequestWithBody constructs an http.Request for the WorkerRegister method, with any body, and a specified content type
+func NewWorkerRegisterRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/worker/register")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -322,12 +1972,47 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/health (the `SystemHealth` operationId).
 	SystemHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*SystemHealthResponse, error)
 
+	// MachinesRevokeWithResponse Thu hồi máy
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/machines/{machineId}/revoke (the `MachinesRevoke` operationId).
+	MachinesRevokeWithResponse(ctx context.Context, machineId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesRevokeResponse, error)
+
 	// MeGetWithResponse Người đang đăng nhập
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/me (the `MeGet` operationId).
 	MeGetWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*MeGetResponse, error)
+
+	// MachinesListWithResponse Máy của đội
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/teams/{teamId}/machines (the `MachinesList` operationId).
+	MachinesListWithResponse(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesListResponse, error)
+
+	// MachinesCreateRegistrationWithResponse Tạo mã đăng ký máy (dùng một lần, hết hạn sau 1 giờ)
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/teams/{teamId}/machines/registrations (the `MachinesCreateRegistration` operationId).
+	MachinesCreateRegistrationWithResponse(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesCreateRegistrationResponse, error)
+
+	// WorkerRegisterWithBodyWithResponse Worker đổi mã đăng ký lấy machine token
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+	WorkerRegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WorkerRegisterResponse, error)
+
+	// WorkerRegisterWithResponse Worker đổi mã đăng ký lấy machine token
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+	WorkerRegisterWithResponse(ctx context.Context, body WorkerRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*WorkerRegisterResponse, error)
 }
 
 type SystemHealthResponse struct {
@@ -373,6 +2058,97 @@ func (r SystemHealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SystemHealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MachinesRevokeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Capacity   int                                     `json:"capacity"`
+		Clis       []string                                `json:"clis"`
+		CreatedAt  time.Time                               `json:"createdAt"`
+		Id         openapi_types.UUID                      `json:"id"`
+		LastSeenAt *time.Time                              `json:"lastSeenAt"`
+		Name       string                                  `json:"name"`
+		Os         string                                  `json:"os"`
+		Status     MachinesRevoke200JSONResponseBodyStatus `json:"status"`
+		TeamId     openapi_types.UUID                      `json:"teamId"`
+		Version    string                                  `json:"version"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *MachinesRevoke400JSONResponseBody
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *MachinesRevoke401JSONResponseBody
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *MachinesRevoke403JSONResponseBody
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *MachinesRevoke404JSONResponseBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MachinesRevokeResponse) GetJSON200() *struct {
+	Capacity   int                                     `json:"capacity"`
+	Clis       []string                                `json:"clis"`
+	CreatedAt  time.Time                               `json:"createdAt"`
+	Id         openapi_types.UUID                      `json:"id"`
+	LastSeenAt *time.Time                              `json:"lastSeenAt"`
+	Name       string                                  `json:"name"`
+	Os         string                                  `json:"os"`
+	Status     MachinesRevoke200JSONResponseBodyStatus `json:"status"`
+	TeamId     openapi_types.UUID                      `json:"teamId"`
+	Version    string                                  `json:"version"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MachinesRevokeResponse) GetJSON400() *MachinesRevoke400JSONResponseBody {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MachinesRevokeResponse) GetJSON401() *MachinesRevoke401JSONResponseBody {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MachinesRevokeResponse) GetJSON403() *MachinesRevoke403JSONResponseBody {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r MachinesRevokeResponse) GetJSON404() *MachinesRevoke404JSONResponseBody {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r MachinesRevokeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MachinesRevokeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MachinesRevokeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MachinesRevokeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -437,6 +2213,248 @@ func (r MeGetResponse) ContentType() string {
 	return ""
 }
 
+type MachinesListResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]struct {
+		Capacity   int                                   `json:"capacity"`
+		Clis       []string                              `json:"clis"`
+		CreatedAt  time.Time                             `json:"createdAt"`
+		Id         openapi_types.UUID                    `json:"id"`
+		LastSeenAt *time.Time                            `json:"lastSeenAt"`
+		Name       string                                `json:"name"`
+		Os         string                                `json:"os"`
+		Status     MachinesList200JSONResponseBodyStatus `json:"status"`
+		TeamId     openapi_types.UUID                    `json:"teamId"`
+		Version    string                                `json:"version"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *MachinesList400JSONResponseBody
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *MachinesList401JSONResponseBody
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *MachinesList403JSONResponseBody
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *MachinesList404JSONResponseBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MachinesListResponse) GetJSON200() *[]struct {
+	Capacity   int                                   `json:"capacity"`
+	Clis       []string                              `json:"clis"`
+	CreatedAt  time.Time                             `json:"createdAt"`
+	Id         openapi_types.UUID                    `json:"id"`
+	LastSeenAt *time.Time                            `json:"lastSeenAt"`
+	Name       string                                `json:"name"`
+	Os         string                                `json:"os"`
+	Status     MachinesList200JSONResponseBodyStatus `json:"status"`
+	TeamId     openapi_types.UUID                    `json:"teamId"`
+	Version    string                                `json:"version"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MachinesListResponse) GetJSON400() *MachinesList400JSONResponseBody {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MachinesListResponse) GetJSON401() *MachinesList401JSONResponseBody {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MachinesListResponse) GetJSON403() *MachinesList403JSONResponseBody {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r MachinesListResponse) GetJSON404() *MachinesList404JSONResponseBody {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r MachinesListResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MachinesListResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MachinesListResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MachinesListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type MachinesCreateRegistrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Command   string    `json:"command"`
+		ExpiresAt time.Time `json:"expiresAt"`
+		Token     string    `json:"token"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *MachinesCreateRegistration400JSONResponseBody
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *MachinesCreateRegistration401JSONResponseBody
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *MachinesCreateRegistration403JSONResponseBody
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *MachinesCreateRegistration404JSONResponseBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r MachinesCreateRegistrationResponse) GetJSON200() *struct {
+	Command   string    `json:"command"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Token     string    `json:"token"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r MachinesCreateRegistrationResponse) GetJSON400() *MachinesCreateRegistration400JSONResponseBody {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r MachinesCreateRegistrationResponse) GetJSON401() *MachinesCreateRegistration401JSONResponseBody {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r MachinesCreateRegistrationResponse) GetJSON403() *MachinesCreateRegistration403JSONResponseBody {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r MachinesCreateRegistrationResponse) GetJSON404() *MachinesCreateRegistration404JSONResponseBody {
+	return r.JSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r MachinesCreateRegistrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r MachinesCreateRegistrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r MachinesCreateRegistrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r MachinesCreateRegistrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type WorkerRegisterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		Id           openapi_types.UUID `json:"id"`
+		MachineId    string             `json:"machineId"`
+		MachineToken string             `json:"machineToken"`
+		OrgId        openapi_types.UUID `json:"orgId"`
+		TeamId       openapi_types.UUID `json:"teamId"`
+	}
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *WorkerRegister400JSONResponseBody
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *WorkerRegister401JSONResponseBody
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *WorkerRegister409JSONResponseBody
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r WorkerRegisterResponse) GetJSON200() *struct {
+	Id           openapi_types.UUID `json:"id"`
+	MachineId    string             `json:"machineId"`
+	MachineToken string             `json:"machineToken"`
+	OrgId        openapi_types.UUID `json:"orgId"`
+	TeamId       openapi_types.UUID `json:"teamId"`
+} {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r WorkerRegisterResponse) GetJSON400() *WorkerRegister400JSONResponseBody {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r WorkerRegisterResponse) GetJSON401() *WorkerRegister401JSONResponseBody {
+	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r WorkerRegisterResponse) GetJSON409() *WorkerRegister409JSONResponseBody {
+	return r.JSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r WorkerRegisterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r WorkerRegisterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r WorkerRegisterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r WorkerRegisterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // SystemHealthWithResponse Trạng thái hub
 //
 // Returns a wrapper object for the known response body format(s).
@@ -450,6 +2468,19 @@ func (c *ClientWithResponses) SystemHealthWithResponse(ctx context.Context, reqE
 	return ParseSystemHealthResponse(rsp)
 }
 
+// MachinesRevokeWithResponse Thu hồi máy
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/machines/{machineId}/revoke (the `MachinesRevoke` operationId).
+func (c *ClientWithResponses) MachinesRevokeWithResponse(ctx context.Context, machineId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesRevokeResponse, error) {
+	rsp, err := c.MachinesRevoke(ctx, machineId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMachinesRevokeResponse(rsp)
+}
+
 // MeGetWithResponse Người đang đăng nhập
 //
 // Returns a wrapper object for the known response body format(s).
@@ -461,6 +2492,58 @@ func (c *ClientWithResponses) MeGetWithResponse(ctx context.Context, reqEditors 
 		return nil, err
 	}
 	return ParseMeGetResponse(rsp)
+}
+
+// MachinesListWithResponse Máy của đội
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/teams/{teamId}/machines (the `MachinesList` operationId).
+func (c *ClientWithResponses) MachinesListWithResponse(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesListResponse, error) {
+	rsp, err := c.MachinesList(ctx, teamId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMachinesListResponse(rsp)
+}
+
+// MachinesCreateRegistrationWithResponse Tạo mã đăng ký máy (dùng một lần, hết hạn sau 1 giờ)
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/teams/{teamId}/machines/registrations (the `MachinesCreateRegistration` operationId).
+func (c *ClientWithResponses) MachinesCreateRegistrationWithResponse(ctx context.Context, teamId openapi_types.UUID, reqEditors ...RequestEditorFn) (*MachinesCreateRegistrationResponse, error) {
+	rsp, err := c.MachinesCreateRegistration(ctx, teamId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseMachinesCreateRegistrationResponse(rsp)
+}
+
+// WorkerRegisterWithBodyWithResponse Worker đổi mã đăng ký lấy machine token
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+func (c *ClientWithResponses) WorkerRegisterWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*WorkerRegisterResponse, error) {
+	rsp, err := c.WorkerRegisterWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWorkerRegisterResponse(rsp)
+}
+
+// WorkerRegisterWithResponse Worker đổi mã đăng ký lấy machine token
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/worker/register (the `WorkerRegister` operationId).
+func (c *ClientWithResponses) WorkerRegisterWithResponse(ctx context.Context, body WorkerRegisterJSONRequestBody, reqEditors ...RequestEditorFn) (*WorkerRegisterResponse, error) {
+	rsp, err := c.WorkerRegister(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseWorkerRegisterResponse(rsp)
 }
 
 // ParseSystemHealthResponse parses an HTTP response from a SystemHealthWithResponse call
@@ -487,6 +2570,71 @@ func ParseSystemHealthResponse(rsp *http.Response) (*SystemHealthResponse, error
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMachinesRevokeResponse parses an HTTP response from a MachinesRevokeWithResponse call
+func ParseMachinesRevokeResponse(rsp *http.Response) (*MachinesRevokeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MachinesRevokeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Capacity   int                                     `json:"capacity"`
+			Clis       []string                                `json:"clis"`
+			CreatedAt  time.Time                               `json:"createdAt"`
+			Id         openapi_types.UUID                      `json:"id"`
+			LastSeenAt *time.Time                              `json:"lastSeenAt"`
+			Name       string                                  `json:"name"`
+			Os         string                                  `json:"os"`
+			Status     MachinesRevoke200JSONResponseBodyStatus `json:"status"`
+			TeamId     openapi_types.UUID                      `json:"teamId"`
+			Version    string                                  `json:"version"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest MachinesRevoke400JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest MachinesRevoke401JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest MachinesRevoke403JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest MachinesRevoke404JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	}
 
@@ -525,6 +2673,182 @@ func ParseMeGetResponse(rsp *http.Response) (*MeGetResponse, error) {
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMachinesListResponse parses an HTTP response from a MachinesListWithResponse call
+func ParseMachinesListResponse(rsp *http.Response) (*MachinesListResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MachinesListResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []struct {
+			Capacity   int                                   `json:"capacity"`
+			Clis       []string                              `json:"clis"`
+			CreatedAt  time.Time                             `json:"createdAt"`
+			Id         openapi_types.UUID                    `json:"id"`
+			LastSeenAt *time.Time                            `json:"lastSeenAt"`
+			Name       string                                `json:"name"`
+			Os         string                                `json:"os"`
+			Status     MachinesList200JSONResponseBodyStatus `json:"status"`
+			TeamId     openapi_types.UUID                    `json:"teamId"`
+			Version    string                                `json:"version"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest MachinesList400JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest MachinesList401JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest MachinesList403JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest MachinesList404JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseMachinesCreateRegistrationResponse parses an HTTP response from a MachinesCreateRegistrationWithResponse call
+func ParseMachinesCreateRegistrationResponse(rsp *http.Response) (*MachinesCreateRegistrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &MachinesCreateRegistrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Command   string    `json:"command"`
+			ExpiresAt time.Time `json:"expiresAt"`
+			Token     string    `json:"token"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest MachinesCreateRegistration400JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest MachinesCreateRegistration401JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest MachinesCreateRegistration403JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest MachinesCreateRegistration404JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseWorkerRegisterResponse parses an HTTP response from a WorkerRegisterWithResponse call
+func ParseWorkerRegisterResponse(rsp *http.Response) (*WorkerRegisterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &WorkerRegisterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			Id           openapi_types.UUID `json:"id"`
+			MachineId    string             `json:"machineId"`
+			MachineToken string             `json:"machineToken"`
+			OrgId        openapi_types.UUID `json:"orgId"`
+			TeamId       openapi_types.UUID `json:"teamId"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest WorkerRegister400JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest WorkerRegister401JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest WorkerRegister409JSONResponseBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

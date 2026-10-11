@@ -1,5 +1,5 @@
 {
-  "id": "507ef7bd-1283-41c6-940f-6a9a7e793e7c",
+  "id": "c859c57a-df25-4ff6-a561-c9c2a0141e5f",
   "prevId": "4c8ebb4c-676e-4bb7-a201-020e127a6fc4",
   "version": "7",
   "dialect": "postgresql",
@@ -78,9 +78,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "audit_log_org_target": {
           "name": "audit_log_org_target",
@@ -105,9 +105,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -222,12 +222,12 @@
         "account_userId_user_id_fk": {
           "name": "account_userId_user_id_fk",
           "tableFrom": "account",
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsFrom": ["userId"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -296,20 +296,20 @@
         "session_userId_user_id_fk": {
           "name": "session_userId_user_id_fk",
           "tableFrom": "session",
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsFrom": ["userId"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "session_token_unique": {
           "name": "session_token_unique",
-          "nullsNotDistinct": false,
-          "columns": ["token"]
+          "columns": ["token"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -374,20 +374,20 @@
         "ssoProvider_userId_user_id_fk": {
           "name": "ssoProvider_userId_user_id_fk",
           "tableFrom": "ssoProvider",
+          "columnsFrom": ["userId"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsFrom": ["userId"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "ssoProvider_providerId_unique": {
           "name": "ssoProvider_providerId_unique",
-          "nullsNotDistinct": false,
-          "columns": ["providerId"]
+          "columns": ["providerId"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -450,8 +450,8 @@
       "uniqueConstraints": {
         "user_email_unique": {
           "name": "user_email_unique",
-          "nullsNotDistinct": false,
-          "columns": ["email"]
+          "columns": ["email"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -596,20 +596,20 @@
         "invitations_org_id_orgs_id_fk": {
           "name": "invitations_org_id_orgs_id_fk",
           "tableFrom": "invitations",
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsFrom": ["org_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "invitations_token_hash_unique": {
           "name": "invitations_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": ["token_hash"]
+          "columns": ["token_hash"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -691,22 +691,22 @@
         "org_members_org_id_orgs_id_fk": {
           "name": "org_members_org_id_orgs_id_fk",
           "tableFrom": "org_members",
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsFrom": ["org_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "org_members_user_id_user_id_fk": {
           "name": "org_members_user_id_user_id_fk",
           "tableFrom": "org_members",
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsFrom": ["user_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -778,14 +778,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "sso_join": {
-          "name": "sso_join",
-          "type": "sso_join",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -806,8 +798,8 @@
       "uniqueConstraints": {
         "orgs_slug_unique": {
           "name": "orgs_slug_unique",
-          "nullsNotDistinct": false,
-          "columns": ["slug"]
+          "columns": ["slug"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -898,20 +890,20 @@
         "systems_team_id_org_id_teams_id_org_id_fk": {
           "name": "systems_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "systems",
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsFrom": ["team_id", "org_id"],
           "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "systems_team_slug": {
           "name": "systems_team_slug",
-          "nullsNotDistinct": false,
-          "columns": ["team_id", "slug"]
+          "columns": ["team_id", "slug"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -970,22 +962,22 @@
         "team_members_user_id_user_id_fk": {
           "name": "team_members_user_id_user_id_fk",
           "tableFrom": "team_members",
+          "columnsFrom": ["user_id"],
           "tableTo": "user",
           "schemaTo": "auth",
-          "columnsFrom": ["user_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "team_members_team_id_org_id_teams_id_org_id_fk": {
           "name": "team_members_team_id_org_id_teams_id_org_id_fk",
           "tableFrom": "team_members",
+          "columnsFrom": ["team_id", "org_id"],
           "tableTo": "teams",
           "schemaTo": "hive",
-          "columnsFrom": ["team_id", "org_id"],
           "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -1056,25 +1048,25 @@
         "teams_org_id_orgs_id_fk": {
           "name": "teams_org_id_orgs_id_fk",
           "tableFrom": "teams",
+          "columnsFrom": ["org_id"],
           "tableTo": "orgs",
           "schemaTo": "hive",
-          "columnsFrom": ["org_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "teams_org_slug": {
           "name": "teams_org_slug",
-          "nullsNotDistinct": false,
-          "columns": ["org_id", "slug"]
+          "columns": ["org_id", "slug"],
+          "nullsNotDistinct": false
         },
         "teams_id_org": {
           "name": "teams_id_org",
-          "nullsNotDistinct": false,
-          "columns": ["id", "org_id"]
+          "columns": ["id", "org_id"],
+          "nullsNotDistinct": false
         }
       },
       "policies": {
@@ -1102,11 +1094,6 @@
       "schema": "hive",
       "values": ["owner", "admin", "member"]
     },
-    "hive.sso_join": {
-      "name": "sso_join",
-      "schema": "hive",
-      "values": ["pending", "member"]
-    },
     "hive.team_role": {
       "name": "team_role",
       "schema": "hive",
@@ -1117,10 +1104,10 @@
     "auth": "auth",
     "hive": "hive"
   },
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},
