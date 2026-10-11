@@ -14,8 +14,8 @@ import (
 	"github.com/coder/websocket"
 )
 
-func testConfig(url string) Config {
-	return Config{HubURL: url, Machine: "machine-1", Version: "1.2.3", CLIs: []string{"codex"}, Capacity: 2, MinBackoff: time.Millisecond, MaxBackoff: 4 * time.Millisecond}
+func testConfig(t *testing.T, url string) Config {
+	return Config{HubURL: url, Machine: "machine-1", Version: "1.2.3", CLIs: []string{"codex"}, Capacity: 2, MinBackoff: time.Millisecond, MaxBackoff: 4 * time.Millisecond, DataDir: t.TempDir(), Logger: quietLogger()}
 }
 
 func receiveHello(t *testing.T, conn *websocket.Conn) Hello {
@@ -52,7 +52,7 @@ func TestWelcome(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- testConfig(srv.URL).Run(ctx) }()
+	go func() { done <- testConfig(t, srv.URL).Run(ctx) }()
 	select {
 	case <-got:
 	case <-time.After(time.Second):
@@ -80,7 +80,7 @@ func TestUpgradeRequired(t *testing.T) {
 		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"upgrade_required","v":1,"id":"reply","url":"https://example.test/worker","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","sig":"sig"}`))
 	}))
 	defer srv.Close()
-	err := testConfig(srv.URL).Run(context.Background())
+	err := testConfig(t, srv.URL).Run(context.Background())
 	if _, ok := err.(*UpgradeError); !ok {
 		t.Fatalf("error = %T %v, cần UpgradeError", err, err)
 	}
@@ -107,7 +107,7 @@ func TestReconnectAfterServerCloses(t *testing.T) {
 	defer srv.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- testConfig(srv.URL).Run(ctx) }()
+	go func() { done <- testConfig(t, srv.URL).Run(ctx) }()
 	select {
 	case <-reconnected:
 	case <-time.After(2 * time.Second):
@@ -160,7 +160,7 @@ func TestTokenAndHeartbeat(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
-	cfg := testConfig(srv.URL)
+	cfg := testConfig(t, srv.URL)
 	cfg.Token = "hwm_secret"
 	cfg.Heartbeat = 10 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
@@ -184,7 +184,7 @@ func TestUnauthorizedStops(t *testing.T) {
 		http.Error(w, "Machine token không hợp lệ", http.StatusUnauthorized)
 	}))
 	defer srv.Close()
-	err := testConfig(srv.URL).Run(context.Background())
+	err := testConfig(t, srv.URL).Run(context.Background())
 	var rejected *RejectedError
 	if !errors.As(err, &rejected) || rejected.Code != http.StatusUnauthorized {
 		t.Fatalf("error = %v, cần RejectedError 401", err)
@@ -204,7 +204,7 @@ func TestRevokedCloseStops(t *testing.T) {
 	}))
 	defer srv.Close()
 	done := make(chan error, 1)
-	go func() { done <- testConfig(srv.URL).Run(context.Background()) }()
+	go func() { done <- testConfig(t, srv.URL).Run(context.Background()) }()
 	select {
 	case err := <-done:
 		var rejected *RejectedError
