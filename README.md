@@ -16,13 +16,16 @@ Hub và web: TypeScript (Node, Hono, oRPC, Drizzle, pg-boss, Better Auth, MCP SD
 
 ## Chạy tại máy
 
-Cần Node 24+, pnpm 12, Go 1.27, Rust (chỉ khi làm app desktop).
+Cần Docker Compose v2, Node 24+, pnpm 12, Go 1.27, Rust (chỉ khi làm app desktop).
 
 ```sh
 pnpm install
-pnpm --filter @xdev-hive/hub dev     # hub ở http://localhost:3000
-pnpm --filter @xdev-hive/web dev     # web ở http://localhost:5173
+pnpm dev                             # Postgres, setup DB, hub :3000 và web :5173
 cd worker && go run ./cmd/hive-worker check --hub http://localhost:3000
 ```
 
 Trước khi mở PR: `pnpm check`. Quy ước cho người và agent: [AGENTS.md](AGENTS.md).
+
+## Triển khai
+
+Sao chép `deploy/.env.example` thành `deploy/.env`, đặt mật khẩu và secret an toàn, rồi chạy `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`. Hub tự bootstrap role khi có admin URL, chạy migration rồi khởi động API. Mặc định hub chỉ bind localhost; bật HTTPS với `--profile https` và đặt `HIVE_PUBLIC_URL` thành hostname công khai. Health: `/api/v1/health`.
