@@ -14,7 +14,7 @@ export function Select({
     <select
       className={cx(
         "w-full cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-ink",
-        "focus:border-transparent focus:outline-2 focus:-outline-offset-1 focus:outline-accent",
+        "focus:border-transparent focus:outline-2 focus:-outline-offset-1 focus:outline-accent aria-invalid:border-bad",
         "disabled:cursor-not-allowed disabled:opacity-60",
         size === "sm" ? "h-7.5" : "h-9.5",
         className,

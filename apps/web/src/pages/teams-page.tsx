@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import type { OrgMember, System, TeamMember, TeamRole, TeamWithCounts } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { Icon } from "../components/icons.tsx";
+import { InviteForm } from "../components/invite-form.tsx";
 import { checkNameSlug, type NameSlugErrors, NameSlugFields } from "../components/name-slug-fields.tsx";
 import { Who } from "../components/person.tsx";
 import { Alert } from "../components/ui/alert.tsx";
@@ -15,6 +16,7 @@ import { Table, Td, Th } from "../components/ui/table.tsx";
 import { Textarea } from "../components/ui/textarea.tsx";
 import { apiErrorMessage, formError } from "../lib/api-errors.ts";
 import { cx } from "../lib/cx.ts";
+import { canInvite } from "../lib/invites.ts";
 import { canManageTeam, isOrgAdmin, TEAM_ROLE_LABEL, TEAM_ROLES } from "../lib/roles.ts";
 import { nextTeamColor, teamColor, teamInitials } from "../lib/teams.ts";
 import { useMe } from "../shell/me-context.ts";
@@ -292,11 +294,12 @@ function TeamMembersCard({
   /** undefined khi danh sách thành viên tổ chức chưa tải xong. */
   orgMembers: OrgMember[] | undefined;
 }) {
-  const { api } = useOrg();
+  const { org, api } = useOrg();
   const canView = access === "view" || access === "manage";
   const manage = access === "manage";
   const members = useQuery(api.teamMembers.list.queryOptions({ input: { teamId: team.id }, enabled: canView }));
   const [adding, setAdding] = useState(false);
+  const [inviting, setInviting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
   let body: ReactNode;
@@ -341,7 +344,31 @@ function TeamMembersCard({
       {body}
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent>
-          <AddTeamMemberForm team={team} orgMembers={orgMembers} onDone={() => setAdding(false)} />
+          <AddTeamMemberForm
+            team={team}
+            orgMembers={orgMembers}
+            onDone={() => setAdding(false)}
+            // Quản trị đội không phải quản trị tổ chức thì không mời được người mới (hub chặn).
+            onInvite={
+              canInvite(org.role)
+                ? () => {
+                    setAdding(false);
+                    setInviting(true);
+                  }
+                : undefined
+            }
+          />
+        </DialogContent>
+      </Dialog>
+      <Dialog open={inviting} onOpenChange={setInviting}>
+        <DialogContent>
+          <InviteForm
+            title={<DialogTitle>Mời người vào tổ chức</DialogTitle>}
+            defaultTeamId={team.id}
+            cancelLabel="Huỷ"
+            doneLabel="Đóng"
+            onClose={() => setInviting(false)}
+          />
         </DialogContent>
       </Dialog>
     </Card>
@@ -428,10 +455,13 @@ function AddTeamMemberForm({
   team,
   orgMembers,
   onDone,
+  onInvite,
 }: {
   team: TeamWithCounts;
   orgMembers: OrgMember[] | undefined;
   onDone: () => void;
+  /** Mở hộp thoại mời người mới vào tổ chức, thêm sẵn vào đội này. Không có khi người xem không được mời. */
+  onInvite?: (() => void) | undefined;
 }) {
   const { api } = useOrg();
   const refresh = useRefreshTeams();
@@ -465,7 +495,17 @@ function AddTeamMemberForm({
     <form noValidate onSubmit={onSubmit} className="grid gap-3.5">
       <DialogTitle>Thêm người vào đội {team.name}</DialogTitle>
       <DialogDescription>
-        Chọn trong những người đã vào tổ chức. Mời người mới vào tổ chức <Pill small>Sắp có</Pill>
+        Chọn trong những người đã vào tổ chức.
+        {onInvite && (
+          <>
+            {" "}
+            Người chưa vào tổ chức thì{" "}
+            <button type="button" onClick={onInvite} className="cursor-pointer font-medium text-accent hover:underline">
+              mời bằng email
+            </button>
+            .
+          </>
+        )}
       </DialogDescription>
       {!orgMembers ? (
         <p aria-busy="true" className="text-muted">
