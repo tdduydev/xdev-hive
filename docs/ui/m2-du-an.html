@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup M2: dự án</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Mockup review cho M2. Token giữ nguyên như mockup M1 để hai file nhìn cùng một app. */
+:root{
+  --bg:#FAF9FC;--surface:#FFFFFF;--subtle:#F2F1F5;--sunken:#F3F2F6;
+  --ink:#28262E;--text:#35323B;--muted:#6B6772;--faint:#96929C;
+  --line:#E9E7ED;--line2:#DAD7E1;
+  --accent:#7B61FF;--accent-h:#694EEB;--sel:#F0ECFF;--sel-fg:#543ACF;--sel-bd:#C4B8FF;
+  --ok:#0F7A4A;--ok-bg:#E6F6EE;--warn:#9A5B00;--warn-bg:#FFF4DB;--bad:#C62828;--bad-bg:#FDECEC;
+  --run:#004CFF;--run-bg:#EAF1FF;--bad-bd:#F3B4B4;--warn-bd:#F5C86B;
+  --shadow:0 4px 12px -2px rgba(20,39,69,.10),0 2px 4px rgba(20,39,69,.05);
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+/* Hai khối tối giống nhau: một theo hệ điều hành, một khi người review bấm "Tối" ở thanh trên. */
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}}
+:root[data-theme=dark]{
+  --bg:#0E0E11;--surface:#1D1C20;--subtle:#171619;--sunken:#171619;
+  --ink:#FFFFFF;--text:#F2F2F3;--muted:#A9A9A9;--faint:#77777B;
+  --line:#2A292D;--line2:#343337;
+  --accent:#7B61FF;--accent-h:#8C75FF;--sel:#2D2545;--sel-fg:#B3A5FF;--sel-bd:#5C4FA0;
+  --ok:#4ADE9B;--ok-bg:#1D392C;--warn:#F5B544;--warn-bg:#3D3423;--bad:#FF8A8A;--bad-bg:#45233A;
+  --run:#18A0FB;--run-bg:#1D3444;--bad-bd:#8A3A4A;--warn-bd:#7A5D22;
+  --shadow:0 6px 16px -4px rgba(0,0,0,.45);color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--text);font:400 14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Thanh chọn màn của mockup */
+.review{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.review .in{max-width:1240px;margin:0 auto;padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.review b{font-weight:600;color:var(--ink)}
+.review small{color:var(--muted)}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{border:1px solid var(--line2);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:500;font-size:13px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--sel);color:var(--sel-fg);border-color:var(--sel-bd)}
+.stage{max-width:1240px;margin:0 auto;padding:20px 16px 64px}
+.note{margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--sel);border:1px dashed var(--sel-bd);color:var(--text);font-size:13px}
+.note b{color:var(--sel-fg)}
+.note ul{margin:4px 0 0;padding-left:18px}
+.screen[hidden]{display:none}
+
+/* Thành phần dùng chung */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{background:var(--subtle)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:var(--accent-h)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad)}
+.btn.sm{height:28px;padding:0 10px;font-size:12.5px}
+.in-f{height:38px;width:100%;border:1px solid var(--line2);border-radius:8px;background:var(--surface);padding:0 11px}
+textarea.in-f{height:auto;min-height:76px;padding:9px 11px;resize:vertical}
+.in-f:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.field{display:grid;gap:6px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label,.field .lbl{font-weight:500;color:var(--ink);font-size:13px}
+.hint{font-size:12px;color:var(--muted)}
+.hint.ok{color:var(--ok)}
+.hint.err{color:var(--bad)}
+.pill{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:500;background:var(--subtle);color:var(--muted);border:1px solid var(--line2);white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.pill.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.pill.bad{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+.pill.run{background:var(--run-bg);color:var(--run);border-color:transparent}
+.pill.sel{background:var(--sel);color:var(--sel-fg);border-color:transparent}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.mono{font-family:var(--mono);font-size:12.5px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+svg.i{width:16px;height:16px;flex:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+
+/* Khung app (giống M1) */
+.app{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:680px;border:1px solid var(--line2);border-radius:14px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
+.side{background:var(--surface);border-right:1px solid var(--line);padding:12px 10px;display:flex;flex-direction:column;gap:2px}
+.switcher{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px;border:1px solid var(--line);margin-bottom:10px;cursor:pointer}
+.avatar{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+.switcher b{display:block;color:var(--ink);font-weight:600;font-size:13px;line-height:1.2}
+.switcher small{color:var(--muted);font-size:12px}
+.nav-h{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:12px 10px 4px}
+.nav a{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:7px;color:var(--muted);text-decoration:none;font-size:13.5px;cursor:pointer}
+.nav a.on{background:var(--sel);color:var(--sel-fg);font-weight:500}
+.nav a.dim{opacity:.5;cursor:default}
+.nav a .soon{margin-left:auto;font-size:11px}
+.nav a.sys{padding-left:20px;font-size:13px}
+.nav a.sys .n{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.me{margin-top:auto;display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid var(--line)}
+.me .av2{width:28px;height:28px;border-radius:50%;background:var(--subtle);display:grid;place-items:center;font-weight:600;font-size:12px;color:var(--ink)}
+.me b{display:block;font-size:13px;color:var(--ink);font-weight:500}
+.me small{color:var(--muted);font-size:12px}
+.main{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.top h2{margin:0;font-size:18px;color:var(--ink)}
+.crumb{color:var(--muted);font-size:12.5px}
+.sp{flex:1}
+.sub{display:flex;gap:2px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto}
+.sub a{padding:10px 12px;color:var(--muted);text-decoration:none;font-weight:500;font-size:13px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.sub a.on{color:var(--ink);border-color:var(--accent)}
+.body{padding:24px;display:grid;gap:16px;align-content:start}
+.sec{padding:16px 18px;display:grid;gap:12px}
+.sec h3{margin:0;font-size:15px;color:var(--ink)}
+.sec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);padding:8px 12px;border-bottom:1px solid var(--line)}
+td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.tbl table{min-width:720px}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--subtle)}
+
+/* Danh sách dự án */
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:var(--surface);font-size:12.5px;font-weight:500;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip.on{background:var(--sel);color:var(--sel-fg);border-color:var(--sel-bd)}
+.chip i{font-style:normal;color:var(--faint)}
+.pname{min-width:150px}
+.prov-cell .mono{white-space:nowrap}
+.pname b{display:block;color:var(--ink);font-weight:600}
+.pname small{color:var(--muted);font-size:12px}
+.prov-cell{display:flex;gap:8px;align-items:center}
+.meter{display:flex;align-items:center;gap:8px}
+.meter i{display:block;width:64px;height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.meter i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);background:var(--run)}
+.why{display:block;font-size:12px;color:var(--muted);margin-top:3px}
+.banner{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:10px;border:1px solid var(--warn-bd);background:var(--warn-bg);font-size:13px;flex-wrap:wrap}
+.banner b{color:var(--warn)}
+
+/* Wizard */
+.wiz{display:grid;grid-template-columns:230px minmax(0,1fr);gap:16px;align-items:start}
+.wsteps{list-style:none;margin:0;padding:8px;display:grid;gap:2px}
+.wsteps button{all:unset;box-sizing:border-box;width:100%;cursor:pointer;display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:center;padding:9px 10px;border-radius:8px;font-size:13px;color:var(--muted)}
+.wsteps button:focus-visible{outline:2px solid var(--accent)}
+.wsteps .n{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:12px;border:1px solid var(--line2);background:var(--surface)}
+.wsteps button[aria-current="step"]{background:var(--sel);color:var(--sel-fg);font-weight:500}
+.wsteps button[aria-current="step"] .n{background:var(--accent);border-color:var(--accent);color:#fff}
+.wsteps button.done .n{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.wsteps small{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.pane{padding:22px;display:grid;gap:18px}
+.pane[hidden]{display:none}
+.pane h4{margin:0;font-size:16px;line-height:1.3;color:var(--ink)}
+.pane .lead{margin:-10px 0 0;color:var(--muted);font-size:13px}
+.pane h5{margin:4px 0 -6px;font-size:13px;color:var(--ink)}
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.opt{position:relative;display:grid;gap:4px;padding:14px;border:1px solid var(--line2);border-radius:10px;cursor:pointer;background:var(--surface);font-size:13px;color:var(--muted)}
+.opt b{color:var(--ink);font-size:14px;font-weight:600}
+.opt input{position:absolute;opacity:0;pointer-events:none}
+.opt:has(input:checked){border-color:var(--accent);background:var(--sel);box-shadow:0 0 0 1px var(--accent) inset}
+.opt:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.opt.off{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;padding:3px;background:var(--subtle);border:1px solid var(--line);border-radius:8px;gap:2px;width:max-content;max-width:100%;flex-wrap:wrap}
+.seg label{cursor:pointer;padding:6px 12px;border-radius:6px;font-weight:500;font-size:13px;color:var(--muted);display:inline-flex;gap:6px;align-items:center}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent)}
+.seg label:has(input:disabled){opacity:.5;cursor:not-allowed}
+.prefix{display:flex;min-width:0}
+.prefix span{display:flex;align-items:center;padding:0 10px;border:1px solid var(--line2);border-right:0;border-radius:8px 0 0 8px;background:var(--subtle);color:var(--muted);font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+.prefix .in-f{border-radius:0 8px 8px 0}
+.tree{font:400 12.5px/1.8 var(--mono);color:var(--muted);background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:10px 14px;overflow-x:auto;white-space:pre;margin:0}
+.tree b{color:var(--ink);font-weight:500}
+.toggle{display:flex;gap:12px;align-items:flex-start;font-size:13px;color:var(--muted);cursor:pointer}
+.toggle b{display:block;color:var(--ink);font-weight:500}
+.sw{position:relative;flex:none;width:34px;height:20px;border-radius:999px;background:var(--line2);margin-top:1px}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s}
+.toggle input{position:absolute;opacity:0}
+.toggle input:checked+.sw{background:var(--accent)}
+.toggle input:checked+.sw::after{transform:translateX(14px)}
+.toggle input:focus-visible+.sw{outline:2px solid var(--accent);outline-offset:2px}
+.toggle input:disabled+.sw{opacity:.5}
+.sub-opts{display:grid;gap:10px;padding:12px 14px;margin-left:46px;border-left:2px solid var(--line);margin-top:-8px}
+.repo-pick{display:grid;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.repo-pick label{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
+.repo-pick label:last-child{border-bottom:0}
+.repo-pick label:has(input:checked){background:var(--sel)}
+.repo-pick input{accent-color:var(--accent)}
+.repo-pick b{color:var(--ink);font-weight:500}
+.repo-pick small{display:block;color:var(--muted);font-size:12px}
+.mlist{display:grid;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mrow{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface);font-size:13px;cursor:pointer}
+.mrow:last-child{border-bottom:0}
+.mrow.off{opacity:.6}
+.mrow b{color:var(--ink);font-weight:500}
+.mrow small{display:block;color:var(--muted);font-size:12px}
+.mrow input{accent-color:var(--accent);width:16px;height:16px}
+.plan{list-style:none;margin:0;padding:0;display:grid;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.plan li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;background:var(--surface);align-items:center}
+.plan li[hidden]{display:none}
+.plan li:last-child{border-bottom:0}
+.plan code{font:400 12px/1.4 var(--mono);color:var(--ink)}
+.ic{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:11px;background:var(--subtle);color:var(--muted);border:1px solid var(--line2)}
+.callout{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;padding:12px 14px;border-radius:10px;border:1px solid var(--warn-bd);background:var(--warn-bg);color:var(--text);font-size:13px}
+.callout svg{color:var(--warn)}
+.callout b{color:var(--ink)}
+.wfoot{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:14px 22px;border-top:1px solid var(--line);flex-wrap:wrap}
+.wfoot .r{display:flex;gap:8px}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.sum div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px}
+.sum dt{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+.sum dd{margin:2px 0 0;color:var(--ink)}
+.sum a{font-size:12px;color:var(--accent);cursor:pointer}
+
+/* Tiến trình */
+.prog{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:16px;align-items:start}
+.tl{list-style:none;margin:0;padding:6px 0}
+.tl>li{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:12px;padding:10px 18px;align-items:start}
+.tl>li::before{content:"";position:absolute;left:31px;top:38px;bottom:-10px;width:2px;background:var(--line)}
+.tl>li:last-child::before{display:none}
+.st{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line2);background:var(--subtle);color:var(--faint);position:relative;z-index:1}
+.st svg{width:14px;height:14px}
+.st.ok{background:var(--ok-bg);border-color:transparent;color:var(--ok)}
+.st.bad{background:var(--bad-bg);border-color:var(--bad-bd);color:var(--bad)}
+.st.run{background:var(--run-bg);border-color:transparent;color:var(--run)}
+.st.skip{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.tl .t{font-size:13.5px;color:var(--ink);font-weight:500;line-height:28px}
+.tl>li.wait .t{color:var(--muted);font-weight:400}
+.tl .d{font-size:12.5px;color:var(--muted);margin-top:-2px}
+.tl .time{font:400 12px/28px var(--mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.err{margin-top:8px;padding:12px;border:1px solid var(--bad-bd);background:var(--bad-bg);border-radius:8px;font-size:12.5px;display:grid;gap:8px;color:var(--text)}
+.err b{color:var(--bad)}
+.err ol{margin:0;padding-left:18px;display:grid;gap:2px}
+.err code{font:400 12px var(--mono);background:var(--surface);padding:1px 5px;border-radius:4px;border:1px solid var(--line)}
+.spin{animation:spin 1.1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}}
+.kv{display:grid;gap:12px;padding:16px;font-size:13px;margin:0}
+.kv div{display:grid;gap:2px}
+.kv dt{font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--faint)}
+.kv dd{margin:0;color:var(--ink);overflow-wrap:anywhere}
+.kv .actions{display:grid;gap:8px;padding-top:4px}
+
+/* Chi tiết dự án */
+.ptitle{display:flex;gap:12px;align-items:center}
+.plogo{width:36px;height:36px;border-radius:10px;background:#0F9D8E;color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
+.tab[hidden]{display:none}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{padding:14px 16px;display:grid;gap:4px}
+.stat small{font-size:12px;color:var(--muted)}
+.stat b{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.2}
+.stat span{font-size:12px;color:var(--muted)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.feed{list-style:none;margin:0;padding:0}
+.feed li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.feed li:last-child{border-bottom:0}
+.feed time{color:var(--faint);font-size:12px;white-space:nowrap}
+.set{display:grid;grid-template-columns:220px minmax(0,1fr);gap:16px;padding:14px 18px;border-bottom:1px solid var(--line);align-items:start}
+.set:last-child{border-bottom:0}
+.set>div:first-child b{display:block;color:var(--ink);font-weight:500;font-size:13.5px}
+.set>div:first-child small{display:block;color:var(--muted);font-size:12px}
+.set .val{display:grid;gap:8px;min-width:0}
+.danger{border-color:var(--bad-bd)}
+.danger h3{color:var(--bad)}
+.states{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.states .pill{justify-self:start}
+.states div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--muted);display:grid;gap:6px;align-content:start}
+.chk td:first-child{width:36px;color:var(--faint);font-variant-numeric:tabular-nums}
+.chk .t b{display:block;color:var(--ink);font-weight:500}
+.chk .t small{color:var(--muted);font-size:12px}
+.chk .params{display:flex;gap:6px;flex-wrap:wrap}
+.chk .params span{font:400 12px var(--mono);padding:2px 7px;border-radius:6px;background:var(--sunken);border:1px solid var(--line);color:var(--text)}
+.mini-sw{display:inline-flex}
+.mini-sw .toggle{gap:8px;align-items:center}
+details.bytype{border:1px solid var(--line);border-radius:10px}
+details.bytype summary{cursor:pointer;padding:10px 14px;display:flex;gap:10px;align-items:center;font-size:13px;color:var(--ink);font-weight:500}
+details.bytype[open] summary{border-bottom:1px solid var(--line)}
+pre.yaml{margin:0;font:400 12.5px/1.65 var(--mono);background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;color:var(--text)}
+pre.yaml i{font-style:normal;color:var(--faint)}
+.cond{display:grid;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px}
+.cond label{display:flex;gap:10px;align-items:center;font-size:13px}
+.cond input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px}
+.cond.dis{opacity:.5}
+
+@media (max-width:900px){
+  .app{grid-template-columns:1fr}.side{display:none}
+  .grid2,.wiz,.prog,.split,.set{grid-template-columns:1fr}
+  .stats,.states{grid-template-columns:1fr 1fr}
+  .wsteps{grid-auto-flow:column;grid-auto-columns:minmax(150px,1fr);overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="hex" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z" fill="#7B61FF"/><path d="M12 7l4.33 2.5v5L12 17l-4.33-2.5v-5z" fill="#fff"/></symbol>
+  <symbol id="gh" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2z"/></symbol>
+  <symbol id="gl" viewBox="0 0 24 24"><path fill="#E24329" d="M12 21.4 15.7 10H8.3z"/><path fill="#FC6D26" d="M12 21.4 8.3 10H3.1z"/><path fill="#FCA326" d="M3.1 10 2 13.4c-.1.3 0 .6.3.8L12 21.4z"/><path fill="#E24329" d="M3.1 10h5.2L6.1 3.2c-.1-.3-.6-.3-.7 0z"/><path fill="#FC6D26" d="M12 21.4 15.7 10h5.2z"/><path fill="#FCA326" d="m20.9 10 1.1 3.4c.1.3 0 .6-.3.8L12 21.4z"/><path fill="#E24329" d="M20.9 10h-5.2l2.2-6.8c.1-.3.6-.3.7 0z"/></symbol>
+  <symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M11 12l9-9m-3 3 3 3m-6 0 2 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20c.6-3.5 3.2-5.5 6.5-5.5s5.9 2 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c2 .6 3.2 2.4 3.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="4" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="13" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="board" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 4v16M14.5 4v9" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="server" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="13" width="16" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M5 4h10a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="spin" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="wait" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+  <symbol id="skip" viewBox="0 0 24 24"><path d="M6 12h12M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v5M12 18v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="6" cy="19" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 7.2v9.6M18 10.2c0 4-6 3-11 7" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+</svg>
+
+<header class="review">
+  <div class="in">
+    <b>Mockup M2</b><small>Dự án: danh sách, tạo, khởi tạo, chi tiết · dữ liệu ví dụ</small>
+    <span class="sp"></span>
+    <nav class="tabs" role="tablist" aria-label="Màn hình">
+      <button role="tab" data-s="list" aria-selected="true">1 Danh sách dự án</button>
+      <button role="tab" data-s="wiz">2 Tạo dự án</button>
+      <button role="tab" data-s="prog">3 Tiến trình khởi tạo</button>
+      <button role="tab" data-s="detail">4 Chi tiết dự án</button>
+    </nav>
+    <div class="seg" role="radiogroup" aria-label="Giao diện sáng tối">
+      <label><input type="radio" name="theme" value="auto" checked>Tự động</label>
+      <label><input type="radio" name="theme" value="light">Sáng</label>
+      <label><input type="radio" name="theme" value="dark">Tối</label>
+    </div>
+  </div>
+</header>
+
+<main class="stage">
+
+<!-- Khung app dùng cho mọi màn -->
+<template id="shell">
+  <div class="app">
+    <aside class="side">
+      <div class="switcher"><span class="avatar">F</span><span><b>FPT Software xDev</b><small>Quản trị đội Thanh toán</small></span></div>
+      <nav class="nav">
+        <a class="dim"><svg class="i"><use href="#board"/></svg>Việc<span class="soon pill">M3</span></a>
+        <a data-nav="list" class="proj"><svg class="i"><use href="#grid"/></svg>Dự án</a>
+        <a class="sys dim">Cổng thanh toán<span class="n">2</span></a>
+        <a class="sys" data-nav="list">Hoá đơn<span class="n">4</span></a>
+        <a class="sys dim">Đối soát<span class="n">0</span></a>
+        <a class="dim"><svg class="i"><use href="#server"/></svg>Máy<span class="soon pill">M3</span></a>
+        <a class="dim"><svg class="i"><use href="#book"/></svg>Tri thức<span class="soon pill">M4</span></a>
+        <div class="nav-h">Quản trị</div>
+        <a class="dim"><svg class="i"><use href="#users"/></svg>Đội và hệ thống</a>
+        <a class="dim"><svg class="i"><use href="#mail"/></svg>Thành viên</a>
+        <a class="dim"><svg class="i"><use href="#key"/></svg>Kết nối Git<span class="soon pill">M2</span></a>
+        <a class="dim"><svg class="i"><use href="#gear"/></svg>Cài đặt tổ chức</a>
+      </nav>
+      <div class="me"><span class="av2">LH</span><span><b>Lê Hà</b><small>ha.le@fpt.com</small></span></div>
+    </aside>
+    <div class="main"><slot></slot></div>
+  </div>
+</template>
+
+<!-- 1. Danh sách dự án -->
+<section class="screen" id="s-list">
+  <div class="note"><b>Cần review:</b>
+    <ul>
+      <li>Danh sách theo <b>một hệ thống</b> (ở đây là Hoá đơn của đội Thanh toán). Sidebar liệt kê hệ thống dưới mục Dự án để đổi nhanh. Có cần thêm chế độ xem tất cả dự án của đội không?</li>
+      <li>Bốn trạng thái: <span class="pill run">Đang khởi tạo</span> <span class="pill ok">Sẵn sàng</span> <span class="pill warn">Thiếu máy</span> <span class="pill bad">Lỗi</span>. "Thiếu máy" nghĩa là không có máy nào đã clone và đang online. "Lỗi" nghĩa là saga khởi tạo dừng ở một bước. Dòng phụ dưới trạng thái nói lý do.</li>
+      <li>Bấm vào dự án lỗi hoặc đang khởi tạo thì mở màn tiến trình, dự án khác mở trang chi tiết.</li>
+    </ul>
+  </div>
+  <div data-shell="list">
+    <div class="top"><div><div class="crumb">Đội Thanh toán · Hệ thống</div><h2>Hoá đơn</h2></div><span class="pill">thanh-toan/hoa-don</span><span class="sp"></span><input class="in-f" style="width:220px;height:34px" placeholder="Tìm dự án, repo" aria-label="Tìm dự án"><button class="btn primary" type="button" data-go="wiz"><svg class="i"><use href="#plus"/></svg>Tạo dự án</button></div>
+    <div class="body">
+      <div class="filters" aria-label="Lọc theo trạng thái">
+        <button class="chip on" type="button">Tất cả <i>4</i></button>
+        <button class="chip" type="button"><span class="dot" style="color:var(--run)"></span>Đang khởi tạo <i>1</i></button>
+        <button class="chip" type="button"><span class="dot" style="color:var(--ok)"></span>Sẵn sàng <i>1</i></button>
+        <button class="chip" type="button"><span class="dot" style="color:var(--warn)"></span>Thiếu máy <i>1</i></button>
+        <button class="chip" type="button"><span class="dot" style="color:var(--bad)"></span>Lỗi <i>1</i></button>
+        <span class="sp"></span>
+        <label class="hint" style="display:flex;gap:6px;align-items:center"><input type="checkbox" style="accent-color:var(--accent)">Hiện dự án đã lưu trữ (2)</label>
+      </div>
+      <div class="card tbl"><table>
+        <thead><tr><th>Dự án</th><th>Repo</th><th>Máy</th><th class="num">Việc mở</th><th>Trạng thái</th><th>Cập nhật</th></tr></thead>
+        <tbody>
+          <tr class="click" data-go="prog"><td><div class="pname"><b>Xuất file hoá đơn</b><small class="mono">hoa-don-xuat-file</small></div></td>
+            <td><div class="prov-cell"><svg class="i"><use href="#gh"/></svg><span class="mono">xdev-team/hoa-don-xuat-file</span></div></td>
+            <td>—</td><td class="num">0</td>
+            <td><span class="pill bad"><span class="dot"></span>Lỗi</span><span class="why">Bước 4/9: thiếu quyền bảo vệ nhánh</span></td>
+            <td class="muted">10:44 · Lê Hà</td></tr>
+          <tr class="click" data-go="prog"><td><div class="pname"><b>Hoá đơn điện tử</b><small class="mono">hoa-don-einvoice</small></div></td>
+            <td><div class="prov-cell"><svg class="i"><use href="#gl"/></svg><span class="mono">thanh-toan/hoa-don/einvoice</span></div></td>
+            <td>1/2 đã clone</td><td class="num">0</td>
+            <td><div class="meter"><span class="pill run"><span class="dot"></span>Đang khởi tạo</span><i style="--w:66%"></i><span class="mono muted">6/9</span></div><span class="why">Đang clone trên mac-ha</span></td>
+            <td class="muted">10:51 · Phạm Minh</td></tr>
+          <tr class="click" data-go="detail"><td><div class="pname"><b>Hoá đơn API</b><small class="mono">hoa-don-api</small></div></td>
+            <td><div class="prov-cell"><svg class="i"><use href="#gh"/></svg><span class="mono">xdev-team/billing-api</span></div></td>
+            <td>3/3 online</td><td class="num">12</td>
+            <td><span class="pill ok"><span class="dot"></span>Sẵn sàng</span></td>
+            <td class="muted">Hôm qua</td></tr>
+          <tr class="click" data-go="detail"><td><div class="pname"><b>Hoá đơn web</b><small class="mono">hoa-don-web</small></div></td>
+            <td><div class="prov-cell"><svg class="i"><use href="#gl"/></svg><span class="mono">thanh-toan/hoa-don/web</span></div></td>
+            <td>0/2 online</td><td class="num">5</td>
+            <td><span class="pill warn"><span class="dot"></span>Thiếu máy</span><span class="why">build-03, win-minh offline từ 08:10. 5 việc đang chờ máy</span></td>
+            <td class="muted">3 ngày trước</td></tr>
+        </tbody>
+      </table></div>
+      <p class="hint" style="margin:0">Trạng thái tính từ run khởi tạo và heartbeat của máy, cập nhật trực tiếp qua SSE.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 2. Wizard tạo dự án -->
+<section class="screen" id="s-wiz" hidden>
+  <div class="note"><b>Cần review:</b>
+    <ul>
+      <li>Bốn bước, đi lại tự do giữa các bước. Bản nháp lưu trên trình duyệt; chưa gọi API tạo cho tới khi bấm "Tạo dự án" ở bước 4.</li>
+      <li>Repo có sẵn: file mẫu vào bằng <b>một PR</b> trên nhánh <span class="mono">hive/khoi-tao</span>, không commit thẳng vào nhánh chính. Bảo vệ nhánh chỉ bật nếu repo chưa có quy tắc; có rồi thì hub chỉ đọc và báo khác biệt.</li>
+      <li>Bước 4 là kết quả <span class="mono">projects.create</span> với <span class="mono">dryRun</span>: hub kiểm quyền thật, chưa tạo gì.</li>
+      <li>Bấm thử: các bước, Repo mới / Repo có sẵn, GitHub / GitLab.</li>
+    </ul>
+  </div>
+  <div data-shell="list">
+    <div class="top"><div><div class="crumb">Hoá đơn / Dự án mới</div><h2>Tạo dự án</h2></div><span class="sp"></span><span class="pill">Bản nháp tự lưu</span><button class="btn ghost" type="button" data-go="list">Huỷ</button></div>
+    <div class="body">
+      <div class="wiz">
+        <ol class="wsteps card" aria-label="Các bước">
+          <li><button type="button" data-step="0"><span class="n">1</span><span>Nguồn repo<small>Mới hoặc có sẵn</small></span></button></li>
+          <li><button type="button" data-step="1"><span class="n">2</span><span>Mẫu và bảo vệ nhánh<small>File cho agent, quy tắc</small></span></button></li>
+          <li><button type="button" data-step="2"><span class="n">3</span><span>Máy và quyền<small>Ai chạy, ai thấy</small></span></button></li>
+          <li><button type="button" data-step="3"><span class="n">4</span><span>Xem lại<small>Kế hoạch chạy thử</small></span></button></li>
+        </ol>
+
+        <form class="card" id="wizform" autocomplete="off">
+          <!-- Bước 1 -->
+          <div class="pane" data-pane="0">
+            <h4>Repo của dự án lấy từ đâu?</h4>
+            <div class="choice" role="radiogroup" aria-label="Nguồn repo">
+              <label class="opt"><input type="radio" name="mode" value="new" checked><b>Repo mới</b>Hive tạo repo, commit sẵn file mẫu cho agent và bảo vệ nhánh chính.</label>
+              <label class="opt"><input type="radio" name="mode" value="existing"><b>Repo có sẵn</b>Chọn repo mà kết nối Git đã thấy. File mẫu vào bằng một PR để bạn duyệt.</label>
+            </div>
+            <div class="grid2">
+              <div class="field"><span class="lbl">Nơi lưu</span>
+                <div class="seg" role="radiogroup" aria-label="Nhà cung cấp Git">
+                  <label><input type="radio" name="prov" value="github" checked><svg class="i"><use href="#gh"/></svg>GitHub</label>
+                  <label><input type="radio" name="prov" value="gitlab"><svg class="i"><use href="#gl"/></svg>GitLab</label>
+                </div>
+              </div>
+              <div class="field"><label for="conn">Kết nối</label>
+                <select class="in-f" id="conn"><option>GitHub App xDev Hive · tổ chức xdev-team</option></select>
+                <span class="hint ok" id="conn-hint">App đã cài trên xdev-team, tạo được repo.</span>
+              </div>
+
+              <div class="field full" data-show="new"><label for="rname">Tên repo</label>
+                <div class="prefix"><span id="owner">xdev-team /</span><input class="in-f" id="rname" value="hoa-don-xuat-file" spellcheck="false"></div>
+                <span class="hint ok">Chưa có repo trùng tên.</span>
+              </div>
+              <div class="field" data-show="new"><span class="lbl">Ai thấy repo</span>
+                <div class="seg" role="radiogroup" aria-label="Hiển thị repo">
+                  <label><input type="radio" name="vis" checked>Private</label>
+                  <label><input type="radio" name="vis">Internal</label>
+                </div>
+              </div>
+              <div class="field" data-show="new"><label for="branch">Nhánh chính</label><input class="in-f mono" id="branch" value="main"></div>
+
+              <div class="field full" data-show="existing" hidden><label for="rsearch">Chọn repo</label>
+                <input class="in-f" id="rsearch" placeholder="Lọc theo tên" value="billing">
+                <div class="repo-pick" role="radiogroup" aria-label="Repo có sẵn">
+                  <label><input type="radio" name="repo" checked><span><b class="mono rp-owner" data-name="billing-export">xdev-team/billing-export</b><small>Private · nhánh chính main · cập nhật 2 ngày trước · chưa có AGENTS.md</small></span><span class="pill">Chưa là dự án</span></label>
+                  <label><input type="radio" name="repo"><span><b class="mono rp-owner" data-name="billing-report">xdev-team/billing-report</b><small>Private · nhánh chính develop · có AGENTS.md (sẽ giữ, chỉ thêm phần Hive)</small></span><span class="pill">Chưa là dự án</span></label>
+                  <label style="opacity:.55;cursor:not-allowed"><input type="radio" name="repo" disabled><span><b class="mono rp-owner" data-name="billing-api">xdev-team/billing-api</b><small>Đã là dự án Hoá đơn API</small></span><span class="pill ok">Đã dùng</span></label>
+                </div>
+                <span class="hint">Chỉ hiện repo mà kết nối được cấp quyền. Không thấy repo? Cấp thêm repo cho app trên GitHub rồi tải lại.</span>
+              </div>
+
+              <div class="field"><label for="ptitle">Tên dự án</label><input class="in-f" id="ptitle" value="Xuất file hoá đơn"></div>
+              <div class="field"><label for="pkey">Project key</label><input class="in-f mono" id="pkey" value="hoa-don-xuat-file" spellcheck="false">
+                <span class="hint ok">Còn trống trong tổ chức. Agent dùng key này khi gọi MCP.</span></div>
+              <div class="field"><label for="system">Thuộc hệ thống</label>
+                <select class="in-f" id="system"><option>Thanh toán / Hoá đơn</option><option>Thanh toán / Cổng thanh toán</option><option>Thanh toán / Đối soát</option></select>
+                <span class="hint">Chỉ hiện hệ thống của đội bạn quản trị.</span></div>
+            </div>
+          </div>
+
+          <!-- Bước 2 -->
+          <div class="pane" data-pane="1" hidden>
+            <h4>Mẫu cho agent</h4>
+            <p class="lead">File mẫu cho agent biết project key, quy trình làm việc và cách gọi MCP của Hive.</p>
+            <div class="choice" role="radiogroup" aria-label="Mẫu">
+              <label class="opt"><input type="radio" name="tpl" checked><b>xDev chuẩn <span class="pill" style="margin-left:4px">v1</span></b>AGENTS.md, CLAUDE.md, cấu hình MCP, skill hive-leader, docs/decisions.md.</label>
+              <label class="opt"><input type="radio" name="tpl"><b>Tối thiểu</b>Chỉ AGENTS.md và cấu hình MCP.</label>
+            </div>
+            <pre class="tree" aria-label="Các file sẽ tạo"><b id="tree-root">hoa-don-xuat-file/</b>
+├─ <b>AGENTS.md</b>              Hive project key: hoa-don-xuat-file
+├─ CLAUDE.md              @AGENTS.md
+├─ .mcp.json              xdev-hive → https://hive.xdev.asia/mcp
+├─ .hive/project.yaml     chính sách kết quả mặc định
+├─ .claude/skills/hive-leader/SKILL.md
+└─ docs/decisions.md</pre>
+            <p class="hint" data-show="existing" hidden style="margin:-8px 0 0">Repo có sẵn: các file trên vào PR <span class="mono">hive/khoi-tao</span>. File đã có thì hub ghép phần Hive vào cuối, không ghi đè.</p>
+
+            <h5>Bảo vệ nhánh <span class="mono" id="pb-branch">main</span></h5>
+            <label class="toggle"><input type="checkbox" id="t-protect" checked><span class="sw"></span><span><b>Bật bảo vệ nhánh</b>Không ai push thẳng hay force push. Agent chỉ push nhánh <span class="mono">ai/*</span> rồi mở PR.</span></label>
+            <div class="sub-opts" id="protect-opts">
+              <div class="grid2">
+                <div class="field"><label for="pb-appr">Số người duyệt PR</label><select class="in-f" id="pb-appr"><option>1</option><option>2</option><option>0 (chỉ cần CI)</option></select></div>
+                <div class="field"><label for="pb-ci">Kiểm tra CI bắt buộc</label><input class="in-f" id="pb-ci" placeholder="Ví dụ: test, lint"><span class="hint">Để trống nếu repo chưa có CI. Thêm sau trong trang dự án.</span></div>
+              </div>
+              <label class="row hint"><input type="checkbox" checked style="accent-color:var(--accent)">Bỏ duyệt cũ khi có commit mới</label>
+            </div>
+            <p class="hint" data-show="existing" hidden style="margin:-8px 0 0">Repo có sẵn: nếu nhánh chính đã có quy tắc, hub giữ nguyên quy tắc đó, bỏ qua các lựa chọn trên và chỉ báo khi agent bị chặn push <span class="mono">ai/*</span>.</p>
+            <label class="toggle"><input type="checkbox" checked><span class="sw"></span><span><b>Webhook về hub</b>Ký bằng secret riêng của dự án. Task tự sang Review khi PR mở, tự đóng khi PR merge.</span></label>
+          </div>
+
+          <!-- Bước 3 -->
+          <div class="pane" data-pane="2" hidden>
+            <h4>Máy nào chạy việc của dự án?</h4>
+            <p class="lead">Máy clone bằng token git ngắn hạn do hub cấp, chỉ có quyền trên repo này. Máy không cần tài khoản git riêng.</p>
+            <div class="field"><span class="lbl">Chế độ chạy</span>
+              <div class="seg" role="radiogroup" aria-label="Chế độ chạy">
+                <label><input type="radio" name="runmode" checked>Máy dev</label>
+                <label title="Có ở M6"><input type="radio" name="runmode" disabled>Container <span class="pill" style="height:18px;font-size:11px">M6</span></label>
+                <label title="Có ở M6"><input type="radio" name="runmode" disabled>Máy dev rảnh, rồi tới container <span class="pill" style="height:18px;font-size:11px">M6</span></label>
+              </div>
+            </div>
+            <div class="mlist" aria-label="Máy của đội Thanh toán">
+              <label class="mrow"><input type="checkbox" checked><span><b>build-01</b><small>Ubuntu 24.04 · Claude Code, Codex · worker 0.4.2</small></span><span class="pill ok"><span class="dot"></span>Online</span></label>
+              <label class="mrow"><input type="checkbox" checked><span><b>mac-ha</b><small>macOS 16 · Claude Code · worker 0.4.2</small></span><span class="pill ok"><span class="dot"></span>Online</span></label>
+              <label class="mrow off"><input type="checkbox"><span><b>win-minh</b><small>Windows 11 · Gemini CLI · offline 3 giờ. Chọn vẫn được; máy clone khi online lại</small></span><span class="pill">Offline</span></label>
+            </div>
+            <span class="hint" style="margin-top:-10px">Chỉ hiện máy của đội sở hữu hệ thống. Máy mới đăng ký ở trang Máy (M3).</span>
+
+            <h5>Quyền</h5>
+            <div class="card tbl" style="border-color:var(--line)"><table style="min-width:520px">
+              <thead><tr><th>Ai</th><th>Vai trò trên dự án</th><th>Nguồn</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><b>Đội Thanh toán</b> <span class="hint">8 người</span></td><td>Theo vai trò trong đội</td><td><span class="pill sel">Sở hữu hệ thống</span></td><td></td></tr>
+                <tr><td>Lê Hà <span class="hint">người tạo</span></td><td>Quản trị dự án</td><td><span class="pill">Mặc định</span></td><td></td></tr>
+                <tr><td>Đội CRM</td><td><select class="in-f" style="height:30px;width:150px" aria-label="Vai trò"><option>Thành viên</option><option selected>Chỉ xem</option></select></td><td><span class="pill">Cấp thêm</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+                <tr><td>Ngô Vy <span class="hint">vy.ngo@fpt.com</span></td><td><select class="in-f" style="height:30px;width:150px" aria-label="Vai trò"><option selected>Thành viên</option><option>Chỉ xem</option></select></td><td><span class="pill">Cấp thêm</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+              </tbody>
+            </table></div>
+            <div><button class="btn sm" type="button"><svg class="i"><use href="#plus"/></svg>Cấp quyền cho người hoặc đội khác</button></div>
+
+            <h5>Task đầu tiên</h5>
+            <label class="toggle"><input type="checkbox" checked><span class="sw"></span><span><b>Tạo task khởi động</b>Giao cho máy clone xong đầu tiên. Agent đọc AGENTS.md, ghi README ngắn về cấu trúc repo, mở PR.</span></label>
+          </div>
+
+          <!-- Bước 4 -->
+          <div class="pane" data-pane="3" hidden>
+            <h4>Xem lại</h4>
+            <dl class="sum">
+              <div><dt>Repo</dt><dd class="mono" id="sum-repo">github · xdev-team/hoa-don-xuat-file</dd><a data-step-link="0">Sửa</a></div>
+              <div><dt>Dự án</dt><dd>Xuất file hoá đơn · <span class="mono">hoa-don-xuat-file</span></dd><a data-step-link="0">Sửa</a></div>
+              <div><dt>Mẫu, bảo vệ</dt><dd>xDev chuẩn v1 · main cần 1 duyệt</dd><a data-step-link="1">Sửa</a></div>
+              <div><dt>Máy</dt><dd>build-01, mac-ha · máy dev</dd><a data-step-link="2">Sửa</a></div>
+            </dl>
+            <div class="row"><b style="color:var(--ink)">Kế hoạch chạy thử</b><span class="hint">Hub kiểm lúc 10:42, chưa tạo gì.</span><span class="sp"></span><button class="btn sm" type="button">Kiểm lại</button></div>
+            <ol class="plan">
+              <li><span class="ic">1</span><span>Kiểm quyền của kết nối trên <code class="pl-owner">xdev-team</code></span><span class="pill ok">Đạt</span></li>
+              <li data-show="new"><span class="ic">2</span><span>Tạo repo <code class="pl-repo">xdev-team/hoa-don-xuat-file</code> (private)</span><span class="pill ok">Tên còn trống</span></li>
+              <li data-show="new"><span class="ic">3</span><span>Commit 6 file mẫu vào <code>main</code></span><span></span></li>
+              <li data-show="new"><span class="ic">4</span><span>Bảo vệ <code>main</code>: cần 1 duyệt, cấm force push</span><span class="pill warn">Cần quyền</span></li>
+              <li data-show="existing" hidden><span class="ic">2</span><span>Đọc repo <code>xdev-team/billing-export</code>, nhánh chính <code>main</code></span><span class="pill ok">Đọc được</span></li>
+              <li data-show="existing" hidden><span class="ic">3</span><span>Mở PR <code>hive/khoi-tao</code> với 6 file mẫu</span><span></span></li>
+              <li data-show="existing" hidden><span class="ic">4</span><span>Bảo vệ <code>main</code>: repo chưa có quy tắc, sẽ bật cần 1 duyệt</span><span class="pill warn">Cần quyền</span></li>
+              <li><span class="ic">5</span><span>Thêm webhook về <code>hive.xdev.asia/hooks/git</code></span><span></span></li>
+              <li><span class="ic">6</span><span>Tạo dự án <code>hoa-don-xuat-file</code> trong Hoá đơn, nạp tài liệu và skill mặc định</span><span></span></li>
+              <li><span class="ic">7</span><span>Clone trên build-01</span><span class="pill ok">Online</span></li>
+              <li><span class="ic">8</span><span>Clone trên mac-ha</span><span class="pill ok">Online</span></li>
+              <li><span class="ic">9</span><span>Tạo task "Khởi động dự án", giao cho máy clone xong đầu tiên</span><span></span></li>
+            </ol>
+            <div class="callout" role="note"><svg width="20" height="20"><use href="#warn"/></svg><span><b>Bước 4 có thể lỗi.</b> GitHub App trên xdev-team chưa được cấp quyền Administration (ghi), cần để bảo vệ nhánh. Bạn vẫn tạo được; nếu bước này lỗi, màn tiến trình chỉ cách cấp quyền rồi thử lại.</span></div>
+            <p class="hint" style="margin:0">Bấm "Tạo dự án" hai lần không tạo trùng: mỗi lần mở wizard có một khoá chống trùng.</p>
+          </div>
+
+          <div class="wfoot">
+            <button class="btn" type="button" id="back">Quay lại</button>
+            <div class="r"><button class="btn" type="button">Lưu nháp</button><button class="btn primary" type="button" id="next">Tiếp</button></div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3. Tiến trình khởi tạo -->
+<section class="screen" id="s-prog" hidden>
+  <div class="note"><b>Cần review:</b>
+    <ul>
+      <li>Màn này là màn xem run loại <span class="mono">provision</span>. Mỗi bước là một bước saga có khoá chống trùng, nên "Thử lại" chạy lại đúng bước đó, không làm lại bước đã xong.</li>
+      <li>Saga <b>dừng</b> ở bước lỗi, không tự xoá repo đã tạo. "Bỏ qua bước này" chỉ có với bước không bắt buộc (bảo vệ nhánh, webhook, từng máy); bỏ qua thì dự án mang cảnh báo trên trang chi tiết.</li>
+      <li>"Huỷ tạo dự án" hỏi có xoá repo hub đã tạo không. Mặc định giữ repo.</li>
+      <li>Bấm thử "Thử lại bước này" để xem các bước sau chạy tiếp.</li>
+    </ul>
+  </div>
+  <div data-shell="list">
+    <div class="top"><div><div class="crumb">Hoá đơn / Xuất file hoá đơn</div><h2>Khởi tạo dự án</h2></div><span class="pill bad" id="prog-pill"><span class="dot"></span>Dừng ở bước 4/9</span><span class="sp"></span><button class="btn" type="button">Xem nhật ký</button></div>
+    <div class="body">
+      <div class="prog">
+        <div class="card">
+          <ol class="tl" id="tl">
+            <li><span class="st ok"><svg><use href="#check"/></svg></span><div><div class="t">Kiểm quyền kết nối</div><div class="d">GitHub App xDev Hive trên xdev-team · tạo được repo</div></div><span class="time">0,4 s</span></li>
+            <li><span class="st ok"><svg><use href="#check"/></svg></span><div><div class="t">Tạo repo xdev-team/hoa-don-xuat-file</div><div class="d">Private, nhánh chính main</div></div><span class="time">1,2 s</span></li>
+            <li><span class="st ok"><svg><use href="#check"/></svg></span><div><div class="t">Commit file mẫu</div><div class="d">6 file · commit <span class="mono">3e1a9c2</span></div></div><span class="time">0,9 s</span></li>
+            <li id="step-bad"><span class="st bad"><svg><use href="#x"/></svg></span><div><div class="t">Bảo vệ nhánh main</div>
+              <div class="err" id="err-box">
+                <span><b>GitHub từ chối (403): app thiếu quyền.</b> GitHub App xDev Hive cài trên xdev-team chưa được cấp quyền <span class="mono">Administration: write</span>, nên không đặt được quy tắc cho nhánh.</span>
+                <span>Cách sửa:</span>
+                <ol>
+                  <li>Chủ sở hữu tổ chức xdev-team mở <code>github.com/organizations/xdev-team/settings/installations</code>.</li>
+                  <li>Chọn xDev Hive, chấp nhận quyền mới mà app đang xin.</li>
+                  <li>Quay lại đây, bấm "Thử lại bước này".</li>
+                </ol>
+                <span class="row"><button class="btn sm primary" type="button" id="retry">Thử lại bước này</button><button class="btn sm" type="button">Mở trang cấp quyền</button><button class="btn sm" type="button">Chép hướng dẫn gửi chủ tổ chức</button><button class="btn sm ghost" type="button" id="skip">Bỏ qua bước này</button></span>
+              </div>
+            </div><span class="time">0,6 s</span></li>
+            <li class="wait"><span class="st"><svg><use href="#wait"/></svg></span><div><div class="t">Thêm webhook về hub</div><div class="d">push, pull_request</div></div><span class="time">—</span></li>
+            <li class="wait"><span class="st"><svg><use href="#wait"/></svg></span><div><div class="t">Tạo dự án trên hub, nạp tài liệu và skill</div><div class="d">AGENTS.md, decisions, hive-leader</div></div><span class="time">—</span></li>
+            <li class="wait"><span class="st"><svg><use href="#wait"/></svg></span><div><div class="t">Clone trên build-01</div><div class="d">Token git ngắn hạn, chỉ repo này</div></div><span class="time">—</span></li>
+            <li class="wait"><span class="st"><svg><use href="#wait"/></svg></span><div><div class="t">Clone trên mac-ha</div><div class="d">Token git ngắn hạn, chỉ repo này</div></div><span class="time">—</span></li>
+            <li class="wait"><span class="st"><svg><use href="#wait"/></svg></span><div><div class="t">Task đầu tiên: Khởi động dự án</div><div class="d">Giao cho máy clone xong đầu tiên</div></div><span class="time">—</span></li>
+          </ol>
+        </div>
+        <aside class="card">
+          <dl class="kv">
+            <div><dt>Trạng thái</dt><dd id="side-state"><span class="pill bad"><span class="dot"></span>Lỗi</span> chờ bạn xử lý</dd></div>
+            <div><dt>Repo</dt><dd class="mono">github.com/xdev-team/hoa-don-xuat-file</dd></div>
+            <div><dt>Project key</dt><dd class="mono">hoa-don-xuat-file</dd></div>
+            <div><dt>Run khởi tạo</dt><dd class="mono">run_01JA7Q…X4 · lần thử 1</dd></div>
+            <div><dt>Người tạo</dt><dd>Lê Hà · 10:43</dd></div>
+            <div class="actions"><button class="btn primary" type="button" id="open-board" disabled>Mở bảng việc</button><button class="btn" type="button">Mở repo</button><button class="btn ghost danger" type="button">Huỷ tạo dự án</button></div>
+          </dl>
+        </aside>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4. Chi tiết dự án -->
+<section class="screen" id="s-detail" hidden>
+  <div class="note"><b>Cần review:</b>
+    <ul>
+      <li>Năm thẻ: Tổng quan, Repo, Máy, Merge, Kết quả run. Thẻ Tính năng (bật/tắt plan mode, review chéo, chat leader…) để tới khi các tính năng đó có (M3–M5).</li>
+      <li>Merge và chính sách kết quả theo <span class="mono">docs/decisions.md</span>. Cấu hình lưu ở hub; nếu repo có <span class="mono">.hive/project.yaml</span> thì <b>file trong repo thắng</b> và màn này chỉ đọc. Cần chốt thứ tự ưu tiên này.</li>
+      <li>Merge queue chạy ở M5. Ở M2 chỉ lưu cấu hình.</li>
+    </ul>
+  </div>
+  <div data-shell="list">
+    <div class="top">
+      <div class="ptitle"><span class="plogo">HĐ</span><div><div class="crumb">Thanh toán / Hoá đơn</div><h2>Hoá đơn API</h2></div></div>
+      <span class="pill ok"><span class="dot"></span>Sẵn sàng</span><span class="pill mono">hoa-don-api</span>
+      <span class="sp"></span><button class="btn" type="button"><svg class="i"><use href="#gh"/></svg>Mở repo</button><button class="btn primary" type="button">Mở bảng việc</button>
+    </div>
+    <nav class="sub" aria-label="Thẻ của dự án">
+      <a class="on" data-tab="ov">Tổng quan</a><a data-tab="repo">Repo</a><a data-tab="mach">Máy · 3</a><a data-tab="merge">Merge</a><a data-tab="out">Kết quả run</a>
+    </nav>
+
+    <!-- Tổng quan -->
+    <div class="body tab" data-pane-tab="ov">
+      <div class="stats">
+        <div class="card stat"><small>Việc mở</small><b>12</b><span>3 đang chạy · 2 chờ review</span></div>
+        <div class="card stat"><small>Run 7 ngày</small><b>46</b><span>38 đạt · 5 cần xem · 3 lỗi</span></div>
+        <div class="card stat"><small>Máy sẵn sàng</small><b>3/3</b><span>build-01, mac-ha, build-03</span></div>
+        <div class="card stat"><small>Chi phí AI 7 ngày</small><b>$41,20</b><span>Chỉ theo dõi, không chặn</span></div>
+      </div>
+      <div class="split">
+        <div class="card sec">
+          <div class="sec-h"><h3>Hoạt động gần đây</h3><span class="sp"></span><a class="hint" style="cursor:pointer">Xem tất cả</a></div>
+          <ul class="feed">
+            <li><span class="pill ok">succeeded</span><span>Run #482 · "Thêm API xuất PDF" · Claude Code trên build-01 · PR #91 đã mở</span><time>12 phút</time></li>
+            <li><span class="pill warn">needs_review</span><span>Run #481 · "Tối ưu truy vấn hoá đơn" · review chéo 6/10, dưới ngưỡng 7</span><time>1 giờ</time></li>
+            <li><span class="pill">no_changes</span><span>Run #479 · "Kiểm tra lỗi làm tròn VAT" · agent không thấy gì cần sửa</span><time>3 giờ</time></li>
+            <li><span class="pill bad">failed</span><span>Run #477 · "Nâng pg lên 8.23" · <span class="mono">pnpm test</span> lỗi 4 test</span><time>Hôm qua</time></li>
+            <li><span class="pill sel">cấu hình</span><span>Lê Hà đổi lệnh kiểm tra thành <span class="mono">pnpm test --run</span></span><time>Hôm qua</time></li>
+          </ul>
+        </div>
+        <div class="card"><dl class="kv">
+          <div><dt>Hệ thống</dt><dd>Thanh toán / Hoá đơn</dd></div>
+          <div><dt>Repo</dt><dd class="mono">github.com/xdev-team/billing-api</dd></div>
+          <div><dt>Merge</dt><dd>Cần người duyệt · 1 duyệt</dd></div>
+          <div><dt>Chính sách kết quả</dt><dd>3 kiểm tra cho task code · từ hub</dd></div>
+          <div><dt>Quyền</dt><dd>Đội Thanh toán (sở hữu) · Đội CRM chỉ xem</dd></div>
+          <div><dt>Tạo</dt><dd>Lê Hà · 02/10/2026 · mẫu xDev chuẩn v1</dd></div>
+        </dl></div>
+      </div>
+    </div>
+
+    <!-- Repo -->
+    <div class="body tab" data-pane-tab="repo" hidden>
+      <div class="card">
+        <div class="set"><div><b>Repo</b><small>Nhà cung cấp và đường dẫn</small></div><div class="val"><div class="row"><svg class="i"><use href="#gh"/></svg><span class="mono">github.com/xdev-team/billing-api</span><span class="pill">Private</span></div></div></div>
+        <div class="set"><div><b>Kết nối</b><small>Hub dùng kết nối này để mở PR, đổi quy tắc, cấp token clone</small></div><div class="val"><div class="row">GitHub App xDev Hive · cài trên xdev-team <span class="pill ok">Đủ quyền</span></div></div></div>
+        <div class="set"><div><b>Nhánh chính</b><small>Agent tạo nhánh <span class="mono">ai/*</span> từ đây</small></div><div class="val"><div class="row"><svg class="i"><use href="#branch"/></svg><span class="mono">main</span></div></div></div>
+        <div class="set"><div><b>Bảo vệ nhánh</b><small>Đọc từ GitHub lúc 10:30</small></div><div class="val">
+          <div class="row"><span class="pill ok">Đang bật</span><span>Cần 1 duyệt · cấm force push · CI bắt buộc: <span class="mono">test</span>, <span class="mono">lint</span></span></div>
+          <div><button class="btn sm" type="button">Sửa quy tắc</button></div></div></div>
+        <div class="set"><div><b>Webhook</b><small>push, pull_request, issues</small></div><div class="val"><div class="row"><span class="pill ok">Nhận tốt</span><span class="hint">Lần cuối 4 phút trước · 0 lỗi trong 24 giờ</span><button class="btn sm" type="button">Gửi thử</button></div></div></div>
+        <div class="set"><div><b>File mẫu</b><small>AGENTS.md, .mcp.json, skill</small></div><div class="val"><div class="row">xDev chuẩn v1 <span class="pill sel">Có bản v2</span><button class="btn sm" type="button">Cập nhật bằng PR</button></div><span class="hint">Hub mở PR <span class="mono">hive/mau-v2</span>, không commit thẳng.</span></div></div>
+      </div>
+      <div class="card sec danger">
+        <h3>Vùng nguy hiểm</h3>
+        <div class="row"><span style="flex:1">Lưu trữ dự án: dừng nhận việc, giữ lịch sử run, gỡ webhook. Không đụng repo.</span><button class="btn danger" type="button">Lưu trữ</button></div>
+        <div class="row"><span style="flex:1">Đổi sang repo khác: dùng khi repo đổi tên hoặc chuyển sang tổ chức khác.</span><button class="btn" type="button">Đổi repo</button></div>
+      </div>
+    </div>
+
+    <!-- Máy -->
+    <div class="body tab" data-pane-tab="mach" hidden>
+      <div class="card sec">
+        <div class="sec-h"><h3>Chế độ chạy</h3></div>
+        <div class="seg" role="radiogroup" aria-label="Chế độ chạy">
+          <label><input type="radio" name="d-runmode" checked>Máy dev</label>
+          <label><input type="radio" name="d-runmode" disabled>Container <span class="pill" style="height:18px;font-size:11px">M6</span></label>
+          <label><input type="radio" name="d-runmode" disabled>Máy dev rảnh, rồi tới container <span class="pill" style="height:18px;font-size:11px">M6</span></label>
+        </div>
+        <span class="hint">Run được ghép với máy theo đội sở hữu, CLI có sẵn và nhãn máy.</span>
+      </div>
+      <div class="card tbl"><table>
+        <thead><tr><th>Máy</th><th>CLI</th><th>Nhãn</th><th>Bản clone</th><th>Run 7 ngày</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><b>build-01</b><span class="why">Ubuntu 24.04 · worker 0.4.2</span></td><td>Claude Code, Codex</td><td><span class="pill">linux</span> <span class="pill">gpu</span></td><td class="mono">a91f0c2 · 5 phút</td><td class="num">29</td><td><span class="pill run"><span class="dot"></span>Đang chạy run #483</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+          <tr><td><b>mac-ha</b><span class="why">macOS 16 · worker 0.4.2</span></td><td>Claude Code</td><td><span class="pill">macos</span></td><td class="mono">a91f0c2 · 1 giờ</td><td class="num">12</td><td><span class="pill ok"><span class="dot"></span>Rảnh</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+          <tr><td><b>build-03</b><span class="why">Ubuntu 22.04 · worker 0.4.1</span></td><td>Codex, Gemini CLI</td><td><span class="pill">linux</span></td><td class="mono">7c2e1d0 · 2 ngày</td><td class="num">5</td><td><span class="pill ok"><span class="dot"></span>Rảnh</span><span class="why">Có bản worker mới</span></td><td><button class="btn ghost sm" type="button">Gỡ</button></td></tr>
+        </tbody>
+      </table></div>
+      <div class="row"><button class="btn" type="button"><svg class="i"><use href="#plus"/></svg>Gắn thêm máy của đội</button><span class="hint">Máy mới gắn sẽ clone ngay bằng token git ngắn hạn.</span></div>
+    </div>
+
+    <!-- Merge -->
+    <div class="body tab" data-pane-tab="merge" hidden>
+      <div class="card sec">
+        <h3>Khi PR của agent sẵn sàng</h3>
+        <div class="choice" role="radiogroup" aria-label="Cách merge">
+          <label class="opt"><input type="radio" name="mmode" value="manual" checked><b>Cần người duyệt</b>Run đạt thì PR vào hàng chờ review. Người duyệt bấm merge.</label>
+          <label class="opt"><input type="radio" name="mmode" value="auto"><b>Tự merge khi đạt điều kiện</b>Hub đưa PR vào merge queue khi mọi điều kiện bên dưới đều đúng.</label>
+        </div>
+        <div class="cond dis" id="auto-cond">
+          <b style="color:var(--ink);font-size:13px">Điều kiện tự merge</b>
+          <label><input type="checkbox" checked disabled>Kết quả run là <span class="pill ok">succeeded</span> <span class="hint">(luôn bắt buộc; <span class="mono">needs_review</span> không bao giờ tự merge)</span></label>
+          <label><input type="checkbox" checked>CI trên PR xanh</label>
+          <label><input type="checkbox" checked>Review chéo đạt ngưỡng của chính sách kết quả</label>
+          <label><input type="checkbox">Không đổi file trong <span class="mono">db/migrations/**</span></label>
+          <label><input type="checkbox">Chỉ với task loại <span class="mono">docs</span>, <span class="mono">chore</span></label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="set"><div><b>Người duyệt</b><small>Áp dụng khi cần người duyệt</small></div><div class="val"><div class="grid2">
+          <div class="field"><label for="m-appr">Số người duyệt</label><select class="in-f" id="m-appr"><option selected>1</option><option>2</option></select></div>
+          <div class="field"><label for="m-who">Ai được duyệt</label><select class="in-f" id="m-who"><option>Quản trị dự án và thành viên đội</option><option>Chỉ quản trị dự án</option></select></div>
+        </div><span class="hint">Người giao task không tự duyệt PR của task đó.</span></div></div>
+        <div class="set"><div><b>Merge queue</b><small>Merge tuần tự để PR sau luôn kiểm trên nhánh mới nhất</small></div><div class="val">
+          <label class="toggle"><input type="checkbox" checked><span class="sw"></span><span><b>Rebase lên main rồi chạy lại kiểm tra trước khi merge</b>Kiểm tra lại lỗi thì PR rời queue và task về Review.</span></label></div></div>
+        <div class="set"><div><b>Kiểu merge</b></div><div class="val"><div class="seg" role="radiogroup" aria-label="Kiểu merge">
+          <label><input type="radio" name="mtype" checked>Squash</label><label><input type="radio" name="mtype">Merge commit</label><label><input type="radio" name="mtype">Rebase</label></div></div></div>
+        <div class="set"><div><b>Sau khi merge</b></div><div class="val"><label class="toggle"><input type="checkbox" checked><span class="sw"></span><span><b>Xoá nhánh ai/* và đóng task</b></span></label></div></div>
+      </div>
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button">Huỷ</button><button class="btn primary" type="button">Lưu</button></div>
+    </div>
+
+    <!-- Kết quả run -->
+    <div class="body tab" data-pane-tab="out" hidden>
+      <div class="card sec">
+        <div class="sec-h"><h3>Run kết thúc ở một trong bốn trạng thái</h3></div>
+        <div class="states">
+          <div><span class="pill ok">succeeded</span>Mọi kiểm tra bắt buộc đạt.</div>
+          <div><span class="pill">no_changes</span>Agent chạy xong nhưng không có gì để nộp.</div>
+          <div><span class="pill warn">needs_review</span>Kiểm tra mềm không đạt. Người xem rồi quyết.</div>
+          <div><span class="pill bad">failed</span>Kiểm tra bắt buộc không đạt, hoặc agent lỗi hay hết giờ.</div>
+        </div>
+        <div class="row"><span class="lbl" style="font-weight:500;color:var(--ink);font-size:13px">Nguồn cấu hình</span>
+          <div class="seg" role="radiogroup" aria-label="Nguồn cấu hình"><label><input type="radio" name="src" checked>Trên hub</label><label><input type="radio" name="src">File <span class="mono">.hive/project.yaml</span> trong repo</label></div>
+          <span class="hint">Mỗi run lưu bản chụp chính sách; đổi ở đây không ảnh hưởng run đã chạy.</span></div>
+      </div>
+
+      <div class="card sec">
+        <div class="sec-h"><h3>Task code (mặc định)</h3><span class="hint">Chạy theo thứ tự, rẻ trước</span><span class="sp"></span><button class="btn sm" type="button"><svg class="i"><use href="#plus"/></svg>Thêm kiểm tra</button></div>
+        <div class="tbl"><table class="chk">
+          <thead><tr><th>#</th><th>Kiểm tra</th><th>Tham số</th><th>Bắt buộc</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="t"><b>changes</b><small>Có commit mới, số file trong giới hạn, không đụng đường dẫn cấm</small></td><td><div class="params"><span>maxFiles: 80</span><span>deny: infra/prod/**</span></div></td><td><div class="mini-sw"><label class="toggle"><input type="checkbox" checked><span class="sw"></span></label></div></td><td><button class="btn ghost sm" type="button">Sửa</button></td></tr>
+            <tr><td>2</td><td class="t"><b>command</b><small>Chạy lệnh trong worktree trên máy chạy run</small></td><td><div class="params"><span>run: pnpm test --run</span><span>timeout: 15m</span></div></td><td><div class="mini-sw"><label class="toggle"><input type="checkbox" checked><span class="sw"></span></label></div></td><td><button class="btn ghost sm" type="button">Sửa</button></td></tr>
+            <tr><td>3</td><td class="t"><b>review</b><small>Agent khác review, điểm trên ngưỡng</small></td><td><div class="params"><span>by: claude</span><span>minScore: 7</span></div></td><td><div class="mini-sw"><label class="toggle"><input type="checkbox"><span class="sw"></span></label></div></td><td><button class="btn ghost sm" type="button">Sửa</button></td></tr>
+            <tr style="opacity:.55"><td>—</td><td class="t"><b>ci</b><small>CI trên PR xanh</small></td><td><span class="hint">Chưa thêm</span></td><td></td><td><button class="btn ghost sm" type="button">Thêm</button></td></tr>
+            <tr style="opacity:.55"><td>—</td><td class="t"><b>agentReport</b><small>Agent gọi task_update kèm tóm tắt và bằng chứng</small></td><td><span class="hint">Chưa thêm</span></td><td></td><td><button class="btn ghost sm" type="button">Thêm</button></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card sec">
+        <div class="sec-h"><h3>Ghi đè theo loại task</h3><span class="sp"></span><button class="btn sm" type="button"><svg class="i"><use href="#plus"/></svg>Thêm loại</button></div>
+        <details class="bytype" open><summary><span class="pill sel">research</span>1 kiểm tra</summary>
+          <div style="padding:10px 14px" class="row"><span class="mono">agentReport</span><span class="pill">bắt buộc</span></div></details>
+        <details class="bytype"><summary><span class="pill sel">docs</span>2 kiểm tra</summary>
+          <div style="padding:10px 14px" class="row"><span class="mono">changes</span><span class="pill">bắt buộc</span><span class="mono">agentReport</span><span class="pill">mềm</span></div></details>
+      </div>
+
+      <details class="card" style="padding:12px 18px">
+        <summary style="cursor:pointer;font-weight:500;color:var(--ink)">Xem dạng YAML (chép vào <span class="mono">.hive/project.yaml</span>)</summary>
+        <pre class="yaml" style="margin-top:12px">outcome:
+  default:            <i># task code</i>
+    - { check: changes, required: true, maxFiles: 80, deny: ["infra/prod/**"] }
+    - { check: command, required: true, run: "pnpm test --run", timeout: 15m }
+    - { check: review, required: false, by: claude, minScore: 7 }
+  byType:
+    research: [ { check: agentReport, required: true } ]
+    docs:     [ { check: changes, required: true }, { check: agentReport, required: false } ]</pre>
+      </details>
+      <div class="row" style="justify-content:flex-end"><button class="btn" type="button">Khôi phục mặc định</button><button class="btn primary" type="button">Lưu</button></div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<script>
+// Bọc mọi màn trong khung app, đánh dấu mục Dự án ở sidebar.
+const tpl = document.getElementById("shell");
+document.querySelectorAll("[data-shell]").forEach((host) => {
+  const app = tpl.content.firstElementChild.cloneNode(true);
+  app.querySelector(".main").append(...host.childNodes);
+  app.querySelector(".proj").classList.add("on");
+  host.append(app);
+});
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const screens = ["list", "wiz", "prog", "detail"];
+const show = (id) => {
+  $$(".screen").forEach((s) => (s.hidden = s.id !== `s-${id}`));
+  $$("[role=tab]").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.s === id)));
+  history.replaceState(null, "", `#${id}`);
+  scrollTo(0, 0);
+};
+$$("[role=tab]").forEach((t) => t.addEventListener("click", () => show(t.dataset.s)));
+show(screens.includes(location.hash.slice(1)) ? location.hash.slice(1) : "list");
+document.addEventListener("click", (e) => {
+  const go = e.target.closest("[data-go]");
+  if (go) show(go.dataset.go);
+  const nav = e.target.closest("[data-nav]");
+  if (nav) show(nav.dataset.nav);
+});
+
+// Sáng/tối cho người review; "Tự động" theo hệ điều hành.
+$$('input[name="theme"]').forEach((r) => r.addEventListener("change", () => {
+  if (r.value === "auto") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.dataset.theme = r.value;
+}));
+
+// Wizard
+const stepBtns = $$("[data-step]");
+const panes = $$("[data-pane]");
+let step = 0;
+const goStep = (n) => {
+  step = Math.max(0, Math.min(3, n));
+  panes.forEach((p) => (p.hidden = Number(p.dataset.pane) !== step));
+  stepBtns.forEach((b) => {
+    const k = Number(b.dataset.step);
+    if (k === step) b.setAttribute("aria-current", "step");
+    else b.removeAttribute("aria-current");
+    b.classList.toggle("done", k < step);
+    b.querySelector(".n").textContent = k < step ? "✓" : String(k + 1);
+  });
+  $("#back").disabled = step === 0;
+  $("#next").textContent = step === 3 ? "Tạo dự án" : "Tiếp";
+};
+stepBtns.forEach((b) => b.addEventListener("click", () => goStep(Number(b.dataset.step))));
+$$("[data-step-link]").forEach((a) => a.addEventListener("click", () => goStep(Number(a.dataset.stepLink))));
+$("#back").addEventListener("click", () => goStep(step - 1));
+$("#next").addEventListener("click", () => (step === 3 ? show("prog") : goStep(step + 1)));
+$("#wizform").addEventListener("submit", (e) => e.preventDefault());
+goStep(0);
+
+// Repo mới / có sẵn và GitHub / GitLab đổi chữ ở cả bốn bước.
+const sync = () => {
+  const mode = $('input[name="mode"]:checked').value;
+  const gl = $('input[name="prov"]:checked').value === "gitlab";
+  $$("[data-show]").forEach((el) => (el.hidden = el.dataset.show !== mode));
+  const owner = gl ? "thanh-toan/hoa-don" : "xdev-team";
+  const name = mode === "new" ? $("#rname").value : "billing-export";
+  $("#owner").textContent = `${owner} /`;
+  $("#conn").innerHTML = gl
+    ? "<option>GitLab gitlab.fpt.vn · nhóm thanh-toan/hoa-don</option>"
+    : "<option>GitHub App xDev Hive · tổ chức xdev-team</option>";
+  $("#conn-hint").textContent = gl
+    ? "Token nhóm có vai trò Maintainer, tạo được project."
+    : "App đã cài trên xdev-team, tạo được repo.";
+  $$(".rp-owner").forEach((b) => (b.textContent = `${owner}/${b.dataset.name}`));
+  $$(".pl-owner").forEach((c) => (c.textContent = owner));
+  $$(".pl-repo").forEach((c) => (c.textContent = `${owner}/${name}`));
+  $("#sum-repo").textContent = `${gl ? "gitlab" : "github"} · ${owner}/${name}${mode === "existing" ? " (có sẵn)" : ""}`;
+  $("#tree-root").textContent = `${name}/`;
+};
+$$('input[name="mode"], input[name="prov"]').forEach((r) => r.addEventListener("change", sync));
+$("#rname").addEventListener("input", () => {
+  $("#pkey").value = $("#rname").value;
+  sync();
+});
+$("#t-protect").addEventListener("change", (e) => ($("#protect-opts").hidden = !e.target.checked));
+sync();
+
+// Tiến trình: thử lại hoặc bỏ qua bước lỗi, các bước sau chạy tiếp lần lượt.
+const icon = (cls, id) => `<span class="st ${cls}"><svg${id === "spin" ? ' class="spin"' : ""}><use href="#${id}"/></svg></span>`;
+const resume = (skipped) => {
+  const bad = $("#step-bad");
+  $("#err-box").remove();
+  bad.querySelector(".st").outerHTML = skipped ? icon("skip", "skip") : icon("ok", "check");
+  if (skipped) bad.querySelector(".t").insertAdjacentHTML("afterend", '<div class="d">Đã bỏ qua · dự án mang cảnh báo "main chưa được bảo vệ"</div>');
+  else bad.querySelector(".t").insertAdjacentHTML("afterend", '<div class="d">Cần 1 duyệt, cấm force push · lần thử 2</div>');
+  $("#prog-pill").className = "pill run";
+  $("#prog-pill").innerHTML = '<span class="dot"></span>Đang chạy';
+  $("#side-state").innerHTML = '<span class="pill run"><span class="dot"></span>Đang khởi tạo</span>';
+  const rest = $$("#tl li.wait");
+  const times = ["0,7 s", "0,3 s", "12 s", "18 s", "—"];
+  const tick = (i) => {
+    if (i > 0) {
+      const prev = rest[i - 1];
+      prev.classList.remove("wait");
+      prev.querySelector(".st").outerHTML = icon("ok", "check");
+      prev.querySelector(".time").textContent = times[i - 1];
+    }
+    if (i === rest.length - 1) {
+      const last = rest[i];
+      last.classList.remove("wait");
+      last.querySelector(".st").outerHTML = icon("run", "spin");
+      last.querySelector(".d").textContent = "Đang chạy trên build-01 · Claude Code · vừa bắt đầu";
+      $("#prog-pill").className = "pill ok";
+      $("#prog-pill").innerHTML = '<span class="dot"></span>Dự án sẵn sàng';
+      $("#side-state").innerHTML = '<span class="pill ok"><span class="dot"></span>Sẵn sàng</span> 2/2 máy';
+      $("#open-board").disabled = false;
+      return;
+    }
+    rest[i].querySelector(".st").outerHTML = icon("run", "spin");
+    setTimeout(() => tick(i + 1), 700);
+  };
+  tick(0);
+};
+$("#retry").addEventListener("click", () => resume(false));
+$("#skip").addEventListener("click", () => resume(true));
+
+// Thẻ của trang chi tiết dự án.
+$$("[data-tab]").forEach((a) => a.addEventListener("click", () => {
+  $$("[data-tab]").forEach((x) => x.classList.toggle("on", x === a));
+  $$("[data-pane-tab]").forEach((p) => (p.hidden = p.dataset.paneTab !== a.dataset.tab));
+}));
+$$('input[name="mmode"]').forEach((r) => r.addEventListener("change", () => {
+  const auto = $('input[name="mmode"]:checked').value === "auto";
+  $("#auto-cond").classList.toggle("dis", !auto);
+}));
+</script>
+</body>
+</html>
