@@ -56,6 +56,18 @@ describe("describeFailure", () => {
     expect(e.fix).toContain("xdev-team");
   });
 
+  it("GitHub token thiếu quyền webhook: chỉ cách sửa token, không nhắc GitHub App", () => {
+    const e = describeFailure(
+      "add-webhook",
+      "github",
+      "xdev-team",
+      new GitProviderError("forbidden", "GitHub: không đủ quyền"),
+      "token",
+    );
+    expect(e.fix).toContain("Token GitHub thiếu quyền Webhooks");
+    expect(e.fix).not.toContain("GitHub Apps");
+  });
+
   it("GitLab thiếu quyền: nói vai trò cần có", () => {
     const e = describeFailure(
       "add-webhook",

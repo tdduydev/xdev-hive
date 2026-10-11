@@ -249,6 +249,14 @@ async function checkWithProvider(provider: GitProvider, input: ProjectCreateRequ
       } else if (access.missingScopes.length) {
         warnings.push({ code: "SCOPES_MISSING", message: `Kết nối thiếu quyền: ${access.missingScopes.join(", ")}.` });
       }
+      if (access.unverifiedScopes?.length) {
+        warnings.push({
+          code: "SCOPES_UNVERIFIED",
+          message: `Token không cho đọc quyền của nó nên chưa kiểm trước được: ${access.unverifiedScopes.join(
+            ", ",
+          )}. Thiếu quyền nào thì bước tương ứng sẽ lỗi và báo rõ.`,
+        });
+      }
       if (await provider.getRepo(ref)) {
         warnings.push({
           code: "REPO_EXISTS",
