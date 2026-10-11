@@ -2,9 +2,10 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index.ts";
-import { attachWorkerGateway } from "./modules/fleet/index.ts";
+import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
+import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import { defaultProviderFactory } from "./modules/scm/index.ts";
 
 const config = loadConfig();
@@ -28,7 +29,7 @@ if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, m
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue],
+      queues: [provisionQueue, runsTimerQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -36,7 +37,24 @@ const jobs = config.jobsDatabaseUrl
 if (!jobs) console.warn("Chưa cấu hình HIVE_DATABASE_JOBS_URL: hub chạy không có hàng đợi, không tạo được dự án.");
 await jobs?.start();
 
+// Gateway và lõi giao run chạy cùng tiến trình: gói job_offer, lease chỉ gửi được qua kết nối WSS mà tiến trình này
+// giữ. Chạy nhiều tiến trình api thì cần chuyển gói qua NOTIFY (chưa làm).
+const runs =
+  pool && config.authSecret
+    ? createRunsEngine({
+        pool,
+        publicUrl: config.publicUrl ?? `http://localhost:${config.port}`,
+        authSecret: config.authSecret,
+        masterKey: config.masterKey,
+        providerFactory: defaultProviderFactory,
+        jobs,
+      })
+    : undefined;
+if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");
+if (runs) registerRunHandlers(runs.handlers);
+
 if (roles.includes("jobs") && jobs) {
+  if (runs) await runs.registerJobs(jobs);
   if (!pool || !config.masterKey) {
     console.warn("Vai trò jobs cần HIVE_DATABASE_URL và HIVE_MASTER_KEY; bỏ qua saga khởi tạo dự án.");
   } else {
@@ -50,7 +68,7 @@ if (roles.includes("jobs") && jobs) {
 }
 
 if (roles.includes("api")) {
-  const server = serve({ fetch: createApp({ config, auth, pool, jobs }).fetch, port: config.port }, (info) => {
+  const server = serve({ fetch: createApp({ config, auth, pool, jobs, runs }).fetch, port: config.port }, (info) => {
     console.log(`xDev Hive hub ${config.version} lắng nghe ở :${info.port}`);
   });
   // serve() tạo server HTTP/1.1 khi không cấu hình http2; WebSocket chỉ nâng cấp được trên HTTP/1.1.
@@ -60,6 +78,7 @@ if (roles.includes("api")) {
 // pg-boss nhả job đang giữ khi dừng êm, để tiến trình khác nhận lại ngay thay vì chờ hết hạn.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
+    runs?.stop();
     void (jobs?.stop() ?? Promise.resolve()).finally(() => process.exit(0));
   });
 }
