@@ -6,9 +6,12 @@ import { attachWorkerGateway } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { defaultProviderFactory } from "./modules/scm/index.ts";
+import { authHooks } from "./modules/tenancy/index.ts";
 
 const config = loadConfig();
 const roles = config.roles ?? ["api", "jobs"];
+const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
+if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
 const auth =
   config.authDatabaseUrl && config.authSecret
     ? createAuth({
@@ -19,11 +22,10 @@ const auth =
         github: config.github,
         gitlab: config.gitlab,
         allowEmailSignUp: config.allowEmailSignUp ?? false,
+        hooks: pool ? authHooks(pool) : undefined,
       })
     : undefined;
 if (!auth) console.warn("Chưa cấu hình HIVE_DATABASE_AUTH_URL: hub chạy không có đăng nhập.");
-const pool = config.databaseUrl ? createPool(config.databaseUrl) : undefined;
-if (!pool) console.warn("Chưa cấu hình HIVE_DATABASE_URL: API tổ chức, máy và cổng worker không dùng được.");
 
 const jobs = config.jobsDatabaseUrl
   ? createJobs({

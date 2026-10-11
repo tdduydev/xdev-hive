@@ -12,3 +12,4 @@ export { ORG_HEADER, type OrgDeps, orgMiddlewares, type SessionUser, type Tenanc
 export { tenancyRouter } from "./router.ts";
 // Bảng của module khác cần khoá ngoại kép (team_id, org_id) tới teams.
 export { teams } from "./schema.ts";
+export { authHooks } from "./sso.ts";
