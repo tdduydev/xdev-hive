@@ -88,6 +88,14 @@ export function invitationService(pool: pg.Pool) {
       }
     },
 
+    /** Email này có lời mời còn hạn, chưa dùng ở tổ chức nào không. Không cần mã: dùng cho đăng nhập GitHub/GitLab. */
+    async pendingFor(email: string): Promise<boolean> {
+      return withTenant(pool, {}, async (tx) => {
+        const { rows } = await tx.execute<{ pending: boolean }>(sql`select hive.invite_pending(${email}) as pending`);
+        return rows[0]?.pending === true;
+      });
+    },
+
     accept(token: string, user: InviteUser) {
       return withInvitation(pool, token, user.id, async (tx, inv) => {
         assertUsable(inv, user.email);

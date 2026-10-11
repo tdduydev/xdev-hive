@@ -11,6 +11,8 @@
 #                         khác, nếu không compose sẽ coi container của hệ đó là của mình.
 #   HIVE_PUBLIC_URL, HIVE_BIND (0.0.0.0 cho máy chủ LAN không có HTTPS), HIVE_POSTGRES_IMAGE, HIVE_NODE_IMAGE,
 #   HIVE_REMOTE_DOCKER (vd. "sudo docker" khi user không thuộc nhóm docker)
+#   HIVE_ORG_CREATORS     email người quản trị hub, cách nhau bằng dấu phẩy. Hub chỉ nhận người được mời, nên lần đầu
+#                         phải có ít nhất một email ở đây để có người vào tạo tổ chức và gửi lời mời.
 set -eu
 
 target=${1:?Cách dùng: deploy/remote.sh <user@máy-chủ> [git-ref]}
@@ -30,12 +32,13 @@ git archive --format=tar "$sha" | gzip -c |
 
 args="$(q "$dir") $(q "$short") $(q "${HIVE_COMPOSE_PROJECT:-}") $(q "${HIVE_PUBLIC_URL:-}") $(q "${HIVE_BIND:-}")"
 args="$args $(q "${HIVE_POSTGRES_IMAGE:-}") $(q "${HIVE_NODE_IMAGE:-}") $(q "${HIVE_REMOTE_DOCKER:-docker}")"
+args="$args $(q "${HIVE_ORG_CREATORS:-}")"
 
 # Phần chạy trên máy chủ đọc từ stdin.
 # shellcheck disable=SC2029 # args được quote ở trên, cố ý bung ở máy dev.
 ssh "$target" "sh -s -- $args" <<'REMOTE'
 set -eu
-dir=$1 commit=$2 project=$3 public=$4 bind=$5 pg_image=$6 node_image=$7 docker=$8
+dir=$1 commit=$2 project=$3 public=$4 bind=$5 pg_image=$6 node_image=$7 docker=$8 creators=$9
 
 fail() { echo "$*" >&2; exit 2; }
 command -v openssl >/dev/null 2>&1 || fail "Máy chủ chưa có openssl (cần để sinh secret)."
@@ -81,6 +84,8 @@ add HIVE_COMPOSE_PROJECT xdev-hive
 [ -n "$bind" ] && put HIVE_BIND "$bind"
 [ -n "$pg_image" ] && put HIVE_POSTGRES_IMAGE "$pg_image"
 [ -n "$node_image" ] && put HIVE_NODE_IMAGE "$node_image"
+[ -n "$creators" ] && put HIVE_ORG_CREATORS "$creators"
+[ -n "$(get HIVE_ORG_CREATORS)" ] || echo "Chưa đặt HIVE_ORG_CREATORS: hub chỉ nhận người được mời nên chưa ai vào được. Chạy lại với HIVE_ORG_CREATORS=<email quản trị>." >&2
 project=$(get HIVE_COMPOSE_PROJECT)
 
 # Thay mã cũ bằng mã mới; giữ bản trước ở src.old để xem lại khi cần.

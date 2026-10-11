@@ -1,0 +1,1 @@
+CREATE POLICY "invitations_owner_select" ON "hive"."invitations" AS PERMISSIVE FOR SELECT TO "hive_owner" USING (true);

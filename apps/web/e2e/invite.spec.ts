@@ -109,7 +109,7 @@ test("đăng ký lỗi: email đã có tài khoản thì báo tiếng Việt và
   await page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" }).click();
   await expect(page.getByRole("alert")).toHaveText("Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.");
 
-  await page.getByRole("link", { name: "Đã có tài khoản: đăng nhập để nhận lời mời" }).click();
+  await page.getByRole("link", { name: "Đăng nhập bằng GitHub, GitLab hoặc tài khoản đã có" }).click();
   await expect(page).toHaveURL(`/dang-nhap?redirect=${encodeURIComponent(`/moi/${TOKEN}`)}`);
 });
 
@@ -174,4 +174,36 @@ test("đã đăng nhập bằng email khác: báo sai email, đăng xuất để
   await expect(page.getByLabel("Email")).toHaveValue("vy.ngo@example.com");
   await expect(page).toHaveURL(`/moi/${TOKEN}`);
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
+});
+
+test("GitHub lần đầu mà email chưa được mời: quay về trang đăng nhập, báo lỗi tiếng Việt, giữ đường về lời mời", async ({
+  page,
+}) => {
+  const hub = await fakeHub(page, {
+    auth: {
+      // Hub thật đi qua GitHub rồi chuyển về errorCallbackURL kèm ?error=; ở đây trả thẳng đích cuối của vòng đó.
+      "/sign-in/social": (body) => {
+        const { errorCallbackURL } = body as { errorCallbackURL: string };
+        const back = new URL(errorCallbackURL, page.url());
+        back.searchParams.set("error", "SIGN_UP_NOT_INVITED");
+        back.searchParams.set("error_description", "Hub chỉ nhận người được mời.");
+        return { status: 200, json: { url: back.href, redirect: true } };
+      },
+    },
+    rpc: { "invitations/preview": () => preview() },
+  });
+  await page.goto(`/moi/${TOKEN}`);
+  await page.getByRole("link", { name: "Đăng nhập bằng GitHub, GitLab hoặc tài khoản đã có" }).click();
+  await page.getByRole("button", { name: "GitHub" }).click();
+
+  const back = `/moi/${TOKEN}`;
+  expect(hub.authCalls[0]?.body).toMatchObject({
+    provider: "github",
+    callbackURL: back,
+    errorCallbackURL: `/dang-nhap?redirect=${encodeURIComponent(back)}`,
+  });
+  await expect(page).toHaveURL(/\/dang-nhap\?redirect=[^&]+&error=SIGN_UP_NOT_INVITED&/);
+  // Còn đường quay về lời mời: đăng nhập lại bằng tài khoản đúng email thì về thẳng trang nhận lời mời.
+  expect(new URL(page.url()).searchParams.get("redirect")).toBe(back);
+  await expect(page.getByRole("alert")).toHaveText(/^Hub chỉ nhận người được mời\. Email của tài khoản bạn vừa dùng/);
 });

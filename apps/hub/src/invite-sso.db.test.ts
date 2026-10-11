@@ -444,10 +444,15 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect(await membership(id)).toEqual({ role: "member", status: "blocked" });
   });
 
-  it("email khác tên miền đã khai thì không được thêm vào tổ chức", async () => {
+  it("email khác tên miền đã khai, không có lời mời: không tạo tài khoản", async () => {
     // Plugin tìm nhà cung cấp theo tên miền của email, nên email lạ phải chọn nhà cung cấp bằng providerId.
-    const { cookie } = await ssoSignIn(mail("khach", `khac-${run}.test`), { providerId: `org-${orgId}` });
-    expect(await membership(await userIdOf(cookie))).toBeUndefined();
+    const { cookie, location } = await ssoSignIn(mail("khach", `khac-${run}.test`), { providerId: `org-${orgId}` });
+    expect(location).toMatch(/[?&]error=SIGN_UP_NOT_INVITED/);
+    expect(cookie).not.toMatch(/session_token=/);
+    const { rows } = await admin.query(`select 1 from auth."user" where email = $1`, [
+      mail("khach", `khac-${run}.test`),
+    ]);
+    expect(rows).toHaveLength(0);
   });
 
   it("đổi chính sách sang thành viên (giữ secret cũ): người mới vào thẳng, trạng thái active", async () => {
