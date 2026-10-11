@@ -411,6 +411,25 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
         />
       </Section>
 
+      <Section title="Sandbox">
+        <Check
+          label="Chạy run trong sandbox"
+          hint="Run code chạy trên runner host, mỗi run một container gVisor không có mạng; chỉ ra được các địa chỉ trong allowlist."
+          checked={form.sandbox}
+          onChange={(v) => set("sandbox", v)}
+          disabled={disabled}
+        />
+        <p className="text-sm">
+          <Link
+            to="/projects/$key/sandbox"
+            params={{ key: project.key }}
+            className="text-accent hover:text-accent-hover"
+          >
+            Allowlist mạng và image môi trường của dự án
+          </Link>
+        </p>
+      </Section>
+
       <Section
         title="Ngân sách"
         hint="Bỏ trống là không giới hạn. Codex và Gemini không báo USD nên trần USD chỉ có tác dụng với Claude."

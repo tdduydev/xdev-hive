@@ -21,6 +21,7 @@ import { ProjectSettingsPage } from "./pages/project-settings-page.tsx";
 import { ProjectsPage } from "./pages/projects-page.tsx";
 import { RunPage } from "./pages/run-page.tsx";
 import { RunsPage } from "./pages/runs-page.tsx";
+import { ProjectSandboxPage, SandboxAdminPage } from "./pages/sandbox-pages.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
 import { ProjectTasksPage, TasksPage, validateTasksSearch } from "./pages/tasks-page.tsx";
 import { TeamsPage, validateTeamsSearch } from "./pages/teams-page.tsx";
@@ -138,6 +139,18 @@ const projectsRoute = createRoute({
   component: ProjectsPage,
 });
 
+const projectSandboxRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/projects/$key/sandbox",
+  component: ProjectSandboxPage,
+});
+
+const sandboxAdminRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/admin/sandbox",
+  component: SandboxAdminPage,
+});
+
 const projectSettingsRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/projects/$key/settings",
@@ -225,6 +238,8 @@ const routeTree = rootRoute.addChildren([
         projectsRoute,
         projectTasksRoute,
         projectSettingsRoute,
+        projectSandboxRoute,
+        sandboxAdminRoute,
         planRoute,
         runsRoute,
         leaderRoute,
