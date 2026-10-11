@@ -4,7 +4,6 @@ import { cx } from "../../lib/cx.ts";
 const variants = {
   default: "border-line-strong bg-surface text-ink hover:not-data-disabled:bg-subtle",
   primary: "border-accent bg-accent text-on-accent hover:not-data-disabled:bg-accent-hover",
-  danger: "border-bad bg-surface text-bad hover:not-data-disabled:bg-bad-bg",
   // Mockup không đổi nền khi rê chuột lên nút ghost; thêm nền nhạt để biết là bấm được.
   ghost: "border-transparent bg-transparent text-ink hover:not-data-disabled:bg-subtle",
   /** Thao tác huỷ, xoá: nút viền đỏ như "Huỷ run" trong thiết kế RunDetail.dc.html. */
