@@ -146,6 +146,8 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       "xét lên PR và dùng điểm cho kiểm tra review của chính sách kết quả. Gọi lại thì lần sau cùng được tính.",
     input: reviewReportInput,
     runKinds: ["review"],
+    // Run review chạy chỉ đọc: Claude ở chế độ plan chỉ gọi được tool có readOnlyHint (như plan_submit).
+    readOnly: true,
     handler: async (report, { tx, principal }) => {
       const { runId, attempt } = requireRun(principal);
       const run = await lockRun(tx, runId);
