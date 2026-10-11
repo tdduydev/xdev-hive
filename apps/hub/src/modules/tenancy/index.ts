@@ -7,3 +7,5 @@ export {
   type TeamRole,
   teamRoleOf,
 } from "./permissions.ts";
+export { ORG_HEADER, type TenancyDeps } from "./procedures.ts";
+export { tenancyRouter } from "./router.ts";

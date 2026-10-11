@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import { foreignKey, pgPolicy, pgRole, pgSchema, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { authUser } from "../identity/index.ts";
 
 export const hive = pgSchema("hive");
 // Role tạo ở bước bootstrap (cần quyền superuser), migration chỉ tham chiếu.
 export const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 
 export const orgRole = hive.enum("org_role", ["owner", "admin", "member"]);
 export const memberStatus = hive.enum("member_status", ["active", "pending", "blocked"]);
@@ -41,6 +43,9 @@ export const orgs = hive
         using: sql`id = hive.ctx_org()`,
         withCheck: sql`id = hive.ctx_org()`,
       }),
+      // Hàm hive.any_org() (SECURITY DEFINER, chủ là hive_owner) cần biết hub đã có tổ chức nào chưa để quyết định
+      // ai được tạo tổ chức. FORCE RLS áp cả lên chủ bảng nên phải cho hive_owner đọc; hive_app không được gì thêm.
+      pgPolicy("orgs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
@@ -52,7 +57,9 @@ export const orgMembers = hive
       orgId: uuid("org_id")
         .notNull()
         .references(() => orgs.id, { onDelete: "cascade" }),
-      userId: text("user_id").notNull(),
+      userId: text("user_id")
+        .notNull()
+        .references(() => authUser.id, { onDelete: "cascade" }),
       role: orgRole("role").notNull().default("member"),
       status: memberStatus("status").notNull().default("active"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -99,7 +106,9 @@ export const teamMembers = hive
     {
       teamId: uuid("team_id").notNull(),
       orgId: uuid("org_id").notNull(),
-      userId: text("user_id").notNull(),
+      userId: text("user_id")
+        .notNull()
+        .references(() => authUser.id, { onDelete: "cascade" }),
       role: teamRole("role").notNull().default("member"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },

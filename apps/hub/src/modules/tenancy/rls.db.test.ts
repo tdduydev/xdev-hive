@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { seedUsers } from "../../../test/seed.ts";
 import { createPool, withTenant } from "../platform/index.ts";
 import { invitations, orgMembers, orgs, systems, teams } from "./schema.ts";
 
@@ -16,6 +17,7 @@ let teamB = "";
 
 beforeAll(async () => {
   // Seed bằng superuser (bỏ qua RLS) để test đứng độc lập với code tạo tổ chức.
+  await seedUsers(admin, ["u-a", "u-b", "u-new"]);
   await admin.query(
     "insert into hive.orgs (id, slug, name, created_by) values ($1, 'a', 'A', 'u-a'), ($2, 'b', 'B', 'u-b')",
     [orgA, orgB],
@@ -173,6 +175,25 @@ describe("luồng không có tổ chức trong context", () => {
     } finally {
       client.release();
     }
+  });
+});
+
+describe("liên kết với người dùng", () => {
+  it("thành viên tổ chức và đội phải là người dùng có thật", async () => {
+    const code = await pgCode(() =>
+      withTenant(app, { userId: "u-a", orgId: orgA }, (tx) =>
+        tx.insert(orgMembers).values({ orgId: orgA, userId: "khong-ton-tai", role: "member" }),
+      ),
+    );
+    expect(code).toBe(FK_VIOLATION);
+  });
+
+  it("hive.any_org() chỉ trả một bit, hive_app vẫn không đọc được tổ chức khác", async () => {
+    const r = await withTenant(app, { userId: "u-zzz" }, async (tx) => ({
+      any: (await tx.execute(sql`select hive.any_org() as any`)).rows[0],
+      seen: await tx.select().from(orgs),
+    }));
+    expect(r).toEqual({ any: { any: true }, seen: [] });
   });
 });
 
