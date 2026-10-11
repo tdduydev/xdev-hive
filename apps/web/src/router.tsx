@@ -4,6 +4,7 @@ import { meQuery } from "./lib/me.ts";
 import { authRedirect } from "./lib/redirect.ts";
 import { HomePage } from "./pages/home-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
+import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
 
@@ -38,12 +39,19 @@ const loginRoute = createRoute({
   component: LoginPage,
 });
 
+/** Trang đồng ý của luồng OAuth cho client MCP; đứng riêng ngoài khung app vì người dùng đến từ CLI. */
+const mcpConsentRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/dong-y-mcp",
+  component: McpConsentPage,
+});
+
 /** Layout không có path: mọi trang cần đăng nhập nằm trong khung app. */
 const appRoute = createRoute({ getParentRoute: () => rootRoute, id: "app", component: AppShell });
 
 const homeRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: HomePage });
 
-const routeTree = rootRoute.addChildren([loginRoute, appRoute.addChildren([homeRoute])]);
+const routeTree = rootRoute.addChildren([loginRoute, mcpConsentRoute, appRoute.addChildren([homeRoute])]);
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
