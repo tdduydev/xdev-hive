@@ -169,6 +169,20 @@
       "when": 1791723684101,
       "tag": "0023_ket_noi_github_token",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791727028205,
+      "tag": "0024_thong_bao",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791727029105,
+      "tag": "0025_ep_rls_thong_bao",
+      "breakpoints": true
     }
   ]
 }

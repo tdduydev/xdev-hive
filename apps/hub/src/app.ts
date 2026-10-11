@@ -9,6 +9,7 @@ import { fleetRouter } from "./modules/fleet/index.ts";
 import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
+import { notifyRouter } from "./modules/notify/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import {
   RunNotifier,
@@ -69,6 +70,7 @@ export function createApp({
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
+    notificationChannels: notifyRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),

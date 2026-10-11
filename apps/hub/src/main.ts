@@ -5,6 +5,7 @@ import { provisionQueue, registerProvisionWorker } from "./modules/catalog/index
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth, mcpEnabled } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
+import { notifyQueue, registerNotifyWorker } from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
 import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
 import {
@@ -39,7 +40,7 @@ else if (!mcpEnabled(config.publicUrl ?? "")) console.warn("HIVE_PUBLIC_URL khô
 const jobs = config.jobsDatabaseUrl
   ? createJobs({
       connectionString: config.jobsDatabaseUrl,
-      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue],
+      queues: [provisionQueue, runsTimerQueue, scmEventQueue, embedQueue, notifyQueue],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
     })
@@ -80,6 +81,8 @@ if (roles.includes("jobs") && jobs) {
     onScmEvent("*", auditScmEvent);
     runs?.registerScmHandlers();
     await registerScmEventWorker(jobs, { pool });
+    // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
+    await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey });
   }
 }
 
