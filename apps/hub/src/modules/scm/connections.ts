@@ -14,6 +14,7 @@ import { requireOrgRole } from "../tenancy/index.ts";
 import { GitProviderError } from "./errors.ts";
 import { createGitHubProvider } from "./github.ts";
 import { createGitLabProvider } from "./gitlab.ts";
+import { createLocalProvider, isLocalConnection, type LocalProviderOptions, localProviderFromEnv } from "./local.ts";
 import { scmConnections } from "./schema.ts";
 import type { FetchLike, GitProvider, GitProviderKind } from "./types.ts";
 
@@ -41,10 +42,16 @@ export interface ResolvedConnection extends ScmConnectionRecord {
 /** Dựng GitProvider từ một kết nối. Test thay bằng provider giả. */
 export type ProviderFactory = (conn: ResolvedConnection) => GitProvider;
 
-/** `fetch` cho test (MockAgent) hoặc proxy ra ngoài; mặc định dùng fetch có sẵn. */
-export function createProviderFactory(opts: { fetch?: FetchLike } = {}): ProviderFactory {
+/**
+ * `fetch` cho test (MockAgent) hoặc proxy ra ngoài; mặc định dùng fetch có sẵn. `local` bật provider chỉ để thử của
+ * scripts/e2e-smoke.ts cho kết nối trỏ vào host `hive-e2e.invalid`.
+ */
+export function createProviderFactory(
+  opts: { fetch?: FetchLike; local?: LocalProviderOptions | undefined } = {},
+): ProviderFactory {
   const extra = opts.fetch ? { fetch: opts.fetch } : {};
   return (conn) => {
+    if (opts.local && isLocalConnection(conn)) return createLocalProvider(conn.kind, opts.local);
     if (conn.kind === "github" && conn.authMode === "token") {
       if (!("token" in conn.secret)) throw new GitProviderError("invalid", "GitHub: kết nối thiếu token");
       return createGitHubProvider({
@@ -70,7 +77,8 @@ export function createProviderFactory(opts: { fetch?: FetchLike } = {}): Provide
   };
 }
 
-export const defaultProviderFactory: ProviderFactory = createProviderFactory();
+// Provider local chỉ có khi hub chạy với HIVE_E2E=1 và HIVE_E2E_GIT_ROOT (scripts/e2e-smoke.ts).
+export const defaultProviderFactory: ProviderFactory = createProviderFactory({ local: localProviderFromEnv() });
 
 // Ngữ cảnh mã hoá gắn với id dòng: chép secret_enc sang dòng khác sẽ không giải mã được.
 const secretContext = (id: string) => `scm_connections:${id}`;
