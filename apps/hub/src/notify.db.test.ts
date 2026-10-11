@@ -71,6 +71,41 @@ afterAll(async () => {
 });
 
 describe("kênh thông báo", () => {
+  it("tạo và sửa SMTP nội bộ bị từ chối; cờ cho phép được truyền qua deps", async () => {
+    const input: NotificationChannelCreateInput = {
+      name: `smtp-${tag}`,
+      events: ["run.failed"],
+      enabled: false,
+      config: { kind: "email", host: "127.0.0.1", from: "a@example.com", to: ["b@example.com"] },
+    };
+    const blocked = { name: "BadRequestError", message: "Máy chủ SMTP trỏ vào địa chỉ nội bộ" };
+    await expect(newChannel(input)).rejects.toMatchObject(blocked);
+    const channel = await asUser(org, "admin", (tx) =>
+      createChannel(tx, masterKey, org.user("admin"), input, { allowPrivate: true }),
+    );
+    await expect(
+      asUser(org, "admin", (tx) =>
+        updateChannel(tx, masterKey, org.user("admin"), {
+          id: channel.id,
+          config: input.config,
+        }),
+      ),
+    ).rejects.toMatchObject(blocked);
+    await expect(
+      asUser(org, "admin", (tx) =>
+        updateChannel(tx, masterKey, org.user("admin"), {
+          id: channel.id,
+          enabled: true,
+        }),
+      ),
+    ).rejects.toMatchObject(blocked);
+    // Đổi tên hay tắt kênh không gọi DNS: kênh đang hỏng vẫn sửa và tắt được dù host bị chặn.
+    await asUser(org, "admin", (tx) =>
+      updateChannel(tx, masterKey, org.user("admin"), { id: channel.id, name: `smtp-sua-${tag}`, enabled: false }),
+    );
+    await asUser(org, "admin", (tx) => removeChannel(tx, org.user("admin"), channel.id));
+  });
+
   it("quản trị tổ chức tạo được; thành viên không tạo, không xem được", async () => {
     const ch = await newChannel(telegramInput(`tg-${tag}`, ["run.failed"]));
     expect(ch).toMatchObject({ kind: "telegram", events: ["run.failed"], enabled: true, target: "Telegram -100" });
