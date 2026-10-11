@@ -13,6 +13,11 @@ export interface McpEndpointDeps {
   registry: McpToolRegistry;
   version: string;
   runTokens?: RunTokenVerifier | undefined;
+  /**
+   * Chỉ nhận run token (hub chạy http trong mạng tin cậy): không kiểm token OAuth và không quảng bá metadata OAuth vì
+   * /.well-known không có ở chế độ này.
+   */
+  runTokensOnly?: boolean | undefined;
 }
 
 function bearerToken(request: Request): string | undefined {
@@ -35,12 +40,20 @@ function unauthorized(metadataUrl: string, invalidToken: boolean): Response {
   });
 }
 
+function runTokenRequired(): Response {
+  const message = "Cổng MCP qua http chỉ nhận run token của agent trong run; đăng nhập OAuth cần hub chạy https.";
+  return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message }, id: null }), {
+    status: 401,
+    headers: { "Content-Type": "application/json", "WWW-Authenticate": 'Bearer error="invalid_token"' },
+  });
+}
+
 /**
  * Cổng /mcp theo Streamable HTTP, stateless: mỗi request tự mang token, hub dựng một McpServer riêng cho request
  * đó. Không có phiên MCP nên chạy được nhiều bản hub-api sau proxy mà không cần kho phiên dùng chung.
  */
 export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => Promise<Response> {
-  const { auth, runTokens = noRunTokens } = deps;
+  const { auth, runTokens = noRunTokens, runTokensOnly = false } = deps;
   const resource = mcpResource(String(auth.options.baseURL));
   const metadataUrl = getOAuthProtectedResourceMetadataUrl(new URL(resource));
   // Lấy JWKS thẳng từ Better Auth trong tiến trình thay vì gọi HTTP tới chính hub qua địa chỉ public (có thể đi
@@ -86,12 +99,8 @@ export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => 
     },
   );
 
-  return async (request) => {
-    const token = bearerToken(request);
-    if (!token) return unauthorized(metadataUrl, false);
-    const principal = (await runTokens.verify(token)) ?? (await verifyUserToken(token));
-    if (!principal) return unauthorized(metadataUrl, true);
-    return handler.fetch(request, {
+  const serve = (request: Request, token: string, principal: McpPrincipal) =>
+    handler.fetch(request, {
       authInfo: {
         token,
         clientId: principal.clientId ?? principal.runId ?? "",
@@ -101,5 +110,16 @@ export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => 
         extra: { principal },
       },
     });
+
+  return async (request) => {
+    const token = bearerToken(request);
+    if (runTokensOnly) {
+      const runPrincipal = token ? await runTokens.verify(token) : null;
+      return token && runPrincipal ? serve(request, token, runPrincipal) : runTokenRequired();
+    }
+    if (!token) return unauthorized(metadataUrl, false);
+    const principal = (await runTokens.verify(token)) ?? (await verifyUserToken(token));
+    if (!principal) return unauthorized(metadataUrl, true);
+    return serve(request, token, principal);
   };
 }
