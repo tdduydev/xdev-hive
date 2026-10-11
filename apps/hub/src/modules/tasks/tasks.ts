@@ -1,5 +1,5 @@
 import type { Task, TaskCreateInput, TaskStatus, TaskUpdateInput } from "@xdev-hive/contracts";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
@@ -39,6 +39,17 @@ export async function loadTask(tx: Tx, id: string): Promise<TaskRow | null> {
 /** Task mà người dùng có ít nhất vai trò `min` trong đội sở hữu; không thấy được thì báo như không tồn tại. */
 export async function taskForUser(tx: Tx, userId: string, id: string, min: TeamRole): Promise<TaskRow> {
   const row = await loadTask(tx, id);
+  if (!row || !(await teamRoleOf(tx, userId, row.teamId))) throw notFound();
+  await requireTeamRole(tx, userId, row.teamId, min);
+  return row;
+}
+
+/**
+ * Task theo key (vd. `HD-12`) mà người dùng có ít nhất vai trò `min`; agent và CLI biết task qua key chứ không qua id.
+ * Key chép lúc tạo nên dự án đổi key rồi trùng key cũ thì có thể ra hai dòng; lấy task mới nhất.
+ */
+export async function taskByKeyForUser(tx: Tx, userId: string, key: string, min: TeamRole): Promise<TaskRow> {
+  const [row] = await tx.select().from(tasks).where(eq(tasks.key, key)).orderBy(desc(tasks.createdAt)).limit(1);
   if (!row || !(await teamRoleOf(tx, userId, row.teamId))) throw notFound();
   await requireTeamRole(tx, userId, row.teamId, min);
   return row;

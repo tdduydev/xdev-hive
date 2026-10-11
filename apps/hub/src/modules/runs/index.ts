@@ -8,16 +8,19 @@ export {
   runForUser,
   runsTimerQueue,
 } from "./engine.ts";
+// Cổng MCP: kiểm run token và tool task_get, task_update cho agent trong run.
+export { createMcpRunTokens, registerMcpTools } from "./mcp.ts";
 export { evaluatePolicy, matchGlob } from "./policy.ts";
 export { eventsAfter, getRun, listRuns, logsAfter } from "./queries.ts";
 export { type RunsRouterDeps, runsRouter } from "./router.ts";
 export { RUNS_CHANNEL } from "./state.ts";
 export { parseCursor, RunNotifier, type RunStreamDeps, runStreamHandler } from "./stream.ts";
-// Cổng MCP (M4) xác thực run token bằng hàm này.
+// Ký và kiểm chữ ký run token; cổng MCP dùng createMcpRunTokens (kiểm thêm run còn chạy).
 export {
   createRunTokenVerifier,
   mcpAudience,
   type RunTokenClaims,
   type RunTokenVerifier,
+  runTokenKey,
   signRunToken,
 } from "./token.ts";

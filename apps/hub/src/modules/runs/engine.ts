@@ -16,6 +16,7 @@ import {
 import { ConflictError, type Jobs, type MasterKey, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import { isGitProviderError, loadConnection, type ProviderFactory } from "../scm/index.ts";
 import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
+import { createMcpRunTokens } from "./mcp.ts";
 import { evaluatePolicy, type Outcome } from "./policy.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { hubEvent, lockRun, notifyRun, ON_MACHINE, RUNS_CHANNEL, type RunRow, toRun, transition } from "./state.ts";
@@ -783,6 +784,8 @@ export function createRunsEngine(deps: RunsDeps) {
     startRun,
     cancelRun,
     cancelRunsOfTask,
+    /** Kiểm HIVE_RUN_TOKEN cho cổng /mcp; cùng khoá với token engine ký khi giao lease. */
+    mcpRunTokens: createMcpRunTokens({ pool: deps.pool, authSecret: deps.authSecret, publicUrl: deps.publicUrl }),
     /** Xử lý hẹn giờ trên pg-boss; chỉ gọi ở tiến trình có vai trò `jobs` (cùng tiến trình với gateway). */
     async registerJobs(jobs: Jobs) {
       await jobs.work<RunTimer>(RUNS_TIMER_QUEUE, (job) => fire(job.data), { pollingIntervalSeconds: 1 });
