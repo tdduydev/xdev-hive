@@ -5,6 +5,7 @@ export {
   findPlan,
   getPlan,
   latestPlanOf,
+  listPlans,
   lockAwaitingPlan,
   type PlanRow,
   planMarkdown,

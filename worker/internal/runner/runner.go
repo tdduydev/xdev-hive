@@ -414,11 +414,16 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args = append(args, "--model", j.Model)
 			}
 			if j.Kind == KindPlan || j.Kind == KindLeader {
-				// Chế độ plan chặn sửa file; các tool MCP được phép khai báo readOnlyHint.
+				// Chế độ plan của Claude Code chặn sửa file và chạy lệnh (đã thử trên claude 2.1.296); tool MCP chỉ gọi được
+				// khi có readOnlyHint, hub đánh dấu plan_submit như vậy.
 				args = append(args, "--permission-mode", "plan")
-			} else if j.RunPermissions == "full" {
+			}
+			switch {
+			case j.Kind == KindPlan || j.Kind == KindLeader:
+				// Giữ chế độ plan ở trên: thêm --permission-mode thứ hai sẽ ghi đè nó và mất tính chỉ đọc.
+			case j.RunPermissions == "full":
 				args = append(args, "--permission-mode", "bypassPermissions")
-			} else {
+			default:
 				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
 				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
 			}
@@ -427,12 +432,16 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			if j.Kind == KindPlan || j.Kind == KindLeader {
+				// Sandbox read-only chặn ghi file và lệnh ghi; tool MCP vẫn gọi được (đã thử trên codex-cli 0.162.1).
+				args = append(args, "--sandbox", "read-only")
+			}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
+			// Run plan và leader giữ sandbox read-only ở trên, không nhận cờ quyền ghi.
 			if j.Kind == KindPlan || j.Kind == KindLeader {
-				// Run chỉ đọc không được ghi repo kể cả khi cấu hình dự án bật quyền đầy đủ.
-				args = append(args, "--sandbox", "read-only")
+				args = append(args, "-c", `approval_policy="never"`)
 			} else if j.RunPermissions == "full" {
 				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
 			} else {
@@ -457,6 +466,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				args = append(args, "-m", j.Model)
 			}
 			args = append(args, "--skip-trust")
+			// Run plan và leader không nhận policy cho phép shell hay chế độ yolo, vì chúng ghi đè chế độ plan chỉ đọc.
 			if j.Kind == KindPlan || j.Kind == KindLeader {
 				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
 			}

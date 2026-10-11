@@ -147,6 +147,13 @@ export const planRejectInput = z.object({
 });
 export type PlanRejectInput = z.output<typeof planRejectInput>;
 
+/**
+ * Mọi lần lập kế hoạch của task, lần mới nhất trước, để người duyệt thấy các bản bị từ chối và lý do. `canDecide`:
+ * người xem có quyền duyệt hay từ chối không (như quyền giao việc); web dựa vào đây để hiện màn chỉ đọc.
+ */
+export const planHistory = z.object({ plans: z.array(plan), canDecide: z.boolean() });
+export type PlanHistory = z.output<typeof planHistory>;
+
 /** Kết quả duyệt hay từ chối: kế hoạch sau khi quyết và run đang mang task (run code chạy tiếp, run đã huỷ, hoặc run lập lại). */
 export const planDecision = z.object({ plan, run });
 export type PlanDecision = z.output<typeof planDecision>;
@@ -155,6 +162,9 @@ export const plansContract = {
   get: orgRoute("GET", "/v1/tasks/{id}/plan", "Kế hoạch mới nhất của task (plan mode)", "tasks")
     .input(z.object({ id }))
     .output(plan),
+  list: orgRoute("GET", "/v1/tasks/{id}/plans", "Các lần lập kế hoạch của task, mới nhất trước (plan mode)", "tasks")
+    .input(z.object({ id }))
+    .output(planHistory),
   approve: orgRoute(
     "POST",
     "/v1/tasks/{id}/plan/approve",
@@ -177,8 +187,9 @@ export const tasksContract = {
   create: orgRoute("POST", "/v1/tasks", "Tạo task trong dự án (thành viên đội)", "tasks")
     .input(taskCreateInput)
     .output(task),
-  list: orgRoute("GET", "/v1/tasks", "Task của một dự án", "tasks")
-    .input(z.object({ projectId: id, status: taskStatus.optional() }))
+  list: orgRoute("GET", "/v1/tasks", "Task của một dự án, hoặc của mọi dự án mình thấy được", "tasks")
+    // Bỏ trống projectId cho bảng việc chung của cả tổ chức (web /tasks).
+    .input(z.object({ projectId: id.optional(), status: taskStatus.optional() }))
     .output(z.array(task)),
   get: orgRoute("GET", "/v1/tasks/{id}", "Thông tin task", "tasks").input(z.object({ id })).output(task),
   update: orgRoute("PATCH", "/v1/tasks/{id}", "Sửa task (thành viên đội)", "tasks").input(taskUpdateInput).output(task),

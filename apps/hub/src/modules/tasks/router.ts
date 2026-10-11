@@ -2,7 +2,7 @@ import { implement } from "@orpc/server";
 import { contract, type PlanApproveInput, type PlanDecision, type PlanRejectInput } from "@xdev-hive/contracts";
 import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
-import { getPlan } from "./plans.ts";
+import { getPlan, listPlans } from "./plans.ts";
 import { cancelTask, createTask, getTask, listTasks, updateTask } from "./tasks.ts";
 
 type PlanAction<I> = (tx: Tx, userId: string, input: I) => Promise<{ result: PlanDecision; afterCommit: () => void }>;
@@ -46,6 +46,7 @@ export function tasksRouter(deps: TasksDeps) {
     }),
     plans: {
       get: os.plans.get.use(inOrg).handler(({ context: { tx, user }, input }) => getPlan(tx, user.id, input.id)),
+      list: os.plans.list.use(inOrg).handler(({ context: { tx, user }, input }) => listPlans(tx, user.id, input.id)),
       // Như cancel: giao run sau khi commit, không giao run của transaction đã rollback.
       approve: os.plans.approve.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
         const actions = plans();

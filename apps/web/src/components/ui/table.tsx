@@ -1,10 +1,13 @@
 import type { ComponentProps } from "react";
 import { cx } from "../../lib/cx.ts";
 
-/** Bảng theo mockup; cuộn ngang trên màn hẹp thay vì bóp cột. */
+/**
+ * Bảng theo mockup; cuộn ngang trên màn hẹp thay vì bóp cột. Khung cuộn là `relative` để chữ sr-only (absolute) trong
+ * bảng nằm trong khung, không đẩy cả trang cuộn ngang.
+ */
 export function Table({ className, ...props }: ComponentProps<"table">) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className={cx("w-full min-w-130 border-collapse text-label", className)} {...props} />
     </div>
   );
