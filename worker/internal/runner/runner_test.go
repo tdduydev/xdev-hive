@@ -43,6 +43,44 @@ func TestRunnerPublishesAndNoChanges(t *testing.T) {
 	}
 }
 
+// Run review checkout nhánh của run cha, không push dù agent có commit, và vẫn succeeded khi không có commit.
+func TestRunnerReviewChecksOutParentBranchWithoutPush(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	// Nhánh của run cha đã push, có một file mà nhánh chính không có.
+	src := filepath.Join(t.TempDir(), "parent")
+	must(t, "git", "clone", remote, src)
+	must(t, "git", "-C", src, "checkout", "-b", "ai/HD-1")
+	mustDir(t, src, "parent.txt", "cha")
+	must(t, "git", "-C", src, "add", ".")
+	must(t, "git", "-C", src, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "cha")
+	must(t, "git", "-C", src, "push", "origin", "ai/HD-1")
+	parentSHA := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-1"))
+
+	for _, mode := range []string{"empty", "commit"} {
+		t.Run(mode, func(t *testing.T) {
+			var events []Event
+			r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
+			job := Job{RunID: "review-" + mode, Kind: KindReview, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-1", CLI: "codex", Prompt: "review", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "parent.txt"}}
+			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
+				t.Fatal(err)
+			}
+			got := lastResult(events)
+			if got == nil || got.Status != "succeeded" || got.CommitCount != 0 {
+				t.Fatalf("result = %#v", got)
+			}
+			for _, e := range events {
+				if e.Type == "phase" && e.Phase == "publishing" {
+					t.Fatal("run review không được push")
+				}
+			}
+			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-1")); now != parentSHA {
+				t.Fatalf("nhánh của cha bị đổi: %s → %s", parentSHA, now)
+			}
+		})
+	}
+}
+
 func TestRunnerTimeoutAndCancelCleanWorktree(t *testing.T) {
 	remote, base := makeRemote(t)
 	for _, tc := range []struct {
@@ -121,6 +159,12 @@ func TestFakeCLIHelper(t *testing.T) {
 	if strings.Contains(strings.Join(os.Args, " "), "helper-sleep") {
 		time.Sleep(30 * time.Second)
 		os.Exit(0)
+	}
+	// Run review phải thấy code của nhánh cha trong worktree.
+	if f := os.Getenv("HIVE_FAKE_EXPECT_FILE"); f != "" {
+		if _, err := os.Stat(f); err != nil {
+			os.Exit(4)
+		}
 	}
 	if os.Getenv("HIVE_FAKE_MODE") == "commit" {
 		_ = os.WriteFile("change.txt", []byte("change"), 0600)

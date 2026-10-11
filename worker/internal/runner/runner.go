@@ -18,8 +18,12 @@ import (
 	"time"
 )
 
+// KindReview là run review chéo: đọc nhánh của run cha, không sửa, không push.
+const KindReview = "review"
+
 type Job struct {
 	RunID                                    string
+	Kind                                     string // "code" (mặc định) hoặc KindReview
 	Attempt                                  int
 	RepoURL, BaseBranch, Branch, CLI, Prompt string
 	Env                                      map[string]string
@@ -162,7 +166,16 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := git(ctx, cache, "fetch", "origin", job.BaseBranch+":refs/remotes/origin/"+job.BaseBranch); err != nil {
 		return err
 	}
-	if err := git(ctx, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
+	if job.Kind == KindReview {
+		// Run review đọc đúng nhánh run cha đã push. Tách HEAD thay vì tạo nhánh local để lỡ agent commit cũng không
+		// có gì trỏ tới nhánh của cha.
+		if err := git(ctx, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
+			return err
+		}
+		if err := git(ctx, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
+			return err
+		}
+	} else if err := git(ctx, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
 	if job.SetupScript != "" {
@@ -216,6 +229,15 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
+	}
+	if job.Kind == KindReview {
+		// Run review không nộp code: hub chấm theo việc agent đã gọi review_submit, nên không đếm commit, không push.
+		sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		result = &Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), ChangedFiles: []string{}}
+		return nil
 	}
 	countText, err := gitOutput(ctx, work, "rev-list", "--count", "origin/"+job.BaseBranch+"..HEAD")
 	if err != nil {
