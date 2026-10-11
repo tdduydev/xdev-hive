@@ -681,6 +681,93 @@ describe("thông báo cho nhóm quản trị", () => {
   });
 });
 
+describe("chỉ dẫn cho run đang chạy", () => {
+  async function steer(runId: string, input: string) {
+    const { status, afterCommit } = await withTenant(pool, { orgId: org.orgId }, (tx) =>
+      engine.steerRun(tx, runId, input, "dev"),
+    );
+    afterCommit();
+    return status;
+  }
+  const audits = async (runId: string) =>
+    (
+      await admin.query(
+        "select action, actor_user_id, data from hive.audit_log where target_id = $1 and action like 'run.steer%' order by created_at, id",
+        [runId],
+      )
+    ).rows;
+
+  it("gói steer mang steerId và attempt; worker báo đã/chưa đưa vào agent; lần thử sau vẫn mang chỉ dẫn", async () => {
+    const m = await seedMachine(`steer-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Chỉ dẫn giữa chừng");
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    const lease = await w.next("lease", (l) => l.runId === run.id);
+    const s0 = w.sendRun({ type: "run_event", runId: run.id, attempt: 1, event: "phase", data: { phase: "running" } });
+    await w.next("ack", (a) => a.uptoSeq === s0);
+
+    expect(await steer(run.id, "thêm test cho số âm")).toBe("sent");
+    const first = await w.next("steer", (s) => s.runId === run.id);
+    expect(first).toMatchObject({ attempt: 1, input: "thêm test cho số âm", steerId: expect.stringMatching(/^\d+$/) });
+    expect(await steer(run.id, "đổi tên biến")).toBe("sent");
+    const second = await w.next("steer", (s) => s.runId === run.id && s.input === "đổi tên biến");
+
+    const results = [
+      { steerId: first.steerId, applied: true },
+      { steerId: second.steerId, applied: false, reason: "CLI codex chưa nhận chỉ dẫn giữa chừng" },
+      // id không phải chỉ dẫn của run này: vẫn lưu sự kiện nhưng không ghi audit.
+      { steerId: "999999999", applied: true },
+    ];
+    for (const data of results) {
+      const seq = w.sendRun({ type: "run_event", runId: run.id, attempt: 1, event: "steer_result", data });
+      await w.next("ack", (a) => a.uptoSeq === seq);
+    }
+
+    expect(await audits(run.id)).toEqual([
+      { action: "run.steer_applied", actor_user_id: null, data: { steerId: Number(first.steerId), attempt: 1 } },
+      {
+        action: "run.steer_not_applied",
+        actor_user_id: null,
+        data: { steerId: Number(second.steerId), attempt: 1, reason: "CLI codex chưa nhận chỉ dẫn giữa chừng" },
+      },
+    ]);
+
+    // Web ghép steer với steer_result theo id: sự kiện steer giữ delivered false, kết quả nằm ở steer_result.
+    const { data: events } = await api<Array<{ id: number; type: string; data: Record<string, unknown> }>>(
+      "GET",
+      `/v1/runs/${run.id}/events`,
+    );
+    const steers = events.filter((e) => e.type === "steer");
+    expect(steers.map((e) => [String(e.id), e.data])).toEqual([
+      [first.steerId, { input: "thêm test cho số âm", by: "dev", delivered: false, sent: true }],
+      [second.steerId, { input: "đổi tên biến", by: "dev", delivered: false, sent: true }],
+    ]);
+    expect(events.filter((e) => e.type === "steer_result").map((e) => e.data)).toEqual(results);
+
+    // Mất máy: lần thử sau làm lại từ đầu nên vẫn nhận mọi chỉ dẫn trong prompt, kể cả chỉ dẫn đã vào lần thử trước.
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run.id, leaseId: lease.leaseId });
+    const retry = await w.next("job_offer", (o) => o.runId === run.id && o.attempt === 2);
+    expect(retry.spec.instructions).toEqual(["thêm test cho số âm", "đổi tên biến"]);
+    await w.close();
+  });
+
+  it("run chưa tới máy: chỉ ghi lại, không gửi gói steer", async () => {
+    const task = await newTask("Chỉ dẫn khi chờ máy", { preferredCli: "gemini" });
+    const run = await startRun(task.id);
+    expect(await steer(run.id, "nhớ chạy lint")).toBe("pending");
+    const { rows } = await admin.query("select data from hive.run_events where run_id = $1 and type = 'steer'", [
+      run.id,
+    ]);
+    expect(rows).toEqual([{ data: { input: "nhớ chạy lint", by: "dev", delivered: false, sent: false } }]);
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+  });
+});
+
 describe("quyền", () => {
   it("người ngoài tổ chức không mở được SSE của run", async () => {
     const task = await newTask("Quyền SSE");
