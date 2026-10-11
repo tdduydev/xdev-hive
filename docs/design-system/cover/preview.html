@@ -1,0 +1,95 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>xDev Hive Design System</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&family=Inter:wght@400&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--canvas); color: var(--ink); font-family: var(--font-sans); overflow: hidden; }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; }
+  .band { position: absolute; top: 0; left: 0; width: 960px; height: 112px; }
+  .band svg { display: block; width: 960px; height: 112px; }
+  .deep { fill: var(--brand-deep); }
+  .blue { fill: var(--brand-blue); }
+  .sky { fill: var(--brand-sky); }
+  .ink { fill: var(--ink); }
+  .blk { rx: var(--radius-xl); }
+  .plus { stroke: var(--brand-sky); stroke-width: 2; stroke-linecap: round; fill: none; }
+  .words { position: absolute; left: var(--space-12); right: var(--space-12); top: 144px; }
+  .name { margin: 0; font-family: var(--font-display); font-size: 60px; line-height: .95; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
+  .tag { margin: var(--space-3) 0 0 2px; max-width: 440px; font-size: 14px; line-height: 20px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="band" aria-hidden="true">
+<svg viewBox="0 0 960 112" width="960" height="112">
+<!--
+  blocks      brand-deep 528x128 bled off the top (the logo's strongest blue, the largest) · ink 96 wide (the logo navy in light) · brand-blue 144 · brand-sky 160 bleeding off the right edge: the X gradient read as a strip
+  arrangement a strip of unequal bands across the top, bottoms on one line space-4 above the band's edge, space-4 gutters
+  pattern     plus grid, from "a dense, calm operations tool": 48 plus marks at a space-8 pitch in brand-sky over brand-deep
+  scales      widths in space-6 multiples, gutters space-4, pitch space-8, corners radius-xl
+-->
+<rect class="deep blk" x="0" y="-32" width="528" height="128"/>
+<rect class="ink blk" x="544" y="-32" width="96" height="128"/>
+<rect class="blue blk" x="656" y="-32" width="144" height="128"/>
+<rect class="sky blk" x="816" y="-32" width="160" height="128"/>
+<path class="plus" d="M20 16H28M24 12V20"/>
+<path class="plus" d="M52 16H60M56 12V20"/>
+<path class="plus" d="M84 16H92M88 12V20"/>
+<path class="plus" d="M116 16H124M120 12V20"/>
+<path class="plus" d="M148 16H156M152 12V20"/>
+<path class="plus" d="M180 16H188M184 12V20"/>
+<path class="plus" d="M212 16H220M216 12V20"/>
+<path class="plus" d="M244 16H252M248 12V20"/>
+<path class="plus" d="M276 16H284M280 12V20"/>
+<path class="plus" d="M308 16H316M312 12V20"/>
+<path class="plus" d="M340 16H348M344 12V20"/>
+<path class="plus" d="M372 16H380M376 12V20"/>
+<path class="plus" d="M404 16H412M408 12V20"/>
+<path class="plus" d="M436 16H444M440 12V20"/>
+<path class="plus" d="M468 16H476M472 12V20"/>
+<path class="plus" d="M500 16H508M504 12V20"/>
+<path class="plus" d="M20 48H28M24 44V52"/>
+<path class="plus" d="M52 48H60M56 44V52"/>
+<path class="plus" d="M84 48H92M88 44V52"/>
+<path class="plus" d="M116 48H124M120 44V52"/>
+<path class="plus" d="M148 48H156M152 44V52"/>
+<path class="plus" d="M180 48H188M184 44V52"/>
+<path class="plus" d="M212 48H220M216 44V52"/>
+<path class="plus" d="M244 48H252M248 44V52"/>
+<path class="plus" d="M276 48H284M280 44V52"/>
+<path class="plus" d="M308 48H316M312 44V52"/>
+<path class="plus" d="M340 48H348M344 44V52"/>
+<path class="plus" d="M372 48H380M376 44V52"/>
+<path class="plus" d="M404 48H412M408 44V52"/>
+<path class="plus" d="M436 48H444M440 44V52"/>
+<path class="plus" d="M468 48H476M472 44V52"/>
+<path class="plus" d="M500 48H508M504 44V52"/>
+<path class="plus" d="M20 80H28M24 76V84"/>
+<path class="plus" d="M52 80H60M56 76V84"/>
+<path class="plus" d="M84 80H92M88 76V84"/>
+<path class="plus" d="M116 80H124M120 76V84"/>
+<path class="plus" d="M148 80H156M152 76V84"/>
+<path class="plus" d="M180 80H188M184 76V84"/>
+<path class="plus" d="M212 80H220M216 76V84"/>
+<path class="plus" d="M244 80H252M248 76V84"/>
+<path class="plus" d="M276 80H284M280 76V84"/>
+<path class="plus" d="M308 80H316M312 76V84"/>
+<path class="plus" d="M340 80H348M344 76V84"/>
+<path class="plus" d="M372 80H380M376 76V84"/>
+<path class="plus" d="M404 80H412M408 76V84"/>
+<path class="plus" d="M436 80H444M440 76V84"/>
+<path class="plus" d="M468 80H476M472 76V84"/>
+<path class="plus" d="M500 80H508M504 76V84"/>
+</svg>
+</div>
+<div class="words">
+<h1 class="name">xDev Hive Design System</h1>
+<p class="tag">Blue from the logo for action and selection; quiet everywhere else.</p>
+</div>
+</div>
+</body>
+</html>

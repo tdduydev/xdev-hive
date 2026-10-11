@@ -14,7 +14,7 @@ const TEAM = {
   id: "7e7e7e7e-0000-4000-8000-000000000001",
   slug: "thanh-toan",
   name: "Thanh toán",
-  color: "#7B61FF",
+  color: "#004CFF",
   createdAt: at,
   systemCount: 1,
   memberCount: 2,

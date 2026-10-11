@@ -20,6 +20,7 @@ import {
   setTaskStatus,
   type TaskRow,
 } from "../tasks/index.ts";
+import { taskBudgetExhausted } from "./cost.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, projectReady, type RunRow } from "./state.ts";
 
@@ -307,6 +308,8 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
     reply = `Task ${task.key} đã ${task.status === "done" ? "xong" : "huỷ"}, Hive không chạy lại.`;
   } else if (!projectReady(project)) {
     reply = `Dự án chưa sẵn sàng, Hive chưa chạy lại task ${task.key} được.`;
+  } else if (await taskBudgetExhausted(tx, task.id, project.settings.budget)) {
+    reply = `Task ${task.key} đã dùng hết ngân sách của dự án, Hive không chạy lại.`;
   } else {
     const { afterCommit } = await deps.queueRun(tx, task, project, {
       cli: prRun.cli ?? project.settings.defaultCli ?? null,

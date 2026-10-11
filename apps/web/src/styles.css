@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 /*
- * Token lấy từ mockup đã duyệt docs/ui/m1-login-orgs.html (biến CSS ở đầu file mockup).
+ * Giá trị màu lấy từ docs/design-system/tokens.json; src/lib/contrast.test.ts đọc lại file đó để giá trị ở đây không lệch.
+ * Tên token giữ theo mockup docs/ui (biến CSS ở đầu file mockup).
  * Bảng màu, cỡ chữ, bo góc, bóng mặc định của Tailwind bị xoá (`initial`) để class chỉ dùng được token của Hive:
  * cần màu, cỡ chữ, bo góc hay bóng mới thì thêm token ở đây, không viết giá trị tuỳ ý trong class.
  * Tên khác mockup ở chỗ trùng tiện ích Tailwind (`text-text`, `bg-bg`):
@@ -9,30 +10,38 @@
  */
 @theme {
   --color-*: initial;
-  --color-white: #fff;
-  --color-canvas: #faf9fc;
-  --color-surface: #fff;
-  --color-subtle: #f2f1f5;
-  --color-sunken: #f3f2f6;
-  --color-ink: #28262e;
-  --color-body: #35323b;
-  --color-muted: #6b6772;
-  --color-faint: #96929c;
-  --color-line: #e9e7ed;
-  --color-line-strong: #dad7e1;
-  --color-accent: #7b61ff;
-  --color-accent-hover: #694eeb;
-  --color-sel: #f0ecff;
-  --color-sel-fg: #543acf;
-  --color-sel-line: #c4b8ff;
-  --color-ok: #0f7a4a;
-  --color-ok-bg: #e6f6ee;
-  --color-warn: #9a5b00;
-  --color-warn-bg: #fff4db;
-  --color-bad: #c62828;
-  --color-bad-bg: #fdecec;
-  --color-backdrop: rgb(12 26 51 / 0.45);
+  --color-white: #fff; /* chữ trên nền màu theo dữ liệu (màu đội), không phải nền accent */
+  --color-canvas: #f6f8fc;
+  --color-surface: #ffffff;
+  --color-subtle: #eef2fa;
+  --color-sunken: #f1f4fa;
+  --color-ink: #16213a;
+  --color-body: #344568;
+  --color-muted: #5a6782;
+  --color-faint: #8794ae;
+  --color-line: #d7dfec;
+  --color-line-strong: #7a8aa8;
+  --color-accent: #004cff;
+  --color-accent-hover: #003bcc;
+  --color-on-accent: #ffffff;
+  --color-sel: #e5eeff;
+  --color-sel-fg: #0036b8;
+  --color-sel-line: #9dbbff;
+  --color-focus: #1e90ff;
+  --color-ok: #0e7a49;
+  --color-ok-bg: #e4f5ec;
+  --color-warn: #935600;
+  --color-warn-bg: #fff3d9;
+  --color-bad: #c2261f;
+  --color-bad-bg: #fdebea;
+  --color-backdrop: rgb(12 23 41 / 0.45);
+  --color-brand-sky: #7bd4ff;
+  --color-brand-blue: #1e90ff;
+  --color-brand-deep: #004cff;
+  --color-brand-navy: #142745;
+  --color-brand-letter: #344568;
 
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 
@@ -76,27 +85,37 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #0e0e11;
-    --color-surface: #1d1c20;
-    --color-subtle: #171619;
-    --color-sunken: #171619;
-    --color-ink: #fff;
-    --color-body: #f2f2f3;
-    --color-muted: #a9a9a9;
-    --color-faint: #77777b;
-    --color-line: #2a292d;
-    --color-line-strong: #343337;
-    --color-accent-hover: #8c75ff;
-    --color-sel: #2d2545;
-    --color-sel-fg: #b3a5ff;
-    --color-sel-line: #5c4fa0;
-    --color-ok: #4ade9b;
-    --color-ok-bg: #1d392c;
-    --color-warn: #f5b544;
-    --color-warn-bg: #3d3423;
-    --color-bad: #ff8a8a;
-    --color-bad-bg: #45233a;
+    --color-canvas: #0c1729;
+    --color-surface: #142745;
+    --color-subtle: #1b3157;
+    --color-sunken: #0f1f3a;
+    --color-ink: #f2f5fc;
+    --color-body: #d3daea;
+    --color-muted: #9aa9c8;
+    --color-faint: #6b7da3;
+    --color-line: #2a4169;
+    --color-line-strong: #6680b4;
+    --color-accent: #3fa9ff;
+    --color-accent-hover: #6cbeff;
+    --color-on-accent: #0b1730;
+    --color-sel: #1a3a6e;
+    --color-sel-fg: #b8f1ff;
+    --color-sel-line: #2f63b8;
+    --color-focus: #7bd4ff;
+    --color-ok: #4cd99a;
+    --color-ok-bg: #163a2c;
+    --color-warn: #f2b54a;
+    --color-warn-bg: #3a3020;
+    --color-bad: #ff8c85;
+    --color-bad-bg: #43222d;
+    --color-backdrop: rgb(0 0 0 / 0.6);
+    --color-brand-sky: #b8f1ff;
+    --color-brand-blue: #3fa9ff;
+    --color-brand-deep: #1c58ff;
+    --color-brand-navy: #142745;
+    --color-brand-letter: #e8ecf8;
     --shadow-app: 0 6px 16px -4px rgb(0 0 0 / 0.45);
+    --shadow-dialog: 0 24px 56px -12px rgb(0 0 0 / 0.7);
   }
 }
 
@@ -115,7 +134,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus);
     outline-offset: 2px;
   }
 }
