@@ -103,6 +103,63 @@ describe("evaluatePolicy với review chéo", () => {
   });
 });
 
+describe("điều kiện review", () => {
+  const conditional = (when: { minChangedLines?: number; paths?: string[] }) =>
+    policy({ check: "changes" }, { check: "review", by: "codex", when });
+  const small = {
+    ...ok,
+    diffStats: { addedLines: 7, deletedLines: 5, changedFiles: ["src/a.ts"] },
+    review: { status: "pending" } as const,
+  };
+
+  it("review bắt buộc được bỏ qua, không chờ và không chặn thành công", () => {
+    const r = evaluatePolicy(conditional({ minChangedLines: 100, paths: ["**/schema.ts"] }), small);
+    expect(r).toMatchObject({ outcome: "succeeded", awaitingReview: false, reasons: [] });
+    expect(r.checks[1]).toMatchObject({
+      skipped: true,
+      passed: null,
+      required: true,
+      message: expect.stringContaining("diff 12 dòng"),
+    });
+  });
+
+  it.each([
+    [{ minChangedLines: 12 }, true],
+    [{ minChangedLines: 13 }, false],
+    [{ minChangedLines: 0 }, true],
+    [{ paths: ["src/**"] }, true],
+    [{ paths: ["**/schema.ts"] }, false],
+  ])("ngưỡng và đường dẫn độc lập: %j", (when, review) => {
+    expect(evaluatePolicy(conditional(when), small).awaitingReview).toBe(review);
+  });
+
+  it("worker cũ không gửi số liệu thì luôn chờ review", () => {
+    expect(
+      evaluatePolicy(conditional({ minChangedLines: 100 }), { ...ok, review: { status: "pending" } }).awaitingReview,
+    ).toBe(true);
+  });
+
+  it("bỏ qua một kiểm tra vẫn chạy kiểm tra review khác khớp điều kiện", () => {
+    const p = policy(
+      { check: "review", by: "codex", when: { minChangedLines: 100 } },
+      { check: "review", by: "codex", when: { paths: ["src/**"] } },
+    );
+    const r = evaluatePolicy(p, small);
+    expect(r.awaitingReview).toBe(true);
+    expect(r.checks[0]?.skipped).toBe(true);
+    expect(r.checks[1]?.skipped).not.toBe(true);
+  });
+
+  it("bỏ qua review không che kiểm tra khác không đạt", () => {
+    expect(
+      evaluatePolicy([...conditional({ minChangedLines: 100 }), ...policy({ check: "agentReport" })], small).outcome,
+    ).toBe("failed");
+    expect(evaluatePolicy([...conditional({ minChangedLines: 100 }), ...policy({ check: "ci" })], small).outcome).toBe(
+      "needs_review",
+    );
+  });
+});
+
 describe("evaluateReviewRun", () => {
   it("đã nộp review → succeeded; chưa nộp hoặc thoát lỗi → failed", () => {
     expect(evaluateReviewRun({ exit: 0, report: null, score: 6 }).outcome).toBe("succeeded");

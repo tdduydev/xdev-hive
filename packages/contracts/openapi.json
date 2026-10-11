@@ -18437,6 +18437,26 @@
                                           "minimum": 0,
                                           "maximum": 10,
                                           "default": 7
+                                        },
+                                        "when": {
+                                          "type": "object",
+                                          "properties": {
+                                            "minChangedLines": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "paths": {
+                                              "type": "array",
+                                              "minItems": 1,
+                                              "maxItems": 50,
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              }
+                                            }
+                                          }
                                         }
                                       },
                                       "required": [
@@ -18566,6 +18586,26 @@
                                             "minimum": 0,
                                             "maximum": 10,
                                             "default": 7
+                                          },
+                                          "when": {
+                                            "type": "object",
+                                            "properties": {
+                                              "minChangedLines": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 9007199254740991
+                                              },
+                                              "paths": {
+                                                "type": "array",
+                                                "minItems": 1,
+                                                "maxItems": 50,
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                }
+                                              }
+                                            }
                                           }
                                         },
                                         "required": [
@@ -19413,6 +19453,26 @@
                                         "minimum": 0,
                                         "maximum": 10,
                                         "default": 7
+                                      },
+                                      "when": {
+                                        "type": "object",
+                                        "properties": {
+                                          "minChangedLines": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "maximum": 9007199254740991
+                                          },
+                                          "paths": {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "maxItems": 50,
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 200
+                                            }
+                                          }
+                                        }
                                       }
                                     },
                                     "required": [
@@ -19542,6 +19602,26 @@
                                           "minimum": 0,
                                           "maximum": 10,
                                           "default": 7
+                                        },
+                                        "when": {
+                                          "type": "object",
+                                          "properties": {
+                                            "minChangedLines": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "paths": {
+                                              "type": "array",
+                                              "minItems": 1,
+                                              "maxItems": 50,
+                                              "items": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 200
+                                              }
+                                            }
+                                          }
                                         }
                                       },
                                       "required": [
@@ -20391,6 +20471,26 @@
                                             "minimum": 0,
                                             "maximum": 10,
                                             "default": 7
+                                          },
+                                          "when": {
+                                            "type": "object",
+                                            "properties": {
+                                              "minChangedLines": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 9007199254740991
+                                              },
+                                              "paths": {
+                                                "type": "array",
+                                                "minItems": 1,
+                                                "maxItems": 50,
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                }
+                                              }
+                                            }
                                           }
                                         },
                                         "required": [
@@ -20520,6 +20620,26 @@
                                               "minimum": 0,
                                               "maximum": 10,
                                               "default": 7
+                                            },
+                                            "when": {
+                                              "type": "object",
+                                              "properties": {
+                                                "minChangedLines": {
+                                                  "type": "integer",
+                                                  "minimum": 0,
+                                                  "maximum": 9007199254740991
+                                                },
+                                                "paths": {
+                                                  "type": "array",
+                                                  "minItems": 1,
+                                                  "maxItems": 50,
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 200
+                                                  }
+                                                }
+                                              }
                                             }
                                           },
                                           "required": [
@@ -21522,6 +21642,26 @@
                                             "minimum": 0,
                                             "maximum": 10,
                                             "default": 7
+                                          },
+                                          "when": {
+                                            "type": "object",
+                                            "properties": {
+                                              "minChangedLines": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 9007199254740991
+                                              },
+                                              "paths": {
+                                                "type": "array",
+                                                "minItems": 1,
+                                                "maxItems": 50,
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                }
+                                              }
+                                            }
                                           }
                                         },
                                         "required": [
@@ -21651,6 +21791,26 @@
                                               "minimum": 0,
                                               "maximum": 10,
                                               "default": 7
+                                            },
+                                            "when": {
+                                              "type": "object",
+                                              "properties": {
+                                                "minChangedLines": {
+                                                  "type": "integer",
+                                                  "minimum": 0,
+                                                  "maximum": 9007199254740991
+                                                },
+                                                "paths": {
+                                                  "type": "array",
+                                                  "minItems": 1,
+                                                  "maxItems": 50,
+                                                  "items": {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 200
+                                                  }
+                                                }
+                                              }
                                             }
                                           },
                                           "required": [
@@ -35845,6 +36005,26 @@
                                 "minimum": 0,
                                 "maximum": 10,
                                 "default": 7
+                              },
+                              "when": {
+                                "type": "object",
+                                "properties": {
+                                  "minChangedLines": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 50,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                }
                               }
                             },
                             "required": [
@@ -35925,6 +36105,9 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "skipped": {
+                                    "type": "boolean"
                                   },
                                   "message": {
                                     "type": "string"
@@ -36676,6 +36859,26 @@
                                   "minimum": 0,
                                   "maximum": 10,
                                   "default": 7
+                                },
+                                "when": {
+                                  "type": "object",
+                                  "properties": {
+                                    "minChangedLines": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
+                                    },
+                                    "paths": {
+                                      "type": "array",
+                                      "minItems": 1,
+                                      "maxItems": 50,
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
+                                      }
+                                    }
+                                  }
                                 }
                               },
                               "required": [
@@ -36756,6 +36959,9 @@
                                           "type": "null"
                                         }
                                       ]
+                                    },
+                                    "skipped": {
+                                      "type": "boolean"
                                     },
                                     "message": {
                                       "type": "string"
@@ -37506,6 +37712,26 @@
                                 "minimum": 0,
                                 "maximum": 10,
                                 "default": 7
+                              },
+                              "when": {
+                                "type": "object",
+                                "properties": {
+                                  "minChangedLines": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 50,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                }
                               }
                             },
                             "required": [
@@ -37586,6 +37812,9 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "skipped": {
+                                    "type": "boolean"
                                   },
                                   "message": {
                                     "type": "string"
@@ -38335,6 +38564,26 @@
                                 "minimum": 0,
                                 "maximum": 10,
                                 "default": 7
+                              },
+                              "when": {
+                                "type": "object",
+                                "properties": {
+                                  "minChangedLines": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "paths": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 50,
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                }
                               }
                             },
                             "required": [
@@ -38415,6 +38664,9 @@
                                         "type": "null"
                                       }
                                     ]
+                                  },
+                                  "skipped": {
+                                    "type": "boolean"
                                   },
                                   "message": {
                                     "type": "string"
