@@ -19,9 +19,18 @@ function Loading() {
   );
 }
 
-function MachineStatus({ status }: { status: "online" | "offline" | "revoked" }) {
-  const tone = status === "online" ? "ok" : status === "offline" ? "warn" : "neutral";
-  const label = status === "online" ? "Trực tuyến" : status === "offline" ? "Mất kết nối" : "Đã thu hồi";
+function MachineStatus({ status, busy }: { status: "online" | "offline" | "paused" | "revoked"; busy: boolean }) {
+  const tone = status === "paused" ? "warn" : status === "online" ? (busy ? "sel" : "ok") : "neutral";
+  const label =
+    status === "online"
+      ? busy
+        ? "Đang chạy"
+        : "Sẵn sàng"
+      : status === "offline"
+        ? "Mất kết nối"
+        : status === "paused"
+          ? "Tạm dừng"
+          : "Đã thu hồi";
   return <Pill tone={tone}>{label}</Pill>;
 }
 
@@ -32,14 +41,19 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
     mutationFn: () => api.machines.createRegistration.call({ teamId }),
   });
   const [copied, setCopied] = useState(false);
+  const [os, setOs] = useState<"macOS" | "Linux" | "Windows">("macOS");
   const command = registration.data?.command;
-  const install = command
-    ? {
-        macOS: `${command} && hive-worker service install`,
-        Linux: `${command} && hive-worker service install`,
-        Windows: `${command}; if ($LASTEXITCODE -eq 0) { hive-worker service install }`,
-      }
-    : null;
+  const hubUrl = command?.match(/--hub\s+(\S+)/)?.[1]?.replace(/\/$/, "");
+  const commands =
+    command && hubUrl
+      ? {
+          macOS: ["brew install xdev/tap/hive-worker", command, "hive-worker service install"],
+          Linux: [`curl -fsSL ${hubUrl}/install.sh | sh`, command, "sudo hive-worker service install"],
+          Windows: [`irm ${hubUrl}/install.ps1 | iex`, command, "hive-worker service install"],
+        }
+      : null;
+  const steps = commands?.[os] ?? [];
+  const stepTitles = ["Cài worker", "Đăng ký máy với hub", "Chạy worker như dịch vụ hệ thống"];
 
   async function copy(value: string) {
     try {
@@ -63,7 +77,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
       )}
       {registration.isPending && <Loading />}
       {registration.isError && <Alert>{apiErrorMessage(registration.error)}</Alert>}
-      {registration.data && install && (
+      {registration.data && commands && (
         <div className="grid gap-3">
           <div className="grid gap-1">
             <label htmlFor="registration-token" className="text-sm font-medium">
@@ -86,19 +100,38 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
               Hết hạn lúc {new Date(registration.data.expiresAt).toLocaleString("vi-VN")}.
             </p>
           </div>
-          <div className="grid gap-2">
-            {Object.entries(install).map(([os, value]) => (
-              <div key={os} className="grid gap-1">
-                <b className="text-sm">{os}</b>
+          <div className="grid gap-3">
+            <fieldset className="flex gap-2 border-0 p-0">
+              <legend className="sr-only">Hệ điều hành</legend>
+              {(["macOS", "Linux", "Windows"] as const).map((item) => (
+                <Button
+                  key={item}
+                  size="sm"
+                  variant={os === item ? "primary" : "default"}
+                  aria-pressed={os === item}
+                  onClick={() => setOs(item)}
+                >
+                  {item}
+                </Button>
+              ))}
+            </fieldset>
+            {steps.map((value, index) => (
+              <div key={stepTitles[index]} className="grid gap-1">
+                <b className="text-sm">
+                  {index + 1}. {stepTitles[index]}
+                </b>
                 <div className="flex min-w-0 gap-2">
                   <code className="min-w-0 flex-1 break-all rounded-md bg-subtle p-2 text-xs">{value}</code>
-                  <Button size="sm" aria-label={`Chép lệnh cài cho ${os}`} onClick={() => copy(value)}>
+                  <Button size="sm" aria-label={`Chép lệnh bước ${index + 1}`} onClick={() => copy(value)}>
                     Chép
                   </Button>
                 </div>
               </div>
             ))}
           </div>
+          <p className="text-xs text-muted">
+            Máy sẽ hiện trong danh sách khi worker kết nối tới hub. Worker chỉ chạy CLI đã đăng nhập sẵn trên máy.
+          </p>
           <p aria-live="polite" className="text-sm text-muted">
             {copied
               ? "Đã chép vào bộ nhớ tạm."
@@ -155,6 +188,16 @@ export function MachinesPage() {
       setRevokeId(null);
     },
   });
+  const machineAction = useMutation({
+    mutationFn: ({ machineId, paused }: { machineId: string; paused: boolean }) =>
+      paused ? api.machines.pause.call({ machineId }) : api.machines.resume.call({ machineId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: api.machines.list.key() }),
+  });
+  const activeRuns = runQueries
+    .flatMap((query) => query.data ?? [])
+    .filter((run) =>
+      ["leased", "preparing", "running", "awaiting_input", "verifying", "cancelling"].includes(run.state),
+    );
 
   return (
     <>
@@ -195,13 +238,26 @@ export function MachinesPage() {
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Metric label="Tổng máy" value={machines.data.length} />
                   <Metric
-                    label="Trực tuyến"
-                    value={machines.data.filter((machine) => machine.status === "online").length}
+                    label="Máy trực tuyến"
+                    value={`${machines.data.filter((machine) => machine.status === "online").length} / ${machines.data.length}`}
                   />
-                  <Metric label="Sức chứa" value={machines.data.reduce((sum, machine) => sum + machine.capacity, 0)} />
+                  <Metric
+                    label="Chỗ chạy còn trống"
+                    value={machines.data
+                      .filter((machine) => machine.status === "online")
+                      .reduce(
+                        (sum, machine) =>
+                          sum +
+                          Math.max(
+                            0,
+                            machine.capacity - activeRuns.filter((run) => run.machineId === machine.id).length,
+                          ),
+                        0,
+                      )}
+                  />
                   <Metric label="CLI khả dụng" value={new Set(machines.data.flatMap((machine) => machine.clis)).size} />
+                  <Metric label="Run đang chạy" value={activeRuns.length} />
                 </div>
                 <Card className="p-3 sm:p-4">
                   <h2 className="mb-2 text-lg font-semibold text-ink">Danh sách máy</h2>
@@ -226,37 +282,73 @@ export function MachinesPage() {
                         {machines.data.map((machine) => (
                           <tr key={machine.id}>
                             <Td>
-                              <b>{machine.name}</b>
+                              <b className="font-mono text-sm">{machine.name}</b>
                             </Td>
                             <Td>{machine.os}</Td>
                             <Td>
-                              <MachineStatus status={machine.status} />
+                              <div className="grid justify-items-start gap-1">
+                                <MachineStatus
+                                  status={machine.status}
+                                  busy={activeRuns.some((run) => run.machineId === machine.id)}
+                                />
+                                <span className="text-xs text-muted">
+                                  {machine.lastSeenAt
+                                    ? `Nhịp ${new Date(machine.lastSeenAt).toLocaleString("vi-VN")}`
+                                    : "Chưa kết nối"}
+                                </span>
+                              </div>
                             </Td>
-                            <Td>{machine.clis.length ? machine.clis.join(", ") : "—"}</Td>
-                            <Td>{machine.capacity}</Td>
+                            <Td>
+                              <div className="flex flex-wrap gap-1">
+                                {machine.clis.length ? machine.clis.map((cli) => <Pill key={cli}>{cli}</Pill>) : "—"}
+                              </div>
+                            </Td>
+                            <Td>
+                              {Math.min(
+                                activeRuns.filter((run) => run.machineId === machine.id).length,
+                                machine.capacity,
+                              )}{" "}
+                              / {machine.capacity}
+                              <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-subtle">
+                                <div
+                                  className="h-full bg-accent"
+                                  style={{
+                                    width: `${machine.capacity ? (Math.min(activeRuns.filter((run) => run.machineId === machine.id).length, machine.capacity) / machine.capacity) * 100 : 0}%`,
+                                  }}
+                                />
+                              </div>
+                            </Td>
                             <Td>
                               {runInfoPending
                                 ? "Đang tải…"
-                                : runQueries
-                                    .flatMap((query) => query.data ?? [])
-                                    .filter(
-                                      (run) =>
-                                        run.machineId === machine.id &&
-                                        [
-                                          "leased",
-                                          "preparing",
-                                          "running",
-                                          "awaiting_input",
-                                          "verifying",
-                                          "cancelling",
-                                        ].includes(run.state),
-                                    )
+                                : activeRuns
+                                    .filter((run) => run.machineId === machine.id)
                                     .map((run) => taskKeys.get(run.taskId))
                                     .filter(Boolean)
                                     .join(", ") || "—"}
                             </Td>
                             <Td>{machine.version || "—"}</Td>
                             <Td>
+                              {machine.status === "paused" ? (
+                                <Button
+                                  size="sm"
+                                  disabled={machineAction.isPending}
+                                  onClick={() => machineAction.mutate({ machineId: machine.id, paused: false })}
+                                >
+                                  Chạy lại
+                                </Button>
+                              ) : machine.status !== "revoked" ? (
+                                <Button
+                                  size="sm"
+                                  disabled={machineAction.isPending}
+                                  onClick={() => machineAction.mutate({ machineId: machine.id, paused: true })}
+                                >
+                                  Tạm dừng
+                                </Button>
+                              ) : null}
+                              {machineAction.isError && (
+                                <span role="alert">{apiErrorMessage(machineAction.error)}</span>
+                              )}{" "}
                               {machine.status !== "revoked" && (
                                 <Button size="sm" onClick={() => setRevokeId(machine.id)}>
                                   Thu hồi
@@ -269,6 +361,13 @@ export function MachinesPage() {
                     </Table>
                   )}
                 </Card>
+                {machines.data
+                  .filter((machine) => machine.status === "offline")
+                  .map((machine) => (
+                    <Alert key={machine.id}>
+                      Máy {machine.name} mất kết nối. Run đang chờ sẽ được giao lại khi có máy phù hợp.
+                    </Alert>
+                  ))}
               </>
             )}
           </>
@@ -301,7 +400,7 @@ export function MachinesPage() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <Card className="grid gap-1 p-3">
       <span className="text-xs text-muted">{label}</span>

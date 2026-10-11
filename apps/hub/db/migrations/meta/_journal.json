@@ -225,6 +225,13 @@
       "when": 1791733157317,
       "tag": "0031_wealthy_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791735453776,
+      "tag": "0032_flippant_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

@@ -44,6 +44,7 @@ export const machines = hive
       clis: text("clis").array().notNull().default(sql`'{}'::text[]`),
       capacity: integer("capacity").notNull().default(1),
       status: machineStatus("status").notNull().default("offline"),
+      pausedAt: timestamp("paused_at", { withTimezone: true }),
       /** Khoá công khai máy gửi lúc đăng ký (mục 6). Chưa dùng tới khi có access token ngắn hạn. */
       publicKey: text("public_key"),
       lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),

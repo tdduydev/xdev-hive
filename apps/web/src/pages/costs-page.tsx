@@ -59,6 +59,10 @@ export function CostsPage() {
     ...api.costs.summary.queryOptions({ input: { ...summaryInput, groupBy } }),
     enabled: Boolean(project),
   });
+  const stopped = useQuery({
+    ...api.costs.budgetStopped.queryOptions({ input: { projectId: summaryInput.projectId } }),
+    enabled: Boolean(project),
+  });
   const chart =
     project && daily.data
       ? Array.from({ length: period }, (_, index) => {
@@ -72,7 +76,7 @@ export function CostsPage() {
 
   return (
     <>
-      <PageHeader crumb="Quản trị" title="Chi phí" />
+      <PageHeader crumb="Quản trị" title="Chi phí và token" />
       <PageBody>
         {projects.isPending ? (
           <Loading />
@@ -124,64 +128,113 @@ export function CostsPage() {
                 </div>
                 <Card className="grid gap-3 p-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-ink">Chi phí theo ngày</h2>
-                    <p className="text-sm text-muted">USD được CLI báo cáo; một số CLI không cung cấp số tiền.</p>
+                    <h2 className="text-lg font-semibold text-ink">Chi phí theo ngày (USD)</h2>
+                    <p className="text-sm text-muted">Ngày tính theo UTC. Chỉ biểu đồ CLI có báo cáo USD.</p>
                   </div>
                   <CostChart points={chart} max={max} />
                 </Card>
-                <Card className="grid gap-3 p-4">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-semibold text-ink">Chi tiết chi phí</h2>
-                      <p className="text-sm text-muted">Nhóm theo CLI, máy hoặc việc.</p>
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2.5fr)]">
+                  <Card className="grid min-w-0 gap-3 p-4">
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-ink">Chi tiết chi phí</h2>
+                        <p className="text-sm text-muted">Nhóm theo CLI, máy hoặc việc.</p>
+                      </div>
+                      <label className="grid min-w-36 gap-1 text-sm font-medium" htmlFor="cost-group">
+                        Nhóm theo
+                        <Select
+                          id="cost-group"
+                          value={groupBy}
+                          onChange={(event) => setGroupBy(event.target.value as GroupBy)}
+                        >
+                          <option value="cli">CLI</option>
+                          <option value="machine">Máy</option>
+                          <option value="task">Việc</option>
+                        </Select>
+                      </label>
                     </div>
-                    <label className="grid min-w-36 gap-1 text-sm font-medium" htmlFor="cost-group">
-                      Nhóm theo
-                      <Select
-                        id="cost-group"
-                        value={groupBy}
-                        onChange={(event) => setGroupBy(event.target.value as GroupBy)}
-                      >
-                        <option value="cli">CLI</option>
-                        <option value="machine">Máy</option>
-                        <option value="task">Việc</option>
-                      </Select>
-                    </label>
+                    {grouped.isPending ? (
+                      <Loading />
+                    ) : grouped.isError ? (
+                      <Alert>{apiErrorMessage(grouped.error)}</Alert>
+                    ) : grouped.data.groups.length === 0 ? (
+                      <p className="py-4 text-center text-muted">Chưa có run trong khoảng thời gian này.</p>
+                    ) : (
+                      <Table>
+                        <thead>
+                          <tr>
+                            <Th>{groupBy === "cli" ? "CLI" : groupBy === "machine" ? "Mã máy" : "Mã việc"}</Th>
+                            <Th>Run</Th>
+                            <Th>Token</Th>
+                            <Th>Chi phí</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {grouped.data.groups.map((group) => (
+                            <tr key={group.key ?? "unknown"}>
+                              <Td>{group.key ?? "Chưa xác định"}</Td>
+                              <Td>{number(group.runs)}</Td>
+                              <Td>{number(group.tokensIn + group.tokensOut)}</Td>
+                              <Td>{usd(group.costUsd)}</Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    )}
+                  </Card>
+                  <BudgetForm
+                    key={project.id}
+                    project={project}
+                    onSaved={() => queryClient.invalidateQueries({ queryKey: api.projects.list.key() })}
+                  />
+                </div>
+                <Card className="grid gap-3 p-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-ink">Run bị dừng vì vượt ngân sách</h2>
+                    <p className="text-sm text-muted">Giá trị đo được và trần tại thời điểm run kết thúc.</p>
                   </div>
-                  {grouped.isPending ? (
+                  {stopped.isPending ? (
                     <Loading />
-                  ) : grouped.isError ? (
-                    <Alert>{apiErrorMessage(grouped.error)}</Alert>
-                  ) : grouped.data.groups.length === 0 ? (
-                    <p className="py-4 text-center text-muted">Chưa có run trong khoảng thời gian này.</p>
+                  ) : stopped.isError ? (
+                    <Alert>{apiErrorMessage(stopped.error)}</Alert>
+                  ) : stopped.data.length === 0 ? (
+                    <p className="py-2 text-muted">Chưa có run nào bị dừng vì vượt ngân sách.</p>
                   ) : (
                     <Table>
                       <thead>
                         <tr>
-                          <Th>{groupBy === "cli" ? "CLI" : groupBy === "machine" ? "Mã máy" : "Mã việc"}</Th>
-                          <Th>Run</Th>
-                          <Th>Token</Th>
-                          <Th>Chi phí</Th>
+                          <Th>Việc</Th>
+                          <Th>Lý do</Th>
+                          <Th>Đã dùng</Th>
+                          <Th>Trần</Th>
+                          <Th>Thời điểm</Th>
                         </tr>
                       </thead>
                       <tbody>
-                        {grouped.data.groups.map((group) => (
-                          <tr key={group.key ?? "unknown"}>
-                            <Td>{group.key ?? "Chưa xác định"}</Td>
-                            <Td>{number(group.runs)}</Td>
-                            <Td>{number(group.tokensIn + group.tokensOut)}</Td>
-                            <Td>{usd(group.costUsd)}</Td>
+                        {stopped.data.map((item) => (
+                          <tr key={`${item.runId}-${item.reason}`}>
+                            <Td>
+                              <span className="font-mono text-sm">{item.taskKey}</span>
+                              <span className="block text-xs text-muted">{item.taskTitle}</span>
+                            </Td>
+                            <Td>
+                              {item.reason === "per_run_usd"
+                                ? "Vượt trần USD/run"
+                                : item.reason === "per_task_usd"
+                                  ? "Vượt trần USD/việc"
+                                  : "Vượt số lượt"}
+                            </Td>
+                            <Td>
+                              {item.reason === "max_turns" ? `${number(item.measured)} lượt` : usd(item.measured)}
+                            </Td>
+                            <Td>{item.reason === "max_turns" ? `${number(item.limit)} lượt` : usd(item.limit)}</Td>
+                            <Td>{new Date(item.stoppedAt).toLocaleString("vi-VN")}</Td>
                           </tr>
                         ))}
                       </tbody>
                     </Table>
                   )}
                 </Card>
-                <BudgetForm
-                  key={project.id}
-                  project={project}
-                  onSaved={() => queryClient.invalidateQueries({ queryKey: api.projects.list.key() })}
-                />
               </>
             )}
           </>
@@ -251,7 +304,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             max="100000"
             step="0.01"
             defaultValue={budget?.perRunUsd ?? ""}
-            placeholder="Không giới hạn"
+            placeholder="—"
           />
         </label>
         <label className="grid gap-1 text-sm" htmlFor="budget-task">
@@ -264,7 +317,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             max="100000"
             step="0.01"
             defaultValue={budget?.perTaskUsd ?? ""}
-            placeholder="Không giới hạn"
+            placeholder="—"
           />
         </label>
         <label className="grid gap-1 text-sm" htmlFor="budget-turns">
@@ -277,7 +330,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             max="10000"
             step="1"
             defaultValue={budget?.maxTurns ?? ""}
-            placeholder="Không giới hạn"
+            placeholder="—"
           />
         </label>
         {failure && (
