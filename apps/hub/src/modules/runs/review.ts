@@ -40,7 +40,8 @@ export function reviewPrompt(opts: {
     `Bạn là reviewer cho task ${opts.taskKey}: ${opts.title}.`,
     ...(opts.body ? ["", "Mô tả task:", opts.body, ""] : []),
     `Worktree đang ở nhánh ${opts.branch} do một agent khác viết${opts.prUrl ? ` (PR: ${opts.prUrl})` : ""}.`,
-    `Đọc diff so với nhánh chính bằng \`git diff origin/${opts.baseBranch}...HEAD\`.`,
+    // Run review chạy chỉ đọc (Claude ở chế độ plan không chạy được lệnh): worker ghi sẵn diff vào file này.
+    `Đọc diff so với nhánh chính trong file \`.hive-review.diff\` ở gốc worktree (worker đã tạo sẵn). Không có file đó thì dùng \`git diff origin/${opts.baseBranch}...HEAD\`.`,
     "Chỉ mở thêm file khác khi cần hiểu diff; không đọc toàn bộ repo.",
     "",
     "Quy tắc:",
