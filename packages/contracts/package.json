@@ -1,0 +1,23 @@
+{
+  "name": "@xdev-hive/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./worker-protocol": "./src/worker-protocol.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "openapi": "node scripts/openapi.ts"
+  },
+  "dependencies": {
+    "@orpc/contract": "^1.15.5",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@orpc/openapi": "^1.15.5",
+    "@orpc/zod": "^1.15.5"
+  }
+}

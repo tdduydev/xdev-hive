@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# swc chạy bằng gói binary dựng sẵn theo nền tảng; script postinstall chỉ để kiểm tra, không cần chạy.
+allowBuilds:
+  "@swc/core": false
