@@ -3,10 +3,12 @@ import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect
 import { meQuery } from "./lib/me.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
+import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
 import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
+import { MachinesPage } from "./pages/machines-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { MembersPage, validateMembersSearch } from "./pages/members-page.tsx";
 import { MergeQueuePage } from "./pages/merge-queue-page.tsx";
@@ -168,6 +170,8 @@ const notificationsRoute = createRoute({
   path: "/notifications",
   component: NotificationsPage,
 });
+const machinesRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/machines", component: MachinesPage });
+const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
 const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -177,7 +181,7 @@ const routeTree = rootRoute.addChildren([
     onboardingRoute,
     appRoute.addChildren([
       homeRoute,
-      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute, mergeQueueRoute, notificationsRoute]),
+      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute, mergeQueueRoute, notificationsRoute, machinesRoute, costsRoute]),
     ]),
   ]),
 ]);
