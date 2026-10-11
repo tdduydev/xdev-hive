@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config.ts";
 
@@ -14,8 +15,34 @@ describe("loadConfig: đăng nhập", () => {
   it("không cấu hình GitHub thì bỏ qua", () => expect(loadConfig({}).github).toBeUndefined());
 });
 
+describe("loadConfig: khoá chủ và vai trò", () => {
+  it("đọc HIVE_MASTER_KEY base64 32 byte", () => {
+    expect(loadConfig({ HIVE_MASTER_KEY: randomBytes(32).toString("base64") }).masterKey?.key).toHaveLength(32);
+  });
+  it("báo lỗi khoá sai độ dài", () => expect(() => loadConfig({ HIVE_MASTER_KEY: "YWJj" })).toThrow(/32 byte/));
+  it("mặc định chạy cả api và jobs", () => expect(loadConfig({}).roles).toEqual(["api", "jobs"]));
+  it("từ chối vai trò lạ", () => expect(() => loadConfig({ HIVE_ROLES: "api,gw" })).toThrow(/gw/));
+});
+
 describe("loadConfig: người tạo tổ chức", () => {
   it("tách danh sách email, bỏ khoảng trắng, chữ thường", () =>
     expect(loadConfig({ HIVE_ORG_CREATORS: " A@x.vn, ,b@y.vn" }).orgCreators).toEqual(["a@x.vn", "b@y.vn"]));
   it("không đặt thì rỗng", () => expect(loadConfig({}).orgCreators).toEqual([]));
+});
+
+describe("loadConfig: embeddings", () => {
+  it("không đặt URL thì không có", () => expect(loadConfig({}).embeddings).toBeUndefined());
+  it("mặc định mô hình text-embedding-3-small, bỏ / cuối URL", () =>
+    expect(
+      loadConfig({ HIVE_EMBEDDINGS_URL: "https://api.openai.com/v1/", HIVE_EMBEDDINGS_API_KEY: "k" }).embeddings,
+    ).toEqual({
+      url: "https://api.openai.com/v1",
+      apiKey: "k",
+      model: "text-embedding-3-small",
+      dimensions: undefined,
+    }));
+  it("báo lỗi số chiều sai", () =>
+    expect(() =>
+      loadConfig({ HIVE_EMBEDDINGS_URL: "http://ollama:11434/v1", HIVE_EMBEDDINGS_DIMENSIONS: "-3" }),
+    ).toThrow(/HIVE_EMBEDDINGS_DIMENSIONS/));
 });

@@ -1,0 +1,8 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  // dev.ts có trước và chưa sạch kiểu; chỉ kiểm script e2e.
+  "include": ["e2e-smoke.ts", "e2e-fake-cli.ts"]
+}
