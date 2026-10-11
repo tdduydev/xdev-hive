@@ -1,0 +1,3 @@
+{$HIVE_PUBLIC_URL} {
+  reverse_proxy hub:3000
+}
