@@ -9,6 +9,7 @@ export function normalizeEgressRule(value: string): string | null {
   if (!entry || /[\s#%@\\/?]/u.test(entry.replace(/\/\d+(?=\]|:|$)/u, ""))) return null;
   let host = entry;
   let port = "";
+  let bracketed = false;
   // IPv6/CIDR nguyên vẹn không có cổng; có cổng thì phải dùng ngoặc vuông như net.SplitHostPort.
   const rawIp = ipv4.safeParse(entry).success || ipv6.safeParse(entry).success;
   const rawPrefix = /^(.*)\/(\d+)$/u.exec(entry);
@@ -20,20 +21,27 @@ export function normalizeEgressRule(value: string): string | null {
     const n = Number(match[3]);
     if (!Number.isSafeInteger(n) || n < 1 || n > 65535) return null;
     port = `:${n}`;
-    if (match[1] && !host.includes(":")) return null;
+    bracketed = match[1] !== undefined;
   }
   const prefix = /^(.*)\/(\d+)$/u.exec(host);
   if (prefix) {
     const address = prefix[1] ?? "";
+    if ((prefix[2]?.length ?? 0) > 1 && prefix[2]?.startsWith("0")) return null;
     const bits = Number(prefix[2]);
     const isV4 = ipv4.safeParse(address).success;
     if ((!isV4 && !ipv6.safeParse(address).success) || bits > (isV4 ? 32 : 128)) return null;
-    if (address.includes(":") && address.includes(".")) return null;
+    const normalized = isV4 ? address : new URL(`http://[${address}]`).hostname.slice(1, -1);
+    if (!isV4 && normalized.startsWith("::ffff:")) return null;
     // Proxy tự mask CIDR nên giữ phần host không làm đổi phạm vi cho phép.
-    return `${isV4 ? `${address}/${bits}` : port ? `[${address.toLowerCase()}/${bits}]` : `${address.toLowerCase()}/${bits}`}${port}`;
+    const cidr = `${normalized}/${bits}`;
+    return `${!isV4 && port ? `[${cidr}]` : cidr}${port}`;
   }
   if (ipv4.safeParse(host).success) return host + port;
-  if (ipv6.safeParse(host).success) return (port ? `[${host.toLowerCase()}]` : host.toLowerCase()) + port;
+  if (ipv6.safeParse(host).success) {
+    const normalized = new URL(`http://[${host}]`).hostname.slice(1, -1);
+    return (port ? `[${normalized}]` : normalized) + port;
+  }
+  if (bracketed) return null;
   const wildcard = host.startsWith("*.");
   const domain = wildcard ? host.slice(2) : host;
   if (/^[\d.]+$/u.test(domain) || /[:[\]]/u.test(domain)) return null;

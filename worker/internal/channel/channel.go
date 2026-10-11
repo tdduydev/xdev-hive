@@ -88,27 +88,32 @@ func (c Config) status(state string, err error) {
 }
 
 type jobSpec struct {
-	Kind           string            `json:"kind"`
-	Budget         runner.Budget     `json:"budget"`
-	RunPermissions string            `json:"runPermissions"`
-	Repo           string            `json:"repo"`
-	RepoURL        string            `json:"repoUrl"`
-	Project        string            `json:"project"`
-	ProjectKey     string            `json:"projectKey"`
-	CLI            string            `json:"cli"`
-	Model          string            `json:"model"`
-	Prompt         string            `json:"prompt"`
-	BaseBranch     string            `json:"baseBranch"`
-	Branch         string            `json:"branch"`
-	TimeoutSec     int               `json:"timeoutSec"`
-	SetupScript    string            `json:"setupScript"`
-	Image          string            `json:"image"`
-	SetupEnv       map[string]string `json:"setupEnv"`
+	Execution      string                   `json:"execution"`
+	Sandbox        *runner.SandboxJobConfig `json:"sandbox"`
+	Kind           string                   `json:"kind"`
+	Budget         runner.Budget            `json:"budget"`
+	RunPermissions string                   `json:"runPermissions"`
+	Repo           string                   `json:"repo"`
+	RepoURL        string                   `json:"repoUrl"`
+	Project        string                   `json:"project"`
+	ProjectKey     string                   `json:"projectKey"`
+	CLI            string                   `json:"cli"`
+	Model          string                   `json:"model"`
+	Prompt         string                   `json:"prompt"`
+	BaseBranch     string                   `json:"baseBranch"`
+	Branch         string                   `json:"branch"`
+	TimeoutSec     int                      `json:"timeoutSec"`
+	SetupScript    string                   `json:"setupScript"`
+	Image          string                   `json:"image"`
+	SetupEnv       map[string]string        `json:"setupEnv"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	var s jobSpec
 	if err := json.Unmarshal(o.Spec, &s); err != nil {
+		return runner.Job{}, err
+	}
+	if err := s.validateExecution(); err != nil {
 		return runner.Job{}, err
 	}
 	repo := s.RepoURL
@@ -126,7 +131,10 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv}
+	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv}
+	if s.Sandbox != nil {
+		j.EnvironmentImage = s.Sandbox.Image.BaseImage
+	}
 	if j.BaseBranch == "" {
 		j.BaseBranch = "main"
 	}
@@ -134,6 +142,19 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 		j.Branch = "ai/" + o.RunID
 	}
 	return j, nil
+}
+
+func (s jobSpec) validateExecution() error {
+	if s.Execution != "" && s.Execution != "worker" && s.Execution != "sandbox" {
+		return fmt.Errorf("loại thực thi job không hợp lệ")
+	}
+	if (s.Execution == "sandbox") != (s.Sandbox != nil) {
+		return fmt.Errorf("job sandbox phải có snapshot allowlist và image")
+	}
+	if s.Sandbox != nil {
+		return s.Sandbox.Validate()
+	}
+	return nil
 }
 
 type UpgradeError struct{ Message UpgradeRequired }
