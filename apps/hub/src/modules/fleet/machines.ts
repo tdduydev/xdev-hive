@@ -1,5 +1,5 @@
 import type { Machine } from "@xdev-hive/contracts";
-import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { notify } from "../notify/index.ts";
@@ -221,6 +221,16 @@ export async function listOnlineMachines(
     .from(machines)
     .where(and(eq(machines.teamId, teamId), eq(machines.status, "online"), isNull(machines.revokedAt)))
     .orderBy(asc(machines.lastSeenAt));
+}
+
+/** Tên của các máy trong tổ chức của context (kể cả máy đã thu hồi), để hiện kèm run. */
+export async function machineNames(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: machines.id, name: machines.name })
+    .from(machines)
+    .where(inArray(machines.id, ids));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */

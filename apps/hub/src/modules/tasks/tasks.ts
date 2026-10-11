@@ -161,15 +161,24 @@ export async function findTaskByIssue(
   return row ?? null;
 }
 
-export async function listTasks(tx: Tx, userId: string, projectId: string, status?: TaskStatus): Promise<Task[]> {
-  const project = await loadProject(tx, projectId);
-  if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw projectNotFound();
-  const rows = await tx
-    .select()
-    .from(tasks)
-    .where(and(eq(tasks.projectId, projectId), status ? eq(tasks.status, status) : undefined))
-    .orderBy(asc(tasks.number));
-  return rows.map(toTask);
+/** Task của một dự án theo số thứ tự; không có `projectId` thì lấy task của mọi đội mình có vai trò, mới nhất trước. */
+export async function listTasks(tx: Tx, userId: string, projectId?: string, status?: TaskStatus): Promise<Task[]> {
+  const byStatus = status ? eq(tasks.status, status) : undefined;
+  if (projectId) {
+    const project = await loadProject(tx, projectId);
+    if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw projectNotFound();
+    const rows = await tx
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.projectId, projectId), byStatus))
+      .orderBy(asc(tasks.number));
+    return rows.map(toTask);
+  }
+  const rows = await tx.select().from(tasks).where(byStatus).orderBy(desc(tasks.createdAt));
+  // Số đội trong một tổ chức nhỏ, hỏi vai trò từng đội một lần là đủ (như projects.list).
+  const roles = new Map<string, TeamRole | null>();
+  for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
+  return rows.filter((r) => roles.get(r.teamId)).map(toTask);
 }
 
 export async function getTask(tx: Tx, userId: string, id: string): Promise<Task> {
