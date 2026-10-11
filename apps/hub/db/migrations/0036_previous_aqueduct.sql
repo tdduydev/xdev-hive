@@ -1,1 +1,0 @@
-ALTER TABLE "hive"."chat_messages" ADD COLUMN "sender_id" text;

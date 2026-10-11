@@ -1,5 +1,5 @@
 {
-  "id": "232d9186-2325-4274-93bd-4426023c496b",
+  "id": "f60aaec4-3051-4a35-8ad3-20d435e2114c",
   "prevId": "cf1d34e0-f9d3-4c04-a744-97003466674e",
   "version": "7",
   "dialect": "postgresql",
@@ -3532,320 +3532,6 @@
       },
       "isRLSEnabled": true
     },
-    "hive.approvals": {
-      "name": "approvals",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "thread_id": {
-          "name": "thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "leader_approval_state",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "decided_by": {
-          "name": "decided_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "approvals_org_status_expiry": {
-          "name": "approvals_org_status_expiry",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "expires_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "approvals_thread_id_org_id_chat_threads_id_org_id_fk": {
-          "name": "approvals_thread_id_org_id_chat_threads_id_org_id_fk",
-          "tableFrom": "approvals",
-          "tableTo": "chat_threads",
-          "schemaTo": "hive",
-          "columnsFrom": ["thread_id", "org_id"],
-          "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {
-        "approvals_rw": {
-          "name": "approvals_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "hive.chat_messages": {
-      "name": "chat_messages",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "thread_id": {
-          "name": "thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "leader_chat_role",
-          "typeSchema": "hive",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "chat_messages_thread_created": {
-          "name": "chat_messages_thread_created",
-          "columns": [
-            {
-              "expression": "thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "chat_messages_thread_id_org_id_chat_threads_id_org_id_fk": {
-          "name": "chat_messages_thread_id_org_id_chat_threads_id_org_id_fk",
-          "tableFrom": "chat_messages",
-          "tableTo": "chat_threads",
-          "schemaTo": "hive",
-          "columnsFrom": ["thread_id", "org_id"],
-          "columnsTo": ["id", "org_id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {
-        "chat_messages_rw": {
-          "name": "chat_messages_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "hive.chat_threads": {
-      "name": "chat_threads",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "chat_threads_org_updated": {
-          "name": "chat_threads_org_updated",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "updated_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "chat_threads_id_org": {
-          "name": "chat_threads_id_org",
-          "nullsNotDistinct": false,
-          "columns": ["id", "org_id"]
-        }
-      },
-      "policies": {
-        "chat_threads_rw": {
-          "name": "chat_threads_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
-      "isRLSEnabled": true
-    },
     "hive.notification_channels": {
       "name": "notification_channels",
       "schema": "hive",
@@ -5122,6 +4808,219 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
+    "hive.plans": {
+      "name": "plans",
+      "schema": "hive",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_run_id": {
+          "name": "plan_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "plan_status",
+          "typeSchema": "hive",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'awaiting'"
+        },
+        "content": {
+          "name": "content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "edited_content": {
+          "name": "edited_content",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_by": {
+          "name": "decided_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "decided_at": {
+          "name": "decided_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "plans_run_awaiting": {
+          "name": "plans_run_awaiting",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "status = 'awaiting'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "plans_org_team": {
+          "name": "plans_org_team",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "plans_task_created": {
+          "name": "plans_task_created",
+          "columns": [
+            {
+              "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "plans_run": {
+          "name": "plans_run",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "plans_task_id_org_id_tasks_id_org_id_fk": {
+          "name": "plans_task_id_org_id_tasks_id_org_id_fk",
+          "tableFrom": "plans",
+          "tableTo": "tasks",
+          "schemaTo": "hive",
+          "columnsFrom": ["task_id", "org_id"],
+          "columnsTo": ["id", "org_id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "plans_plan_run": {
+          "name": "plans_plan_run",
+          "nullsNotDistinct": false,
+          "columns": ["plan_run_id"]
+        },
+        "plans_task_revision": {
+          "name": "plans_task_revision",
+          "nullsNotDistinct": false,
+          "columns": ["task_id", "revision"]
+        }
+      },
+      "policies": {
+        "plans_rw": {
+          "name": "plans_rw",
+          "as": "PERMISSIVE",
+          "for": "ALL",
+          "to": ["hive_app"],
+          "using": "org_id = hive.ctx_org()",
+          "withCheck": "org_id = hive.ctx_org()"
+        }
+      },
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
     "hive.tasks": {
       "name": "tasks",
       "schema": "hive",
@@ -5923,16 +5822,6 @@
       "schema": "hive",
       "values": ["pending", "approved", "rejected"]
     },
-    "hive.leader_approval_state": {
-      "name": "leader_approval_state",
-      "schema": "hive",
-      "values": ["pending", "approved", "rejected", "expired"]
-    },
-    "hive.leader_chat_role": {
-      "name": "leader_chat_role",
-      "schema": "hive",
-      "values": ["user", "leader", "system"]
-    },
     "hive.notification_channel_kind": {
       "name": "notification_channel_kind",
       "schema": "hive",
@@ -5946,7 +5835,7 @@
     "hive.run_kind": {
       "name": "run_kind",
       "schema": "hive",
-      "values": ["code", "review"]
+      "values": ["code", "review", "plan"]
     },
     "hive.run_state": {
       "name": "run_state",
@@ -5984,10 +5873,15 @@
       "schema": "hive",
       "values": ["queued", "processed", "ignored", "failed"]
     },
+    "hive.plan_status": {
+      "name": "plan_status",
+      "schema": "hive",
+      "values": ["awaiting", "approved", "rejected", "superseded"]
+    },
     "hive.task_status": {
       "name": "task_status",
       "schema": "hive",
-      "values": ["todo", "queued", "running", "review", "done", "cancelled"]
+      "values": ["todo", "queued", "running", "awaiting_plan", "review", "done", "cancelled"]
     },
     "hive.member_status": {
       "name": "member_status",

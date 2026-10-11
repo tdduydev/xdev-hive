@@ -1,1 +1,0 @@
-ALTER TYPE "hive"."run_kind" ADD VALUE 'leader';

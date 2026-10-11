@@ -105,30 +105,30 @@ func TestRunnerReadOnlyRunsDoNotPush(t *testing.T) {
 	for _, kind := range []string{KindPlan, KindLeader} {
 		for _, mode := range []string{"empty", "commit"} {
 			t.Run(kind+"/"+mode, func(t *testing.T) {
-			var events []Event
-			r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
-			job := Job{RunID: kind + "-" + mode, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
-			if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
-				t.Fatal(err)
-			}
-			got := lastResult(events)
-			if got == nil || got.Status != "succeeded" || got.CommitCount != 0 || len(got.ChangedFiles) != 0 {
-				t.Fatalf("result = %#v", got)
-			}
-			if mode == "empty" && got.HeadSHA != baseSHA {
-				t.Fatalf("HEAD = %s, muốn nhánh chính %s", got.HeadSHA, baseSHA)
-			}
-			for _, e := range events {
-				if e.Type == "phase" && e.Phase == "publishing" {
-					t.Fatal("run chỉ đọc không được push")
+				var events []Event
+				r := Runner{DataDir: data, CLICommands: fakeCommands(mode)}
+				job := Job{RunID: kind + "-" + mode, Kind: kind, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/HD-2", CLI: "codex", Prompt: "plan", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": mode, "HIVE_FAKE_EXPECT_FILE": "README", "HIVE_FAKE_ABSENT_FILE": "stale.txt"}}
+				if err := r.Run(context.Background(), job, SinkFunc(func(e Event) error { events = append(events, e); return nil })); err != nil {
+					t.Fatal(err)
 				}
-			}
-			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2")); now != oldSHA {
-				t.Fatalf("nhánh ai/HD-2 bị đổi: %s → %s", oldSHA, now)
-			}
-			if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base)); now != baseSHA {
-				t.Fatalf("nhánh chính bị đổi: %s → %s", baseSHA, now)
-			}
+				got := lastResult(events)
+				if got == nil || got.Status != "succeeded" || got.CommitCount != 0 || len(got.ChangedFiles) != 0 {
+					t.Fatalf("result = %#v", got)
+				}
+				if mode == "empty" && got.HeadSHA != baseSHA {
+					t.Fatalf("HEAD = %s, muốn nhánh chính %s", got.HeadSHA, baseSHA)
+				}
+				for _, e := range events {
+					if e.Type == "phase" && e.Phase == "publishing" {
+						t.Fatal("run chỉ đọc không được push")
+					}
+				}
+				if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/ai/HD-2")); now != oldSHA {
+					t.Fatalf("nhánh ai/HD-2 bị đổi: %s → %s", oldSHA, now)
+				}
+				if now := strings.TrimSpace(mustOut(t, "git", "--git-dir", remote, "rev-parse", "refs/heads/"+base)); now != baseSHA {
+					t.Fatalf("nhánh chính bị đổi: %s → %s", baseSHA, now)
+				}
 			})
 		}
 	}
