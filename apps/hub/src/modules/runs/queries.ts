@@ -1,10 +1,17 @@
-import type { Run, RunEventView, RunLogChunk } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
+import {
+  RUN_STATUS_GROUPS,
+  type Run,
+  type RunEventView,
+  type RunLogChunk,
+  type RunSearchInput,
+  type RunSearchResult,
+} from "@xdev-hive/contracts";
+import { and, asc, desc, eq, gt, inArray, isNotNull, type SQL, sql } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { machineNames } from "../fleet/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
-import { taskForUser } from "../tasks/index.ts";
-import { type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { taskForUser, taskSummaries } from "../tasks/index.ts";
+import { type TeamRole, teamRoleOf, visibleTeamIds } from "../tenancy/index.ts";
 import { runForUser } from "./engine.ts";
 import { runEvents, runLogs, runs } from "./schema.ts";
 import { toRun } from "./state.ts";
@@ -48,6 +55,66 @@ export async function latestRuns(tx: Tx, userId: string, projectId?: string): Pr
   const roles = new Map<string, TeamRole | null>();
   for (const teamId of new Set(rows.map((r) => r.teamId))) roles.set(teamId, await teamRoleOf(tx, userId, teamId));
   return withMachineNames(tx, rows.filter((r) => roles.get(r.teamId)).map(toRun));
+}
+
+/** Số máy tối đa trong ô lọc theo máy. */
+const MACHINE_FACET_LIMIT = 200;
+
+/**
+ * Run của mọi đội mình có vai trò, mới nhất trước. Phân trang bằng con trỏ là id run cuối của trang trước: so
+ * (created_at, id) ngay trong SQL với dòng của con trỏ, vì created_at có độ chính xác micro giây còn Date của JS chỉ
+ * tới mili giây, mang thời gian ra JS rồi gửi lại sẽ bỏ sót hoặc lặp run tạo cùng mili giây.
+ */
+export async function searchRuns(tx: Tx, userId: string, input: RunSearchInput): Promise<RunSearchResult> {
+  if (input.projectId) {
+    const project = await loadProject(tx, input.projectId);
+    if (!project || !(await teamRoleOf(tx, userId, project.teamId))) {
+      throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
+    }
+  }
+  const teamIds = await visibleTeamIds(tx, userId);
+  if (teamIds.length === 0) return { items: [], nextCursor: null, machines: [] };
+  const visible = inArray(runs.teamId, teamIds);
+  const filters: (SQL | undefined)[] = [
+    visible,
+    input.status ? inArray(runs.state, [...RUN_STATUS_GROUPS[input.status]]) : undefined,
+    input.projectId ? eq(runs.projectId, input.projectId) : undefined,
+    input.cli ? eq(runs.cli, input.cli) : undefined,
+    input.machineId ? eq(runs.machineId, input.machineId) : undefined,
+    // Con trỏ không còn (run đã bị xoá cùng task) thì so với null, trang trả rỗng thay vì quay về trang đầu.
+    input.cursor
+      ? sql`(${runs.createdAt}, ${runs.id}) < (select r.created_at, r.id from hive.runs r where r.id = ${input.cursor})`
+      : undefined,
+  ];
+  const rows = await tx
+    .select()
+    .from(runs)
+    .where(and(...filters))
+    .orderBy(desc(runs.createdAt), desc(runs.id))
+    .limit(input.limit + 1);
+  const page = rows.slice(0, input.limit);
+  const named = await withMachineNames(tx, page.map(toRun));
+  const tasks = await taskSummaries(tx, [...new Set(named.map((r) => r.taskId))]);
+  const items = named.map((r) => ({
+    ...r,
+    taskKey: tasks.get(r.taskId)?.key ?? "",
+    taskTitle: tasks.get(r.taskId)?.title ?? "",
+  }));
+  let machines: RunSearchResult["machines"] = [];
+  if (!input.cursor) {
+    const ids = await tx
+      .selectDistinct({ id: runs.machineId })
+      .from(runs)
+      .where(and(visible, isNotNull(runs.machineId)))
+      .limit(MACHINE_FACET_LIMIT);
+    const names = await machineNames(
+      tx,
+      ids.flatMap((r) => (r.id ? [r.id] : [])),
+    );
+    machines = [...names].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
+  }
+  const last = page.at(-1);
+  return { items, nextCursor: rows.length > input.limit && last ? last.id : null, machines };
 }
 
 /** Sự kiện có id lớn hơn `after`, cũ trước. Không kiểm quyền; người gọi đã kiểm. */

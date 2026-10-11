@@ -1,7 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Mỗi worktree có thể dùng cổng riêng để không tái sử dụng Vite của một task khác.
-const port = Number(process.env.HIVE_WEB_E2E_PORT ?? 4174);
+/*
+ * HIVE_WEB_E2E_PORT cho các worktree chạy e2e cùng lúc trên một máy mỗi nơi một cổng. Chỉ dùng lại Vite đang chạy khi
+ * chạy tại máy với cổng mặc định: đặt cổng riêng là để tách khỏi server khác, còn server lạ đang giữ cổng đó có thể là
+ * Vite của worktree khác (code khác) và làm test hỏng ngẫu nhiên.
+ */
+const portEnv = process.env.HIVE_WEB_E2E_PORT;
+const port = portEnv ? Number(portEnv) : 4174;
+if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+  throw new Error(`HIVE_WEB_E2E_PORT không hợp lệ: ${portEnv}`);
+}
 
 export default defineConfig({
   testDir: "e2e",
@@ -15,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: `pnpm exec vite --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !portEnv,
     // Test không cần hub thật: /rpc và /api/auth bị thay bằng page.route (e2e/fake-hub.ts). Proxy trỏ vào cổng
     // không có gì để lời gọi nào lọt qua mock sẽ hỏng ngay thay vì chạm hub dev đang chạy.
     env: { HIVE_HUB_URL: "http://127.0.0.1:9" },

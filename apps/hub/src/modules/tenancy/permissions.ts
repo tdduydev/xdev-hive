@@ -71,6 +71,23 @@ export async function teamRoleOf(tx: Tx, userId: string, teamId: string): Promis
   return row.role;
 }
 
+/**
+ * Id các đội người dùng có vai trò trong tổ chức của context: mọi đội với owner/admin tổ chức, còn lại là đội mình là
+ * thành viên. Danh sách có phân trang cần lọc trong SQL; hỏi teamRoleOf cho từng dòng sau khi lấy sẽ làm trang hụt.
+ */
+export async function visibleTeamIds(tx: Tx, userId: string): Promise<string[]> {
+  const org = await orgRoleOf(tx, userId);
+  if (!org) return [];
+  if (org === "owner" || org === "admin") {
+    return (await tx.select({ id: teams.id }).from(teams)).map((r) => r.id);
+  }
+  const rows = await tx
+    .select({ id: teams.id })
+    .from(teams)
+    .innerJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.userId, userId)));
+  return rows.map((r) => r.id);
+}
+
 /** Đòi vai trò đội ít nhất là `min`; trả về vai trò thực. */
 export async function requireTeamRole(tx: Tx, userId: string, teamId: string, min: TeamRole): Promise<TeamRole> {
   const role = await teamRoleOf(tx, userId, teamId);
