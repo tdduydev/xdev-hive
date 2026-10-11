@@ -1,0 +1,68 @@
+name: xdev-hive
+services:
+  postgres:
+    image: ${HIVE_POSTGRES_IMAGE:-pgvector/pgvector:0.8.7-pg18-trixie}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hive
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${HIVE_DB_ADMIN_PASSWORD:?Set HIVE_DB_ADMIN_PASSWORD}
+    volumes:
+      - hive-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hive"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  hub:
+    build:
+      context: ..
+      args:
+        NODE_IMAGE: ${HIVE_NODE_IMAGE:-node:24.21-bookworm-slim}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HIVE_PORT: 3000
+      HIVE_DATABASE_ADMIN_URL: postgres://postgres:${HIVE_DB_ADMIN_PASSWORD}@postgres:5432/hive
+      HIVE_DB_OWNER_PASSWORD: ${HIVE_DB_OWNER_PASSWORD:?Set HIVE_DB_OWNER_PASSWORD}
+      HIVE_DB_APP_PASSWORD: ${HIVE_DB_APP_PASSWORD:?Set HIVE_DB_APP_PASSWORD}
+      HIVE_DB_AUTH_PASSWORD: ${HIVE_DB_AUTH_PASSWORD:?Set HIVE_DB_AUTH_PASSWORD}
+      HIVE_DATABASE_OWNER_URL: postgres://hive_owner:${HIVE_DB_OWNER_PASSWORD}@postgres:5432/hive
+      HIVE_DATABASE_URL: postgres://hive_app:${HIVE_DB_APP_PASSWORD}@postgres:5432/hive
+      HIVE_DATABASE_AUTH_URL: postgres://hive_auth:${HIVE_DB_AUTH_PASSWORD}@postgres:5432/hive
+      HIVE_AUTH_SECRET: ${HIVE_AUTH_SECRET:?Set HIVE_AUTH_SECRET}
+      HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:?Set HIVE_PUBLIC_URL}
+      HIVE_GITHUB_CLIENT_ID: ${HIVE_GITHUB_CLIENT_ID:-}
+      HIVE_GITHUB_CLIENT_SECRET: ${HIVE_GITHUB_CLIENT_SECRET:-}
+      HIVE_GITLAB_CLIENT_ID: ${HIVE_GITLAB_CLIENT_ID:-}
+      HIVE_GITLAB_CLIENT_SECRET: ${HIVE_GITLAB_CLIENT_SECRET:-}
+      HIVE_GITLAB_ISSUER: ${HIVE_GITLAB_ISSUER:-}
+    ports:
+      - "127.0.0.1:${HIVE_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+  caddy:
+    image: ${HIVE_CADDY_IMAGE:-caddy:2.11.7}
+    profiles: [https]
+    restart: unless-stopped
+    depends_on:
+      hub:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:?Set HIVE_PUBLIC_URL}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  hive-pgdata:
+  caddy_data:
+  caddy_config:
