@@ -72,6 +72,7 @@ export const runs = hive
       machineId: uuid("machine_id"),
       pinnedMachineId: uuid("pinned_machine_id"),
       cli: text("cli").$type<"claude" | "codex" | "gemini">(),
+      model: text("model"),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),
