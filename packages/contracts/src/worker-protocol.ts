@@ -93,6 +93,14 @@ export const logChunk = z.object({
   bytes: z.base64().max(1_400_000),
 });
 
+/** File nhị phân vẫn có đường dẫn nhưng không cộng vào số dòng thêm/xoá. */
+export const diffStats = z.object({
+  addedLines: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  deletedLines: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  changedFiles: z.array(z.string()),
+});
+export type DiffStats = z.output<typeof diffStats>;
+
 export const runResult = z.object({
   ...envelope("run_result"),
   runId,
@@ -105,6 +113,8 @@ export const runResult = z.object({
     .regex(/^[0-9a-f]{40,64}$/)
     .nullable(),
   report: z.record(z.string(), z.unknown()).nullable(),
+  /** Worker cũ không gửi: hub vẫn yêu cầu review để tránh bỏ sót thay đổi. */
+  diffStats: diffStats.optional(),
 });
 
 // ---- Hub → worker ----

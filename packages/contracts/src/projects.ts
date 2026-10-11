@@ -85,6 +85,16 @@ export const outcomeCheck = z.discriminatedUnion("check", [
     required,
     by: z.enum(["claude", "codex", "gemini"]),
     minScore: z.number().min(0).max(10).default(7),
+    when: z
+      .object({
+        minChangedLines: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
+        paths: z.array(z.string().min(1).max(200)).min(1).max(50).optional(),
+      })
+      .refine(
+        (w) => w.minChangedLines !== undefined || w.paths !== undefined,
+        "Điều kiện review cần ngưỡng số dòng hoặc đường dẫn.",
+      )
+      .optional(),
   }),
   z.object({ check: z.literal("ci"), required }),
 ]);

@@ -1,4 +1,5 @@
 import type { CheckOutcome, OutcomeCheck } from "@xdev-hive/contracts";
+import type { DiffStats } from "@xdev-hive/contracts/worker-protocol";
 
 export type Outcome = "succeeded" | "no_changes" | "needs_review" | "failed";
 
@@ -9,6 +10,7 @@ export interface Evidence {
   report: Record<string, unknown> | null;
   /** Có run_event `agent_report` trong lần thử này. */
   hasAgentReport: boolean;
+  diffStats?: DiffStats | undefined;
   /** Kết quả review chéo cho kiểm tra `review`. Bỏ trống khi dự án tắt tính năng: kiểm tra đó cần người xem như cũ. */
   review?: ReviewEvidence | undefined;
 }
@@ -46,6 +48,18 @@ const UNSUPPORTED: Record<string, string> = {
 };
 
 const SKIPPED_REVIEW = "Bỏ qua review chéo vì run không đạt kiểm tra khác.";
+
+export function reviewSkipReason(c: Extract<OutcomeCheck, { check: "review" }>, stats?: DiffStats): string | null {
+  // Thiếu số liệu (worker cũ) thì giữ review, kể cả khi cấu hình chỉ xét đường dẫn.
+  if (!c.when || !stats) return null;
+  const changedLines = stats.addedLines + stats.deletedLines;
+  if (c.when.minChangedLines !== undefined && changedLines >= c.when.minChangedLines) return null;
+  if (stats.changedFiles.some((f) => (c.when?.paths ?? []).some((g) => matchGlob(g, f)))) return null;
+  const details = [`diff ${changedLines} dòng`];
+  if (c.when.minChangedLines !== undefined) details.push(`dưới ngưỡng ${c.when.minChangedLines}`);
+  if (c.when.paths) details.push("không đụng đường dẫn quan trọng");
+  return `Bỏ qua review chéo: ${details.join(", ")}.`;
+}
 
 function reviewOutcome(c: Extract<OutcomeCheck, { check: "review" }>, r: ReviewEvidence): CheckOutcome {
   const base = { check: c.check, required: c.required };
@@ -114,8 +128,20 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
         passed: problems.length === 0,
         message: problems.length ? problems.join(" ") : `${commitCount ?? "Có"} commit, ${changedFiles.length} file.`,
       });
-    } else if (c.check === "review" && ev.review) {
-      checks.push(reviewOutcome(c, ev.review));
+    } else if (c.check === "review") {
+      const reason = reviewSkipReason(c, ev.diffStats);
+      checks.push(
+        reason
+          ? { check: c.check, required: c.required, passed: null, skipped: true, message: reason }
+          : ev.review
+            ? reviewOutcome(c, ev.review)
+            : {
+                check: c.check,
+                required: c.required,
+                passed: null,
+                message: `Hub chưa hỗ trợ kiểm tra ${UNSUPPORTED.review}; cần người xem.`,
+              },
+      );
     } else if (c.check === "agentReport") {
       checks.push({
         check: c.check,
@@ -136,10 +162,10 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
   const failedRequired = checks.filter(
     (c) => c.required && c.passed === false && !(c.check === "changes" && noChanges),
   );
-  const pending = ev.review?.status === "pending" && checks.some((c) => c.check === "review");
+  const pending = ev.review?.status === "pending" && checks.some((c) => c.check === "review" && !c.skipped);
   // Run đã chắc không đạt thì không tốn một run review nữa.
   const settled = (list: CheckOutcome[]) =>
-    pending ? list.map((c) => (c.check === "review" ? { ...c, message: SKIPPED_REVIEW } : c)) : list;
+    pending ? list.map((c) => (c.check === "review" && !c.skipped ? { ...c, message: SKIPPED_REVIEW } : c)) : list;
   if (failedRequired.length) {
     return { ...base, outcome: "failed", checks: settled(checks), reasons: failedRequired.map((c) => c.message) };
   }
@@ -151,7 +177,7 @@ export function evaluatePolicy(policy: OutcomeCheck[], ev: Evidence): Evaluation
       reasons: ["Agent chạy xong nhưng không có commit mới."],
     };
   }
-  const soft = checks.filter((c) => c.passed !== true);
+  const soft = checks.filter((c) => !c.skipped && c.passed !== true);
   if (pending) {
     return { ...base, awaitingReview: true, outcome: "needs_review", checks, reasons: soft.map((c) => c.message) };
   }
