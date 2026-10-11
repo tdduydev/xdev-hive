@@ -385,6 +385,9 @@ func (s *durableSink) Emit(e runner.Event) error {
 	case "result":
 		s.result = true
 		msg = resultMessage(e.RunID, e.Attempt, seq, e.Result)
+	case "cost":
+		data, _ := json.Marshal(e.Cost)
+		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
 	default:
 		data, _ := json.Marshal(map[string]any{"phase": e.Phase, "event": e.Type})
 		msg = RunEvent{Type: "run_event", V: protocolVersion, ID: newID(), RunID: e.RunID, Attempt: e.Attempt, Seq: seq, Event: e.Type, Data: data}
