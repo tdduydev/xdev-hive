@@ -1,9 +1,9 @@
 import { implement } from "@orpc/server";
 import { contract } from "@xdev-hive/contracts";
-import type { HubConfig } from "../platform/index.ts";
+import type { HubConfig, RequestContext } from "../platform/index.ts";
 
 export function systemRouter(config: HubConfig) {
-  const os = implement(contract.system);
+  const os = implement(contract.system).$context<RequestContext>();
   return {
     health: os.health.handler(() => ({
       status: "ok" as const,

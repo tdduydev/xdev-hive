@@ -9,11 +9,26 @@ export const healthOutput = z.object({
 });
 export type Health = z.output<typeof healthOutput>;
 
+/** Người đang đăng nhập. */
+export const meOutput = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.email(),
+  image: z.string().nullable(),
+});
+export type Me = z.output<typeof meOutput>;
+
 export const contract = {
   system: {
     health: oc
       .route({ method: "GET", path: "/v1/health", summary: "Trạng thái hub", tags: ["system"] })
       .output(healthOutput),
+  },
+  me: {
+    get: oc
+      .route({ method: "GET", path: "/v1/me", summary: "Người đang đăng nhập", tags: ["identity"] })
+      .errors({ UNAUTHORIZED: { message: "Chưa đăng nhập." } })
+      .output(meOutput),
   },
 };
 

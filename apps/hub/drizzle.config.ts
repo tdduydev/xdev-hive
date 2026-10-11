@@ -4,6 +4,6 @@ export default defineConfig({
   dialect: "postgresql",
   schema: "./src/modules/*/schema.ts",
   out: "./db/migrations",
-  schemaFilter: ["hive"],
+  schemaFilter: ["hive", "auth"],
   migrations: { schema: "hive", table: "migrations" },
 });
