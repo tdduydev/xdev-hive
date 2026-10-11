@@ -36,6 +36,20 @@
       "when": 1791718533400,
       "tag": "0004_quyen_dang_nhap",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791719196954,
+      "tag": "0005_nhat_ky_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791719201148,
+      "tag": "0006_quyen_audit",
+      "breakpoints": true
     }
   ]
 }
