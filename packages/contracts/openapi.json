@@ -40663,8 +40663,15 @@
                         "format": "uuid"
                       },
                       "taskId": {
-                        "type": "string",
-                        "format": "uuid"
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       },
                       "projectId": {
                         "type": "string",
@@ -40678,7 +40685,8 @@
                         "enum": [
                           "code",
                           "review",
-                          "plan"
+                          "plan",
+                          "leader"
                         ],
                         "type": "string"
                       },

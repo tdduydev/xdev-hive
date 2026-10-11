@@ -3,13 +3,12 @@ import { contract, leaderAction } from "@xdev-hive/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, updateProjectSettings } from "../catalog/index.ts";
-import { costSummary } from "../cost/index.ts";
-import { listOnlineMachines } from "../fleet/index.ts";
 import type { RequestContext, Tx } from "../platform/index.ts";
 import { ConflictError, NotFoundError, withTenant } from "../platform/index.ts";
-import { type RunsEngine, runs } from "../runs/index.ts";
-import { createTask, listTasks } from "../tasks/index.ts";
+import type { RunsEngine } from "../runs/index.ts";
+import { createTask } from "../tasks/index.ts";
 import { type OrgDeps, orgMiddlewares } from "../tenancy/index.ts";
+import { assembleLeaderPrompt, formatTranscript, projectContext } from "./prompt.ts";
 import { approvals, chatMessages, chatThreads } from "./schema.ts";
 
 export interface LeaderRouterDeps extends OrgDeps {
@@ -105,12 +104,19 @@ export function leaderRouter(deps: LeaderRouterDeps) {
             .from(chatMessages)
             .where(eq(chatMessages.threadId, thread.id))
             .orderBy(chatMessages.createdAt);
-          const prompt = leaderPrompt(history, project.name, project.key, project.defaultBranch);
+          const transcript = formatTranscript(history);
           const context = await projectContext(tx, user.id, project.id, project.teamId);
+          const prompt = assembleLeaderPrompt({
+            transcript,
+            projectName: project.name,
+            projectKey: project.key,
+            defaultBranch: project.defaultBranch,
+            context,
+          });
           const started = await runsEngine.startLeaderRun(tx, user.id, {
             threadId: thread.id,
             projectId: project.id,
-            prompt: `${prompt}\n\nBối cảnh dự án:\n${context}`,
+            prompt,
             ...(input.cli ? { cli: input.cli } : {}),
           });
           return {
@@ -208,68 +214,6 @@ export function leaderRouter(deps: LeaderRouterDeps) {
       }),
     },
   };
-}
-
-const HISTORY_CHAR_BUDGET = 24_000;
-
-function leaderPrompt(
-  messages: Array<{ role: string; content: string }>,
-  projectName: string,
-  projectKey: string,
-  defaultBranch: string | null,
-): string {
-  const first = messages[0];
-  const selected = first ? [first] : [];
-  let used = first?.content.length ?? 0;
-  for (const message of messages.slice(1).reverse()) {
-    const size = message.content.length + message.role.length + 4;
-    if (used + size > HISTORY_CHAR_BUDGET) continue;
-    selected.unshift(message);
-    used += size;
-  }
-  const transcript = selected.map((m) => `${m.role}: ${m.content}`).join("\n\n");
-  return [
-    "Bạn là leader agent của dự án. Chỉ đọc repository và bối cảnh được cung cấp.",
-    "Trả lời người dùng bằng đúng một lần gọi MCP `leader_reply`.",
-    "Mọi hành động phải được đề xuất bằng MCP `leader_propose`; không tự thực hiện thay đổi.",
-    `Dự án: ${projectName} (${projectKey}); nhánh chính: ${defaultBranch ?? "main"}.`,
-    "Lịch sử cuộc trò chuyện (giữ tin đầu và các tin gần nhất trong ngân sách ký tự):",
-    transcript,
-  ].join("\n\n");
-}
-
-async function projectContext(tx: Tx, userId: string, projectId: string, teamId: string): Promise<string> {
-  const [todo, running] = await Promise.all([
-    listTasks(tx, userId, projectId, "todo"),
-    listTasks(tx, userId, projectId, "running"),
-  ]);
-  const recentRuns = await tx
-    .select({ kind: runs.kind, state: runs.state, createdAt: runs.createdAt })
-    .from(runs)
-    .where(eq(runs.projectId, projectId))
-    .orderBy(desc(runs.createdAt))
-    .limit(5);
-  const machines = await listOnlineMachines(tx, teamId);
-  const today = new Date().toISOString().slice(0, 10);
-  const from = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  let costs: string;
-  try {
-    const summary = await costSummary(tx, userId, { projectId, from, to: today, groupBy: "day" });
-    costs = `${summary.total.costUsd.toFixed(4)} USD trong 7 ngày`;
-  } catch {
-    costs = "không có quyền xem chi phí";
-  }
-  return [
-    `Task đang mở: ${
-      [...todo, ...running]
-        .slice(0, 10)
-        .map((t) => `${t.key} (${t.status}): ${t.title}`)
-        .join("; ") || "không có"
-    }`,
-    `Run gần đây: ${recentRuns.map((r) => `${r.kind}/${r.state}`).join(", ") || "không có"}`,
-    `Máy trực tuyến: ${machines.map((m) => `${m.name} [${m.clis.join(", ")}]`).join(", ") || "không có"}`,
-    `Chi phí: ${costs}`,
-  ].join("\n");
 }
 
 async function expireApprovals(tx: Tx) {

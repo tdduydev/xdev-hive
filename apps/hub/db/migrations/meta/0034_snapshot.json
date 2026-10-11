@@ -1,6 +1,6 @@
 {
-  "id": "57c5953a-6b53-4c3e-b4e4-bff81082cdba",
-  "prevId": "cbfa853a-4c2d-4937-b91b-f69945e2fb76",
+  "id": "ef15e9bd-da71-41dc-8a99-89342847d769",
+  "prevId": "48c55ad1-39e3-4b03-89b8-30d05ef00cd5",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3687,6 +3687,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "run_id": {
           "name": "run_id",
           "type": "uuid",
@@ -4534,13 +4540,19 @@
           "name": "task_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "project_id": {
           "name": "project_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "leader_thread_id": {
+          "name": "leader_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "kind": {
           "name": "kind",
@@ -4744,6 +4756,22 @@
           ],
           "isUnique": true,
           "where": "kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_leader_thread_active": {
+          "name": "runs_leader_thread_active",
+          "columns": [
+            {
+              "expression": "leader_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "kind = 'leader' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')",
           "concurrently": false,
           "method": "btree",
           "with": {}

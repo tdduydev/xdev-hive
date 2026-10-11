@@ -773,7 +773,9 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: run.id,
         data: { succeeded, threadId: run.leaderThreadId },
       });
-      await deps.leaderMessage?.(tx, run.leaderThreadId, message);
+      if (!succeeded) {
+        await deps.leaderMessage?.(tx, run.leaderThreadId, message);
+      }
       const queued = await deps.leaderQueuedPrompt?.(tx, run.leaderThreadId, run.createdAt);
       if (!queued) return undefined;
       const next = await startLeaderRun(tx, queued.userId, {
@@ -1340,6 +1342,8 @@ export function createRunsEngine(deps: RunsDeps) {
       await setTaskStatus(tx, run.taskId, "todo");
       // Huỷ khi kế hoạch còn chờ duyệt: không còn run nào chạy theo kế hoạch đó.
       await supersedePlans(tx, run.id);
+    } else if (run.kind === "leader" && run.leaderThreadId) {
+      await deps.leaderMessage?.(tx, run.leaderThreadId, "Leader run đã bị huỷ.");
     } else await childFinished(tx, run);
     return row;
   }
