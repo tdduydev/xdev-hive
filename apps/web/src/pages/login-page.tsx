@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useState } from "react";
 import { Brand, Icon } from "../components/icons.tsx";
@@ -12,6 +12,7 @@ import { type AuthErrorLike, type AuthMethod, authErrorLabel } from "../lib/auth
 import { meQuery } from "../lib/me.ts";
 import { emailDomain } from "../lib/people.ts";
 import { loginHref, safeRedirect } from "../lib/redirect.ts";
+import { orpc } from "../lib/rpc.ts";
 
 export interface LoginSearch {
   /** Trang muốn vào trước khi bị chuyển về đây. */
@@ -27,11 +28,13 @@ export function validateLoginSearch(search: Record<string, unknown>): LoginSearc
   };
 }
 
-type Pending = "sso" | "github" | "gitlab" | "email";
+type Pending = "sso" | "github" | "gitlab" | "email" | "signup";
 /** Lỗi hiện ngay cạnh cách đăng nhập vừa dùng; `redirect` là lỗi hub gửi về qua `?error=`. */
 type Failure = { at: AuthMethod | "redirect"; message: string };
 
 const methodOf = (p: Pending): AuthMethod => (p === "github" || p === "gitlab" ? "social" : p);
+
+const MIN_PASSWORD = 10;
 
 /** Màn 1 của mockup: SSO trên cùng, rồi GitHub/GitLab, email + mật khẩu nằm trong phần mở thêm. */
 export function LoginPage() {
@@ -43,6 +46,9 @@ export function LoginPage() {
   const [failure, setFailure] = useState<Failure | null>(() =>
     search.error ? { at: "redirect", message: authErrorLabel({ code: search.error }) } : null,
   );
+  // Hub chưa có tổ chức nào: người quản trị hub tạo tài khoản ngay tại đây thay cho lệnh curl trong tài liệu.
+  const setup = useQuery({ ...orpc.hubSetup.get.queryOptions(), staleTime: 60_000, retry: false });
+  const firstAdmin = setup.data?.firstAdminSignUp === true;
 
   // Bấm Back từ trang GitHub/IdP, trình duyệt có thể khôi phục trang từ bfcache với nút còn khoá; mở khoá lại.
   useEffect(() => {
@@ -75,7 +81,13 @@ export function LoginPage() {
       return false;
     }
     if (!error) return true;
-    setFailure({ at: methodOf(kind), message: authErrorLabel(error, methodOf(kind)) });
+    // Hub dùng một mã cho mọi lần từ chối (không lộ email nào được tạo); ở form quản trị đầu tiên thì câu "mở link mời"
+    // không đúng ngữ cảnh.
+    const message =
+      kind === "signup" && error.code === "SIGN_UP_INVITE_REQUIRED"
+        ? "Không tạo được tài khoản quản trị bằng email này. Dùng đúng email đã khai khi cài hub, hoặc đăng nhập nếu đã có tài khoản."
+        : authErrorLabel(error, methodOf(kind));
+    setFailure({ at: methodOf(kind), message });
     setPending(null);
     return false;
   }
@@ -107,6 +119,27 @@ export function LoginPage() {
     }
   }
 
+  async function onFirstAdmin(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const email = String(form.get("email") ?? "").trim();
+    const password = String(form.get("password") ?? "");
+    if (!name || !email || !password) {
+      setFailure({ at: "signup", message: "Nhập tên, email và mật khẩu." });
+      return;
+    }
+    if (password.length < MIN_PASSWORD) {
+      setFailure({ at: "signup", message: `Mật khẩu cần ít nhất ${MIN_PASSWORD} ký tự.` });
+      return;
+    }
+    if (await attempt("signup", () => authClient.signUp.email({ name, email, password }))) {
+      queryClient.removeQueries({ queryKey: meQuery.queryKey });
+      await queryClient.invalidateQueries({ queryKey: orpc.hubSetup.get.key() });
+      await navigate({ href: target, replace: true });
+    }
+  }
+
   const busy = pending !== null;
   const errorAt = (at: Failure["at"]) => (failure?.at === at ? failure.message : null);
 
@@ -117,6 +150,38 @@ export function LoginPage() {
         <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight text-ink">Đăng nhập</h1>
         <p className="-mt-2 text-muted">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
         {errorAt("redirect") && <Alert>{errorAt("redirect")}</Alert>}
+
+        {firstAdmin && (
+          <section aria-labelledby="first-admin" className="grid gap-2.5 rounded-lg border border-sel-line bg-sel p-4">
+            <h2 id="first-admin" className="text-base font-semibold text-sel-fg">
+              Tạo tài khoản quản trị đầu tiên
+            </h2>
+            <p className="text-sm text-body">
+              Hub chưa có tổ chức nào. Chỉ người quản trị hub (email khai lúc cài hub) mới tạo được tài khoản ở đây; sau
+              khi có tổ chức, mọi người vào bằng lời mời.
+            </p>
+            <form noValidate onSubmit={onFirstAdmin} className="grid gap-2.5">
+              <Field>
+                <FieldLabel>Tên hiển thị</FieldLabel>
+                <Input name="name" autoComplete="name" />
+              </Field>
+              <Field>
+                <FieldLabel>Email</FieldLabel>
+                <Input name="email" type="email" autoComplete="email" />
+              </Field>
+              <Field>
+                <FieldLabel>Mật khẩu</FieldLabel>
+                <Input name="password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD} />
+                <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
+              </Field>
+              {errorAt("signup") && <Alert>{errorAt("signup")}</Alert>}
+              <Button type="submit" variant="primary" block disabled={busy}>
+                <Icon name="key" />
+                {pending === "signup" ? "Đang tạo tài khoản…" : "Tạo tài khoản quản trị"}
+              </Button>
+            </form>
+          </section>
+        )}
 
         <Field render={<form noValidate onSubmit={onSso} />} invalid={errorAt("sso") !== null}>
           <FieldLabel>Email công ty</FieldLabel>
