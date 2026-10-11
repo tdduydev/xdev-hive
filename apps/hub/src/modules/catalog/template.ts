@@ -13,7 +13,7 @@ export interface TemplateFile {
 }
 
 export const TEMPLATE_ID = "xdev-standard";
-export const TEMPLATE_VERSION = 1;
+export const TEMPLATE_VERSION = 2;
 
 const agentsMd = (t: TemplateInput) => `# ${t.projectName}
 
@@ -25,9 +25,15 @@ Hệ thống: ${t.systemName}
 ## Cách làm việc
 
 - Mỗi task chạy trên nhánh riêng \`ai/<task-id>\`, rồi mở PR vào \`${t.defaultBranch}\`. Không push thẳng vào \`${t.defaultBranch}\`.
-- Đầu task, gọi MCP \`memory_search\` với project key \`${t.projectKey}\` để xem quyết định và ghi chú đã có.
-- Cuối task, gọi MCP \`task_update\` kèm tóm tắt việc đã làm và bằng chứng (lệnh test đã chạy, kết quả).
-- Điều gì đáng nhớ cho lần sau (quyết định, cái bẫy, lệnh hay dùng) thì ghi bằng \`memory_add\`.
+- Đầu phiên, gọi \`task_get\` để đọc task, rồi \`memory_search\` với vài từ khoá của task để xem quyết định, quy ước
+  và cái bẫy đã ghi. Trong run, tool tự dùng dự án \`${t.projectKey}\`; ngoài run truyền \`project: "${t.projectKey}"\`.
+- Cần tài liệu thì \`doc_list\` (lọc \`prefix: "project/${t.projectKey}/"\`) rồi \`doc_get\`. Cần cách làm có sẵn thì
+  \`skill_list\` rồi \`skill_get\`.
+- Chốt một quyết định, gặp một cái bẫy, hay thống nhất một quy ước thì ghi ngay bằng \`memory_write\` (\`kind\`:
+  decision, convention, gotcha, note). Mỗi memory một ý, kèm lý do và file liên quan.
+- Tài liệu sai hoặc thiếu thì gọi \`doc_propose\` với \`baseVersion\` lấy từ \`doc_get\`; quản trị đội sẽ duyệt.
+  Không sửa tài liệu của Hive bằng cách khác.
+- Kết thúc, gọi \`task_update\` kèm tóm tắt việc đã làm và bằng chứng (lệnh test đã chạy, kết quả, còn vướng gì).
 
 ## MCP của Hive
 
