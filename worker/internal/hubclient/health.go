@@ -1,53 +1,43 @@
-// Package hubclient gọi API OpenAPI của hub. Ở M3 phần này được sinh từ packages/contracts/openapi.json bằng oapi-codegen.
 package hubclient
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
 
-// Health là kết quả của GET /api/v1/health.
 type Health struct {
-	Status  string    `json:"status"`
-	Version string    `json:"version"`
-	Time    time.Time `json:"time"`
+	Status  string
+	Version string
+	Time    time.Time
 }
 
-// Client gọi hub qua HTTP.
-type Client struct {
-	BaseURL string
-	HTTP    *http.Client
+type HealthClient struct {
+	client *ClientWithResponses
+	base   string
 }
 
-// New tạo client với timeout ngắn: kiểm tra sức khoẻ không được treo dịch vụ nền.
-func New(baseURL string) *Client {
-	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 10 * time.Second}}
+func New(baseURL string) *HealthClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	client, _ := NewClientWithResponses(baseURL+"/api", WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
+	return &HealthClient{client: client, base: baseURL}
 }
 
-// Health hỏi trạng thái hub.
-func (c *Client) Health(ctx context.Context) (Health, error) {
-	var h Health
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/health", nil)
+func (c *HealthClient) Health(ctx context.Context) (Health, error) {
+	var health Health
+	response, err := c.client.SystemHealthWithResponse(ctx)
 	if err != nil {
-		return h, err
+		return health, fmt.Errorf("không gọi được hub %s: %w", c.base, err)
 	}
-	res, err := c.HTTP.Do(req)
-	if err != nil {
-		return h, fmt.Errorf("không gọi được hub %s: %w", c.BaseURL, err)
+	if response.StatusCode() != http.StatusOK || response.JSON200 == nil {
+		return health, fmt.Errorf("hub trả mã %d", response.StatusCode())
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return h, fmt.Errorf("hub trả mã %d", res.StatusCode)
+	status, _ := response.JSON200.Status.(string)
+	health = Health{Status: status, Version: response.JSON200.Version, Time: response.JSON200.Time}
+	if health.Status != "ok" {
+		return Health{}, fmt.Errorf("hub báo trạng thái %q", health.Status)
 	}
-	if err := json.NewDecoder(res.Body).Decode(&h); err != nil {
-		return h, fmt.Errorf("đọc phản hồi của hub: %w", err)
-	}
-	if h.Status != "ok" {
-		return h, fmt.Errorf("hub báo trạng thái %q", h.Status)
-	}
-	return h, nil
+	return health, nil
 }
