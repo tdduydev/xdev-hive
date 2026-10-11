@@ -517,6 +517,11 @@ describe("review chéo", () => {
       message: expect.stringContaining("CLI chết"),
     });
     expect(await taskStatus(soft.taskId)).toBe("review");
+    const { rows: inbox } = await admin.query(
+      "select user_id, event from hive.inbox_items where org_id = $1 and event_key = $2",
+      [org.orgId, `${soft.runId}:1:needs_review`],
+    );
+    expect(inbox).toEqual([{ user_id: (await runRow(soft.runId)).created_by, event: "run.needs_review" }]);
 
     await crossReview({ required: true });
     const hard = await codeThenReview(w);

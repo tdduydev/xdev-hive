@@ -926,6 +926,8 @@ export function createRunsEngine(deps: RunsDeps) {
       {
         orgId: run.orgId,
         event: outcome === "failed" ? "run.failed" : "run.needs_review",
+        eventKey: `${run.id}:${run.attempt}:${outcome}`,
+        recipientIds: [run.createdBy, ...(task ? [task.createdBy] : [])],
         title: outcome === "failed" ? `Run của ${key} thất bại` : `${key} cần người xem lại`,
         body: body.join("\n"),
         // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
