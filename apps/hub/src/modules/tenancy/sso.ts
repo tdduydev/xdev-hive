@@ -31,7 +31,10 @@ const orgIdOf = (providerId: string) => {
  * đúng tên miền đã khai: IdP của tổ chức có thể phát email ở tên miền khác (khách, đối tác), những người đó phải
  * được mời riêng. Đã có dòng thành viên (kể cả bị khoá) thì giữ nguyên, nên gọi lại ở mỗi lần đăng nhập vẫn an toàn.
  */
-export function ssoProvisioning(pool: pg.Pool): AuthHooks["ssoSignedIn"] {
+export type MemberPendingInput = { orgId: string; userId: string; email: string; name: string };
+export type MemberPendingCallback = (tx: Tx, member: MemberPendingInput) => Promise<unknown>;
+
+export function ssoProvisioning(pool: pg.Pool, onMemberPending?: MemberPendingCallback): AuthHooks["ssoSignedIn"] {
   return async ({ providerId, domain, user }) => {
     const orgId = orgIdOf(providerId);
     const emailDomain = user.email.split("@").pop()?.toLowerCase();
@@ -45,26 +48,29 @@ export function ssoProvisioning(pool: pg.Pool): AuthHooks["ssoSignedIn"] {
         .values({ orgId, userId: user.id, role: "member", status })
         .onConflictDoNothing()
         .returning();
-      if (row)
+      if (row) {
         await recordAudit(tx, {
           action: "org_member.sso_join",
           targetType: "user",
           targetId: user.id,
           data: { status, email: user.email },
         });
+        if (status === "pending")
+          await onMemberPending?.(tx, { orgId, userId: user.id, email: user.email, name: user.name });
+      }
     });
   };
 }
 
 /** Các hook đăng nhập cần tới tổ chức; main.ts tiêm vào createAuth. */
-export function authHooks(pool: pg.Pool): AuthHooks {
+export function authHooks(pool: pg.Pool, opts: { onMemberPending?: MemberPendingCallback } = {}): AuthHooks {
   const invites = invitationService(pool);
   return {
     inviteValid: (token, email) => invites.valid(token, email),
     acceptInvite: async (token, user) => {
       await invites.accept(token, user);
     },
-    ssoSignedIn: ssoProvisioning(pool),
+    ssoSignedIn: ssoProvisioning(pool, opts.onMemberPending),
   };
 }
 

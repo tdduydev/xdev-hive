@@ -1,10 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
+import type { NotificationChannelCreateInput } from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { type MockIdp, startMockIdp } from "../test/oidc-idp.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./modules/identity/index.ts";
-import { createPool } from "./modules/platform/index.ts";
+import { createChannel, notify } from "./modules/notify/index.ts";
+import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
 import { authHooks } from "./modules/tenancy/index.ts";
 
 // Database chung với các file test khác: email có hậu tố riêng để không đụng người dùng của file khác.
@@ -13,6 +15,7 @@ const mail = (name: string, domain = "example.com") => `${name}-${run}@${domain}
 const CORP = `corp-${run}.test`;
 const PUBLIC_URL = "http://localhost:3000";
 const SECRET = "test-secret-0123456789abcdef-0123456789";
+const masterKey = parseMasterKey(randomBytes(32).toString("base64"));
 
 const { adminUrl, appUrl, authUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -31,6 +34,7 @@ interface Caller {
 const users: Record<string, Caller> = {};
 let orgId = "";
 let teamId = "";
+let pendingChannelId = "";
 
 const cookieOf = (res: Response) =>
   res.headers
@@ -96,7 +100,16 @@ beforeAll(async () => {
     // IdP giả chạy ở 127.0.0.1: plugin SSO chặn host nội bộ trừ khi có trong trustedOrigins (cách dùng cho IdP
     // nội bộ của công ty).
     trustedOrigins: [PUBLIC_URL, idp.issuer],
-    hooks: authHooks(appPool),
+    hooks: authHooks(appPool, {
+      onMemberPending: (tx, member) =>
+        notify(tx, {
+          orgId: member.orgId,
+          event: "member.pending",
+          title: `${member.email} chờ duyệt vào tổ chức`,
+          body: `${member.name} (${member.email}) vừa đăng nhập bằng SSO. Hãy xem và duyệt thành viên đang chờ.`,
+          link: `${PUBLIC_URL}/quan-tri/thanh-vien`,
+        }),
+    }),
   };
   const config = { port: 0, version: "t", publicUrl: PUBLIC_URL, orgCreators: [mail("owner")] };
   app = createApp({ config, auth: createAuth({ ...opts, allowEmailSignUp: false }), pool: appPool });
@@ -113,6 +126,14 @@ beforeAll(async () => {
   );
   const team = await api("admin", "POST", "/teams", { name: "Thanh toán", slug: "thanh-toan" });
   teamId = team.json.id as string;
+  const channel = await withTenant(appPool, { userId: users.admin?.id ?? "", orgId }, (tx) =>
+    createChannel(tx, masterKey, users.admin?.id ?? "", {
+      name: `sso-${run}`,
+      events: ["member.pending"],
+      config: { kind: "telegram", botToken: "123456:ABCdefGhIJKlmnOPQrstUVwxyz0123456789", chatId: "-100" },
+    } as NotificationChannelCreateInput),
+  );
+  pendingChannelId = channel.id;
 });
 
 afterAll(async () => {
@@ -388,6 +409,7 @@ describe("SSO (OIDC) theo tổ chức", () => {
     const id = await userIdOf(cookie);
     users.khoa = { id, email: mail("khoa", CORP), cookie };
     expect(await membership(id)).toEqual({ role: "member", status: "pending" });
+    expect(await pendingNotifications()).toBe(1);
     // Đang chờ thì chưa vào được tổ chức.
     expect((await api("khoa", "GET", "/teams")).status).toBe(403);
     expect((await api("khoa", "GET", "/orgs/mine", undefined, null)).json.orgs).toEqual([]);
@@ -396,6 +418,7 @@ describe("SSO (OIDC) theo tổ chức", () => {
   it("đăng nhập SSO lần nữa không đổi trạng thái", async () => {
     await ssoSignIn(mail("khoa", CORP));
     expect(await membership(users.khoa?.id ?? "")).toEqual({ role: "member", status: "pending" });
+    expect(await pendingNotifications()).toBe(1);
   });
 
   it("quản trị duyệt người đang chờ", async () => {
@@ -433,9 +456,11 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ join: "member", provider: { issuer: idp.issuer } });
     // Secret cũ vẫn dùng được: luồng đăng nhập bên dưới phải đổi được code lấy token.
+    const notificationsBefore = await pendingNotifications();
     const { cookie } = await ssoSignIn(mail("binh", CORP));
     const id = await userIdOf(cookie);
     expect(await membership(id)).toEqual({ role: "member", status: "active" });
+    expect(await pendingNotifications()).toBe(notificationsBefore);
     expect((await api("", "GET", "/orgs/mine", undefined, null)).status).toBe(401);
   });
 
@@ -457,3 +482,11 @@ describe("SSO (OIDC) theo tổ chức", () => {
     expect(rows.map((r) => r.action)).toEqual(["sso.update", "sso.update", "sso.remove"]);
   });
 });
+
+async function pendingNotifications() {
+  const { rows } = await admin.query<{ count: string }>(
+    "select count(*) from hive.notifications where org_id = $1 and channel_id = $2 and event = 'member.pending'",
+    [orgId, pendingChannelId],
+  );
+  return Number(rows[0]?.count ?? 0);
+}
