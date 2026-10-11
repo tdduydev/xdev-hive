@@ -64,8 +64,10 @@ export function createApp({
     masterKey: config.masterKey,
     providerFactory: providerFactory ?? defaultProviderFactory,
   };
+  // Một cache cho cả route Hono (Tauri) và handler oRPC: manifest chỉ đọc một lần mỗi 5 phút.
+  const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   const router = {
-    system: systemRouter(config),
+    system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
@@ -80,7 +82,6 @@ export function createApp({
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
   const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
   const app = new Hono();
-  const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
@@ -93,6 +94,8 @@ export function createApp({
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
+  // tauri-plugin-updater đòi 204 khi không có bản mới; handler oRPC cùng đường dẫn (để có trong OpenAPI) trả 200 với
+  // null, nên route này phải đứng trước handler /api.
   app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {
     const result = await findDesktopUpdate(
       desktopReleases,
