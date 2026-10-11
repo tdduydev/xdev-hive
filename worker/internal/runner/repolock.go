@@ -116,5 +116,7 @@ func isGitLockError(stderr string) bool {
 	s := strings.ToLower(stderr)
 	return strings.Contains(s, "cannot lock ref") ||
 		strings.Contains(s, "could not lock config file") ||
-		(strings.Contains(s, "unable to create") && strings.Contains(s, ".lock': file exists"))
+		(strings.Contains(s, "unable to create") && strings.Contains(s, ".lock': file exists")) ||
+		// git 2.53 báo ref đang bị khoá trong fetch theo lô bằng câu này thay cho "cannot lock ref".
+		(strings.Contains(s, "fetching ref") && strings.Contains(s, "reference already exists"))
 }

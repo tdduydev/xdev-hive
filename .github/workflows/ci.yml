@@ -83,11 +83,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
+      # Runner tự host tải ảnh ẩn danh từ IP máy chủ nên hay gặp 429 của Docker Hub; lấy cùng ảnh Node qua mirror ECR.
+      - name: Ảnh Node qua mirror
+        id: node
+        run: echo "image=public.ecr.aws/docker/library/$(sed -n 's/^ARG NODE_IMAGE=//p' Dockerfile)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: false
           tags: xdev-hive:ci
+          build-args: NODE_IMAGE=${{ steps.node.outputs.image }}
 
   desktop:
     name: Desktop Tauri (cargo check, test)
