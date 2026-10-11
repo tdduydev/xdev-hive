@@ -54,6 +54,18 @@ export const runResultView = z.object({
 });
 export type RunResultView = z.output<typeof runResultView>;
 
+/** Token và chi phí luỹ kế của run qua mọi lần thử, từ sự kiện cost của worker. */
+export const runCost = z.object({
+  tokensIn: z.number().int(),
+  tokensOut: z.number().int(),
+  cacheRead: z.number().int(),
+  cacheWrite: z.number().int(),
+  /** null khi CLI không báo USD (Codex, Gemini). */
+  costUsd: z.number().nullable(),
+  turns: z.number().int().nullable(),
+});
+export type RunCost = z.output<typeof runCost>;
+
 export const run = z.object({
   id,
   taskId: id,
@@ -75,6 +87,7 @@ export const run = z.object({
   headSha: z.string().nullable(),
   prUrl: z.string().nullable(),
   timeoutSec: z.number().int(),
+  cost: runCost,
   createdBy: z.string(),
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().nullable(),
