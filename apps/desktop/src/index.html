@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Đăng ký máy • xDev Hive</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="mark">H</span> xDev Hive</div>
+    <h1>Kết nối máy của bạn</h1>
+    <p class="lead">Đăng ký một lần để worker nhận việc từ đội của bạn.</p>
+    <form id="registration">
+      <label for="hub">Địa chỉ hub công khai</label>
+      <input id="hub" type="url" placeholder="https://hive.cong-ty.vn" required autocomplete="url">
+      <label for="token">Token đăng ký</label>
+      <input id="token" type="password" required autocomplete="off" spellcheck="false">
+      <details>
+        <summary>Hoặc dán lệnh đăng ký</summary>
+        <label for="command">Lệnh do admin đội cung cấp</label>
+        <textarea id="command" rows="3" placeholder="hive-worker register --hub … --token …" spellcheck="false" autocomplete="off"></textarea>
+        <button id="parse" type="button" class="secondary">Điền từ lệnh</button>
+      </details>
+      <p class="hint">Token dùng một lần và hết hạn sau 1 giờ. Xin token từ admin đội trên web.</p>
+      <button id="submit" type="submit">Đăng ký và bật worker</button>
+      <p id="message" role="status" aria-live="polite"></p>
+    </form>
+    <p class="foot">Đóng cửa sổ để ẩn vào khay. Worker vẫn chạy nền.</p>
+  </main>
+</body>
+</html>

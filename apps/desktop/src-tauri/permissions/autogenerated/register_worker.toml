@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-register-worker"
+description = "Enables the register_worker command without any pre-configured scope."
+commands.allow = ["register_worker"]
+
+[[permission]]
+identifier = "deny-register-worker"
+description = "Denies the register_worker command without any pre-configured scope."
+commands.deny = ["register_worker"]
