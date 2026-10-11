@@ -17,6 +17,7 @@ import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type {
+  MergeQueueEntry,
   MyOrg,
   Project,
   ProjectCreateInput,
@@ -90,7 +92,15 @@ const STEPS = {
   pr: "8c. PR tồn tại",
   report: "8d. Agent báo cáo qua MCP",
   worktree: "8e. Worktree trên worker đã gỡ",
-  cleanup: "9. Dọn dẹp",
+  mergeOn: "9a. Bật merge queue, merge.mode auto",
+  mqEnqueue: "9b. PR của run tự vào hàng merge",
+  mqMerged: "9c. Job catalog-merge xử lý tới merged",
+  mqMain: "9d. Nhánh chính có thay đổi của agent",
+  mqDone: "9e. Mục ở Đã xong kèm mergeSha",
+  parQueue: "10a. Hai task song song, hai PR vào hàng",
+  parOrder: "10b. Merge tuần tự đúng thứ tự hàng",
+  parMain: "10c. Nhánh chính chứa cả hai thay đổi",
+  cleanup: "11. Dọn dẹp",
 } as const;
 type StepKey = keyof typeof STEPS;
 
@@ -358,6 +368,8 @@ const state: {
 // ---- 1. Postgres ---------------------------------------------------------------------------------------------------
 
 interface DbUrls {
+  /** Superuser: chỉ để bật tính năng dự án mà hub chưa có API đổi settings. */
+  adminUrl: string;
   appUrl: string;
   authUrl: string;
   jobsUrl: string;
@@ -404,7 +416,12 @@ async function startPostgres(): Promise<DbUrls> {
   await runCmd(process.execPath, ["apps/hub/src/cli.ts", "db:migrate"], {
     env: { ...base, HIVE_DATABASE_OWNER_URL: url("hive_owner", pw.owner) },
   });
-  return { appUrl: url("hive_app", pw.app), authUrl: url("hive_auth", pw.auth), jobsUrl: url("hive_jobs", pw.jobs) };
+  return {
+    adminUrl,
+    appUrl: url("hive_app", pw.app),
+    authUrl: url("hive_auth", pw.auth),
+    jobsUrl: url("hive_jobs", pw.jobs),
+  };
 }
 
 // ---- 2. Hub --------------------------------------------------------------------------------------------------------
@@ -701,13 +718,27 @@ async function followRun(api: HubClient, runId: string, signal: AbortSignal): Pr
 /** Mẫu log worker in ra khi nhận gói nó không xử lý; với job_offer là lỗi thật, báo ngay thay vì chờ hết giờ. */
 const UNHANDLED_OFFER = /Chưa xử lý gói từ hub.*JobOffer/;
 
-async function runTask(api: HubClient, projectId: string, worker: Proc) {
-  const task = await api.post<Task>("/api/v1/tasks", {
-    projectId,
-    title: "Thêm ghi chú e2e vào README",
-    body: `Thêm một mục ghi chú ngắn vào cuối README.md (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
-    preferredCli: CLI,
-  });
+interface TaskSpec {
+  title: string;
+  body: string;
+}
+
+const readmeTask: TaskSpec = {
+  title: "Thêm ghi chú e2e vào README",
+  body: `Thêm một mục ghi chú ngắn vào cuối README.md (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
+};
+
+/**
+ * Hai task chạy song song phải sửa file khác nhau: cùng sửa cuối README thì PR sau xung đột với nhánh chính sau khi
+ * PR trước merge. CLI giả đọc dấu [e2e-file:...] trong prompt để ghi file riêng.
+ */
+const fileTask = (name: string): TaskSpec => ({
+  title: `Thêm file ${name} (e2e)`,
+  body: `[e2e-file:${name}] Thêm file ghi chú ${name} (lần chạy ${stamp}), commit thay đổi, rồi gọi tool task_update của MCP hive để báo cáo.`,
+});
+
+async function runTask(api: HubClient, projectId: string, worker: Proc, spec: TaskSpec = readmeTask) {
+  const task = await api.post<Task>("/api/v1/tasks", { projectId, ...spec, preferredCli: CLI });
   console.log(`  Task ${task.key}: ${task.status}`);
   const run = await api.post<Run>("/api/v1/runs", { taskId: task.id, cli: CLI });
   console.log(`  Run ${run.id} trên nhánh ${run.branch}`);
@@ -799,6 +830,138 @@ async function checkWorktree(run: Run) {
     { timeoutMs: 15_000 },
   );
   console.log(`  ${work} đã gỡ, ${cache} không còn worktree.`);
+}
+
+// ---- 8b. Merge queue -----------------------------------------------------------------------------------------------
+
+const MERGE_TIMEOUT_MS = 90_000;
+
+/** Hub chưa có API đổi settings dự án: bật merge queue bằng SQL, rồi đọc lại qua API công khai để chắc đã có hiệu lực. */
+async function enableMergeQueue(api: HubClient, db: DbUrls, projectId: string) {
+  interface PgClient {
+    connect(): Promise<void>;
+    query(sql: string, params: unknown[]): Promise<{ rowCount: number | null }>;
+    end(): Promise<void>;
+  }
+  // pg là dependency của hub, không của gốc repo.
+  const { Client } = createRequire(join(ROOT, "apps", "hub", "package.json"))("pg") as {
+    Client: new (cfg: { connectionString: string }) => PgClient;
+  };
+  const client = new Client({ connectionString: db.adminUrl });
+  await client.connect();
+  try {
+    // requireCi false vì provider local luôn trả checks "none".
+    const res = await client.query(
+      `update hive.projects set settings = settings || jsonb_build_object(
+         'features', (settings->'features') || '{"mergeQueue": true}'::jsonb,
+         'merge', (settings->'merge') || '{"mode": "auto", "requireCi": false}'::jsonb)
+       where id = $1`,
+      [projectId],
+    );
+    if (res.rowCount !== 1) throw new Error(`Cập nhật settings dự án ảnh hưởng ${res.rowCount} dòng, cần 1.`);
+  } finally {
+    await client.end();
+  }
+  const now = await api.get<Project>(`/api/v1/projects/${projectId}`);
+  if (!now.settings.features.mergeQueue || now.settings.merge.mode !== "auto") {
+    throw new Error(
+      `Settings dự án chưa đổi: ${JSON.stringify({ features: now.settings.features, merge: now.settings.merge })}`,
+    );
+  }
+  console.log(`  features.mergeQueue=true, merge ${JSON.stringify(now.settings.merge)}`);
+}
+
+const listQueue = (api: HubClient, projectId: string) =>
+  api.get<MergeQueueEntry[]>(`/api/v1/projects/${projectId}/merge-queue`);
+
+/** Chờ mục của run tới `merged`; failed thì dừng ngay kèm ghi chú của hàng. */
+async function waitMerged(api: HubClient, projectId: string, runId: string) {
+  return waitFor(
+    `mục của run ${runId} merged`,
+    async () => {
+      const e = (await listQueue(api, projectId)).find((x) => x.runId === runId);
+      if (e?.state === "failed" || e?.state === "removed")
+        throw new GiveUp(`Mục hàng merge ${e.state}: ${e.note ?? "không có ghi chú"}`);
+      return e?.state === "merged" ? e : null;
+    },
+    { timeoutMs: MERGE_TIMEOUT_MS, intervalMs: 500, alive: state.hub },
+  );
+}
+
+const bareOf = (localGit: LocalGit, project: Project) =>
+  join(localGit.root, project.repo.owner, `${project.repo.name}.git`);
+
+async function checkEnqueued(api: HubClient, project: Project, run: Run) {
+  const e = await waitFor(
+    "PR của run vào hàng merge",
+    async () => (await listQueue(api, project.id)).find((x) => x.runId === run.id),
+    { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
+  );
+  if (e.branch !== run.branch) throw new Error(`Mục hàng nhắm nhánh ${e.branch}, run ở ${run.branch}.`);
+  console.log(`  PR #${e.prNumber} vào hàng, trạng thái ${e.state}, vị trí ${e.position ?? "-"}`);
+}
+
+async function checkMainHasChange(project: Project, run: Run, merged: MergeQueueEntry, localGit: LocalGit | null) {
+  if (!merged.mergeSha) throw new Error("Mục merged không có mergeSha.");
+  if (!localGit) {
+    const m = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(run.prUrl ?? "");
+    if (!m) throw new Error(`prUrl không phải PR GitHub: ${run.prUrl}`);
+    const res = await fetch(`${GITHUB_API}/repos/${m[1]}/${m[2]}/pulls/${m[3]}`, {
+      headers: { authorization: `Bearer ${githubSettings().token}`, accept: "application/vnd.github+json" },
+    });
+    const pr = (await res.json()) as { merged?: boolean; merge_commit_sha?: string };
+    if (!pr.merged || pr.merge_commit_sha !== merged.mergeSha) {
+      throw new Error(
+        `PR GitHub merged=${pr.merged}, merge_commit_sha=${pr.merge_commit_sha}, hàng ghi ${merged.mergeSha}`,
+      );
+    }
+    console.log(`  GitHub: PR đã merge ở ${merged.mergeSha}`);
+    return;
+  }
+  const bare = bareOf(localGit, project);
+  const main = project.repo.defaultBranch ?? "main";
+  const head = await runCmd("git", ["--git-dir", bare, "rev-parse", `refs/heads/${main}`]);
+  await runCmd("git", ["--git-dir", bare, "cat-file", "-e", `${merged.mergeSha}^{commit}`]);
+  const changed = (
+    await runCmd("git", ["--git-dir", bare, "diff", "--name-only", `${merged.mergeSha}^`, merged.mergeSha])
+  ).split("\n");
+  const missing = (run.result?.changedFiles ?? []).filter((f) => !changed.includes(f));
+  if (missing.length) throw new Error(`Commit merge ${merged.mergeSha} thiếu file của agent: ${missing.join(", ")}`);
+  // Nhánh chính có thể đã tiến thêm ở ca sau; ở đây chỉ cần merge commit nằm trong lịch sử.
+  await runCmd("git", ["--git-dir", bare, "merge-base", "--is-ancestor", merged.mergeSha, head]);
+  const log = await runCmd("git", ["--git-dir", bare, "log", "--oneline", "-3", main]);
+  console.log(
+    `  ${main} @ ${head.slice(0, 12)} chứa ${merged.mergeSha.slice(0, 12)} (${changed.join(", ")})\n${log
+      .split("\n")
+      .map((l) => `    ${l}`)
+      .join("\n")}`,
+  );
+}
+
+async function checkDone(api: HubClient, project: Project, runId: string) {
+  const e = (await listQueue(api, project.id)).find((x) => x.runId === runId);
+  if (e?.state !== "merged" || !e.mergeSha || !e.finishedAt || e.position !== null) {
+    throw new Error(`Mục chưa ở Đã xong đúng dạng: ${JSON.stringify(e)}`);
+  }
+  console.log(`  #${e.prNumber} merged, mergeSha ${e.mergeSha.slice(0, 12)}, xong lúc ${e.finishedAt}`);
+}
+
+/**
+ * Hai task tạo cùng lúc, hai PR vào hàng, merge lần lượt. Worker để capacity 1: với capacity 2, hai run cùng repo fetch
+ * đồng thời vào một repo cache và tranh khoá ref (lỗi của worker, ghi trong mô tả PR), nên run chạy nối nhau. Provider local không bao giờ trả "behind" (chỉ xét xung đột),
+ * nên bước "cập nhật nhánh PR theo nhánh chính" của hàng không được kiểm ở đây và không giả lập: PR sau vẫn merge
+ * được trên nhánh chính đã tiến vì hai task sửa file khác nhau.
+ */
+async function runParallel(api: HubClient, project: Project, worker: Proc, localGit: LocalGit | null) {
+  if (!localGit) throw new Pending("Ca song song chỉ chạy với provider local.");
+  const a = fileTask(`par-a-${stamp}.md`);
+  const b = fileTask(`par-b-${stamp}.md`);
+  const [ra, rb] = await Promise.all([runTask(api, project.id, worker, a), runTask(api, project.id, worker, b)]);
+  for (const r of [ra, rb]) {
+    if (r.run.state !== "succeeded")
+      throw new Error(`Run ${r.run.id} ${r.run.state}: ${(r.run.result?.reasons ?? []).join("; ")}`);
+  }
+  return [ra.run, rb.run] as const;
 }
 
 // ---- 9. Dọn dẹp ----------------------------------------------------------------------------------------------------
@@ -899,6 +1062,8 @@ async function main(): Promise<number> {
     const project = await step("project", () => createProject(api, system.id, conn.id, owner, localGit));
     state.repoUrl = project.repo.httpUrl ?? undefined;
     const { worker } = await step("worker", () => startWorker(api, team.id, tmp));
+    // Bật trước run đầu: chế độ auto đưa PR vào hàng ngay lúc run succeeded.
+    await step("mergeOn", () => enableMergeQueue(api, db, project.id));
     const { task, run } = await step("run", () => runTask(api, project.id, worker));
 
     await check("succeeded", async () => {
@@ -924,6 +1089,69 @@ async function main(): Promise<number> {
       throw new Error("Không có sự kiện agent_report: CLI giả không gọi được task_update qua /mcp.");
     });
     await check("worktree", () => checkWorktree(run));
+
+    await check("mqEnqueue", () => checkEnqueued(api, project, run));
+    let merged: MergeQueueEntry | undefined;
+    await check("mqMerged", async () => {
+      merged = await waitMerged(api, project.id, run.id);
+      console.log(`  PR #${merged.prNumber} merged, mergeSha ${merged.mergeSha}`);
+    });
+    if (merged) {
+      const entry: MergeQueueEntry = merged;
+      await check("mqMain", () => checkMainHasChange(project, run, entry, localGit));
+      await check("mqDone", () => checkDone(api, project, run.id));
+    }
+
+    // Ca hai: hai task song song.
+    let par: readonly [Run, Run] | undefined;
+    await check("parQueue", async () => {
+      const [r1, r2] = await runParallel(api, project, worker, localGit);
+      par = [r1, r2];
+      const entries = await waitFor(
+        "hai mục vào hàng",
+        async () => {
+          const list = (await listQueue(api, project.id)).filter((x) => x.runId === r1.id || x.runId === r2.id);
+          return list.length === 2 ? list : null;
+        },
+        { timeoutMs: 30_000, intervalMs: 300, alive: state.hub },
+      );
+      console.log(`  ${entries.map((e) => `#${e.prNumber}:${e.state}`).join(", ")}`);
+    });
+    if (par) {
+      const [r1, r2] = par;
+      await check("parOrder", async () => {
+        const done = await Promise.all([waitMerged(api, project.id, r1.id), waitMerged(api, project.id, r2.id)]);
+        const byQueue = [...done].sort((x, y) => x.createdAt.localeCompare(y.createdAt));
+        const byFinish = [...done].sort((x, y) => (x.finishedAt ?? "").localeCompare(y.finishedAt ?? ""));
+        if (byQueue[0]?.id !== byFinish[0]?.id) {
+          throw new Error(
+            `Thứ tự merge ${byFinish.map((e) => `#${e.prNumber}`)} khác thứ tự vào hàng ${byQueue.map((e) => `#${e.prNumber}`)}.`,
+          );
+        }
+        const [first, second] = byQueue;
+        if (!localGit || !first?.mergeSha || !second?.mergeSha) throw new Error("Thiếu mergeSha.");
+        const parent = await runCmd("git", [
+          "--git-dir",
+          bareOf(localGit, project),
+          "rev-parse",
+          `${second.mergeSha}^`,
+        ]);
+        if (parent !== first.mergeSha)
+          throw new Error(`Cha của ${second.mergeSha} là ${parent}, cần ${first.mergeSha}.`);
+        console.log(`  #${first.prNumber} rồi #${second.prNumber}; commit sau có cha là commit trước.`);
+      });
+      await check("parMain", async () => {
+        if (!localGit) return;
+        const bare = bareOf(localGit, project);
+        const files = (
+          await runCmd("git", ["--git-dir", bare, "ls-tree", "--name-only", project.repo.defaultBranch ?? "main"])
+        ).split("\n");
+        const want = [r1, r2].flatMap((r) => r.result?.changedFiles ?? []);
+        const missing = want.filter((f) => !files.includes(f) && !files.includes(f.split("/")[0] ?? f));
+        if (missing.length) throw new Error(`Nhánh chính thiếu: ${missing.join(", ")}`);
+        console.log(`  Nhánh chính có ${want.join(", ")}`);
+      });
+    }
   } catch (e) {
     // step() đã đổi mọi lỗi của bước thành StopFlow; lỗi khác là lỗi của chính script.
     if (!(e instanceof StopFlow)) {
