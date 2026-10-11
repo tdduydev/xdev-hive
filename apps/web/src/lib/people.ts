@@ -11,3 +11,14 @@ export function emailDomain(email: string): string | null {
   const match = /^[^\s@]+@([^\s@]+\.[^\s@.]+)$/.exec(email.trim());
   return match?.[1]?.toLowerCase() ?? null;
 }
+
+/** Chữ thường, bỏ dấu, để tìm "ha" ra "Lê Hà" và "duc" ra "Đức". */
+function fold(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").replace(/[đĐ]/g, "d").toLowerCase();
+}
+
+/** Người khớp ô tìm kiếm theo tên hoặc email, không phân biệt dấu và hoa thường. Ô trống thì khớp mọi người. */
+export function matchesPerson(person: { name: string; email: string }, query: string): boolean {
+  const q = fold(query.trim());
+  return q === "" || fold(person.name).includes(q) || fold(person.email).includes(q);
+}
