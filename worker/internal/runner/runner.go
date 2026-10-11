@@ -51,11 +51,12 @@ type SinkFunc func(Event) error
 func (f SinkFunc) Emit(e Event) error { return f(e) }
 
 type Result struct {
-	Status       string   `json:"status"`
-	HeadSHA      string   `json:"headSha,omitempty"`
-	CommitCount  int      `json:"commitCount"`
-	ChangedFiles []string `json:"changedFiles"`
-	Error        string   `json:"error,omitempty"`
+	Status       string     `json:"status"`
+	HeadSHA      string     `json:"headSha,omitempty"`
+	CommitCount  int        `json:"commitCount"`
+	ChangedFiles []string   `json:"changedFiles"`
+	DiffStats    *DiffStats `json:"-"`
+	Error        string     `json:"error,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job.
@@ -139,9 +140,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	var result *Result
 	defer func() {
 		// Git may refuse to remove a locked worktree; force is needed during cancellation too.
-		_ = git(context.Background(), cache, "worktree", "remove", "--force", work)
+		_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
 		_ = os.RemoveAll(work)
-		_ = git(context.Background(), cache, "worktree", "prune")
+		_ = gitWrite(context.Background(), cache, cache, "worktree", "prune")
 		_ = emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "cleanup"})
 		if result == nil && retErr != nil {
 			status := "failed"
@@ -161,24 +162,22 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err := os.MkdirAll(filepath.Dir(cache), 0700); err != nil {
 		return err
 	}
-	if _, err := os.Stat(cache); errors.Is(err, os.ErrNotExist) {
-		if err := git(ctx, r.DataDir, "clone", "--bare", job.RepoURL, cache); err != nil {
-			return err
-		}
+	if err := cloneOnce(ctx, r.DataDir, job.RepoURL, cache); err != nil {
+		return err
 	}
-	if err := git(ctx, cache, "fetch", "origin", job.BaseBranch+":refs/remotes/origin/"+job.BaseBranch); err != nil {
+	if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.BaseBranch+":refs/remotes/origin/"+job.BaseBranch); err != nil {
 		return err
 	}
 	if job.Kind == KindReview {
 		// Run review đọc đúng nhánh run cha đã push. Tách HEAD thay vì tạo nhánh local để lỡ agent commit cũng không
 		// có gì trỏ tới nhánh của cha.
-		if err := git(ctx, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
+		if err := gitWrite(ctx, cache, cache, "fetch", "origin", job.Branch+":refs/remotes/origin/"+job.Branch); err != nil {
 			return err
 		}
-		if err := git(ctx, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
+		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
-	} else if err := git(ctx, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
+	} else if err := gitWrite(ctx, cache, cache, "worktree", "add", "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
 		return err
 	}
 	if job.SetupScript != "" {
@@ -271,28 +270,23 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	count := 0
 	_, _ = fmt.Sscanf(strings.TrimSpace(countText), "%d", &count)
-	filesText, err := gitOutput(ctx, work, "diff", "--name-only", "origin/"+job.BaseBranch+"...HEAD")
+	stats, err := collectDiffStats(ctx, work, "origin/"+job.BaseBranch)
 	if err != nil {
 		return err
-	}
-	files := []string{}
-	for _, f := range strings.Split(strings.TrimSpace(filesText), "\n") {
-		if f != "" {
-			files = append(files, f)
-		}
 	}
 	sha, err := gitOutput(ctx, work, "rev-parse", "HEAD")
 	if err != nil {
 		return err
 	}
-	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: files}
+	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: stats.ChangedFiles, DiffStats: stats}
 	if count == 0 {
 		done.Status = "no_changes"
 	} else {
 		if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "publishing"}); err != nil {
 			return err
 		}
-		if err := git(ctx, work, "push", "-u", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
+		// push -u ghi upstream vào config chung của repo cache nên cũng phải giữ khoá.
+		if err := gitWrite(ctx, cache, work, "push", "-u", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
@@ -337,8 +331,8 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 				continue
 			}
 			repo := filepath.Join(dataDir, "repos", repoDir.Name())
-			_ = git(context.Background(), repo, "worktree", "remove", "--force", filepath.Join(root, name))
-			_ = git(context.Background(), repo, "worktree", "prune")
+			_ = gitWrite(context.Background(), repo, repo, "worktree", "remove", "--force", filepath.Join(root, name))
+			_ = gitWrite(context.Background(), repo, repo, "worktree", "prune")
 		}
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
@@ -347,6 +341,20 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 	return nil
 }
 func mustReadDir(p string) []os.DirEntry { v, _ := os.ReadDir(p); return v }
+
+// cloneOnce kiểm cache có chưa ngay trong khoá: hai run đầu tiên của một repo cùng thấy cache chưa có và cùng clone
+// vào một thư mục.
+func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
+	unlock, err := lockRepo(ctx, cache)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if _, err := os.Stat(cache); !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return gitRetryLocked(ctx, dataDir, "clone", "--bare", repoURL, cache)
+}
 
 type cliExecCmd struct {
 	*exec.Cmd

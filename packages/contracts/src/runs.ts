@@ -40,6 +40,8 @@ export const checkOutcome = z.object({
   required: z.boolean(),
   /** null khi hub chưa hỗ trợ kiểm tra này (command, ci), hoặc review chéo đang tắt hay chưa có kết quả. */
   passed: z.boolean().nullable(),
+  /** Bỏ qua theo điều kiện review: không ảnh hưởng kết luận chính sách. */
+  skipped: z.boolean().optional(),
   message: z.string(),
 });
 export type CheckOutcome = z.output<typeof checkOutcome>;
