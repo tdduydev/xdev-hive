@@ -28,7 +28,13 @@ import { PageBody, PageHeader } from "../shell/page-header.tsx";
 const SSO_ERROR_FIELDS: Record<string, keyof SsoFormValues> = {
   SSO_DISCOVERY_FAILED: "issuer",
   SSO_SECRET_REQUIRED: "clientSecret",
+  SSO_DOMAIN_TAKEN: "domain",
+  SSO_DOMAIN_PUBLIC: "domain",
 };
+
+// Hub chỉ cho SSO tự tạo tài khoản và tự thêm người vào tổ chức khi tên miền đã xác minh (apps/hub, identity/auth.ts).
+const DOMAIN_UNVERIFIED =
+  "Tên miền chưa được xác minh nên SSO chưa tạo tài khoản mới và chưa tự thêm người vào tổ chức: người mới vào bằng link mời. Hub chưa có bước tự xác minh tên miền, hãy báo quản trị hub.";
 
 /** Màn 5 của mockup: các cách đăng nhập của tổ chức và form SSO (OIDC). Chỉ quản trị tổ chức xem được. */
 export function LoginSettingsPage() {
@@ -93,9 +99,11 @@ function Methods({ settings }: { settings: SsoSettings }) {
           icon="key"
           name="SSO (OIDC)"
           detail={
-            sso
-              ? `${issuerHost(sso.issuer)} · ${sso.domain} · người mới: ${settings.join === "member" ? "tự thêm vào tổ chức" : "chờ duyệt"}`
-              : "Chưa cấu hình. Điền form bên dưới để bật."
+            !sso
+              ? "Chưa cấu hình. Điền form bên dưới để bật."
+              : sso.domainVerified
+                ? `${issuerHost(sso.issuer)} · ${sso.domain} · người mới: ${settings.join === "member" ? "tự thêm vào tổ chức" : "chờ duyệt"}`
+                : `${issuerHost(sso.issuer)} · ${sso.domain} (chưa xác minh) · người mới: cần lời mời`
           }
           status={sso ? <Pill tone="ok">Đang bật</Pill> : <Pill>Chưa cấu hình</Pill>}
         />
@@ -207,6 +215,8 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
             />
             {errors.domain ? (
               <FieldError>{errors.domain}</FieldError>
+            ) : provider && !provider.domainVerified ? (
+              <FieldHint>{DOMAIN_UNVERIFIED}</FieldHint>
             ) : (
               <FieldHint>Người có email tên miền này đăng nhập bằng SSO của tổ chức.</FieldHint>
             )}
