@@ -36,9 +36,13 @@ Lên một máy chủ có Docker và docker compose v2, từ máy dev:
 HIVE_PUBLIC_URL=http://<máy-chủ>:3000 HIVE_BIND=0.0.0.0 deploy/remote.sh <user>@<máy-chủ>
 ```
 
-- Script clone hoặc cập nhật repo vào `/opt/xdev-hive` (đổi bằng `HIVE_REMOTE_DIR`), checkout `main` (hoặc ref ở tham số
-  thứ hai), rồi chạy `docker compose up -d --build` và chờ hub báo healthy.
-- Lần đầu, mật khẩu database, `HIVE_AUTH_SECRET` và `HIVE_MASTER_KEY` được sinh ngay trên máy chủ vào `deploy/.env`
+- Script gửi mã của commit đang chọn (tham số thứ hai, mặc định `HEAD`) bằng `git archive` qua SSH, nên máy chủ không
+  cần quyền đọc repo private. Mã nằm ở `<dir>/src`, mặc định `<dir>` là `/opt/xdev-hive` (đổi bằng `HIVE_REMOTE_DIR`).
+  Sau đó script chạy `docker compose up -d --build` và chờ hub báo healthy.
+- **Máy chủ đã chạy hệ khác có compose project tên `xdev-hive` (ví dụ hệ cũ) thì phải đặt `HIVE_COMPOSE_PROJECT` khác**
+  ở lần đầu. Nếu không, compose sẽ coi container của hệ kia là của mình. Tên này được lưu vào `<dir>/.env` cho các lần
+  sau.
+- Lần đầu, mật khẩu database, `HIVE_AUTH_SECRET` và `HIVE_MASTER_KEY` được sinh ngay trên máy chủ vào `<dir>/.env`
   (quyền 600). Script không in chúng ra và không chép về máy dev. **Sao lưu `HIVE_MASTER_KEY`**: mất khoá là mất mọi
   secret đã lưu (token Git, kênh thông báo).
 - Lần sau, script giữ nguyên secret và chỉ thêm biến mới còn thiếu. `HIVE_PUBLIC_URL`, `HIVE_BIND`,
