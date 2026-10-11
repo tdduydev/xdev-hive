@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Thanh bên</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<style>
+body{margin:0}
+a:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+</style>
+</helmet>
+<nav aria-label="Điều hướng chính" style="width: 240px; min-height: 1000px; height: 100%; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 20px; background: var(--surface); border-right: 1px solid var(--line); font-family: var(--font-sans); font-size: 13.5px; color: var(--body);">
+  <div style="display: flex; align-items: center; gap: 10px; padding: 4px 6px;">
+    <img src="/_blob/7ba4e2504ca981741a7b3362e35297c8" alt="" style="width: 28px; height: 28px;">
+    <span style="font-size: 16px; font-weight: 600; color: var(--ink);">xDev Hive</span>
+  </div>
+  <button type="button" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; color: var(--ink); font: inherit; text-align: left; cursor: pointer;">
+    <span style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--brand-navy); color: #B8F1FF; font-size: 12px; font-weight: 600;">A</span>
+    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3;"><span style="font-weight: 600;">Acme</span><span style="font-size: 12px; color: var(--muted);">Đội Thanh toán</span></span>
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"></path></svg>
+  </button>
+  <div style="display: flex; flex-direction: column; gap: 2px;">
+    <div style="padding: 0 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--muted);">LÀM VIỆC</div>
+    <a href="Tasks.dc.html" style="{{s.tasks}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4" height="11" rx="1"></rect><rect x="9.5" y="2.5" width="4" height="7" rx="1"></rect></svg>Bảng việc</a>
+    <a href="RunDetail.dc.html" style="{{s.runs}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3.5v9l7-4.5z"></path></svg>Lượt chạy</a>
+    <a href="MergeQueue.dc.html" style="{{s.projects}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5a1 1 0 0 1 1-1h3l1.5 1.5h4.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1z"></path></svg>Dự án</a>
+    <a href="Machines.dc.html" style="{{s.machines}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="7.5" rx="1"></rect><path d="M6 13.5h4M8 10.5v3"></path></svg>Máy</a>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 2px;">
+    <div style="padding: 0 10px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--muted);">QUẢN TRỊ</div>
+    <a href="#" style="{{s.members}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="2.5"></circle><path d="M1.5 13.5c.5-2.3 2.3-3.5 4.5-3.5s4 1.2 4.5 3.5M11 3.2a2.5 2.5 0 0 1 0 4.6M12.5 10.3c1 .5 1.8 1.6 2 3.2"></path></svg>Thành viên</a>
+    <a href="#" style="{{s.teams}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="4" r="1.5"></circle><circle cx="12" cy="4" r="1.5"></circle><circle cx="8" cy="12" r="1.5"></circle><path d="M5.2 5 7 10.6M10.8 5 9 10.6"></path></svg>Đội và hệ thống</a>
+    <a href="Notifications.dc.html" style="{{s.notifications}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3zM6.5 14h3"></path></svg>Thông báo</a>
+    <a href="Costs.dc.html" style="{{s.costs}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 13.5h11M4.5 11V8M8 11V4.5M11.5 11V6.5"></path></svg>Chi phí và token</a>
+    <a href="#" style="{{s.signin}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>Cài đặt đăng nhập</a>
+  </div>
+  <div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-top: 1px solid var(--line);">
+    <span style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--sel); color: var(--sel-fg); font-size: 12px; font-weight: 600;">TL</span>
+    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3;"><span style="color: var(--ink); font-weight: 500;">Trần Lan</span><span style="font-size: 12px; color: var(--muted);">Quản trị tổ chức</span></span>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["tasks","runs","projects","machines","members","teams","notifications","costs","signin"],"default":"tasks"},"$preview":{"width":240,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? 'tasks';
+    const base = 'display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 7px; text-decoration: none; ';
+    const on = base + 'background: var(--sel); color: var(--sel-fg); font-weight: 600;';
+    const off = base + 'color: var(--body); font-weight: 500;';
+    const keys = ['tasks', 'runs', 'projects', 'machines', 'members', 'teams', 'notifications', 'costs', 'signin'];
+    const s = {};
+    keys.forEach((k) => { s[k] = k === active ? on : off; });
+    return { s };
+  }
+}
+</script>
+</body>
+</html>
