@@ -179,8 +179,9 @@ export async function getTask(tx: Tx, userId: string, id: string): Promise<Task>
 export async function updateTask(tx: Tx, userId: string, input: TaskUpdateInput): Promise<Task> {
   const current = await taskForUser(tx, userId, input.id, "member");
   if (current.status === "cancelled") throw new ConflictError("TASK_CANCELLED", "Task đã huỷ, không sửa được.");
-  if (input.status && ["queued", "running"].includes(current.status)) {
-    // Đổi tay lúc run đang chạy sẽ bị run ghi đè khi kết thúc; bắt người dùng huỷ run trước cho rõ ràng.
+  if (input.status && ["queued", "running", "awaiting_plan"].includes(current.status)) {
+    // Đổi tay lúc run đang chạy (hay đang chờ duyệt kế hoạch) sẽ bị run ghi đè khi kết thúc; bắt người dùng huỷ run
+    // trước cho rõ ràng.
     throw new ConflictError("TASK_RUN_ACTIVE", "Task đang có run chạy; huỷ run trước khi đổi trạng thái.");
   }
   const patch: Partial<typeof tasks.$inferInsert> = {};

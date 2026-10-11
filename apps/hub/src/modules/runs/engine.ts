@@ -1,4 +1,12 @@
-import { type OutcomeCheck, type RunStartInput, type TaskStatus, TERMINAL_RUN_STATES } from "@xdev-hive/contracts";
+import {
+  type OutcomeCheck,
+  type PlanApproveInput,
+  type PlanDecision,
+  type PlanRejectInput,
+  type RunStartInput,
+  type TaskStatus,
+  TERMINAL_RUN_STATES,
+} from "@xdev-hive/contracts";
 import { type DiffStats, diffStats } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
@@ -14,6 +22,7 @@ import {
   type RunMessage,
   sendToMachine,
 } from "../fleet/index.ts";
+import { authUser } from "../identity/index.ts";
 import { notify } from "../notify/index.ts";
 import {
   BadRequestError,
@@ -31,10 +40,33 @@ import {
   type ScmEventRegistry,
   scmEvents,
 } from "../scm/index.ts";
-import { loadTask, setTaskStatus, type TaskRow, taskForUser } from "../tasks/index.ts";
+import {
+  approvedPlanOf,
+  decidePlan,
+  findPlan,
+  latestPlanOf,
+  loadTask,
+  lockAwaitingPlan,
+  type PlanRow,
+  planMarkdown,
+  recordPlan,
+  setTaskStatus,
+  supersedePlans,
+  type TaskRow,
+  taskForUser,
+  toPlan,
+} from "../tasks/index.ts";
 import { applyCost, assertTaskBudget, type JobBudget, jobBudget, parseCostData, taskSpentUsd } from "./cost.ts";
 import { createMcpRunTokens } from "./mcp.ts";
-import { evaluatePolicy, evaluateReviewRun, type Outcome, type ReviewEvidence, reviewSkipReason } from "./policy.ts";
+import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
+import {
+  evaluatePlanRun,
+  evaluatePolicy,
+  evaluateReviewRun,
+  type Outcome,
+  type ReviewEvidence,
+  reviewSkipReason,
+} from "./policy.ts";
 import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
@@ -119,12 +151,12 @@ async function resultOf(tx: Tx, run: RunRow): Promise<Record<string, unknown>> {
   return row?.data ?? {};
 }
 
-/** Run review mới nhất của run code. */
-async function reviewRunOf(tx: Tx, parentId: string): Promise<RunRow | null> {
+/** Run con (review hoặc plan) mới nhất của run code. Lọc theo loại: run code đã lập kế hoạch có cả hai loại con. */
+async function childRunOf(tx: Tx, parentId: string, kind: "review" | "plan"): Promise<RunRow | null> {
   const [row] = await tx
     .select()
     .from(runs)
-    .where(eq(runs.parentRunId, parentId))
+    .where(and(eq(runs.parentRunId, parentId), eq(runs.kind, kind)))
     .orderBy(desc(runs.createdAt))
     .limit(1);
   return row ?? null;
@@ -140,6 +172,26 @@ async function reviewReportOf(tx: Tx, run: RunRow): Promise<ReviewReport | null>
     .limit(1);
   return row ? parseReviewReport(row.data) : null;
 }
+
+/** Kế hoạch plan_submit sau cùng của lần thử hiện tại, như reviewReportOf. */
+async function planReportOf(tx: Tx, run: RunRow) {
+  const [row] = await tx
+    .select({ data: runEvents.data })
+    .from(runEvents)
+    .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "plan_report")))
+    .orderBy(desc(runEvents.id))
+    .limit(1);
+  return row ? parsePlanReport(row.data) : null;
+}
+
+/** Kế hoạch đang có hiệu lực: bản người duyệt sửa nếu có. */
+const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
+
+/**
+ * Worker chỉ cấu hình MCP của Hive cho Claude và Codex. Run plan phải gọi plan_submit, nên run không chọn CLI thì
+ * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
+ */
+const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
 
 function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
   if (child.state === "succeeded" && report) return { status: "done", score: report.score, by: child.cli };
@@ -165,29 +217,54 @@ function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): Ta
   return "todo";
 }
 
+interface SpecContext {
+  instructions: string[];
+  budget: JobBudget | undefined;
+  parentPrUrl: string | null;
+  /** Run code: kế hoạch đã duyệt mà run phải làm theo. */
+  approvedPlan: PlanRow | null;
+  /** Run plan: kế hoạch lần trước của task nếu bị từ chối. */
+  rejectedPlan: PlanRow | null;
+}
+
+function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecContext): string {
+  const baseBranch = project.defaultBranch ?? "main";
+  // Run review đọc nhánh của run cha (run.branch) so với nhánh chính; worker không push và không đòi commit.
+  if (run.kind === "review") {
+    return reviewPrompt({
+      taskKey: task.key,
+      title: task.title,
+      body: task.body,
+      branch: run.branch,
+      baseBranch,
+      prUrl: ctx.parentPrUrl,
+    });
+  }
+  // Run plan đọc nhánh chính ở chế độ chỉ đọc; worker không push.
+  if (run.kind === "plan") {
+    const rejected = ctx.rejectedPlan;
+    return planPrompt({
+      taskKey: task.key,
+      title: task.title,
+      body: task.body,
+      baseBranch,
+      rejected: rejected ? { plan: planMarkdown(planInForce(rejected)), reason: rejected.note } : null,
+    });
+  }
+  const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
+  const plan = ctx.approvedPlan;
+  return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
+}
+
 function buildSpec(
   run: RunRow,
   task: TaskRow,
   project: ProjectRow,
   cli: string,
-  instructions: string[],
-  budget: JobBudget | undefined,
-  parentPrUrl: string | null,
+  ctx: SpecContext,
 ): Record<string, unknown> {
-  // Run review đọc nhánh của run cha (run.branch) so với nhánh chính; worker không push và không đòi commit.
-  const prompt =
-    run.kind === "review"
-      ? reviewPrompt({
-          taskKey: task.key,
-          title: task.title,
-          body: task.body,
-          branch: run.branch,
-          baseBranch: project.defaultBranch ?? "main",
-          prUrl: parentPrUrl,
-        })
-      : task.body
-        ? `${task.title}\n\n${task.body}`
-        : task.title;
+  const prompt = promptOf(run, task, project, ctx);
+  const { instructions, budget } = ctx;
   return {
     kind: run.kind,
     taskId: task.id,
@@ -237,6 +314,8 @@ export function createRunsEngine(deps: RunsDeps) {
   const log = deps.logger ?? console;
   const tokenKey = runTokenKey(deps.authSecret);
   const tenant = <T>(orgId: string, fn: (tx: Tx) => Promise<T>) => withTenant(deps.pool, { orgId }, fn);
+  // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
+  const taskLink = (task: TaskRow | null) => (task ? `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.key}` : null);
   const timers = new Set<NodeJS.Timeout>();
   const pendingNotify = new Map<string, NodeJS.Timeout>();
   let stopped = false;
@@ -288,7 +367,11 @@ export function createRunsEngine(deps: RunsDeps) {
         connected(m.id) &&
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
-        (run.cli ? m.clis.includes(run.cli) : m.clis.length > 0),
+        (run.cli
+          ? m.clis.includes(run.cli)
+          : run.kind === "plan"
+            ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
+            : m.clis.length > 0),
     );
     for (const m of candidates) {
       // Khoá theo máy tới hết transaction để hai run không cùng lấy slot cuối của một máy. Thử khoá (không chờ):
@@ -322,17 +405,26 @@ export function createRunsEngine(deps: RunsDeps) {
       if (!task || !project) return null;
       const machine = await pickMachine(tx, run);
       if (!machine) return null;
-      const instructions = await instructionsOf(tx, run.id);
+      // Run plan làm cho run code cha: chỉ dẫn đã gửi cho run cha (vd. bình luận nhắc bot) cũng là yêu cầu của kế hoạch.
+      const instructions = [
+        ...(run.kind === "plan" && run.parentRunId ? await instructionsOf(tx, run.parentRunId) : []),
+        ...(await instructionsOf(tx, run.id)),
+      ];
       const budget = jobBudget(project.settings.budget, await taskSpentUsd(tx, task.id));
       const [parent] = run.parentRunId
         ? await tx.select({ prUrl: runs.prUrl }).from(runs).where(eq(runs.id, run.parentRunId))
         : [];
+      const approvedPlan = run.kind === "code" ? await approvedPlanOf(tx, run.id) : null;
+      const latest = run.kind === "plan" ? await latestPlanOf(tx, task.id) : null;
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
-      const cli = run.cli ?? machine.clis[0] ?? "claude";
+      const cli =
+        run.cli ??
+        (run.kind === "plan" ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
+        "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       await notifyRun(tx, run.id);
@@ -344,7 +436,13 @@ export function createRunsEngine(deps: RunsDeps) {
           runId: run.id,
           attempt: run.attempt,
           ttl: offerTtlSec,
-          spec: buildSpec(run, task, project, cli, instructions, budget, parent?.prUrl ?? null),
+          spec: buildSpec(run, task, project, cli, {
+            instructions,
+            budget,
+            parentPrUrl: parent?.prUrl ?? null,
+            approvedPlan,
+            rejectedPlan: latest?.status === "rejected" ? latest : null,
+          }),
         } satisfies OutgoingMessage,
       };
     });
@@ -400,8 +498,8 @@ export function createRunsEngine(deps: RunsDeps) {
         { machineId: machine.id, offerMachineId: null, offerExpiresAt: null, startedAt: run.startedAt ?? new Date() },
         { machineId: machine.id, leaseId: lease.id },
       );
-      // Task của run review đã ở running theo run cha đang kiểm kết quả.
-      if (run.kind === "code") await setTaskStatus(tx, run.taskId, "running");
+      // Task của run review đã ở running theo run cha đang kiểm kết quả. Run plan là agent bắt đầu làm task.
+      if (run.kind !== "review") await setTaskStatus(tx, run.taskId, "running");
       await schedule({ kind: "lease", orgId: run.orgId, runId: run.id, leaseId: lease.id }, expiresAt, tx);
       return { run: leased, lease };
     });
@@ -614,14 +712,20 @@ export function createRunsEngine(deps: RunsDeps) {
 
   // ---- verifying ---------------------------------------------------------------------------------------------
 
-  /** Chạy chính sách kết quả của run đang verifying. Gọi ra nhà cung cấp Git ngoài transaction. */
+  /**
+   * Chạy chính sách kết quả của run đang verifying. Gọi ra nhà cung cấp Git ngoài transaction. Run code đang
+   * `planning` thì kết luận theo run plan con (cùng hẹn giờ, như run cha chờ run review).
+   */
   async function verify(orgId: string, runId: string): Promise<void> {
-    const kind = await tenant(orgId, async (tx) => {
-      const [run] = await tx.select({ kind: runs.kind, state: runs.state }).from(runs).where(eq(runs.id, runId));
-      return run?.state === "verifying" ? run.kind : null;
+    const run = await tenant(orgId, async (tx) => {
+      const [row] = await tx.select({ kind: runs.kind, state: runs.state }).from(runs).where(eq(runs.id, runId));
+      return row ?? null;
     });
-    if (kind === "code") await verifyCode(orgId, runId);
-    else if (kind === "review") await verifyReview(orgId, runId);
+    if (run?.kind === "code" && run.state === "planning") return settlePlanning(orgId, runId);
+    if (run?.state !== "verifying") return;
+    if (run.kind === "code") await verifyCode(orgId, runId);
+    else if (run.kind === "review") await verifyReview(orgId, runId);
+    else await verifyPlan(orgId, runId);
   }
 
   /**
@@ -646,7 +750,7 @@ export function createRunsEngine(deps: RunsDeps) {
       const reviewCheck = project?.settings.features.crossReview
         ? reviewCheckOf(run.policySnapshot, stats.success ? stats.data : undefined)
         : undefined;
-      const child = reviewCheck ? await reviewRunOf(tx, run.id) : null;
+      const child = reviewCheck ? await childRunOf(tx, run.id, "review") : null;
       const childReport = child?.state === "succeeded" ? await reviewReportOf(tx, child) : null;
       return {
         run,
@@ -736,7 +840,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (locked?.state !== "verifying") return null;
       if (awaitingReview && reviewCheck) {
         // Lần verify khác chạy chồng đã tạo run review.
-        if (await reviewRunOf(tx, locked.id)) return null;
+        if (await childRunOf(tx, locked.id, "review")) return null;
         const child = await createReviewRun(tx, locked, reviewCheck.by);
         // Ghi kết quả tạm để người xem thấy run đang chờ review nào; trạng thái giữ verifying.
         await tx.update(runs).set({ prUrl, result, updatedAt: sql`now()` }).where(eq(runs.id, locked.id));
@@ -863,7 +967,7 @@ export function createRunsEngine(deps: RunsDeps) {
         targetId: locked.id,
         data: { outcome: ev.outcome, kind: "review", parentRunId: locked.parentRunId, score: review?.score ?? null },
       });
-      await reviewFinished(tx, locked);
+      await childFinished(tx, locked);
       return true;
     });
     if (!finished) return;
@@ -874,12 +978,110 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   /**
-   * Run review kết thúc theo bất kỳ đường nào (xong, lỗi, hết lượt, bị huỷ): hẹn chạy lại verify của run cha trong
-   * cùng transaction, để hub chết ngay sau commit thì hẹn giờ vẫn kết luận được run cha.
+   * Run review hay run plan kết thúc theo bất kỳ đường nào (xong, lỗi, hết lượt, bị huỷ): hẹn chạy lại verify của run
+   * cha trong cùng transaction, để hub chết ngay sau commit thì hẹn giờ vẫn kết luận được run cha.
    */
-  async function reviewFinished(tx: Tx, run: RunRow): Promise<void> {
-    if (run.kind !== "review" || !run.parentRunId) return;
+  async function childFinished(tx: Tx, run: RunRow): Promise<void> {
+    if (run.kind === "code" || !run.parentRunId) return;
     await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
+  }
+
+  /** Run plan: succeeded khi agent đã gọi plan_submit. Xong thì kết luận run code cha (chờ duyệt hay thất bại). */
+  async function verifyPlan(orgId: string, runId: string): Promise<void> {
+    const ctx = await tenant(orgId, async (tx) => {
+      const [run] = await tx.select().from(runs).where(eq(runs.id, runId));
+      if (run?.state !== "verifying") return null;
+      return { run, data: await resultOf(tx, run), plan: await planReportOf(tx, run) };
+    });
+    if (!ctx) return;
+    const { run, data, plan } = ctx;
+    const report = (data.report ?? null) as Record<string, unknown> | null;
+    const ev = evaluatePlanRun({ exit: exitOf(data) ?? 1, report, steps: plan?.steps.length ?? null });
+    const finished = await tenant(orgId, async (tx) => {
+      const locked = await lockRun(tx, runId);
+      if (locked?.state !== "verifying") return false;
+      const result: RunResult = {
+        exit: exitOf(data),
+        commitCount: null,
+        changedFiles: [],
+        checks: ev.checks,
+        reasons: ev.reasons,
+        report,
+      };
+      await transition(tx, locked, ev.outcome, { result, finishedAt: new Date() }, { reasons: ev.reasons });
+      await recordAudit(tx, {
+        action: "run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: locked.id,
+        data: { outcome: ev.outcome, kind: "plan", parentRunId: locked.parentRunId },
+      });
+      await childFinished(tx, locked);
+      return true;
+    });
+    if (finished && run.parentRunId) background(verify(orgId, run.parentRunId), `verifying run ${run.parentRunId} lỗi`);
+  }
+
+  /**
+   * Run code đang `planning` khi run plan con đã kết thúc: có kế hoạch thì ghi vào bảng plans, chờ duyệt và báo người
+   * giao việc; không có (lỗi, hết giờ, hết lượt, bị huỷ, không gọi plan_submit) thì run code thất bại và task về todo
+   * như run review lỗi làm run cha thất bại, để task không treo ở planning.
+   */
+  async function settlePlanning(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.state !== "planning") return;
+      const child = await childRunOf(tx, run.id, "plan");
+      // Run plan còn chạy: khi nó kết thúc, childFinished hẹn lại bước này.
+      if (child && !TERMINAL_RUN_STATES.includes(child.state)) return;
+      const content = child?.state === "succeeded" ? await planReportOf(tx, child) : null;
+      const task = await loadTask(tx, run.taskId);
+      if (child && content) {
+        const plan = await recordPlan(tx, {
+          teamId: run.teamId,
+          taskId: run.taskId,
+          runId: run.id,
+          planRunId: child.id,
+          content,
+        });
+        await transition(tx, run, "awaiting_plan", {}, { planId: plan.id, planRunId: child.id });
+        await setTaskStatus(tx, run.taskId, "awaiting_plan");
+        await recordAudit(tx, {
+          action: "plan.submit",
+          actorUserId: null,
+          targetType: "plan",
+          targetId: plan.id,
+          data: { taskId: run.taskId, runId: run.id, planRunId: child.id, revision: plan.revision },
+        });
+        await notifyPlan(tx, run, task, plan);
+        return;
+      }
+      const why = !child
+        ? "không có run lập kế hoạch."
+        : child.state === "cancelled"
+          ? "run lập kế hoạch đã bị huỷ."
+          : (child.result?.reasons[0] ?? `run lập kế hoạch kết thúc ở trạng thái ${child.state}.`);
+      const reasons = [`Không lập được kế hoạch: ${why}`];
+      await transition(
+        tx,
+        run,
+        "failed",
+        {
+          finishedAt: new Date(),
+          result: { exit: null, commitCount: null, changedFiles: [], checks: [], reasons },
+        },
+        { reasons, planRunId: child?.id ?? null },
+      );
+      await setTaskStatus(tx, run.taskId, "todo");
+      await recordAudit(tx, {
+        action: "run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: run.id,
+        data: { outcome: "failed", reasons, planRunId: child?.id ?? null },
+      });
+      await notifyOutcome(tx, run, task, "failed", reasons, null);
+    });
   }
 
   /** Đăng điểm, tóm tắt và tối đa 20 phát hiện lên PR của run cha. Lỗi chỉ ghi log: kết quả đã nằm trên hub. */
@@ -928,8 +1130,37 @@ export function createRunsEngine(deps: RunsDeps) {
         event: outcome === "failed" ? "run.failed" : "run.needs_review",
         title: outcome === "failed" ? `Run của ${key} thất bại` : `${key} cần người xem lại`,
         body: body.join("\n"),
-        // Web chưa có trang task; đường dẫn này sẽ là trang task khi web có (cùng quy ước với bình luận trên issue).
-        link: task ? `${deps.publicUrl.replace(/\/+$/, "")}/tasks/${task.key}` : null,
+        link: taskLink(task),
+      },
+      { jobs: deps.jobs },
+    );
+  }
+
+  /**
+   * Báo kế hoạch chờ duyệt, cùng transaction với kế hoạch. notify chỉ gửi tới kênh của nhóm quản trị, nên ghi tên người
+   * giao việc trong nội dung để kênh biết ai cần duyệt.
+   */
+  async function notifyPlan(tx: Tx, run: RunRow, task: TaskRow | null, plan: PlanRow) {
+    const [who] = await tx
+      .select({ name: authUser.name, email: authUser.email })
+      .from(authUser)
+      .where(eq(authUser.id, run.createdBy));
+    const assigner = who ? `${who.name} <${who.email}>` : run.createdBy;
+    const key = task?.key ?? run.taskId;
+    await notify(
+      tx,
+      {
+        orgId: run.orgId,
+        event: "plan.awaiting_approval",
+        title: `Kế hoạch của ${key} chờ duyệt`,
+        body: [
+          task?.title ?? "",
+          `Người giao việc: ${assigner}`,
+          `Lần lập kế hoạch: ${plan.revision}`,
+          "",
+          planMarkdown(plan.content),
+        ].join("\n"),
+        link: taskLink(task),
       },
       { jobs: deps.jobs },
     );
@@ -987,7 +1218,7 @@ export function createRunsEngine(deps: RunsDeps) {
           { attempt: run.attempt + 1, machineId: null, rejectedBy: [], offerMachineId: null, offerExpiresAt: null },
           { retry: run.attempt + 1 },
         );
-        if (run.kind === "code") await setTaskStatus(tx, run.taskId, "queued");
+        if (run.kind !== "review") await setTaskStatus(tx, run.taskId, "queued");
         return { requeued: true };
       }
       const reasons = [`Mất kết nối với máy; đã thử ${run.attempt}/${run.maxAttempts} lần.`];
@@ -1012,8 +1243,8 @@ export function createRunsEngine(deps: RunsDeps) {
         await setTaskStatus(tx, run.taskId, "todo");
         await notifyOutcome(tx, run, await loadTask(tx, run.taskId), "failed", reasons, null);
       } else {
-        // Run review hết lượt: run cha kết luận (và báo nhóm quản trị nếu cần) thay cho nó.
-        await reviewFinished(tx, run);
+        // Run review hay run plan hết lượt: run cha kết luận (và báo nhóm quản trị nếu cần) thay cho nó.
+        await childFinished(tx, run);
       }
       return null;
     });
@@ -1038,8 +1269,11 @@ export function createRunsEngine(deps: RunsDeps) {
       { finishedAt: new Date(), offerMachineId: null, offerExpiresAt: null },
       data,
     );
-    if (run.kind === "code") await setTaskStatus(tx, run.taskId, "todo");
-    else await reviewFinished(tx, run);
+    if (run.kind === "code") {
+      await setTaskStatus(tx, run.taskId, "todo");
+      // Huỷ khi kế hoạch còn chờ duyệt: không còn run nào chạy theo kế hoạch đó.
+      await supersedePlans(tx, run.id);
+    } else await childFinished(tx, run);
     return row;
   }
 
@@ -1058,10 +1292,26 @@ export function createRunsEngine(deps: RunsDeps) {
       const machineId = run.machineId;
       return { row, after: () => send(machineId, { type: "cancel", runId: run.id, graceSec }) };
     }
-    // Chưa máy nào giữ (queued, chờ duyệt plan, lost): huỷ ngay; máy đang được đề nghị thì báo bỏ đề nghị.
+    // Run code đang chờ run plan: huỷ cả run plan, không để agent lập kế hoạch cho run đã huỷ. Khoá run cha rồi mới
+    // tới run con, cùng thứ tự với duyệt kế hoạch; run plan đang kiểm kết quả thì để nó tự kết thúc.
+    let child: () => void = noop;
+    if (run.state === "planning") {
+      const found = await childRunOf(tx, run.id, "plan");
+      const locked = found ? await lockRun(tx, found.id) : null;
+      if (locked && !TERMINAL_RUN_STATES.includes(locked.state) && locked.state !== "verifying") {
+        child = (await cancelLocked(tx, locked, by)).after;
+      }
+    }
+    // Chưa máy nào giữ (queued, planning, chờ duyệt plan, lost): huỷ ngay; máy đang được đề nghị thì báo bỏ đề nghị.
     const offered = run.offerMachineId;
     const row = await finishCancelled(tx, run, { by });
-    return { row, after: offered ? () => send(offered, { type: "cancel", runId: run.id, graceSec: 0 }) : noop };
+    return {
+      row,
+      after: () => {
+        child();
+        if (offered) send(offered, { type: "cancel", runId: run.id, graceSec: 0 });
+      },
+    };
   }
 
   // ---- API cho người dùng ------------------------------------------------------------------------------------
@@ -1087,6 +1337,8 @@ export function createRunsEngine(deps: RunsDeps) {
   /**
    * Tạo run queued cho task, không kiểm quyền người dùng: startRun kiểm trước khi gọi, còn webhook (issue, bình luận
    * trên PR) là hệ thống tự giao. `instructions` là chỉ dẫn thêm, ghi thành sự kiện `steer` để dispatch đưa vào prompt.
+   * Dự án bật plan mode thì run code sang `planning` ngay và một run plan con được giao thay nó (docs/architecture.md
+   * mục 4.1); run code chỉ được giao sau khi người duyệt kế hoạch.
    */
   async function queueRun(
     tx: Tx,
@@ -1100,6 +1352,8 @@ export function createRunsEngine(deps: RunsDeps) {
       /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
       actorUserId?: string | null;
       instructions?: string[];
+      /** Lập kế hoạch trước; bỏ trống thì theo cờ `features.planMode` của dự án. */
+      plan?: boolean;
     },
   ): Promise<{ row: RunRow; afterCommit: () => void }> {
     if (task.status === "cancelled" || task.status === "done") {
@@ -1146,16 +1400,153 @@ export function createRunsEngine(deps: RunsDeps) {
       await hubEvent(tx, row, "steer", { input, by: opts.createdBy, delivered: false });
     }
     await notifyRun(tx, row.id);
+    const planFirst = opts.plan ?? project.settings.features.planMode;
+    let next = row;
+    if (planFirst) {
+      row = await transition(tx, row, "planning", {}, { by: opts.createdBy });
+      next = await createPlanRun(tx, row, opts.model);
+    }
     await setTaskStatus(tx, task.id, "queued");
     await recordAudit(tx, {
       action: "run.start",
       actorUserId: opts.actorUserId,
       targetType: "run",
       targetId: row.id,
-      data: { taskId: task.id, cli: row.cli, machineId: row.pinnedMachineId, by: opts.createdBy },
+      data: { taskId: task.id, cli: row.cli, machineId: row.pinnedMachineId, by: opts.createdBy, plan: planFirst },
     });
-    const { orgId, id } = row;
+    const { orgId, id } = next;
     return { row, afterCommit: () => background(dispatch(orgId, id), "Không giao được run") };
+  }
+
+  /**
+   * Run plan con của run code: cùng task, cùng CLI và máy chỉ định, nhánh của run cha chỉ để xem (worker đọc nhánh
+   * chính). Model chỉ chép khi người giao chọn tay; không thì dispatch lấy model `plan` của dự án.
+   */
+  async function createPlanRun(tx: Tx, parent: RunRow, model: string | null | undefined): Promise<RunRow> {
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: parent.orgId,
+        teamId: parent.teamId,
+        taskId: parent.taskId,
+        projectId: parent.projectId,
+        kind: "plan",
+        parentRunId: parent.id,
+        cli: parent.cli,
+        model: model ?? null,
+        pinnedMachineId: parent.pinnedMachineId,
+        branch: parent.branch,
+        policySnapshot: [],
+        timeoutSec: parent.timeoutSec,
+        createdBy: parent.createdBy,
+      })
+      .returning();
+    if (!row) throw new Error("Không ghi được run lập kế hoạch.");
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: "plan", parentRunId: parent.id });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "run.start",
+      actorUserId: null,
+      targetType: "run",
+      targetId: row.id,
+      data: { taskId: row.taskId, cli: row.cli, kind: "plan", parentRunId: parent.id },
+    });
+    return row;
+  }
+
+  /**
+   * Kế hoạch còn chờ của task kèm run code đang chờ nó, đã khoá (run trước, kế hoạch sau). Quyền như người giao việc:
+   * thành viên đội sở hữu dự án.
+   */
+  async function lockPlanDecision(tx: Tx, userId: string, taskId: string, planId: string) {
+    const task = await taskForUser(tx, userId, taskId, "member");
+    const found = await findPlan(tx, task.id, planId);
+    const run = await lockRun(tx, found.runId);
+    const plan = await lockAwaitingPlan(tx, task.id, planId);
+    if (run?.state !== "awaiting_plan") {
+      throw new ConflictError("PLAN_DECIDED", "Kế hoạch không còn chờ duyệt.");
+    }
+    return { task, run, plan };
+  }
+
+  /** Duyệt kế hoạch: run code quay về queued và được giao với kế hoạch đã duyệt trong prompt. */
+  async function approvePlan(
+    tx: Tx,
+    userId: string,
+    input: PlanApproveInput,
+  ): Promise<{ result: PlanDecision; afterCommit: () => void }> {
+    const { task, run, plan } = await lockPlanDecision(tx, userId, input.id, input.planId);
+    const project = await loadProject(tx, run.projectId);
+    if (!projectReady(project)) {
+      throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo, chưa giao task được.");
+    }
+    // Run plan đã tốn tiền: task có thể vừa chạm trần trong lúc chờ duyệt.
+    await assertTaskBudget(tx, task.id, project.settings.budget);
+    // Chỉ giữ bản sửa khi khác bản agent nộp, để biết người duyệt đã đổi kế hoạch hay chỉ bấm duyệt.
+    const edited =
+      input.content && JSON.stringify(input.content) !== JSON.stringify(plan.content) ? input.content : null;
+    const note = input.note || null;
+    const decided = await decidePlan(tx, plan.id, { status: "approved", by: userId, note, editedContent: edited });
+    const queued = await transition(tx, run, "queued", {}, { by: userId, planId: plan.id });
+    await setTaskStatus(tx, task.id, "queued");
+    await recordAudit(tx, {
+      action: "plan.approve",
+      targetType: "plan",
+      targetId: plan.id,
+      data: {
+        taskId: task.id,
+        runId: run.id,
+        revision: plan.revision,
+        edited: edited !== null,
+        note,
+      },
+    });
+    const { orgId, id } = queued;
+    return {
+      result: { plan: toPlan(decided), run: toRun(queued) },
+      afterCommit: () => background(dispatch(orgId, id), "Không giao được run theo kế hoạch đã duyệt"),
+    };
+  }
+
+  /**
+   * Từ chối kế hoạch: run code chờ nó bị huỷ (awaiting_plan → cancelled). Chọn lập lại thì một run code mới đi lại từ
+   * queued → planning; run plan mới đọc kế hoạch bị từ chối và lý do trong prompt.
+   */
+  async function rejectPlan(
+    tx: Tx,
+    userId: string,
+    input: PlanRejectInput,
+  ): Promise<{ result: PlanDecision; afterCommit: () => void }> {
+    const { task, run, plan } = await lockPlanDecision(tx, userId, input.id, input.planId);
+    const decided = await decidePlan(tx, plan.id, { status: "rejected", by: userId, note: input.reason });
+    // Chỉ dẫn đã gửi cho run cũ (vd. bình luận nhắc bot) vẫn là yêu cầu của lần lập lại.
+    const instructions = await instructionsOf(tx, run.id);
+    const cancelled = await finishCancelled(tx, run, { by: userId, planId: plan.id, reason: input.reason });
+    let next = cancelled;
+    let afterCommit = () => {};
+    if (input.replan) {
+      ({ row: next, afterCommit } = await queueRun(tx, task, await loadProject(tx, run.projectId), {
+        cli: run.cli,
+        machineId: run.pinnedMachineId,
+        createdBy: userId,
+        instructions,
+        plan: true,
+      }));
+    }
+    await recordAudit(tx, {
+      action: "plan.reject",
+      targetType: "plan",
+      targetId: plan.id,
+      data: {
+        taskId: task.id,
+        runId: run.id,
+        revision: plan.revision,
+        reason: input.reason,
+        replan: input.replan,
+        nextRunId: input.replan ? next.id : null,
+      },
+    });
+    return { result: { plan: toPlan(decided), run: toRun(next) }, afterCommit };
   }
 
   /**
@@ -1212,7 +1603,8 @@ export function createRunsEngine(deps: RunsDeps) {
     const afters: Array<() => void> = [];
     for (const { id } of active) {
       const run = await lockRun(tx, id);
-      if (!run || run.state === "verifying") continue;
+      // Huỷ run code đang lập kế hoạch đã huỷ luôn run plan của nó, có thể trước khi vòng lặp tới run plan.
+      if (!run || run.state === "verifying" || TERMINAL_RUN_STATES.includes(run.state)) continue;
       afters.push((await cancelLocked(tx, run, "task.cancel")).after);
     }
     return () => {
@@ -1231,6 +1623,8 @@ export function createRunsEngine(deps: RunsDeps) {
     steerRun,
     cancelRun,
     cancelRunsOfTask,
+    /** Duyệt và từ chối kế hoạch; router của tasks gọi qua đây (tasks không import runs). */
+    planActions: { approve: approvePlan, reject: rejectPlan },
     /** Đăng ký handler sự kiện Git (PR merge/đóng, issue có nhãn, bình luận nhắc bot) vào registry của scm. */
     registerScmHandlers(registry: Pick<ScmEventRegistry, "on"> = scmEvents) {
       return registerScmHandlers(registry, {

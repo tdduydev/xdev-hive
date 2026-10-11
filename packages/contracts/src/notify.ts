@@ -5,6 +5,7 @@ import { id, orgRoute } from "./common.ts";
 export const notificationEvent = z.enum([
   "run.failed",
   "run.needs_review",
+  "plan.awaiting_approval",
   "project.provision_failed",
   "machine.offline",
   "member.pending",
