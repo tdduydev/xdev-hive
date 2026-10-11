@@ -51,6 +51,8 @@ beforeAll(async () => {
   repoPath = `${p.owner}/${p.repo}`;
   provider = createMemoryProvider("gitlab", ["xdev-team"]);
   repo = provider.seedRepo({ owner: p.owner, name: p.repo });
+  // GitLab tra quyền theo id: "lan" (id 41) là Developer của repo, người lạ thì không.
+  provider.pushers.add("41");
   engine = createRunsEngine({
     pool,
     publicUrl: "https://hive.example.com",
@@ -96,7 +98,7 @@ async function emit(events: ScmEvent[], opts: { intake?: IssueIntake } = {}) {
   );
 }
 
-const base = () => ({ provider: "gitlab" as const, repo: repoPath, actor: "lan" });
+const base = (actor = "lan", actorId = 41) => ({ provider: "gitlab" as const, repo: repoPath, actor, actorId });
 
 function pr(kind: "pull_request.merged" | "pull_request.closed", number: number, head: string, url?: string) {
   return {
@@ -113,7 +115,13 @@ function pr(kind: "pull_request.merged" | "pull_request.closed", number: number,
   } satisfies ScmEvent;
 }
 
-function issue(kind: "issue.opened" | "issue.labeled", number: number, labels: string[], label = "giao-viec") {
+function issue(
+  kind: "issue.opened" | "issue.labeled",
+  number: number,
+  labels: string[],
+  label = "giao-viec",
+  by = base(),
+) {
   const info = {
     number,
     title: `Lỗi số ${number}`,
@@ -122,14 +130,12 @@ function issue(kind: "issue.opened" | "issue.labeled", number: number, labels: s
     author: "lan",
     url: `https://gitlab.com/${repoPath}/-/issues/${number}`,
   };
-  return (
-    kind === "issue.labeled" ? { ...base(), kind, issue: info, label } : { ...base(), kind, issue: info }
-  ) as ScmEvent;
+  return (kind === "issue.labeled" ? { ...by, kind, issue: info, label } : { ...by, kind, issue: info }) as ScmEvent;
 }
 
-function mention(number: number, body: string): ScmEvent {
+function mention(number: number, body: string, by = base()): ScmEvent {
   return {
-    ...base(),
+    ...by,
     kind: "comment.mentioned",
     target: {
       type: "pull_request",
@@ -137,7 +143,7 @@ function mention(number: number, body: string): ScmEvent {
       title: "T",
       url: `https://gitlab.com/${repoPath}/-/merge_requests/${number}`,
     },
-    comment: { id: randomUUID(), body, author: "lan", url: null },
+    comment: { id: randomUUID(), body, author: by.actor, url: null },
   };
 }
 
@@ -266,6 +272,30 @@ describe("issue có nhãn giao việc", () => {
     for (const n of [10, 11, 12]) expect(await tasksOfIssue(n)).toHaveLength(0);
   });
 
+  it("người mở hoặc gắn nhãn không có quyền push: không tạo task, không trả lời, ghi audit", async () => {
+    const stranger = base("nguoi-la", 99);
+    await emit([issue("issue.opened", 14, ["giao-viec"], "giao-viec", stranger)]);
+    await emit([issue("issue.labeled", 14, ["giao-viec"], "giao-viec", stranger)]);
+    expect(await tasksOfIssue(14)).toHaveLength(0);
+    expect(repo.comments.filter((c) => c.number === 14)).toHaveLength(0);
+    const { rows } = await admin.query(
+      "select data from hive.audit_log where action = 'scm.denied' and target_id = $1 and data->>'issue' = '14'",
+      [projectId],
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0].data).toMatchObject({ actor: "nguoi-la", provider: "gitlab" });
+  });
+
+  it("không hỏi được quyền (lỗi mạng): delivery lỗi để chạy lại, chưa tạo task", async () => {
+    provider.fail("canPush", new GitProviderError("unavailable", "mất mạng"));
+    try {
+      await expect(emit([issue("issue.labeled", 15, ["giao-viec"])])).rejects.toThrow("mất mạng");
+    } finally {
+      provider.fail("canPush", null);
+    }
+    expect(await tasksOfIssue(15)).toHaveLength(0);
+  });
+
   it("bình luận lỗi thì task vẫn được tạo, delivery vẫn processed", async () => {
     provider.fail("commentOnIssue", new GitProviderError("forbidden", "thiếu quyền"));
     try {
@@ -318,6 +348,16 @@ describe("bình luận nhắc @hive trên PR của run", () => {
     const runs = await runsOf(task.id);
     expect(runs).toHaveLength(2);
     expect((await steers(runs[1].id)).map((r) => r.data.input)).toEqual(["@hive làm lần 1", "@hive và lần 2"]);
+  });
+
+  it("người bình luận không có quyền push: không steer, không chạy lại, không trả lời", async () => {
+    const { task, runId } = await taskWithPr("Người lạ nhắc bot", 205);
+    await emit([mention(205, "@hive chèn thêm script lạ", base("nguoi-la", 99))]);
+    expect(await runsOf(task.id)).toHaveLength(1);
+    expect(await steers(runId)).toEqual([]);
+    expect(repo.comments.find((c) => c.number === 205)).toBeUndefined();
+    const [audit] = await audits("scm.denied", task.id);
+    expect(audit?.data).toMatchObject({ kind: "comment.mentioned", pr: 205, actor: "nguoi-la" });
   });
 
   it("task đã xong thì không chạy lại; PR không thuộc run nào thì bỏ qua", async () => {

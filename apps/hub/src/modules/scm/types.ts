@@ -66,6 +66,12 @@ export interface CommentOptions {
   pullRequest?: boolean;
 }
 
+/** Người dùng trên GitHub/GitLab. GitHub tra quyền theo login, GitLab theo id. */
+export interface ScmUser {
+  login: string | null;
+  id: number | null;
+}
+
 export interface AccessCheck {
   canCreate: boolean;
   missingScopes: string[];
@@ -89,6 +95,11 @@ export interface GitProvider {
    * GitLab thì merge request có API note riêng.
    */
   commentOnIssue(ref: RepoRef, number: number, body: string, opts?: CommentOptions): Promise<{ id: string }>;
+  /**
+   * Người này push được vào repo không: GitHub quyền write trở lên, GitLab Developer trở lên. Không phải thành viên
+   * hoặc thiếu login/id thì false; lỗi mạng, hết hạn mức thì ném lỗi để người gọi thử lại.
+   */
+  canPush(ref: RepoRef, user: ScmUser): Promise<boolean>;
   /** Webhook cùng URL đã có thì cập nhật secret và sự kiện, không tạo thêm. */
   addWebhook(ref: RepoRef, input: WebhookInput): Promise<{ id: string }>;
   /** Webhook không còn thì coi như đã xoá. */

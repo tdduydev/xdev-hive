@@ -14,6 +14,7 @@ import type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ScmUser,
   WebhookInput,
 } from "./types.ts";
 
@@ -446,6 +447,19 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         body,
       });
       return { id: String(c.id) };
+    },
+
+    async canPush(ref: RepoRef, user: ScmUser) {
+      if (!user.login) return false;
+      // `permission` gộp vai: maintain tính là write, triage tính là read. Người không phải cộng tác viên thì 404.
+      const r = await orNull(() =>
+        request<{ permission: string }>("GET /repos/{owner}/{repo}/collaborators/{username}/permission", {
+          owner: ref.owner,
+          repo: ref.name,
+          username: user.login,
+        }),
+      );
+      return r?.permission === "admin" || r?.permission === "write";
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {

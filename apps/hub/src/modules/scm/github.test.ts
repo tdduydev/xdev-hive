@@ -353,6 +353,37 @@ describe("GitHub commentOnIssue", () => {
   });
 });
 
+describe("GitHub canPush", () => {
+  const path = (u: string) => `/repos/acme/web/collaborators/${u}/permission`;
+
+  it("write, admin (maintain gộp vào write) thì push được; read (triage gộp vào read) thì không", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: path("lan"), method: "GET" }).reply(200, { permission: "write" }, JSON_HEADERS);
+    pool.intercept({ path: path("chu"), method: "GET" }).reply(200, { permission: "admin" }, JSON_HEADERS);
+    pool.intercept({ path: path("khach"), method: "GET" }).reply(200, { permission: "read" }, JSON_HEADERS);
+    expect(await gh.canPush(ref, { login: "lan", id: 1 })).toBe(true);
+    expect(await gh.canPush(ref, { login: "chu", id: 2 })).toBe(true);
+    expect(await gh.canPush(ref, { login: "khach", id: 3 })).toBe(false);
+  });
+
+  it("không phải cộng tác viên (404) hoặc thiếu login thì false, không gọi API khi thiếu login", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: path("nguoi-la"), method: "GET" }).reply(404, { message: "is not a user" }, JSON_HEADERS);
+    expect(await gh.canPush(ref, { login: "nguoi-la", id: 9 })).toBe(false);
+    const before = http.calls.length;
+    expect(await gh.canPush(ref, { login: null, id: 9 })).toBe(false);
+    expect(http.calls.length).toBe(before);
+  });
+
+  it("hết hạn mức thì ném lỗi để người gọi thử lại", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: path("lan"), method: "GET" })
+      .reply(429, { message: "rate limit" }, { headers: { ...JSON_HEADERS.headers, "retry-after": "30" } });
+    expect((await rejected(gh.canPush(ref, { login: "lan", id: 1 }))).code).toBe("rate_limited");
+  });
+});
+
 describe("GitHub webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",

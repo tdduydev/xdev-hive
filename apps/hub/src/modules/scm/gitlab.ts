@@ -25,6 +25,7 @@ import type {
   RepoInfo,
   RepoRef,
   RepoVisibility,
+  ScmUser,
   WebhookInput,
 } from "./types.ts";
 
@@ -350,6 +351,18 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
         { body },
       );
       return { id: String(note.id) };
+    },
+
+    async canPush(ref: RepoRef, user: ScmUser) {
+      if (user.id === null) return false;
+      // `members/all` tính cả quyền thừa hưởng từ group cha.
+      const m = await orNull(() =>
+        rest<{ access_level: number }>(
+          "GET",
+          `projects/${encodeURIComponent(projectPath(ref))}/members/all/${user.id}`,
+        ),
+      );
+      return (m?.access_level ?? 0) >= DEVELOPER;
     },
 
     async addWebhook(ref: RepoRef, input: WebhookInput) {

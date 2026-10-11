@@ -8,6 +8,7 @@ import {
   type MentionEvent,
   type ProviderFactory,
   type PullRequestEvent,
+  type ScmEvent,
   type ScmEventContext,
   type ScmEventRegistry,
 } from "../scm/index.ts";
@@ -131,6 +132,33 @@ async function connectionOf(tx: Tx, deps: ScmHandlerDeps, project: ProjectRow) {
   return deps.masterKey ? loadConnection(tx, deps.masterKey, project.scmConnectionId) : null;
 }
 
+/**
+ * Repo public thì ai cũng mở issue, bình luận được, còn agent làm theo nội dung đó lại push được vào repo. Chỉ người
+ * có quyền push mới giao việc hay chỉ dẫn được cho agent. Không có kết nối Git để hỏi thì từ chối. Lỗi mạng ném ra
+ * để pg-boss chạy lại delivery thay vì bỏ qua yêu cầu của người có quyền.
+ */
+async function actorCanPush(
+  deps: ScmHandlerDeps,
+  conn: Awaited<ReturnType<typeof loadConnection>>,
+  project: ProjectRow,
+  e: { actor: string | null; actorId: number | null },
+): Promise<boolean> {
+  if (!conn) return false;
+  return deps
+    .providerFactory(conn)
+    .canPush({ owner: project.repoOwner, name: project.repoName }, { login: e.actor, id: e.actorId });
+}
+
+async function denied(tx: Tx, task: TaskRow | null, projectId: string, e: ScmEvent, data: Record<string, unknown>) {
+  await recordAudit(tx, {
+    action: "scm.denied",
+    actorUserId: null,
+    targetType: task ? "task" : "project",
+    targetId: task?.id ?? projectId,
+    data: { kind: e.kind, provider: e.provider, actor: e.actor, ...data },
+  });
+}
+
 export function registerScmHandlers(registry: Pick<ScmEventRegistry, "on">, deps: ScmHandlerDeps): () => void {
   const offs = [
     registry.on("pull_request.merged", (e, ctx) => onMerged(e, ctx, deps)),
@@ -206,6 +234,12 @@ async function onIssue(
   if (await findTaskByIssue(tx, ctx.projectId, { provider: e.provider, number: e.issue.number })) return;
   const project = await loadProject(tx, ctx.projectId);
   if (!project || project.state === "archived") return;
+  const conn = await connectionOf(tx, deps, project);
+  // Không trả lời người không có quyền: trả lời thì ai cũng khiến bot bình luận hàng loạt được.
+  if (!(await actorCanPush(deps, conn, project, e))) {
+    await denied(tx, null, project.id, e, { issue: e.issue.number });
+    return;
+  }
   const by = scmActor(e);
   const title = clip(e.issue.title.trim() || `Issue #${e.issue.number}`, TITLE_MAX);
   const ref = e.issue.url ? `\n\nIssue: ${e.issue.url}` : "";
@@ -236,7 +270,7 @@ async function onIssue(
   const body = started
     ? `Hive đã nhận issue này thành task [${task.key}](${link}) và giao cho agent. PR sẽ được mở khi agent làm xong.`
     : `Hive đã nhận issue này thành task [${task.key}](${link}). Dự án chưa sẵn sàng nên task chờ người giao.`;
-  replyLater(ctx, deps, await connectionOf(tx, deps, project), project, e.issue.number, body);
+  replyLater(ctx, deps, conn, project, e.issue.number, body);
 }
 
 // ---- Bình luận nhắc bot trên PR ------------------------------------------------------------------------------
@@ -250,6 +284,11 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
   const task = await loadTask(tx, prRun.taskId);
   const project = await loadProject(tx, ctx.projectId);
   if (!task || !project) return;
+  const conn = await connectionOf(tx, deps, project);
+  if (!(await actorCanPush(deps, conn, project, e))) {
+    await denied(tx, task, project.id, e, { pr: e.target.number, commentId: e.comment.id });
+    return;
+  }
   const by = scmActor({ provider: e.provider, actor: e.comment.author ?? e.actor });
   const input = clip(e.comment.body.trim(), 100_000);
   let reply: string;
@@ -284,5 +323,5 @@ async function onMention(e: MentionEvent, ctx: ScmEventContext, deps: ScmHandler
     targetId: task.id,
     data: { provider: e.provider, pr: e.target.number, commentId: e.comment.id, actor: by, rerun: !active },
   });
-  replyLater(ctx, deps, await connectionOf(tx, deps, project), project, e.target.number, reply, true);
+  replyLater(ctx, deps, conn, project, e.target.number, reply, true);
 }

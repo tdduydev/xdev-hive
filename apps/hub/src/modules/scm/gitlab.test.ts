@@ -338,6 +338,23 @@ describe("GitLab commentOnIssue", () => {
   });
 });
 
+describe("GitLab canPush", () => {
+  it("Developer (30) trở lên thì push được, Reporter thì không; tra theo id, tính cả quyền từ group", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/members/all/41`, method: "GET" }).reply(200, { access_level: 30 }, JSON_HEADERS);
+    pool.intercept({ path: `${P}/members/all/42`, method: "GET" }).reply(200, { access_level: 20 }, JSON_HEADERS);
+    expect(await gl.canPush(ref, { login: "lan", id: 41 })).toBe(true);
+    expect(await gl.canPush(ref, { login: "khach", id: 42 })).toBe(false);
+  });
+
+  it("không phải thành viên (404) hoặc thiếu id thì false", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/members/all/99`, method: "GET" }).reply(404, notFound, JSON_HEADERS);
+    expect(await gl.canPush(ref, { login: "nguoi-la", id: 99 })).toBe(false);
+    expect(await gl.canPush(ref, { login: "lan", id: null })).toBe(false);
+  });
+});
+
 describe("GitLab webhook", () => {
   const input = {
     url: "https://hive.example/hooks/git",
