@@ -83,6 +83,16 @@ type Runner struct {
 	DataDir     string
 	CLICommands map[string]Command
 	KillGrace   time.Duration
+	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
+	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
+	Grace func() time.Duration
+}
+
+func (r Runner) grace() time.Duration {
+	if r.Grace != nil {
+		return r.Grace()
+	}
+	return r.KillGrace
 }
 
 func Run(ctx context.Context, job Job, sink Sink) error { return (Runner{}).Run(ctx, job, sink) }
@@ -118,21 +128,27 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	_ = os.RemoveAll(work)
 	digest := sha256.Sum256([]byte(job.RepoURL))
 	cache := filepath.Join(r.DataDir, "repos", fmt.Sprintf("%x.git", digest[:12]))
-	resultSent := false
+	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
+	var result *Result
 	defer func() {
 		// Git may refuse to remove a locked worktree; force is needed during cancellation too.
 		_ = git(context.Background(), cache, "worktree", "remove", "--force", work)
 		_ = os.RemoveAll(work)
 		_ = git(context.Background(), cache, "worktree", "prune")
 		_ = emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "cleanup"})
-		if !resultSent && retErr != nil {
+		if result == nil && retErr != nil {
 			status := "failed"
 			if errors.Is(ctx.Err(), context.Canceled) {
 				status = "cancelled"
 			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				status = "timeout"
 			}
-			_ = emit(sink, Event{Type: "result", RunID: job.RunID, Attempt: job.Attempt, Result: &Result{Status: status, Error: retErr.Error()}})
+			result = &Result{Status: status, Error: retErr.Error()}
+		}
+		if result != nil {
+			if e := emit(sink, Event{Type: "result", RunID: job.RunID, Attempt: job.Attempt, Result: result}); e != nil {
+				retErr = errors.Join(retErr, e)
+			}
 		}
 	}()
 	if err := os.MkdirAll(filepath.Dir(cache), 0700); err != nil {
@@ -151,8 +167,8 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	if job.SetupScript != "" {
 		if err := runSetup(ctx, work, job.SetupScript, job.Env); err != nil {
-			resultSent = true
-			return r.finish(sink, job, Result{Status: "failed", Error: err.Error()}, err)
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
 		}
 	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "running"}); err != nil {
@@ -184,7 +200,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	logErr := make(chan error, 2)
 	go func() { logErr <- stream(runCtx, stdout, sink, job, "stdout") }()
 	go func() { logErr <- stream(runCtx, stderr, sink, job, "stderr") }()
-	waitErr := waitProcess(runCtx, cmd, r.KillGrace)
+	waitErr := waitProcess(runCtx, cmd, r.grace)
 	e1, e2 := <-logErr, <-logErr
 	if waitErr != nil || e1 != nil || e2 != nil {
 		e := errors.Join(waitErr, e1, e2)
@@ -195,8 +211,8 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if errors.Is(ctx.Err(), context.Canceled) {
 			status = "cancelled"
 		}
-		resultSent = true
-		return r.finish(sink, job, Result{Status: status, Error: e.Error()}, e)
+		result = &Result{Status: status, Error: e.Error()}
+		return e
 	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
@@ -221,20 +237,20 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if err != nil {
 		return err
 	}
-	result := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: files}
+	done := Result{Status: "succeeded", HeadSHA: strings.TrimSpace(sha), CommitCount: count, ChangedFiles: files}
 	if count == 0 {
-		result.Status = "no_changes"
+		done.Status = "no_changes"
 	} else {
 		if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "publishing"}); err != nil {
 			return err
 		}
 		if err := git(ctx, work, "push", "-u", "origin", "HEAD:refs/heads/"+job.Branch); err != nil {
-			resultSent = true
-			return r.finish(sink, job, Result{Status: "failed", Error: err.Error()}, err)
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
 		}
 	}
-	resultSent = true
-	return r.finish(sink, job, result, nil)
+	result = &done
+	return nil
 }
 
 // ReapOrphans dọn worktree của những run không còn được worker giữ lease.
@@ -312,12 +328,6 @@ func (r Runner) cliCommand(j Job) (*exec.Cmd, error) {
 		}
 	}
 	return exec.Command(configured.Path, configured.Args...), nil
-}
-func (r Runner) finish(s Sink, j Job, v Result, err error) error {
-	if e := emit(s, Event{Type: "result", RunID: j.RunID, Attempt: j.Attempt, Result: &v}); e != nil {
-		return errors.Join(err, e)
-	}
-	return err
 }
 func emit(s Sink, e Event) error { return s.Emit(e) }
 func validate(j Job) error {
