@@ -1,4 +1,4 @@
-import type { RegisterInput, RegisterOutput } from "@xdev-hive/contracts";
+import type { MachineKind, RegisterInput, RegisterOutput } from "@xdev-hive/contracts";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
@@ -15,19 +15,20 @@ export async function createRegistration(
   tx: Tx,
   userId: string,
   teamId: string,
+  kind: MachineKind = "worker",
 ): Promise<{ token: string; expiresAt: Date }> {
   await requireTeamRole(tx, userId, teamId, "admin");
   const token = newToken(REGISTRATION_PREFIX);
   const expiresAt = new Date(Date.now() + REGISTRATION_TTL_MS);
   const [row] = await tx
     .insert(registrationTokens)
-    .values({ orgId: sql`hive.ctx_org()`, teamId, tokenHash: hashToken(token), expiresAt, createdBy: userId })
+    .values({ orgId: sql`hive.ctx_org()`, teamId, kind, tokenHash: hashToken(token), expiresAt, createdBy: userId })
     .returning({ id: registrationTokens.id });
   await recordAudit(tx, {
     action: "machine.registration.create",
     targetType: "registration_token",
     targetId: row?.id,
-    data: { teamId, expiresAt: expiresAt.toISOString() },
+    data: { teamId, kind, expiresAt: expiresAt.toISOString() },
   });
   return { token, expiresAt };
 }
@@ -61,10 +62,15 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
           gt(registrationTokens.expiresAt, sql`now()`),
         ),
       )
-      .returning({ teamId: registrationTokens.teamId, createdBy: registrationTokens.createdBy });
+      .returning({
+        teamId: registrationTokens.teamId,
+        kind: registrationTokens.kind,
+        createdBy: registrationTokens.createdBy,
+      });
     if (!claimed) throw invalidRegistration();
 
     const info = {
+      kind: claimed.kind,
       os: input.os,
       version: input.version,
       clis: input.clis,
@@ -73,7 +79,7 @@ export async function registerMachine(pool: pg.Pool, input: RegisterInput): Prom
       registeredBy: claimed.createdBy,
     };
     const [existing] = await tx.select().from(machines).where(eq(machines.name, input.machineId));
-    if (existing && existing.teamId !== claimed.teamId) {
+    if (existing && (existing.teamId !== claimed.teamId || existing.kind !== claimed.kind)) {
       throw new FleetError("conflict", "MACHINE_NAME_TAKEN", `Tên máy "${input.machineId}" đã được đội khác dùng.`);
     }
     // Cài lại máy cùng tên trong cùng đội (máy cài lại hệ điều hành, mất file cấu hình): giữ id để còn lịch sử run,

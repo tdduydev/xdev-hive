@@ -247,7 +247,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
 	if err == nil {
-		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
+		r := runner.Runner{DataDir: j.cfg.DataDir, CLICommands: j.cfg.CLICommands, Sandbox: j.cfg.Sandbox, Grace: func() time.Duration { return time.Duration(run.grace.Load()) }}
 		err = r.Run(ctx, job, sink)
 	}
 	if err != nil {

@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"bufio"
 	"context"
 	cryptorand "crypto/rand"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,6 +24,25 @@ import (
 
 const protocolVersion = 1
 
+func hostMemoryMB() uint64 {
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 && fields[0] == "MemTotal:" {
+			kb, err := strconv.ParseUint(fields[1], 10, 64)
+			if err == nil {
+				return kb / 1024
+			}
+		}
+	}
+	return 0
+}
+
 type Config struct {
 	HubURL  string
 	Machine string
@@ -30,6 +51,8 @@ type Config struct {
 	Version    string
 	CLIs       []string
 	Capacity   int
+	RunnerMode string
+	Sandbox    *runner.SandboxConfig
 	Logger     *slog.Logger
 	HTTP       *http.Client
 	MinBackoff time.Duration
@@ -65,20 +88,22 @@ func (c Config) status(state string, err error) {
 }
 
 type jobSpec struct {
-	Kind           string        `json:"kind"`
-	Budget         runner.Budget `json:"budget"`
-	RunPermissions string        `json:"runPermissions"`
-	Repo           string        `json:"repo"`
-	RepoURL        string        `json:"repoUrl"`
-	Project        string        `json:"project"`
-	ProjectKey     string        `json:"projectKey"`
-	CLI            string        `json:"cli"`
-	Model          string        `json:"model"`
-	Prompt         string        `json:"prompt"`
-	BaseBranch     string        `json:"baseBranch"`
-	Branch         string        `json:"branch"`
-	TimeoutSec     int           `json:"timeoutSec"`
-	SetupScript    string        `json:"setupScript"`
+	Kind           string            `json:"kind"`
+	Budget         runner.Budget     `json:"budget"`
+	RunPermissions string            `json:"runPermissions"`
+	Repo           string            `json:"repo"`
+	RepoURL        string            `json:"repoUrl"`
+	Project        string            `json:"project"`
+	ProjectKey     string            `json:"projectKey"`
+	CLI            string            `json:"cli"`
+	Model          string            `json:"model"`
+	Prompt         string            `json:"prompt"`
+	BaseBranch     string            `json:"baseBranch"`
+	Branch         string            `json:"branch"`
+	TimeoutSec     int               `json:"timeoutSec"`
+	SetupScript    string            `json:"setupScript"`
+	Image          string            `json:"image"`
+	SetupEnv       map[string]string `json:"setupEnv"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -101,7 +126,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, Env: env}
+	j := runner.Job{RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv}
 	if j.BaseBranch == "" {
 		j.BaseBranch = "main"
 	}
@@ -154,6 +179,11 @@ func (c Config) Run(ctx context.Context) error {
 	// Vừa khởi động thì không còn CLI nào chạy: mọi worktree còn lại là của run đã chết.
 	if err := runner.ReapOrphans(c.DataDir, nil); err != nil {
 		return fmt.Errorf("dọn run cũ: %w", err)
+	}
+	if c.Sandbox != nil {
+		if err := runner.ReapSandboxOrphans(ctx, *c.Sandbox); err != nil {
+			return fmt.Errorf("dọn container cũ: %w", err)
+		}
 	}
 	if c.MinBackoff <= 0 {
 		c.MinBackoff = time.Second
@@ -229,7 +259,10 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 		return err
 	}
 	// Hub đòi mảng, không nhận null; slice nil của Go mã hoá thành null.
-	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: nonNil(c.CLIs), Capacity: c.Capacity, ResumeRuns: jobs.runIDs()}
+	hello := Hello{Type: "hello", V: protocolVersion, ID: id, MachineID: c.Machine, Version: c.Version, ProtoRange: [2]int{protocolVersion, protocolVersion}, OS: runtime.GOOS, CLIs: nonNil(c.CLIs), Capacity: c.Capacity, ResumeRuns: jobs.runIDs(), RunnerMode: c.RunnerMode, CPUCount: runtime.NumCPU()}
+	if memory := hostMemoryMB(); memory > 0 {
+		hello.MemoryMB = memory
+	}
 	if err := conn.Write(ctx, websocket.MessageText, mustJSON(hello)); err != nil {
 		return fmt.Errorf("gửi hello: %w", err)
 	}
