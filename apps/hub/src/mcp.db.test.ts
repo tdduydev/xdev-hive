@@ -289,13 +289,13 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     await client?.close();
   });
 
-  it("tools/list có các tool của tenancy, tool nào cũng nhận tham số org", async () => {
+  it("tools/list có các tool của tenancy và runs, tool nào cũng nhận tham số org", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["hive_whoami", "orgs_list", "systems_list", "teams_list"]);
+    expect(names).toEqual(["hive_whoami", "orgs_list", "systems_list", "task_get", "task_update", "teams_list"]);
     for (const t of tools) {
       expect(t.inputSchema.properties).toHaveProperty("org");
-      expect(t.annotations?.readOnlyHint).toBe(true);
+      expect(t.annotations?.readOnlyHint).toBe(t.name !== "task_update");
     }
   });
 

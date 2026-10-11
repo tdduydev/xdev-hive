@@ -92,6 +92,12 @@ export const projects = hive
       index("projects_org_team").on(t.orgId, t.teamId),
       index("projects_system").on(t.systemId),
       orgScoped("projects"),
+      // Endpoint webhook chưa biết tổ chức: chỉ đọc được đúng dự án có id trong app.webhook_project_id (webhook-target.ts).
+      pgPolicy("projects_webhook_lookup", {
+        for: "select",
+        to: hiveApp,
+        using: sql`id = hive.ctx_webhook_project()`,
+      }),
     ],
   )
   .enableRLS();

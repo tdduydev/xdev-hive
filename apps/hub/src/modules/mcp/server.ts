@@ -2,7 +2,7 @@ import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import type pg from "pg";
 import { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
-import { ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
 import type { McpPrincipal } from "./principal.ts";
 import type { McpOrgMembership, McpTool, McpToolRegistry } from "./registry.ts";
 
@@ -86,7 +86,8 @@ function toError(error: unknown): CallToolResult {
     error instanceof McpToolError ||
     error instanceof ForbiddenError ||
     error instanceof NotFoundError ||
-    error instanceof ConflictError;
+    error instanceof ConflictError ||
+    error instanceof BadRequestError;
   if (!known) console.error("Tool MCP lỗi:", error);
   // Lỗi lạ có thể chứa chi tiết nội bộ (câu SQL, đường dẫn); agent chỉ cần biết là hỏng.
   const text = known ? error.message : "Lỗi nội bộ khi chạy tool. Thử lại sau hoặc báo quản trị hub.";
