@@ -8,14 +8,19 @@ import { iso } from "./procedures.ts";
 import { orgMembers, orgs, systems, teams } from "./schema.ts";
 
 /** Tổ chức người dùng đang là thành viên hoạt động. RLS của org_members luôn cho thấy dòng của chính người gọi. */
-async function myOrgs(tx: Tx, userId: string) {
+async function myOrgs(tx: Tx, userId: string, limit?: number, offset = 0) {
   return tx
     .select({ id: orgs.id, slug: orgs.slug, name: orgs.name, role: orgMembers.role })
     .from(orgMembers)
     .innerJoin(orgs, eq(orgs.id, orgMembers.orgId))
     .where(and(eq(orgMembers.userId, userId), eq(orgMembers.status, "active")))
-    .orderBy(asc(orgs.name));
+    .orderBy(asc(orgs.name))
+    .limit(limit ?? 2_147_483_647)
+    .offset(offset);
 }
+
+const OFFSET = z.number().int().min(0).optional().describe("Vị trí bắt đầu danh sách.");
+const LIMIT = z.number().int().min(1).max(50).optional().describe("Số mục; mặc định 10.");
 
 /** Tool chỉ đọc về tổ chức, đội, hệ thống. Cổng MCP đã chọn tổ chức và mở withTenant trước khi gọi handler. */
 export function registerMcpTools(registry: McpToolRegistry): void {
@@ -52,19 +57,28 @@ export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
     name: "orgs_list",
     title: "Danh sách tổ chức",
-    description: "Liệt kê các tổ chức bạn là thành viên, kèm vai trò. Dùng slug làm tham số org cho tool khác.",
-    input: z.object({}),
+    description: "Liệt kê các tổ chức bạn là thành viên, kèm vai trò.",
+    input: z.object({ limit: LIMIT, offset: OFFSET }),
     readOnly: true,
-    handler: async (_args, { tx, principal }) => ({ orgs: await myOrgs(tx, principal.userId) }),
+    handler: async ({ limit, offset = 0 }, { tx, principal }) => {
+      const size = limit ?? 10;
+      const rows = await myOrgs(tx, principal.userId, size + 1, offset);
+      return {
+        orgs: rows.slice(0, size),
+        truncated: rows.length > size,
+        nextOffset: rows.length > size ? offset + size : null,
+      };
+    },
   });
 
   registry.register({
     name: "teams_list",
     title: "Danh sách đội",
     description: "Liệt kê các đội trong tổ chức, kèm số hệ thống và số thành viên.",
-    input: z.object({}),
+    input: z.object({ limit: LIMIT, offset: OFFSET }),
     readOnly: true,
-    handler: async (_args, { tx }) => {
+    handler: async ({ limit, offset = 0 }, { tx }) => {
+      const size = limit ?? 10;
       const rows = await tx
         .select({
           id: teams.id,
@@ -76,8 +90,14 @@ export function registerMcpTools(registry: McpToolRegistry): void {
           memberCount: sql<number>`(select count(*)::int from hive.team_members m where m.team_id = "teams"."id")`,
         })
         .from(teams)
-        .orderBy(asc(teams.name));
-      return { teams: rows.map((r) => ({ ...r, createdAt: iso(r.createdAt) })) };
+        .orderBy(asc(teams.name))
+        .limit(size + 1)
+        .offset(offset);
+      return {
+        teams: rows.slice(0, size).map((r) => ({ ...r, createdAt: iso(r.createdAt) })),
+        truncated: rows.length > size,
+        nextOffset: rows.length > size ? offset + size : null,
+      };
     },
   });
 
@@ -85,9 +105,14 @@ export function registerMcpTools(registry: McpToolRegistry): void {
     name: "systems_list",
     title: "Danh sách hệ thống",
     description: "Liệt kê các hệ thống trong tổ chức; truyền teamId để lọc theo một đội.",
-    input: z.object({ teamId: z.uuid().optional().describe("Mã đội cần lọc (lấy từ teams_list).") }),
+    input: z.object({
+      limit: LIMIT,
+      offset: OFFSET,
+      teamId: z.uuid().optional().describe("Mã đội cần lọc (lấy từ teams_list)."),
+    }),
     readOnly: true,
-    handler: async ({ teamId }, { tx }) => {
+    handler: async ({ teamId, limit, offset = 0 }, { tx }) => {
+      const size = limit ?? 10;
       const rows = await tx
         .select({
           id: systems.id,
@@ -99,8 +124,14 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         })
         .from(systems)
         .where(teamId ? eq(systems.teamId, teamId) : undefined)
-        .orderBy(asc(systems.name));
-      return { systems: rows.map((r) => ({ ...r, createdAt: iso(r.createdAt) })) };
+        .orderBy(asc(systems.name))
+        .limit(size + 1)
+        .offset(offset);
+      return {
+        systems: rows.slice(0, size).map((r) => ({ ...r, createdAt: iso(r.createdAt) })),
+        truncated: rows.length > size,
+        nextOffset: rows.length > size ? offset + size : null,
+      };
     },
   });
 }
