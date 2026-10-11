@@ -16,6 +16,7 @@ export {
   findMachine,
   fleetOfflineQueue,
   listOnlineMachines,
+  machineNames,
   registerFleetOfflineWorker,
 } from "./machines.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";
