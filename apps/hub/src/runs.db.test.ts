@@ -13,7 +13,8 @@ import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
 import { attachWorkerGateway, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
-import { createPool, parseMasterKey } from "./modules/platform/index.ts";
+import { createChannel } from "./modules/notify/index.ts";
+import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
 import {
   createRunsEngine,
   createRunTokenVerifier,
@@ -549,6 +550,59 @@ describe("lease hết hạn và fencing", () => {
     await until(async () => (await runRow(run.id)).state === "no_changes");
     expect((await runRow(run.id)).pr_url).toBeNull();
     expect(await taskStatus(task.id)).toBe("todo");
+    await w.close();
+  });
+});
+
+describe("thông báo cho nhóm quản trị", () => {
+  const notes = async (taskKey: string) =>
+    (
+      await admin.query(
+        "select event, title, body, link from hive.notifications where org_id = $1 and title like $2 order by created_at",
+        [org.orgId, `%${taskKey}%`],
+      )
+    ).rows;
+
+  it("run lỗi (exit khác 0) và run hết lượt vì mất máy đều có thông báo run.failed kèm lý do và link task", async () => {
+    await withTenant(pool, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
+      createChannel(tx, masterKey, org.user("admin"), {
+        name: `quan-tri-${tag}`,
+        events: ["run.failed", "run.needs_review"],
+        config: { kind: "telegram", botToken: "123456:ABCdefGhIJKlmnOPQrstUVwxyz0123456789", chatId: "-1" },
+      }),
+    );
+    const m = await seedMachine(`nt-${tag}`);
+    const w = await FakeWorker.connect(m);
+
+    const task = await newTask("Agent thoát lỗi");
+    const run = await startRun(task.id);
+    await w.next("job_offer", (o) => o.runId === run.id);
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    const s = w.sendRun({ type: "run_result", runId: run.id, attempt: 1, exit: 2, headSha: null, report: null });
+    await w.next("ack", (a) => a.uptoSeq === s);
+    await until(async () => (await runRow(run.id)).state === "failed");
+    const [failed] = await notes(task.key);
+    expect(failed).toMatchObject({
+      event: "run.failed",
+      title: `Run của ${task.key} thất bại`,
+      link: `${publicUrl}/viec/${task.key}`,
+    });
+    expect(failed.body).toContain("Agent thoát lỗi");
+
+    const lost = await newTask("Máy mất giữa chừng");
+    const run2 = await startRun(lost.id);
+    await admin.query("update hive.runs set max_attempts = 1 where id = $1", [run2.id]);
+    await w.next("job_offer", (o) => o.runId === run2.id);
+    w.send({ type: "job_accept", runId: run2.id, attempt: 1 });
+    const lease = await w.next("lease", (l) => l.runId === run2.id);
+    await admin.query("update hive.run_leases set expires_at = now() - interval '1 second' where id = $1", [
+      lease.leaseId,
+    ]);
+    await engine.fire({ kind: "lease", orgId: org.orgId, runId: run2.id, leaseId: lease.leaseId });
+    const [gone] = await notes(lost.key);
+    expect(gone).toMatchObject({ event: "run.failed" });
+    expect(gone.body).toContain("Mất kết nối với máy");
     await w.close();
   });
 });
