@@ -128,11 +128,36 @@ beforeAll(async () => {
   tasks.docs = await seedTask(org.teamId, projectId, 2, "Viết tài liệu");
   tasks.other = await seedTask(org.otherTeamId, otherProjectId, 3, "Việc đội khác");
   // Hai run cùng thời điểm để kiểm con trỏ phân biệt bằng id khi created_at trùng nhau.
-  runIds.r1 = await seedRun(tasks.fix, { state: "failed", createdAt: "2026-10-01T00:00:00Z", cli: "claude", machineId: machineA });
-  runIds.r2 = await seedRun(tasks.fix, { state: "succeeded", createdAt: "2026-10-02T00:00:00Z", cli: "codex", machineId: machineB });
-  runIds.r3 = await seedRun(tasks.docs, { state: "running", createdAt: "2026-10-03T00:00:00Z", cli: "claude", machineId: machineA });
-  runIds.r4 = await seedRun(tasks.docs, { state: "needs_review", createdAt: "2026-10-03T00:00:00Z", cli: "claude", kind: "review" });
-  runIds.r5 = await seedRun(tasks.fix, { state: "lost", createdAt: "2026-10-04T00:00:00Z", cli: "codex", machineId: machineA });
+  runIds.r1 = await seedRun(tasks.fix, {
+    state: "failed",
+    createdAt: "2026-10-01T00:00:00Z",
+    cli: "claude",
+    machineId: machineA,
+  });
+  runIds.r2 = await seedRun(tasks.fix, {
+    state: "succeeded",
+    createdAt: "2026-10-02T00:00:00Z",
+    cli: "codex",
+    machineId: machineB,
+  });
+  runIds.r3 = await seedRun(tasks.docs, {
+    state: "running",
+    createdAt: "2026-10-03T00:00:00Z",
+    cli: "claude",
+    machineId: machineA,
+  });
+  runIds.r4 = await seedRun(tasks.docs, {
+    state: "needs_review",
+    createdAt: "2026-10-03T00:00:00Z",
+    cli: "claude",
+    kind: "review",
+  });
+  runIds.r5 = await seedRun(tasks.fix, {
+    state: "lost",
+    createdAt: "2026-10-04T00:00:00Z",
+    cli: "codex",
+    machineId: machineA,
+  });
   runIds.hidden = await seedRun(tasks.other, {
     state: "failed",
     createdAt: "2026-10-05T00:00:00Z",
@@ -161,7 +186,11 @@ describe("runs.search", () => {
     expect(new Set(ids.slice(1, 3))).toEqual(new Set([runIds.r3, runIds.r4]));
     expect(ids.slice(3)).toEqual([runIds.r2, runIds.r1]);
     expect(data.nextCursor).toBeNull();
-    expect(data.items[0]).toMatchObject({ taskKey: "ts-1", taskTitle: "Sửa lỗi đăng nhập", machineName: `may-a-${tag}` });
+    expect(data.items[0]).toMatchObject({
+      taskKey: "ts-1",
+      taskTitle: "Sửa lỗi đăng nhập",
+      machineName: `may-a-${tag}`,
+    });
     expect(data.machines).toEqual([
       { id: machineA, name: `may-a-${tag}` },
       { id: machineB, name: `may-b-${tag}` },

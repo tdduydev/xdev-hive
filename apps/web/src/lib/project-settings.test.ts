@@ -35,7 +35,13 @@ describe("buildPatch", () => {
     const r = buildPatch(form, s);
     expect(r.ok && r.patch?.outcome?.default).toEqual([
       { check: "changes", required: true },
-      { check: "review", by: "claude", required: true, minScore: 7, when: { minChangedLines: 40, paths: ["src/billing/**", "db/**"] } },
+      {
+        check: "review",
+        by: "claude",
+        required: true,
+        minScore: 7,
+        when: { minChangedLines: 40, paths: ["src/billing/**", "db/**"] },
+      },
     ]);
   });
 
@@ -81,7 +87,14 @@ describe("buildPatch", () => {
   it("gắn lỗi của zod vào đúng ô", () => {
     const s = base();
     const r = buildPatch(
-      { ...formFromSettings(s), requiredApprovals: "9", perTaskUsd: "-1", maxTurns: "1.5", crossReview: true, reviewMinScore: "11" },
+      {
+        ...formFromSettings(s),
+        requiredApprovals: "9",
+        perTaskUsd: "-1",
+        maxTurns: "1.5",
+        crossReview: true,
+        reviewMinScore: "11",
+      },
       s,
     );
     expect(r.ok).toBe(false);

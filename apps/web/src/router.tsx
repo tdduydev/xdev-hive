@@ -3,6 +3,7 @@ import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect
 import { meQuery } from "./lib/me.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
+import { validateRunsSearch } from "./lib/run-list.ts";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
@@ -10,7 +11,10 @@ import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { MembersPage, validateMembersSearch } from "./pages/members-page.tsx";
 import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
+import { ProjectSettingsPage } from "./pages/project-settings-page.tsx";
+import { ProjectsPage } from "./pages/projects-page.tsx";
 import { RunPage } from "./pages/run-page.tsx";
+import { RunsPage } from "./pages/runs-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
 import { ProjectTasksPage, TasksPage, validateTasksSearch } from "./pages/tasks-page.tsx";
 import { TeamsPage, validateTeamsSearch } from "./pages/teams-page.tsx";
@@ -122,11 +126,30 @@ const tasksRoute = createRoute({
   component: TasksPage,
 });
 
+const projectsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/projects",
+  component: ProjectsPage,
+});
+
+const projectSettingsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/projects/$key/settings",
+  component: ProjectSettingsPage,
+});
+
 const projectTasksRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/projects/$key",
   validateSearch: validateTasksSearch,
   component: ProjectTasksPage,
+});
+
+const runsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/runs",
+  validateSearch: validateRunsSearch,
+  component: RunsPage,
 });
 
 const runRoute = createRoute({
@@ -163,7 +186,17 @@ const routeTree = rootRoute.addChildren([
     onboardingRoute,
     appRoute.addChildren([
       homeRoute,
-      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute]),
+      inOrgRoute.addChildren([
+        tasksRoute,
+        projectsRoute,
+        projectTasksRoute,
+        projectSettingsRoute,
+        runsRoute,
+        runRoute,
+        teamsRoute,
+        membersRoute,
+        loginSettingsRoute,
+      ]),
     ]),
   ]),
 ]);

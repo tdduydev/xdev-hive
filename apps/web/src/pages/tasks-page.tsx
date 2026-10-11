@@ -5,6 +5,7 @@ import { type ReactNode, useId } from "react";
 import { CreateTaskButton } from "../components/create-task-dialog.tsx";
 import { Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
+import { buttonClass } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { FilterChips } from "../components/ui/filter-chips.tsx";
 import { Input } from "../components/ui/input.tsx";
@@ -108,8 +109,18 @@ export function ProjectTasksPage() {
   }
   return (
     <Board
-      crumb={<ProjectCrumb orgName={org.name} project={project} />}
+      crumb={<ProjectCrumb project={project} />}
       projectId={project.id}
+      actions={
+        <Link
+          to="/projects/$key/settings"
+          params={{ key: project.key }}
+          className={buttonClass({ variant: "default" })}
+        >
+          <Icon name="gear" />
+          Cấu hình
+        </Link>
+      }
       creatable={project.state === "active" ? [project] : []}
       search={search}
       onSearch={(next) => navigate({ search: (prev) => validateTasksSearch({ ...prev, ...next }), replace: true })}
@@ -117,11 +128,11 @@ export function ProjectTasksPage() {
   );
 }
 
-function ProjectCrumb({ orgName, project }: { orgName: string; project: Project }) {
+function ProjectCrumb({ project }: { project: Project }) {
   return (
     <>
-      <Link to="/tasks" className="text-accent hover:text-accent-hover">
-        {orgName}
+      <Link to="/projects" className="text-accent hover:text-accent-hover">
+        Dự án
       </Link>{" "}
       / {project.name} / <span className="font-mono">{project.key}</span>
     </>
@@ -134,8 +145,11 @@ function Board({
   creatable,
   search,
   onSearch: setSearch,
+  actions,
 }: {
   crumb: ReactNode;
+  /** Nút thêm ở đầu trang, trước "Tạo việc". */
+  actions?: ReactNode;
   /** undefined là việc của mọi dự án. */
   projectId: string | undefined;
   /** Dự án tạo việc được (đang hoạt động). */
@@ -198,6 +212,7 @@ function Board({
             onChange={(e) => setSearch({ q: e.currentTarget.value })}
           />
         </span>
+        {actions}
         <CreateTaskButton projects={creatable} />
       </PageHeader>
       <PageBody>{body}</PageBody>
