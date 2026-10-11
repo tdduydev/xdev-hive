@@ -2,6 +2,11 @@ packages:
   - apps/*
   - packages/*
 
-# swc chạy bằng gói binary dựng sẵn theo nền tảng; script postinstall chỉ để kiểm tra, không cần chạy.
+# Không chạy script cài đặt: swc và esbuild dùng gói binary dựng sẵn theo nền tảng (script chỉ để kiểm tra);
+# ssh2/cpu-features là phần tuỳ chọn của Testcontainers khi nối Docker qua SSH; protobufjs chỉ in thông báo.
 allowBuilds:
   "@swc/core": false
+  cpu-features: false
+  esbuild: false
+  protobufjs: false
+  ssh2: false

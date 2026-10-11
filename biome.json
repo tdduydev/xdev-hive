@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/openapi.json", "!apps/desktop/src-tauri", "!docs/history", "!docs/diagrams"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/openapi.json",
+      "!apps/desktop/src-tauri",
+      "!docs/history",
+      "!docs/diagrams",
+      "!docs/ui"
+    ]
   },
   "formatter": {
     "enabled": true,
