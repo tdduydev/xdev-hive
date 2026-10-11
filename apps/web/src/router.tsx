@@ -1,12 +1,18 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { meQuery } from "./lib/me.ts";
+import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect } from "./lib/redirect.ts";
 import { HomePage } from "./pages/home-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
+import { MembersPage } from "./pages/members-page.tsx";
+import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
+import { TeamsPage, validateTeamsSearch } from "./pages/teams-page.tsx";
 import { AppShell } from "./shell/app-shell.tsx";
+import { OrgGate } from "./shell/org-gate.tsx";
+import { SessionLayout } from "./shell/session-layout.tsx";
 
 /*
  * Khai báo route bằng code, không dùng file-based: hiện chỉ có vài route, và file-based cần plugin Vite sinh
@@ -46,12 +52,76 @@ const mcpConsentRoute = createRoute({
   component: McpConsentPage,
 });
 
+/** Mọi trang sau đăng nhập cần biết người dùng thuộc tổ chức nào; tải một lần ở đây. */
+const sessionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "session",
+  beforeLoad: ({ context }) => context.queryClient.ensureQueryData(orgsMineQuery),
+  component: SessionLayout,
+});
+
+/**
+ * Màn tạo tổ chức đứng riêng, không có sidebar, như mockup màn 2. Bước 1 chỉ cho người được tạo tổ chức; bước 2, 3
+ * (tạo đội, mời người) chạy sau khi đã tạo, lúc hub có thể đã thôi cho tạo thêm, nên chỉ cần đã thuộc tổ chức.
+ */
+const onboardingRoute = createRoute({
+  getParentRoute: () => sessionRoute,
+  path: "/tao-to-chuc",
+  validateSearch: validateOnboardingSearch,
+  beforeLoad: async ({ context, search }) => {
+    const mine = await context.queryClient.ensureQueryData(orgsMineQuery);
+    if (!search.buoc && !mine.canCreateOrg) throw redirect({ to: "/", replace: true });
+    if (search.buoc && mine.orgs.length === 0) throw redirect({ to: "/tao-to-chuc", replace: true });
+  },
+  component: OnboardingPage,
+});
+
 /** Layout không có path: mọi trang cần đăng nhập nằm trong khung app. */
-const appRoute = createRoute({ getParentRoute: () => rootRoute, id: "app", component: AppShell });
+const appRoute = createRoute({
+  getParentRoute: () => sessionRoute,
+  id: "app",
+  beforeLoad: async ({ context }) => {
+    const mine = await context.queryClient.ensureQueryData(orgsMineQuery);
+    // Người đầu tiên của hub vào thẳng màn tạo tổ chức; người khác chưa có tổ chức thì ở trang chủ chờ lời mời.
+    if (mine.orgs.length === 0 && mine.canCreateOrg) throw redirect({ to: "/tao-to-chuc", replace: true });
+  },
+  component: AppShell,
+});
 
 const homeRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: HomePage });
 
-const routeTree = rootRoute.addChildren([loginRoute, mcpConsentRoute, appRoute.addChildren([homeRoute])]);
+/** Trang chỉ có nghĩa trong một tổ chức. */
+const inOrgRoute = createRoute({
+  getParentRoute: () => appRoute,
+  id: "in-org",
+  beforeLoad: async ({ context }) => {
+    const mine = await context.queryClient.ensureQueryData(orgsMineQuery);
+    if (mine.orgs.length === 0) throw redirect({ to: "/", replace: true });
+  },
+  component: OrgGate,
+});
+
+const teamsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/quan-tri/doi",
+  validateSearch: validateTeamsSearch,
+  component: TeamsPage,
+});
+
+const membersRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/quan-tri/thanh-vien",
+  component: MembersPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  mcpConsentRoute,
+  sessionRoute.addChildren([
+    onboardingRoute,
+    appRoute.addChildren([homeRoute, inOrgRoute.addChildren([teamsRoute, membersRoute])]),
+  ]),
+]);
 
 export function createAppRouter(queryClient: QueryClient) {
   return createRouter({
