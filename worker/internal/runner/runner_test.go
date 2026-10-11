@@ -3,10 +3,12 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -191,6 +193,51 @@ func TestReapOrphans(t *testing.T) {
 	}
 }
 
+// TestMain cho phép chính binary test đóng vai CLI claude giả (copy thành claude/claude.exe vào PATH): Windows không chạy được shell script.
+func TestMain(m *testing.M) {
+	if mode := os.Getenv("HIVE_FAKE_MCP_MODE"); mode != "" {
+		for i, a := range os.Args {
+			if a == "--mcp-config" && i+1 < len(os.Args) {
+				if err := os.WriteFile(os.Getenv("HIVE_CAPTURE_MCP"), []byte(os.Args[i+1]), 0600); err != nil {
+					os.Exit(5)
+				}
+				break
+			}
+		}
+		if mode == "sleep" {
+			time.Sleep(30 * time.Second)
+		}
+		os.Exit(7)
+	}
+	os.Exit(m.Run())
+}
+
+func installFakeClaude(t *testing.T) string {
+	t.Helper()
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := t.TempDir()
+	src, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer src.Close()
+	dst, err := os.OpenFile(filepath.Join(bin, name), os.O_CREATE|os.O_WRONLY, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(dst, src); err != nil {
+		_ = dst.Close()
+		t.Fatal(err)
+	}
+	if err := dst.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
 func TestFakeCLIHelper(t *testing.T) {
 	if os.Getenv("HIVE_RUNNER_HELPER") != "1" {
 		return
@@ -370,7 +417,8 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if info.Mode().Perm() != 0600 {
+			// Windows không có quyền kiểu Unix (Mode() luôn 0666) và code không đặt ACL, nên chỉ kiểm 0600 trên hệ khác.
+			if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 				t.Fatalf("MCP mode = %o", info.Mode().Perm())
 			}
 			b, err := os.ReadFile(path)
@@ -409,25 +457,18 @@ func TestClaudeMCPFileRemovedWhenRunFailsOrIsCancelled(t *testing.T) {
 			name = "cancelled"
 		}
 		t.Run(name, func(t *testing.T) {
-			bin := t.TempDir()
 			capture := filepath.Join(t.TempDir(), "mcp-path")
-			fake := filepath.Join(bin, "claude")
-			script := "#!/bin/sh\nwhile [ $# -gt 0 ]; do if [ \"$1\" = \"--mcp-config\" ]; then shift; printf '%s' \"$1\" > \"$HIVE_CAPTURE_MCP\"; break; fi; shift; done\n"
+			mode := "fail"
 			if cancelRun {
-				script += "sleep 30\n"
-			} else {
-				script += "exit 7\n"
+				mode = "sleep"
 			}
-			if err := os.WriteFile(fake, []byte(script), 0700); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			t.Setenv("PATH", installFakeClaude(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 			data := t.TempDir()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
+				done <- (Runner{DataDir: data, CLICommands: map[string]Command{}, KillGrace: 200 * time.Millisecond}).Run(ctx, Job{RunID: name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + name, CLI: "claude", Prompt: "run", Env: map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "secret", "HIVE_FAKE_MCP_MODE": mode, "HIVE_CAPTURE_MCP": capture}}, SinkFunc(func(Event) error { return nil }))
 			}()
 			limit := time.Now().Add(5 * time.Second)
 			for {
