@@ -3,11 +3,12 @@ import { formatAgo, formatDuration, formatUsd } from "./format.ts";
 import { isTerminal, RUN_STATE_LABEL, runStateTone, type Tone } from "./run-view.ts";
 
 /** Nhóm lọc trên bảng việc, theo thiết kế Tasks.dc.html. */
-export type BoardFilter = "all" | "running" | "review" | "failed" | "done";
+export type BoardFilter = "all" | "running" | "plan" | "review" | "failed" | "done";
 
 export const BOARD_FILTERS: readonly { key: BoardFilter; label: string }[] = [
   { key: "all", label: "Tất cả" },
   { key: "running", label: "Đang chạy" },
+  { key: "plan", label: "Chờ duyệt kế hoạch" },
   { key: "review", label: "Chờ review và merge" },
   { key: "failed", label: "Lỗi" },
   { key: "done", label: "Xong" },
@@ -44,6 +45,9 @@ export function taskBadge(task: Task, run: Run | null): TaskBadge {
       return task.status === "queued"
         ? { label: "Chờ máy", tone: "neutral", group: "running" }
         : { label: "Đang chạy", tone: "sel", group: "running" };
+    case "awaiting_plan":
+      // Nhóm riêng để người duyệt lọc ra việc đang đợi mình; màu "chờ" như mọi trạng thái đợi người.
+      return { label: "Chờ duyệt kế hoạch", tone: "warn", group: "plan" };
     case "todo":
       if (!run) return { label: "Chưa giao", tone: "neutral", group: null };
       if (run.state === "failed" || run.state === "lost") return { label: "Lỗi", tone: "bad", group: "failed" };
@@ -94,7 +98,14 @@ export function filterRows(rows: BoardRow[], filter: BoardFilter, query: string)
 
 /** Số việc của từng nhóm lọc, cho con số cạnh nút lọc. */
 export function filterCounts(rows: BoardRow[]): Record<BoardFilter, number> {
-  const counts: Record<BoardFilter, number> = { all: rows.length, running: 0, review: 0, failed: 0, done: 0 };
+  const counts: Record<BoardFilter, number> = {
+    all: rows.length,
+    running: 0,
+    plan: 0,
+    review: 0,
+    failed: 0,
+    done: 0,
+  };
   for (const r of rows) if (r.badge.group) counts[r.badge.group] += 1;
   return counts;
 }

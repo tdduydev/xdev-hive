@@ -1,6 +1,7 @@
-import type { Plan, PlanContent } from "@xdev-hive/contracts";
+import type { Plan, PlanContent, PlanHistory } from "@xdev-hive/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
+import { teamRoleOf } from "../tenancy/index.ts";
 import { plans } from "./schema.ts";
 import { taskForUser } from "./tasks.ts";
 
@@ -37,6 +38,14 @@ export async function getPlan(tx: Tx, userId: string, taskId: string): Promise<P
   const row = await latestPlanOf(tx, taskId);
   if (!row) throw new NotFoundError("PLAN_NOT_FOUND", "Task chưa có kế hoạch nào.");
   return toPlan(row);
+}
+
+export async function listPlans(tx: Tx, userId: string, taskId: string): Promise<PlanHistory> {
+  const task = await taskForUser(tx, userId, taskId, "viewer");
+  const rows = await tx.select().from(plans).where(eq(plans.taskId, taskId)).orderBy(desc(plans.revision));
+  // Cùng mức quyền mà approve/reject đòi (taskForUser "member"); người chỉ xem thấy màn chỉ đọc.
+  const role = await teamRoleOf(tx, userId, task.teamId);
+  return { plans: rows.map(toPlan), canDecide: role === "admin" || role === "member" };
 }
 
 /** Kế hoạch theo id trong task, không khoá; dùng để biết run nào cần khoá trước khi khoá kế hoạch. */

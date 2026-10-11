@@ -257,9 +257,21 @@ function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
                 </span>
               </Td>
               <Td className="whitespace-nowrap">
-                <Pill tone={badge.tone} dot>
-                  {badge.label}
-                </Pill>
+                <span className="grid justify-items-start gap-1">
+                  <Pill tone={badge.tone} dot>
+                    {badge.label}
+                  </Pill>
+                  {task.status === "awaiting_plan" && (
+                    <Link
+                      to="/tasks/$key/plan"
+                      params={{ key: task.key }}
+                      className="text-sm text-accent hover:text-accent-hover"
+                      aria-label={`Xem và duyệt kế hoạch của ${task.key}`}
+                    >
+                      Xem kế hoạch
+                    </Link>
+                  )}
+                </span>
               </Td>
               <Td className="whitespace-nowrap">
                 <span className="text-ink">{cliLabel(run?.cli ?? task.preferredCli)}</span>{" "}

@@ -20,6 +20,10 @@ describe("apiErrorMessage", () => {
     expect(apiErrorMessage(new ORPCError("BAD_GATEWAY", { status: 502 }))).toMatch(/Hub đang gặp lỗi/));
   it("mất mạng (fetch ném TypeError)", () =>
     expect(apiErrorMessage(new TypeError("Failed to fetch"))).toMatch(/Không kết nối được hub/));
+  it("kế hoạch đã được quyết: nói rõ làm gì tiếp thay cho câu ngắn của hub", () =>
+    expect(apiErrorMessage(defined("CONFLICT", "Kế hoạch không còn chờ duyệt.", { code: "PLAN_DECIDED" }))).toMatch(
+      /Tải lại để xem bản mới nhất/,
+    ));
   it("mã lạ 4xx: báo chung kèm mã", () =>
     expect(apiErrorMessage(new ORPCError("I_AM_A_TEAPOT", { status: 418 }))).toMatch(/I_AM_A_TEAPOT/));
 });

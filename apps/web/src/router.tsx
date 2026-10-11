@@ -10,6 +10,7 @@ import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { MembersPage, validateMembersSearch } from "./pages/members-page.tsx";
 import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
+import { PlanPage } from "./pages/plan-page.tsx";
 import { RunPage } from "./pages/run-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
 import { ProjectTasksPage, TasksPage, validateTasksSearch } from "./pages/tasks-page.tsx";
@@ -129,6 +130,13 @@ const projectTasksRoute = createRoute({
   component: ProjectTasksPage,
 });
 
+/** Kế hoạch của plan mode: theo key của task như mọi đường dẫn tới task (/tasks/<key>). */
+const planRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/tasks/$key/plan",
+  component: PlanPage,
+});
+
 const runRoute = createRoute({
   getParentRoute: () => inOrgRoute,
   path: "/runs/$id",
@@ -163,7 +171,15 @@ const routeTree = rootRoute.addChildren([
     onboardingRoute,
     appRoute.addChildren([
       homeRoute,
-      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute]),
+      inOrgRoute.addChildren([
+        tasksRoute,
+        projectTasksRoute,
+        planRoute,
+        runRoute,
+        teamsRoute,
+        membersRoute,
+        loginSettingsRoute,
+      ]),
     ]),
   ]),
 ]);
