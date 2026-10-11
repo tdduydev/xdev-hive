@@ -1,5 +1,5 @@
 {
-  "id": "0d541ebd-3d98-4d59-80a3-0e24ab684902",
+  "id": "896e0fa8-0a6a-4a79-afe1-85727704c0bd",
   "prevId": "87ab1768-507b-44f0-a9a4-f26bdb59d314",
   "version": "7",
   "dialect": "postgresql",
@@ -4319,6 +4319,46 @@
           "notNull": true,
           "default": 3600
         },
+        "tokens_in": {
+          "name": "tokens_in",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "tokens_out": {
+          "name": "tokens_out",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cache_read": {
+          "name": "cache_read",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cache_write": {
+          "name": "cache_write",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "cost_usd": {
+          "name": "cost_usd",
+          "type": "numeric(14, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "turns": {
+          "name": "turns",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "offer_machine_id": {
           "name": "offer_machine_id",
           "type": "uuid",
@@ -4451,6 +4491,27 @@
           "columns": [
             {
               "expression": "task_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runs_project_created": {
+          "name": "runs_project_created",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5046,13 +5107,6 @@
           "for": "DELETE",
           "to": ["hive_app"],
           "using": "org_id = hive.ctx_org()"
-        },
-        "invitations_owner_select": {
-          "name": "invitations_owner_select",
-          "as": "PERMISSIVE",
-          "for": "SELECT",
-          "to": ["hive_owner"],
-          "using": "true"
         }
       },
       "checkConstraints": {},
