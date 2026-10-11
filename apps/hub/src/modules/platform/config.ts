@@ -28,6 +28,7 @@ export interface HubConfig {
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
   /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
   embeddings?: EmbeddingsConfig | undefined;
+  desktopReleases?: string | undefined;
 }
 
 export interface EmbeddingsConfig {
@@ -116,5 +117,6 @@ export function loadConfig(env: Env = process.env): HubConfig {
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),
+    desktopReleases: env.HIVE_DESKTOP_RELEASES || undefined,
   };
 }

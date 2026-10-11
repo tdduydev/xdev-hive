@@ -19,7 +19,7 @@ import {
   runsRouter,
 } from "./modules/runs/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
-import { systemRouter } from "./modules/system/index.ts";
+import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
 import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
@@ -80,6 +80,7 @@ export function createApp({
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
   const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
   const app = new Hono();
+  const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
@@ -92,6 +93,17 @@ export function createApp({
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
+  app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {
+    const result = await findDesktopUpdate(
+      desktopReleases,
+      c.req.param("os"),
+      c.req.param("arch"),
+      c.req.param("currentVersion"),
+    );
+    if (result.kind === "bad-request") return c.json({ message: "Tham số phiên bản hoặc nền tảng không hợp lệ." }, 400);
+    if (result.kind === "none") return c.body(null, 204);
+    return c.json(result.update, 200);
+  });
   if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
     // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
     // tự trả các đường này khi request đi qua handler của Better Auth.
