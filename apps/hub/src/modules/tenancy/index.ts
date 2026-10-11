@@ -1,5 +1,6 @@
 // Tổ chức, đội, hệ thống và phân quyền. Module khác chỉ import file này.
 export { findSystem, type SystemRef } from "./lookup.ts";
+export { registerMcpTools } from "./mcp-tools.ts";
 export {
   type OrgRole,
   orgRoleOf,
@@ -12,3 +13,4 @@ export { ORG_HEADER, type OrgDeps, orgMiddlewares, type SessionUser, type Tenanc
 export { tenancyRouter } from "./router.ts";
 // Bảng của module khác cần khoá ngoại kép (team_id, org_id) tới teams.
 export { teams } from "./schema.ts";
+export { authHooks } from "./sso.ts";

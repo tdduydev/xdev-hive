@@ -6,13 +6,14 @@ import { Hono } from "hono";
 import type pg from "pg";
 import { catalogRouter } from "./modules/catalog/index.ts";
 import { fleetRouter } from "./modules/fleet/index.ts";
-import { type Auth, meRouter } from "./modules/identity/index.ts";
+import { type Auth, mcpEnabled, meRouter } from "./modules/identity/index.ts";
+import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import { RunNotifier, type RunsEngine, runStreamHandler, runsRouter } from "./modules/runs/index.ts";
 import { defaultProviderFactory, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
-import { tenancyRouter } from "./modules/tenancy/index.ts";
+import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
@@ -22,6 +23,8 @@ export interface AppDeps {
   auth?: Auth | undefined;
   /** Pool của role hive_app (HIVE_DATABASE_URL). Không có khi chạy test đơn vị không cần database. */
   pool?: pg.Pool | undefined;
+  /** Kiểm run token cho /mcp; module runs sẽ cung cấp. Bỏ trống thì cổng chỉ nhận token OAuth của người dùng. */
+  runTokens?: RunTokenVerifier | undefined;
   /** Hàng đợi pg-boss; không có thì không tạo được dự án. */
   jobs?: Jobs | undefined;
   /** Thay GitHub/GitLab thật bằng provider giả khi test. */
@@ -36,6 +39,7 @@ export function createApp({
   config,
   auth,
   pool,
+  runTokens,
   jobs,
   providerFactory,
   runs,
@@ -52,7 +56,7 @@ export function createApp({
   const router = {
     system: systemRouter(config),
     me: meRouter(auth),
-    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators }),
+    ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
@@ -68,6 +72,19 @@ export function createApp({
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
   const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
   app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
+  if (auth && pool && mcpEnabled(String(auth.options.baseURL))) {
+    // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
+    // tự trả các đường này khi request đi qua handler của Better Auth.
+    app.on(["GET", "HEAD"], "/.well-known/*", async (c) => {
+      const res = await auth.handler(c.req.raw);
+      return res.status === 404 ? c.notFound() : res;
+    });
+    const registry = new McpToolRegistry();
+    tenancyMcpTools(registry);
+    const mcp = createMcpEndpoint({ auth, pool, registry, version: config.version, runTokens });
+    // Đăng ký trước handler /api và SPA để /mcp không rơi vào index.html.
+    app.all("/mcp", (c) => mcp(c.req.raw));
+  }
   app.use("/rpc/*", async (c, next) => {
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
@@ -119,7 +136,7 @@ export function createApp({
           /* Đường dẫn SPA không phải file; trả entry point để client router xử lý. */
         }
       }
-      if (c.req.path.startsWith("/api/") || c.req.path.startsWith("/rpc/")) return c.notFound();
+      if (["/api/", "/rpc/", "/mcp", "/.well-known/"].some((p) => c.req.path.startsWith(p))) return c.notFound();
       try {
         return c.html(await readFile(resolve(root, "index.html"), "utf8"));
       } catch {

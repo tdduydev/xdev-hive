@@ -103,15 +103,29 @@
     {
       "idx": 14,
       "version": "7",
-      "when": 1791721849219,
-      "tag": "0014_task_va_run",
+      "when": 1791721643916,
+      "tag": "0014_chinh_sach_sso",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "7",
-      "when": 1791721851822,
-      "tag": "0015_quyen_task_va_run",
+      "when": 1791722073100,
+      "tag": "0015_dang_nhap_mcp",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1791722802789,
+      "tag": "0016_task_va_run",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791722806411,
+      "tag": "0017_quyen_task_va_run",
       "breakpoints": true
     }
   ]
