@@ -33,3 +33,14 @@ export class ConflictError extends Error {
     this.code = code;
   }
 }
+
+/** Dữ liệu hợp lệ về dạng nhưng nghiệp vụ không nhận (vd. thiếu secret khi cấu hình lần đầu). Đổi thành BAD_REQUEST. */
+export class BadRequestError extends Error {
+  override readonly name = "BadRequestError";
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+  }
+}

@@ -31,8 +31,30 @@ async function keepAnotherOwner(tx: Tx, userId: string) {
     throw new ConflictError("LAST_OWNER", "Tổ chức phải còn ít nhất một chủ sở hữu đang hoạt động.");
 }
 
-export function orgMembersRouter({ inOrg }: Procedures) {
+/** Duyệt hoặc từ chối người đang chờ (thường là người vào bằng SSO). Từ chối là khoá, không xoá: xoá thì lần đăng
+ * nhập SSO sau họ lại vào hàng chờ. */
+function decidePending({ inOrg }: Procedures, decision: "approve" | "deny") {
+  const proc = decision === "approve" ? inOrg.orgMembers.approve : inOrg.orgMembers.deny;
+  const status = decision === "approve" ? ("active" as const) : ("blocked" as const);
+  return proc.handler(async ({ context: { tx, user }, input }) => {
+    await requireOrgRole(tx, user.id, "admin");
+    const target = await getMember(tx, input.userId);
+    if (target.status !== "pending")
+      throw new ConflictError("MEMBER_NOT_PENDING", "Người này không ở trạng thái chờ duyệt.");
+    await tx
+      .update(orgMembers)
+      .set({ status })
+      .where(and(inCtxOrg, eq(orgMembers.userId, target.userId)));
+    await recordAudit(tx, { action: `org_member.${decision}`, targetType: "user", targetId: target.userId });
+    return { userId: target.userId, role: target.role, status };
+  });
+}
+
+export function orgMembersRouter(p: Procedures) {
+  const { inOrg } = p;
   return {
+    approve: decidePending(p, "approve"),
+    deny: decidePending(p, "deny"),
     list: inOrg.orgMembers.list.handler(async ({ context: { tx } }) => {
       const members = await tx
         .select({
