@@ -9,6 +9,8 @@ import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
 import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
 import { McpConsentPage } from "./pages/mcp-consent-page.tsx";
 import { MembersPage, validateMembersSearch } from "./pages/members-page.tsx";
+import { MergeQueuePage } from "./pages/merge-queue-page.tsx";
+import { NotificationsPage } from "./pages/notifications-page.tsx";
 import { OnboardingPage, validateOnboardingSearch } from "./pages/onboarding-page.tsx";
 import { RunPage } from "./pages/run-page.tsx";
 import { LoadErrorPage, NotFoundPage, PendingPage } from "./pages/status-pages.tsx";
@@ -155,6 +157,18 @@ const loginSettingsRoute = createRoute({
   component: LoginSettingsPage,
 });
 
+const mergeQueueRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/projects/$key/merge-queue",
+  component: MergeQueuePage,
+});
+
+const notificationsRoute = createRoute({
+  getParentRoute: () => inOrgRoute,
+  path: "/notifications",
+  component: NotificationsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   inviteRoute,
@@ -163,7 +177,7 @@ const routeTree = rootRoute.addChildren([
     onboardingRoute,
     appRoute.addChildren([
       homeRoute,
-      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute]),
+      inOrgRoute.addChildren([tasksRoute, projectTasksRoute, runRoute, teamsRoute, membersRoute, loginSettingsRoute, mergeQueueRoute, notificationsRoute]),
     ]),
   ]),
 ]);

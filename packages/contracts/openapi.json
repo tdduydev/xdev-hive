@@ -24122,6 +24122,22 @@
                           }
                         ]
                       },
+                      "ciState": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "success",
+                              "pending",
+                              "failure",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "runId": {
                         "anyOf": [
                           {
@@ -24219,6 +24235,7 @@
                       "prUrl",
                       "branch",
                       "headSha",
+                      "ciState",
                       "runId",
                       "taskId",
                       "state",
@@ -24658,6 +24675,22 @@
                         }
                       ]
                     },
+                    "ciState": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "success",
+                            "pending",
+                            "failure",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "runId": {
                       "anyOf": [
                         {
@@ -24755,6 +24788,7 @@
                     "prUrl",
                     "branch",
                     "headSha",
+                    "ciState",
                     "runId",
                     "taskId",
                     "state",
@@ -25183,6 +25217,22 @@
                         }
                       ]
                     },
+                    "ciState": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "success",
+                            "pending",
+                            "failure",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "runId": {
                       "anyOf": [
                         {
@@ -25280,6 +25330,7 @@
                     "prUrl",
                     "branch",
                     "headSha",
+                    "ciState",
                     "runId",
                     "taskId",
                     "state",
