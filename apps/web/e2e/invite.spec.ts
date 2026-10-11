@@ -26,10 +26,10 @@ test("chưa đăng nhập: xem trước lời mời, đăng ký bằng email kè
       "orgs/mine": (_, __, h) => ok({ orgs: h.signedIn ? [ORG] : [], canCreateOrg: false }),
     },
   });
-  await page.goto(`/moi/${TOKEN}`);
+  await page.goto(`/invite/${TOKEN}`);
 
   // Trang lời mời mở được khi chưa đăng nhập.
-  await expect(page).toHaveURL(`/moi/${TOKEN}`);
+  await expect(page).toHaveURL(`/invite/${TOKEN}`);
   await expect(page.getByRole("heading", { name: `Lời mời vào ${ORG.name}` })).toBeVisible();
   await expect(page.getByText(USER.email).first()).toBeVisible();
   await expect(page.getByText("Dùng trước ngày 18/10/2026, một lần")).toBeVisible();
@@ -78,7 +78,7 @@ for (const [name, token, reply, title, text] of [
 ] as const) {
   test(`lời mời ${name}: báo rõ, không cho đăng ký`, async ({ page }) => {
     await fakeHub(page, { rpc: { "invitations/preview": () => reply } });
-    await page.goto(`/moi/${token}`);
+    await page.goto(`/invite/${token}`);
     await expect(page.getByRole("heading", { name: title })).toBeVisible();
     await expect(page.getByText(text)).toBeVisible();
     await expect(page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" })).toHaveCount(0);
@@ -88,7 +88,7 @@ for (const [name, token, reply, title, text] of [
 
 test("link thiếu ký tự: báo ngay, không hỏi hub", async ({ page }) => {
   const hub = await fakeHub(page);
-  await page.goto("/moi/abc");
+  await page.goto("/invite/abc");
   await expect(page.getByRole("heading", { name: "Link mời không hợp lệ" })).toBeVisible();
   expect(hub.rpcCalls.some((c) => c.path === "invitations/preview")).toBe(false);
 });
@@ -103,14 +103,14 @@ test("đăng ký lỗi: email đã có tài khoản thì báo tiếng Việt và
     },
     rpc: { "invitations/preview": () => preview() },
   });
-  await page.goto(`/moi/${TOKEN}`);
+  await page.goto(`/invite/${TOKEN}`);
   await page.getByLabel("Họ và tên").fill(USER.name);
   await page.getByLabel("Mật khẩu").fill("mat-khau-du-dai");
   await page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" }).click();
   await expect(page.getByRole("alert")).toHaveText("Email này đã có tài khoản trên hub. Đăng nhập để nhận lời mời.");
 
   await page.getByRole("link", { name: "Đã có tài khoản: đăng nhập để nhận lời mời" }).click();
-  await expect(page).toHaveURL(`/dang-nhap?redirect=${encodeURIComponent(`/moi/${TOKEN}`)}`);
+  await expect(page).toHaveURL(`/login?redirect=${encodeURIComponent(`/invite/${TOKEN}`)}`);
 });
 
 test("đã đăng nhập đúng email: nhận lời mời rồi vào tổ chức", async ({ page }) => {
@@ -126,7 +126,7 @@ test("đã đăng nhập đúng email: nhận lời mời rồi vào tổ chức
       "orgs/mine": () => ok({ orgs: joined ? [ORG] : [], canCreateOrg: false }),
     },
   });
-  await page.goto(`/moi/${TOKEN}`);
+  await page.goto(`/invite/${TOKEN}`);
   await expect(page.getByText(`Bạn đang đăng nhập bằng ${USER.email}`)).toBeVisible();
   await expect(page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" })).toHaveCount(0);
   await page.getByRole("button", { name: "Nhận lời mời và vào tổ chức" }).click();
@@ -147,10 +147,10 @@ test("nhận lời mời bị hub từ chối: hiện câu tiếng Việt của 
         fail("FORBIDDEN", 403, "Tài khoản của bạn đang bị khoá trong tổ chức này.", { code: "MEMBER_BLOCKED" }),
     },
   });
-  await page.goto(`/moi/${TOKEN}`);
+  await page.goto(`/invite/${TOKEN}`);
   await page.getByRole("button", { name: "Nhận lời mời và vào tổ chức" }).click();
   await expect(page.getByRole("alert")).toHaveText("Tài khoản của bạn đang bị khoá trong tổ chức này.");
-  await expect(page).toHaveURL(`/moi/${TOKEN}`);
+  await expect(page).toHaveURL(`/invite/${TOKEN}`);
 });
 
 test("đã đăng nhập bằng email khác: báo sai email, đăng xuất để đăng ký bằng đúng email", async ({ page }) => {
@@ -164,7 +164,7 @@ test("đã đăng nhập bằng email khác: báo sai email, đăng xuất để
     },
     rpc: { "invitations/preview": () => preview({ email: "vy.ngo@fpt.com" }) },
   });
-  await page.goto(`/moi/${TOKEN}`);
+  await page.goto(`/invite/${TOKEN}`);
   await expect(page.getByRole("alert")).toContainText(
     `Lời mời này dành cho vy.ngo@fpt.com, nhưng bạn đang đăng nhập bằng ${USER.email}.`,
   );
@@ -172,6 +172,6 @@ test("đã đăng nhập bằng email khác: báo sai email, đăng xuất để
 
   await page.getByRole("button", { name: "Đăng xuất" }).click();
   await expect(page.getByLabel("Email")).toHaveValue("vy.ngo@fpt.com");
-  await expect(page).toHaveURL(`/moi/${TOKEN}`);
+  await expect(page).toHaveURL(`/invite/${TOKEN}`);
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
 });

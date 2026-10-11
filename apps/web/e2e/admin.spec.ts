@@ -88,7 +88,7 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
     }
   }, ORG_B.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: twoOrgs() });
-  await page.goto("/quan-tri/doi");
+  await page.goto("/admin/teams");
 
   // Tổ chức B đã nhớ từ lần trước; ở B chỉ là thành viên, chỉ xem trong đội.
   await expect(switcher(page)).toContainText("Nội bộ");
@@ -187,7 +187,7 @@ function withInvites(): Record<string, RpcHandler> {
         invitations: emails.map((email, i) => ({
           id: `2b2b2b2b-0000-4000-8000-00000000000${i}`,
           email,
-          link: `https://hive.example.vn/moi/ma-moi-${i}-0123456789abcdef`,
+          link: `https://hive.example.vn/invite/ma-moi-${i}-0123456789abcdef`,
           expiresAt: "2026-10-18T03:00:00.000Z",
         })),
       });
@@ -198,7 +198,7 @@ function withInvites(): Record<string, RpcHandler> {
 test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệt và từ chối được", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
 
   await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
   // Người chờ duyệt không nằm trong danh sách chính.
@@ -206,7 +206,7 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
   await expect(page.getByRole("row", { name: /Lê Hà/ })).toContainText("quản trị đội");
 
   await page.getByRole("tab", { name: "Lời mời · 1" }).click();
-  await expect(page).toHaveURL("/quan-tri/thanh-vien?xem=loi-moi");
+  await expect(page).toHaveURL("/admin/members?xem=loi-moi");
   const vy = page.getByRole("row", { name: /vy\.ngo@fpt\.com/ });
   await expect(vy).toContainText("Chờ nhận");
   await expect(vy).toContainText("Thanh toán");
@@ -226,7 +226,7 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
   });
 
   await page.getByRole("tab", { name: "Chờ duyệt · 1" }).click();
-  await expect(page).toHaveURL("/quan-tri/thanh-vien?xem=cho-duyet");
+  await expect(page).toHaveURL("/admin/members?xem=cho-duyet");
   const khoa = page.getByRole("row", { name: /Đỗ Khoa/ });
   await expect(khoa).toContainText("Chờ duyệt");
   await page.getByRole("button", { name: "Duyệt Đỗ Khoa" }).click();
@@ -248,7 +248,7 @@ test("thành viên: tab Lời mời thu hồi được, tab Chờ duyệt duyệ
 test("từ chối người chờ duyệt: chuyển sang bị khoá trong danh sách chính", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
-  await page.goto("/quan-tri/thanh-vien?xem=cho-duyet");
+  await page.goto("/admin/members?xem=cho-duyet");
   await page.getByRole("button", { name: "Từ chối Đỗ Khoa" }).click();
   await expect(page.getByRole("tab", { name: "Chờ duyệt · 0" })).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "orgMembers/deny")?.input).toEqual({ userId: "u3" });
@@ -260,7 +260,7 @@ test("mời người: nhiều email, vai trò tổ chức, đội và vai trò �
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
   await page.getByRole("button", { name: "Mời người" }).click();
 
   const dialog = page.getByRole("dialog");
@@ -287,10 +287,10 @@ test("mời người: nhiều email, vai trò tổ chức, đội và vai trò �
     org: ORG_A.id,
     input: { emails: ["a@fpt.com", "b@fpt.com"], orgRole: "admin", teamId: TEAM.id, teamRole: "viewer" },
   });
-  const linkA = "https://hive.example.vn/moi/ma-moi-0-0123456789abcdef";
+  const linkA = "https://hive.example.vn/invite/ma-moi-0-0123456789abcdef";
   await expect(dialog.getByLabel("Link mời cho a@fpt.com", { exact: true })).toHaveValue(linkA);
   await expect(dialog.getByLabel("Link mời cho b@fpt.com", { exact: true })).toHaveValue(
-    "https://hive.example.vn/moi/ma-moi-1-0123456789abcdef",
+    "https://hive.example.vn/invite/ma-moi-1-0123456789abcdef",
   );
   await dialog.getByRole("button", { name: "Chép link mời cho a@fpt.com" }).click();
   await expect(dialog.getByRole("button", { name: "Đã chép link mời cho a@fpt.com" })).toBeVisible();
@@ -316,7 +316,7 @@ test("mời người: lỗi của hub hiện tiếng Việt, quản trị không
         }),
     },
   });
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
   await page.getByRole("button", { name: "Mời người" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByLabel("Vai trò tổ chức").locator("option")).toHaveText(["Thành viên"]);
@@ -329,7 +329,7 @@ test("mời người: lỗi của hub hiện tiếng Việt, quản trị không
 test("thành viên thường: không thấy nút Mời người, tab Lời mời, Chờ duyệt và mục Đăng nhập", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_B.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
-  await page.goto("/quan-tri/thanh-vien?xem=loi-moi");
+  await page.goto("/admin/members?xem=loi-moi");
 
   await expect(page.getByRole("tab", { name: "Đang hoạt động · 2" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("tab")).toHaveCount(1);
@@ -339,7 +339,7 @@ test("thành viên thường: không thấy nút Mời người, tab Lời mời
   await expect(nav.getByRole("link", { name: "Thành viên" })).toHaveAttribute("aria-current", "page");
   expect(hub.rpcCalls.some((c) => c.path === "invitations/list")).toBe(false);
 
-  await page.goto("/quan-tri/dang-nhap");
+  await page.goto("/admin/sign-in-settings");
   await expect(page.getByText("Chỉ quản trị tổ chức xem và sửa được cài đặt đăng nhập.")).toBeVisible();
   expect(hub.rpcCalls.some((c) => c.path === "ssoProviders/get")).toBe(false);
 });
@@ -347,7 +347,7 @@ test("thành viên thường: không thấy nút Mời người, tab Lời mời
 test("đội: quản trị tổ chức mời người mới từ hộp thoại Thêm người, đội chọn sẵn", async ({ page }) => {
   await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
   const hub = await fakeHub(page, { signedIn: true, rpc: withInvites() });
-  await page.goto("/quan-tri/doi");
+  await page.goto("/admin/teams");
   await page.getByRole("button", { name: "Thêm người" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "mời bằng email" }).click();
   const dialog = page.getByRole("dialog");
@@ -395,7 +395,7 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   });
   await page.goto("/");
   await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Đăng nhập" }).click();
-  await expect(page).toHaveURL("/quan-tri/dang-nhap");
+  await expect(page).toHaveURL("/admin/sign-in-settings");
 
   const methods = page.getByRole("list", { name: "Các cách đăng nhập" });
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Chưa cấu hình");
@@ -459,7 +459,7 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
         }),
     },
   });
-  await page.goto("/quan-tri/dang-nhap");
+  await page.goto("/admin/sign-in-settings");
   await expect(page.getByLabel("Issuer URL")).toHaveValue("https://idp.fpt.com");
   await expect(page.getByText("Đang dùng Client ID kết thúc bằng ab12. Nhập lại khi lưu.")).toBeVisible();
   await page.getByLabel("Issuer URL").fill("https://idp-moi.fpt.com");
@@ -485,7 +485,7 @@ test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn
         fail("CONFLICT", 409, "Tổ chức phải còn ít nhất một chủ sở hữu đang hoạt động.", { code: "LAST_OWNER" }),
     },
   });
-  await page.goto("/quan-tri/thanh-vien");
+  await page.goto("/admin/members");
   const role = page.getByLabel("Vai trò tổ chức của Lê Hà");
   await role.selectOption({ label: "Quản trị" });
   await expect(page.getByRole("alert")).toHaveText("Tổ chức phải còn ít nhất một chủ sở hữu đang hoạt động.");
@@ -499,7 +499,7 @@ test("lỗi khi đổi vai trò: hiện câu tiếng Việt của hub, ô chọn
 
 test("chưa thuộc tổ chức, không được tạo: trang quản trị và màn tạo tổ chức về trang chủ", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
-  for (const path of ["/tao-to-chuc", "/quan-tri/doi", "/quan-tri/thanh-vien", "/quan-tri/dang-nhap"]) {
+  for (const path of ["/orgs/new", "/admin/teams", "/admin/members", "/admin/sign-in-settings"]) {
     await page.goto(path);
     await expect(page).toHaveURL("/");
     await expect(page.getByRole("heading", { name: "Chưa thuộc tổ chức nào" })).toBeVisible();
@@ -520,7 +520,7 @@ test("tạo tổ chức: lỗi kiểm tra của hub hiện ngay dưới ô bị 
     },
   });
   await page.goto("/");
-  await expect(page).toHaveURL("/tao-to-chuc");
+  await expect(page).toHaveURL("/orgs/new");
   await page.getByRole("button", { name: "Tiếp: tạo đội" }).click();
   // Kiểm trên máy trước khi gửi.
   await expect(page.getByText("Nhập tên.")).toBeVisible();

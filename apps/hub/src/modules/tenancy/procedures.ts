@@ -11,7 +11,7 @@ export interface TenancyDeps {
   pool?: pg.Pool | undefined;
   /** Email (chữ thường) được tạo thêm tổ chức sau tổ chức đầu tiên. */
   orgCreators?: string[] | undefined;
-  /** Địa chỉ web mà người được mời mở link; link mời là `${publicUrl}/moi/<mã>`. */
+  /** Địa chỉ web mà người được mời mở link; link mời là `${publicUrl}/invite/<mã>`. */
   publicUrl?: string | undefined;
 }
 

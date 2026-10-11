@@ -53,7 +53,7 @@ const BODY_MAX = 50_000;
 const BRANCH_PREFIX = "ai/";
 
 /** Chưa có trang task trên web; đường dẫn này sẽ là trang task khi web có (ghi trong mô tả PR). */
-const taskUrl = (publicUrl: string, task: TaskRow) => `${publicUrl.replace(/\/+$/, "")}/viec/${task.key}`;
+const taskUrl = (publicUrl: string, task: TaskRow) => `${publicUrl.replace(/\/+$/, "")}/tasks/${task.key}`;
 
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 

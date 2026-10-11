@@ -72,7 +72,7 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
               </Menu.RadioGroup>
             )}
             {canCreate && (
-              <Menu.LinkItem render={<Link to="/tao-to-chuc" />} className={cx(menuItem, "mt-1 text-muted")}>
+              <Menu.LinkItem render={<Link to="/orgs/new" />} className={cx(menuItem, "mt-1 text-muted")}>
                 <span className="grid size-6 shrink-0 place-items-center">
                   <Icon name="plus" />
                 </span>

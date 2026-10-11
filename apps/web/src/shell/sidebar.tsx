@@ -29,9 +29,9 @@ const WORK: NavEntry[] = [
 ];
 
 const ADMIN: NavEntry[] = [
-  { label: "Đội và hệ thống", icon: "users", to: "/quan-tri/doi", needsOrg: true },
-  { label: "Thành viên", icon: "mail", to: "/quan-tri/thanh-vien", needsOrg: true },
-  { label: "Đăng nhập", icon: "key", to: "/quan-tri/dang-nhap", needsOrg: true, adminOnly: true },
+  { label: "Đội và hệ thống", icon: "users", to: "/admin/teams", needsOrg: true },
+  { label: "Thành viên", icon: "mail", to: "/admin/members", needsOrg: true },
+  { label: "Đăng nhập", icon: "key", to: "/admin/sign-in-settings", needsOrg: true, adminOnly: true },
   { label: "Cài đặt tổ chức", icon: "gear" },
 ];
 

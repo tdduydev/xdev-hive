@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn lenh_thuong() {
+    fn plain_command() {
         let got = parse_register_command(
             "hive-worker register --hub https://hive.example.com/ --token hwr_abc123",
         );
@@ -190,7 +190,7 @@ mod tests {
     }
 
     #[test]
-    fn dau_bang_mot_gach_va_ten_may() {
+    fn single_dash_flags_and_machine_name() {
         let got = parse_register_command(
             "./hive-worker register -hub=http://10.0.0.5:7780 --token=hwr_x --machine may-lan",
         );
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn dau_nhay_va_dong_noi() {
+    fn quotes_and_line_continuation() {
         let bash =
             "hive-worker register \\\n  --hub 'https://hive.example.com' \\\n  --token \"hwr_q\"";
         let powershell =
@@ -217,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn bao_loi_ro_rang() {
+    fn reports_clear_errors() {
         assert_eq!(
             parse_register_command("hive-worker register --hub https://h.example"),
             Err("Lệnh không có --token.".into())
@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn kiem_form_nhap_tay() {
+    fn validates_manual_form() {
         assert_eq!(
             validate(" https://h.example/ ", " hwr_1 ", Some(" ")),
             Ok(args("https://h.example", "hwr_1", None))
