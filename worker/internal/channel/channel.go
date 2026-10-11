@@ -43,6 +43,25 @@ type Config struct {
 	CLICommands map[string]runner.Command
 	// StopTimeout là thời gian chờ run đang chạy dừng hẳn khi worker tắt; 0 là 30 giây.
 	StopTimeout time.Duration
+	// OnStatus nhận trạng thái kết nối, để app desktop hiện trên khay hệ thống (hive-worker run --status-json).
+	OnStatus func(Status)
+}
+
+// Status là trạng thái kết nối tới hub. Error chỉ có khi State là "disconnected" hoặc "stopped" vì lỗi.
+type Status struct {
+	State string `json:"status"`
+	Error string `json:"error,omitempty"`
+}
+
+func (c Config) status(state string, err error) {
+	if c.OnStatus == nil {
+		return
+	}
+	s := Status{State: state}
+	if err != nil {
+		s.Error = err.Error()
+	}
+	c.OnStatus(s)
 }
 
 type jobSpec struct {
@@ -152,15 +171,19 @@ func (c Config) Run(ctx context.Context) error {
 		if ctx.Err() != nil || jobs.finished() {
 			return nil
 		}
+		c.status("connecting", nil)
 		err := c.connect(ctx, jobs)
 		var upgrade *UpgradeError
 		var rejected *RejectedError
 		if errors.As(err, &upgrade) || errors.As(err, &rejected) {
+			c.status("stopped", err)
 			return err
 		}
 		if ctx.Err() != nil || jobs.finished() {
+			c.status("stopped", nil)
 			return nil
 		}
+		c.status("disconnected", err)
 		c.Logger.Warn("Kênh worker mất kết nối, sẽ thử lại", "error", err)
 		delay := time.Duration(rand.Int64N(int64(backoff) + 1))
 		timer := time.NewTimer(delay)
@@ -223,6 +246,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 			return err
 		}
 		c.Logger.Info("Đã kết nối hub", "sessionId", welcome.SessionID, "heartbeatSec", welcome.HeartbeatSec)
+		c.status("online", nil)
 		return c.session(ctx, conn, welcome, jobs)
 	case "upgrade_required":
 		var upgrade UpgradeRequired

@@ -215,3 +215,31 @@ func TestRevokedCloseStops(t *testing.T) {
 		t.Fatal("worker không dừng khi máy bị thu hồi")
 	}
 }
+
+func TestStatusCallback(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		receiveHello(t, conn)
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))
+		if attempts.Add(1) == 1 {
+			_ = conn.Close(websocket.StatusGoingAway, "restart")
+			return
+		}
+		_ = conn.Close(4401, "Máy đã bị thu hồi")
+	}))
+	defer srv.Close()
+	var states []string
+	cfg := testConfig(t, srv.URL)
+	cfg.OnStatus = func(s Status) { states = append(states, s.State) }
+	if err := cfg.Run(context.Background()); err == nil {
+		t.Fatal("cần lỗi khi máy bị thu hồi")
+	}
+	want := []string{"connecting", "online", "disconnected", "connecting", "online", "stopped"}
+	if strings.Join(states, ",") != strings.Join(want, ",") {
+		t.Fatalf("trạng thái = %v, cần %v", states, want)
+	}
+}
