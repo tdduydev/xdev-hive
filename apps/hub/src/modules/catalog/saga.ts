@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
+import { notify } from "../notify/index.ts";
 import { decryptSecret, type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
 import {
   type GitProvider,
@@ -35,6 +36,8 @@ export interface ProvisionDeps {
   masterKey: MasterKey;
   providerFactory: ProviderFactory;
   publicUrl: string;
+  /** Gửi thông báo cho nhóm quản trị khi saga dừng ở bước lỗi; không có thì thông báo nằm chờ deliverPending. */
+  jobs?: Jobs | undefined;
 }
 
 /** pg-boss thử lại lỗi tạm thời (hết hạn mức, nhà cung cấp không phản hồi) chừng này lần trước khi dừng ở bước lỗi. */
@@ -259,6 +262,17 @@ export async function runProvision(
           targetId: project.id,
           data: { stepId: step.id, kind: step.kind, code: error.code, message: error.message },
         });
+        await notify(
+          tx,
+          {
+            orgId: job.orgId,
+            event: "project.provision_failed",
+            title: `Khởi tạo dự án ${project.key} dừng ở bước ${step.kind}`,
+            body: `${error.message}\nSửa nguyên nhân rồi chạy lại bước này trên trang dự án.`,
+            link: `${deps.publicUrl.replace(/\/+$/, "")}/du-an/${project.key}`,
+          },
+          { jobs: deps.jobs },
+        );
       });
       return "failed";
     }
