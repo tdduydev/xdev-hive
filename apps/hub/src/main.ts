@@ -99,7 +99,7 @@ if (roles.includes("jobs") && jobs) {
     runs?.registerScmHandlers();
     await registerScmEventWorker(jobs, { pool });
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
-    await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey });
+    await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
   }
 }
 

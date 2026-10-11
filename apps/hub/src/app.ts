@@ -70,7 +70,7 @@ export function createApp({
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl }),
     ...fleetRouter({ auth, pool, publicUrl }),
     scmConnections: scmRouter(shared),
-    notificationChannels: notifyRouter(shared),
+    notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
