@@ -14,6 +14,7 @@ export const ON_MACHINE: readonly RunState[] = ["leased", "preparing", "running"
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+/** `machineName` để null; truy vấn trả run cho người xem điền tên qua withMachineNames (queries.ts). */
 export function toRun(r: RunRow): Run {
   return {
     id: r.id,
@@ -26,6 +27,7 @@ export function toRun(r: RunRow): Run {
     attempt: r.attempt,
     maxAttempts: r.maxAttempts,
     machineId: r.machineId,
+    machineName: null,
     cli: r.cli,
     model: r.model,
     pinnedMachineId: r.pinnedMachineId,
