@@ -26,6 +26,7 @@ export function toRun(r: RunRow): Run {
     maxAttempts: r.maxAttempts,
     machineId: r.machineId,
     cli: r.cli,
+    model: r.model,
     pinnedMachineId: r.pinnedMachineId,
     branch: r.branch,
     policySnapshot: r.policySnapshot,

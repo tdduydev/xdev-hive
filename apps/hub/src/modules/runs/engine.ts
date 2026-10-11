@@ -129,6 +129,7 @@ function buildSpec(
       : prompt,
     instructions,
     cli,
+    model: run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null,
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,
@@ -767,6 +768,7 @@ export function createRunsEngine(deps: RunsDeps) {
     }
     const { row, afterCommit } = await queueRun(tx, task, project, {
       cli: input.cli ?? task.preferredCli ?? null,
+      model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
     });
@@ -783,6 +785,7 @@ export function createRunsEngine(deps: RunsDeps) {
     project: ProjectRow | null,
     opts: {
       cli: RunRow["cli"];
+      model?: string | null;
       machineId?: string | null;
       createdBy: string;
       /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
@@ -808,6 +811,12 @@ export function createRunsEngine(deps: RunsDeps) {
           taskId: task.id,
           projectId: project.id,
           cli: opts.cli,
+          model:
+            opts.model !== undefined
+              ? opts.model
+              : opts.cli
+                ? (project.settings.models?.[opts.cli]?.code ?? null)
+                : null,
           pinnedMachineId: opts.machineId ?? null,
           branch: `ai/${task.key}`,
           policySnapshot: policy,

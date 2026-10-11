@@ -106,6 +106,29 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
 export const projectSettings = z.object({
+  /** Model được dùng theo CLI và loại run; bỏ trống thì CLI chọn mặc định. */
+  models: z
+    .object({
+      claude: z
+        .object({
+          code: z.string().trim().min(1).max(200).optional(),
+          review: z.string().trim().min(1).max(200).optional(),
+        })
+        .optional(),
+      codex: z
+        .object({
+          code: z.string().trim().min(1).max(200).optional(),
+          review: z.string().trim().min(1).max(200).optional(),
+        })
+        .optional(),
+      gemini: z
+        .object({
+          code: z.string().trim().min(1).max(200).optional(),
+          review: z.string().trim().min(1).max(200).optional(),
+        })
+        .optional(),
+    })
+    .optional(),
   merge: z.object({
     /** `review`: cần người duyệt. `auto`: tự merge khi đạt chính sách kết quả và CI. */
     mode: z.enum(["review", "auto"]),

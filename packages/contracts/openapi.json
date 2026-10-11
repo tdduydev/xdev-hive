@@ -18234,6 +18234,56 @@
                       "settings": {
                         "type": "object",
                         "properties": {
+                          "models": {
+                            "type": "object",
+                            "properties": {
+                              "claude": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "review": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                }
+                              },
+                              "codex": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "review": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                }
+                              },
+                              "gemini": {
+                                "type": "object",
+                                "properties": {
+                                  "code": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "review": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  }
+                                }
+                              }
+                            }
+                          },
                           "merge": {
                             "type": "object",
                             "properties": {
@@ -19109,6 +19159,56 @@
                     "settings": {
                       "type": "object",
                       "properties": {
+                        "models": {
+                          "type": "object",
+                          "properties": {
+                            "claude": {
+                              "type": "object",
+                              "properties": {
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "review": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              }
+                            },
+                            "codex": {
+                              "type": "object",
+                              "properties": {
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "review": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              }
+                            },
+                            "gemini": {
+                              "type": "object",
+                              "properties": {
+                                "code": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                },
+                                "review": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              }
+                            }
+                          }
+                        },
                         "merge": {
                           "type": "object",
                           "properties": {
@@ -19986,6 +20086,56 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "models": {
+                              "type": "object",
+                              "properties": {
+                                "claude": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "codex": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "gemini": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                }
+                              }
+                            },
                             "merge": {
                               "type": "object",
                               "properties": {
@@ -21016,6 +21166,56 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "models": {
+                              "type": "object",
+                              "properties": {
+                                "claude": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "codex": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                },
+                                "gemini": {
+                                  "type": "object",
+                                  "properties": {
+                                    "code": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    },
+                                    "review": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
+                                    }
+                                  }
+                                }
+                              }
+                            },
                             "merge": {
                               "type": "object",
                               "properties": {
@@ -32334,6 +32534,18 @@
                     ],
                     "type": "string"
                   },
+                  "model": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "machineId": {
                     "type": "string",
                     "format": "uuid"
@@ -32426,6 +32638,16 @@
                             "codex",
                             "gemini"
                           ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "model": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -32727,6 +32949,7 @@
                     "maxAttempts",
                     "machineId",
                     "cli",
+                    "model",
                     "pinnedMachineId",
                     "branch",
                     "policySnapshot",
@@ -33185,6 +33408,16 @@
                           }
                         ]
                       },
+                      "model": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "pinnedMachineId": {
                         "anyOf": [
                           {
@@ -33479,6 +33712,7 @@
                       "maxAttempts",
                       "machineId",
                       "cli",
+                      "model",
                       "pinnedMachineId",
                       "branch",
                       "policySnapshot",
@@ -33936,6 +34170,16 @@
                         }
                       ]
                     },
+                    "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "pinnedMachineId": {
                       "anyOf": [
                         {
@@ -34230,6 +34474,7 @@
                     "maxAttempts",
                     "machineId",
                     "cli",
+                    "model",
                     "pinnedMachineId",
                     "branch",
                     "policySnapshot",
@@ -34686,6 +34931,16 @@
                         }
                       ]
                     },
+                    "model": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "pinnedMachineId": {
                       "anyOf": [
                         {
@@ -34980,6 +35235,7 @@
                     "maxAttempts",
                     "machineId",
                     "cli",
+                    "model",
                     "pinnedMachineId",
                     "branch",
                     "policySnapshot",
