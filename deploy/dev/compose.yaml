@@ -1,0 +1,21 @@
+# Postgres cho môi trường dev. Chạy: docker compose -f deploy/dev/compose.yaml up -d
+# Sau đó: pnpm --filter @xdev-hive/hub db:setup (đọc apps/hub/.env, xem .env.example).
+name: xdev-hive-dev
+services:
+  postgres:
+    # Docker Hub giới hạn lượt tải theo IP; nếu bị 429, đặt HIVE_POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:18-trixie.
+    image: ${HIVE_POSTGRES_IMAGE:-pgvector/pgvector:0.8.7-pg18-trixie}
+    environment:
+      POSTGRES_DB: hive
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres-dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "hive"]
+      interval: 2s
+      retries: 30
+volumes:
+  pgdata:

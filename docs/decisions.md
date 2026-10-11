@@ -43,7 +43,7 @@ Phiên bản kiểm ngày 11/10/2026 trên npm, proxy.golang.org, crates.io và 
 | CSDL | PostgreSQL **18.6** + pgvector **0.8.7** | Chờ 19.1 rồi mới nâng |
 | Truy vấn | Drizzle **0.45** + drizzle-kit 0.31, driver `pg` 8.23 | Drizzle 1.0 kẹt ở RC từ tháng 5; đường lui Kysely 0.29 |
 | Hàng đợi | pg-boss **12.37.1** | |
-| Đăng nhập | Better Auth **1.7.7** + `@better-auth/sso`, `oauth-provider`, `mcp`, `cimd` | MCP spec 2026-07-28 dùng CIMD thay DCR |
+| Đăng nhập | Better Auth **1.7.7** + `@better-auth/sso`, `oauth-provider`, `mcp`, `cimd` | MCP spec 2026-07-28 dùng CIMD thay DCR. Better Auth chỉ lo xác thực; tổ chức, đội, vai trò là bảng riêng của module `tenancy` (không dùng plugin organization) để giữ cấu trúc bốn tầng và RLS (chốt khi làm M1) |
 | MCP | `@modelcontextprotocol/server` **2.3.1** (dòng v2) | Better Auth MCP bắt buộc v2 |
 | Tài liệu cộng tác | Hocuspocus **4.7** + Yjs **13.6.33**, Tiptap **3.31** | Yjs 14 còn beta, Hocuspocus cần Yjs 13 |
 | Git | `@octokit/app` 16.1, `@octokit/webhooks` 14.2, `@gitbeaker/rest` 43.8 | Gitbeaker chỉ phủ GitLab API 16.5; endpoint mới gọi REST tay |
