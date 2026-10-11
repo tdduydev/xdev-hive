@@ -26,6 +26,18 @@ export interface HubConfig {
   allowEmailSignUp?: boolean | undefined;
   github?: OAuthAppConfig | undefined;
   gitlab?: (OAuthAppConfig & { issuer?: string | undefined }) | undefined;
+  /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
+  embeddings?: EmbeddingsConfig | undefined;
+}
+
+export interface EmbeddingsConfig {
+  /** Gốc API, ví dụ `https://api.openai.com/v1`; hub gọi `<url>/embeddings`. */
+  url: string;
+  /** Bỏ trống với server nội bộ không cần khoá (Ollama, vLLM). */
+  apiKey?: string | undefined;
+  model: string;
+  /** Chỉ gửi khi đặt: mô hình text-embedding-3 cắt được số chiều, mô hình khác có thể từ chối tham số này. */
+  dimensions?: number | undefined;
 }
 
 export type HubRole = "api" | "jobs";
@@ -40,6 +52,23 @@ function roles(env: Env): HubRole[] {
     .filter(Boolean);
   for (const r of list) if (!ROLES.includes(r as HubRole)) throw new Error(`HIVE_ROLES có vai trò lạ: ${r}`);
   return list as HubRole[];
+}
+
+function embeddings(env: Env): EmbeddingsConfig | undefined {
+  const url = env.HIVE_EMBEDDINGS_URL;
+  if (!url) return undefined;
+  if (!/^https?:\/\//.test(url)) throw new Error(`HIVE_EMBEDDINGS_URL phải là địa chỉ http(s): ${url}`);
+  const dims = env.HIVE_EMBEDDINGS_DIMENSIONS;
+  const dimensions = dims ? Number(dims) : undefined;
+  if (dimensions !== undefined && !(Number.isInteger(dimensions) && dimensions > 0 && dimensions <= 16_000)) {
+    throw new Error(`HIVE_EMBEDDINGS_DIMENSIONS không hợp lệ: ${dims}`);
+  }
+  return {
+    url: url.replace(/\/+$/, ""),
+    apiKey: env.HIVE_EMBEDDINGS_API_KEY || undefined,
+    model: env.HIVE_EMBEDDINGS_MODEL || "text-embedding-3-small",
+    dimensions,
+  };
 }
 
 /** Khoá chủ đọc từ biến môi trường hoặc file mount (secret của Docker/Kubernetes), không cả hai. */
@@ -86,5 +115,6 @@ export function loadConfig(env: Env = process.env): HubConfig {
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
+    embeddings: embeddings(env),
   };
 }
