@@ -94,6 +94,20 @@ describe("checkRows", () => {
       ["Đang chờ review chéo bởi codex.", "muted"],
     ]);
   });
+
+  it("review chéo bỏ qua theo điều kiện", () => {
+    const result = {
+      exit: 0,
+      commitCount: 1,
+      changedFiles: ["README.md"],
+      reasons: [],
+      checks: [{ check: "review", required: false, passed: true, skipped: true, message: "Thay đổi nhỏ." }],
+    };
+    expect(checkRows(makeRun({ policySnapshot: policySnapshot.slice(2), result }))[0]).toMatchObject({
+      state: "Bỏ qua · Thay đổi nhỏ.",
+      tone: "muted",
+    });
+  });
 });
 
 describe("describeEvent", () => {

@@ -173,6 +173,8 @@ export function checkRows(run: Run): CheckRow[] {
     const i = results.findIndex((r) => r.check === check.check);
     const result = i >= 0 ? results.splice(i, 1)[0] : undefined;
     if (!result) return { label, state: run.result ? "Không có kết quả" : "Chờ run kết thúc", tone: "muted" };
+    // Review chéo bỏ qua theo điều kiện `when` (thay đổi nhỏ, không đụng đường dẫn đã khai báo).
+    if (result.skipped) return { label, state: `Bỏ qua · ${result.message}`, tone: "muted" };
     if (result.passed === true) return { label, state: `Đạt · ${result.message}`, tone: "ok" };
     if (result.passed === false) return { label, state: `Không đạt · ${result.message}`, tone: "bad" };
     return { label, state: result.message, tone: "muted" };
