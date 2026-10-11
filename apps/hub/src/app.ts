@@ -76,7 +76,7 @@ export function createApp({
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
     ...knowledgeRouter({ auth, pool, jobs, embedder }),
-    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask }),
+    tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
   };

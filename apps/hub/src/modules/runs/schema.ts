@@ -27,7 +27,7 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review"]);
+export const runKind = hive.enum("run_kind", ["code", "review", "plan"]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
@@ -63,7 +63,10 @@ export const runs = hive
       taskId: uuid("task_id").notNull(),
       projectId: uuid("project_id").notNull(),
       kind: runKind("kind").notNull().default("code"),
-      /** Run review chéo trỏ tới run code nó review; cùng task, cùng tổ chức (khoá kép như các bảng con). */
+      /**
+       * Run review chéo và run lập kế hoạch trỏ tới run code chúng phục vụ; cùng task, cùng tổ chức (khoá kép như các
+       * bảng con).
+       */
       parentRunId: uuid("parent_run_id"),
       state: runState("state").notNull().default("queued"),
       /** Lần thử hiện tại; gói của worker mang attempt khác bị từ chối (fencing). */
@@ -108,7 +111,7 @@ export const runs = hive
       uniqueIndex("runs_task_active")
         .on(t.taskId)
         .where(sql`kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
-      // Hai lần verify chạy chồng nhau của run cha không tạo được hai run review cùng sống.
+      // Hai lần verify (hay lập kế hoạch) chạy chồng nhau của run cha không tạo được hai run con cùng sống.
       uniqueIndex("runs_review_active")
         .on(t.parentRunId)
         .where(sql`state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),

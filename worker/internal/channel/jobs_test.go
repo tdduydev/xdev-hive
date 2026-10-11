@@ -122,14 +122,16 @@ func TestDecodeJobPassesLeaseEnvironment(t *testing.T) {
 	}
 }
 
-func TestDecodeJobKeepsReviewKind(t *testing.T) {
-	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"review","repoUrl":"https://git.example/a.git","cli":"claude","branch":"ai/HD-1"}`)}
-	job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.Kind != runner.KindReview || job.Branch != "ai/HD-1" {
-		t.Fatalf("job = %+v", job)
+func TestDecodeJobKeepsReviewAndPlanKind(t *testing.T) {
+	for _, kind := range []string{runner.KindReview, runner.KindPlan} {
+		offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"` + kind + `","repoUrl":"https://git.example/a.git","cli":"claude","branch":"ai/HD-1"}`)}
+		job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Kind != kind || job.Branch != "ai/HD-1" {
+			t.Fatalf("job = %+v", job)
+		}
 	}
 }
 
