@@ -2,7 +2,9 @@
 // rồi báo cáo bằng tool MCP task_update như agent thật. Nhờ vậy kiểm được luồng worker → hub → PR mà không gọi AI.
 // Worker chạy: node scripts/e2e-fake-cli.ts "<prompt>" trong worktree của run.
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const prompt = process.argv[2] ?? "";
 // Máy CI không có danh tính git global; đặt qua biến môi trường để không đụng cấu hình của worktree.
@@ -18,6 +20,21 @@ const git = (...args: string[]) => execFileSync("git", args, { env: gitEnv, enco
 console.log(`[cli giả] nhận việc: ${prompt.split("\n")[0]}`);
 // Dấu [e2e-file:tên] cho ca nhiều task song song: mỗi task ghi file riêng để PR không xung đột nhau.
 const own = /\[e2e-file:([\w.-]+)\]/.exec(prompt)?.[1];
+const peer = /\[e2e-peer:([\w.-]+)\]/.exec(prompt)?.[1];
+if (own && peer) {
+  const parallelDir = process.argv[3];
+  if (!parallelDir) throw new Error("CLI giả thiếu thư mục đồng bộ cho ca song song.");
+  // Hai CLI phải cùng tồn tại: capacity 1 sẽ hết thời gian chờ, thay vì tạo hai PR nối tiếp mà vẫn báo đạt.
+  mkdirSync(parallelDir, { recursive: true });
+  writeFileSync(join(parallelDir, own), "ready");
+  const deadline = Date.now() + 45_000;
+  while (!existsSync(join(parallelDir, peer))) {
+    if (Date.now() >= deadline) throw new Error(`Hết thời gian chờ CLI của task ${peer} chạy đồng thời.`);
+    await delay(50);
+  }
+  // Giữ khoảng chạy chồng đủ dài để phân biệt được hai pha running/verifying trong nhật ký của hub.
+  await delay(200);
+}
 const target = own ? `e2e-notes/${own}` : "README.md";
 if (own) {
   mkdirSync("e2e-notes", { recursive: true });
@@ -66,7 +83,7 @@ if (token && hub) {
   try {
     const out = await callTool(hub, token, "task_update", {
       status: "review",
-      note: `Agent giả đã thêm ghi chú vào README.md (commit ${sha.slice(0, 12)}).`,
+      note: `Agent giả đã thêm ghi chú vào ${target} (commit ${sha.slice(0, 12)}).`,
     });
     console.log(`[cli giả] đã báo cáo qua MCP: ${out}`);
   } catch (e) {
