@@ -6,7 +6,14 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { defaultProjectSettings, type Plan, type PlanDecision, type Run, type Task } from "@xdev-hive/contracts";
+import {
+  defaultProjectSettings,
+  type Plan,
+  type PlanDecision,
+  type PlanHistory,
+  type Run,
+  type Task,
+} from "@xdev-hive/contracts";
 import { type HubToWorker, hubToWorker, PROTOCOL_VERSION } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
@@ -20,7 +27,7 @@ import { createAuth } from "./modules/identity/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import { createRunsEngine, type RunsEngine } from "./modules/runs/index.ts";
 import { createMemoryProvider, type MemoryProvider } from "./modules/scm/index.ts";
-import { getPlan, loadTask } from "./modules/tasks/index.ts";
+import { getPlan, listPlans, loadTask } from "./modules/tasks/index.ts";
 
 const { adminUrl, appUrl, authUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -493,6 +500,14 @@ describe("plan mode", () => {
       revision: 2,
       runId: next.id,
     });
+    // Lịch sử cho màn duyệt: lần mới nhất trước, bản bị từ chối giữ lý do.
+    const history = await api<PlanHistory>("GET", `/v1/tasks/${second.task.id}/plans`);
+    expect(history.status).toBe(200);
+    expect(history.data.canDecide).toBe(true);
+    expect(history.data.plans.map((p) => [p.revision, p.status, p.note])).toEqual([
+      [2, "awaiting", null],
+      [1, "rejected", "Cần tách thành hai PR."],
+    ]);
   });
 
   it("quyền duyệt như người giao việc: thành viên và quản trị đội được, người xem và đội khác không", async () => {
@@ -510,6 +525,12 @@ describe("plan mode", () => {
 
     // Người xem đọc được kế hoạch nhưng không duyệt hay từ chối được.
     expect((await as("tviewer", (tx) => getPlan(tx, org.user("tviewer"), task.id))).id).toBe(planId);
+    // Lịch sử báo người xem không duyệt được, để web hiện màn chỉ đọc; quản trị đội thì được.
+    const history = (who: string) => as(who, (tx) => listPlans(tx, org.user(who), task.id));
+    expect(await history("tviewer")).toMatchObject({ canDecide: false, plans: [{ id: planId }] });
+    expect((await history("tmember")).canDecide).toBe(true);
+    expect((await history("tadmin")).canDecide).toBe(true);
+    expect(await errorCode(() => history("oadmin"))).toBe("TASK_NOT_FOUND");
     expect(await errorCode(() => approve("tviewer"))).toBe("TEAM_ROLE_REQUIRED");
     expect(await errorCode(() => reject("tviewer"))).toBe("TEAM_ROLE_REQUIRED");
     expect(await errorCode(() => approve("oadmin"))).toBe("TASK_NOT_FOUND");
