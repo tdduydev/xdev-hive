@@ -1,0 +1,194 @@
+package runner
+
+import (
+	"context"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestRunnerPublishesAndNoChanges(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	for _, tc := range []struct {
+		name, mode, status string
+		pushed             bool
+	}{{"commit", "commit", "succeeded", true}, {"empty", "empty", "no_changes", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			branch := "ai/" + tc.name
+			_ = git(context.Background(), remote, "branch", "-D", branch)
+			var events []Event
+			r := Runner{DataDir: data, CLICommands: fakeCommands(tc.mode)}
+			err := r.Run(context.Background(), Job{RunID: tc.name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: branch, CLI: "codex", Prompt: "prompt", Timeout: 5 * time.Second, Env: map[string]string{"HIVE_RUNNER_HELPER": "1", "HIVE_FAKE_MODE": tc.mode}}, SinkFunc(func(e Event) error { events = append(events, e); return nil }))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := lastResult(events)
+			if got == nil || got.Status != tc.status {
+				t.Fatalf("result = %#v", got)
+			}
+			cmd := exec.Command("git", "--git-dir", remote, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+			present := cmd.Run() == nil
+			if present != tc.pushed {
+				t.Fatalf("pushed = %v", present)
+			}
+			if _, err := os.Stat(filepath.Join(data, "runs", tc.name+"-1")); !os.IsNotExist(err) {
+				t.Fatalf("worktree remains: %v", err)
+			}
+		})
+	}
+}
+
+func TestRunnerTimeoutAndCancelCleanWorktree(t *testing.T) {
+	remote, base := makeRemote(t)
+	for _, tc := range []struct {
+		name    string
+		timeout time.Duration
+		cancel  bool
+	}{{"timeout", 80 * time.Millisecond, false}, {"cancel", 0, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan error, 1)
+			running := make(chan struct{}, 1)
+			var events []Event
+			go func() {
+				done <- (Runner{DataDir: data, CLICommands: fakeCommands("sleep"), KillGrace: 200 * time.Millisecond}).Run(ctx, Job{RunID: tc.name, Attempt: 1, RepoURL: fileURL(remote), BaseBranch: base, Branch: "ai/" + tc.name, CLI: "codex", Timeout: tc.timeout, Env: map[string]string{"HIVE_RUNNER_HELPER": "1"}}, SinkFunc(func(e Event) error {
+					events = append(events, e)
+					if e.Type == "phase" && e.Phase == "running" {
+						running <- struct{}{}
+					}
+					return nil
+				}))
+			}()
+			if tc.cancel {
+				<-running
+				cancel()
+			}
+			err := <-done
+			if err == nil {
+				t.Fatal("expected process to stop")
+			}
+			if _, statErr := os.Stat(filepath.Join(data, "runs", tc.name+"-1")); !os.IsNotExist(statErr) {
+				t.Fatalf("worktree remains: %v", statErr)
+			}
+			res := lastResult(events)
+			if res == nil {
+				t.Fatal("result event missing")
+			}
+			status := res.Status
+			if tc.cancel && status != "cancelled" {
+				t.Fatalf("status %q", status)
+			}
+			if !tc.cancel && status != "timeout" {
+				t.Fatalf("status %q", status)
+			}
+		})
+	}
+}
+
+func TestReapOrphans(t *testing.T) {
+	remote, base := makeRemote(t)
+	data := t.TempDir()
+	cache := filepath.Join(data, "repos", "cache.git")
+	root := filepath.Join(data, "runs")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	must(t, "git", "clone", "--bare", remote, cache)
+	must(t, "git", "--git-dir", cache, "worktree", "add", "-b", "ai/live", filepath.Join(root, "live-1"), "refs/heads/"+base)
+	must(t, "git", "--git-dir", cache, "worktree", "add", "-b", "ai/orphan", filepath.Join(root, "orphan-1"), "refs/heads/"+base)
+	if err := ReapOrphans(data, []string{"live"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, e := os.Stat(filepath.Join(data, "runs", "live-1")); e != nil {
+		t.Fatal("live worktree removed")
+	}
+	if _, e := os.Stat(filepath.Join(data, "runs", "orphan-1")); !os.IsNotExist(e) {
+		t.Fatalf("orphan remains: %v", e)
+	}
+}
+
+func TestFakeCLIHelper(t *testing.T) {
+	if os.Getenv("HIVE_RUNNER_HELPER") != "1" {
+		return
+	}
+	if strings.Contains(strings.Join(os.Args, " "), "helper-sleep") {
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+	if os.Getenv("HIVE_FAKE_MODE") == "commit" {
+		_ = os.WriteFile("change.txt", []byte("change"), 0600)
+		c := exec.Command("git", "add", "change.txt")
+		if err := c.Run(); err != nil {
+			os.Exit(2)
+		}
+		c = exec.Command("git", "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "test")
+		if err := c.Run(); err != nil {
+			os.Exit(3)
+		}
+	}
+	os.Exit(0)
+}
+
+func fakeCommands(mode string) map[string]Command {
+	args := []string{"-test.run=TestFakeCLIHelper", "--", "helper"}
+	if mode == "sleep" {
+		args = append(args, "helper-sleep")
+	}
+	return map[string]Command{"codex": {Path: os.Args[0], Args: args}}
+}
+func lastResult(events []Event) *Result {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Type == "result" {
+			return events[i].Result
+		}
+	}
+	return nil
+}
+func makeRemote(t *testing.T) (string, string) {
+	t.Helper()
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	work := filepath.Join(root, "source")
+	must(t, "git", "init", "--bare", remote)
+	must(t, "git", "init", work)
+	mustDir(t, work, "README", "init")
+	mustDir(t, work, ".gitkeep", "x")
+	must(t, "git", "-C", work, "add", ".")
+	must(t, "git", "-C", work, "-c", "user.name=Runner Test", "-c", "user.email=runner@example.invalid", "commit", "-m", "base")
+	out := mustOut(t, "git", "-C", work, "branch", "--show-current")
+	base := strings.TrimSpace(out)
+	must(t, "git", "-C", work, "remote", "add", "origin", remote)
+	must(t, "git", "-C", work, "push", "-u", "origin", base)
+	return remote, base
+}
+func fileURL(path string) string {
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()
+}
+func mustDir(t *testing.T, dir, name, value string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+func must(t *testing.T, args ...string) {
+	t.Helper()
+	c := exec.Command(args[0], args[1:]...)
+	if b, e := c.CombinedOutput(); e != nil {
+		t.Fatalf("%v: %s: %v", args, b, e)
+	}
+}
+func mustOut(t *testing.T, args ...string) string {
+	t.Helper()
+	b, e := exec.Command(args[0], args[1:]...).Output()
+	if e != nil {
+		t.Fatal(e)
+	}
+	return string(b)
+}
