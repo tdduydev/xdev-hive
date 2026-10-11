@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -32,6 +33,7 @@ func TestSandboxRunArgsAllowRuncOnlyWhenConfigured(t *testing.T) {
 }
 
 func TestReapSandboxOrphansRemovesContainers(t *testing.T) {
+	skipWithoutPOSIXShell(t)
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "args")
 	docker := filepath.Join(dir, "docker")
@@ -52,6 +54,7 @@ func TestReapSandboxOrphansRemovesContainers(t *testing.T) {
 }
 
 func TestRemoveSandboxForRunCleanup(t *testing.T) {
+	skipWithoutPOSIXShell(t)
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "args")
 	docker := filepath.Join(dir, "docker")
@@ -83,5 +86,13 @@ func TestSandboxRunArgsMountsOnlyExplicitEgressSocket(t *testing.T) {
 		if !strings.Contains(joined, required) {
 			t.Errorf("tham số Docker thiếu %q: %s", required, joined)
 		}
+	}
+}
+
+// Runner host chỉ chạy trên Linux; docker giả ở đây là shell script nên Windows không chạy được.
+func skipWithoutPOSIXShell(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("runner host chỉ chạy trên Linux; docker giả là shell script")
 	}
 }

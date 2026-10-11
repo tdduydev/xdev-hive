@@ -643,9 +643,11 @@ export async function startWorker(api: HubClient, teamId: string, tmp: string, s
     { env: workerEnv },
   );
   console.log(`  ${out.split("\n")[0]}`);
+  // Ca hai run song song chỉ có ở e2e-smoke; e2e sandbox chạy một run nên runner host giữ capacity 1.
+  const capacity = sandbox ? 1 : 2;
   const args = sandbox
     ? ["host", "--image", sandbox.image, "--memory", "512m", "--cpus", "1"]
-    : ["run", "--capacity", "2"];
+    : ["run", "--capacity", String(capacity)];
   const worker = startProc("worker", bin, [...args, "--config", config], {
     env: workerEnv,
     log: join(tmp, "worker.log"),
@@ -662,7 +664,7 @@ export async function startWorker(api: HubClient, teamId: string, tmp: string, s
     { timeoutMs: 30_000, alive: worker },
   );
   console.log(`  Máy ${machine.name} online, CLI: ${machine.clis.join(", ") || "(không có)"}`);
-  if (machine.capacity !== 2) throw new Error(`Worker báo capacity ${machine.capacity}, cần 2.`);
+  if (machine.capacity !== capacity) throw new Error(`Worker báo capacity ${machine.capacity}, cần ${capacity}.`);
   if (!machine.clis.includes(CLI)) throw new Error(`Worker không có CLI ${CLI}; hub sẽ không giao run.`);
   return { bin, machineId: machine.id, worker };
 }
