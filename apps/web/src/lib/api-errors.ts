@@ -65,6 +65,13 @@ export function formError(error: unknown, byCode: Record<string, string> = {}): 
   return { message };
 }
 
+/** Mã nghiệp vụ hub gắn vào lỗi (`data.code`, vd. SSO_DOMAIN_TAKEN), nếu có. */
+export function apiErrorCode(error: unknown): string | undefined {
+  if (!(error instanceof ORPCError)) return undefined;
+  const data: unknown = error.data;
+  return isRecord(data) && typeof data.code === "string" ? data.code : undefined;
+}
+
 /** Không thử lại lỗi 4xx (quyền, dữ liệu sai): kết quả không đổi, chỉ làm người dùng chờ lâu hơn mới thấy lỗi. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (error instanceof ORPCError && error.status < 500) return false;
