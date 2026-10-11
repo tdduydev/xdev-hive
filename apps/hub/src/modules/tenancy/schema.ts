@@ -77,6 +77,9 @@ export const orgMembers = hive
       pgPolicy("org_members_write", { for: "insert", to: hiveApp, withCheck: inOrg }),
       pgPolicy("org_members_update", { for: "update", to: hiveApp, using: inOrg, withCheck: inOrg }),
       pgPolicy("org_members_delete", { for: "delete", to: hiveApp, using: inOrg }),
+      // Hàm hive.purge_orphan_users() (SECURITY DEFINER, chủ là hive_owner) cần biết người dùng có thuộc tổ chức nào
+      // không để dọn tài khoản không có tổ chức. Giống orgs_owner_select; hive_app không được gì thêm.
+      pgPolicy("org_members_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();
@@ -172,6 +175,9 @@ export const invitations = hive
       pgPolicy("invitations_insert", { for: "insert", to: hiveApp, withCheck: inOrg }),
       pgPolicy("invitations_update", { for: "update", to: hiveApp, using: inOrg, withCheck: inOrg }),
       pgPolicy("invitations_delete", { for: "delete", to: hiveApp, using: inOrg }),
+      // Hàm hive.invite_pending() (SECURITY DEFINER, chủ là hive_owner) trả lời "email này có lời mời còn hạn ở tổ
+      // chức nào không" để đăng nhập GitHub/GitLab quyết định có tạo tài khoản. Giống orgs_owner_select.
+      pgPolicy("invitations_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

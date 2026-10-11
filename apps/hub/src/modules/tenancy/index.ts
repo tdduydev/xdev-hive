@@ -1,6 +1,7 @@
 // Tổ chức, đội, hệ thống và phân quyền. Module khác chỉ import file này.
 export { findSystem, type SystemRef } from "./lookup.ts";
 export { registerMcpTools } from "./mcp-tools.ts";
+export { orphanUsersQueue, purgeOrphanUsers, registerOrphanUsersWorker } from "./orphans.ts";
 export {
   type OrgRole,
   orgRoleOf,

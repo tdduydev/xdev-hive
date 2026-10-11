@@ -33,6 +33,11 @@ export interface Jobs {
   stop(): Promise<void>;
   /** Trả id của job, hoặc null khi đã có job cùng singletonKey đang chờ. */
   enqueue<T extends object>(queue: string, data: T, opts?: EnqueueOptions): Promise<string | null>;
+  /**
+   * Gửi job theo lịch cron (UTC). Gọi lại với cùng queue thì ghi đè lịch cũ, nên mỗi lần khởi động gọi lại vẫn an toàn.
+   * Lịch chỉ chạy ở tiến trình bật maintenance.
+   */
+  schedule(queue: string, cron: string, data?: object): Promise<void>;
   /** Đăng ký xử lý. Chỉ gọi ở tiến trình có vai trò `jobs`. */
   work<T>(
     queue: string,
@@ -103,6 +108,10 @@ export function createJobs(opts: JobsOptions): Jobs {
         options.db = { executeSql: (text, values) => client.query(text, values) };
       }
       return boss.send(queue, data, options);
+    },
+
+    async schedule(queue, cron, data) {
+      await boss.schedule(queue, cron, data ?? null);
     },
 
     async work(queue, handler, wo = {}) {

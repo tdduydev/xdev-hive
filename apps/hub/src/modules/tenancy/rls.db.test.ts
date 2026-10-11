@@ -195,6 +195,16 @@ describe("liên kết với người dùng", () => {
     }));
     expect(r).toEqual({ any: { any: true }, seen: [] });
   });
+
+  it("hive.invite_pending() chỉ trả một bit theo email, hive_app vẫn không đọc được lời mời", async () => {
+    const pending = (email: string) => sql`select hive.invite_pending(${email}) as p`;
+    const r = await withTenant(app, { userId: "u-zzz" }, async (tx) => ({
+      invited: (await tx.execute(pending("X@A.vn"))).rows[0],
+      other: (await tx.execute(pending("khong-moi@a.vn"))).rows[0],
+      seen: await tx.select().from(invitations),
+    }));
+    expect(r).toEqual({ invited: { p: true }, other: { p: false }, seen: [] });
+  });
 });
 
 describe("migration", () => {
