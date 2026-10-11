@@ -18239,6 +18239,21 @@
                       "settings": {
                         "type": "object",
                         "properties": {
+                          "runPermissions": {
+                            "type": "object",
+                            "properties": {
+                              "mode": {
+                                "enum": [
+                                  "workspace",
+                                  "full"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "mode"
+                            ]
+                          },
                           "models": {
                             "type": "object",
                             "properties": {
@@ -19240,6 +19255,21 @@
                     "settings": {
                       "type": "object",
                       "properties": {
+                        "runPermissions": {
+                          "type": "object",
+                          "properties": {
+                            "mode": {
+                              "enum": [
+                                "workspace",
+                                "full"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mode"
+                          ]
+                        },
                         "models": {
                           "type": "object",
                           "properties": {
@@ -20243,6 +20273,21 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "runPermissions": {
+                              "type": "object",
+                              "properties": {
+                                "mode": {
+                                  "enum": [
+                                    "workspace",
+                                    "full"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode"
+                              ]
+                            },
                             "models": {
                               "type": "object",
                               "properties": {
@@ -21399,6 +21444,21 @@
                         "settings": {
                           "type": "object",
                           "properties": {
+                            "runPermissions": {
+                              "type": "object",
+                              "properties": {
+                                "mode": {
+                                  "enum": [
+                                    "workspace",
+                                    "full"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "mode"
+                              ]
+                            },
                             "models": {
                               "type": "object",
                               "properties": {
@@ -24493,6 +24553,21 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "runPermissions": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "workspace",
+                            "full"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ]
+                    },
                     "models": {
                       "type": "object",
                       "properties": {
