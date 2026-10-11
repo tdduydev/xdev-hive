@@ -1,4 +1,14 @@
-// Lớp gọi GitHub/GitLab. Module khác chỉ import file này.
+// Lớp gọi GitHub/GitLab và kết nối Git của tổ chức. Module khác chỉ import file này.
+export {
+  createConnection,
+  defaultProviderFactory,
+  listConnections,
+  loadConnection,
+  type ProviderFactory,
+  type ResolvedConnection,
+  removeConnection,
+  type ScmConnectionRecord,
+} from "./connections.ts";
 export {
   GitProviderError,
   type GitProviderErrorCode,
@@ -7,6 +17,8 @@ export {
 } from "./errors.ts";
 export { createGitHubProvider, type GitHubProviderOptions } from "./github.ts";
 export { createGitLabProvider, type GitLabProviderOptions } from "./gitlab.ts";
+export { createMemoryProvider, type MemoryProvider, type MemoryRepo } from "./memory.ts";
+export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
   AccessCheck,
   BranchRules,

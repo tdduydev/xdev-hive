@@ -9,12 +9,14 @@ export interface RolePasswords {
   owner: string;
   app: string;
   auth: string;
+  /** Bỏ trống thì không tạo hive_jobs (hub chạy không có hàng đợi). */
+  jobs?: string | undefined;
 }
 
 /**
  * Tạo ba role và quyền nền. Chạy bằng tài khoản superuser một lần khi dựng database (và mỗi lần đổi mật khẩu).
  * hive_owner sở hữu schema và chạy migration; hive_app là role của hub, không bao giờ BYPASSRLS;
- * hive_auth dành cho bảng đăng nhập (M1b).
+ * hive_auth dành cho bảng đăng nhập (M1b); hive_jobs chỉ sở hữu schema pgboss của hàng đợi.
  */
 export async function bootstrapRoles(adminUrl: string, pw: RolePasswords): Promise<void> {
   const client = new pg.Client({ connectionString: adminUrl });
@@ -23,11 +25,13 @@ export async function bootstrapRoles(adminUrl: string, pw: RolePasswords): Promi
     const db = (await client.query<{ db: string }>("select current_database() as db")).rows[0]?.db ?? "";
     const lit = (s: string) => client.escapeLiteral(s);
     const ident = (s: string) => client.escapeIdentifier(s);
-    for (const [role, password] of [
+    const roles: Array<[string, string]> = [
       ["hive_owner", pw.owner],
       ["hive_app", pw.app],
       ["hive_auth", pw.auth],
-    ] as const) {
+    ];
+    if (pw.jobs) roles.push(["hive_jobs", pw.jobs]);
+    for (const [role, password] of roles) {
       await client.query(
         `do $$ begin if not exists (select from pg_roles where rolname = ${lit(role)}) then create role ${role} login; end if; end $$`,
       );
@@ -43,6 +47,8 @@ export async function bootstrapRoles(adminUrl: string, pw: RolePasswords): Promi
     await client.query("create schema if not exists hive authorization hive_owner");
     // Migrator của Drizzle luôn chạy CREATE SCHEMA IF NOT EXISTS, lệnh này cần quyền CREATE trên database.
     await client.query(`grant create on database ${ident(db)} to hive_owner`);
+    // pg-boss tự tạo bảng lúc start; cho hive_jobs một schema riêng thay vì quyền CREATE trên cả database.
+    if (pw.jobs) await client.query("create schema if not exists pgboss authorization hive_jobs");
   } finally {
     await client.end();
   }

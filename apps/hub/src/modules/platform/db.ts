@@ -9,7 +9,8 @@ export interface TenantContext {
   inviteTokenHash?: string | undefined;
 }
 
-export type Tx = NodePgDatabase;
+/** `$client` là kết nối đang giữ transaction; thư viện khác (pg-boss) dùng nó để ghi chung transaction. */
+export type Tx = NodePgDatabase & { $client: pg.PoolClient };
 
 export function createPool(url: string, max = 10): pg.Pool {
   return new pg.Pool({ connectionString: url, max });
