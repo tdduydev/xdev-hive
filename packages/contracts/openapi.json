@@ -24147,6 +24147,26 @@
                                       "minimum": 0,
                                       "maximum": 10,
                                       "default": 7
+                                    },
+                                    "when": {
+                                      "type": "object",
+                                      "properties": {
+                                        "minChangedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "paths": {
+                                          "type": "array",
+                                          "minItems": 1,
+                                          "maxItems": 50,
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          }
+                                        }
+                                      }
                                     }
                                   },
                                   "required": [
@@ -24283,6 +24303,26 @@
                                             "minimum": 0,
                                             "maximum": 10,
                                             "default": 7
+                                          },
+                                          "when": {
+                                            "type": "object",
+                                            "properties": {
+                                              "minChangedLines": {
+                                                "type": "integer",
+                                                "minimum": 0,
+                                                "maximum": 9007199254740991
+                                              },
+                                              "paths": {
+                                                "type": "array",
+                                                "minItems": 1,
+                                                "maxItems": 50,
+                                                "items": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 200
+                                                }
+                                              }
+                                            }
                                           }
                                         },
                                         "required": [
@@ -24453,6 +24493,56 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "models": {
+                      "type": "object",
+                      "properties": {
+                        "claude": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "review": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          }
+                        },
+                        "codex": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "review": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          }
+                        },
+                        "gemini": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            },
+                            "review": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          }
+                        }
+                      }
+                    },
                     "merge": {
                       "type": "object",
                       "properties": {
@@ -24586,6 +24676,26 @@
                                     "minimum": 0,
                                     "maximum": 10,
                                     "default": 7
+                                  },
+                                  "when": {
+                                    "type": "object",
+                                    "properties": {
+                                      "minChangedLines": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 9007199254740991
+                                      },
+                                      "paths": {
+                                        "type": "array",
+                                        "minItems": 1,
+                                        "maxItems": 50,
+                                        "items": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 200
+                                        }
+                                      }
+                                    }
                                   }
                                 },
                                 "required": [
@@ -24715,6 +24825,26 @@
                                       "minimum": 0,
                                       "maximum": 10,
                                       "default": 7
+                                    },
+                                    "when": {
+                                      "type": "object",
+                                      "properties": {
+                                        "minChangedLines": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 9007199254740991
+                                        },
+                                        "paths": {
+                                          "type": "array",
+                                          "minItems": 1,
+                                          "maxItems": 50,
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 200
+                                          }
+                                        }
+                                      }
                                     }
                                   },
                                   "required": [
