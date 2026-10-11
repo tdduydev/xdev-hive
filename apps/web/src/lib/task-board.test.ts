@@ -30,8 +30,27 @@ describe("taskBadge", () => {
     ["xong không PR", makeTask({ status: "done" }), null, "Xong", "done"],
     ["đã huỷ", makeTask({ status: "cancelled" }), makeRun({ state: "cancelled" }), "Đã huỷ", null],
     ["không có thay đổi", makeTask(), makeRun({ state: "no_changes" }), "Không có thay đổi", null],
+    [
+      "đang lập kế hoạch (plan mode)",
+      makeTask({ status: "queued" }),
+      makeRun({ state: "planning" }),
+      "Đang lập kế hoạch",
+      "running",
+    ],
+    [
+      "chờ duyệt kế hoạch",
+      makeTask({ status: "awaiting_plan" }),
+      makeRun({ state: "awaiting_plan" }),
+      "Chờ duyệt kế hoạch",
+      "plan",
+    ],
   ] as const)("%s", (_, task, run, label, group) => {
     expect(taskBadge(task, run)).toMatchObject({ label, group });
+  });
+
+  it("màu theo design system: đang lập kế hoạch là đang chạy, chờ duyệt là chờ người", () => {
+    expect(taskBadge(makeTask({ status: "queued" }), makeRun({ state: "planning" })).tone).toBe("sel");
+    expect(taskBadge(makeTask({ status: "awaiting_plan" }), makeRun({ state: "awaiting_plan" })).tone).toBe("warn");
   });
 });
 
@@ -71,7 +90,8 @@ describe("lọc và số liệu", () => {
 
   it("việc mới tạo lên đầu", () => expect(rows.map((r) => r.task.key)).toEqual(["HD-3", "HD-2", "HD-1", "HD-4"]));
 
-  it("đếm theo nhóm", () => expect(filterCounts(rows)).toEqual({ all: 4, running: 1, review: 1, failed: 1, done: 0 }));
+  it("đếm theo nhóm", () =>
+    expect(filterCounts(rows)).toEqual({ all: 4, running: 1, plan: 0, review: 1, failed: 1, done: 0 }));
 
   it("lọc theo nhóm và tìm không dấu", () => {
     expect(filterRows(rows, "failed", "").map((r) => r.task.key)).toEqual(["HD-3"]);

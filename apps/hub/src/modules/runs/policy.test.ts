@@ -1,6 +1,6 @@
 import { outcomeCheck } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { evaluatePolicy, evaluateReviewRun, matchGlob } from "./policy.ts";
+import { evaluatePlanRun, evaluatePolicy, evaluateReviewRun, matchGlob } from "./policy.ts";
 
 const policy = (...checks: unknown[]) => checks.map((c) => outcomeCheck.parse(c));
 const sha = "a".repeat(40);
@@ -165,6 +165,24 @@ describe("evaluateReviewRun", () => {
     expect(evaluateReviewRun({ exit: 0, report: null, score: 6 }).outcome).toBe("succeeded");
     expect(evaluateReviewRun({ exit: 0, report: null, score: null }).outcome).toBe("failed");
     expect(evaluateReviewRun({ exit: 1, report: { error: "x" }, score: 9 }).outcome).toBe("failed");
+  });
+});
+
+describe("evaluatePlanRun", () => {
+  it("đã nộp kế hoạch → succeeded; chưa nộp, hết giờ hay thoát lỗi → failed kèm lý do", () => {
+    const ok = evaluatePlanRun({ exit: 0, report: null, steps: 3 });
+    expect(ok).toMatchObject({ outcome: "succeeded", reasons: [], hasChanges: false });
+    expect(ok.checks).toEqual([
+      { check: "planReport", required: true, passed: true, message: "Agent đã nộp kế hoạch 3 bước." },
+    ]);
+    expect(evaluatePlanRun({ exit: 0, report: null, steps: null })).toMatchObject({
+      outcome: "failed",
+      reasons: ["Agent lập kế hoạch chưa gọi plan_submit."],
+    });
+    expect(evaluatePlanRun({ exit: 1, report: { error: "timeout" }, steps: 2 })).toMatchObject({
+      outcome: "failed",
+      reasons: ["Agent lập kế hoạch kết thúc với mã lỗi 1: timeout."],
+    });
   });
 });
 

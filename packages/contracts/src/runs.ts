@@ -32,7 +32,8 @@ export const TERMINAL_RUN_STATES: readonly RunState[] = [
   "cancelled",
 ];
 
-export const runKind = z.enum(["code", "review"]);
+/** `review`: review chéo của run code. `plan`: lập kế hoạch chỉ đọc trước run code khi dự án bật plan mode. */
+export const runKind = z.enum(["code", "review", "plan"]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({
@@ -74,7 +75,7 @@ export const run = z.object({
   projectId: id,
   teamId: id,
   kind: runKind,
-  /** Run review chéo: run code mà nó review. null với run code. */
+  /** Run review chéo hoặc run lập kế hoạch: run code mà nó phục vụ. null với run code. */
   parentRunId: id.nullable(),
   state: runState,
   attempt: z.number().int(),
