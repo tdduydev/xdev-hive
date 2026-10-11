@@ -19,6 +19,8 @@ import (
 )
 
 type Job struct {
+	RunPermissions                                  string
+	gitRoots                                        []string
 	RunID                                           string
 	Attempt                                         int
 	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
@@ -180,6 +182,16 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
 		defer cancel()
 	}
+	// Git ghi index trong gitdir riêng và objects/refs trong bare cache ngoài worktree.
+	gitDir, err := gitOutput(ctx, work, "rev-parse", "--absolute-git-dir")
+	if err != nil {
+		return err
+	}
+	cacheRoot, err := filepath.Abs(cache)
+	if err != nil {
+		return err
+	}
+	job.gitRoots = []string{cacheRoot, strings.TrimSpace(gitDir), filepath.Join(cacheRoot, "objects"), filepath.Join(cacheRoot, "refs"), filepath.Join(cacheRoot, "logs")}
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -320,6 +332,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 		configured, ok = fromEnv[j.CLI]
 	}
 	if !ok {
+		if j.RunPermissions != "" && j.RunPermissions != "workspace" && j.RunPermissions != "full" {
+			return nil, fmt.Errorf("chế độ quyền run không hợp lệ: %s", j.RunPermissions)
+		}
 		switch j.CLI {
 		case "claude":
 			mcpFile, err := claudeMCPConfig(j.Env)
@@ -330,12 +345,31 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "--model", j.Model)
 			}
+			if j.RunPermissions == "full" {
+				args = append(args, "--permission-mode", "bypassPermissions")
+			} else {
+				// Bash cho phép lệnh test/build tuỳ dự án và commit, không yêu cầu duyệt trong -p.
+				args = append(args, "--permission-mode", "acceptEdits", "--allowedTools", "Bash")
+			}
 			return &cliExecCmd{Cmd: exec.Command("claude", args...), cleanup: func() { _ = os.Remove(mcpFile) }}, nil
 		case "codex":
 			url := mcpURL(j.Env)
-			args := []string{"exec", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
+			args := []string{"exec", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
+			}
+			if j.RunPermissions == "full" {
+				args = append(args, "--dangerously-bypass-approvals-and-sandbox")
+			} else {
+				args = append(args, "-s", "workspace-write", "-c", `approval_policy="never"`)
+				if len(j.gitRoots) > 0 {
+					roots, err := json.Marshal(j.gitRoots)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, "-c", "sandbox_workspace_write.writable_roots="+string(roots))
+				}
 			}
 			args = append(args, j.Prompt)
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
@@ -344,7 +378,23 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			if j.Model != "" {
 				args = append(args, "-m", j.Model)
 			}
-			return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			args = append(args, "--skip-trust")
+			if j.RunPermissions == "full" {
+				args = append(args, "--approval-mode", "yolo")
+				return &cliExecCmd{Cmd: exec.Command("gemini", args...)}, nil
+			}
+			policy, err := os.CreateTemp("", "xdev-hive-policy-*.toml")
+			if err != nil {
+				return nil, err
+			}
+			_, writeErr := policy.WriteString("[[rule]]\ntoolName = \"run_shell_command\"\ndecision = \"allow\"\npriority = 100\n")
+			closeErr := policy.Close()
+			if err := errors.Join(writeErr, closeErr); err != nil {
+				_ = os.Remove(policy.Name())
+				return nil, err
+			}
+			args = append(args, "--approval-mode", "auto_edit", "--policy", policy.Name())
+			return &cliExecCmd{Cmd: exec.Command("gemini", args...), cleanup: func() { _ = os.Remove(policy.Name()) }}, nil
 		default:
 			return nil, fmt.Errorf("runner: CLI không hợp lệ: %s", j.CLI)
 		}

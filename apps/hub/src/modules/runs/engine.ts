@@ -130,6 +130,7 @@ function buildSpec(
     instructions,
     cli,
     model: run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null,
+    runPermissions: project.settings.runPermissions?.mode ?? "workspace",
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,

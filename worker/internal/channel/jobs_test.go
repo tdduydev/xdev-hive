@@ -107,12 +107,12 @@ func TestSinkKeepsMessagesWhenOffline(t *testing.T) {
 }
 
 func TestDecodeJobPassesLeaseEnvironment(t *testing.T) {
-	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"codex","prompt":"do it","projectKey":"web"}`)}
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"codex","prompt":"do it","projectKey":"web","runPermissions":"full"}`)}
 	job, err := decodeJob(offer, Lease{RunToken: "run-secret"}, "https://hub.example", "mac-dinh")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.RepoURL != "https://github.com/org/repo.git" || job.Branch != "ai/r" || job.BaseBranch != "main" {
+	if job.RunPermissions != "full" || job.RepoURL != "https://github.com/org/repo.git" || job.Branch != "ai/r" || job.BaseBranch != "main" {
 		t.Fatalf("job = %+v", job)
 	}
 	for k, want := range map[string]string{"HIVE_RUN_TOKEN": "run-secret", "HIVE_MCP_TOKEN": "run-secret", "HIVE_HUB_URL": "https://hub.example", "HIVE_PROJECT": "web"} {
