@@ -292,9 +292,10 @@ describe("review chéo", () => {
     const { taskId, runId } = await queueRun();
     const parent = await w.take(runId);
 
-    // Run code không tự chấm điểm được.
-    const asCode = await submit(await mcp(parent.runToken), { score: 10, summary: "Tự khen" });
-    expect(asCode).toMatchObject({ isError: true, text: expect.stringContaining("Chỉ run review") });
+    // Run code không thấy review_submit và không tự chấm điểm được.
+    const codeClient = await mcp(parent.runToken);
+    expect((await codeClient.listTools()).tools.map((t) => t.name)).not.toContain("review_submit");
+    await expect(submit(codeClient, { score: 10, summary: "Tự khen" })).rejects.toThrow(/review_submit/);
 
     await w.finish(runId, 0, { commitCount: 1, changedFiles: ["src/a.ts"] });
     await until(async () => (await reviewRunsOf(runId)).length === 1);
@@ -326,7 +327,9 @@ describe("review chéo", () => {
       severity: i === 0 ? "major" : "minor",
       message: `Phát hiện ${i}`,
     }));
-    const res = await submit(await mcp(runToken), { score: 8, summary: "Đúng yêu cầu, thiếu test biên.", findings });
+    const reviewClient = await mcp(runToken);
+    expect((await reviewClient.listTools()).tools.map((t) => t.name)).toContain("review_submit");
+    const res = await submit(reviewClient, { score: 8, summary: "Đúng yêu cầu, thiếu test biên.", findings });
     expect(res.isError).toBe(false);
     const { rows: events } = await admin.query(
       "select data from hive.run_events where run_id = $1 and type = 'review_report'",
@@ -352,6 +355,36 @@ describe("review chéo", () => {
     expect(comment?.body).toContain("src/f19.ts:20");
     expect(comment?.body).not.toContain("src/f20.ts");
     expect(comment?.body).toContain("5 phát hiện khác");
+  });
+
+  it("merge.mode auto: run cha chờ review chưa vào hàng merge, kết luận succeeded mới vào", async () => {
+    await setSettings((s) => {
+      s.features.crossReview = true;
+      s.features.mergeQueue = true;
+      s.merge.mode = "auto";
+      s.outcome.default = [
+        { check: "changes", required: true },
+        { check: "review", required: true, by: "codex", minScore: 7 },
+      ];
+    });
+    const queued = async (runId: string) =>
+      (await admin.query("select 1 from hive.merge_queue_entries where run_id = $1", [runId])).rowCount;
+    const w = await FakeWorker.connect(await seedMachine(`auto-${tag}`));
+    const ok = await codeThenReview(w);
+    // Đang chờ review: run cha còn verifying, PR chưa vào hàng.
+    expect((await runRow(ok.runId)).state).toBe("verifying");
+    expect(await queued(ok.runId)).toBe(0);
+    await submit(await mcp(ok.runToken), { score: 9, summary: "Tốt." });
+    await w.finish(ok.childId, 0, { commitCount: 0, changedFiles: [] });
+    await until(async () => (await runRow(ok.runId)).state === "succeeded");
+    expect(await queued(ok.runId)).toBe(1);
+
+    // Điểm thấp: run cha không succeeded nên không vào hàng.
+    const bad = await codeThenReview(w);
+    await submit(await mcp(bad.runToken), { score: 3, summary: "Sai." });
+    await w.finish(bad.childId, 0, { commitCount: 0, changedFiles: [] });
+    await until(async () => (await runRow(bad.runId)).state === "failed");
+    expect(await queued(bad.runId)).toBe(0);
   });
 
   it("điểm dưới ngưỡng, kiểm tra review bắt buộc → run cha failed", async () => {

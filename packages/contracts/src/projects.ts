@@ -105,11 +105,18 @@ export type IssueIntake = z.output<typeof issueIntakeSettings>;
 /** Tắt như mọi tính năng mới trong `features`: dự án phải chủ động bật mới nhận việc từ issue. */
 export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", mention: "hive" };
 
+export const mergeMethod = z.enum(["merge", "squash", "rebase"]);
+export type MergeMethod = z.output<typeof mergeMethod>;
+
 export const projectSettings = z.object({
   merge: z.object({
     /** `review`: cần người duyệt. `auto`: tự merge khi đạt chính sách kết quả và CI. */
     mode: z.enum(["review", "auto"]),
     requiredApprovals: z.number().int().min(0).max(6),
+    /** Cách merge của merge queue. GitLab chỉ phân biệt squash; rebase theo cấu hình của project GitLab. */
+    method: mergeMethod.optional(),
+    /** Bắt buộc có CI báo xanh mới merge; tắt thì repo không có CI vẫn merge được. */
+    requireCi: z.boolean().optional(),
   }),
   outcome: z.object({
     default: z.array(outcomeCheck).max(20),
@@ -237,6 +244,37 @@ export type ProjectCreateResult = z.output<typeof projectCreateResult>;
 export const provisionView = z.object({ project, steps: z.array(provisionStep) });
 export type ProvisionView = z.output<typeof provisionView>;
 
+// ---- Merge queue ---------------------------------------------------------------------------------------------
+
+/**
+ * queued: chờ tới lượt. updating: đã yêu cầu cập nhật nhánh PR theo nhánh chính. waiting: chờ CI, người duyệt hoặc nhà
+ * cung cấp tính xong. merging: đang merge. merged, failed, removed: đã xong.
+ */
+export const mergeQueueState = z.enum(["queued", "updating", "waiting", "merging", "merged", "failed", "removed"]);
+export type MergeQueueState = z.output<typeof mergeQueueState>;
+
+export const mergeQueueEntry = z.object({
+  id,
+  projectId: id,
+  prNumber: z.number().int().positive(),
+  prUrl: z.string().nullable(),
+  branch: z.string().nullable(),
+  headSha: z.string().nullable(),
+  runId: id.nullable(),
+  taskId: id.nullable(),
+  state: mergeQueueState,
+  /** Đang chờ gì, hoặc vì sao không merge được. */
+  note: z.string().nullable(),
+  /** Vị trí trong hàng (1 là đang xử lý); null khi đã xong. */
+  position: z.number().int().positive().nullable(),
+  mergeSha: z.string().nullable(),
+  enqueuedBy: z.string(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+});
+export type MergeQueueEntry = z.output<typeof mergeQueueEntry>;
+
 export const projectsContract = {
   create: orgRoute(
     "POST",
@@ -261,4 +299,28 @@ export const projectsContract = {
   )
     .input(z.object({ id, stepId: id }))
     .output(provisionView),
+  mergeQueue: orgRoute(
+    "GET",
+    "/v1/projects/{id}/merge-queue",
+    "Hàng merge của dự án: mục đang chờ theo thứ tự, rồi 20 mục đã xong gần nhất",
+    "projects",
+  )
+    .input(z.object({ id }))
+    .output(z.array(mergeQueueEntry)),
+  enqueueMerge: orgRoute(
+    "POST",
+    "/v1/projects/{id}/merge-queue",
+    "Đưa PR vào hàng merge (thành viên đội). Người duyệt vẫn do bảo vệ nhánh trên GitHub/GitLab quyết",
+    "projects",
+  )
+    .input(z.object({ id, prNumber: z.number().int().positive() }))
+    .output(mergeQueueEntry),
+  removeMerge: orgRoute(
+    "DELETE",
+    "/v1/projects/{id}/merge-queue/{entryId}",
+    "Bỏ PR khỏi hàng merge (thành viên đội); mục đang merge thì không bỏ được",
+    "projects",
+  )
+    .input(z.object({ id, entryId: id }))
+    .output(mergeQueueEntry),
 };

@@ -12,11 +12,7 @@ export interface McpServerDeps {
   version: string;
 }
 
-const ORG_PARAM = z
-  .string()
-  .min(1)
-  .optional()
-  .describe("Mã hoặc slug của tổ chức. Bắt buộc khi bạn thuộc nhiều tổ chức; xem danh sách bằng orgs_list.");
+const ORG_PARAM = z.string().min(1).optional().describe("Mã hoặc slug tổ chức khi thuộc nhiều tổ chức.");
 
 /** Lỗi trả về cho agent dưới dạng kết quả tool (isError), không phải lỗi giao thức. */
 class McpToolError extends Error {}
@@ -84,7 +80,7 @@ async function runTool(
 }
 
 function toResult(value: unknown): CallToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(value, null, 2) }] };
+  return { content: [{ type: "text", text: JSON.stringify(value) }] };
 }
 
 function toError(error: unknown): CallToolResult {
@@ -103,13 +99,13 @@ function toError(error: unknown): CallToolResult {
 /** Một McpServer cho một request: cổng chạy stateless nên mỗi request dựng server riêng, gắn sẵn principal. */
 export function buildMcpServer(deps: McpServerDeps, principal: McpPrincipal): McpServer {
   const server = new McpServer({ name: "xdev-hive", version: deps.version });
-  for (const tool of deps.registry.list()) {
+  for (const tool of deps.registry.list(principal)) {
     server.registerTool(
       tool.name,
       {
         ...(tool.title ? { title: tool.title } : {}),
         description: tool.description,
-        inputSchema: tool.input.extend({ org: ORG_PARAM }),
+        inputSchema: principal.kind === "run" ? tool.input : tool.input.extend({ org: ORG_PARAM }),
         annotations: { readOnlyHint: tool.readOnly ?? false },
       },
       async (args) => {

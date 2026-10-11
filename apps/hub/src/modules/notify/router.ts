@@ -40,12 +40,12 @@ export function notifyRouter(deps: NotifyDeps) {
     create: os.create
       .use(inOrg)
       .handler(async ({ context: { tx, user }, input }) =>
-        view(await createChannel(tx, needKey(deps), user.id, input)),
+        view(await createChannel(tx, needKey(deps), user.id, input, deps)),
       ),
     update: os.update
       .use(inOrg)
       .handler(async ({ context: { tx, user }, input }) =>
-        view(await updateChannel(tx, needKey(deps), user.id, input)),
+        view(await updateChannel(tx, needKey(deps), user.id, input, deps)),
       ),
     remove: os.remove.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
       await removeChannel(tx, user.id, input.id);

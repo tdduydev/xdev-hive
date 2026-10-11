@@ -50,18 +50,21 @@ export {
   scmEventQueue,
   scmEvents,
 } from "./handlers.ts";
-export { createMemoryProvider, type MemoryProvider, type MemoryRepo } from "./memory.ts";
+export { createMemoryProvider, type MemoryProvider, type MemoryPull, type MemoryRepo } from "./memory.ts";
 export { checkConnection, type ScmDeps, scmRouter } from "./router.ts";
 export type {
   AccessCheck,
   BranchRules,
+  ChecksState,
   CommentOptions,
   CommitFilesInput,
   CreateRepoInput,
   FetchLike,
   GitProvider,
   GitProviderKind,
+  MergeMethod,
   PullRequestInput,
+  PullRequestState,
   RepoInfo,
   RepoRef,
   RepoVisibility,

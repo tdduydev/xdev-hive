@@ -142,7 +142,10 @@ describe("projects.create: phân quyền", () => {
 
 describe("projects.create dryRun", () => {
   it("trả kế hoạch các bước, không ghi gì", async () => {
-    const before = (await admin.query("select count(*)::int as n from hive.projects")).rows[0].n;
+    // Đếm trong tổ chức của file này: file test khác chạy song song trên cùng database cũng tạo dự án.
+    const count = async () =>
+      (await admin.query("select count(*)::int as n from hive.projects where org_id = $1", [org.orgId])).rows[0].n;
+    const before = await count();
     const r = await dryRunCreate(app, deps, actor("tadmin"), input({ dryRun: true }));
     expect(r.projectId).toBeNull();
     expect(r.steps.map((s) => s.kind)).toEqual([
@@ -154,7 +157,7 @@ describe("projects.create dryRun", () => {
     ]);
     expect(r.steps[3]?.title).toContain("cần 1 người duyệt");
     expect(r.warnings).toEqual([]);
-    expect((await admin.query("select count(*)::int as n from hive.projects")).rows[0].n).toBe(before);
+    expect(await count()).toBe(before);
   });
 
   it("bỏ bảo vệ nhánh và webhook thì không có hai bước đó", async () => {
@@ -318,11 +321,17 @@ describe("saga khởi tạo", () => {
 
   it("lỗi giữa chừng thì dừng ở bước đó với cách sửa, báo nhóm quản trị; retryStep chạy tiếp từ bước lỗi", async () => {
     await withTenant(app, { userId: org.user("admin"), orgId: org.orgId }, (tx) =>
-      createChannel(tx, masterKey, org.user("admin"), {
-        name: `saga-${org.orgId.slice(0, 6)}`,
-        events: ["project.provision_failed"],
-        config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["qt@example.com"] },
-      }),
+      createChannel(
+        tx,
+        masterKey,
+        org.user("admin"),
+        {
+          name: `saga-${org.orgId.slice(0, 6)}`,
+          events: ["project.provision_failed"],
+          config: { kind: "email", host: "smtp.example.com", from: "hive@example.com", to: ["qt@example.com"] },
+        },
+        { lookup: async () => [{ address: "8.8.8.8", family: 4 }] },
+      ),
     );
     const r = await createProject(app, deps, actor("tadmin"), input());
     const id = r.projectId as string;

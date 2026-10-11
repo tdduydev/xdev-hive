@@ -25,22 +25,37 @@ services:
         condition: service_healthy
     environment:
       HIVE_PORT: 3000
+      # deploy/remote.sh đặt commit đang chạy để /api/v1/health báo đúng bản.
+      HIVE_VERSION: ${HIVE_VERSION:-}
       HIVE_DATABASE_ADMIN_URL: postgres://postgres:${HIVE_DB_ADMIN_PASSWORD}@postgres:5432/hive
       HIVE_DB_OWNER_PASSWORD: ${HIVE_DB_OWNER_PASSWORD:?Set HIVE_DB_OWNER_PASSWORD}
       HIVE_DB_APP_PASSWORD: ${HIVE_DB_APP_PASSWORD:?Set HIVE_DB_APP_PASSWORD}
       HIVE_DB_AUTH_PASSWORD: ${HIVE_DB_AUTH_PASSWORD:?Set HIVE_DB_AUTH_PASSWORD}
+      # Role hive_jobs và schema pgboss của hàng đợi; thiếu thì hub chạy không có hàng đợi (không tạo được dự án).
+      HIVE_DB_JOBS_PASSWORD: ${HIVE_DB_JOBS_PASSWORD:?Set HIVE_DB_JOBS_PASSWORD}
       HIVE_DATABASE_OWNER_URL: postgres://hive_owner:${HIVE_DB_OWNER_PASSWORD}@postgres:5432/hive
       HIVE_DATABASE_URL: postgres://hive_app:${HIVE_DB_APP_PASSWORD}@postgres:5432/hive
       HIVE_DATABASE_AUTH_URL: postgres://hive_auth:${HIVE_DB_AUTH_PASSWORD}@postgres:5432/hive
+      HIVE_DATABASE_JOBS_URL: postgres://hive_jobs:${HIVE_DB_JOBS_PASSWORD}@postgres:5432/hive
       HIVE_AUTH_SECRET: ${HIVE_AUTH_SECRET:?Set HIVE_AUTH_SECRET}
+      # Khoá chủ mã hoá secret (token Git, cấu hình kênh thông báo). Mất khoá là mất mọi secret đã lưu: sao lưu riêng.
+      HIVE_MASTER_KEY: ${HIVE_MASTER_KEY:?Set HIVE_MASTER_KEY}
       HIVE_PUBLIC_URL: ${HIVE_PUBLIC_URL:?Set HIVE_PUBLIC_URL}
+      HIVE_ALLOW_EMAIL_SIGNUP: ${HIVE_ALLOW_EMAIL_SIGNUP:-0}
+      HIVE_ORG_CREATORS: ${HIVE_ORG_CREATORS:-}
+      HIVE_ROLES: ${HIVE_ROLES:-api,jobs}
+      HIVE_EMBEDDINGS_URL: ${HIVE_EMBEDDINGS_URL:-}
+      HIVE_EMBEDDINGS_API_KEY: ${HIVE_EMBEDDINGS_API_KEY:-}
+      HIVE_EMBEDDINGS_MODEL: ${HIVE_EMBEDDINGS_MODEL:-}
+      HIVE_EMBEDDINGS_DIMENSIONS: ${HIVE_EMBEDDINGS_DIMENSIONS:-}
       HIVE_GITHUB_CLIENT_ID: ${HIVE_GITHUB_CLIENT_ID:-}
       HIVE_GITHUB_CLIENT_SECRET: ${HIVE_GITHUB_CLIENT_SECRET:-}
       HIVE_GITLAB_CLIENT_ID: ${HIVE_GITLAB_CLIENT_ID:-}
       HIVE_GITLAB_CLIENT_SECRET: ${HIVE_GITLAB_CLIENT_SECRET:-}
       HIVE_GITLAB_ISSUER: ${HIVE_GITLAB_ISSUER:-}
     ports:
-      - "127.0.0.1:${HIVE_PORT:-3000}:3000"
+      # Mặc định chỉ máy chủ gọi được (đứng sau Caddy). Máy chủ LAN không dùng HTTPS: HIVE_BIND=0.0.0.0.
+      - "${HIVE_BIND:-127.0.0.1}:${HIVE_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
