@@ -10,6 +10,7 @@ import {
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
 import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
+import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
 import {
   inboxCleanupQueue,
   notify,
@@ -105,6 +106,8 @@ const runs =
         masterKey: config.masterKey,
         providerFactory: defaultProviderFactory,
         jobs,
+        leaderMessage: appendLeaderSystemMessage,
+        leaderQueuedPrompt: queuedLeaderPrompt,
       })
     : undefined;
 if (!runs) console.warn("Chưa cấu hình HIVE_AUTH_SECRET: chưa ký được run token, không giao được run.");

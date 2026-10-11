@@ -110,6 +110,8 @@ export async function budgetStoppedRuns(tx: Tx, userId: string, projectId: strin
     .limit(100);
   const out = [];
   for (const row of rows) {
+    // Run leader không gắn task nên không thuộc danh sách vượt ngân sách theo việc.
+    if (!row.taskId) continue;
     const task = await loadTask(tx, row.taskId);
     if (!task) continue;
     const reasons = [];

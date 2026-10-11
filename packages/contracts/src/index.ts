@@ -3,6 +3,7 @@ import { z } from "zod";
 import { costsContract } from "./cost.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
+import { leaderContract } from "./leader.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
 import { runsContract } from "./runs.ts";
@@ -92,8 +93,10 @@ export const contract = {
   runs: runsContract,
   costs: costsContract,
   sandbox: sandboxContract,
+  leader: leaderContract,
 };
 
 export type Contract = typeof contract;
 
 export * from "./fleet.ts";
+export * from "./leader.ts";

@@ -323,7 +323,7 @@ export function MachinesPage() {
                                 ? "Đang tải…"
                                 : activeRuns
                                     .filter((run) => run.machineId === machine.id)
-                                    .map((run) => taskKeys.get(run.taskId))
+                                    .map((run) => (run.taskId ? taskKeys.get(run.taskId) : "leader"))
                                     .filter(Boolean)
                                     .join(", ") || "—"}
                             </Td>
