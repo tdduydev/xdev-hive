@@ -206,7 +206,7 @@ export function loadSteps(tx: Tx, projectId: string): Promise<StepRow[]> {
 }
 
 /** Dự án mà người dùng có ít nhất vai trò `min` trong đội sở hữu; không đủ quyền thì báo như không tồn tại. */
-async function projectFor(tx: Tx, userId: string, id: string, min: TeamRole): Promise<ProjectRow> {
+export async function projectFor(tx: Tx, userId: string, id: string, min: TeamRole): Promise<ProjectRow> {
   const project = await loadProject(tx, id);
   // Không có quyền xem thì trả NOT_FOUND để không lộ dự án có tồn tại.
   if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw notFound();

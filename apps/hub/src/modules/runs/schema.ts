@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgPolicy,
   pgRole,
   pgSchema,
@@ -62,6 +63,8 @@ export const runs = hive
       taskId: uuid("task_id").notNull(),
       projectId: uuid("project_id").notNull(),
       kind: runKind("kind").notNull().default("code"),
+      /** Run review chéo trỏ tới run code nó review; cùng task, cùng tổ chức (khoá kép như các bảng con). */
+      parentRunId: uuid("parent_run_id"),
       state: runState("state").notNull().default("queued"),
       /** Lần thử hiện tại; gói của worker mang attempt khác bị từ chối (fencing). */
       attempt: integer("attempt").notNull().default(1),
@@ -77,6 +80,16 @@ export const runs = hive
       headSha: text("head_sha"),
       prUrl: text("pr_url"),
       timeoutSec: integer("timeout_sec").notNull().default(3600),
+      /**
+       * Token và chi phí luỹ kế qua mọi lần thử, cộng từ sự kiện cost của worker và chỉ tăng. cost_usd null khi CLI
+       * chưa báo USD lần nào (Codex, Gemini); numeric để cộng dồn không lệch như số thực.
+       */
+      tokensIn: bigint("tokens_in", { mode: "number" }).notNull().default(0),
+      tokensOut: bigint("tokens_out", { mode: "number" }).notNull().default(0),
+      cacheRead: bigint("cache_read", { mode: "number" }).notNull().default(0),
+      cacheWrite: bigint("cache_write", { mode: "number" }).notNull().default(0),
+      costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }),
+      turns: integer("turns"),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),
@@ -90,13 +103,21 @@ export const runs = hive
     },
     (t) => [
       unique("runs_id_org").on(t.id, t.orgId),
-      // Mỗi task chỉ một run đang sống: hai người bấm giao cùng lúc thì người sau nhận lỗi trùng.
+      // Mỗi task chỉ một run code đang sống: hai người bấm giao cùng lúc thì người sau nhận lỗi trùng. Run review
+      // chạy trong lúc run cha còn verifying nên không tính.
       uniqueIndex("runs_task_active")
         .on(t.taskId)
+        .where(sql`kind = 'code' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
+      // Hai lần verify chạy chồng nhau của run cha không tạo được hai run review cùng sống.
+      uniqueIndex("runs_review_active")
+        .on(t.parentRunId)
         .where(sql`state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
+      foreignKey({ columns: [t.parentRunId, t.orgId], foreignColumns: [t.id, t.orgId] }).onDelete("cascade"),
       index("runs_org_team").on(t.orgId, t.teamId),
       index("runs_team_state").on(t.teamId, t.state),
       index("runs_task").on(t.taskId),
+      // costs.summary lọc theo dự án và khoảng ngày.
+      index("runs_project_created").on(t.projectId, t.createdAt),
       orgScoped("runs"),
     ],
   )

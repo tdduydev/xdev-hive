@@ -24,6 +24,14 @@ describe("loadConfig: khoá chủ và vai trò", () => {
   it("từ chối vai trò lạ", () => expect(() => loadConfig({ HIVE_ROLES: "api,gw" })).toThrow(/gw/));
 });
 
+describe("loadConfig: MCP qua http", () => {
+  it("mặc định tắt", () => expect(loadConfig({}).mcpAllowHttp).toBe(false));
+  it("chỉ bật khi HIVE_MCP_ALLOW_HTTP=1", () => {
+    expect(loadConfig({ HIVE_MCP_ALLOW_HTTP: "1" }).mcpAllowHttp).toBe(true);
+    expect(loadConfig({ HIVE_MCP_ALLOW_HTTP: "0" }).mcpAllowHttp).toBe(false);
+  });
+});
+
 describe("loadConfig: người tạo tổ chức", () => {
   it("tách danh sách email, bỏ khoảng trắng, chữ thường", () =>
     expect(loadConfig({ HIVE_ORG_CREATORS: " A@x.vn, ,b@y.vn" }).orgCreators).toEqual(["a@x.vn", "b@y.vn"]));
