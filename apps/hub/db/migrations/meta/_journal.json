@@ -225,6 +225,20 @@
       "when": 1791733157317,
       "tag": "0031_wealthy_molecule_man",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791737134296,
+      "tag": "0032_legacy_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791737533084,
+      "tag": "0033_legacy_memory_status",
+      "breakpoints": true
     }
   ]
 }

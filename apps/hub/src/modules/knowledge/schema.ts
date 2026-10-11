@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   customType,
   foreignKey,
   index,
   integer,
+  jsonb,
   pgPolicy,
   pgRole,
   pgSchema,
@@ -64,6 +66,7 @@ export const memories = hive
       id: uuid("id").primaryKey().defaultRandom(),
       ...scopeColumns(),
       kind: memoryKind("kind").notNull(),
+      status: text("status").notNull().default("approved"),
       content: text("content").notNull(),
       files: text("files").array().notNull().default(sql`'{}'::text[]`),
       ...authorColumns(),
@@ -75,6 +78,7 @@ export const memories = hive
     },
     (t) => [
       check("memories_content_len", sql`char_length(content) between 1 and 2000`),
+      check("memories_status", sql`status in ('approved', 'pending')`),
       scopeCheck("memories"),
       authorCheck("memories_author", "author"),
       foreignKey({ columns: [t.supersededBy], foreignColumns: [t.id] }).onDelete("set null"),
@@ -217,6 +221,60 @@ export const proposals = hive
       authorCheck("proposals_author", "author"),
       index("proposals_org_status").on(t.orgId, t.status, t.createdAt.desc()),
       orgScoped("proposals"),
+    ],
+  )
+  .enableRLS();
+
+/** Một nguồn hub cũ cho mỗi tổ chức; lưu cả id nguồn và id đích để chia memory mà vẫn loại trùng nguyên bản. */
+export const legacyImports = hive
+  .table(
+    "legacy_imports",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      kind: text("kind").notNull(),
+      sourceId: text("source_id").notNull(),
+      targetIds: uuid("target_ids").array().notNull(),
+      metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("legacy_imports_source").on(t.orgId, t.kind, t.sourceId),
+      unique("legacy_imports_id_org").on(t.id, t.orgId),
+      check("legacy_imports_kind", sql`kind in ('memory', 'doc', 'skill', 'asset')`),
+      orgScoped("legacy_imports"),
+    ],
+  )
+  .enableRLS();
+
+/** Giữ locator SeaweedFS để chuyển blob sau; tuyệt đối không coi metadata là một tệp đã tải lên. */
+export const legacyDocAssets = hive
+  .table(
+    "legacy_doc_assets",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      documentImportId: uuid("document_import_id").notNull(),
+      sourceId: text("source_id").notNull(),
+      name: text("name").notNull(),
+      mediaType: text("media_type").notNull(),
+      size: bigint("size", { mode: "number" }).notNull(),
+      sha256: text("sha256"),
+      storageLocator: text("storage_locator"),
+      status: text("status").notNull().default("missing"),
+      uploadedBy: text("uploaded_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    },
+    (t) => [
+      unique("legacy_doc_assets_source").on(t.orgId, t.sourceId),
+      foreignKey({
+        columns: [t.documentImportId, t.orgId],
+        foreignColumns: [legacyImports.id, legacyImports.orgId],
+      }).onDelete("cascade"),
+      check("legacy_doc_assets_status", sql`status in ('missing', 'available')`),
+      check("legacy_doc_assets_size", sql`size >= 0`),
+      index("legacy_doc_assets_document").on(t.documentImportId, t.orgId),
+      orgScoped("legacy_doc_assets"),
     ],
   )
   .enableRLS();
