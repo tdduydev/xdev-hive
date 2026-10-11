@@ -231,11 +231,29 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Tạo mã đăng ký" }).click();
   await expect(dialog.getByRole("status", { name: "Mã đăng ký dùng một lần" })).toHaveText("reg-once-token");
-  await expect(dialog.getByText("brew install xdev/tap/hive-worker")).toBeVisible();
+  await expect(dialog.getByText("go install github.com/tdduydev/xdev-hive/worker/cmd/hive-worker@main")).toBeVisible();
+  await expect(dialog.getByText("hive-worker service install", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Linux" }).click();
-  await expect(dialog.getByText(/install\.sh/)).toBeVisible();
+  await expect(dialog.getByText(/loginctl enable-linger/)).toBeVisible();
   await dialog.getByRole("button", { name: "Đóng" }).click();
   await expect(dialog).toBeHidden();
+  expect(hub.rpcCalls.find((call) => call.path === "machines/createRegistration")?.input).toMatchObject({
+    kind: "worker",
+  });
+
+  // Runner host: chọn loại trước khi tạo mã; lệnh cuối là hive-worker host, không có chọn hệ điều hành.
+  await page.getByRole("button", { name: "Thêm máy" }).click();
+  await page
+    .getByRole("dialog")
+    .getByLabel(/Runner host/)
+    .check();
+  await page.getByRole("dialog").getByRole("button", { name: "Tạo mã đăng ký" }).click();
+  await expect(page.getByRole("dialog").getByText(/^hive-worker host --image/)).toBeVisible();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "Linux" })).toHaveCount(0);
+  expect(hub.rpcCalls.filter((call) => call.path === "machines/createRegistration").at(-1)?.input).toMatchObject({
+    kind: "host",
+  });
+  await page.getByRole("dialog").getByRole("button", { name: "Đóng" }).click();
 
   await page.getByRole("button", { name: "Thu hồi", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Thu hồi máy" }).click();
