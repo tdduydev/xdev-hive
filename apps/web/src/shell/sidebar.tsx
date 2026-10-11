@@ -29,6 +29,7 @@ const GROUPS: { title: string; entries: NavEntry[] }[] = [
     entries: [
       { label: "Bảng việc", icon: "columns", to: "/tasks", match: "/tasks" },
       { label: "Lượt chạy", icon: "play", to: "/runs", match: "/runs" },
+      { label: "Leader", icon: "chat", to: "/leader", match: "/leader" },
       { label: "Máy", icon: "monitor", to: pending("/machines"), match: "/machines" },
     ],
   },
