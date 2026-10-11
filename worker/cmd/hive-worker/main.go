@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -47,6 +48,10 @@ func main() {
 		os.Exit(register(os.Args[2:], os.Stdout, os.Stderr))
 	case "run":
 		os.Exit(run(os.Args[2:]))
+	case "host":
+		os.Exit(host(os.Args[2:]))
+	case "sandbox-init":
+		os.Exit(sandboxInit(os.Args[2:]))
 	case "config":
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
@@ -58,7 +63,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | config [--json] | service install|uninstall|status | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | service install|uninstall|status | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -329,11 +334,164 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	cc := channel.Config{HubURL: cfg.HubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: detectCLIs(), Capacity: *capacity, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}
-	if *statusJSON {
+	return startWorker(ctx, cfg, *capacity, dataDir, "", nil, *statusJSON, cfg.HubURL)
+}
+
+func host(args []string) int {
+	fs := flag.NewFlagSet("host", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	configPath := fs.String("config", "", "file cấu hình")
+	hub := fs.String("hub", envOr("HIVE_HUB_URL", ""), "địa chỉ hub")
+	capacity := fs.Int("capacity", 1, "số run chạy cùng lúc")
+	image := fs.String("image", envOr("HIVE_HOST_IMAGE", "xdev-hive-runner:latest"), "image môi trường mặc định")
+	cpus := fs.String("cpus", envOr("HIVE_HOST_CPUS", "2"), "giới hạn CPU mỗi run")
+	memory := fs.String("memory", envOr("HIVE_HOST_MEMORY", "4g"), "giới hạn RAM mỗi run")
+	pids := fs.Int("pids-limit", 256, "giới hạn PID mỗi run")
+	allowRunc := fs.Bool("allow-runc", false, "cho phép Docker runtime runc khi runsc chưa cài (chỉ phát triển)")
+	egressSocket := fs.String("egress-socket", os.Getenv("HIVE_EGRESS_SOCKET"), "Unix socket của egress proxy")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if runtime.GOOS != "linux" {
+		fmt.Fprintln(os.Stderr, "Chế độ host chỉ hỗ trợ Linux")
+		return 1
+	}
+	if *capacity < 1 || *pids < 1 || *image == "" {
+		fmt.Fprintln(os.Stderr, "capacity, pids-limit và image phải hợp lệ")
+		return 2
+	}
+	if err := checkHostRuntime(*allowRunc); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	path, err := pathOr(*configPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if *hub != "" {
+		cfg.HubURL = *hub
+	}
+	dataDir, err := os.UserCacheDir()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	executable, err := os.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if *egressSocket != "" {
+		info, err := os.Stat(*egressSocket)
+		if err != nil || info.Mode()&os.ModeSocket == 0 {
+			fmt.Fprintln(os.Stderr, "egress-socket phải là Unix socket đang tồn tại")
+			return 1
+		}
+	}
+	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, false, cfg.HubURL)
+}
+
+func sandboxInit(args []string) int {
+	fs := flag.NewFlagSet("sandbox-init", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	socket := fs.String("socket", "/run/hive/egress.sock", "Unix socket egress proxy")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	command := fs.Args()
+	if len(command) == 0 {
+		fmt.Fprintln(os.Stderr, "Thiếu lệnh CLI")
+		return 2
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:3128")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	go func() {
+		<-ctx.Done()
+		_ = listener.Close()
+	}()
+	go func() {
+		for {
+			client, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go proxyUnix(client, *socket)
+		}
+	}()
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = os.Stdout, os.Stderr, os.Stdin
+	if err := cmd.Run(); err != nil {
+		var exit *exec.ExitError
+		if errors.As(err, &exit) {
+			return exit.ExitCode()
+		}
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	return 0
+}
+
+func proxyUnix(client net.Conn, socket string) {
+	defer client.Close()
+	upstream, err := net.Dial("unix", socket)
+	if err != nil {
+		return
+	}
+	defer upstream.Close()
+	done := make(chan struct{}, 2)
+	go func() { _, _ = io.Copy(upstream, client); done <- struct{}{} }()
+	go func() { _, _ = io.Copy(client, upstream); done <- struct{}{} }()
+	<-done
+}
+
+func checkHostRuntime(allowRunc bool) error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("không tìm thấy Docker: %w", err)
+	}
+	cmd := exec.Command("docker", "info", "--format", "{{json .Runtimes}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("Docker không sẵn sàng: %w", err)
+	}
+	var runtimes map[string]json.RawMessage
+	if err := json.Unmarshal(output, &runtimes); err != nil {
+		return fmt.Errorf("không đọc được runtime Docker: %w", err)
+	}
+	_, dockerRunsc := runtimes["runsc"]
+	_, runscBinary := exec.LookPath("runsc")
+	if dockerRunsc && runscBinary == nil {
+		return nil
+	}
+	if allowRunc {
+		return nil
+	}
+	return errors.New("không tìm thấy runtime gVisor runsc trong Docker và PATH; cài runsc hoặc dùng --allow-runc chỉ cho phát triển")
+}
+
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, statusJSON bool, hubURL string) int {
+	clis := detectCLIs()
+	if mode == "host" {
+		clis = knownCLIs
+	}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}
+	if statusJSON {
 		cc.OnStatus = statusPrinter(os.Stdout)
 	}
-	err = cc.Run(ctx)
+	err := cc.Run(ctx)
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
 	if errors.As(err, &rejected) {

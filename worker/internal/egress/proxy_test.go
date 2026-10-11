@@ -279,9 +279,12 @@ func TestUnixSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err = filepath.Rel(cwd, path)
+	relativePath, err := filepath.Rel(cwd, path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(relativePath) < len(path) {
+		path = relativePath
 	}
 	listeners, err := Listen("127.0.0.1:0", path)
 	if err != nil {

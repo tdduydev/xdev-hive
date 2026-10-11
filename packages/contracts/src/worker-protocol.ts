@@ -29,6 +29,9 @@ export const hello = z.object({
   // Hai bên thoả thuận trong khoảng này để worker cũ hơn hub vẫn chạy được.
   protoRange: z.tuple([z.number().int().min(1), z.number().int().min(1)]),
   os: workerOs,
+  runnerMode: z.enum(["worker", "host"]).optional(),
+  cpuCount: z.number().int().min(1).max(4096).optional(),
+  memoryMB: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
   clis: z.array(cli).max(10),
   capacity: z.number().int().min(0).max(64),
   resumeRuns: z.array(z.string().max(64)).max(64).default([]),
