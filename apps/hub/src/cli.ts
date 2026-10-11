@@ -16,8 +16,13 @@ if (command === "db:bootstrap") {
     owner: need("HIVE_DB_OWNER_PASSWORD"),
     app: need("HIVE_DB_APP_PASSWORD"),
     auth: need("HIVE_DB_AUTH_PASSWORD"),
+    jobs: process.env.HIVE_DB_JOBS_PASSWORD,
   });
-  console.log("Đã tạo role hive_owner, hive_app, hive_auth và schema hive.");
+  console.log(
+    process.env.HIVE_DB_JOBS_PASSWORD
+      ? "Đã tạo role hive_owner, hive_app, hive_auth, hive_jobs, schema hive và pgboss."
+      : "Đã tạo role hive_owner, hive_app, hive_auth và schema hive (chưa đặt HIVE_DB_JOBS_PASSWORD nên bỏ qua hàng đợi).",
+  );
 } else if (command === "db:migrate") {
   await runMigrations(need("HIVE_DATABASE_OWNER_URL"));
   console.log("Đã chạy migration.");
