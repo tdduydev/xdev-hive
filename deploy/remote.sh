@@ -95,7 +95,9 @@ mv "$dir/src.new" "$dir/src"
 cd "$dir/src"
 
 # -p luôn có: tên project quyết định container và volume nào là của bản này.
-compose() { HIVE_VERSION="${commit}" $docker compose -p "$project" --env-file "$env" -f deploy/compose.yaml "$@"; }
+# Runner CI tự host cùng user có thể để builder buildx của job làm mặc định rồi xoá nó giữa lúc build (graceful_stop):
+# luôn build bằng builder mặc định của Docker.
+compose() { BUILDX_BUILDER=default HIVE_VERSION="${commit}" $docker compose -p "$project" --env-file "$env" -f deploy/compose.yaml "$@"; }
 echo "Dựng và chạy hub (project ${project}) ở commit ${commit}…"
 compose up -d --build
 
