@@ -49,3 +49,11 @@ describe("me khi chưa có đăng nhập", () => {
     expect((await app.request("/api/v1/me")).status).toBe(401);
   });
 });
+
+describe("API tổ chức khi chưa có đăng nhập", () => {
+  it("GET /api/v1/orgs/mine trả 401 kèm thông báo tiếng Việt", async () => {
+    const res = await app.request("/api/v1/orgs/mine");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ message: "Chưa đăng nhập." });
+  });
+});

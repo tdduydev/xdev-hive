@@ -8,7 +8,10 @@ export interface HubConfig {
   version: string;
   /** Địa chỉ người dùng mở trên trình duyệt; Better Auth dựng URL callback từ đây. */
   publicUrl?: string | undefined;
+  /** Kết nối bằng role hive_app; mọi truy vấn dữ liệu tổ chức đi qua đây. */
   databaseUrl?: string | undefined;
+  /** Email được tạo thêm tổ chức sau khi hub đã có tổ chức đầu tiên (HIVE_ORG_CREATORS, cách nhau bằng dấu phẩy). */
+  orgCreators?: string[] | undefined;
   authDatabaseUrl?: string | undefined;
   authSecret?: string | undefined;
   allowEmailSignUp?: boolean | undefined;
@@ -41,6 +44,10 @@ export function loadConfig(env: Env = process.env): HubConfig {
     version: env.HIVE_VERSION ?? "0.0.0-dev",
     publicUrl: env.HIVE_PUBLIC_URL ?? `http://localhost:${port}`,
     databaseUrl: env.HIVE_DATABASE_URL,
+    orgCreators: (env.HIVE_ORG_CREATORS ?? "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean),
     authDatabaseUrl,
     authSecret,
     allowEmailSignUp: env.HIVE_ALLOW_EMAIL_SIGNUP === "1",
