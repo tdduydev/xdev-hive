@@ -122,6 +122,8 @@ describe("describeEvent", () => {
   it("chuyển trạng thái", () =>
     expect(describeEvent(ev("state", { to: "verifying" }))).toBe("Trạng thái: Đang kiểm kết quả"));
   it("chỉ dẫn", () => expect(describeEvent(ev("steer", { input: "Thêm test" }))).toBe("Chỉ dẫn: Thêm test"));
+  it("lý do chờ máy", () =>
+    expect(describeEvent(ev("waiting_machine", { message: "Chờ máy dùng chung" }))).toBe("Chờ máy dùng chung"));
   it("bỏ sự kiện cost", () => expect(describeEvent(ev("cost", {}))).toBeNull());
   it("loại lạ thì hiện tên loại", () => expect(describeEvent(ev("mystery", {}))).toBe("mystery"));
 });
