@@ -4,6 +4,7 @@ import { LangToggle } from "../components/lang-toggle.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
 import { type Dict, useLang, useT } from "../lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "../lib/nav.ts";
+import { SCREENS } from "../screens/index.ts";
 import { AppNav } from "./app-nav.tsx";
 
 const text: Dict<{ soon: string; body: (design: string) => string }> = {
@@ -35,6 +36,7 @@ export function AppShell({ profile = "dev" }: { profile?: Profile }) {
     () => "home" as const,
   );
   const item = NAV_ITEMS.find((i) => i.id === active) ?? NAV_ITEMS[0];
+  const Screen = SCREENS[active];
   return (
     <div className="flex h-svh">
       <AppNav profile={profile} active={active} />
@@ -44,17 +46,21 @@ export function AppShell({ profile = "dev" }: { profile?: Profile }) {
           <LangToggle />
         </header>
         <div className="p-5">
-          <Empty className="border border-dashed">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ConstructionIcon aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle role="heading" aria-level={2}>
-                {t.soon}
-              </EmptyTitle>
-              <EmptyDescription>{item && t.body(item.design)}</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          {Screen ? (
+            <Screen />
+          ) : (
+            <Empty className="border border-dashed">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ConstructionIcon aria-hidden="true" />
+                </EmptyMedia>
+                <EmptyTitle role="heading" aria-level={2}>
+                  {t.soon}
+                </EmptyTitle>
+                <EmptyDescription>{item && t.body(item.design)}</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          )}
         </div>
       </main>
     </div>
