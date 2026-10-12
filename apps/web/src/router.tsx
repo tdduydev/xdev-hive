@@ -9,6 +9,10 @@ import { ComingSoonPage } from "./pages/coming-soon-page.tsx";
 import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
+import { DocsPage } from "./pages/knowledge/docs-page.tsx";
+import { MemoryPage } from "./pages/knowledge/memory-page.tsx";
+import { ProposalsPage } from "./pages/knowledge/proposals-page.tsx";
+import { SkillsPage } from "./pages/knowledge/skills-page.tsx";
 import { LeaderPage, validateLeaderSearch } from "./pages/leader-page.tsx";
 import { LoginPage, validateLoginSearch } from "./pages/login-page.tsx";
 import { LoginSettingsPage } from "./pages/login-settings-page.tsx";
@@ -241,10 +245,10 @@ const comingSoon = (id: string, path: string, design: string) => {
   });
 };
 const comingSoonRoutes = [
-  comingSoon("docs", "/knowledge/docs", "Docs.dc.html"),
-  comingSoon("skills", "/knowledge/skills", "Skills.dc.html"),
-  comingSoon("memory", "/knowledge/memory", "Memory.dc.html"),
-  comingSoon("proposals", "/knowledge/proposals", "Proposals.dc.html"),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
   comingSoon("workflows", "/knowledge/workflows", "Workflows.dc.html"),
   comingSoon("reviews", "/knowledge/reviews", "DocReview.dc.html"),
   comingSoon("roles", "/admin/roles", "Roles.dc.html"),
