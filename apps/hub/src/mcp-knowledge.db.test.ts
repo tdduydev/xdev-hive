@@ -388,7 +388,13 @@ describe("tool knowledge với token người dùng", () => {
   });
 
   it("mcp_server_list: server ngoài tổ chức cho phép với dự án, chỉ dự án mình thấy", async () => {
-    const rule = (name: string, rule: string, projectId: string | null, transport: string | null, value: string | null) =>
+    const rule = (
+      name: string,
+      rule: string,
+      projectId: string | null,
+      transport: string | null,
+      value: string | null,
+    ) =>
       admin.query(
         `insert into hive.mcp_server_rules (org_id, project_id, name, rule, match_type, pattern, transport, command, args, url, updated_by)
          values ($1, $2, $3, $4, 'name', lower($3), $5, $6, $7, $8, 'seed')`,
