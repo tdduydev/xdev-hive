@@ -1,19 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { CreatedInvitation, TeamRole } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { formError } from "../../lib/api-errors.ts";
-import { cx } from "../../lib/cx.ts";
-import { formatDay } from "../../lib/format.ts";
-import { type Dict, useLang, useT } from "../../lib/i18n.ts";
-import { emailsError, invitableRoles, MAX_INVITES, parseEmails } from "../../lib/invites.ts";
-import { TEAM_ROLES } from "../../lib/roles.ts";
-import { useOrg } from "../../shell/org-context.ts";
-import { Alert } from "../ui/alert.tsx";
-import { Button } from "../ui/button.tsx";
-import { Field, FieldLabel } from "../ui/field.tsx";
-import { NativeSelect } from "../ui/native-select.tsx";
-import { Textarea } from "../ui/textarea.tsx";
-import { CopyField } from "./onboarding-copy-field.tsx";
+import { CopyField } from "@/components/outside/onboarding-copy-field.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Field, FieldLabel } from "@/components/ui/field.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { formError } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { formatDay } from "@/lib/format.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { emailsError, invitableRoles, MAX_INVITES, parseEmails } from "@/lib/invites.ts";
+import { TEAM_ROLES } from "@/lib/roles.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 const linkText: Dict<{
   orgRoles: Record<"admin" | "member", string>;

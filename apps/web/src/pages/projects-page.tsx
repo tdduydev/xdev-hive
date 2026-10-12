@@ -3,17 +3,17 @@ import { Link } from "@tanstack/react-router";
 import type { CostSummary, Project, TeamWithCounts } from "@xdev-hive/contracts";
 import { SearchIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
-import { CreateProjectButton } from "../components/create-project-dialog.tsx";
-import { Icon } from "../components/icons.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { Table, Td, Th } from "../components/ui/table.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatUsd } from "../lib/format.ts";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
+import { CreateProjectButton } from "@/components/create-project-dialog.tsx";
+import { Icon } from "@/components/icons.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { Table, Td, Th } from "@/components/ui/table.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatUsd } from "@/lib/format.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
   activeRunCounts,
   COST_DAYS,
@@ -22,12 +22,12 @@ import {
   repoPath,
   SCM_LABEL,
   teamRoleLookup,
-} from "../lib/projects.ts";
-import { isOrgAdmin } from "../lib/roles.ts";
-import { teamColor, teamInitials } from "../lib/teams.ts";
-import { useMe } from "../shell/me-context.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/projects.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { teamColor, teamInitials } from "@/lib/teams.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const REFRESH_MS = 30_000;
 

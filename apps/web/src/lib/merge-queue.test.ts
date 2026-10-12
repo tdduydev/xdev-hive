@@ -1,6 +1,6 @@
 import type { MergeQueueEntry, MergeQueueState } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { canManageMergeQueue, canRemoveMerge, canRetryMerge, externalUrl, splitMergeQueue } from "./merge-queue.ts";
+import { canManageMergeQueue, canRemoveMerge, canRetryMerge, externalUrl, splitMergeQueue } from "@/lib/merge-queue.ts";
 
 function entry(state: MergeQueueState, position: number | null, finishedAt: string | null = null): MergeQueueEntry {
   return {

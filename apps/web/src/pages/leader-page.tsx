@@ -3,22 +3,22 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { Approval, ChatMessage, Project } from "@xdev-hive/contracts";
 import { SearchIcon, SquarePenIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Field, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { NativeSelect } from "../components/ui/native-select.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { Textarea } from "../components/ui/textarea.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { cx } from "../lib/cx.ts";
-import { formatDayTime } from "../lib/format.ts";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { awaitingLeader, describeAction } from "../lib/leader.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Field, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { formatDayTime } from "@/lib/format.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { awaitingLeader, describeAction } from "@/lib/leader.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<
   Record<

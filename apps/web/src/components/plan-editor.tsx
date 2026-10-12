@@ -1,7 +1,13 @@
 import type { PlanContent } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { cx } from "../lib/cx.ts";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { cx } from "@/lib/cx.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
   type DraftErrors,
   draftKey,
@@ -12,13 +18,7 @@ import {
   move,
   type PlanDraft,
   toDraft,
-} from "../lib/plan-view.ts";
-import { Alert } from "./ui/alert.tsx";
-import { Button } from "./ui/button.tsx";
-import { Card } from "./ui/card.tsx";
-import { Input } from "./ui/input.tsx";
-import { NativeSelect } from "./ui/native-select.tsx";
-import { Textarea } from "./ui/textarea.tsx";
+} from "@/lib/plan-view.ts";
 
 const text: Dict<
   Record<

@@ -2,15 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { BellIcon, MonitorIcon, MoonIcon, SearchIcon, SunIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { LangToggle } from "../components/lang-toggle.tsx";
+import { LangToggle } from "@/components/lang-toggle.tsx";
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "../components/ui/breadcrumb.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
+} from "@/components/ui/breadcrumb.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
 import {
   Command,
   CommandDialog,
@@ -19,22 +19,22 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "../components/ui/command.tsx";
+} from "@/components/ui/command.tsx";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "../components/ui/dropdown-menu.tsx";
-import { Kbd } from "../components/ui/kbd.tsx";
-import { SidebarTrigger } from "../components/ui/sidebar.tsx";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { activeNavItem, NAV_HOME, visibleGroups } from "../lib/nav.ts";
-import { isOrgAdmin } from "../lib/roles.ts";
-import { readTheme, setTheme, type ThemeChoice } from "../lib/theme.ts";
-import { cn } from "../lib/utils.ts";
-import { type CurrentOrg, useOrgs } from "./org-context.ts";
+} from "@/components/ui/dropdown-menu.tsx";
+import { Kbd } from "@/components/ui/kbd.tsx";
+import { SidebarTrigger } from "@/components/ui/sidebar.tsx";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { activeNavItem, NAV_HOME, visibleGroups } from "@/lib/nav.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { readTheme, setTheme, type ThemeChoice } from "@/lib/theme.ts";
+import { cn } from "@/lib/utils.ts";
+import { type CurrentOrg, useOrgs } from "@/shell/org-context.ts";
 
 const text: Dict<{
   crumb: string;

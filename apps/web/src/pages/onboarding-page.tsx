@@ -1,29 +1,29 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { type FormEvent, type ReactNode, useState } from "react";
-import { OnboardingInviteForm } from "../components/outside/onboarding-invite-form.tsx";
+import { OnboardingInviteForm } from "@/components/outside/onboarding-invite-form.tsx";
 import {
   checkNameSlug,
   type NameSlugErrors,
   OnboardingNameFields,
-} from "../components/outside/onboarding-name-fields.tsx";
-import { OnboardingSignOut } from "../components/outside/onboarding-sign-out.tsx";
-import { OutsideLayout } from "../components/outside/outside-layout.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { formError } from "../lib/api-errors.ts";
-import { cx } from "../lib/cx.ts";
-import { type Dict, useT } from "../lib/i18n.ts";
-import { canInvite } from "../lib/invites.ts";
-import { orgStore } from "../lib/org-store.ts";
-import { orgsMineQuery } from "../lib/orgs.ts";
-import { client } from "../lib/rpc.ts";
-import { nextTeamColor } from "../lib/teams.ts";
-import { useMe } from "../shell/me-context.ts";
-import { type CurrentOrg, useOrgs } from "../shell/org-context.ts";
+} from "@/components/outside/onboarding-name-fields.tsx";
+import { OnboardingSignOut } from "@/components/outside/onboarding-sign-out.tsx";
+import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { formError } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
+import { canInvite } from "@/lib/invites.ts";
+import { orgStore } from "@/lib/org-store.ts";
+import { orgsMineQuery } from "@/lib/orgs.ts";
+import { client } from "@/lib/rpc.ts";
+import { nextTeamColor } from "@/lib/teams.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { type CurrentOrg, useOrgs } from "@/shell/org-context.ts";
 
 const stepText: Dict<{
   org: string;

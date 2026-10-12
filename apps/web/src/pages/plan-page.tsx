@@ -2,18 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { OrgMember, Plan, PlanContent, PlanDecision, Run, Task } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { PlanEditor } from "../components/plan-editor.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { DescriptionList } from "../components/ui/description-list.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { Textarea } from "../components/ui/textarea.tsx";
-import { apiErrorMessage, formError } from "../lib/api-errors.ts";
-import { cx } from "../lib/cx.ts";
-import { formatDayTime } from "../lib/format.ts";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
+import { PlanEditor } from "@/components/plan-editor.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { DescriptionList } from "@/components/ui/description-list.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { formatDayTime } from "@/lib/format.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
   canDecidePlan,
   effectiveContent,
@@ -22,10 +22,10 @@ import {
   planStage,
   planStatusLabel,
   sameContent,
-} from "../lib/plan-view.ts";
-import { cliLabel, shortId } from "../lib/run-view.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/plan-view.ts";
+import { cliLabel, shortId } from "@/lib/run-view.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<
   Record<

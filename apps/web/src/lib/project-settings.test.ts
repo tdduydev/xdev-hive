@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/client";
 import { defaultProjectSettings, type ProjectSettings } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { buildPatch, fieldOfPath, formFromSettings, saveErrors } from "./project-settings.ts";
+import { buildPatch, fieldOfPath, formFromSettings, saveErrors } from "@/lib/project-settings.ts";
 
 const base = (): ProjectSettings => defaultProjectSettings(1);
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { type Dict, setLang, useLang, useT } from "../../lib/i18n.ts";
-import { Brand } from "../icons.tsx";
-import { Button } from "../ui/button.tsx";
+import { Brand } from "@/components/icons.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { type Dict, setLang, useLang, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ language: string }> = { vi: { language: "Ngôn ngữ" }, en: { language: "Language" } };
 

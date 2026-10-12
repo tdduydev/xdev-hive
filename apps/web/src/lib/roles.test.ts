@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canManageTeam, canSetOrgRole, canSetStatus, effectiveTeamRole, isOrgAdmin } from "./roles.ts";
+import { canManageTeam, canSetOrgRole, canSetStatus, effectiveTeamRole, isOrgAdmin } from "@/lib/roles.ts";
 
 describe("vai trò tổ chức", () => {
   it("quản trị tổ chức", () => {

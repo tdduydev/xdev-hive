@@ -1,4 +1,4 @@
-import { cx } from "../../lib/cx.ts";
+import { cx } from "@/lib/cx.ts";
 
 export interface FilterChip<K extends string> {
   key: K;

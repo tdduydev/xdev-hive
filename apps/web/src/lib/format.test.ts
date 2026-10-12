@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAgo, formatDay, formatDayTime, formatDuration, formatInt, formatUsd } from "./format.ts";
+import { formatAgo, formatDay, formatDayTime, formatDuration, formatInt, formatUsd } from "@/lib/format.ts";
 
 describe("formatDay", () => {
   it("ngày/tháng/năm", () => expect(formatDay("2026-10-11T12:00:00.000Z")).toBe("11/10/2026"));

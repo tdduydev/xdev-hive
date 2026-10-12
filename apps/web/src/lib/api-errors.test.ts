@@ -1,6 +1,6 @@
 import { ORPCError } from "@orpc/client";
 import { describe, expect, it } from "vitest";
-import { apiErrorMessage, formError, shouldRetry } from "./api-errors.ts";
+import { apiErrorMessage, formError, shouldRetry } from "@/lib/api-errors.ts";
 
 // Lỗi client nhận khi hub trả lỗi đã khai báo trong hợp đồng (packages/contracts/src/tenancy.ts).
 const defined = (code: string, message: string, data?: unknown) =>

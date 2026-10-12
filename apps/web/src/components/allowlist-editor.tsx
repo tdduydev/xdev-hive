@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { egressRule } from "@xdev-hive/contracts";
 import { type FormEvent, useId, useState } from "react";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatDayTime } from "../lib/format.ts";
-import { type Dict, useT } from "../lib/i18n.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { Alert } from "./ui/alert.tsx";
-import { Button } from "./ui/button.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "./ui/field.tsx";
-import { Input } from "./ui/input.tsx";
-import { LoadFailure, LoadingState } from "./ui/query-state.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatDayTime } from "@/lib/format.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 const text: Dict<{
   emptyList: string;

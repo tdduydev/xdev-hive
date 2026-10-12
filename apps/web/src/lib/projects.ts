@@ -1,7 +1,7 @@
 import type { OrgMember, OrgRole, Project, ProjectState, Run, TeamRole } from "@xdev-hive/contracts";
-import type { Dict } from "./i18n.ts";
-import { effectiveTeamRole } from "./roles.ts";
-import { isTerminal, type Tone } from "./run-view.ts";
+import type { Dict } from "@/lib/i18n.ts";
+import { effectiveTeamRole } from "@/lib/roles.ts";
+import { isTerminal, type Tone } from "@/lib/run-view.ts";
 
 export const PROJECT_STATE: Record<ProjectState, { label: Dict<string>; tone: Tone }> = {
   provisioning: { label: { vi: "Đang khởi tạo", en: "Setting up" }, tone: "sel" },

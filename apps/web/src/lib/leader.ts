@@ -1,6 +1,6 @@
 import type { ChatMessage, LeaderAction, Project } from "@xdev-hive/contracts";
-import type { Lang } from "./i18n.ts";
-import { cliLabel } from "./run-view.ts";
+import type { Lang } from "@/lib/i18n.ts";
+import { cliLabel } from "@/lib/run-view.ts";
 
 export const ROLE_LABEL: Record<ChatMessage["role"], string> = { user: "Bạn", leader: "Leader", system: "Hệ thống" };
 

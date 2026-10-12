@@ -1,5 +1,5 @@
-import { type Dict, type Lang, setLang, useLang, useT } from "../lib/i18n.ts";
-import { cn } from "../lib/utils.ts";
+import { type Dict, type Lang, setLang, useLang, useT } from "@/lib/i18n.ts";
+import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{ group: string }> = { vi: { group: "Ngôn ngữ" }, en: { group: "Language" } };
 

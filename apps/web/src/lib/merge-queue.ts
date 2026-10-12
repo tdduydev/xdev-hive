@@ -1,5 +1,5 @@
 import type { MergeQueueCiState, MergeQueueEntry, MergeQueueState, OrgRole, TeamRole } from "@xdev-hive/contracts";
-import { effectiveTeamRole } from "./roles.ts";
+import { effectiveTeamRole } from "@/lib/roles.ts";
 
 export const MERGE_STATE_LABEL: Record<MergeQueueState, string> = {
   queued: "Đang xếp hàng",

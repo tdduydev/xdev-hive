@@ -1,7 +1,7 @@
 import { Outlet } from "@tanstack/react-router";
-import { SidebarInset, SidebarProvider } from "../components/ui/sidebar.tsx";
-import { AppSidebar } from "./sidebar.tsx";
-import { Topbar } from "./topbar.tsx";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar.tsx";
+import { AppSidebar } from "@/shell/sidebar.tsx";
+import { Topbar } from "@/shell/topbar.tsx";
 
 /**
  * Khung app theo Sidebar.dc.html và Topbar.dc.html: sidebar nhóm thu gọn được (Ctrl/Cmd+B thu còn biểu tượng; trên

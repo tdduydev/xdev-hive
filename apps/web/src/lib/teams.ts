@@ -1,4 +1,4 @@
-import { initials } from "./people.ts";
+import { initials } from "@/lib/people.ts";
 
 /** Màu đội: ba màu đầu lấy từ mockup, các màu sau chọn đủ tương phản với chữ trắng. */
 export const TEAM_COLORS = ["#7B61FF", "#0F9D8E", "#E0567A", "#2F6FDE", "#A16207", "#5B6472"] as const;

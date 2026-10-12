@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { boardRows, boardStats, filterCounts, filterRows, runActivity, taskBadge } from "./task-board.ts";
-import { makeRun, makeTask } from "./test-fixtures.ts";
+import { boardRows, boardStats, filterCounts, filterRows, runActivity, taskBadge } from "@/lib/task-board.ts";
+import { makeRun, makeTask } from "@/lib/test-fixtures.ts";
 
 const now = Date.parse("2026-10-11T12:00:00.000Z");
 
