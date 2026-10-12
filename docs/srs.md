@@ -203,7 +203,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
 | ROLE-01 | Organization administrators shall define custom roles with unique keys, names, descriptions, and hierarchical permission node selections. | Planned | — |
-| ROLE-02 | System roles (owner, admin, member, teamAdmin, viewer) shall be immutable but cloneable into custom roles. | Planned | — |
+| ROLE-02 | System roles (organization roles owner, admin, member; team roles admin, member, viewer) shall be immutable but cloneable into custom roles. | Planned | — |
 | ROLE-03 | The hub shall enforce permissions structured as a tree across access, work, knowledge, projects, agents, and monitoring areas, where checking a parent node grants all descendant leaf permissions. | Planned | — |
 | ROLE-04 | Organization administrators shall assign custom roles to organization members and teams, and the hub shall evaluate effective permissions with tenant isolation. | Planned | — |
 
@@ -256,7 +256,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | IF-03 | Agents shall use MCP over streamable HTTP at `/mcp`. | Implemented |
 | IF-04 | Git hosts shall deliver webhooks to `/hooks/git/{projectId}`. | Implemented |
 | IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
-| IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/git/skills`. | Planned |
+| IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/skills/{repoId}`. | Planned |
 
 ## 5. Non-functional requirements
 

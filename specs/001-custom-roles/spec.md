@@ -31,16 +31,16 @@ assigning it to a user, and verifying that the user can approve plans and enqueu
 
 ### User Story 2 - Clone system roles into custom roles (Priority: P2)
 
-Administrators want to create a role slightly different from built-in system roles (`owner`, `admin`, `member`, `teamAdmin`, `viewer`)
+Administrators want to create a role slightly different from built-in system roles (organization roles `owner`, `admin`, `member`; team roles `admin`, `member`, `viewer`)
 without building a permission list from scratch.
 
 **Why this priority**: Reduces manual configuration effort and ensures custom roles retain standard baseline capabilities.
 
-**Independent Test**: Can be tested by cloning the `viewer` system role, adding `costs.read` and `audit.read`, saving as "Auditor", and verifying the resulting permission list.
+**Independent Test**: Can be tested by cloning the `viewer` team role, adding `costs.read` and `audit.read`, saving as "Auditor", and verifying the resulting permission list.
 
 **Acceptance Scenarios**:
 
-1. **Given** a system role (`viewer`) displayed in `/admin/roles`, **When** the administrator selects "Duplicate role" and provides name "Auditor", **Then** a new editable custom role is created with the exact permission set of `viewer`.
+1. **Given** a system role (team role `viewer`) displayed in `/admin/roles`, **When** the administrator selects "Duplicate role" and provides name "Auditor", **Then** a new editable custom role is created with the exact permission set of `viewer`.
 2. **Given** a system role, **When** an administrator tries to directly edit or delete it, **Then** the action is blocked and a notice indicates system roles are immutable.
 
 ---
@@ -92,7 +92,7 @@ Administrators navigating the large permission tree need search, collapsible cat
 ### Functional Requirements
 
 - **FR-001 (ROLE-01)**: System MUST allow organization administrators to create, update, and delete custom roles with a unique name, optional description, scope (`org` or `team`), and permission set.
-- **FR-002 (ROLE-02)**: System MUST keep system roles (`owner`, `admin`, `member`, `teamAdmin`, `viewer`) immutable, while allowing administrators to duplicate them into new custom roles.
+- **FR-002 (ROLE-02)**: System MUST keep system roles (organization roles `owner`, `admin`, `member`; team roles `admin`, `member`, `viewer`) immutable, while allowing administrators to duplicate them into new custom roles.
 - **FR-003 (ROLE-03)**: System MUST organize permissions in a hierarchical tree (areas: `access`, `work`, `know`, `proj`, `agent`, `ops`), where toggling a branch node toggles all descendant leaf permissions.
 - **FR-004 (ROLE-04)**: System MUST allow assigning custom roles to organization members and teams, enforcing tenant isolation so that roles cannot be viewed or assigned across organizations.
 - **FR-005**: System MUST evaluate effective permissions in hub modules using `hasPermission(ctx, permissionKey)` checking the union of base roles, team memberships, and custom roles.
