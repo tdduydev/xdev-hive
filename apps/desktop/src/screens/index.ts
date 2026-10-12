@@ -2,17 +2,16 @@ import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
 import { DocsScreen } from "@/screens/docs-screen.tsx";
 import { HomeScreen } from "@/screens/home-screen.tsx";
+import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
 
-/**
- * Màn đã làm của cửa sổ app, theo mục AppNav. Mục chưa có ở đây hiện trang "Sắp có". Mỗi task trong
- * specs/008-desktop-v2/tasks.md thêm đúng một dòng cho màn của nó để các task chạy song song ít đụng nhau.
- */
-export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
+/** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
+export const SCREENS: Record<ScreenId, ComponentType> = {
   docs: DocsScreen,
   home: HomeScreen,
+  runs: RunsScreen,
   setup: SetupScreen,
   skills: SkillsScreen,
   tokens: TokensScreen,

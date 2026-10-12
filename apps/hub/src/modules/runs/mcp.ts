@@ -2,9 +2,13 @@ import { planContent, type Task } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import type pg from "pg";
 import { z } from "zod";
+import { loadProject } from "../catalog/index.ts";
+import { findMachineByRef } from "../fleet/index.ts";
 import type { McpPrincipal, RunTokenVerifier as McpRunTokenVerifier, McpToolRegistry } from "../mcp/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
 import { loadTask, taskByKeyForUser, toTask } from "../tasks/index.ts";
+import { teamRoleOf } from "../tenancy/index.ts";
+import { searchRuns } from "./queries.ts";
 import { reviewReportInput } from "./review.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, lockRun, notifyRun, ON_MACHINE } from "./state.ts";
@@ -185,6 +189,56 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       await hubEvent(tx, run, "plan_report", content);
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, recorded: "plan_report", steps: content.steps.length };
+    },
+  });
+
+  registry.register({
+    name: "run_list",
+    title: "Danh sách run",
+    description:
+      "Liệt kê run gần nhất trong các đội bạn có vai trò, mới nhất trước. `machine` (id hoặc tên máy) lọc theo máy " +
+      "chạy; app desktop dùng để hiện lượt chạy trên chính máy đó.",
+    input: z.object({
+      machine: z.string().trim().min(1).max(200).optional().describe("Id hoặc tên máy."),
+      limit: z.number().int().min(1).max(50).optional().describe("Số run; mặc định 20."),
+    }),
+    readOnly: true,
+    handler: async ({ machine, limit }, { tx, principal }) => {
+      if (principal.kind !== "user") throw new ForbiddenError("USER_TOKEN_REQUIRED", "Tool này dành cho người dùng.");
+      let machineId: string | undefined;
+      if (machine) {
+        const found = await findMachineByRef(tx, machine);
+        // Máy của đội mình không có vai trò thì coi như không có, để không lộ tên máy của đội khác.
+        if (!found || !(await teamRoleOf(tx, principal.userId, found.teamId)))
+          throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy trong các đội của bạn.");
+        machineId = found.id;
+      }
+      const { items } = await searchRuns(tx, principal.userId, { machineId, limit: limit ?? 20 });
+      const projects = new Map<string, { key: string; name: string } | null>();
+      for (const id of new Set(items.map((r) => r.projectId))) {
+        const p = await loadProject(tx, id);
+        projects.set(id, p ? { key: p.key, name: p.name } : null);
+      }
+      return {
+        runs: items.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          state: r.state,
+          taskKey: r.taskKey,
+          title: r.taskTitle,
+          projectId: r.projectId,
+          project: projects.get(r.projectId) ?? null,
+          cli: r.cli,
+          model: r.model,
+          machine: r.machineName,
+          costUsd: r.cost.costUsd,
+          tokensIn: r.cost.tokensIn,
+          prUrl: r.prUrl,
+          createdAt: r.createdAt,
+          startedAt: r.startedAt,
+          finishedAt: r.finishedAt,
+        })),
+      };
     },
   });
 }
