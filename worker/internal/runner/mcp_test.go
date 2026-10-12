@@ -142,3 +142,77 @@ func TestTOMLStringEscapesLikeTOML(t *testing.T) {
 		}
 	}
 }
+
+// Gemini: cổng hub và server ngoài được phép vào .gemini/settings.json của worktree (loại khỏi git), chỉ những tên đó
+// được nạp; repo đã có file cấu hình thì không ghi đè.
+func TestGeminiGetsHubAndAllowedServersInWorkspaceSettings(t *testing.T) {
+	work := t.TempDir()
+	if err := git(t.Context(), work, "init", "-q"); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"HIVE_HUB_URL": "https://hub.example/", "HIVE_RUN_TOKEN": "run-secret"}
+	j := Job{CLI: "gemini", Kind: "code", Prompt: "p", Env: env, MCPServers: externalTestServers(), workspace: work}
+	cmd, err := (Runner{}).cliCommand(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd.cleanup != nil {
+		defer cmd.cleanup()
+	}
+	var allowed []string
+	for _, a := range cmd.Args[1:] {
+		if v, ok := strings.CutPrefix(a, "--allowed-mcp-server-names="); ok {
+			allowed = append(allowed, v)
+		}
+	}
+	if !slices.Equal(allowed, []string{"xdev-hive", "github", "context7"}) {
+		t.Fatalf("allowed = %v (args %v)", allowed, cmd.Args)
+	}
+	servers := readMCPConfig(t, work+"/.gemini/settings.json")
+	if len(servers) != 3 {
+		t.Fatalf("servers = %v", servers)
+	}
+	hub := servers["xdev-hive"]
+	if hub["httpUrl"] != "https://hub.example/mcp" || hub["headers"].(map[string]any)["Authorization"] != "Bearer run-secret" {
+		t.Fatalf("hub = %v", hub)
+	}
+	if servers["context7"]["httpUrl"] != "https://mcp.context7.com/mcp" || servers["github"]["command"] != "npx" {
+		t.Fatalf("servers = %v", servers)
+	}
+	if v, ok := servers["github"]["env"].(map[string]any)["HIVE_RUN_TOKEN"]; !ok || v != "" {
+		t.Fatalf("server stdio phải nhận token rỗng: %v", servers["github"]["env"])
+	}
+	status, err := gitOutput(t.Context(), work, "status", "--porcelain", "--untracked-files=all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(status) != "" {
+		t.Fatalf("cấu hình Gemini lọt vào git: %q", status)
+	}
+
+	// Repo tự có .gemini/settings.json: giữ nguyên, vẫn giới hạn theo tên.
+	own := t.TempDir()
+	if err := os.MkdirAll(own+"/.gemini", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(own+"/.gemini/settings.json", []byte(`{"theme":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j.workspace = own
+	if _, err := (Runner{}).cliCommand(j); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(own + "/.gemini/settings.json"); string(b) != `{"theme":"x"}` {
+		t.Fatalf("ghi đè cấu hình của repo: %s", b)
+	}
+
+	// Run chỉ đọc: chỉ cổng hub.
+	j.Kind, j.workspace = KindPlan, ""
+	plan, err := (Runner{}).cliCommand(j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(plan.Args, "--allowed-mcp-server-names=xdev-hive") || slices.Contains(plan.Args, "--allowed-mcp-server-names=github") {
+		t.Fatalf("plan args = %v", plan.Args)
+	}
+}
