@@ -16,6 +16,11 @@ fn main() {
         "account_unlink",
         "workspace_meta",
         "hub_tool",
+        "skill_uses",
+        "installed_skills",
+        "install_skills",
+        "remove_skills",
+        "propose_skill",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

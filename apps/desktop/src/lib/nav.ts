@@ -73,6 +73,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: ZapIcon,
     design: "AppSkills.dc.html",
     needs: "skills.read",
+    writes: "skills.sync",
   },
   {
     id: "tokens",
