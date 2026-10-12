@@ -196,7 +196,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
 | OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Implemented | `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (owner/admin; custom auditor roles await RBAC) |
 | OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Implemented | `hub:modules/audit/audit.db.test.ts`, `hub:modules/audit/csv.test.ts`, `web:audit.spec.ts` (owner/admin; 20,000-row limit) |
-| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Partial | `hub:modules/audit/audit.db.test.ts` (append-only enforced; organization retention policy and archival/cleanup not implemented) |
+| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Implemented | `hub:modules/audit/retention.db.test.ts`, `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (retention 90–3650 days set by owner/admin; daily cleanup deletes expired entries and records `audit.purge`; no archival before deletion) |
 
 ### 3.12 Roles and custom permissions (ROLE)
 

@@ -1,5 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AuditFilters, AuditLogItem } from "@xdev-hive/contracts";
+import {
+  AUDIT_RETENTION_MAX_DAYS,
+  AUDIT_RETENTION_MIN_DAYS,
+  type AuditFilters,
+  type AuditLogItem,
+  type AuditRetention,
+} from "@xdev-hive/contracts";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
@@ -17,7 +23,7 @@ import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 const text: Dict<{
   title: string;
   crumb: string;
-  lead: string;
+  lead: (retentionDays: number | undefined) => string;
   range: string;
   search: string;
   pageSearch: string;
@@ -53,11 +59,18 @@ const text: Dict<{
   empty: string;
   ranges: readonly string[];
   page: (n: number) => string;
+  retention: string;
+  days: (n: number) => string;
+  save: string;
+  saving: string;
+  saved: string;
+  retentionHint: string;
+  shrinkWarning: (n: number) => string;
 }> = {
   vi: {
     title: "Nhật ký",
     crumb: "Theo dõi",
-    lead: "Mọi thao tác của người, agent và hub. Chỉ đọc.",
+    lead: (days) => `Mọi thao tác của người, agent và hub. Chỉ đọc${days ? `, giữ ${days} ngày` : ""}.`,
     range: "Khoảng thời gian",
     search: "Tìm đối tượng, người làm, IP…",
     pageSearch: "Tìm trong trang…",
@@ -93,11 +106,18 @@ const text: Dict<{
     empty: "Không có dòng nào khớp bộ lọc.",
     ranges: ["24 giờ", "7 ngày", "30 ngày", "365 ngày"],
     page: (n) => `Trang nhật ký ${n}`,
+    retention: "Thời hạn lưu",
+    days: (n) => `${n} ngày`,
+    save: "Lưu thời hạn",
+    saving: "Đang lưu…",
+    saved: "Đã lưu thời hạn lưu.",
+    retentionHint: `Hub tự xoá nhật ký quá hạn mỗi ngày. Tối thiểu ${AUDIT_RETENTION_MIN_DAYS} ngày; mỗi lần đổi đều được ghi vào nhật ký.`,
+    shrinkWarning: (n) => `Nhật ký cũ hơn ${n} ngày sẽ bị xoá vĩnh viễn ở lần dọn tiếp theo, không khôi phục được.`,
   },
   en: {
     title: "Audit log",
     crumb: "Monitoring",
-    lead: "Every action by people, agents and the hub. Read-only.",
+    lead: (days) => `Every action by people, agents and the hub. Read-only${days ? `, kept for ${days} days` : ""}.`,
     range: "Time range",
     search: "Search target, actor, IP…",
     pageSearch: "Search this page…",
@@ -133,6 +153,14 @@ const text: Dict<{
     empty: "No rows match these filters.",
     ranges: ["24 h", "7 days", "30 days", "365 days"],
     page: (n) => `Audit page ${n}`,
+    retention: "Retention",
+    days: (n) => `${n} days`,
+    save: "Save retention",
+    saving: "Saving…",
+    saved: "Retention saved.",
+    retentionHint: `The hub deletes expired entries daily. Minimum ${AUDIT_RETENTION_MIN_DAYS} days; every change is recorded in the audit log.`,
+    shrinkWarning: (n) =>
+      `Entries older than ${n} days will be permanently deleted at the next cleanup and cannot be recovered.`,
   },
 };
 
@@ -162,6 +190,7 @@ function AuditViewer() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [page, setPage] = useState(0);
   const cursor = cursors[page];
+  const retention = useQuery(api.audit.retention.queryOptions({ input: {} }));
   const list = useQuery(
     api.audit.list.queryOptions({
       input: { ...filters, limit: 20, ...(cursor ? { cursor } : {}) },
@@ -293,7 +322,7 @@ function AuditViewer() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">{t.lead}</p>
+        <p className="text-sm text-muted-foreground">{t.lead(retention.data?.retentionDays)}</p>
         <fieldset aria-label={t.range} className="flex flex-wrap gap-1 rounded-lg bg-muted p-1">
           {([1, 7, 30, 365] as const).map((range, i) => (
             <Button
@@ -308,6 +337,7 @@ function AuditViewer() {
           ))}
         </fieldset>
       </div>
+      {isOrgAdmin(org.role) && retention.data && <RetentionForm current={retention.data} />}
       <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label htmlFor={`${fieldId}-search`} className="grid gap-1 text-xs sm:col-span-2">
           {t.search}
@@ -421,5 +451,76 @@ function AuditViewer() {
         </div>
       )}
     </>
+  );
+}
+
+const RETENTION_CHOICES = [90, 180, 365, 730, 1095, 1825, 3650];
+
+/** Chỉ chủ sở hữu và quản trị tổ chức đổi được (hub cũng chặn); hạ thời hạn thì báo trước dữ liệu sẽ mất. */
+function RetentionForm({ current }: { current: AuditRetention }) {
+  const { api } = useOrg();
+  const t = useT(text);
+  const fieldId = useId();
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState(current.retentionDays);
+  const save = useMutation(
+    api.audit.setRetention.mutationOptions({
+      onSuccess: (next) => {
+        queryClient.setQueryData(api.audit.retention.queryKey({ input: {} }), next);
+        // Lần đổi vừa ghi một dòng audit.retention.update.
+        void queryClient.invalidateQueries({ queryKey: api.audit.list.key() });
+      },
+    }),
+  );
+  // Hub nhận mọi số ngày trong khoảng cho phép; giá trị đặt qua API ngoài danh sách vẫn phải hiện đúng.
+  const choices = [...new Set([...RETENTION_CHOICES, current.retentionDays])]
+    .filter((n) => n >= AUDIT_RETENTION_MIN_DAYS && n <= AUDIT_RETENTION_MAX_DAYS)
+    .sort((a, b) => a - b);
+  return (
+    <form
+      className="grid gap-2 rounded-lg border border-border bg-card p-3 sm:flex sm:flex-wrap sm:items-end sm:gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate({ retentionDays: draft });
+      }}
+    >
+      <label htmlFor={`${fieldId}-retention`} className="grid gap-1 text-xs sm:w-40">
+        {t.retention}
+        <NativeSelect
+          id={`${fieldId}-retention`}
+          aria-label={t.retention}
+          value={draft}
+          onChange={(e) => {
+            setDraft(Number(e.currentTarget.value));
+            save.reset();
+          }}
+        >
+          {choices.map((n) => (
+            <option key={n} value={n}>
+              {t.days(n)}
+            </option>
+          ))}
+        </NativeSelect>
+      </label>
+      <Button type="submit" variant="outline" disabled={draft === current.retentionDays || save.isPending}>
+        {save.isPending ? t.saving : t.save}
+      </Button>
+      <p className="text-xs text-muted-foreground sm:min-w-60 sm:flex-1">{t.retentionHint}</p>
+      {draft < current.retentionDays && (
+        <p className="rounded-lg bg-warning-soft px-3 py-2 text-xs text-warning sm:basis-full">
+          {t.shrinkWarning(draft)}
+        </p>
+      )}
+      {save.isSuccess && (
+        <p role="status" className="rounded-lg bg-success-soft px-3 py-2 text-xs text-success sm:basis-full">
+          {t.saved}
+        </p>
+      )}
+      {save.isError && (
+        <Alert variant="destructive" className="sm:basis-full">
+          {apiErrorMessage(save.error)}
+        </Alert>
+      )}
+    </form>
   );
 }
