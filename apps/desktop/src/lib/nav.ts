@@ -1,4 +1,13 @@
-import { ChartLineIcon, FileTextIcon, HouseIcon, type LucideIcon, PlayIcon, WrenchIcon, ZapIcon } from "lucide-react";
+import {
+  ChartLineIcon,
+  FilePenLineIcon,
+  FileTextIcon,
+  HouseIcon,
+  type LucideIcon,
+  PlayIcon,
+  WrenchIcon,
+  ZapIcon,
+} from "lucide-react";
 import type { Dict } from "@/lib/i18n.ts";
 
 /**
@@ -41,7 +50,7 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
   ],
 };
 
-export type ScreenId = "home" | "docs" | "skills" | "tokens" | "setup" | "runs";
+export type ScreenId = "home" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
 
 export interface NavItem {
   id: ScreenId;
@@ -70,6 +79,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     design: "AppDocs.dc.html",
     needs: "docs.read",
     writes: "docs.write",
+  },
+  {
+    // Trình soạn tài liệu dùng chung với web (packages/doc-editor, spec 008 US9). Ai đọc được tài liệu đều mở được;
+    // hub quyết định sửa hay chỉ đọc và bình luận.
+    id: "write",
+    label: { vi: "Soạn tài liệu", en: "Write docs" },
+    icon: FilePenLineIcon,
+    design: "DocEditor.dc.html",
+    needs: "docs.read",
   },
   {
     id: "skills",
@@ -112,8 +130,18 @@ export function navItems(profile: Profile): (NavItem & { readOnly: boolean })[] 
   }));
 }
 
-/** Màn theo `#/<id>`; mặc định Tổng quan. */
+/** Màn theo `#/<id>` (phần sau `/` tiếp theo là tham số của màn, vd. `#/write/<key>`); mặc định Tổng quan. */
 export function screenFromHash(hash: string): ScreenId {
-  const id = hash.replace(/^#\/?/, "");
+  const id = hash.replace(/^#\/?/, "").split("/")[0] ?? "";
   return NAV_ITEMS.some((item) => item.id === id) ? (id as ScreenId) : "home";
+}
+
+/** Tham số của màn trong `#/<id>/<tham số>`, đã giải mã; rỗng khi không có. */
+export function screenParam(hash: string): string {
+  const rest = hash.replace(/^#\/?/, "").split("/").slice(1).join("/");
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return "";
+  }
 }
