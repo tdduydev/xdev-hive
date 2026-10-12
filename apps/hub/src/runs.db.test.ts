@@ -508,6 +508,46 @@ describe("quyền CLI theo cấu hình dự án", () => {
   });
 });
 
+describe("MCP server ngoài theo quy tắc (MCP-06)", () => {
+  it("run code nhận server được phép; server bị chặn và cổng MCP của hub không nằm trong danh sách", async () => {
+    const insert = (name: string, rule: string, matchType: string, pattern: string, launch: string[] | null) =>
+      admin.query(
+        `insert into hive.mcp_server_rules (org_id, project_id, name, rule, match_type, pattern, transport, command,
+           args, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'test')`,
+        [
+          org.orgId,
+          projectId,
+          name,
+          rule,
+          matchType,
+          pattern,
+          launch ? "stdio" : null,
+          launch?.[0] ?? null,
+          JSON.stringify(launch?.slice(1) ?? []),
+        ],
+      );
+    await insert("GitHub", "allow", "name", "github", ["npx", "-y", "@modelcontextprotocol/server-github"]);
+    await insert("Filesystem", "allow", "name", "filesystem", ["npx", "@modelcontextprotocol/server-filesystem"]);
+    await insert("Chặn filesystem", "deny", "command", "npx @modelcontextprotocol/server-filesystem", null);
+    try {
+      const m = await seedMachine(`mcp-ext-${tag}`);
+      const w = await FakeWorker.connect(m);
+      try {
+        const task = await newTask("Dùng MCP server ngoài");
+        const run = await startRun(task.id);
+        const offer = await w.next("job_offer", (o) => o.runId === run.id);
+        expect(offer.spec.mcpServers).toEqual([
+          { name: "github", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+        ]);
+      } finally {
+        await w.close();
+      }
+    } finally {
+      await admin.query("delete from hive.mcp_server_rules where org_id = $1", [org.orgId]);
+    }
+  });
+});
+
 describe("từ chối, huỷ, không có máy", () => {
   it("máy từ chối → hub đề nghị máy khác; huỷ run đang chạy gửi cancel tới máy", async () => {
     const mb = await seedMachine(`rj-b-${tag}`);

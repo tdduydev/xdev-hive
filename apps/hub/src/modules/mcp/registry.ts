@@ -9,6 +9,19 @@ export interface McpOrgMembership {
   name: string;
 }
 
+/** Dự án trong tổ chức của context, để quy tắc MCP server ngoài gắn được vào một dự án. */
+export interface McpProjectRef {
+  id: string;
+  key: string;
+}
+
+type Authorize = (
+  tx: Tx,
+  userId: string,
+  min: "member" | "admin",
+  permission?: string,
+) => Promise<"member" | "admin" | "owner">;
+
 export interface McpToolContext {
   /** Transaction withTenant của tổ chức đã chọn; tool và audit cùng commit hoặc cùng rollback. */
   tx: Tx;
@@ -41,16 +54,36 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = und
 export class McpToolRegistry {
   readonly #tools = new Map<string, McpTool<z.ZodObject, unknown>>();
   #memberships: ((tx: Tx, userId: string) => Promise<McpOrgMembership[]>) | undefined;
-  #authorize: ((tx: Tx, userId: string, min: "member" | "admin") => Promise<"member" | "admin" | "owner">) | undefined;
+  #authorize: Authorize | undefined;
+  #projects: ((tx: Tx, ref: string) => Promise<McpProjectRef | null>) | undefined;
 
   // Ghép tại app để tenancy vẫn chỉ phụ thuộc registry, không tạo vòng import giữa hai module.
-  provideAuthorization(fn: NonNullable<McpToolRegistry["authorize"]>): void {
+  provideAuthorization(fn: Authorize): void {
     this.#authorize = fn;
   }
 
-  authorize(tx: Tx, userId: string, min: "member" | "admin"): Promise<"member" | "admin" | "owner"> {
+  /**
+   * `permission` là quyền của vai trò tự tạo được nhận thay cho vai trò `min` (vd. `mcp.servers`); người có quyền đó
+   * mà không đủ vai trò thì kết quả là "member".
+   */
+  authorize(
+    tx: Tx,
+    userId: string,
+    min: "member" | "admin",
+    permission?: string,
+  ): Promise<"member" | "admin" | "owner"> {
     if (!this.#authorize) throw new Error("Chưa cấu hình phân quyền MCP.");
-    return this.#authorize(tx, userId, min);
+    return this.#authorize(tx, userId, min, permission);
+  }
+
+  // Cùng lý do với provideAuthorization: catalog đã import mcp để đăng ký tool, mcp không import ngược được.
+  provideProjects(fn: (tx: Tx, ref: string) => Promise<McpProjectRef | null>): void {
+    this.#projects = fn;
+  }
+
+  project(tx: Tx, ref: string): Promise<McpProjectRef | null> {
+    if (!this.#projects) throw new Error("Chưa cấu hình tra cứu dự án cho MCP.");
+    return this.#projects(tx, ref);
   }
 
   register<Input extends z.ZodObject, Prepared = undefined>(tool: McpTool<Input, Prepared>): void {
