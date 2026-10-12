@@ -1,4 +1,4 @@
-import type { ChecklistItem, ReviewGate, ReviewPhase, SlaState } from "@xdev-hive/contracts";
+import { type ChecklistItem, type ReviewGate, type ReviewPhase, reviewGate, type SlaState } from "@xdev-hive/contracts";
 
 /** Gate trải phẳng theo thứ tự chạy, kèm giai đoạn chứa nó. */
 export interface FlatGate {
@@ -7,9 +7,17 @@ export interface FlatGate {
   index: number;
 }
 
+/**
+ * Cấu hình gate lưu dạng JSON từ lúc tạo quy trình hay phiên duyệt: parse lại để trường thêm sau (vd. `reviewers.teams`)
+ * có giá trị mặc định thay vì undefined ở dòng cũ.
+ */
 export function flatGates(phases: ReviewPhase[]): FlatGate[] {
   const out: FlatGate[] = [];
-  for (const p of phases) for (const g of p.gates) out.push({ gate: g, phase: p.name, index: out.length });
+  for (const p of phases)
+    for (const g of p.gates) {
+      const parsed = reviewGate.safeParse(g);
+      out.push({ gate: parsed.success ? parsed.data : g, phase: p.name, index: out.length });
+    }
   return out;
 }
 

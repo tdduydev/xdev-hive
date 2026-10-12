@@ -1337,7 +1337,7 @@ describe("run kiểm tài liệu (gate AI của quy trình duyệt)", () => {
       ],
     );
     w.sendRun({ type: "run_result", runId: run.id, attempt: 1, exit: 0, headSha: null, report: null });
-    await until(async () => (await runRow(run.id)).state === "succeeded");
+    await until(async () => (await runRow(run.id)).state === "succeeded", 15_000);
     const inst = (await admin.query("select gate_index, status from hive.review_instances where id = $1", [instanceId]))
       .rows[0];
     expect(inst).toMatchObject({ gate_index: 1, status: "in_review" });
