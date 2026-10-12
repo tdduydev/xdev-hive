@@ -40,6 +40,8 @@ export const reviewGate = z.object({
     .object({
       users: z.array(z.string().min(1).max(200)).max(50).default([]),
       roles: z.array(reviewerRole).max(3).default([]),
+      /** Đội (vd. Pháp chế): thành viên và quản trị của đội được duyệt. */
+      teams: z.array(z.uuid()).max(20).default([]),
       quorum: z.number().int().min(0).max(50).default(1),
     })
     .optional(),
@@ -53,6 +55,8 @@ export const reviewGate = z.object({
     .object({
       checks: z.array(shortText(300)).min(1).max(20),
       passScore: z.number().min(0).max(10),
+      /** Model agent dùng khi kiểm; bỏ trống là model review của dự án. Chính sách agent của tổ chức vẫn áp. */
+      model: z.string().trim().min(1).max(200).optional(),
     })
     .optional(),
   /** Gate CI: trạng thái CI của nhánh chính trong repo của dự án. */
@@ -76,6 +80,7 @@ export type ReviewGateInput = z.input<typeof reviewGate>;
 
 export const reviewPhase = z.object({
   name: shortText(80),
+  description: z.string().trim().max(300).optional(),
   /** Tài liệu đầu ra của giai đoạn, chỉ để hiện. */
   outputs: z.array(shortText(80)).max(10).default([]),
   gates: z.array(reviewGate).min(1).max(20),
@@ -111,7 +116,10 @@ export const workflowInput = z
     for (const [pi, p] of w.phases.entries()) {
       for (const [gi, g] of p.gates.entries()) {
         const path = ["phases", pi, "gates", gi];
-        if (g.kind === "human" && !(g.reviewers && (g.reviewers.users.length || g.reviewers.roles.length)))
+        if (
+          g.kind === "human" &&
+          !(g.reviewers && (g.reviewers.users.length || g.reviewers.roles.length || g.reviewers.teams.length))
+        )
           ctx.addIssue({ code: "custom", message: `Checkpoint “${g.name}” cần người duyệt.`, path });
         if (g.kind === "rule" && !g.rules?.length)
           ctx.addIssue({ code: "custom", message: `Checkpoint “${g.name}” cần ít nhất một quy tắc.`, path });
@@ -221,6 +229,8 @@ export const reviewDetail = reviewSummary.extend({
   canDecide: z.boolean(),
   /** Gate trước gate hiện tại có người duyệt: đích của "về checkpoint trước". */
   previousGate: z.string().nullable(),
+  /** Cấu hình của gate đang chờ (người duyệt, số người cần, hướng trả lại mặc định); null khi phiên đã xong. */
+  currentGate: reviewGate.nullable(),
 });
 export type ReviewDetail = z.output<typeof reviewDetail>;
 
