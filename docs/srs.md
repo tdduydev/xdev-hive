@@ -181,6 +181,10 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | MCP-01 | The hub shall expose MCP tools for identity, organization structure, tasks, plans, reviews, memory, documents, skills and leader replies. | Implemented | `hub:mcp.db.test.ts`, `hub:mcp-run.db.test.ts` |
 | MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Partial: OAuth requires HTTPS; on plain HTTP only run tokens with `HIVE_MCP_ALLOW_HTTP=1` | `hub:mcp-http.db.test.ts` |
 | MCP-03 | Tools shall be limited by principal and run kind (read-only kinds get no write tools), run inside the tenant context and be audited. | Implemented | `hub:mcp.db.test.ts`, `hub:modules/mcp/registry.test.ts` |
+| MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Planned | — |
+| MCP-05 | Organization administrators shall configure external MCP server rules (allow or deny by URL, name, command, or wildcard) with deny precedence, scoped to organization or project. | Planned | — |
+| MCP-06 | The hub shall distribute allowed external MCP servers and configuration to CLI managed settings on assigned run machines, blocking unauthorized servers. | Planned | — |
+| MCP-07 | Organization members shall create personal MCP tokens with expiration periods, and administrators shall view, extend lifetime, and revoke MCP tokens. | Planned | — |
 
 ### 3.11 Notifications, costs and audit (OPS)
 
@@ -190,6 +194,58 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
 | OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
+| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Planned | — |
+| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Planned | — |
+| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Planned | — |
+
+### 3.12 Roles and custom permissions (ROLE)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| ROLE-01 | Organization administrators shall define custom roles with unique keys, names, descriptions, and hierarchical permission node selections. | Planned | — |
+| ROLE-02 | System roles (owner, admin, member, teamAdmin, viewer) shall be immutable but cloneable into custom roles. | Planned | — |
+| ROLE-03 | The hub shall enforce permissions structured as a tree across access, work, knowledge, projects, agents, and monitoring areas, where checking a parent node grants all descendant leaf permissions. | Planned | — |
+| ROLE-04 | Organization administrators shall assign custom roles to organization members and teams, and the hub shall evaluate effective permissions with tenant isolation. | Planned | — |
+
+### 3.13 Agent policies (POL)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| POL-01 | Organization administrators shall configure organization-wide agent policies including allowed model lists per CLI (Claude Code, Codex, Gemini CLI) and restrictions on automatic upgrades to expensive models. | Planned | — |
+| POL-02 | Organization administrators shall specify CLI permission levels (worktree restricted vs full access), require gVisor sandbox execution, and control whether individual projects may request full access. | Planned | — |
+| POL-03 | Organization administrators shall configure mandatory lifecycle hooks (PreToolUse, PostToolUse, Stop) executed on worker machines, with the option to enforce managed-only hooks ignoring personal or repository hooks. | Planned | — |
+| POL-04 | The hub shall maintain agent instruction file templates (AGENTS.md, CLAUDE.md, .mcp.json) and automatically propose pull requests to update project repositories when templates change. | Planned | — |
+| POL-05 | The hub shall enforce global limits for runs (per-run cost cap, organization daily budget cap, maximum parallel runs per machine, log retention period) that cannot be exceeded by project settings. | Planned | — |
+
+### 3.14 Review workflows (WF)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| WF-01 | Team and organization administrators shall configure document review workflows with phased checkpoints based on standard presets (AI-DLC, Spec Kit, BMAD) or custom pipelines. | Planned | — |
+| WF-02 | Review workflows shall support heterogeneous checkpoint gates including AI automated pre-checks, designated human reviewers (by user, team role, or group), automated rules, and external CI status checks. | Planned | — |
+| WF-03 | Review checkpoints shall support conditional triggers (document type, keywords, diff size thresholds, skipping formatting-only edits) and configurable SLAs with escalation or alerts. | Planned | — |
+| WF-04 | On rejection at a review gate, the workflow shall route the document back to the author, prompt an agent to revise based on feedback, or return to a previous checkpoint. | Planned | — |
+| WF-05 | On approval through all gates, the workflow shall baseline the document version, optionally triggering subsequent agent tasks linked to the approved baseline. | Planned | — |
+
+### 3.15 Collaborative document editor (DOC)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| DOC-01 | The web application shall provide a block-based rich text and Markdown editor supporting headings, checklists, tables, code blocks, Mermaid diagrams, embedded documents, and auto-numbered requirement IDs (R-n). | Planned | — |
+| DOC-02 | The document editor shall support suggestion mode alongside direct editing, allowing AI agents and human collaborators to propose inline edits that can be accepted or rejected. | Planned | — |
+| DOC-03 | The document editor shall provide contextual commenting threads anchored to document blocks with reply and resolve capabilities. | Planned | — |
+| DOC-04 | The document editor shall maintain version history with named snapshots, change diffs, and the ability to submit frozen versions into review workflows. | Planned | — |
+| DOC-05 | The document editor shall integrate AI assistance actions (continue writing, template completeness audit, drafting acceptance criteria, cross-referencing related documents, and translation) powered by desktop subscription or agent runs. | Planned | — |
+
+### 3.16 Skills repository synchronization (SKILL)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| SKILL-01 | The hub shall synchronize skills bidirectionally with a designated Git repository (e.g., tdduydev/xdev-skills), mapping folders to scopes: `org/<skill>/`, `teams/<team>/<skill>/`, and `projects/<key>/<skill>/`. | Planned | — |
+| SKILL-02 | Each skill shall be stored as a directory containing `SKILL.md` with YAML frontmatter metadata and Markdown instruction bodies. | Planned | — |
+| SKILL-03 | The hub shall process Git webhooks on push events to update the skill catalog within seconds, and provide manual "Sync now" triggering. | Planned | — |
+| SKILL-04 | Edits made on the hub shall commit to the Git repository default branch as the editing user, and skill change proposals shall be managed as Git pull requests. | Planned | — |
+| SKILL-05 | The hub shall resolve skill lookups by scope hierarchy, allowing team or project skills to shadow organization skills with identical keys. | Planned | — |
 
 ## 4. External interface requirements
 
@@ -200,6 +256,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | IF-03 | Agents shall use MCP over streamable HTTP at `/mcp`. | Implemented |
 | IF-04 | Git hosts shall deliver webhooks to `/hooks/git/{projectId}`. | Implemented |
 | IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
+| IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/git/skills`. | Planned |
 
 ## 5. Non-functional requirements
 
