@@ -1,6 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
 
 mod account;
+mod browser_login;
 mod cli;
 mod doctor;
 mod hub;
@@ -439,6 +440,10 @@ async fn register_worker(
     machine: Option<String>,
 ) -> Result<String, String> {
     let args = register::validate(&hub, &token, machine.as_deref())?;
+    register_and_start(&app, args).await
+}
+
+async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<String, String> {
     let mut cli = vec![
         "register".to_string(),
         "--hub".into(),
@@ -448,7 +453,7 @@ async fn register_worker(
     if let Some(m) = &args.machine {
         cli.extend(["--machine".into(), m.clone()]);
     }
-    let reg = sidecar_json(&app, cli, vec![("HIVE_REGISTRATION_TOKEN", args.token)]).await?;
+    let reg = sidecar_json(app, cli, vec![("HIVE_REGISTRATION_TOKEN", args.token)]).await?;
     let hub = reg
         .hub_url
         .filter(|_| reg.registered)
@@ -456,15 +461,41 @@ async fn register_worker(
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
         *slot = Some(hub.clone());
     }
-    if let Ok(mut slot) = app.state::<State>().machine.lock() {
-        *slot = reg.machine_id.clone();
-    }
-    dispatch(&app, Event::Start);
+    dispatch(app, Event::Start);
     if let Some(window) = app.get_webview_window(REGISTER) {
         let _ = window.hide();
     }
-    show_main(&app, &hub)?;
+    show_main(app, &hub)?;
     Ok(reg.machine_id.unwrap_or_default())
+}
+
+/// Đăng nhập bằng trình duyệt (browser_login.rs): một lần đăng nhập trên web, app tự đăng ký máy và liên kết tài
+/// khoản, không phải dán mã đăng ký hay token cá nhân.
+#[tauri::command]
+async fn browser_login(app: AppHandle, hub: String) -> Result<String, String> {
+    let hub = register::normalize_hub(&hub)?;
+    let machine = browser_login::machine_from_hostname(&browser_login::hostname());
+    let pkce = browser_login::new_pkce()?;
+    let (listener, port) = browser_login::listen()?;
+    let url = browser_login::connect_url(&hub, port, &pkce, &machine)?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(url, None)
+        .map_err(|e| format!("Không mở được trình duyệt: {e}"))?;
+    let state = pkce.state.clone();
+    let code = tauri::async_runtime::spawn_blocking(move || {
+        browser_login::wait_for_code(listener, &state)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let ex = browser_login::exchange(&hub, &code, &pkce.verifier).await?;
+    let args = register::validate(&hub, &ex.registration_token, Some(&ex.machine))?;
+    let machine_id = register_and_start(&app, args).await?;
+    // Máy đã đăng ký và worker đã chạy; token cá nhân lỗi thì người dùng vẫn liên kết tay được ở màn Tài khoản.
+    if let Err(e) = account::save_checked(&hub, &ex.personal_token).await {
+        eprintln!("Không liên kết được tài khoản sau khi đăng nhập: {e}");
+    }
+    Ok(machine_id)
 }
 
 /// Mở một trang của hub (vd. `/runs/<id>`) trong cửa sổ web của hub. Chỉ nhận đường dẫn tương đối gồm ký tự an toàn,
@@ -632,6 +663,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
+            browser_login,
             doctor::scan_environment,
             doctor::run_install,
             usage::claude_context,
