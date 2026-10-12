@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -549,6 +550,58 @@ func TestRejectsAndDrain(t *testing.T) {
 		}
 	case <-time.After(waitFor):
 		t.Fatal("worker không thoát sau khi drain xong")
+	}
+}
+
+func TestUpdateWaitsForRunningJobs(t *testing.T) {
+	remote, base := makeRemote(t)
+	hub := newFakeHub(t, true)
+	cfg := workerConfig(t, hub, "slow")
+	cfg.Capacity = 2
+	cfg.SelfUpdate = true
+	exited := startWorker(t, cfg)
+	c := hub.accept(t)
+
+	c.offer(t, "run-a", jobSpecFor(remote, base, "ai/A"))
+	c.nextType(t, "job_accept")
+	c.lease(t, "run-a", "tok")
+	c.next(t, "pha running", func(m wmsg) bool { return m.Type == "run_event" && m.phase() == "running" })
+
+	c.send(t, `{"type":"update","v":1,"id":"u","version":"0.2.0"}`)
+	c.offer(t, "run-b", jobSpecFor(remote, base, "ai/B"))
+	if m := c.nextType(t, "job_reject"); m.RunID != "run-b" || m.Reason != "máy đang thoát" {
+		t.Fatalf("job_reject = %+v", m)
+	}
+	// Cập nhật không cắt run đang chạy: run xong rồi Run mới trả yêu cầu cập nhật.
+	if res := c.nextType(t, "run_result"); res.RunID != "run-a" || res.report().Status != "succeeded" {
+		t.Fatalf("run_result = %+v report %+v", res, res.report())
+	}
+	select {
+	case err := <-exited:
+		var update *UpdateRequest
+		if !errors.As(err, &update) || update.Version != "0.2.0" {
+			t.Fatalf("Run trả %v, cần UpdateRequest 0.2.0", err)
+		}
+	case <-time.After(waitFor):
+		t.Fatal("worker không dừng để cập nhật")
+	}
+}
+
+func TestUpdateIgnoredWithoutSelfUpdate(t *testing.T) {
+	remote, base := makeRemote(t)
+	hub := newFakeHub(t, true)
+	cfg := workerConfig(t, hub, "commit")
+	exited := startWorker(t, cfg)
+	c := hub.accept(t)
+
+	c.send(t, `{"type":"update","v":1,"id":"u"}`)
+	// Worker đi kèm app desktop bỏ lệnh: vẫn nhận job như thường.
+	c.offer(t, "run-a", jobSpecFor(remote, base, "ai/A"))
+	c.nextType(t, "job_accept")
+	select {
+	case err := <-exited:
+		t.Fatalf("worker thoát (%v) dù không tự cập nhật", err)
+	default:
 	}
 }
 

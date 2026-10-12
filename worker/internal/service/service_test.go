@@ -133,3 +133,39 @@ func TestInstallWriteFailureDoesNotRunCommands(t *testing.T) {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
 }
+
+func TestRestartOnlyWhenRunning(t *testing.T) {
+	for _, tc := range []struct {
+		goos    string
+		running bool
+		want    []string
+	}{
+		{"linux", true, []string{"systemctl --user is-active --quiet hive-worker.service", "systemctl --user restart hive-worker.service"}},
+		{"linux", false, []string{"systemctl --user is-active --quiet hive-worker.service"}},
+		{"windows", true, []string{"powershell.exe", "schtasks /End /TN " + ID, "schtasks /Run /TN " + ID}},
+		{"darwin", true, []string{"launchctl print", "launchctl kickstart -k"}},
+	} {
+		var calls []string
+		m := Manager{Run: func(name string, args ...string) error {
+			calls = append(calls, strings.Join(append([]string{name}, args...), " "))
+			if (name == "systemctl" && args[1] == "is-active") || name == "powershell.exe" || (name == "launchctl" && args[0] == "print") {
+				if !tc.running {
+					return errors.New("không chạy")
+				}
+			}
+			return nil
+		}}
+		restarted, err := m.Restart(Plan{OS: tc.goos})
+		if err != nil || restarted != tc.running {
+			t.Errorf("%s running=%v: restarted=%v err=%v", tc.goos, tc.running, restarted, err)
+		}
+		if len(calls) != len(tc.want) {
+			t.Fatalf("%s: lệnh %q, cần %q", tc.goos, calls, tc.want)
+		}
+		for i, prefix := range tc.want {
+			if !strings.HasPrefix(calls[i], prefix) {
+				t.Errorf("%s: lệnh %d = %q, cần bắt đầu bằng %q", tc.goos, i, calls[i], prefix)
+			}
+		}
+	}
+}

@@ -52,6 +52,18 @@ jobs:
       - name: gofmt
         if: runner.os == 'Linux'
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      # Script cài chạy thật trong test của internal/update (install.ps1 trên Windows); shellcheck bắt thêm lỗi POSIX sh.
+      - name: shellcheck install.sh
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh ../scripts/install.sh
+      - name: goreleaser check
+        if: runner.os == 'Linux'
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2.18"
+          workdir: worker
+          args: check
       - run: go vet ./...
       - run: go test ./...
       - run: go build -o bin/ ./cmd/hive-worker
