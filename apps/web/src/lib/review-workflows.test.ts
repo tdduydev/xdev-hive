@@ -54,6 +54,20 @@ describe("đổi loại gate", () => {
     expect(rule.maxDiffLines).toBeUndefined();
   });
 
+  it("model AI để trống thì không gửi; mô tả giai đoạn rỗng cũng vậy", () => {
+    const ai = withKind(newGate("AI", [], "vi"), "ai", "vi");
+    expect(gateInput({ ...ai, ai: { checks: ["x"], passScore: 7, model: "  " } }).ai).toEqual({
+      checks: ["x"],
+      passScore: 7,
+    });
+    expect(gateInput({ ...ai, ai: { checks: ["x"], passScore: 7, model: " gpt-5-codex " } }).ai?.model).toBe(
+      "gpt-5-codex",
+    );
+    const draft = newDraft("speckit", "Spec", "vi");
+    draft.phases = draft.phases.map((p, i) => ({ ...p, description: i === 0 ? " Spec tính năng " : " " }));
+    expect(toInput(draft).phases.map((p) => p.description)).toEqual(["Spec tính năng", undefined, undefined]);
+  });
+
   it("chỉ gửi tiêu đề việc kế tiếp khi khi đạt là tạo việc", () => {
     const g = { ...newGate("A", [], "vi"), nextTaskTitle: "Viết thiết kế cho {title}" };
     expect(gateInput(g).nextTaskTitle).toBeUndefined();

@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import { diffBlocks, lineDiff } from "@/lib/line-diff.ts";
+import { ROLE_LABEL } from "@/lib/review-workflows.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { cn } from "@/lib/utils.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -105,6 +106,10 @@ const text: Dict<{
   sending: string;
   noteRequired: string;
   approvedBy: (names: string) => string;
+  assigned: string;
+  teamPrefix: string;
+  progress: (n: number, quorum: number) => string;
+  progressAll: (n: number) => string;
   approvedMsg: string;
   baselinedMsg: (v: number) => string;
   returnedMsg: (route: string) => string;
@@ -184,6 +189,10 @@ const text: Dict<{
     sending: "Đang gửi…",
     noteRequired: "Ghi góp ý khi trả lại.",
     approvedBy: (names) => `Đã duyệt ở checkpoint này: ${names}`,
+    assigned: "Người duyệt ở checkpoint này",
+    teamPrefix: "Đội",
+    progress: (n, q) => `Đã duyệt ${n}/${q}`,
+    progressAll: (n) => `Đã duyệt ${n} · cần tất cả`,
     approvedMsg: "Đã duyệt. Tài liệu sang checkpoint tiếp theo.",
     baselinedMsg: (v) => `Đã duyệt xong quy trình; hub chốt phiên bản v${v}.`,
     returnedMsg: (route) => `Đã trả lại: ${route}.`,
@@ -267,6 +276,10 @@ const text: Dict<{
     sending: "Sending…",
     noteRequired: "Write feedback when sending it back.",
     approvedBy: (names) => `Approved at this checkpoint: ${names}`,
+    assigned: "Approvers at this checkpoint",
+    teamPrefix: "Team",
+    progress: (n, q) => `Approved ${n}/${q}`,
+    progressAll: (n) => `Approved ${n} · everyone needed`,
     approvedMsg: "Approved. The doc moves to the next checkpoint.",
     baselinedMsg: (v) => `Workflow complete; the hub baselined v${v}.`,
     returnedMsg: (route) => `Sent back: ${route}.`,
@@ -871,7 +884,11 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
   const queryClient = useQueryClient();
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const [note, setNote] = useState("");
-  const [route, setRoute] = useState<RejectRoute>("author");
+  // Mặc định theo cấu hình của checkpoint; "về checkpoint trước" chỉ khi có checkpoint người duyệt phía trước.
+  const [route, setRoute] = useState<RejectRoute>(() => {
+    const configured = d.currentGate?.onReject ?? "author";
+    return configured === "previous" && !d.previousGate ? "author" : configured;
+  });
   const [noteMissing, setNoteMissing] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const prevName = d.gates.find((g) => g.gateId === d.previousGate)?.name ?? "";
@@ -920,10 +937,15 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
           {done}
         </p>
       )}
-      {current && current.approvals.length > 0 && (
-        <p className="m-0 text-xs text-muted-foreground">
-          {t.approvedBy(current.approvals.map((a) => a.name).join(", "))}
-        </p>
+      {d.currentGate?.kind === "human" && d.currentGate.reviewers ? (
+        <Assigned reviewers={d.currentGate.reviewers} approvals={current?.approvals ?? []} />
+      ) : (
+        current &&
+        current.approvals.length > 0 && (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t.approvedBy(current.approvals.map((a) => a.name).join(", "))}
+          </p>
+        )
       )}
       {d.canDecide ? (
         <>
@@ -978,5 +1000,41 @@ function DecisionCard({ d, onDecided }: { d: ReviewDetail; onDecided: () => void
         )
       )}
     </section>
+  );
+}
+
+/** Người được chỉ định ở checkpoint đang chờ (vai trò, đội, người) và số người đã duyệt so với số cần. */
+function Assigned({
+  reviewers,
+  approvals,
+}: {
+  reviewers: NonNullable<NonNullable<ReviewDetail["currentGate"]>["reviewers"]>;
+  approvals: GateRun["approvals"];
+}) {
+  const { api } = useOrg();
+  const t = useT(text);
+  const lang = useLang();
+  const members = useQuery(api.orgMembers.list.queryOptions());
+  const teams = useQuery(api.teams.list.queryOptions());
+  const memberName = new Map((members.data ?? []).map((m) => [m.userId, m.name]));
+  const teamName = new Map((teams.data ?? []).map((team) => [team.id, team.name]));
+  const who = [
+    ...reviewers.roles.map((role) => ROLE_LABEL[lang][role]),
+    ...reviewers.teams.map((id) => `${t.teamPrefix} ${teamName.get(id) ?? id}`),
+    ...reviewers.users.map((id) => memberName.get(id) ?? id),
+  ];
+  const n = approvals.length;
+  const progress = reviewers.quorum === 0 ? t.progressAll(n) : t.progress(n, reviewers.quorum);
+  return (
+    <div className="flex flex-col gap-0.5 text-[13px]">
+      <p className="m-0">
+        <span className="text-muted-foreground">{t.assigned}: </span>
+        {who.join(", ")}
+      </p>
+      <p className="m-0 text-xs text-muted-foreground">
+        {progress}
+        {n > 0 && `: ${approvals.map((a) => a.name).join(", ")}`}
+      </p>
+    </div>
   );
 }

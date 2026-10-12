@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import {
   type DryRunResult,
   type ReviewDetail,
+  type ReviewGate,
   type ReviewSummary,
   type ReviewWorkflow,
   reviewPhase,
@@ -320,6 +321,13 @@ export function reviewsFixture() {
         : g,
     );
   };
+  /** Cấu hình gate theo khung AI-DLC, để chi tiết phiên có `currentGate` như hub trả. */
+  const presetGates = WORKFLOW_PRESETS.aidlc.flatMap((p) => reviewPhase.parse(p).gates);
+  const config = (id: string, patch: Partial<ReviewGate> = {}): ReviewGate => {
+    const g = presetGates.find((x) => x.id === id);
+    if (!g) throw new Error(`Khung AI-DLC không có gate ${id}`);
+    return { ...g, ...patch };
+  };
   const details: Record<string, ReviewDetail> = {
     [REVIEW_PRD]: {
       ...prd,
@@ -327,7 +335,9 @@ export function reviewsFixture() {
       baseContent: BASE,
       content: NEXT,
       reason: "Thêm tiêu chí chấp nhận cho hoàn nhiều lần.",
-      gates: gatesOf("po"),
+      gates: gatesOf("po").map((g) =>
+        g.gateId === "po" ? { ...g, approvals: [{ userId: "u-lan", name: "Trần Lan", at: NOW }] } : g,
+      ),
       trace: [
         {
           id: "R-1",
@@ -348,6 +358,10 @@ export function reviewsFixture() {
       ],
       canDecide: true,
       previousGate: null,
+      currentGate: config("po", {
+        reviewers: { users: ["u-ha"], roles: ["team-admin"], teams: [TEAM_ID], quorum: 2 },
+        onReject: "agent",
+      }),
     },
     [REVIEW_DESIGN]: {
       ...design,
@@ -359,6 +373,7 @@ export function reviewsFixture() {
       trace: [],
       canDecide: true,
       previousGate: "po",
+      currentGate: config("design", { onReject: "previous" }),
     },
     [REVIEW_ADR]: {
       ...adr,
@@ -370,6 +385,7 @@ export function reviewsFixture() {
       trace: [],
       canDecide: false,
       previousGate: null,
+      currentGate: null,
     },
     [REVIEW_RUNBOOK]: {
       ...runbook,
@@ -381,6 +397,7 @@ export function reviewsFixture() {
       trace: [],
       canDecide: false,
       previousGate: "ci",
+      currentGate: config("ops"),
     },
   };
   const state = {
@@ -412,6 +429,7 @@ export function reviewsFixture() {
               ...d,
               gates: gatesOf("legal"),
               gate: d.gate && { ...d.gate, id: "legal", name: "Pháp chế", index: 2 },
+              currentGate: config("legal"),
               awaitingMe: false,
               canDecide: false,
             }
@@ -424,6 +442,7 @@ export function reviewsFixture() {
                   : g,
               ),
               gate: null,
+              currentGate: null,
               awaitingMe: false,
               canDecide: false,
             };

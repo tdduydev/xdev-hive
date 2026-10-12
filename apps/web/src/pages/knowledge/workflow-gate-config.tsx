@@ -1,4 +1,4 @@
-import type { OrgMember, RejectRoute, ReviewGate } from "@xdev-hive/contracts";
+import type { OrgMember, RejectRoute, ReviewGate, Team } from "@xdev-hive/contracts";
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon, XIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button.tsx";
@@ -21,6 +21,8 @@ import { cn } from "@/lib/utils.ts";
 import { workflowsText as text } from "@/pages/knowledge/workflows-text.ts";
 
 const SLA_CHOICES = [4, 8, 24, 48, 72];
+/** Gợi ý cho ô model; gõ tên khác vẫn được, chính sách agent của tổ chức quyết model nào dùng được. */
+const MODEL_SUGGESTIONS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "gpt-5-codex", "gemini-2.5-pro"];
 
 export const segButton = (on: boolean) =>
   cn(
@@ -121,6 +123,7 @@ export function GateConfig({
   gate: g,
   canWrite,
   members,
+  teams,
   canMoveUp,
   canMoveDown,
   onChange,
@@ -130,6 +133,7 @@ export function GateConfig({
   gate: ReviewGate;
   canWrite: boolean;
   members: OrgMember[];
+  teams: Team[];
   canMoveUp: boolean;
   canMoveDown: boolean;
   onChange: (fn: (g: ReviewGate) => ReviewGate) => void;
@@ -241,18 +245,49 @@ export function GateConfig({
         </fieldset>
 
         {g.kind === "human" && (
-          <Approvers gate={g} members={members} disabled={disabled} onChange={(reviewers) => set({ reviewers })} />
+          <Approvers
+            gate={g}
+            members={members}
+            teams={teams}
+            disabled={disabled}
+            onChange={(reviewers) => set({ reviewers })}
+          />
         )}
 
         {g.kind === "ai" && g.ai && (
           <>
+            <Field label={t.aiModel} htmlFor={`${ids}-model`} hint={t.aiModelHint}>
+              <Input
+                id={`${ids}-model`}
+                list={`${ids}-models`}
+                maxLength={200}
+                className="font-mono"
+                placeholder="claude-sonnet-5-5"
+                value={g.ai.model ?? ""}
+                disabled={disabled}
+                onChange={(e) => {
+                  const model = e.target.value;
+                  onChange((x) => ({
+                    ...x,
+                    ai: { checks: x.ai?.checks ?? [], passScore: x.ai?.passScore ?? 7, model },
+                  }));
+                }}
+              />
+              <datalist id={`${ids}-models`}>
+                {MODEL_SUGGESTIONS.map((m) => (
+                  <option key={m} value={m} />
+                ))}
+              </datalist>
+            </Field>
             <Field label={t.aiChecks} htmlFor={`${ids}-checks`} hint={t.aiChecksHint}>
               <LinesInput
                 id={`${ids}-checks`}
                 className="min-h-23 text-[13.5px]"
                 value={g.ai.checks}
                 disabled={disabled}
-                onChange={(checks) => onChange((x) => ({ ...x, ai: { passScore: x.ai?.passScore ?? 7, checks } }))}
+                onChange={(checks) =>
+                  onChange((x) => ({ ...x, ai: { ...x.ai, passScore: x.ai?.passScore ?? 7, checks } }))
+                }
               />
             </Field>
             <Field label={t.passScore} htmlFor={`${ids}-score`}>
@@ -271,7 +306,7 @@ export function GateConfig({
                     if (e.target.value !== "" && Number.isFinite(n))
                       onChange((x) => ({
                         ...x,
-                        ai: { checks: x.ai?.checks ?? [], passScore: Math.min(10, Math.max(0, n)) },
+                        ai: { ...x.ai, checks: x.ai?.checks ?? [], passScore: Math.min(10, Math.max(0, n)) },
                       }));
                   }}
                 />
@@ -484,19 +519,22 @@ export function GateConfig({
 function Approvers({
   gate,
   members,
+  teams,
   disabled,
   onChange,
 }: {
   gate: ReviewGate;
   members: OrgMember[];
+  teams: Team[];
   disabled: boolean;
   onChange: (r: NonNullable<ReviewGate["reviewers"]>) => void;
 }) {
   const t = useT(text);
   const lang = useLang();
   const ids = useId();
-  const r = gate.reviewers ?? { users: [], roles: [], quorum: 1 };
+  const r = gate.reviewers ?? { users: [], roles: [], teams: [], quorum: 1 };
   const names = new Map(members.map((m) => [m.userId, m.name]));
+  const teamNames = new Map(teams.map((team) => [team.id, team.name]));
   const mode = quorumMode(r.quorum);
   const chip = "inline-flex h-6 items-center gap-1 rounded-full border px-2 text-xs";
   const removeBtn = (label: string, fn: () => void) =>
@@ -524,6 +562,15 @@ function Approvers({
               </span>
             );
           })}
+          {r.teams.map((id) => {
+            const label = `${t.teamPrefix}: ${teamNames.get(id) ?? id}`;
+            return (
+              <span key={id} className={cn(chip, "border-transparent bg-secondary text-secondary-foreground")}>
+                {label}
+                {removeBtn(label, () => onChange({ ...r, teams: r.teams.filter((x) => x !== id) }))}
+              </span>
+            );
+          })}
           {r.users.map((u) => {
             const label = names.get(u) ?? u;
             return (
@@ -542,6 +589,7 @@ function Approvers({
                 const [kind, id] = e.target.value.split(":") as [string, string];
                 if (kind === "role") onChange({ ...r, roles: [...r.roles, id as ReviewerRole] });
                 if (kind === "user") onChange({ ...r, users: [...r.users, id] });
+                if (kind === "team") onChange({ ...r, teams: [...r.teams, id] });
               }}
             >
               <option value="">+ {t.addApproverPh}</option>
@@ -551,6 +599,15 @@ function Approvers({
                     {ROLE_LABEL[lang][role]}
                   </option>
                 ))}
+              </optgroup>
+              <optgroup label={t.teams}>
+                {teams
+                  .filter((team) => !r.teams.includes(team.id))
+                  .map((team) => (
+                    <option key={team.id} value={`team:${team.id}`}>
+                      {team.name}
+                    </option>
+                  ))}
               </optgroup>
               <optgroup label={t.people}>
                 {members
