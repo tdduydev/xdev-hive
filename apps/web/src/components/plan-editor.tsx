@@ -16,7 +16,7 @@ import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { Card } from "./ui/card.tsx";
 import { Input } from "./ui/input.tsx";
-import { Select } from "./ui/select.tsx";
+import { NativeSelect } from "./ui/native-select.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 
 /*
@@ -166,9 +166,13 @@ export function PlanEditor({
         onChange={(questions) => patch({ questions })}
       />
 
-      {errors.form && <Alert id={ids.form}>{errors.form}</Alert>}
+      {errors.form && (
+        <Alert variant="destructive" id={ids.form}>
+          {errors.form}
+        </Alert>
+      )}
       {Object.keys(errors).length > 0 && !errors.form && (
-        <Alert>Kế hoạch còn ô chưa hợp lệ. Sửa các ô được đánh dấu rồi bấm lại.</Alert>
+        <Alert variant="destructive">Kế hoạch còn ô chưa hợp lệ. Sửa các ô được đánh dấu rồi bấm lại.</Alert>
       )}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
@@ -359,14 +363,14 @@ function LabeledSelect({
       <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
-      <Select id={id} value={value} onChange={(e) => onChange(e.currentTarget.value as FileChange | "")}>
+      <NativeSelect id={id} value={value} onChange={(e) => onChange(e.currentTarget.value as FileChange | "")}>
         <option value="">Chưa rõ</option>
         {FILE_CHANGES.map((c) => (
           <option key={c} value={c}>
             {FILE_CHANGE_LABEL[c]}
           </option>
         ))}
-      </Select>
+      </NativeSelect>
     </div>
   );
 }

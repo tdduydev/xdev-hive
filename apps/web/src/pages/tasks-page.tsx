@@ -95,7 +95,7 @@ export function ProjectTasksPage() {
       <>
         <PageHeader crumb={org.name} title="Bảng việc" />
         <PageBody>
-          <Alert>
+          <Alert variant="destructive">
             {projects.isError
               ? apiErrorMessage(projects.error)
               : `Không tìm thấy dự án ${projectKey}, hoặc bạn không ở trong đội sở hữu dự án.`}
@@ -168,7 +168,8 @@ function Board({
 
   let body: ReactNode;
   if (tasks.isPending || runs.isPending) body = <Loading />;
-  else if (tasks.isError || runs.isError) body = <Alert>{apiErrorMessage(tasks.error ?? runs.error)}</Alert>;
+  else if (tasks.isError || runs.isError)
+    body = <Alert variant="destructive">{apiErrorMessage(tasks.error ?? runs.error)}</Alert>;
   else {
     const rows = boardRows(tasks.data, runs.data);
     const counts = filterCounts(rows);

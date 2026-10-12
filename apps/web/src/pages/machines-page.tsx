@@ -5,8 +5,8 @@ import { Alert } from "../components/ui/alert.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { useOrg } from "../shell/org-context.ts";
@@ -106,7 +106,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
         </>
       )}
       {registration.isPending && <Loading />}
-      {registration.isError && <Alert>{apiErrorMessage(registration.error)}</Alert>}
+      {registration.isError && <Alert variant="destructive">{apiErrorMessage(registration.error)}</Alert>}
       {registration.data && command && (
         <div className="grid gap-3">
           <div className="grid gap-1">
@@ -270,14 +270,14 @@ export function MachinesPage() {
         {teams.isPending ? (
           <Loading />
         ) : teams.isError ? (
-          <Alert>{apiErrorMessage(teams.error)}</Alert>
+          <Alert variant="destructive">{apiErrorMessage(teams.error)}</Alert>
         ) : teams.data.length === 0 ? (
           <Card className="p-5 text-muted-foreground">Chưa có đội để quản lý máy.</Card>
         ) : (
           <>
             <label className="grid max-w-sm gap-1 text-xs font-medium" htmlFor="machine-team">
               Đội
-              <Select
+              <NativeSelect
                 id="machine-team"
                 value={selectedTeam?.id ?? ""}
                 onChange={(event) => setTeamId(event.target.value)}
@@ -287,12 +287,12 @@ export function MachinesPage() {
                     {team.name}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             </label>
             {machines.isPending ? (
               <Loading />
             ) : machines.isError ? (
-              <Alert>{apiErrorMessage(machines.error)}</Alert>
+              <Alert variant="destructive">{apiErrorMessage(machines.error)}</Alert>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -319,8 +319,10 @@ export function MachinesPage() {
                 </div>
                 <Card className="p-3 sm:p-4">
                   <h2 className="mb-2 text-base font-semibold text-foreground">Danh sách máy</h2>
-                  {runInfoError && <Alert>Không tải được danh sách run đang chạy của một số máy.</Alert>}
-                  {updateMachine.isError && <Alert>{apiErrorMessage(updateMachine.error)}</Alert>}
+                  {runInfoError && (
+                    <Alert variant="destructive">Không tải được danh sách run đang chạy của một số máy.</Alert>
+                  )}
+                  {updateMachine.isError && <Alert variant="destructive">{apiErrorMessage(updateMachine.error)}</Alert>}
                   {updateSent && (
                     <p role="status" className="mb-2 text-xs text-muted-foreground">
                       Đã gửi lệnh cập nhật tới {updateSent}. Máy chờ run đang chạy xong, tự cập nhật rồi nối lại.
@@ -446,7 +448,7 @@ export function MachinesPage() {
                 {machines.data
                   .filter((machine) => machine.status === "offline")
                   .map((machine) => (
-                    <Alert key={machine.id}>
+                    <Alert variant="destructive" key={machine.id}>
                       Máy {machine.name} mất kết nối. Run đang chờ sẽ được giao lại khi có máy phù hợp.
                     </Alert>
                   ))}
@@ -469,7 +471,7 @@ export function MachinesPage() {
           <DialogDescription>
             Máy sẽ không thể kết nối lại bằng thông tin hiện tại. Bạn cần đăng ký lại để sử dụng máy.
           </DialogDescription>
-          {revoke.isError && <Alert>{apiErrorMessage(revoke.error)}</Alert>}
+          {revoke.isError && <Alert variant="destructive">{apiErrorMessage(revoke.error)}</Alert>}
           <DialogActions>
             <Button variant="outline" onClick={() => setRevokeId(null)}>
               Huỷ

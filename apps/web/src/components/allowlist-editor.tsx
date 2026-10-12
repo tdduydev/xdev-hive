@@ -90,7 +90,7 @@ export function AllowlistEditor({
           ))}
         </ul>
       )}
-      {remove.isError && <Alert>{apiErrorMessage(remove.error)}</Alert>}
+      {remove.isError && <Alert variant="destructive">{apiErrorMessage(remove.error)}</Alert>}
       {editable && (
         <form noValidate onSubmit={onAdd} className="grid gap-2.5 app:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <Field invalid={ruleError !== null}>
@@ -113,7 +113,7 @@ export function AllowlistEditor({
           </div>
         </form>
       )}
-      {add.isError && <Alert>{apiErrorMessage(add.error)}</Alert>}
+      {add.isError && <Alert variant="destructive">{apiErrorMessage(add.error)}</Alert>}
     </div>
   );
 }

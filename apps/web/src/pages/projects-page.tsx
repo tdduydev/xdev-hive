@@ -61,7 +61,7 @@ export function ProjectsPage() {
 
   let body: ReactNode;
   if (projects.isPending) body = <Loading />;
-  else if (projects.isError) body = <Alert>{apiErrorMessage(projects.error)}</Alert>;
+  else if (projects.isError) body = <Alert variant="destructive">{apiErrorMessage(projects.error)}</Alert>;
   else if (projects.data.length === 0) body = <EmptyProjects canCreate={canCreate} />;
   else {
     body = (

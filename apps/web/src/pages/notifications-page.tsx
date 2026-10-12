@@ -13,9 +13,9 @@ import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
 import { Field, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "../lib/notification-channels.ts";
@@ -179,9 +179,11 @@ function ChannelRow({
               {notice.message}
             </p>
           ) : (
-            <Alert>{notice.message}</Alert>
+            <Alert variant="destructive">{notice.message}</Alert>
           ))}
-        {(toggle.isError || test.isError) && <Alert>{apiErrorMessage(toggle.error ?? test.error)}</Alert>}
+        {(toggle.isError || test.isError) && (
+          <Alert variant="destructive">{apiErrorMessage(toggle.error ?? test.error)}</Alert>
+        )}
       </Td>
       <Td>
         <ul aria-label={`Sự kiện của ${channel.name}`} className="flex flex-wrap gap-1.5">
@@ -287,7 +289,7 @@ function ChannelForm({
           <label htmlFor={kindId} className="text-sm font-medium text-foreground">
             Loại kênh
           </label>
-          <Select
+          <NativeSelect
             id={kindId}
             value={kind}
             disabled={Boolean(channel) || busy}
@@ -295,7 +297,7 @@ function ChannelForm({
           >
             <option value="telegram">Telegram</option>
             <option value="email">Email / SMTP</option>
-          </Select>
+          </NativeSelect>
         </div>
         <label className="flex items-center gap-2">
           <input type="checkbox" name="enabled" defaultChecked={channel?.enabled ?? true} />
@@ -356,8 +358,8 @@ function ChannelForm({
           </div>
         )}
       </fieldset>
-      {failure && <Alert>{failure}</Alert>}
-      {mutation.isError && <Alert>{apiErrorMessage(mutation.error)}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
+      {mutation.isError && <Alert variant="destructive">{apiErrorMessage(mutation.error)}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel} disabled={busy}>
           Huỷ
@@ -386,11 +388,11 @@ function SmtpFields() {
         <label htmlFor={tlsId} className="text-sm font-medium text-foreground">
           Bảo mật kết nối
         </label>
-        <Select id={tlsId} name="tls" defaultValue="starttls">
+        <NativeSelect id={tlsId} name="tls" defaultValue="starttls">
           <option value="starttls">STARTTLS (thường cổng 587)</option>
           <option value="implicit">TLS (thường cổng 465)</option>
           <option value="none">Không dùng TLS</option>
-        </Select>
+        </NativeSelect>
       </div>
       <Field>
         <FieldLabel>Tài khoản SMTP (tuỳ chọn)</FieldLabel>
@@ -433,7 +435,7 @@ function RemoveChannel({
       <DialogDescription>
         Kênh “{channel.name}” sẽ ngừng nhận thông báo và cấu hình kết nối sẽ bị xoá.
       </DialogDescription>
-      {mutation.isError && <Alert>{apiErrorMessage(mutation.error)}</Alert>}
+      {mutation.isError && <Alert variant="destructive">{apiErrorMessage(mutation.error)}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel} disabled={mutation.isPending}>
           Huỷ
