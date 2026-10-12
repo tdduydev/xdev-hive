@@ -53,7 +53,8 @@ test("chưa đăng nhập: xem trước lời mời, đăng ký bằng email kè
   await page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" }).click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByRole("heading", { name: ORG.name })).toBeVisible();
+  // Trang chủ đưa tên tổ chức lên đường dẫn của thanh tiêu đề.
+  await expect(page.locator("header").getByText(ORG.name)).toBeVisible();
   expect(hub.authCalls).toEqual([
     {
       path: "/sign-up/email",
@@ -131,7 +132,8 @@ test("đã đăng nhập đúng email: nhận lời mời rồi vào tổ chức
   await expect(page.getByRole("button", { name: "Tạo tài khoản và vào tổ chức" })).toHaveCount(0);
   await page.getByRole("button", { name: "Nhận lời mời và vào tổ chức" }).click();
   await expect(page).toHaveURL("/");
-  await expect(page.getByRole("heading", { name: ORG.name })).toBeVisible();
+  // Trang chủ đưa tên tổ chức lên đường dẫn của thanh tiêu đề.
+  await expect(page.locator("header").getByText(ORG.name)).toBeVisible();
   expect(hub.rpcCalls.find((c) => c.path === "invitations/accept")).toMatchObject({
     org: undefined,
     input: { token: TOKEN },

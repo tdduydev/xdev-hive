@@ -1,3 +1,4 @@
+import { LangToggle } from "../components/lang-toggle.tsx";
 import { PersonAvatar } from "../components/person.tsx";
 import { ThemeToggle } from "../components/theme-toggle.tsx";
 import { useMe } from "./me-context.ts";
@@ -8,7 +9,10 @@ export function UserCard() {
   const me = useMe();
   return (
     <div className="grid gap-2 border-t border-sidebar-border pt-2">
-      <ThemeToggle className="justify-self-start group-data-[collapsible=icon]:hidden" />
+      <div className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
+        <ThemeToggle />
+        <LangToggle />
+      </div>
       <div className="flex items-center gap-2.5 px-0.5">
         <PersonAvatar person={me} />
         <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
