@@ -368,9 +368,12 @@ shows the approved version; no edit control is offered.
   Stored in the native operating system keychain using the Rust `keyring` crate (macOS Keychain via Security Framework, Linux via Secret Service / libsecret, Windows via Credential Manager).
 - **Role mapping to Hub permissions:**
   In `AppNav`, the navigation profiles map to hub tenancy roles as follows:
-  - `lead`: Organization `owner`/`admin`, or Team `admin`. Full permissions: `docs.read`, `docs.write`, `skills.read`, `skills.write`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`.
-  - `dev`: Team `member`. Permissions: `docs.read`, `skills.read`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`.
+  - `lead`: Organization `owner`/`admin`, or Team `admin`. Full permissions: `docs.read`, `docs.write`, `docs.propose`, `skills.read`, `skills.write`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`, `work.mine`.
+  - `dev`: Team `member`. Permissions: `docs.read`, `docs.propose`, `skills.read`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`, `work.mine`.
   - `writer`: Team `viewer`. Today a viewer is read-only in the hub (TEAM_RANK viewer < member), so `writer` gets `docs.read`, `skills.read`, `tokens.read` only. **[NEEDS CLARIFICATION]** The design lets writers edit documents; that needs a doc-writer permission from custom roles (specs/001-custom-roles) rather than widening `viewer`.
+  - Client screens of ADR 0017 (US9–US12): Write docs, Awaiting my review and Knowledge need `docs.read` (every profile;
+    the hub decides who may edit or decide). My work needs `work.mine` (`dev`, `lead`): starting a run needs team
+    `member` or above, so `writer` does not see it.
 
 ### 2. AppTray Worker States: 7 States vs 4 Worker Statuses
 
