@@ -9,6 +9,8 @@ fn main() {
         "claude_context",
         "claude_usage",
         "session_stats",
+        "worker_state",
+        "set_lang",
         "account_status",
         "account_link",
         "account_unlink",
