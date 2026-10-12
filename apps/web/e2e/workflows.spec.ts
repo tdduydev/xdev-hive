@@ -27,6 +27,12 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
   await page.getByRole("combobox", { name: "Đội sở hữu" }).selectOption({ label: "Thanh toán" });
   await page.getByRole("textbox", { name: "Thêm tiền tố tài liệu" }).fill("project/payment-api/specs/");
   await page.keyboard.press("Enter");
+  // Mô tả giai đoạn sửa được; giai đoạn chưa có mô tả thì gợi ý mô tả mặc định của khung mẫu.
+  await page.getByRole("textbox", { name: "Mô tả giai đoạn 1" }).fill("Mô tả tính năng và user story");
+  await expect(page.getByRole("textbox", { name: "Mô tả giai đoạn 2" })).toHaveAttribute(
+    "placeholder",
+    "Kỹ thuật, ràng buộc constitution",
+  );
 
   // Gate người duyệt: đổi tên, thêm người, mọi người phải duyệt, điều kiện, SLA, trả lại cho agent, tạo việc kế.
   await gateCard(page, /Duyệt plan/).click();
@@ -34,6 +40,8 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
   await panel.getByRole("textbox", { name: "Tên checkpoint" }).fill("Kiến trúc sư duyệt plan");
   await panel.getByRole("combobox", { name: "Thêm người duyệt" }).selectOption({ label: "Phạm Hà" });
   await expect(panel.getByText("Phạm Hà")).toBeVisible();
+  await panel.getByRole("combobox", { name: "Thêm người duyệt" }).selectOption({ label: "Thanh toán" });
+  await expect(panel.getByText("Đội: Thanh toán")).toBeVisible();
   await panel.getByRole("combobox", { name: "Cách duyệt" }).selectOption({ label: "Tất cả phải duyệt" });
   await panel.getByRole("button", { name: "+ Điều kiện" }).click();
   await panel.getByRole("textbox", { name: "Có một trong các từ khoá" }).fill("phí, hoàn tiền");
@@ -42,14 +50,23 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
   await panel.getByRole("combobox", { name: "Khi bị trả lại" }).selectOption({ label: "Agent sửa theo góp ý" });
   await panel.getByRole("combobox", { name: "Khi đạt" }).selectOption({ label: "Tạo việc cho agent bước sau" });
   await panel.getByRole("textbox", { name: "Tiêu đề việc cho bước sau" }).fill("Viết tasks.md cho {title}");
-  await expect(gateCard(page, /Kiến trúc sư duyệt plan/)).toContainText("Quản trị đội, Phạm Hà · tất cả");
+  await expect(gateCard(page, /Kiến trúc sư duyệt plan/)).toContainText(
+    "Quản trị đội, Đội Thanh toán, Phạm Hà · tất cả",
+  );
 
-  // Gate AI đổi thành quy tắc: cấu hình AI không gửi đi nữa.
+  // Gate AI: chọn model và điểm đạt.
   await gateCard(page, /AI đối chiếu constitution/).click();
-  await panel.getByRole("radio", { name: "Quy tắc" }).check();
+  await expect(panel.getByText("Bỏ trống là model review của dự án.", { exact: false })).toBeVisible();
+  await panel.getByRole("combobox", { name: "Model kiểm" }).fill("gpt-5-codex");
+  await panel.getByRole("spinbutton", { name: "Điểm đạt" }).fill("8");
+  await expect(gateCard(page, /AI đối chiếu constitution/)).toContainText("gpt-5-codex · 2 mục kiểm · đạt từ 8/10");
+
+  // Gate quy tắc thêm kiểm secret.
+  await gateCard(page, /Mọi yêu cầu có tiêu chí/).click();
   await panel.getByRole("checkbox", { name: "Không có secret, token, mật khẩu" }).check();
 
-  // Thêm cổng CI vào giai đoạn Tasks rồi dời lên trước gate truy vết.
+  // Thêm checkpoint (mặc định người duyệt) vào giai đoạn Tasks, đổi thành cổng CI rồi dời lên trước gate truy vết:
+  // cấu hình người duyệt không gửi đi nữa.
   await page.getByRole("button", { name: "+ Thêm checkpoint" }).nth(2).click();
   await expect(panel.getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Checkpoint mới");
   await panel.getByRole("radio", { name: "Cổng CI" }).check();
@@ -73,21 +90,28 @@ test("tạo quy trình từ khung Spec Kit, sửa checkpoint rồi áp dụng đ
     ["ai-plan", "design"],
     ["checkpoint-moi", "trace"],
   ]);
-  const [rule, human] = saved?.phases[1]?.gates ?? [];
-  expect(rule).toMatchObject({ kind: "rule", rules: ["requirements", "no-secrets"] });
-  expect(rule?.ai).toBeUndefined();
+  expect(saved?.phases.map((p) => p.description)).toEqual(["Mô tả tính năng và user story", undefined, undefined]);
+  const [ai, human] = saved?.phases[1]?.gates ?? [];
+  expect(ai?.ai).toEqual({
+    checks: ["Plan tuân theo các nguyên tắc trong constitution", "Không có ràng buộc mâu thuẫn"],
+    passScore: 8,
+    model: "gpt-5-codex",
+  });
   expect(human).toEqual({
     id: "design",
     name: "Kiến trúc sư duyệt plan",
     kind: "human",
-    reviewers: { users: ["u-ha"], roles: ["team-admin"], quorum: 0 },
+    reviewers: { users: ["u-ha"], roles: ["team-admin"], teams: [TEAM_ID], quorum: 0 },
     conditions: { docTypes: [], keywords: ["phí", "hoàn tiền"], minChangedLines: null, skipFormattingOnly: true },
     slaHours: 48,
     onReject: "agent",
     onPass: "task",
     nextTaskTitle: "Viết tasks.md cho {title}",
   });
-  expect(saved?.phases[2]?.gates[0]).toMatchObject({ kind: "ext", ext: { check: "ci" } });
+  const [ci, trace] = saved?.phases[2]?.gates ?? [];
+  expect(ci).toMatchObject({ kind: "ext", ext: { check: "ci" } });
+  expect(ci?.reviewers).toBeUndefined();
+  expect(trace).toMatchObject({ kind: "rule", rules: ["requirements", "no-secrets"] });
   // Quy trình mới có mã của hub và nằm trong danh sách chọn.
   await expect(page.getByRole("combobox", { name: "Quy trình" })).toHaveValue(/^3c3c3c3c-.*2$/);
   await expect(page.getByText("Có thay đổi chưa áp dụng.")).toHaveCount(0);
@@ -162,6 +186,7 @@ test("thành viên không có quyền chỉ xem quy trình", async ({ page }) =>
   await expect(page.getByRole("button", { name: "+ Thêm checkpoint" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Xoá quy trình" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Tên quy trình" })).toBeDisabled();
+  await expect(page.getByText("Ý định → yêu cầu, story")).toBeVisible();
   await gateCard(page, /Pháp chế/).click();
   await expect(config(page).getByRole("textbox", { name: "Tên checkpoint" })).toHaveValue("Pháp chế");
   await expect(config(page).getByRole("radio", { name: "Người duyệt" })).toBeDisabled();
@@ -184,7 +209,10 @@ test("English: labels, kinds and the config panel follow the language", async ({
   await expect(page.getByRole("heading", { name: "Review workflows", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish workflow" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Dry-run on a doc" })).toBeVisible();
-  await expect(page.getByText("Intent → requirements, stories")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Phase 1 description" })).toHaveAttribute(
+    "placeholder",
+    "Intent → requirements, stories",
+  );
   await page
     .getByRole("region", { name: "Checkpoints" })
     .getByRole("button", { name: /AI kiểm đủ mục PRD/ })
@@ -192,6 +220,7 @@ test("English: labels, kinds and the config panel follow the language", async ({
   const panel = page.getByRole("complementary", { name: "Checkpoint settings" });
   await expect(panel.getByRole("radio", { name: "AI check" })).toBeChecked();
   await expect(panel.getByText("What the AI checks")).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Checking model" })).toHaveValue("");
   await expect(panel.getByRole("combobox", { name: "On pass" })).toHaveValue("next");
   await page.setViewportSize({ width: 360, height: 800 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
