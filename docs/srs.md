@@ -1,0 +1,223 @@
+# xDev Hive: Software Requirements Specification
+
+| | |
+|---|---|
+| Status | Baseline of the code on `main` at commit `221d5b6` (12 October 2026) |
+| Structure | Reduced from ISO/IEC/IEEE 29148:2018, section 9.6 |
+| Related | [add.md](add.md) (architecture), [sdd.md](sdd.md) (detailed design), [adr/](adr/README.md) (decisions), [feature-checklist.md](feature-checklist.md) |
+
+New features add requirements here with a new ID. Each feature spec under `specs/` (Spec Kit) lists the IDs it adds or
+changes. Requirements are never renumbered; a removed requirement keeps its ID with status `Withdrawn`.
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+This document states what xDev Hive must do and how well, so that features can be specified, implemented and verified
+against stable, numbered requirements.
+
+### 1.2 Scope
+
+xDev Hive is a self-hosted system that lets teams in an organization assign coding tasks to agent CLIs (Claude Code,
+Codex, Gemini CLI) running on the teams' own machines, share memory, documents and skills between agents, and review
+and merge the results. It consists of the hub (API, web app, background jobs), the worker and runner host, the egress
+proxy and the desktop app.
+
+### 1.3 Definitions
+
+Terms are defined in [add.md section 12](add.md#12-glossary). Additionally:
+
+| Term | Meaning |
+|---|---|
+| Organization administrator | Organization role `admin` or `owner` |
+| Team administrator | Team role `admin`, or an organization administrator |
+| Team member | Team role `member` or higher |
+
+### 1.4 Requirement format
+
+Each requirement has an ID (`AREA-NN`), a statement using "shall", a status and a verification reference.
+
+| Status | Meaning |
+|---|---|
+| Implemented | In the code and covered by the listed test |
+| Partial | In the code with stated gaps |
+| Planned | Accepted but not built; see [add.md section 11](add.md#11-risks-technical-debt-and-planned-work) |
+
+Verification references are test files: `hub:` is `apps/hub/src/`, `web:` is `apps/web/e2e/`, `worker:` is `worker/`,
+`e2e:` is `scripts/`.
+
+## 2. Overall description
+
+### 2.1 Product perspective
+
+The hub is the single control plane. Workers on developer machines and runner hosts connect out to it. Git hosting
+(GitHub, GitLab) holds the code; the hub opens pull requests and merges them through an organization Git connection.
+See the context diagram in [add.md section 3](add.md#3-context-and-scope).
+
+### 2.2 User classes
+
+| Class | Typical use |
+|---|---|
+| Hub operator | Deploys, backs up and upgrades the hub |
+| Organization owner and administrators | Members, teams, sign-in, Git connections, notification channels, sandbox policy |
+| Team administrators | Machines, systems, projects, project settings, documents and skills |
+| Team members | Tasks, runs, plans, reviews, merge queue, leader chat, memory |
+| Agent CLIs | Read context and report through MCP within a run |
+
+### 2.3 Operating environment
+
+- Hub: Linux server with Docker Compose; PostgreSQL 18 (pgvector optional); modern browsers.
+- Worker: macOS, Linux and Windows on amd64 and arm64, with at least one supported agent CLI logged in.
+- Runner host: Linux with Docker and gVisor (`runsc`).
+
+### 2.4 Constraints and assumptions
+
+- The hub never receives agent CLI credentials.
+- Machines can open outbound HTTPS and WebSocket connections to the hub.
+- User-facing text is Vietnamese.
+
+## 3. Functional requirements
+
+### 3.1 Sign-in and accounts (AUTH)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| AUTH-01 | The hub shall let the first administrator, whose address is listed in `HIVE_ORG_CREATORS`, create an e-mail and password account before any organization exists. | Implemented | `hub:invite-only.db.test.ts`, `web:login.spec.ts` |
+| AUTH-02 | The hub shall reject self-registration that is not backed by an invitation, a creator listing or a verified SSO domain, unless `HIVE_ALLOW_EMAIL_SIGNUP=1`. | Implemented | `hub:invite-only.db.test.ts` |
+| AUTH-03 | The hub shall support sign-in with e-mail and password (at least 10 characters), GitHub and GitLab. | Implemented | `hub:auth.db.test.ts`, `hub:invite-only.db.test.ts` |
+| AUTH-04 | An organization administrator shall configure one OIDC SSO provider per organization and verify an e-mail domain with a DNS TXT record. | Implemented | `hub:sso-domain.db.test.ts`, `web:admin.spec.ts` |
+| AUTH-05 | SSO shall create accounts only for addresses in a verified domain, as pending or member according to the organization's join policy. | Implemented | `hub:invite-sso.db.test.ts` |
+| AUTH-06 | The hub shall delete accounts older than 7 days that belong to no organization and have no pending invitation, except creator addresses. | Implemented | `hub:modules/tenancy/orphans.db.test.ts` |
+
+### 3.2 Organizations, teams and members (TEN)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| TEN-01 | A creator shall create an organization and become its owner. | Implemented | `hub:tenancy.db.test.ts` |
+| TEN-02 | Organization administrators shall invite people by e-mail with an organization role and optional team; only the owner may invite administrators. Invitations are single-use and revocable. | Implemented | `hub:tenancy.db.test.ts`, `hub:invite-only.db.test.ts`, `web:invite.spec.ts` |
+| TEN-03 | Administrators shall approve, deny or lock members; the owner shall change organization roles. | Implemented | `web:admin.spec.ts` |
+| TEN-04 | Team administrators shall manage teams, team members and team roles, and systems within a team. | Implemented | `hub:modules/tenancy/permissions.db.test.ts` |
+| TEN-05 | Every organization's data shall be invisible to members of other organizations, enforced by the database. | Implemented | `hub:modules/*/rls.db.test.ts` |
+
+### 3.3 Git connections and projects (PROJ)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| PROJ-01 | Organization administrators shall add GitHub (App or token) and GitLab connections, test their permissions and delete unused ones; secrets shall be stored encrypted. | Implemented | `hub:modules/scm/connections.db.test.ts` |
+| PROJ-02 | Team administrators shall create a project in a system, with a dry run that lists the provisioning steps and warnings first. | Implemented | `hub:modules/catalog/projects.db.test.ts` |
+| PROJ-03 | Provisioning shall check access, create or link the repository, commit agent templates, protect the default branch and add a webhook, record each step's state, and allow retrying a failed step. | Implemented | `hub:modules/catalog/projects.db.test.ts`, `hub:modules/catalog/steps.test.ts` |
+| PROJ-04 | Project settings shall cover merge mode and approvals, outcome policy, features (plan mode, cross-review, merge queue, leader chat, sandbox), issue intake, budget and per-CLI model and permissions. | Implemented | `hub:project-settings.db.test.ts`, `web:projects-runs.spec.ts` |
+| PROJ-05 | Incoming webhooks shall be verified with the project's secret and processed once per delivery. | Implemented | `hub:webhooks.db.test.ts` |
+
+### 3.4 Tasks and plans (TASK)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| TASK-01 | Team members shall create, edit and cancel tasks; cancelling a task cancels its waiting and running runs. | Implemented | `hub:modules/tasks/tasks.db.test.ts`, `hub:runs.db.test.ts` |
+| TASK-02 | With issue intake enabled, an issue labelled or mentioning the configured keyword shall create a task, queue a run with the default CLI and comment a link back. | Implemented | `hub:scm-handlers.db.test.ts` |
+| TASK-03 | A merged pull request on branch `ai/<task key>` shall mark the task done; a pull request closed without merge shall return the task to to-do with a note. | Implemented | `hub:scm-handlers.db.test.ts` |
+| TASK-04 | With plan mode, an agent shall submit a plan before coding; a member shall approve it (optionally edited, with a note) or reject it with a reason and optionally request a new plan; the code run shall follow the approved plan. | Implemented | `hub:plan.db.test.ts`, `web:plan-review.spec.ts` |
+
+### 3.5 Runs (RUN)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| RUN-01 | Team members shall assign a task to an agent CLI, optionally overriding the model. | Implemented | `hub:runs.db.test.ts` |
+| RUN-02 | The hub shall offer a run only to an online, unpaused machine of the owning team that has the CLI and free capacity; a rejected offer shall go to another machine; with no suitable machine the run stays queued. | Implemented | `hub:runs.db.test.ts` |
+| RUN-03 | A run shall be leased to one machine at a time; when the lease expires the run shall become lost and be retried with a new attempt, and messages from older attempts shall be ignored. | Implemented | `hub:runs.db.test.ts` |
+| RUN-04 | Members shall watch a run's state, events and logs live, and resume the stream without gaps after reconnecting. | Implemented | `hub:runs.db.test.ts`, `web:tasks-runs.spec.ts` |
+| RUN-05 | Members shall cancel a run; the machine shall receive the cancellation even if one channel fails. | Implemented | `hub:runs.db.test.ts` |
+| RUN-06 | Members shall send instructions to a running run; the worker shall report whether the agent received them. | Partial: only Claude accepts instructions mid-run | `hub:runs.db.test.ts` |
+| RUN-07 | After a run the hub shall evaluate the project's outcome policy and set `succeeded`, `no_changes`, `needs_review` or `failed`, open a pull request for pushed changes, and notify on failure. | Partial: `command` and `ci` checks are not evaluated | `hub:runs.db.test.ts`, `hub:modules/runs/policy.test.ts` |
+| RUN-08 | With cross-review, the hub shall run a read-only review with the configured CLI and compare its score with the project minimum. | Implemented | `hub:review.db.test.ts` |
+| RUN-09 | With the merge queue, passing pull requests shall be merged one at a time per project according to merge mode, approvals and CI; members may add or remove entries. | Implemented | `hub:merge-queue.db.test.ts`, `web:queue-notifications.spec.ts` |
+| RUN-10 | The hub shall stop a run that exceeds the project's per-run cost ceiling and refuse new runs for a task that has used its budget. | Implemented | `hub:runs.db.test.ts` |
+| RUN-11 | Members shall search runs by state, project, CLI and machine with cursor paging. | Implemented | `hub:runs-search.db.test.ts`, `web:projects-runs.spec.ts` |
+| RUN-12 | An agent shall be able to ask a person for approval mid-run and wait for the answer. | Planned | — |
+
+### 3.6 Machines and workers (FLEET)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| FLEET-01 | Team administrators shall create single-use registration tokens valid for one hour, for a developer machine or a runner host, together with one-line install commands for Linux, macOS and Windows. | Implemented | `hub:modules/fleet/registration.db.test.ts`, `web:admin.spec.ts` |
+| FLEET-02 | The install script shall verify the release signature and checksum before installing, register the machine and install a user service. | Implemented | `worker:internal/update/scripts_test.go` |
+| FLEET-03 | Team administrators shall list, pause, resume and revoke machines; a revoked machine shall be disconnected and unable to reconnect. | Implemented | `hub:modules/fleet/registration.db.test.ts`, `hub:fleet.db.test.ts` |
+| FLEET-04 | The hub shall notify administrators when a machine stays offline longer than `HIVE_MACHINE_OFFLINE_NOTIFY_SEC` (default 300 seconds). | Implemented | `hub:fleet-offline.db.test.ts` |
+| FLEET-05 | The Machines page shall show each machine's worker version and mark versions older than the latest release. | Implemented | `hub:worker-releases.test.ts`, `web:admin.spec.ts` |
+| FLEET-06 | A team administrator shall request a worker update; the worker shall finish its current runs, install the verified release and restart. | Implemented | `hub:modules/fleet/registration.db.test.ts`, `worker:internal/channel/worker_e2e_test.go` |
+| FLEET-07 | The worker shall delete every worktree it creates and remove orphans at start. | Implemented | `worker:internal/runner/runner_test.go` |
+| FLEET-08 | Review, plan and leader runs shall run the CLI in its read-only mode and never push. | Implemented | `worker:internal/runner/runner_test.go` |
+
+### 3.7 Sandbox (SBX)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| SBX-01 | Projects with the sandbox feature shall run only on runner hosts, one gVisor container per run with no network interface, read-only root, no capabilities and resource limits. | Implemented | `e2e:e2e-sandbox.ts`, `worker:internal/runner/sandbox_test.go` |
+| SBX-02 | A sandboxed run shall reach only the hosts in its effective allowlist, through a per-run egress proxy that blocks private and metadata addresses and IPv6. | Implemented | `worker:internal/egress` tests, `e2e:e2e-sandbox.ts` |
+| SBX-03 | Organization administrators shall manage organization allowlist entries, enable suggested defaults and lock the list; team administrators shall manage project entries unless locked. | Implemented | `hub:sandbox.db.test.ts`, `web:sandbox.spec.ts` |
+| SBX-04 | Team administrators shall set a project's environment image (base image and SHA-256 of `.hive/setup.sh`); the runner host shall refuse a setup script with a different hash. | Implemented | `hub:modules/sandbox/service.db.test.ts`, `web:sandbox.spec.ts` |
+| SBX-05 | The runner host shall build and cache environment images and keep warm containers. | Planned | — |
+
+### 3.8 Knowledge (KNOW)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| KNOW-01 | Team members and agents shall write memories; anyone with access shall search them by words and, when embeddings are configured, by meaning. | Implemented | `hub:knowledge.db.test.ts`, `hub:modules/knowledge/vector.db.test.ts` |
+| KNOW-02 | Team administrators shall publish versioned documents and skills; members and agents shall read them by key, version or project scope. | Implemented | `hub:knowledge.db.test.ts` |
+| KNOW-03 | Members and agents shall propose changes to documents and skills; team administrators shall approve (creating a new version) or reject them. | Implemented | `hub:knowledge.db.test.ts`, `hub:mcp-knowledge.db.test.ts` |
+| KNOW-04 | The hub shall import memories, documents and skills from the previous xDev Hive, idempotently. | Implemented | `hub:modules/knowledge/legacy-import.db.test.ts` |
+
+### 3.9 Leader (LEAD)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| LEAD-01 | Members shall chat with a leader agent in threads, optionally scoped to a project. | Implemented | `hub:leader.db.test.ts`, `web:leader.spec.ts` |
+| LEAD-02 | The leader shall only propose actions (create task, dispatch run, cancel run, change project settings); the hub shall execute a proposal only after a person with the required rights approves it, and a rejection shall need a reason. | Implemented | `hub:leader.db.test.ts`, `web:leader.spec.ts` |
+
+### 3.10 MCP for agents (MCP)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| MCP-01 | The hub shall expose MCP tools for identity, organization structure, tasks, plans, reviews, memory, documents, skills and leader replies. | Implemented | `hub:mcp.db.test.ts`, `hub:mcp-run.db.test.ts` |
+| MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Partial: OAuth requires HTTPS; on plain HTTP only run tokens with `HIVE_MCP_ALLOW_HTTP=1` | `hub:mcp-http.db.test.ts` |
+| MCP-03 | Tools shall be limited by principal and run kind (read-only kinds get no write tools), run inside the tenant context and be audited. | Implemented | `hub:mcp.db.test.ts`, `hub:modules/mcp/registry.test.ts` |
+
+### 3.11 Notifications, costs and audit (OPS)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| OPS-01 | Organization administrators shall configure Telegram and e-mail channels per event type and send a test; secrets shall never be returned. Delivery shall retry temporary failures up to five times. | Implemented | `hub:notify.db.test.ts` |
+| OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
+| OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
+| OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
+
+## 4. External interface requirements
+
+| ID | Requirement | Status |
+|---|---|---|
+| IF-01 | The web app shall use the oRPC API under `/rpc`; third parties shall use the equivalent OpenAPI under `/api/v1`, whose description is committed as `packages/contracts/openapi.json`. | Implemented |
+| IF-02 | Workers shall use the WebSocket protocol in `packages/contracts/src/worker-protocol.ts`, version 1, with version negotiation in `hello`. | Implemented |
+| IF-03 | Agents shall use MCP over streamable HTTP at `/mcp`. | Implemented |
+| IF-04 | Git hosts shall deliver webhooks to `/hooks/git/{projectId}`. | Implemented |
+| IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
+
+## 5. Non-functional requirements
+
+| ID | Category | Requirement | Status | Verification |
+|---|---|---|---|---|
+| NFR-01 | Security | All tenant tables shall have row-level security enabled and forced; the application role shall not bypass it. | Implemented | `hub:modules/*/rls.db.test.ts` |
+| NFR-02 | Security | Registration and machine tokens shall be stored only as SHA-256 hashes; run tokens shall be audience-bound to `/mcp` and expire with the run. | Implemented | `hub:modules/fleet/registration.db.test.ts`, `hub:modules/runs/token.test.ts` |
+| NFR-03 | Security | Stored secrets shall be encrypted with AES-256-GCM under the master key. | Implemented | `hub:modules/platform/secrets.test.ts` |
+| NFR-04 | Security | Worker releases shall be signed; installers and the updater shall refuse unsigned or altered builds. | Implemented | `worker:internal/update/update_test.go` |
+| NFR-05 | Security | Secrets shall be masked in run logs and available only during setup. | Planned | — |
+| NFR-06 | Security | Runs shall push with short-lived, repository-scoped Git tokens. | Planned | — |
+| NFR-07 | Reliability | Run messages shall be delivered at least once and stored exactly once (deduplicated by run, attempt and sequence or offset). | Implemented | `hub:runs.db.test.ts`, `worker:internal/channel` tests |
+| NFR-08 | Reliability | A machine that misses three heartbeats (30 seconds each) shall be disconnected; a run whose lease (90 seconds) expires shall be retried. | Implemented | `hub:fleet.db.test.ts`, `hub:runs.db.test.ts` |
+| NFR-09 | Reliability | Database migrations shall apply to databases created by earlier releases. | Implemented | `hub:migrations-upgrade.db.test.ts` |
+| NFR-10 | Recoverability | The operator shall be able to back up the database with the configuration and restore it in one transaction. | Implemented | `deploy/test-backup.sh` |
+| NFR-11 | Usability | Every screen shall be usable at 360 px wide without horizontal scrolling, in light and dark themes, with Vietnamese text. | Partial: Playwright checks 360 px on the admin, project, run, task, plan and queue screens | `web:tasks-runs.spec.ts`, `web:projects-runs.spec.ts`, `web:admin.spec.ts` |
+| NFR-12 | Portability | The worker shall run on macOS, Linux and Windows (amd64 and arm64). | Implemented | CI worker matrix, release builds |
+| NFR-13 | Maintainability | Hub modules shall depend on each other only through their public `index.ts`. | Implemented | `pnpm deps` |
+| NFR-14 | Operability | The hub shall run as one container plus PostgreSQL and report its deployed commit at `/api/v1/health`. | Implemented | `deploy/compose.yaml`, `hub:app.test.ts` |
+| NFR-15 | Scalability | Several hub `api` processes shall share the worker connections. | Planned | — |
+| NFR-16 | Observability | The hub and worker shall export metrics and traces. | Planned | — |

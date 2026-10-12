@@ -193,6 +193,13 @@ HTTP trong mạng tin cậy, sao lưu và khôi phục, worker chạy nền và 
 
 - [Architecture Design Document](docs/add.md) (tiếng Anh): mục tiêu, bối cảnh, khối thành phần, luồng chạy, mô hình
   triển khai, bảo mật, quyết định, rủi ro. Mô tả đúng code đang có.
+- [Software Requirements Specification](docs/srs.md) (tiếng Anh): yêu cầu có mã, trạng thái và test kiểm chứng.
+- [Software Design Description](docs/sdd.md) (tiếng Anh): dữ liệu, giao diện, máy trạng thái, thuật toán, giới hạn.
+- [Architecture decision records](docs/adr/README.md) (tiếng Anh).
+- Tính năng mới đi theo [Spec Kit](https://github.com/github/spec-kit) (`/speckit-specify`, `/speckit-plan`,
+  `/speckit-tasks`, `/speckit-implement`; nguyên tắc ở `.specify/memory/constitution.md`) và
+  [checklist tính năng](docs/feature-checklist.md). Giao diện thiết kế bằng skill `ui-ux-pro-max`, code bằng shadcn/ui
+  qua shadcn MCP (`.mcp.json`).
 - [Hướng dẫn tự host](docs/self-hosting.md) (tiếng Anh) và [phát hành worker](docs/releasing.md).
 - [Ghi chú kiến trúc](docs/architecture.md): bản thiết kế ban đầu, có đánh dấu phần chưa làm.
 - [Quyết định](docs/decisions.md): phạm vi, stack và các phiên bản đã chốt.

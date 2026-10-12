@@ -192,7 +192,8 @@ sequenceDiagram
 - **Delivery.** The worker writes each message to `<cache>/xdev-hive/worker/pending/` before sending and deletes it
   when acknowledged, so messages survive restarts. The hub deduplicates with unique keys on
   `(run_id, attempt, seq)` for events and `(run_id, attempt, offset)` for log chunks.
-- **Live view.** State changes call `pg_notify('hive_runs', runId)` in the same transaction. Each hub process holds one
+- **Live view.** State changes call `pg_notify('hive_runs', runId)` in the same transaction; new log chunks notify at
+  most once per run every 200 ms. Each hub process holds one
   `LISTEN` connection and streams Server-Sent Events to browsers; the cursor `<eventId>.<logId>` is the
   `Last-Event-ID`, so a reconnecting browser misses nothing.
 - **Outcome policy.** The project's checks (`changes`, `agentReport`, `review`, plus `command` and `ci` which are not
