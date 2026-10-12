@@ -558,6 +558,13 @@ function eligible(reader: Reader, gate: ReviewGate, scope: Scope): boolean {
   const r = gate.reviewers;
   if (!r) return false;
   if (r.users.includes(reader.principal.userId)) return true;
+  if (
+    r.teams.some((t) => {
+      const role = reader.teams.get(t);
+      return role === "admin" || role === "member";
+    })
+  )
+    return true;
   const teamRole = scope.teamId ? reader.teams.get(scope.teamId) : undefined;
   return r.roles.some((role) => {
     if (role === "org-admin") return isOrgAdmin(reader);
@@ -584,6 +591,7 @@ async function notifyReviewers(tx: Tx, inst: InstanceRow, gate: ReviewGate, deps
     if (role === "org-admin" || !inst.teamId) for (const id of await notificationRecipients(tx)) ids.add(id);
     else for (const id of await teamMemberIds(tx, inst.teamId, role === "team-admin" ? "admin" : "member")) ids.add(id);
   }
+  for (const t of r.teams) for (const id of await teamMemberIds(tx, t, "member")) ids.add(id);
   if (inst.authorUserId) ids.delete(inst.authorUserId);
   if (!ids.size) return;
   await notify(
@@ -734,6 +742,7 @@ export async function aiGateContext(tx: Tx, instanceId: string) {
     gate: cur.gate,
     checks: cur.gate.ai.checks,
     passScore: cur.gate.ai.passScore,
+    model: cur.gate.ai.model ?? null,
     content: p.content,
     base: await docContentAt(tx, inst.docKey, p.baseVersion),
   };
@@ -923,5 +932,6 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
     trace: await traceOf(tx, userId, inst, p.content),
     canDecide: !!cur && canDecideAt(reader, cur.gate, inst, await currentRun(tx, inst)),
     previousGate: previous?.gate.id ?? null,
+    currentGate: inst.status === "in_review" ? (cur?.gate ?? null) : null,
   };
 }

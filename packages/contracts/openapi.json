@@ -74437,6 +74437,10 @@
                               "minLength": 1,
                               "maxLength": 80
                             },
+                            "description": {
+                              "type": "string",
+                              "maxLength": 300
+                            },
                             "outputs": {
                               "type": "array",
                               "maxItems": 10,
@@ -74498,6 +74502,15 @@
                                         },
                                         "default": []
                                       },
+                                      "teams": {
+                                        "type": "array",
+                                        "maxItems": 20,
+                                        "items": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "default": []
+                                      },
                                       "quorum": {
                                         "type": "integer",
                                         "minimum": 0,
@@ -74550,6 +74563,11 @@
                                         "type": "number",
                                         "minimum": 0,
                                         "maximum": 10
+                                      },
+                                      "model": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
                                       }
                                     },
                                     "required": [
@@ -75105,6 +75123,10 @@
                           "minLength": 1,
                           "maxLength": 80
                         },
+                        "description": {
+                          "type": "string",
+                          "maxLength": 300
+                        },
                         "outputs": {
                           "type": "array",
                           "maxItems": 10,
@@ -75166,6 +75188,15 @@
                                     },
                                     "default": []
                                   },
+                                  "teams": {
+                                    "type": "array",
+                                    "maxItems": 20,
+                                    "items": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "default": []
+                                  },
                                   "quorum": {
                                     "type": "integer",
                                     "minimum": 0,
@@ -75218,6 +75249,11 @@
                                     "type": "number",
                                     "minimum": 0,
                                     "maximum": 10
+                                  },
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
                                   }
                                 },
                                 "required": [
@@ -75402,6 +75438,10 @@
                             "minLength": 1,
                             "maxLength": 80
                           },
+                          "description": {
+                            "type": "string",
+                            "maxLength": 300
+                          },
                           "outputs": {
                             "type": "array",
                             "maxItems": 10,
@@ -75463,6 +75503,15 @@
                                       },
                                       "default": []
                                     },
+                                    "teams": {
+                                      "type": "array",
+                                      "maxItems": 20,
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      "default": []
+                                    },
                                     "quorum": {
                                       "type": "integer",
                                       "minimum": 0,
@@ -75515,6 +75564,11 @@
                                       "type": "number",
                                       "minimum": 0,
                                       "maximum": 10
+                                    },
+                                    "model": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 200
                                     }
                                   },
                                   "required": [
@@ -76453,6 +76507,10 @@
                               "minLength": 1,
                               "maxLength": 80
                             },
+                            "description": {
+                              "type": "string",
+                              "maxLength": 300
+                            },
                             "outputs": {
                               "type": "array",
                               "maxItems": 10,
@@ -76514,6 +76572,15 @@
                                         },
                                         "default": []
                                       },
+                                      "teams": {
+                                        "type": "array",
+                                        "maxItems": 20,
+                                        "items": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "default": []
+                                      },
                                       "quorum": {
                                         "type": "integer",
                                         "minimum": 0,
@@ -76566,6 +76633,11 @@
                                         "type": "number",
                                         "minimum": 0,
                                         "maximum": 10
+                                      },
+                                      "model": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 200
                                       }
                                     },
                                     "required": [
@@ -78195,6 +78267,235 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "currentGate": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            },
+                            "kind": {
+                              "enum": [
+                                "ai",
+                                "human",
+                                "rule",
+                                "ext"
+                              ],
+                              "type": "string"
+                            },
+                            "reviewers": {
+                              "type": "object",
+                              "properties": {
+                                "users": {
+                                  "type": "array",
+                                  "maxItems": 50,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "default": []
+                                },
+                                "roles": {
+                                  "type": "array",
+                                  "maxItems": 3,
+                                  "items": {
+                                    "enum": [
+                                      "org-admin",
+                                      "team-admin",
+                                      "team-member"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "default": []
+                                },
+                                "teams": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "default": []
+                                },
+                                "quorum": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 50,
+                                  "default": 1
+                                }
+                              }
+                            },
+                            "rules": {
+                              "type": "array",
+                              "maxItems": 4,
+                              "items": {
+                                "enum": [
+                                  "sections",
+                                  "requirements",
+                                  "no-secrets",
+                                  "max-diff"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "sections": {
+                              "type": "array",
+                              "maxItems": 30,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 120
+                              }
+                            },
+                            "maxDiffLines": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "ai": {
+                              "type": "object",
+                              "properties": {
+                                "checks": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 300
+                                  }
+                                },
+                                "passScore": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 10
+                                },
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "checks",
+                                "passScore"
+                              ]
+                            },
+                            "ext": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "const": "ci"
+                                }
+                              },
+                              "required": [
+                                "check"
+                              ]
+                            },
+                            "conditions": {
+                              "type": "object",
+                              "properties": {
+                                "docTypes": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "default": []
+                                },
+                                "keywords": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "default": []
+                                },
+                                "minChangedLines": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100000
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ],
+                                  "default": null
+                                },
+                                "skipFormattingOnly": {
+                                  "type": "boolean",
+                                  "default": false
+                                }
+                              },
+                              "default": {
+                                "docTypes": [],
+                                "keywords": [],
+                                "minChangedLines": null,
+                                "skipFormattingOnly": false
+                              }
+                            },
+                            "slaHours": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 720
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "onReject": {
+                              "enum": [
+                                "author",
+                                "agent",
+                                "previous"
+                              ],
+                              "type": "string",
+                              "default": "author"
+                            },
+                            "onPass": {
+                              "enum": [
+                                "next",
+                                "task",
+                                "baseline"
+                              ],
+                              "type": "string",
+                              "default": "next"
+                            },
+                            "nextTaskTitle": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -78221,7 +78522,8 @@
                     "gates",
                     "trace",
                     "canDecide",
-                    "previousGate"
+                    "previousGate",
+                    "currentGate"
                   ]
                 }
               }
@@ -79029,6 +79331,235 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "currentGate": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "pattern": "^[a-z0-9][a-z0-9-]{0,39}$"
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            },
+                            "kind": {
+                              "enum": [
+                                "ai",
+                                "human",
+                                "rule",
+                                "ext"
+                              ],
+                              "type": "string"
+                            },
+                            "reviewers": {
+                              "type": "object",
+                              "properties": {
+                                "users": {
+                                  "type": "array",
+                                  "maxItems": 50,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 200
+                                  },
+                                  "default": []
+                                },
+                                "roles": {
+                                  "type": "array",
+                                  "maxItems": 3,
+                                  "items": {
+                                    "enum": [
+                                      "org-admin",
+                                      "team-admin",
+                                      "team-member"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "default": []
+                                },
+                                "teams": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "default": []
+                                },
+                                "quorum": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 50,
+                                  "default": 1
+                                }
+                              }
+                            },
+                            "rules": {
+                              "type": "array",
+                              "maxItems": 4,
+                              "items": {
+                                "enum": [
+                                  "sections",
+                                  "requirements",
+                                  "no-secrets",
+                                  "max-diff"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "sections": {
+                              "type": "array",
+                              "maxItems": 30,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 120
+                              }
+                            },
+                            "maxDiffLines": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100000
+                            },
+                            "ai": {
+                              "type": "object",
+                              "properties": {
+                                "checks": {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 300
+                                  }
+                                },
+                                "passScore": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 10
+                                },
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 200
+                                }
+                              },
+                              "required": [
+                                "checks",
+                                "passScore"
+                              ]
+                            },
+                            "ext": {
+                              "type": "object",
+                              "properties": {
+                                "check": {
+                                  "const": "ci"
+                                }
+                              },
+                              "required": [
+                                "check"
+                              ]
+                            },
+                            "conditions": {
+                              "type": "object",
+                              "properties": {
+                                "docTypes": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 40
+                                  },
+                                  "default": []
+                                },
+                                "keywords": {
+                                  "type": "array",
+                                  "maxItems": 20,
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 60
+                                  },
+                                  "default": []
+                                },
+                                "minChangedLines": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100000
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ],
+                                  "default": null
+                                },
+                                "skipFormattingOnly": {
+                                  "type": "boolean",
+                                  "default": false
+                                }
+                              },
+                              "default": {
+                                "docTypes": [],
+                                "keywords": [],
+                                "minChangedLines": null,
+                                "skipFormattingOnly": false
+                              }
+                            },
+                            "slaHours": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 720
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ],
+                              "default": null
+                            },
+                            "onReject": {
+                              "enum": [
+                                "author",
+                                "agent",
+                                "previous"
+                              ],
+                              "type": "string",
+                              "default": "author"
+                            },
+                            "onPass": {
+                              "enum": [
+                                "next",
+                                "task",
+                                "baseline"
+                              ],
+                              "type": "string",
+                              "default": "next"
+                            },
+                            "nextTaskTitle": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 200
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
@@ -79055,7 +79586,8 @@
                     "gates",
                     "trace",
                     "canDecide",
-                    "previousGate"
+                    "previousGate",
+                    "currentGate"
                   ]
                 }
               }

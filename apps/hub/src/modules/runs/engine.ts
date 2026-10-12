@@ -1733,7 +1733,7 @@ export function createRunsEngine(deps: RunsDeps) {
           projectId: project.id,
           kind: "doccheck",
           cli: null,
-          model: null,
+          model: ctx.model,
           branch: `doccheck/${instanceId}`,
           policySnapshot: [],
           createdBy: inst.authorUserId ?? "system",
