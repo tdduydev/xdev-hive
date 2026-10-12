@@ -1,4 +1,5 @@
 import type { ChatMessage, LeaderAction, Project } from "@xdev-hive/contracts";
+import type { Lang } from "./i18n.ts";
 import { cliLabel } from "./run-view.ts";
 
 export const ROLE_LABEL: Record<ChatMessage["role"], string> = { user: "Bạn", leader: "Leader", system: "Hệ thống" };
@@ -15,7 +16,23 @@ const SETTING_LABEL: Record<string, string> = {
 };
 
 /** Câu mô tả hành động leader đề xuất, để người duyệt biết mình đang đồng ý với việc gì. */
-export function describeAction(action: LeaderAction, projects: readonly Project[] | undefined): string {
+export function describeAction(
+  action: LeaderAction,
+  projects: readonly Project[] | undefined,
+  lang: Lang = "vi",
+): string {
+  if (lang === "en") {
+    switch (action.type) {
+      case "task.create":
+        return `Create task "${action.title}" in project ${projects?.find((project) => project.id === action.projectId)?.key ?? "unknown"}`;
+      case "run.dispatch":
+        return `Assign task ${action.taskId.slice(0, 8)} to ${action.cli ? cliLabel(action.cli) : "any agent"}`;
+      case "run.cancel":
+        return `Cancel run ${action.runId.slice(0, 8)}`;
+      case "project.settings":
+        return `Change project ${action.projectKey} settings: ${Object.keys(action.patch).join(", ") || "none"}`;
+    }
+  }
   switch (action.type) {
     case "task.create": {
       const project = projects?.find((p) => p.id === action.projectId);

@@ -446,18 +446,52 @@ for (const scheme of ["light", "dark"] as const) {
   });
 }
 
-test("trang chủ: số liệu của tổ chức, việc chờ review có link tới run, đi nhanh", async ({ page }, testInfo) => {
-  await open(page);
+test("trang chủ: thẻ tổ chức, số liệu thật và đường dẫn theo thiết kế v2", async ({ page }, testInfo) => {
+  await open(page, {
+    "teams/list": () => ok([{ id: TEAM_ID, name: "Thanh toán" }]),
+    "machines/list": () =>
+      ok([
+        { id: MACHINE, status: "online" },
+        { id: "offline", status: "offline" },
+      ]),
+  });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: ORG.name, exact: true })).toBeVisible();
   const stats = page.getByRole("region", { name: "Số liệu" });
-  await expect(stats).toContainText("Đang chạy1trên 1 máy");
-  const attention = page.getByRole("heading", { name: "Cần bạn xử lý" }).locator("../..");
-  await expect(attention).toContainText("PAY-3");
-  await expect(attention).not.toContainText("PAY-1");
-  await expect(attention.getByRole("link", { name: "Xem run" })).toHaveAttribute("href", /\/runs\//);
-  await expect(
-    page.getByRole("navigation", { name: "Đi nhanh" }).getByRole("link", { name: "Leader" }),
-  ).toHaveAttribute("href", "/leader");
+  await expect(stats).toContainText("1run đang chạy");
+  await expect(stats).toContainText("1việc chờ bạn");
+  await expect(stats).toContainText("1máy trực tuyến");
+  await expect(page.getByText("Bạn là thành viên của tổ chức này.", { exact: false })).toBeVisible();
+  const nav = page.getByRole("navigation", { name: "Trang chủ", exact: true });
+  await expect(nav.getByRole("link", { name: "Bảng việc" })).toHaveAttribute("href", "/tasks");
+  await expect(nav.getByRole("link", { name: "Đội và hệ thống" })).toHaveAttribute("href", "/admin/teams");
+  await expect(nav.getByRole("link", { name: "Thành viên" })).toHaveAttribute("href", "/admin/members");
   await page.screenshot({ path: testInfo.outputPath("home.png"), fullPage: true });
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`trang chủ: tiếng Anh, rộng 360px (${scheme})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
+    await open(page, { "teams/list": () => ok([]) });
+    await page.goto("/");
+    const stats = page.getByRole("region", { name: "Statistics" });
+    await expect(stats).toContainText("0machines online");
+    await expect(page.getByRole("heading", { name: `Hi, ${USER.name}` })).toBeVisible();
+    await expect(page.getByText("You are a member of this organization.", { exact: false })).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "Home", exact: true }).getByRole("link", { name: "Board" }),
+    ).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: testInfo.outputPath(`home-360-${scheme}.png`), fullPage: true });
+  });
+}
+
+test("trang chủ: không báo số 0 khi tra máy lỗi", async ({ page }) => {
+  await open(page, { "teams/list": () => fail("FORBIDDEN", 403, "Không có quyền đọc đội.") });
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Số liệu" })).toContainText("—máy trực tuyến");
+  await expect(page.getByText("Không tải được số máy trực tuyến.")).toBeVisible();
 });

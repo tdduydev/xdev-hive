@@ -1,4 +1,5 @@
 import { type Plan, type PlanContent, type PlanStatus, planContent, type Run, type Task } from "@xdev-hive/contracts";
+import type { Lang } from "./i18n.ts";
 import type { Tone } from "./run-view.ts";
 
 export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
@@ -31,7 +32,21 @@ export const canDecidePlan = (plan: Plan | undefined, canDecide: boolean): boole
  * Câu nói việc đang ở đâu trong plan mode, ghép task, kế hoạch mới nhất và run code gần nhất. Kế hoạch mới nhất có
  * thể đã cũ: từ chối kèm lập lại thì run code mới đang `planning` trong khi kế hoạch mới nhất vẫn là bản bị từ chối.
  */
-export function planStage(task: Task, latest: Plan | undefined, run: Run | null): string | null {
+export function planStage(task: Task, latest: Plan | undefined, run: Run | null, lang: Lang = "vi"): string | null {
+  if (lang === "en") {
+    if (run?.state === "planning")
+      return latest
+        ? "The agent is planning again after rejection."
+        : "The agent is planning. This page updates automatically.";
+    if (!latest) return null;
+    if (latest.status === "awaiting") return "The plan is waiting for review. The code run starts only after approval.";
+    if (latest.status === "approved") return "Plan approved. The code run follows the effective version.";
+    if (latest.status === "rejected")
+      return task.status === "todo"
+        ? "Plan rejected. The task is unassigned again. Assign it to create a new plan."
+        : null;
+    return "The run waiting on this plan was cancelled or finished before a decision.";
+  }
   if (run?.state === "planning") {
     return latest ? "Agent đang lập lại kế hoạch sau lần bị từ chối." : "Agent đang lập kế hoạch. Trang tự cập nhật.";
   }
@@ -80,27 +95,31 @@ export type DraftResult = { ok: true; content: PlanContent } | { ok: false; erro
  * Đổi bản nháp thành nội dung gửi hub. Dòng để trống hết thì bỏ (người duyệt thêm dòng rồi không dùng); dòng điền dở
  * thì báo lỗi ở đúng ô. Sau cùng kiểm lại bằng chính schema của hub để không gửi bản chắc chắn bị từ chối.
  */
-export function fromDraft(d: PlanDraft): DraftResult {
+export function fromDraft(d: PlanDraft, lang: Lang = "vi"): DraftResult {
   const errors: DraftErrors = {};
   const summary = d.summary.trim();
-  if (!summary) errors.summary = "Tóm tắt kế hoạch không được để trống.";
+  if (!summary)
+    errors.summary = lang === "vi" ? "Tóm tắt kế hoạch không được để trống." : "Plan summary cannot be empty.";
 
   const steps: PlanContent["steps"] = [];
   for (const s of d.steps) {
     const title = s.title.trim();
     const detail = s.detail.trim();
     if (!title && !detail) continue;
-    if (!title) errors[`steps.${s.key}.title`] = "Bước cần có tiêu đề.";
+    if (!title) errors[`steps.${s.key}.title`] = lang === "vi" ? "Bước cần có tiêu đề." : "A step needs a title.";
     steps.push(detail ? { title, detail } : { title });
   }
-  if (steps.length === 0) errors.steps = "Kế hoạch cần ít nhất một bước.";
+  if (steps.length === 0)
+    errors.steps = lang === "vi" ? "Kế hoạch cần ít nhất một bước." : "The plan needs at least one step.";
 
   const files: PlanContent["files"] = [];
   for (const f of d.files) {
     const path = f.path.trim();
     const reason = f.reason.trim();
     if (!path && !reason && !f.change) continue;
-    if (!path) errors[`files.${f.key}.path`] = "Nhập đường dẫn file hoặc xoá dòng này.";
+    if (!path)
+      errors[`files.${f.key}.path`] =
+        lang === "vi" ? "Nhập đường dẫn file hoặc xoá dòng này." : "Enter a file path or delete this row.";
     files.push({ path, ...(f.change ? { change: f.change } : {}), ...(reason ? { reason } : {}) });
   }
 
@@ -113,7 +132,12 @@ export function fromDraft(d: PlanDraft): DraftResult {
     const where = SECTION_LABEL[String(parsed.error.issues[0]?.path[0])] ?? "kế hoạch";
     return {
       ok: false,
-      errors: { form: `Phần ${where} không hợp lệ (quá dài hoặc quá nhiều dòng). Rút gọn rồi thử lại.` },
+      errors: {
+        form:
+          lang === "vi"
+            ? `Phần ${where} không hợp lệ (quá dài hoặc quá nhiều dòng). Rút gọn rồi thử lại.`
+            : "The plan has invalid content (too long or too many rows). Shorten it and try again.",
+      },
     };
   }
   return { ok: true, content: parsed.data };
@@ -149,4 +173,14 @@ export function move<T>(list: T[], i: number, dir: -1 | 1): T[] {
   const next = [...list];
   [next[i], next[j]] = [next[j] as T, next[i] as T];
   return next;
+}
+
+export function planStatusLabel(status: PlanStatus, lang: Lang): string {
+  return lang === "vi"
+    ? PLAN_STATUS_LABEL[status]
+    : { awaiting: "Awaiting review", approved: "Approved", rejected: "Rejected", superseded: "Superseded" }[status];
+}
+
+export function fileChangeLabel(change: FileChange, lang: Lang): string {
+  return lang === "vi" ? FILE_CHANGE_LABEL[change] : { add: "Add", modify: "Edit", delete: "Delete" }[change];
 }

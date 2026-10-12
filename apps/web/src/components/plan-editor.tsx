@@ -1,12 +1,13 @@
 import type { PlanContent } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { cx } from "../lib/cx.ts";
+import { type Dict, useLang, useT } from "../lib/i18n.ts";
 import {
   type DraftErrors,
   draftKey,
-  FILE_CHANGE_LABEL,
   FILE_CHANGES,
   type FileChange,
+  fileChangeLabel,
   fromDraft,
   move,
   type PlanDraft,
@@ -18,6 +19,110 @@ import { Card } from "./ui/card.tsx";
 import { Input } from "./ui/input.tsx";
 import { NativeSelect } from "./ui/native-select.tsx";
 import { Textarea } from "./ui/textarea.tsx";
+
+const text: Dict<
+  Record<
+    | "step"
+    | "move"
+    | "up"
+    | "down"
+    | "edit"
+    | "summary"
+    | "steps"
+    | "addStep"
+    | "title"
+    | "detail"
+    | "files"
+    | "addFile"
+    | "emptyFiles"
+    | "path"
+    | "change"
+    | "reason"
+    | "risks"
+    | "addRisk"
+    | "emptyRisks"
+    | "questions"
+    | "question"
+    | "addQuestion"
+    | "emptyQuestions"
+    | "invalidFields"
+    | "cancel"
+    | "save"
+    | "upAction"
+    | "downAction"
+    | "deleteAction"
+    | "unspecified"
+    | "content",
+    string
+  >
+> = {
+  vi: {
+    step: "Bước",
+    move: "Đưa",
+    up: "lên",
+    down: "xuống",
+    edit: "Sửa kế hoạch",
+    summary: "Tóm tắt",
+    steps: "Các bước",
+    addStep: "Thêm bước",
+    title: "Tiêu đề",
+    detail: "Chi tiết (không bắt buộc)",
+    files: "File dự kiến đụng",
+    addFile: "Thêm file",
+    emptyFiles: "Chưa có file nào.",
+    path: "Đường dẫn",
+    change: "Thay đổi",
+    reason: "Lý do (không bắt buộc)",
+    risks: "Rủi ro",
+    addRisk: "Thêm rủi ro",
+    emptyRisks: "Chưa có rủi ro nào.",
+    questions: "Câu hỏi cho người duyệt",
+    question: "Câu hỏi",
+    addQuestion: "Thêm câu hỏi",
+    emptyQuestions: "Chưa có câu hỏi nào.",
+    invalidFields: "Kế hoạch còn ô chưa hợp lệ. Sửa các ô được đánh dấu rồi bấm lại.",
+    cancel: "Huỷ sửa",
+    save: "Dùng bản sửa",
+    upAction: "Lên",
+    downAction: "Xuống",
+    deleteAction: "Xoá",
+    unspecified: "Chưa rõ",
+    content: "Nội dung",
+  },
+  en: {
+    step: "Step",
+    move: "Move",
+    up: "up",
+    down: "down",
+    edit: "Edit plan",
+    summary: "Summary",
+    steps: "Steps",
+    addStep: "Add step",
+    title: "Title",
+    detail: "Details (optional)",
+    files: "Files it expects to touch",
+    addFile: "Add file",
+    emptyFiles: "No files yet.",
+    path: "Path",
+    change: "Change",
+    reason: "Reason (optional)",
+    risks: "Risks",
+    addRisk: "Add risk",
+    emptyRisks: "No risks yet.",
+    questions: "Questions for the reviewer",
+    question: "Question",
+    addQuestion: "Add question",
+    emptyQuestions: "No questions yet.",
+    invalidFields: "Some fields are invalid. Fix the marked fields and try again.",
+    cancel: "Cancel edits",
+    save: "Use edited version",
+    upAction: "Up",
+    downAction: "Down",
+    deleteAction: "Delete",
+    unspecified: "Unspecified",
+    content: "Content",
+  },
+};
 
 /*
  * Giới hạn độ dài chép từ `planContent` (packages/contracts/src/tasks.ts), đặt thành maxLength để người duyệt không
@@ -38,6 +143,8 @@ export function PlanEditor({
   onCancel: () => void;
   onSave: (content: PlanContent) => void;
 }) {
+  const t = useT(text);
+  const lang = useLang();
   const [draft, setDraft] = useState<PlanDraft>(() => toDraft(initial));
   const [errors, setErrors] = useState<DraftErrors>({});
   const ids = { summary: useId(), form: useId() };
@@ -47,7 +154,7 @@ export function PlanEditor({
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const r = fromDraft(draft);
+    const r = fromDraft(draft, lang);
     if (!r.ok) {
       setErrors(r.errors);
       // Đưa focus tới ô sai đầu tiên để người dùng bàn phím và trình đọc màn hình biết phải sửa đâu.
@@ -59,11 +166,11 @@ export function PlanEditor({
   }
 
   return (
-    <form noValidate onSubmit={onSubmit} aria-label="Sửa kế hoạch" className="grid gap-4">
+    <form noValidate onSubmit={onSubmit} aria-label={t.edit} className="grid gap-4">
       <Card className="border-primary/40 px-5 py-4">
         <div className="grid gap-1.5">
           <label htmlFor={ids.summary} className="text-sm font-medium text-foreground">
-            Tóm tắt
+            {t.summary}
           </label>
           <Textarea
             id={ids.summary}
@@ -79,28 +186,28 @@ export function PlanEditor({
       </Card>
 
       <EditorSection
-        title="Các bước"
+        title={t.steps}
         error={errors.steps}
-        addLabel="Thêm bước"
+        addLabel={t.addStep}
         onAdd={() => patch({ steps: [...draft.steps, { key: draftKey(), title: "", detail: "" }] })}
       >
         {draft.steps.map((s, i) => (
           <Row
             key={s.key}
-            label={`Bước ${i + 1}`}
+            label={`${t.step} ${i + 1}`}
             onUp={i > 0 ? () => patch({ steps: move(draft.steps, i, -1) }) : undefined}
             onDown={i < draft.steps.length - 1 ? () => patch({ steps: move(draft.steps, i, 1) }) : undefined}
             onRemove={() => patch({ steps: draft.steps.filter((x) => x.key !== s.key) })}
           >
             <LabeledInput
-              label="Tiêu đề"
+              label={t.title}
               value={s.title}
               maxLength={MAX.stepTitle}
               error={errors[`steps.${s.key}.title`]}
               onChange={(title) => patch({ steps: draft.steps.map((x) => (x.key === s.key ? { ...x, title } : x)) })}
             />
             <LabeledTextarea
-              label="Chi tiết (không bắt buộc)"
+              label={t.detail}
               value={s.detail}
               maxLength={MAX.stepDetail}
               onChange={(detail) => patch({ steps: draft.steps.map((x) => (x.key === s.key ? { ...x, detail } : x)) })}
@@ -110,9 +217,9 @@ export function PlanEditor({
       </EditorSection>
 
       <EditorSection
-        title="File dự kiến đụng"
-        addLabel="Thêm file"
-        empty="Chưa có file nào."
+        title={t.files}
+        addLabel={t.addFile}
+        empty={t.emptyFiles}
         onAdd={() => patch({ files: [...draft.files, { key: draftKey(), path: "", change: "", reason: "" }] })}
       >
         {draft.files.map((f, i) => (
@@ -123,7 +230,7 @@ export function PlanEditor({
           >
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem]">
               <LabeledInput
-                label="Đường dẫn"
+                label={t.path}
                 mono
                 value={f.path}
                 maxLength={MAX.path}
@@ -132,7 +239,7 @@ export function PlanEditor({
                 onChange={(path) => patch({ files: draft.files.map((x) => (x.key === f.key ? { ...x, path } : x)) })}
               />
               <LabeledSelect
-                label="Thay đổi"
+                label={t.change}
                 value={f.change}
                 onChange={(change) =>
                   patch({ files: draft.files.map((x) => (x.key === f.key ? { ...x, change } : x)) })
@@ -140,7 +247,7 @@ export function PlanEditor({
               />
             </div>
             <LabeledInput
-              label="Lý do (không bắt buộc)"
+              label={t.reason}
               value={f.reason}
               maxLength={MAX.reason}
               onChange={(reason) => patch({ files: draft.files.map((x) => (x.key === f.key ? { ...x, reason } : x)) })}
@@ -150,18 +257,18 @@ export function PlanEditor({
       </EditorSection>
 
       <LineList
-        title="Rủi ro"
-        itemLabel="Rủi ro"
-        addLabel="Thêm rủi ro"
-        empty="Chưa có rủi ro nào."
+        title={t.risks}
+        itemLabel={t.risks}
+        addLabel={t.addRisk}
+        empty={t.emptyRisks}
         rows={draft.risks}
         onChange={(risks) => patch({ risks })}
       />
       <LineList
-        title="Câu hỏi cho người duyệt"
-        itemLabel="Câu hỏi"
-        addLabel="Thêm câu hỏi"
-        empty="Chưa có câu hỏi nào."
+        title={t.questions}
+        itemLabel={t.question}
+        addLabel={t.addQuestion}
+        empty={t.emptyQuestions}
         rows={draft.questions}
         onChange={(questions) => patch({ questions })}
       />
@@ -171,15 +278,13 @@ export function PlanEditor({
           {errors.form}
         </Alert>
       )}
-      {Object.keys(errors).length > 0 && !errors.form && (
-        <Alert variant="destructive">Kế hoạch còn ô chưa hợp lệ. Sửa các ô được đánh dấu rồi bấm lại.</Alert>
-      )}
+      {Object.keys(errors).length > 0 && !errors.form && <Alert variant="destructive">{t.invalidFields}</Alert>}
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={onCancel}>
-          Huỷ sửa
+          {t.cancel}
         </Button>
         <Button type="submit" variant="default">
-          Dùng bản sửa
+          {t.save}
         </Button>
       </div>
     </form>
@@ -244,6 +349,7 @@ function Row({
   onRemove: () => void;
   children: ReactNode;
 }) {
+  const t = useT(text);
   return (
     <fieldset className="grid gap-2 rounded-lg border border-border p-3">
       <legend className="sr-only">{label}</legend>
@@ -258,23 +364,23 @@ function Row({
               variant="ghost"
               disabled={!onUp}
               onClick={onUp}
-              aria-label={`Đưa ${label.toLowerCase()} lên`}
+              aria-label={`${t.move} ${label.toLowerCase()} ${t.up}`}
             >
-              Lên
+              {t.upAction}
             </Button>
             <Button
               size="sm"
               variant="ghost"
               disabled={!onDown}
               onClick={onDown}
-              aria-label={`Đưa ${label.toLowerCase()} xuống`}
+              aria-label={`${t.move} ${label.toLowerCase()} ${t.down}`}
             >
-              Xuống
+              {t.downAction}
             </Button>
           </>
         )}
-        <Button size="sm" variant="ghost" onClick={onRemove} aria-label={`Xoá ${label.toLowerCase()}`}>
-          Xoá
+        <Button size="sm" variant="ghost" onClick={onRemove} aria-label={`${t.deleteAction} ${label.toLowerCase()}`}>
+          {t.deleteAction}
         </Button>
       </div>
       {children}
@@ -357,6 +463,8 @@ function LabeledSelect({
   value: FileChange | "";
   onChange: (v: FileChange | "") => void;
 }) {
+  const t = useT(text);
+  const lang = useLang();
   const id = useId();
   return (
     <div className="grid min-w-0 gap-1">
@@ -364,10 +472,10 @@ function LabeledSelect({
         {label}
       </label>
       <NativeSelect id={id} value={value} onChange={(e) => onChange(e.currentTarget.value as FileChange | "")}>
-        <option value="">Chưa rõ</option>
+        <option value="">{t.unspecified}</option>
         {FILE_CHANGES.map((c) => (
           <option key={c} value={c}>
-            {FILE_CHANGE_LABEL[c]}
+            {fileChangeLabel(c, lang)}
           </option>
         ))}
       </NativeSelect>
@@ -390,6 +498,7 @@ function LineList({
   rows: PlanDraft["risks"];
   onChange: (rows: PlanDraft["risks"]) => void;
 }) {
+  const t = useT(text);
   return (
     <EditorSection
       title={title}
@@ -400,7 +509,7 @@ function LineList({
       {rows.map((r, i) => (
         <Row key={r.key} label={`${itemLabel} ${i + 1}`} onRemove={() => onChange(rows.filter((x) => x.key !== r.key))}>
           <LabeledTextarea
-            label="Nội dung"
+            label={t.content}
             value={r.text}
             maxLength={MAX.line}
             onChange={(text) => onChange(rows.map((x) => (x.key === r.key ? { ...x, text } : x)))}
