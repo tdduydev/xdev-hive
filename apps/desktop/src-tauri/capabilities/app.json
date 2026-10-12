@@ -9,6 +9,8 @@
     "allow-claude-context",
     "allow-claude-usage",
     "allow-session-stats",
+    "allow-worker-state",
+    "allow-set-lang",
     "allow-account-status",
     "allow-account-link",
     "allow-account-unlink",
