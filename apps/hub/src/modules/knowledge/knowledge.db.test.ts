@@ -8,7 +8,7 @@ import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
 import { listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
 import { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 import { docs, docVersions, memories, proposals, skills, skillVersions } from "./schema.ts";
-import { getSkill, listSkills, saveSkill } from "./skills.ts";
+import { getSkill, listSkills, listSkillsWithHidden, saveSkill } from "./skills.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -445,6 +445,10 @@ describe("skill: phạm vi và tên trùng", () => {
       "Bản tổ chức",
     );
     expect((await as("loner", (tx, p) => getSkill(tx, p, { name: "review-code" }))).scope.level).toBe("org");
+    const { skills, hidden } = await as("tviewer", (tx, p) => listSkillsWithHidden(tx, p, { project: project.key }));
+    expect(skills.find((s) => s.name === "review-code")?.scope.level).toBe("project");
+    expect(hidden.map((s) => [s.name, s.scope.level])).toEqual([["review-code", "org"]]);
+    expect((await as("tviewer", (tx, p) => listSkillsWithHidden(tx, p, {}))).hidden).toEqual([]);
   });
 
   it("không có dự án thì list trả mọi skill mình thấy", async () => {

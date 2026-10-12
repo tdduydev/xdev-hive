@@ -241,7 +241,7 @@ fn in_folder(cwd: &str, folder: Option<&Path>) -> bool {
     }
 }
 
-fn recent_files(root: &Path, now: SystemTime) -> Vec<PathBuf> {
+fn recent_files(root: &Path, now: SystemTime, window: Duration) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
@@ -256,7 +256,7 @@ fn recent_files(root: &Path, now: SystemTime) -> Vec<PathBuf> {
             } else if path.extension().is_some_and(|e| e == "jsonl")
                 && meta
                     .modified()
-                    .is_ok_and(|m| now.duration_since(m).unwrap_or_default() < WINDOW)
+                    .is_ok_and(|m| now.duration_since(m).unwrap_or_default() < window)
             {
                 out.push(path);
             }
@@ -408,19 +408,19 @@ fn stem(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-fn claude_stats(folder: Option<&Path>) -> SessionStats {
-    let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+fn claude_root() -> Option<PathBuf> {
+    std::env::var_os("CLAUDE_CONFIG_DIR")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".claude")))
-        .map(|p| p.join("projects"));
-    let Some(root) = root else {
-        return SessionStats::default();
-    };
+        .map(|p| p.join("projects"))
+}
+
+/// File phiên Claude Code trong cửa sổ thời gian. Lọc sơ theo tên thư mục để khỏi đọc phiên của dự án khác; cwd trong
+/// file mới là điều kiện thật.
+fn claude_files(root: &Path, folder: Option<&Path>, window: Duration) -> Vec<PathBuf> {
     let prefix = folder.map(claude_project_dir);
-    let now = SystemTime::now();
-    let sessions: Vec<Session> = recent_files(&root, now)
+    recent_files(root, SystemTime::now(), window)
         .into_iter()
-        // Lọc sơ theo tên thư mục để khỏi đọc phiên của dự án khác; cwd trong file mới là điều kiện thật.
         .filter(|p| {
             let dir = p
                 .parent()
@@ -431,6 +431,15 @@ fn claude_stats(folder: Option<&Path>) -> SessionStats {
                 _ => true,
             }
         })
+        .collect()
+}
+
+fn claude_stats(folder: Option<&Path>) -> SessionStats {
+    let Some(root) = claude_root() else {
+        return SessionStats::default();
+    };
+    let sessions: Vec<Session> = claude_files(&root, folder, WINDOW)
+        .into_iter()
         .filter_map(|p| read_claude_session(open(&p)?, &stem(&p)))
         .filter(|s| in_folder(&s.cwd, folder))
         .collect();
@@ -453,7 +462,7 @@ fn codex_stats(folder: Option<&Path>) -> SessionStats {
     };
     let mut stats = SessionStats::default();
     let mut latest = String::new();
-    for path in recent_files(&root, SystemTime::now()) {
+    for path in recent_files(&root, SystemTime::now(), WINDOW) {
         let Some(reader) = open(&path) else { continue };
         let (session, limits) = read_codex_session(reader, &stem(&path));
         // Hạn mức là của tài khoản, không theo thư mục: lấy sự kiện mới nhất trong mọi phiên.
@@ -487,6 +496,66 @@ pub async fn claude_usage() -> Result<UsageReport, String> {
     tauri::async_runtime::spawn_blocking(|| claude_print("/usage", None).map(|t| parse_usage(&t)))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Lần gọi tool `Skill` trong một file phiên Claude Code, theo tên skill; chỉ tính khi cwd của phiên nằm trong thư mục.
+pub fn count_skill_uses(
+    reader: impl BufRead,
+    folder: Option<&Path>,
+    counts: &mut HashMap<String, u32>,
+) {
+    let mut found: Vec<String> = Vec::new();
+    let mut cwd = String::new();
+    for line in reader.lines().map_while(Result::ok) {
+        if cwd.is_empty() && line.contains("\"cwd\"") {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+                if let Some(c) = v["cwd"].as_str() {
+                    cwd = c.to_string();
+                }
+            }
+        }
+        if !line.contains("\"Skill\"") {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        if let Some(c) = v["cwd"].as_str() {
+            cwd = c.to_string();
+        }
+        for item in v["message"]["content"].as_array().into_iter().flatten() {
+            if item["type"] == "tool_use" && item["name"] == "Skill" {
+                if let Some(name) = item["input"]["skill"].as_str() {
+                    found.push(name.to_string());
+                }
+            }
+        }
+    }
+    if in_folder(&cwd, folder) {
+        for name in found {
+            *counts.entry(name).or_default() += 1;
+        }
+    }
+}
+
+/// Số lần agent của tôi gọi từng skill trong 30 ngày (màn Skills, cột "Tôi dùng"). Codex không ghi lần đọc skill thành
+/// sự kiện riêng nên chỉ tính Claude Code.
+#[tauri::command]
+pub async fn skill_uses(folder: Option<String>) -> Result<HashMap<String, u32>, String> {
+    let dir = folder_path(folder.as_deref())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut counts = HashMap::new();
+        if let Some(root) = claude_root() {
+            for p in claude_files(&root, dir.as_deref(), Duration::from_secs(30 * 24 * 3600)) {
+                if let Some(r) = open(&p) {
+                    count_skill_uses(r, dir.as_deref(), &mut counts);
+                }
+            }
+        }
+        counts
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -657,6 +726,25 @@ mod tests {
         );
         assert_eq!(kept.len(), MAX_SESSIONS);
         assert!(kept.windows(2).all(|w| w[0].at >= w[1].at));
+    }
+
+    #[test]
+    fn counts_skill_tool_calls_inside_the_folder() {
+        let log = concat!(
+            r#"{"type":"user","cwd":"/w/pay","message":{"content":"hi"}}"#,
+            "\n",
+            r#"{"type":"assistant","cwd":"/w/pay","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"db-migration"}}]}}"#,
+            "\n",
+            r#"{"type":"assistant","cwd":"/w/pay","message":{"content":[{"type":"text","text":"Skill"},{"type":"tool_use","name":"Skill","input":{"skill":"db-migration"}},{"type":"tool_use","name":"Read","input":{"file_path":"Skill"}}]}}"#,
+            "\n",
+        );
+        let mut counts = HashMap::new();
+        count_skill_uses(log.as_bytes(), Some(Path::new("/w/pay")), &mut counts);
+        assert_eq!(counts.get("db-migration"), Some(&2));
+        assert_eq!(counts.len(), 1);
+        let mut other = HashMap::new();
+        count_skill_uses(log.as_bytes(), Some(Path::new("/w/other")), &mut other);
+        assert!(other.is_empty());
     }
 
     #[test]
