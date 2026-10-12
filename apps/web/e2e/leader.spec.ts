@@ -129,7 +129,7 @@ test("leader: tạo cuộc trò chuyện mới gắn dự án rồi mở nó", a
   });
   await page.goto("/leader");
   await expect(page.getByText("Chưa có cuộc trò chuyện nào")).toBeVisible();
-  await page.getByLabel("Cuộc trò chuyện mới").fill("Hỏi về chi phí");
+  await page.getByRole("textbox", { name: "Cuộc trò chuyện mới" }).fill("Hỏi về chi phí");
   await page.getByLabel("Dự án").selectOption(PROJECT.id);
   await page.getByRole("button", { name: "Tạo", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`thread=${created.id}`));
@@ -138,3 +138,75 @@ test("leader: tạo cuộc trò chuyện mới gắn dự án rồi mở nó", a
     projectId: PROJECT.id,
   });
 });
+
+test("leader: tìm cuộc trò chuyện và mở form tạo bằng bàn phím", async ({ page }) => {
+  await open(page);
+  await page.goto("/leader");
+  const threads = page.getByRole("navigation", { name: "Cuộc trò chuyện", exact: true });
+  await expect(threads.getByRole("button")).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Tìm cuộc trò chuyện" }).fill("không khớp");
+  await expect(threads.getByRole("button")).toHaveCount(0);
+  await expect(page.getByText("Không có cuộc trò chuyện phù hợp.")).toBeVisible();
+  await page.getByRole("textbox", { name: "Tìm cuộc trò chuyện" }).fill("THANH TOÁN");
+  await expect(threads.getByRole("button")).toHaveCount(1);
+  const create = page.getByRole("button", { name: "Cuộc trò chuyện mới", exact: true });
+  await create.focus();
+  await page.keyboard.press("Enter");
+  await expect(create).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("textbox", { name: "Cuộc trò chuyện mới" })).toBeVisible();
+});
+
+test("leader: Shift+Enter xuống dòng, Enter gửi và chờ câu trả lời mới", async ({ page }) => {
+  let sent = false;
+  let replied = false;
+  const hub = await open(page, {
+    "leader/approvals/list": () => ok([]),
+    "leader/threads/get": () =>
+      ok({
+        thread: THREAD,
+        messages: !sent
+          ? []
+          : replied
+            ? [msg(1, "user", "API trước\nUI sau"), msg(2, "leader", "Đã hiểu.")]
+            : [msg(1, "user", "API trước\nUI sau")],
+      }),
+    "leader/threads/send": () => {
+      sent = true;
+      return ok({ message: msg(1, "user", "API trước\nUI sau"), runId: "7a7a7a7a-0000-4000-8000-000000000001" });
+    },
+  });
+  await page.goto("/leader");
+  const composer = page.getByRole("textbox", { name: "Nhắn cho leader" });
+  await composer.fill("API trước");
+  await composer.press("Shift+Enter");
+  await composer.pressSequentially("UI sau");
+  await expect(composer).toHaveValue("API trước\nUI sau");
+  await composer.press("Enter");
+  await expect(page.getByRole("status")).toHaveText("Leader đang trả lời…");
+  expect(hub.rpcCalls.find((call) => call.path === "leader/threads/send")?.input).toEqual({
+    id: THREAD.id,
+    content: "API trước\nUI sau",
+  });
+  await composer.fill("Tin tiếp theo");
+  await expect(page.getByRole("button", { name: "Gửi", exact: true })).toBeDisabled();
+  replied = true;
+  await expect(page.getByText("Đã hiểu.")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Gửi", exact: true })).toBeEnabled();
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`leader: song ngữ, 360px, ${scheme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
+    await open(page);
+    await page.goto("/leader");
+    await expect(page.getByRole("textbox", { name: "Search conversations" })).toBeVisible();
+    const proposal = page.getByLabel("Leader proposal");
+    await expect(proposal).toContainText('Create task "Thêm hoàn tiền" in project PAY');
+    await proposal.getByRole("button", { name: "Reject…" }).click();
+    await expect(proposal.getByRole("textbox", { name: "Reason for rejecting" })).toBeFocused();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: testInfo.outputPath(`leader-360-${scheme}.png`), fullPage: true });
+  });
+}
