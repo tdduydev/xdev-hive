@@ -33,7 +33,8 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 ## Cách app làm việc
 
 - **Khởi động:** app gọi `hive-worker config --json`.
-  - Máy đã đăng ký: app chạy `hive-worker run --status-json --stdin-control` và mở cửa sổ web của hub.
+  - Máy đã đăng ký: app chạy `hive-worker run --status-json --stdin-control` và mở cửa sổ app cục bộ (AppNav, spec 008
+    US1). Web của hub chỉ mở khi người dùng chọn: khay → Mở xDev Hive, hoặc liên kết tới một trang của hub.
   - Máy chưa đăng ký: app mở cửa sổ đăng ký.
 - **Đăng nhập bằng trình duyệt (DESK-11):** nhập địa chỉ hub rồi bấm Đăng nhập bằng trình duyệt. App (lệnh
   `browser_login`, `src-tauri/src/browser_login.rs`) mở cổng tạm trên `127.0.0.1`, mở trang `/desktop/connect` của
