@@ -1,5 +1,7 @@
+import { projectRef } from "@xdev-hive/contracts";
 import { z } from "zod";
-import type { McpToolRegistry } from "../mcp/index.ts";
+import { type McpToolRegistry, mcpServersForProject } from "../mcp/index.ts";
+import { NotFoundError } from "../platform/index.ts";
 import { listProjects } from "./projects.ts";
 
 /**
@@ -28,5 +30,20 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         },
       })),
     }),
+  });
+
+  registry.register({
+    name: "mcp_server_list",
+    title: "MCP server được phép",
+    description:
+      "Liệt kê MCP server ngoài mà tổ chức cho phép dùng với dự án, kèm cấu hình khởi chạy để cài vào CLI trên máy.",
+    input: z.object({ project: projectRef.describe("Project key.") }),
+    readOnly: true,
+    // App desktop (màn Môi trường) so danh sách này với MCP server đã khai trong Claude Code, Codex trên máy.
+    handler: async ({ project }, { tx, principal }) => {
+      const found = (await listProjects(tx, principal.userId)).find((p) => p.key === project);
+      if (!found) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
+      return { servers: await mcpServersForProject(tx, found.id) };
+    },
   });
 }

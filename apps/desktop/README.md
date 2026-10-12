@@ -76,15 +76,14 @@ app trên `main` có bản thử ở mục Artifacts của workflow `Desktop`. C
 
 ## Cập nhật tự động
 
-`tauri-plugin-updater` đã cài, nhưng `pubkey` trong `tauri.conf.json` đang để trống. Khi `pubkey` trống, app không
-kiểm bản mới. Để bật:
+App kiểm bản mới lúc mở và sáu giờ một lần, tải và cài bản ký đúng khoá công khai trong `plugins.updater.pubkey` của
+`tauri.conf.json`, rồi báo người dùng mở lại app. Worker đi kèm app không tự cập nhật (app thay cả gói).
 
-1. Tạo cặp khoá: `pnpm --filter @xdev-hive/desktop tauri signer generate -w ~/.tauri/xdev-hive.key`. Giữ khoá riêng
-   ngoài repo, ví dụ trong secret của CI.
-2. Ghi khoá công khai vào `plugins.updater.pubkey` và đặt `bundle.createUpdaterArtifacts: true` trong
-   `tauri.conf.json`.
-3. Dựng bản phát hành với `TAURI_SIGNING_PRIVATE_KEY`. Đặt `HIVE_WORKER_VERSION` để sidecar mang đúng phiên bản.
-4. Hub trả file JSON cập nhật của Tauri tại `/api/v1/desktop/updates/<os>/<arch>/<phiên bản hiện tại>`. App lấy địa
-   chỉ hub từ cấu hình của máy, nên không cần ghi `endpoints` trong `tauri.conf.json`. Cấu hình `HIVE_DESKTOP_RELEASES`
-   ở hub là đường dẫn file JSON hoặc URL HTTPS tới manifest phát hành; hub đọc lại tối đa mỗi 5 phút. Định dạng
-   manifest theo static JSON của Tauri updater, với platform như `darwin-aarch64`, `linux-x86_64` hoặc `windows-x86_64`.
+- Khoá riêng nằm ở secret `TAURI_SIGNING_PRIVATE_KEY` (và `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) của repo. Workflow
+  `Desktop` chỉ dựng gói cập nhật (`.app.tar.gz`, AppImage, `-setup.exe` kèm `.sig`) khi có secret này.
+- Tag `v*`: `release.yml` ghép chữ ký thành `latest.json` (static JSON của Tauri updater, platform `darwin-aarch64`,
+  `linux-x86_64`, `windows-x86_64`) và gắn vào bản phát hành.
+- Hub đọc `latest.json` của bản phát hành mới nhất trên GitHub (đổi bằng `HIVE_DESKTOP_RELEASES`, `off` để tắt; đọc lại
+  tối đa mỗi 5 phút) và trả cho app tại `/api/v1/desktop/updates/<os>/<arch>/<phiên bản hiện tại>`. App lấy địa chỉ hub
+  từ cấu hình của máy, nên không ghi `endpoints` trong `tauri.conf.json`.
+- Đổi khoá thì app đã cài không nhận bản ký bằng khoá mới: người dùng phải cài lại bằng file cài.

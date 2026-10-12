@@ -387,6 +387,41 @@ describe("tool knowledge với token người dùng", () => {
     expect(projects.find((p) => p.key === proj.a.key)?.repo).toMatchObject({ owner: expect.any(String) });
   });
 
+  it("mcp_server_list: server ngoài tổ chức cho phép với dự án, chỉ dự án mình thấy", async () => {
+    const rule = (
+      name: string,
+      rule: string,
+      projectId: string | null,
+      transport: string | null,
+      value: string | null,
+    ) =>
+      admin.query(
+        `insert into hive.mcp_server_rules (org_id, project_id, name, rule, match_type, pattern, transport, command, args, url, updated_by)
+         values ($1, $2, $3, $4, 'name', lower($3), $5, $6, $7, $8, 'seed')`,
+        [
+          orgA.orgId,
+          projectId,
+          name,
+          rule,
+          transport,
+          transport === "stdio" ? value : null,
+          JSON.stringify(transport === "stdio" ? ["-y", "@modelcontextprotocol/server-github"] : []),
+          transport === "http" ? value : null,
+        ],
+      );
+    await rule("github", "allow", null, "stdio", "npx");
+    await rule("context7", "allow", proj.a.id, "http", "https://mcp.context7.com/mcp");
+    const { servers } = (await call(member, "mcp_server_list", { org: orgA.slug, project: proj.a.key })).json() as {
+      servers: { name: string; transport: string }[];
+    };
+    expect(servers.map((s) => [s.name, s.transport]).sort()).toEqual([
+      ["context7", "http"],
+      ["github", "stdio"],
+    ]);
+    const other = await call(member, "mcp_server_list", { org: orgA.slug, project: proj.a2.key });
+    expect(other).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy dự án") });
+  });
+
   it("thuộc hai tổ chức thì phải chọn org", async () => {
     const res = await call(member, "memory_search", { query: "làm tròn" });
     expect(res).toMatchObject({ isError: true, text: expect.stringContaining("nhiều tổ chức") });
