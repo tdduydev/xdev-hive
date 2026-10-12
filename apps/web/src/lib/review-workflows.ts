@@ -44,10 +44,7 @@ export const KIND_LABEL: Dict<Record<GateKind, string>> = {
   en: { ai: "AI check", human: "Human", rule: "Rule", ext: "CI gate" },
 };
 
-export const ROLE_LABEL: Dict<Record<ReviewerRole, string>> = {
-  vi: { "org-admin": "Quản trị tổ chức", "team-admin": "Quản trị đội", "team-member": "Thành viên đội" },
-  en: { "org-admin": "Org admin", "team-admin": "Team admin", "team-member": "Team member" },
-};
+export { REVIEWER_ROLE_LABEL as ROLE_LABEL } from "@xdev-hive/doc-editor";
 
 export const PRESET_LABEL: Dict<Record<WorkflowPreset, string>> = {
   vi: { aidlc: "AI-DLC (AWS)", speckit: "Spec Kit", bmad: "BMAD", custom: "Tự tạo" },

@@ -11,11 +11,11 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Copy, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";

@@ -1,9 +1,9 @@
 import type { RunState } from "@xdev-hive/contracts";
 import { Button } from "@xdev-hive/ui/button";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Pill } from "@/components/ui/pill.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { hubTool } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
