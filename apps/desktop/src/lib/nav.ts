@@ -11,6 +11,7 @@ export type Profile = "dev" | "writer" | "lead";
 export type Permission =
   | "docs.read"
   | "docs.write"
+  | "docs.propose"
   | "skills.read"
   | "skills.write"
   | "skills.sync"
@@ -21,13 +22,16 @@ export type Permission =
 /*
  * Theo AppNav.dc.html, trừ writer: thiết kế cho writer `docs.write`, nhưng người xem đội chỉ đọc trong hub, nên
  * writer chỉ đọc tài liệu cho tới khi vai trò tự tạo (specs/001-custom-roles) có quyền viết tài liệu.
+ * `docs.propose`: gửi đề xuất sửa tài liệu để người duyệt quyết. Hub nhận đề xuất của thành viên đội trở lên
+ * (knowledge/access.ts), không nhận của người xem, nên dev có mà writer không.
  */
 const PERMISSIONS: Record<Profile, readonly Permission[]> = {
-  dev: ["docs.read", "skills.read", "skills.sync", "tokens.read", "env.manage", "runs.local"],
+  dev: ["docs.read", "docs.propose", "skills.read", "skills.sync", "tokens.read", "env.manage", "runs.local"],
   writer: ["docs.read", "skills.read", "tokens.read"],
   lead: [
     "docs.read",
     "docs.write",
+    "docs.propose",
     "skills.read",
     "skills.write",
     "skills.sync",

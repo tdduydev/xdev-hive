@@ -39,7 +39,8 @@ const text: Dict<{
 
 /**
  * Thanh điều hướng của app (AppNav.dc.html): logo, thư mục làm việc, mục theo quyền, người đang dùng. Cửa sổ hẹp
- * hơn 760px thì chỉ còn icon như bản `compact` của thiết kế.
+ * hơn 760px, hoặc màn cần chỗ (`compact`), thì chỉ còn icon như bản `compact` của thiết kế (biến thể `compact:` trong
+ * styles.css).
  * Thư mục làm việc, trạng thái worker và người dùng chưa có nguồn dữ liệu (specs/008-desktop-v2 T004, T008, T023):
  * hiện trạng thái trống thay vì số liệu mẫu.
  */
@@ -49,12 +50,15 @@ export function AppNav({
   account,
   onAccount,
   worker,
+  compact = false,
 }: {
   profile: Profile;
   active: ScreenId;
   account?: Account | null;
   onAccount?: () => void;
   worker?: WorkerView | null;
+  /** Luôn chỉ còn icon (màn cần chỗ như Tài liệu), không chỉ khi cửa sổ hẹp. */
+  compact?: boolean;
 }) {
   const t = useT(text);
   const lang = useLang();
@@ -63,12 +67,13 @@ export function AppNav({
   return (
     <nav
       aria-label={t.aria}
-      className="flex h-svh w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground max-[760px]:w-[60px] max-[760px]:px-2"
+      data-compact={compact || undefined}
+      className="flex h-svh w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground compact:w-[60px] compact:px-2"
     >
-      <div className="px-1.5 pb-2 max-[760px]:hidden">
+      <div className="px-1.5 pb-2 compact:hidden">
         <Wordmark className="h-[34px]" />
       </div>
-      <LogoIcon className="mx-auto mb-2.5 hidden max-[760px]:block" />
+      <LogoIcon className="mx-auto mb-2.5 hidden compact:block" />
       <button
         type="button"
         title={folder || t.folder}
@@ -81,7 +86,7 @@ export function AppNav({
             /* Ngoài Tauri không có bộ chọn thư mục; các màn vẫn cho nhập tay. */
           }
         }}
-        className="mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left hover:bg-muted max-[760px]:hidden"
+        className="mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left hover:bg-muted compact:hidden"
       >
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
           <span className="truncate font-mono text-[12.5px] font-semibold">
@@ -103,15 +108,13 @@ export function AppNav({
             title={item.label[lang]}
             className={cn(
               "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] text-foreground no-underline hover:bg-muted",
-              "max-[760px]:mx-auto max-[760px]:w-9 max-[760px]:justify-center max-[760px]:px-0",
+              "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
               current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
             )}
           >
             <item.icon aria-hidden="true" className="size-4 shrink-0" />
-            <span className="flex-1 max-[760px]:sr-only">{item.label[lang]}</span>
-            {item.readOnly && (
-              <span className="text-[10.5px] text-muted-foreground max-[760px]:hidden">{t.readOnly}</span>
-            )}
+            <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
+            {item.readOnly && <span className="text-[10.5px] text-muted-foreground compact:hidden">{t.readOnly}</span>}
           </a>
         );
       })}
@@ -119,13 +122,13 @@ export function AppNav({
         <div
           role="status"
           title={worker.detail ?? undefined}
-          className="mt-auto flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground max-[760px]:mx-auto max-[760px]:border-0 max-[760px]:p-0"
+          className="mt-auto flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground compact:mx-auto compact:border-0 compact:p-0"
         >
           <span className="flex items-center gap-1.5">
             <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
-            <span className="max-[760px]:sr-only">{workerSentence(worker.label)}</span>
+            <span className="compact:sr-only">{workerSentence(worker.label)}</span>
           </span>
-          {worker.hub && <span className="truncate font-mono max-[760px]:hidden">{new URL(worker.hub).host}</span>}
+          {worker.hub && <span className="truncate font-mono compact:hidden">{new URL(worker.hub).host}</span>}
         </div>
       )}
       <button
@@ -133,7 +136,7 @@ export function AppNav({
         onClick={onAccount}
         title={account ? `${account.name} · ${roleLine}` : t.notLinked}
         className={cn(
-          "flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left max-[760px]:justify-center max-[760px]:px-0",
+          "flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left compact:justify-center compact:px-0",
           // Thẻ worker đã đẩy khối cuối xuống đáy; hai mt-auto sẽ chia đôi khoảng trống.
           worker ? "mt-2" : "mt-auto",
         )}
@@ -147,7 +150,7 @@ export function AppNav({
             <UserRoundIcon aria-hidden="true" className="size-4" />
           </span>
         )}
-        <span className="flex min-w-0 flex-1 flex-col leading-tight max-[760px]:sr-only">
+        <span className="flex min-w-0 flex-1 flex-col leading-tight compact:sr-only">
           <span className={cn("truncate text-[13px]", account ? "font-medium" : "text-muted-foreground")}>
             {account ? account.name || account.email : t.notLinked}
           </span>

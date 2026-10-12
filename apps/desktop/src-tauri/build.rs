@@ -21,6 +21,11 @@ fn main() {
         "install_skills",
         "remove_skills",
         "propose_skill",
+        "run_cli_stream",
+        "cancel_cli_stream",
+        "cli_accounts",
+        "folder_tree",
+        "propose_doc",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

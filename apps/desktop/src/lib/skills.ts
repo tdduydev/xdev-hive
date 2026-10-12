@@ -146,56 +146,5 @@ export function useOff(key: string): [Set<string>, (names: string[], off: boolea
   return [set, useCallback((names: string[], off: boolean) => setOff(key, names, off), [key])];
 }
 
-export type DiffLine = { kind: "same" | "add" | "del"; text: string };
-
-/**
- * So dòng giữa bản trên máy và bản trên hub (LCS). SKILL.md thường vài trăm dòng; quá 600 dòng thì chỉ báo khác cả
- * file để khỏi tốn bộ nhớ O(n·m).
- */
-export function lineDiff(before: string, after: string): DiffLine[] {
-  const a = before.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
-  const b = after.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
-  if (a.length * b.length > 360_000) {
-    return [...a.map((text) => ({ kind: "del" as const, text })), ...b.map((text) => ({ kind: "add" as const, text }))];
-  }
-  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      const row = lcs[i] as number[];
-      row[j] = a[i] === b[j] ? (lcs[i + 1]?.[j + 1] ?? 0) + 1 : Math.max(lcs[i + 1]?.[j] ?? 0, row[j + 1] ?? 0);
-    }
-  }
-  const out: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
-      out.push({ kind: "same", text: a[i] as string });
-      i++;
-      j++;
-    } else if ((lcs[i + 1]?.[j] ?? 0) >= (lcs[i]?.[j + 1] ?? 0)) {
-      out.push({ kind: "del", text: a[i++] as string });
-    } else {
-      out.push({ kind: "add", text: b[j++] as string });
-    }
-  }
-  while (i < a.length) out.push({ kind: "del", text: a[i++] as string });
-  while (j < b.length) out.push({ kind: "add", text: b[j++] as string });
-  return out;
-}
-
-/** Chỉ giữ dòng đổi và 1 dòng quanh mỗi chỗ đổi, như phần "Thay đổi" của thiết kế. */
-export function diffHunks(lines: DiffLine[], context = 1): (DiffLine | null)[] {
-  const keep = lines.map(() => false);
-  lines.forEach((l, i) => {
-    if (l.kind === "same") return;
-    for (let k = Math.max(0, i - context); k <= Math.min(lines.length - 1, i + context); k++) keep[k] = true;
-  });
-  const out: (DiffLine | null)[] = [];
-  lines.forEach((l, i) => {
-    if (keep[i]) out.push(l);
-    else if (out.length && out.at(-1) !== null) out.push(null);
-  });
-  if (out.at(-1) === null) out.pop();
-  return out;
-}
+// So dòng dùng chung với màn Tài liệu; giữ export ở đây cho màn Skills.
+export { type DiffLine, diffHunks, lineDiff } from "@/lib/diff.ts";

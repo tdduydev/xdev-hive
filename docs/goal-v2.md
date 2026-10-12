@@ -49,7 +49,7 @@ Một màn hoặc tính năng chỉ tính là xong khi đủ các điều sau (t
 | AppRegister | Xong | — | DESK-02 |
 | AppTray | Xong | — | 008 T004–T006, DESK-03 |
 | AppHome | Xong | — | 008 T007–T009, DESK-04 |
-| AppDocs | Chưa | Viết tài liệu từ code bằng gói thuê bao, khung chat Claude Code/Codex | 008 T010–T013, DESK-05 |
+| AppDocs | Xong | Hộp tài khoản AI chưa có đăng xuất và chuyển gói khi hết hạn mức | 008 T010–T013, DESK-05 |
 | AppSkills | Xong | — | 008 T014–T016, DESK-06 |
 | AppTokens | Xong | Gợi ý có nút áp dụng (cần dữ liệu MCP/skill theo thư mục) | DESK-07 |
 | AppSetup | Một phần | Dò MCP server, `.hive/setup.sh`, yêu cầu theo chính sách tổ chức | DESK-08 |
