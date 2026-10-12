@@ -1,14 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { Project } from "@xdev-hive/contracts";
+import { KanbanSquareIcon, SearchIcon } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { CreateTaskButton } from "../components/create-task-dialog.tsx";
 import { Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
 import { buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
 import { FilterChips } from "../components/ui/filter-chips.tsx";
-import { Input } from "../components/ui/input.tsx";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../components/ui/input-group.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { StatTile } from "../components/ui/stat-tile.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
@@ -204,15 +206,18 @@ function Board({
         <label htmlFor={searchId} className="sr-only">
           Tìm việc
         </label>
-        <span className="w-60 max-w-full">
-          <Input
+        <InputGroup className="w-64 max-w-full">
+          <InputGroupAddon>
+            <SearchIcon aria-hidden="true" />
+          </InputGroupAddon>
+          <InputGroupInput
             id={searchId}
             type="search"
             placeholder="Tìm theo mã hoặc tiêu đề"
             defaultValue={query}
             onChange={(e) => setSearch({ q: e.currentTarget.value })}
           />
-        </span>
+        </InputGroup>
         {actions}
         <CreateTaskButton projects={creatable} />
       </PageHeader>
@@ -223,17 +228,21 @@ function Board({
 
 function EmptyBoard({ canCreate }: { canCreate: boolean }) {
   return (
-    <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
-        <Icon name="columns" className="size-5" />
-      </span>
-      <h2 className="text-base font-semibold text-foreground">Chưa có việc nào</h2>
-      <p className="max-w-md text-muted-foreground">
-        {canCreate
-          ? "Bấm “Tạo việc” để giao việc đầu tiên cho agent, hoặc gắn nhãn cho issue trên GitHub/GitLab nếu dự án bật nhận việc từ issue."
-          : "Chưa có dự án nào đang hoạt động mà bạn thấy được. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội."}
-      </p>
-    </Card>
+    <Empty className="border border-dashed border-border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <KanbanSquareIcon aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle role="heading" aria-level={2}>
+          Chưa có việc nào
+        </EmptyTitle>
+        <EmptyDescription>
+          {canCreate
+            ? "Bấm “Tạo việc” để giao việc đầu tiên cho agent, hoặc gắn nhãn cho issue trên GitHub/GitLab nếu dự án bật nhận việc từ issue."
+            : "Chưa có dự án nào đang hoạt động mà bạn thấy được. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội."}
+        </EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 

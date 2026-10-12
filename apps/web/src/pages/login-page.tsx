@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { GitPullRequestIcon, ShieldCheckIcon, SquareTerminalIcon } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { Brand, Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
@@ -144,110 +145,156 @@ export function LoginPage() {
   const errorAt = (at: Failure["at"]) => (failure?.at === at ? failure.message : null);
 
   return (
-    <main className="grid min-h-dvh place-items-center px-4 py-6">
-      <Card className="grid w-full max-w-105 gap-4 p-7">
-        <Brand />
-        <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">Đăng nhập</h1>
-        <p className="-mt-2 text-muted-foreground">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
-        {errorAt("redirect") && <Alert variant="destructive">{errorAt("redirect")}</Alert>}
+    <main className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="flex items-center justify-center px-4 py-6 md:p-10">
+        <Card className="grid w-full max-w-105 gap-4 p-7">
+          <Brand />
+          <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">Đăng nhập</h1>
+          <p className="-mt-2 text-muted-foreground">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
+          {errorAt("redirect") && <Alert variant="destructive">{errorAt("redirect")}</Alert>}
 
-        {firstAdmin && (
-          <section
-            aria-labelledby="first-admin"
-            className="grid gap-2.5 rounded-lg border border-primary/40 bg-accent p-4"
-          >
-            <h2 id="first-admin" className="text-sm font-semibold text-accent-foreground">
-              Tạo tài khoản quản trị đầu tiên
-            </h2>
-            <p className="text-xs text-foreground">
-              Hub chưa có tổ chức nào. Chỉ người quản trị hub (email khai lúc cài hub) mới tạo được tài khoản ở đây; sau
-              khi có tổ chức, mọi người vào bằng lời mời.
-            </p>
-            <form noValidate onSubmit={onFirstAdmin} className="grid gap-2.5">
-              <Field>
-                <FieldLabel>Tên hiển thị</FieldLabel>
-                <Input name="name" autoComplete="name" />
-              </Field>
+          {firstAdmin && (
+            <section
+              aria-labelledby="first-admin"
+              className="grid gap-2.5 rounded-lg border border-primary/40 bg-accent p-4"
+            >
+              <h2 id="first-admin" className="text-sm font-semibold text-accent-foreground">
+                Tạo tài khoản quản trị đầu tiên
+              </h2>
+              <p className="text-xs text-foreground">
+                Hub chưa có tổ chức nào. Chỉ người quản trị hub (email khai lúc cài hub) mới tạo được tài khoản ở đây;
+                sau khi có tổ chức, mọi người vào bằng lời mời.
+              </p>
+              <form noValidate onSubmit={onFirstAdmin} className="grid gap-2.5">
+                <Field>
+                  <FieldLabel>Tên hiển thị</FieldLabel>
+                  <Input name="name" autoComplete="name" />
+                </Field>
+                <Field>
+                  <FieldLabel>Email</FieldLabel>
+                  <Input name="email" type="email" autoComplete="email" />
+                </Field>
+                <Field>
+                  <FieldLabel>Mật khẩu</FieldLabel>
+                  <Input name="password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD} />
+                  <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
+                </Field>
+                {errorAt("signup") && <Alert variant="destructive">{errorAt("signup")}</Alert>}
+                <Button type="submit" variant="default" className="w-full" disabled={busy}>
+                  <Icon name="key" />
+                  {pending === "signup" ? "Đang tạo tài khoản…" : "Tạo tài khoản quản trị"}
+                </Button>
+              </form>
+            </section>
+          )}
+
+          <Field render={<form noValidate onSubmit={onSso} />} invalid={errorAt("sso") !== null}>
+            <FieldLabel>Email công ty</FieldLabel>
+            <Input name="email" type="email" autoComplete="email" placeholder="ten@congty.vn" />
+            {errorAt("sso") ? (
+              <FieldError>{errorAt("sso")}</FieldError>
+            ) : (
+              <FieldHint>Hub tìm SSO của tổ chức theo tên miền email.</FieldHint>
+            )}
+            <Button type="submit" variant="default" className="w-full" disabled={busy}>
+              <Icon name="key" />
+              {pending === "sso" ? "Đang chuyển sang SSO…" : "Tiếp tục với SSO"}
+            </Button>
+          </Field>
+
+          <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+            hoặc
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => attempt("github", () => authClient.signIn.social({ provider: "github", ...callbacks }))}
+            >
+              <Icon name="github" />
+              {pending === "github" ? "Đang chuyển…" : "GitHub"}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => attempt("gitlab", () => authClient.signIn.social({ provider: "gitlab", ...callbacks }))}
+            >
+              <Icon name="gitlab" />
+              {pending === "gitlab" ? "Đang chuyển…" : "GitLab"}
+            </Button>
+          </div>
+          {errorAt("social") && <Alert variant="destructive">{errorAt("social")}</Alert>}
+
+          <details>
+            <summary className="cursor-pointer text-sm text-muted-foreground">Đăng nhập bằng email và mật khẩu</summary>
+            <form noValidate onSubmit={onEmail} className="mt-3 grid gap-2.5">
               <Field>
                 <FieldLabel>Email</FieldLabel>
-                <Input name="email" type="email" autoComplete="email" />
+                <Input name="email" type="email" autoComplete="username" />
               </Field>
               <Field>
                 <FieldLabel>Mật khẩu</FieldLabel>
-                <Input name="password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD} />
-                <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
+                <Input name="password" type="password" autoComplete="current-password" />
               </Field>
-              {errorAt("signup") && <Alert variant="destructive">{errorAt("signup")}</Alert>}
-              <Button type="submit" variant="default" className="w-full" disabled={busy}>
-                <Icon name="key" />
-                {pending === "signup" ? "Đang tạo tài khoản…" : "Tạo tài khoản quản trị"}
+              {errorAt("email") && <Alert variant="destructive">{errorAt("email")}</Alert>}
+              <Button variant="outline" type="submit" className="w-full" disabled={busy}>
+                <Icon name="mail" />
+                {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}
               </Button>
             </form>
-          </section>
-        )}
+          </details>
 
-        <Field render={<form noValidate onSubmit={onSso} />} invalid={errorAt("sso") !== null}>
-          <FieldLabel>Email công ty</FieldLabel>
-          <Input name="email" type="email" autoComplete="email" placeholder="ten@congty.vn" />
-          {errorAt("sso") ? (
-            <FieldError>{errorAt("sso")}</FieldError>
-          ) : (
-            <FieldHint>Hub tìm SSO của tổ chức theo tên miền email.</FieldHint>
-          )}
-          <Button type="submit" variant="default" className="w-full" disabled={busy}>
-            <Icon name="key" />
-            {pending === "sso" ? "Đang chuyển sang SSO…" : "Tiếp tục với SSO"}
-          </Button>
-        </Field>
-
-        <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
-          hoặc
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => attempt("github", () => authClient.signIn.social({ provider: "github", ...callbacks }))}
-          >
-            <Icon name="github" />
-            {pending === "github" ? "Đang chuyển…" : "GitHub"}
-          </Button>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => attempt("gitlab", () => authClient.signIn.social({ provider: "gitlab", ...callbacks }))}
-          >
-            <Icon name="gitlab" />
-            {pending === "gitlab" ? "Đang chuyển…" : "GitLab"}
-          </Button>
-        </div>
-        {errorAt("social") && <Alert variant="destructive">{errorAt("social")}</Alert>}
-
-        <details>
-          <summary className="cursor-pointer text-sm text-muted-foreground">Đăng nhập bằng email và mật khẩu</summary>
-          <form noValidate onSubmit={onEmail} className="mt-3 grid gap-2.5">
-            <Field>
-              <FieldLabel>Email</FieldLabel>
-              <Input name="email" type="email" autoComplete="username" />
-            </Field>
-            <Field>
-              <FieldLabel>Mật khẩu</FieldLabel>
-              <Input name="password" type="password" autoComplete="current-password" />
-            </Field>
-            {errorAt("email") && <Alert variant="destructive">{errorAt("email")}</Alert>}
-            <Button variant="outline" type="submit" className="w-full" disabled={busy}>
-              <Icon name="mail" />
-              {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}
-            </Button>
-          </form>
-        </details>
-
-        {/* Mockup giữ lề mặc định của <p> (1em) quanh dòng này. */}
-        <p className="my-3 text-center text-xs text-muted-foreground">
-          Chưa có tài khoản? Nhờ quản trị tổ chức gửi lời mời.
-        </p>
-      </Card>
+          {/* Mockup giữ lề mặc định của <p> (1em) quanh dòng này. */}
+          <p className="my-3 text-center text-xs text-muted-foreground">
+            Chưa có tài khoản? Nhờ quản trị tổ chức gửi lời mời.
+          </p>
+        </Card>
+      </div>
+      <LoginShowcase />
     </main>
+  );
+}
+
+const SHOWCASE: { icon: typeof ShieldCheckIcon; text: string }[] = [
+  {
+    icon: SquareTerminalIcon,
+    text: "Claude Code, Codex, Gemini CLI chạy trên máy của đội với tài khoản đã đăng nhập sẵn; hub không giữ thông tin đăng nhập của CLI.",
+  },
+  {
+    icon: GitPullRequestIcon,
+    text: "Mỗi việc thành một pull request, có review chéo và hàng merge theo cấu hình dự án.",
+  },
+  {
+    icon: ShieldCheckIcon,
+    text: "Dự án cần cách ly chạy trong sandbox gVisor, chỉ ra được các địa chỉ trong allowlist.",
+  },
+];
+
+/** Cột giới thiệu bên phải màn đăng nhập trên màn hình rộng; điện thoại chỉ thấy form. */
+function LoginShowcase() {
+  return (
+    <section
+      aria-label="Giới thiệu xDev Hive"
+      className="hidden flex-col justify-between gap-10 border-l border-border bg-muted/50 p-10 lg:flex"
+    >
+      <span className="font-mono text-xs tracking-caps text-muted-foreground uppercase">xDev Hive · tự host</span>
+      <div className="grid max-w-lg gap-8">
+        <p className="font-heading text-3xl leading-tight font-semibold tracking-tight text-foreground">
+          Giao việc cho agent, giữ code và tài khoản trên máy của đội.
+        </p>
+        <ul className="grid gap-4">
+          {SHOWCASE.map(({ icon: IconComponent, text }) => (
+            <li key={text} className="flex gap-3 text-sm text-muted-foreground">
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-background text-primary ring-1 ring-foreground/10">
+                <IconComponent className="size-4" aria-hidden="true" />
+              </span>
+              <span className="pt-1.5">{text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <span className="text-xs text-muted-foreground">Mã nguồn mở, giấy phép AGPL-3.0.</span>
+    </section>
   );
 }
