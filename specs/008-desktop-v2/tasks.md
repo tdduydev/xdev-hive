@@ -286,6 +286,28 @@ description: "Task list for Desktop Application v2 implementation"
 
 ---
 
+## Phase: Client features for BA and DEV (ADR 0017, US9–US12)
+
+- [ ] **T026 Hub: personal token on the REST API (FR-026)**
+  - **Description**: Accept `Authorization: Bearer hive_pat_…` on user-scoped `/api/v1/…` routes as the token owner's
+    session (expiry, revocation, org from the token); reject `hwm_` and run tokens there. Tests in `hub:*.db.test.ts`.
+  - **Dependencies**: none.
+- [ ] **T027 Desktop: typed hub client (FR-026, FR-027)**
+  - **Description**: Client in `apps/desktop/src/lib/` built from `packages/contracts`, calling the hub through a Rust
+    command that adds the keychain token (the webview never sees it). Shared data logic moves to `packages/` where the
+    web already has it.
+  - **Dependencies**: T026.
+- [ ] **T028 AppDocEditor (US9, FR-022)**: editor screen in `AppNav` using `docEditor.*`; AI actions pinned to this
+  machine. Vitest + Playwright (fake hub). **Dependencies**: T027.
+- [ ] **T029 AppMyWork (US10, FR-023)**: My tasks and my runs, start a task, live log, waiting reason. Hub filter for
+  tasks assigned to the caller if missing. **Dependencies**: T027.
+- [ ] **T030 AppReviews (US11, FR-024)**: Awaiting my review with diff, checklist, approve/return. **Dependencies**: T027.
+- [ ] **T031 AppKnowledge (US12, FR-025)**: read-only search over docs, memory, skills. **Dependencies**: T027.
+- [ ] **T032 Navigation profiles**: show T028–T031 in `AppNav` by profile (`dev`, `writer`, `lead`); designs
+  `App*.dc.html` for each new screen. **Dependencies**: T028–T031.
+
+---
+
 ## Task Dependencies & Parallel Execution Graph
 
 ```
@@ -299,4 +321,6 @@ T001 (Foundation: React/Vite/Tailwind, AppNav, AppRegister v2)
  ├──> T017 (CLI Context Reader) ──> T018 (AppTokens Screen) ──> T019 [P] (AppTokens Tests)
  ├──> T020 (Doctor Scanner) ──> T021 (AppSetup Screen) ──> T022 [P] (AppSetup Tests)
  └──> T023 (Keychain Storage) ──> T024 [P] (Capability Audit) / T025 [P] (Updater Config)
+
+T026 (PAT on REST) ──> T027 (Typed hub client) ──> T028 [P] (DocEditor) / T029 [P] (My work) / T030 [P] (Reviews) / T031 [P] (Knowledge) ──> T032 (Nav profiles)
 ```
