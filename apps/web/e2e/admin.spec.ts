@@ -53,6 +53,8 @@ function orgMembersIn(org: string | undefined) {
       role: "member",
       status: "active",
       joinedAt: at,
+      providers: ["credential", "github"],
+      lastSeenAt: at,
       teams: [{ teamId: TEAM.id, name: TEAM.name, role: "admin" }],
     },
     {
@@ -63,6 +65,8 @@ function orgMembersIn(org: string | undefined) {
       role: roleIn,
       status: "active",
       joinedAt: at,
+      providers: [],
+      lastSeenAt: null,
       teams: [{ teamId: TEAM.id, name: TEAM.name, role: "viewer" }],
     },
     {
@@ -73,6 +77,8 @@ function orgMembersIn(org: string | undefined) {
       role: "member",
       status: "pending",
       joinedAt: at,
+      providers: ["org-test"],
+      lastSeenAt: at,
       teams: [],
     },
   ];
@@ -845,6 +851,8 @@ const manyMembers = () =>
     role: i < 5 ? "admin" : "member",
     status: i === 24 ? "blocked" : "active",
     joinedAt: at,
+    providers: i % 2 ? ["google"] : ["credential", "github"],
+    lastSeenAt: i % 2 ? null : at,
     teams: i % 2 ? [] : [{ teamId: TEAM.id, name: TEAM.name, role: "member" }],
   }));
 
@@ -1180,3 +1188,60 @@ test("tạo tổ chức: bỏ qua đội và lỗi hub ở bước đội giữ 
   await expect(page).toHaveURL("/admin/teams");
   expect(hub.rpcCalls.some((call) => call.path === "invitations/create")).toBe(false);
 });
+
+for (const lang of ["vi", "en"] as const) {
+  test(`member activity: linked methods, relative time and sign-in facet (${lang})`, async ({ page }, testInfo) => {
+    await page.addInitScript((lang) => localStorage.setItem("hive.lang", lang), lang);
+    const now = new Date("2026-10-12T03:00:00.000Z");
+    await page.clock.install({ time: now });
+    const members = manyMembers()
+      .slice(0, 4)
+      .map((member, i) => ({
+        ...member,
+        providers: [["credential", "github"], ["google", "microsoft"], [], ["org-test", "gitlab", "custom-provider"]][
+          i
+        ],
+        lastSeenAt: i === 0 ? "2026-10-12T01:00:00.000Z" : null,
+      }));
+    await openPeople(page, { "orgMembers/list": () => ok(members) });
+    await page.goto("/admin/members");
+    const password = lang === "vi" ? "Mật khẩu" : "Password";
+    const never = lang === "vi" ? "Chưa đăng nhập" : "Never signed in";
+    const facetLabel = lang === "vi" ? "Đăng nhập" : "Sign-in";
+    const first = page.getByRole("row", { name: /Person 00/ });
+    await expect(first).toContainText(password);
+    await expect(first).toContainText("GitHub");
+    await expect(first).toContainText(lang === "vi" ? "2 giờ trước" : "2 hours ago");
+    await expect(first.locator("time")).toHaveAttribute("datetime", "2026-10-12T01:00:00.000Z");
+    await expect(page.getByRole("row", { name: /Person 01/ })).toContainText("Google");
+    await expect(page.getByRole("row", { name: /Person 01/ })).toContainText("Microsoft");
+    await expect(page.getByRole("row", { name: /Person 02/ })).toContainText(never);
+    await expect(page.getByRole("row", { name: /Person 03/ })).toContainText("SSO");
+    await expect(page.getByRole("row", { name: /Person 03/ })).toContainText("custom-provider");
+    await expect(page.getByText(lang === "vi" ? "Chưa có dữ liệu" : "No data yet", { exact: true })).toHaveCount(0);
+    for (const theme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.screenshot({ path: testInfo.outputPath(`member-activity-${lang}-${theme}.png`), fullPage: true });
+      await page.setViewportSize({ width: 360, height: 800 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`member-activity-${lang}-${theme}-360.png`), fullPage: true });
+      await page.setViewportSize({ width: 1280, height: 720 });
+    }
+    const facet = page.locator('[data-slot="popover-trigger"]').filter({ hasText: new RegExp(`^${facetLabel}`) });
+    await facet.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: facetLabel, exact: true });
+    await expect(dialog.locator("label").filter({ hasText: "GitHub" })).toContainText("1");
+    await dialog.getByRole("checkbox", { name: "GitHub", exact: true }).check();
+    await page.keyboard.press("Escape");
+    await expect(facet).toBeFocused();
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await expect(first).toBeVisible();
+    await facet.click();
+    await dialog.getByRole("checkbox", { name: "Google", exact: true }).check();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("row")).toHaveCount(3);
+    await page.getByRole("button", { name: lang === "vi" ? "Xoá hết bộ lọc" : "Clear all filters" }).click();
+    await expect(page.getByRole("row")).toHaveCount(5);
+  });
+}

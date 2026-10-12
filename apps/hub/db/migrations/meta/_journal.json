@@ -316,6 +316,13 @@
       "when": 1791793187227,
       "tag": "0044_mcp_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791793585649,
+      "tag": "0045_org_member_activity",
+      "breakpoints": true
     }
   ]
 }
