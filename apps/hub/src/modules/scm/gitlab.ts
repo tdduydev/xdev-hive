@@ -478,5 +478,39 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
     async removeWebhook(ref: RepoRef, hookId: string) {
       await orNull(() => gl.projectHooks.remove(projectPath(ref), Number(hookId)) as Promise<unknown>);
     },
+
+    async branchHead(ref: RepoRef, branch: string) {
+      const p = `projects/${encodeURIComponent(projectPath(ref))}/repository/branches/${encodeURIComponent(branch)}`;
+      const b = await orNull(() => rest<{ commit: { id: string } }>("GET", p));
+      return b?.commit.id ?? null;
+    },
+
+    async listFiles(ref: RepoRef, sha: string) {
+      const out: string[] = [];
+      // Cây trả theo trang; đọc hết theo x-next-page để không đồng bộ thiếu rồi xoá nhầm skill.
+      for (let page = "1"; page; ) {
+        const url = new URL(`projects/${encodeURIComponent(projectPath(ref))}/repository/tree`, apiBase);
+        url.search = new URLSearchParams({ recursive: "true", ref: sha, per_page: "100", page }).toString();
+        const res = await send("GET", url, { headers: { "private-token": opts.token } });
+        const items = (await res.json()) as { path: string; type: string }[];
+        out.push(...items.filter((i) => i.type === "blob").map((i) => i.path));
+        page = res.headers.get("x-next-page") ?? "";
+      }
+      return out;
+    },
+
+    async readFile(ref: RepoRef, path: string, sha: string) {
+      const p = `projects/${encodeURIComponent(projectPath(ref))}/repository/files/${encodeURIComponent(path)}/raw`;
+      const body = await orNull(() => rest<unknown>("GET", `${p}?ref=${encodeURIComponent(sha)}`));
+      if (body === null) return null;
+      // File .json được parseBody đọc thành object; trả lại đúng nội dung chữ.
+      return typeof body === "string" ? body : JSON.stringify(body);
+    },
+
+    async closePR(ref: RepoRef, number: number) {
+      const mr = await orNull(() => rest<{ state: string }>("GET", mrPath(ref, number)));
+      if (mr?.state !== "opened") return;
+      await rest("PUT", mrPath(ref, number), { state_event: "close" });
+    },
   };
 }

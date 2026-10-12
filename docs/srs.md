@@ -240,12 +240,11 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
-| SKILL-01 | The hub shall synchronize skills bidirectionally with a designated Git repository (e.g., tdduydev/xdev-skills), mapping folders to scopes: `org/<skill>/`, `teams/<team>/<skill>/`, and `projects/<key>/<skill>/`. | Planned | — |
-| SKILL-02 | Each skill shall be stored as a directory containing `SKILL.md` with YAML frontmatter metadata and Markdown instruction bodies. | Planned | — |
-| SKILL-03 | The hub shall process Git webhooks on push events to update the skill catalog within seconds, and provide manual "Sync now" triggering. | Planned | — |
-| SKILL-04 | Edits made on the hub shall commit to the Git repository default branch as the editing user, and skill change proposals shall be managed as Git pull requests. | Planned | — |
-| SKILL-05 | The hub shall resolve skill lookups by scope hierarchy, allowing team or project skills to shadow organization skills with identical keys. | Planned | — |
-
+| SKILL-01 | The hub shall synchronize skills bidirectionally with a designated Git repository (e.g., tdduydev/xdev-skills), mapping folders to scopes: `org/<skill>/`, `teams/<team>/<skill>/`, and `projects/<key>/<skill>/`. | Implemented | `hub:modules/knowledge/skill-repo.db.test.ts`, `web:knowledge.spec.ts` |
+| SKILL-02 | Each skill shall be stored as a directory containing `SKILL.md` with YAML frontmatter metadata and Markdown instruction bodies. | Implemented | `hub:modules/knowledge/skill-repo.db.test.ts` |
+| SKILL-03 | The hub shall process Git webhooks on push events to update the skill catalog within seconds, and provide manual "Sync now" triggering. | Implemented | `hub:modules/knowledge/skill-repo.db.test.ts` (webhook, sync job), `web:knowledge.spec.ts` |
+| SKILL-04 | Edits made on the hub shall commit to the Git repository default branch as the editing user, and skill change proposals shall be managed as Git pull requests. | Implemented | `hub:modules/knowledge/skill-repo.db.test.ts` (commit with Co-authored-by, proposal PRs) |
+| SKILL-05 | The hub shall resolve skill lookups by scope hierarchy, allowing team or project skills to shadow organization skills with identical keys. | Implemented | `hub:mcp-knowledge.db.test.ts`, `hub:modules/knowledge/skill-repo.db.test.ts` |
 ### 3.17 Desktop application (DESK)
 
 | ID | Requirement | Status | Verification |
@@ -270,8 +269,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | IF-03 | Agents shall use MCP over streamable HTTP at `/mcp`. | Implemented |
 | IF-04 | Git hosts shall deliver webhooks to `/hooks/git/{projectId}`. | Implemented |
 | IF-05 | The desktop app shall query `/api/v1/desktop/updates/{os}/{arch}/{version}` in the Tauri updater format. | Partial: the app has no update endpoint or key configured |
-| IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/skills/{repoId}`. | Planned |
-
+| IF-06 | Git hosts shall deliver skill repository webhooks to `/hooks/skills/{repoId}`. | Implemented |
 ## 5. Non-functional requirements
 
 | ID | Category | Requirement | Status | Verification |

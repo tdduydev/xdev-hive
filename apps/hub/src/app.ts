@@ -11,7 +11,12 @@ import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
-import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
+import {
+  type Embedder,
+  handleSkillWebhook,
+  registerMcpTools as knowledgeMcpTools,
+  knowledgeRouter,
+} from "./modules/knowledge/index.ts";
 import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
 import { createMcpEndpoint, McpToolRegistry, mcpAdminRouter, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
@@ -122,7 +127,15 @@ export function createApp({
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),
     projects: catalogRouter({ ...shared, jobs, publicUrl }),
-    ...knowledgeRouter({ auth, pool, jobs, embedder }),
+    ...knowledgeRouter({
+      auth,
+      pool,
+      jobs,
+      embedder,
+      masterKey: config.masterKey,
+      providerFactory: providerFactory ?? defaultProviderFactory,
+      publicUrl,
+    }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),
     costs: costsRouter({ auth, pool }),
@@ -147,6 +160,15 @@ export function createApp({
     resolveTarget: pool ? (id: string) => findWebhookTarget(pool, config.masterKey, id) : undefined,
   };
   app.post("/hooks/git/:projectId", (c) => handleGitWebhook(hooks, c.req.param("projectId"), c.req.raw));
+  // Kho skill Git của tổ chức (ADR 0014); đường riêng vì /hooks/git/{projectId} coi mọi đoạn là id dự án.
+  if (pool)
+    app.post("/hooks/skills/:repoId", (c) =>
+      handleSkillWebhook(
+        { pool, masterKey: config.masterKey, providerFactory: providerFactory ?? defaultProviderFactory, jobs },
+        c.req.param("repoId"),
+        c.req.raw,
+      ),
+    );
   // tauri-plugin-updater đòi 204 khi không có bản mới; handler oRPC cùng đường dẫn (để có trong OpenAPI) trả 200 với
   // null, nên route này phải đứng trước handler /api.
   app.get("/api/v1/desktop/updates/:os/:arch/:currentVersion", async (c) => {

@@ -6,10 +6,6 @@ export const knowledgeText: Dict<{
   docsSearch: string;
   docsMcpNote: string;
   skillsLead: string;
-  skillsRepoAria: string;
-  skillsRepoLabel: string;
-  skillsRepoSettings: string;
-  skillsSyncNow: string;
   skillsSearch: string;
   memoryLead: string;
   memoryAdd: string;
@@ -56,8 +52,9 @@ export const knowledgeText: Dict<{
   text: string;
   vector: string;
   score: string;
-  repoUnavailable: string;
-  repoNone: string;
+  inGit: string;
+  hubOnly: string;
+  hubOnlyHint: string;
   approve: string;
   original: string;
   proposed: string;
@@ -77,10 +74,6 @@ export const knowledgeText: Dict<{
     docsSearch: "Tìm tiêu đề, key, người sửa…",
     docsMcpNote: "Agent đọc tài liệu này bằng",
     skillsLead: "Skill (SKILL.md) nạp cho agent khi chạy.",
-    skillsRepoAria: "Kho skill",
-    skillsRepoLabel: "Kho skill",
-    skillsRepoSettings: "Kết nối repo",
-    skillsSyncNow: "Đồng bộ ngay",
     skillsSearch: "Tìm skill, mô tả, đường dẫn…",
     memoryLead: "Ghi nhớ ngắn của agent và người. Agent tìm qua memory_search trước khi làm.",
     memoryAdd: "Thêm memory",
@@ -127,8 +120,9 @@ export const knowledgeText: Dict<{
     text: "Từ",
     vector: "Nghĩa",
     score: "Điểm",
-    repoUnavailable: "Chưa đồng bộ — hub đang lưu skill trong cơ sở dữ liệu.",
-    repoNone: "Chưa kết nối kho Git",
+    inGit: "Trong Git",
+    hubOnly: "Chỉ trên hub",
+    hubOnlyHint: "Chỉ có trên hub; lần đồng bộ kế tiếp sẽ đưa vào kho Git nếu tổ chức đã kết nối kho.",
     approve: "Duyệt",
     original: "Bản gốc",
     proposed: "Bản đề xuất",
@@ -148,10 +142,6 @@ export const knowledgeText: Dict<{
     docsSearch: "Search title, key, editor…",
     docsMcpNote: "Agents read this doc with",
     skillsLead: "Skills (SKILL.md) loaded into agent runs.",
-    skillsRepoAria: "Skill repository",
-    skillsRepoLabel: "Skill repo",
-    skillsRepoSettings: "Connect repo",
-    skillsSyncNow: "Sync now",
     skillsSearch: "Search skill, description, path…",
     memoryLead: "Short notes from agents and people. Agents search them with memory_search before working.",
     memoryAdd: "Add memory",
@@ -198,8 +188,9 @@ export const knowledgeText: Dict<{
     text: "Words",
     vector: "Meaning",
     score: "Score",
-    repoUnavailable: "Not synced — the hub stores skills in the database.",
-    repoNone: "No Git repository connected",
+    inGit: "In Git",
+    hubOnly: "Hub only",
+    hubOnlyHint: "Only on the hub; the next sync pushes it to the Git repository if one is connected.",
     approve: "Approve",
     original: "Original",
     proposed: "Proposed",

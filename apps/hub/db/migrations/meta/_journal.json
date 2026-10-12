@@ -330,6 +330,13 @@
       "when": 1791796492626,
       "tag": "0046_custom_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791800462750,
+      "tag": "0047_skills_repo_sync",
+      "breakpoints": true
     }
   ]
 }
