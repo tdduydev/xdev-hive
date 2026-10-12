@@ -181,7 +181,9 @@
     *,
     *::before,
     *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: người dùng chọn giảm chuyển động thì phải thắng mọi animation của component. */
       animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: như trên. */
       transition-duration: 0.01ms !important;
     }
   }
