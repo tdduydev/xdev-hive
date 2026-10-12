@@ -87,6 +87,7 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | sandbox | `egress_allowlists` | `rule`; `project_id` null means organization-wide |
 | sandbox | `env_images` | One per project: `base_image`, `setup_script_hash` |
 | knowledge | `review_workflows`, `review_instances`, `review_gate_runs` | Review workflows (phases and gates as jsonb), one review instance per doc proposal with a snapshot of the workflow, one gate run per gate execution (`waiting`, `passed`, `failed`, `skipped`) |
+| knowledge | `doc_drafts`, `doc_suggestions`, `doc_threads`, `doc_comments`, `doc_snapshots`, `doc_presence` | Document editor, keyed by doc key: one shared draft per doc (optimistic `revision`), inline suggestions (`pending`, `accepted`, `rejected`), comment threads anchored to a quote, named snapshots (a submitted snapshot links to its proposal), presence seen in the last minute |
 | governance | `agent_policies` | One per organization: `policy` (jsonb, schema `agentPolicyInput` in contracts), `template_sync`; runs keep the applied policy in `runs.agent_policy_snapshot` |
 | notify | `notification_channels`, `notifications`, `inbox_items` | Channels hold `config_enc`; notifications have `status` (`queued`, `sent`, `failed`) and `attempts` |
 | audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app`; expired rows removed only by `hive.purge_expired_audit_log()` |
@@ -158,8 +159,8 @@ message types are ignored by older peers.
 |---|---|
 | tenancy | `hive_whoami`, `orgs_list`, `teams_list`, `systems_list` |
 | catalog | `project_list`, `mcp_server_list` (allowed external MCP servers of a project, for the desktop Environment screen) |
-| runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs), `doc_check_submit` (doccheck runs), `run_list` (users: recent runs, filter by machine) |
-| knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `skill_list`, `skill_get`, `skill_propose` |
+| runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs), `doc_check_submit` (doccheck runs), `doc_assist_submit` (docassist runs), `run_list` (users: recent runs, filter by machine) |
+| knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `doc_draft_get`, `doc_suggest`, `doc_comment` (document editor drafts; users and docassist runs), `skill_list`, `skill_get`, `skill_propose` |
 | leader | `leader_reply`, `leader_propose` (leader runs) |
 
 Read-only run kinds receive no write tools (`task_update`, `memory_write`, `doc_propose`, `skill_propose`).

@@ -230,11 +230,11 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
-| DOC-01 | The web application shall provide a block-based rich text and Markdown editor supporting headings, checklists, tables, code blocks, Mermaid diagrams, embedded documents, and auto-numbered requirement IDs (R-n). | Planned | — |
-| DOC-02 | The document editor shall support suggestion mode alongside direct editing, allowing AI agents and human collaborators to propose inline edits that can be accepted or rejected. | Planned | — |
-| DOC-03 | The document editor shall provide contextual commenting threads anchored to document blocks with reply and resolve capabilities. | Planned | — |
-| DOC-04 | The document editor shall maintain version history with named snapshots, change diffs, and the ability to submit frozen versions into review workflows. | Planned | — |
-| DOC-05 | The document editor shall integrate AI assistance actions (continue writing, template completeness audit, drafting acceptance criteria, cross-referencing related documents, and translation) powered by desktop subscription or agent runs. | Planned | — |
+| DOC-01 | The web application shall provide a block-based rich text and Markdown editor supporting headings, checklists, tables, code blocks, Mermaid diagrams, embedded documents, and auto-numbered requirement IDs (R-n). | Partial: block editor over Markdown (slash menu, toolbar, checklists, tables, code, `R-n` numbering, `![[key]]` embeds); Mermaid blocks show their source, not a rendered diagram | `web:lib/doc-editor.test.ts`, `web:doc-editor.spec.ts`, `contracts:doc-text.test.ts` |
+| DOC-02 | The document editor shall support suggestion mode alongside direct editing, allowing AI agents and human collaborators to propose inline edits that can be accepted or rejected. | Implemented | `hub:modules/knowledge/editor.db.test.ts`, `hub:mcp-run.db.test.ts` (`doc_suggest`), `web:doc-editor.spec.ts` |
+| DOC-03 | The document editor shall provide contextual commenting threads anchored to document blocks with reply and resolve capabilities. | Implemented | `hub:modules/knowledge/editor.db.test.ts`, `web:doc-editor.spec.ts` |
+| DOC-04 | The document editor shall maintain version history with named snapshots, change diffs, and the ability to submit frozen versions into review workflows. | Implemented | `hub:modules/knowledge/editor.db.test.ts` (snapshots, rebase, submit into workflows), `web:doc-editor.spec.ts` |
+| DOC-05 | The document editor shall integrate AI assistance actions (continue writing, template completeness audit, drafting acceptance criteria, cross-referencing related documents, and translation) powered by desktop subscription or agent runs. | Implemented: runs on the requester's own machine (`docassist` run, read-only) | `hub:runs.db.test.ts`, `hub:mcp-run.db.test.ts`, `web:doc-editor.spec.ts` |
 
 ### 3.16 Skills repository synchronization (SKILL)
 

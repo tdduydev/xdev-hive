@@ -13,6 +13,7 @@ import {
   pgPolicy,
   pgRole,
   pgSchema,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -430,5 +431,147 @@ export const reviewGateRuns = hive
       // hive.review_overdue_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức có gate quá hạn để job nhắc.
       pgPolicy("review_gate_runs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
+  )
+  .enableRLS();
+
+// ---- Trình soạn tài liệu ----------------------------------------------------------------------------------------
+// Khoá theo key tài liệu (không theo docs.id) vì tài liệu mới chỉ có dòng docs khi bản đầu tiên được duyệt. Phạm vi
+// suy từ key lúc tạo, giống docs.
+
+/** Bản nháp chung của cả đội cho một tài liệu; `revision` để lưu lạc quan khi nhiều người cùng sửa. */
+export const docDrafts = hive
+  .table(
+    "doc_drafts",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ...scopeColumns(),
+      key: text("key").notNull(),
+      title: text("title").notNull(),
+      content: text("content").notNull(),
+      baseVersion: integer("base_version").notNull(),
+      revision: integer("revision").notNull().default(1),
+      ...updatedByColumns(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("doc_drafts_org_key").on(t.orgId, t.key),
+      scopeCheck("doc_drafts"),
+      authorCheck("doc_drafts_updated_by", "updated_by"),
+      orgScoped("doc_drafts"),
+    ],
+  )
+  .enableRLS();
+
+/** Đề xuất sửa một đoạn của bản nháp, của người (chế độ Đề xuất) hoặc agent (MCP doc_suggest, trợ lý AI). */
+export const docSuggestions = hive
+  .table(
+    "doc_suggestions",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ...scopeColumns(),
+      key: text("key").notNull(),
+      before: text("before").notNull(),
+      after: text("after").notNull(),
+      reason: text("reason"),
+      ...authorColumns(),
+      status: text("status").notNull().default("pending"),
+      decidedBy: text("decided_by"),
+      decidedAt: timestamp("decided_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      check("doc_suggestions_status", sql`status in ('pending', 'accepted', 'rejected')`),
+      scopeCheck("doc_suggestions"),
+      authorCheck("doc_suggestions_author", "author"),
+      index("doc_suggestions_doc").on(t.orgId, t.key, t.status, t.createdAt),
+      orgScoped("doc_suggestions"),
+    ],
+  )
+  .enableRLS();
+
+/** Luồng bình luận, neo vào một đoạn trích của tài liệu (hoặc chung cả tài liệu khi quote null). */
+export const docThreads = hive
+  .table(
+    "doc_threads",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ...scopeColumns(),
+      key: text("key").notNull(),
+      quote: text("quote"),
+      resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+      resolvedByUserId: text("resolved_by_user_id"),
+      resolvedByRunId: uuid("resolved_by_run_id"),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      scopeCheck("doc_threads"),
+      index("doc_threads_doc").on(t.orgId, t.key, t.createdAt),
+      orgScoped("doc_threads"),
+    ],
+  )
+  .enableRLS();
+
+export const docComments = hive
+  .table(
+    "doc_comments",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      threadId: uuid("thread_id").notNull(),
+      body: text("body").notNull(),
+      ...authorColumns(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({ columns: [t.threadId], foreignColumns: [docThreads.id] }).onDelete("cascade"),
+      authorCheck("doc_comments_author", "author"),
+      index("doc_comments_thread").on(t.threadId, t.createdAt),
+      orgScoped("doc_comments"),
+    ],
+  )
+  .enableRLS();
+
+/** Bản chụp có tên của bản nháp; bản gửi duyệt là bản chụp gắn với đề xuất sửa tài liệu nó tạo ra. */
+export const docSnapshots = hive
+  .table(
+    "doc_snapshots",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ...scopeColumns(),
+      key: text("key").notNull(),
+      number: integer("number").notNull(),
+      name: text("name").notNull(),
+      title: text("title").notNull(),
+      content: text("content").notNull(),
+      baseVersion: integer("base_version").notNull(),
+      proposalId: uuid("proposal_id"),
+      note: text("note"),
+      ...authorColumns(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("doc_snapshots_number").on(t.orgId, t.key, t.number),
+      foreignKey({ columns: [t.proposalId], foreignColumns: [proposals.id] }).onDelete("set null"),
+      scopeCheck("doc_snapshots"),
+      authorCheck("doc_snapshots_author", "author"),
+      orgScoped("doc_snapshots"),
+    ],
+  )
+  .enableRLS();
+
+/** Ai đang mở trình soạn: cập nhật mỗi lần trình soạn hỏi trạng thái, coi là rời đi sau một phút im lặng. */
+export const docPresence = hive
+  .table(
+    "doc_presence",
+    {
+      orgId: uuid("org_id").notNull(),
+      key: text("key").notNull(),
+      userId: text("user_id").notNull(),
+      seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+      editedAt: timestamp("edited_at", { withTimezone: true }),
+    },
+    (t) => [primaryKey({ columns: [t.orgId, t.key, t.userId] }), orgScoped("doc_presence")],
   )
   .enableRLS();

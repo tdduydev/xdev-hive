@@ -29,7 +29,7 @@ import { createAuth } from "./modules/identity/index.ts";
 import { saveDoc } from "./modules/knowledge/docs.ts";
 import { proposeWithReview } from "./modules/knowledge/reviews.ts";
 import { createChannel } from "./modules/notify/index.ts";
-import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
+import { createPool, parseMasterKey, type Tx, withTenant } from "./modules/platform/index.ts";
 import {
   createRunsEngine,
   createRunTokenVerifier,
@@ -1349,5 +1349,83 @@ describe("run kiểm tài liệu (gate AI của quy trình duyệt)", () => {
     ).rows[0];
     expect(gate).toMatchObject({ status: "passed", score: 8, run_id: run.id });
     await Promise.all([old.close(), w.close()]);
+  });
+});
+
+describe("run trợ lý tài liệu (DOC-05)", () => {
+  it("chạy trên máy của chính người nhờ, chỉ máy khai docassist; xong thì có tóm tắt và số đề xuất", async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    const projectKey = (await admin.query("select key from hive.projects where id = $1", [projectId])).rows[0]
+      .key as string;
+    const key = `project/${projectKey}/prd-assist`;
+    const me = org.user("tadmin");
+    const as = <T>(fn: (tx: Tx) => Promise<T>) => withTenant(pool, { userId: me, orgId: org.orgId }, fn);
+    await as((tx) =>
+      saveDoc(
+        tx,
+        { kind: "user", userId: me },
+        { key, title: "PRD", content: "# PRD\n\n- R-1: Hoàn tiền\n", baseVersion: 0 },
+      ),
+    );
+    const assist = engine.docAssist;
+    // Máy của người khác trong đội, và máy của mình nhưng worker cũ: đều không chạy được.
+    const others = await seedMachine(`da-other-${tag}`);
+    await admin.query("update hive.machines set registered_by = $2, capabilities = '{docassist}' where id = $1", [
+      others.id,
+      org.user("tmember"),
+    ]);
+    const old = await seedMachine(`da-old-${tag}`);
+    await admin.query("update hive.machines set registered_by = $2 where id = $1", [old.id, me]);
+    const wOther = await FakeWorker.connect({ ...others, capabilities: ["docassist"] });
+    const wOld = await FakeWorker.connect(old);
+    await until(async () => (await as((tx) => assist.targets(tx, me))).some((t) => t.online));
+    expect(await as((tx) => assist.targets(tx, me))).toEqual([
+      expect.objectContaining({ machineId: old.id, online: true, ready: false }),
+    ]);
+    await expect(as((tx) => assist.start(tx, me, { key, action: "acceptance", cli: "claude" }))).rejects.toMatchObject({
+      code: "ASSIST_NO_MACHINE",
+    });
+
+    const mine = await seedMachine(`da-mine-${tag}`);
+    await admin.query("update hive.machines set registered_by = $2 where id = $1", [mine.id, me]);
+    const w = await FakeWorker.connect({ ...mine, capabilities: ["docassist"] });
+    await until(async () => (await as((tx) => assist.targets(tx, me))).some((t) => t.ready && t.online));
+    const { assist: started, afterCommit } = await as((tx) =>
+      assist.start(tx, me, { key, action: "acceptance", cli: "claude", prompt: "Viết theo Given/When/Then" }),
+    );
+    afterCommit();
+    const offer = await w.next("job_offer", (o) => o.runId === started.runId);
+    expect(offer.spec).toMatchObject({ kind: "docassist", cli: "claude", taskId: null });
+    expect(String(offer.spec.prompt)).toContain("Soạn tiêu chí chấp nhận");
+    expect(String(offer.spec.prompt)).toContain("Given/When/Then");
+    expect(String(offer.spec.prompt)).toContain("R-1: Hoàn tiền");
+    expect(wOther.has("job_offer")).toBe(false);
+    expect(wOld.has("job_offer")).toBe(false);
+    w.send({ type: "job_accept", runId: started.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === started.runId);
+    // Agent gọi doc_suggest và doc_assist_submit (tool MCP có test riêng): ghi như tool ghi.
+    await admin.query(
+      `insert into hive.doc_suggestions (org_id, team_id, project_id, key, before, after, author_run_id)
+       values ($1, $2, $3, $4, '', '- Given đơn trong 7 ngày', $5)`,
+      [org.orgId, org.teamId, projectId, key, started.runId],
+    );
+    await admin.query(
+      `insert into hive.run_events (org_id, run_id, attempt, seq, type, data) values ($1, $2, 1, null, 'docassist_result', $3)`,
+      [org.orgId, started.runId, JSON.stringify({ summary: "Thêm tiêu chí cho R-1" })],
+    );
+    w.sendRun({ type: "run_result", runId: started.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(started.runId)).state === "succeeded", 15_000);
+    expect(await as((tx) => assist.list(tx, me, key))).toEqual([
+      expect.objectContaining({
+        runId: started.runId,
+        action: "acceptance",
+        machine: mine.name,
+        state: "succeeded",
+        prompt: "Viết theo Given/When/Then",
+        summary: "Thêm tiêu chí cho R-1",
+        suggestions: 1,
+        comments: 0,
+      }),
+    ]);
   });
 });

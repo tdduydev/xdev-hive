@@ -19,6 +19,7 @@ export {
   listOnlineMachines,
   machineIsPaused,
   machineNames,
+  machinesOfUser,
   pauseMachine,
   registerFleetOfflineWorker,
   resumeMachine,
