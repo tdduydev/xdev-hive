@@ -11,6 +11,7 @@ import { RolesPage } from "@/pages/admin/roles-page.tsx";
 import { CostsPage } from "@/pages/costs-page.tsx";
 import { HomePage } from "@/pages/home-page.tsx";
 import { InvitePage } from "@/pages/invite-page.tsx";
+import { DocEditorPage } from "@/pages/knowledge/doc-editor-page.tsx";
 import { DocsPage } from "@/pages/knowledge/docs-page.tsx";
 import { MemoryPage } from "@/pages/knowledge/memory-page.tsx";
 import { ProposalsPage } from "@/pages/knowledge/proposals-page.tsx";
@@ -238,6 +239,7 @@ const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin
 /** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
 const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs/$key/edit", component: DocEditorPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),

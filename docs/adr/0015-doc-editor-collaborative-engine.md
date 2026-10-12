@@ -45,6 +45,14 @@ and metadata directly in PostgreSQL:
 - Bad: Two human users concurrently editing the same document draft in direct edit mode require optimistic locking
   notifications instead of real-time collaborative cursor merging.
 
+## Implementation note (2026-10-12)
+
+The first version (DOC-01 to DOC-05) keeps the storage and review model above but stores Markdown only: the editor is
+a block editor over Markdown in `apps/web` (no Tiptap yet, no `content_json`), so agents and the review workflow read
+the same text. Drafts, suggestions, comment threads, snapshots and presence live in `doc_*` tables keyed by doc key;
+submitting a draft creates a doc proposal that enters the matching review workflow. Presence and new comments use
+polling rather than SSE. AI assistance is a read-only `docassist` run pinned to the requester's own machine.
+
 ## Alternatives considered
 
 - Standalone WebSocket collaboration server (Yjs/Hocuspocus): Rejected because it adds operational overhead, memory state,
