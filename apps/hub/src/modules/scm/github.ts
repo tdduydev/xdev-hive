@@ -631,7 +631,7 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
           pull_number: number,
         }),
       );
-      if (!pr || pr.state !== "open") return;
+      if (pr?.state !== "open") return;
       await request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
         owner: ref.owner,
         repo: ref.name,
