@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-claude-context"
+description = "Enables the claude_context command without any pre-configured scope."
+commands.allow = ["claude_context"]
+
+[[permission]]
+identifier = "deny-claude-context"
+description = "Denies the claude_context command without any pre-configured scope."
+commands.deny = ["claude_context"]

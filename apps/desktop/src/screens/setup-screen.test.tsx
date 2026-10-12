@@ -125,7 +125,7 @@ describe("SetupScreen", () => {
     await user.click(screen.getByRole("button", { name: "Kiểm tra" }));
     await screen.findByRole("img", { name: /mục bắt buộc/ });
     expect(calls.at(-1)).toEqual({ command: "scan_environment", args: { folder: "/tmp/du-an" } });
-    expect(localStorage.getItem("hive.setup.folder")).toBe("/tmp/du-an");
+    expect(localStorage.getItem("hive.folder")).toBe("/tmp/du-an");
   });
 
   it("thư mục sai: hiện lỗi của Rust", async () => {
