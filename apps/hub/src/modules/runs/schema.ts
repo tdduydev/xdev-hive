@@ -106,6 +106,11 @@ export const runs = hive
       /** Máy đã từ chối trong lần thử hiện tại; xoá khi sang lần thử mới. */
       rejectedBy: uuid("rejected_by").array().notNull().default(sql`'{}'::uuid[]`),
       createdBy: text("created_by").notNull(),
+      /**
+       * Người mà máy cá nhân của họ được chạy run này (ADR 0017). null là run của đội (Leader, gate AI, webhook): chỉ máy
+       * dùng chung hoặc runner host nhận.
+       */
+      ownerUserId: text("owner_user_id"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
       startedAt: timestamp("started_at", { withTimezone: true }),
       finishedAt: timestamp("finished_at", { withTimezone: true }),

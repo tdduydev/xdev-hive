@@ -44,6 +44,7 @@ import { notify } from "../notify/index.ts";
 import {
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   type Jobs,
   type MasterKey,
   NotFoundError,
@@ -329,6 +330,19 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
 }
 
 /**
+ * Máy cá nhân chỉ chạy run của người đã đăng ký máy, vì CLI trên máy đăng nhập bằng tài khoản của họ; run của đội
+ * (ownerUserId null: Leader, gate AI, webhook) chỉ chạy trên máy dùng chung hoặc runner host (ADR 0017).
+ */
+export function usableBy(
+  m: { shared: boolean; registeredBy: string | null },
+  run: Pick<RunRow, "ownerUserId">,
+  sandboxed: boolean,
+): boolean {
+  if (sandboxed || m.shared) return true;
+  return run.ownerUserId !== null && m.registeredBy === run.ownerUserId;
+}
+
+/**
  * Run chạy trong sandbox: dự án bật sandbox (mọi loại run), hoặc tổ chức bắt buộc sandbox cho run code (Chính sách
  * agent). Run chỉ đọc (plan, review, leader) không sửa code nên theo cấu hình của dự án.
  */
@@ -452,6 +466,7 @@ export function createRunsEngine(deps: RunsDeps) {
     const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
     const candidates = online.filter(
       (m) =>
+        usableBy(m, run, sandboxed) &&
         machineSlots(policy, m.capacity) > 0 &&
         connected(m.id) &&
         !run.rejectedBy.includes(m.id) &&
@@ -504,7 +519,16 @@ export function createRunsEngine(deps: RunsDeps) {
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
       const machine = await pickMachine(tx, run, sandboxed, policy);
-      if (!machine) return null;
+      if (!machine) {
+        if (!sandboxed) {
+          await noteOnce(tx, run, "waiting_machine", {
+            message: run.ownerUserId
+              ? "Chờ máy của người giao việc hoặc máy dùng chung của đội online; máy cá nhân của người khác không chạy run này."
+              : "Run của đội chỉ chạy trên máy dùng chung; đội chưa có máy dùng chung nào sẵn sàng. Quản trị đội bật Dùng chung cho một máy ở trang Máy.",
+          });
+        }
+        return null;
+      }
       // Run plan làm cho run code cha: chỉ dẫn đã gửi cho run cha (vd. bình luận nhắc bot) cũng là yêu cầu của kế hoạch.
       const instructions = [
         ...(run.kind === "plan" && run.parentRunId ? await instructionsOf(tx, run.parentRunId) : []),
@@ -1226,6 +1250,7 @@ export function createRunsEngine(deps: RunsDeps) {
         policySnapshot: [],
         timeoutSec: parent.timeoutSec,
         createdBy: parent.createdBy,
+        ownerUserId: parent.ownerUserId,
       })
       .returning();
     if (!row) throw new Error("Không ghi được run review.");
@@ -1656,13 +1681,15 @@ export function createRunsEngine(deps: RunsDeps) {
     const project = await loadProject(tx, task.projectId);
     if (input.machineId) {
       const m = await findMachine(tx, input.machineId);
-      if (
-        !m ||
-        m.teamId !== task.teamId ||
-        m.revoked ||
-        m.kind !== (project && sandboxedRun(project, await loadPolicy(tx), "code") ? "host" : "worker")
-      ) {
+      const sandboxed = !!project && sandboxedRun(project, await loadPolicy(tx), "code");
+      if (!m || m.teamId !== task.teamId || m.revoked || m.kind !== (sandboxed ? "host" : "worker")) {
         throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy của đội sở hữu dự án.");
+      }
+      if (!usableBy(m, { ownerUserId: userId }, sandboxed)) {
+        throw new ForbiddenError(
+          "MACHINE_NOT_YOURS",
+          "Máy này là máy cá nhân của người khác; chọn máy của bạn hoặc máy dùng chung của đội.",
+        );
       }
     }
     const { row, afterCommit } = await queueRun(tx, task, project, {
@@ -1670,6 +1697,7 @@ export function createRunsEngine(deps: RunsDeps) {
       model: input.model ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
+      ownerUserId: userId,
     });
     return { run: toRun(row), afterCommit };
   }
@@ -1807,6 +1835,8 @@ export function createRunsEngine(deps: RunsDeps) {
       createdBy: string;
       /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
       actorUserId?: string | null;
+      /** Người được dùng máy cá nhân của mình cho run (ADR 0017); bỏ trống là run của đội, chỉ máy dùng chung nhận. */
+      ownerUserId?: string | null;
       instructions?: string[];
       /** Lập kế hoạch trước; bỏ trống thì theo cờ `features.planMode` của dự án. */
       plan?: boolean;
@@ -1843,6 +1873,7 @@ export function createRunsEngine(deps: RunsDeps) {
           branch: `ai/${task.key}`,
           policySnapshot: policy,
           createdBy: opts.createdBy,
+          ownerUserId: opts.ownerUserId ?? null,
         })
         .returning();
     } catch (e) {
@@ -1897,6 +1928,7 @@ export function createRunsEngine(deps: RunsDeps) {
         policySnapshot: [],
         timeoutSec: parent.timeoutSec,
         createdBy: parent.createdBy,
+        ownerUserId: parent.ownerUserId,
       })
       .returning();
     if (!row) throw new Error("Không ghi được run lập kế hoạch.");

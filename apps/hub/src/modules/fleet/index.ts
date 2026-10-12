@@ -23,6 +23,7 @@ export {
   pauseMachine,
   registerFleetOfflineWorker,
   resumeMachine,
+  setMachineShared,
 } from "./machines.ts";
 export { installCommands, WORKER_DOWNLOADS, WorkerReleaseCache } from "./releases.ts";
 export { type FleetDeps, fleetRouter } from "./router.ts";

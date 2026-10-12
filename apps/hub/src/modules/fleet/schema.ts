@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   foreignKey,
   index,
   integer,
@@ -56,6 +57,11 @@ export const machines = hive
       offlineNotifiedAt: timestamp("offline_notified_at", { withTimezone: true }),
       /** Người tạo mã đăng ký mà máy đã dùng. */
       registeredBy: text("registered_by"),
+      /**
+       * Máy dùng chung của đội (quản trị đội bật): nhận run của đội và của mọi thành viên. Mặc định là máy cá nhân, chỉ
+       * nhận run của người đã đăng ký máy, vì CLI trên máy đăng nhập bằng tài khoản (gói thuê bao) của chính họ.
+       */
+      shared: boolean("shared").notNull().default(false),
       revokedAt: timestamp("revoked_at", { withTimezone: true }),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     },
