@@ -1,228 +1,177 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link, type LinkProps } from "@tanstack/react-router";
-import {
-  ArrowRightIcon,
-  FolderPlusIcon,
-  KanbanSquareIcon,
-  type LucideIcon,
-  MailIcon,
-  MessagesSquareIcon,
-  MonitorIcon,
-  PlayIcon,
-  UserPlusIcon,
-} from "lucide-react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card.tsx";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { LoadingState } from "../components/ui/query-state.tsx";
-import { StatTile } from "../components/ui/stat-tile.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { ORG_ROLE_LABEL } from "../lib/roles.ts";
-import { type BoardRow, boardRows, boardStats } from "../lib/task-board.ts";
-import { useNow } from "../lib/use-now.ts";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { Button } from "../components/ui/button.tsx";
+import { Card } from "../components/ui/card.tsx";
+import { LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
+import { type Dict, useT } from "../lib/i18n.ts";
+import { boardRows } from "../lib/task-board.ts";
 import { useMe } from "../shell/me-context.ts";
 import { type CurrentOrg, useOrgs } from "../shell/org-context.ts";
 import { PageBody, PageHeader } from "../shell/page-header.tsx";
 
+const text: Dict<{
+  home: string;
+  hello: string;
+  noOrg: string;
+  invite: string;
+  joined: string;
+  owner: string;
+  admin: string;
+  member: string;
+  board: string;
+  teams: string;
+  members: string;
+  running: string;
+  waiting: string;
+  online: string;
+  stats: string;
+  unavailable: string;
+}> = {
+  vi: {
+    home: "Trang chủ",
+    hello: "Chào",
+    noOrg: "Chưa thuộc tổ chức nào",
+    invite: "Nhờ quản trị tổ chức gửi lời mời tới",
+    joined: ". Khi đã vào tổ chức, dự án và việc của đội sẽ hiện ở đây.",
+    owner: "Bạn là chủ sở hữu của tổ chức này. Việc của các dự án nằm ở bảng việc.",
+    admin: "Bạn là quản trị của tổ chức này. Việc của các dự án nằm ở bảng việc.",
+    member: "Bạn là thành viên của tổ chức này. Việc của các dự án nằm ở bảng việc.",
+    board: "Bảng việc",
+    teams: "Đội và hệ thống",
+    members: "Thành viên",
+    running: "run đang chạy",
+    waiting: "việc chờ bạn",
+    online: "máy trực tuyến",
+    stats: "Số liệu",
+    unavailable: "Không tải được số máy trực tuyến.",
+  },
+  en: {
+    home: "Home",
+    hello: "Hi,",
+    noOrg: "Not in an organization yet",
+    invite: "Ask an organization admin to send an invitation to",
+    joined: ". Once you join, your team’s projects and tasks show up here.",
+    owner: "You are an owner of this organization. Project tasks live on the board.",
+    admin: "You are an admin of this organization. Project tasks live on the board.",
+    member: "You are a member of this organization. Project tasks live on the board.",
+    board: "Board",
+    teams: "Teams & systems",
+    members: "Members",
+    running: "runs in progress",
+    waiting: "tasks waiting on you",
+    online: "machines online",
+    stats: "Statistics",
+    unavailable: "Could not load the online machine count.",
+  },
+};
 const REFRESH_MS = 30_000;
 
-/** Trang chủ: số liệu và việc cần mình xử lý trong tổ chức đang chọn, hoặc hướng dẫn khi chưa thuộc tổ chức nào. */
 export function HomePage() {
+  const t = useT(text);
   const me = useMe();
   const { current } = useOrgs();
   return (
     <>
-      <PageHeader
-        crumb={current ? `${current.org.name} · ${ORG_ROLE_LABEL[current.org.role]}` : undefined}
-        title={`Chào ${me.name}`}
-      />
+      <PageHeader crumb={current?.org.name ?? t.home} title={t.home} />
       <PageBody>
-        {current ? (
-          <OrgOverview current={current} />
-        ) : (
-          <Empty className="border border-dashed border-border">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <MailIcon aria-hidden="true" />
-              </EmptyMedia>
-              <EmptyTitle role="heading" aria-level={2}>
-                Chưa thuộc tổ chức nào
-              </EmptyTitle>
-              <EmptyDescription>
-                Nhờ quản trị tổ chức gửi lời mời tới <span className="font-medium text-foreground">{me.email}</span>.
-                Khi đã vào tổ chức, dự án và việc của đội sẽ hiện ở đây.
-              </EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        )}
+        <Card className="mx-auto mt-6 grid w-full max-w-xl gap-5 p-5 sm:mt-10 sm:p-8">
+          <h2 className="font-mono text-sm font-normal text-muted-foreground">
+            {t.hello} {me.name}
+          </h2>
+          {current ? (
+            <OrgOverview current={current} />
+          ) : (
+            <>
+              <h2 className="font-heading text-2xl font-semibold">{t.noOrg}</h2>
+              <p className="text-muted-foreground">
+                {t.invite} <strong className="break-all font-mono font-medium text-foreground">{me.email}</strong>
+                {t.joined}
+              </p>
+            </>
+          )}
+        </Card>
       </PageBody>
     </>
   );
 }
 
 function OrgOverview({ current }: { current: CurrentOrg }) {
-  const { api } = current;
+  const t = useT(text);
+  const { api, org } = current;
   const tasks = useQuery(api.tasks.list.queryOptions({ input: {}, refetchInterval: REFRESH_MS }));
   const runs = useQuery(api.runs.latest.queryOptions({ input: {}, refetchInterval: REFRESH_MS }));
-  const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
-  const now = useNow(REFRESH_MS);
-
-  if (tasks.isPending || runs.isPending) return <LoadingState />;
-  if (tasks.isError || runs.isError) {
-    return <Alert variant="destructive">{apiErrorMessage(tasks.error ?? runs.error)}</Alert>;
-  }
-  const rows = boardRows(tasks.data, runs.data);
-  const attention = rows.filter((r) => r.task.status === "awaiting_plan" || r.badge.group === "review").slice(0, 8);
-  const noProjects = projects.isSuccess && projects.data.length === 0;
-
+  const teams = useQuery(api.teams.list.queryOptions());
+  const machines = useQueries({
+    queries: (teams.data ?? []).map((team) =>
+      api.machines.list.queryOptions({ input: { teamId: team.id }, refetchInterval: REFRESH_MS }),
+    ),
+  });
+  const machineLoading = teams.isPending || machines.some((query) => query.isPending);
+  const machineError = teams.isError || machines.some((query) => query.isError);
+  const online = new Set(
+    machines
+      .flatMap((query) => query.data ?? [])
+      .filter((machine) => machine.status === "online")
+      .map((machine) => machine.id),
+  ).size;
+  const rows = boardRows(tasks.data ?? [], runs.data ?? []);
+  // runs.latest chỉ trả run code gần nhất; số liệu này không đại diện toàn bộ lịch sử chạy.
+  const active =
+    runs.data?.filter((run) => ["leased", "preparing", "running", "verifying", "cancelling"].includes(run.state))
+      .length ?? 0;
+  const waiting = rows.filter((row) => row.task.status === "awaiting_plan" || row.badge.group === "review").length;
   return (
     <>
-      <section aria-label="Số liệu" className="grid grid-cols-2 gap-3 app:grid-cols-4">
-        {boardStats(rows, now).map((s) => (
-          <StatTile key={s.label} label={s.label} value={s.value} hint={s.hint} />
-        ))}
-      </section>
-      <div className="grid gap-4 app:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        {noProjects ? <GettingStarted /> : <Attention rows={attention} />}
-        <QuickLinks />
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary font-mono text-xl font-semibold text-primary-foreground"
+        >
+          {org.name.slice(0, 1)}
+        </span>
+        <h2 className="min-w-0 break-words font-heading text-2xl font-semibold">{org.name}</h2>
       </div>
+      <p className="text-muted-foreground">{t[org.role]}</p>
+      {tasks.isPending || runs.isPending ? (
+        <LoadingState />
+      ) : tasks.isError || runs.isError ? (
+        <LoadFailure
+          error={tasks.error ?? runs.error}
+          retry={() => {
+            void tasks.refetch();
+            void runs.refetch();
+          }}
+        />
+      ) : (
+        <section aria-label={t.stats} className="grid grid-cols-3 gap-2.5">
+          {[
+            { label: t.running, value: String(active) },
+            { label: t.waiting, value: String(waiting) },
+            { label: t.online, value: machineError ? "—" : machineLoading ? "…" : String(online) },
+          ].map((stat) => (
+            <div key={stat.label} className="grid gap-0.5 rounded-lg border border-border p-3">
+              <span className="font-mono text-2xl font-semibold tabular-nums">{stat.value}</span>
+              <span className="text-xs text-muted-foreground">{stat.label}</span>
+            </div>
+          ))}
+        </section>
+      )}
+      {machineError && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {t.unavailable}
+        </p>
+      )}
+      <nav aria-label={t.home} className="flex flex-wrap gap-2">
+        <Button nativeButton={false} role="link" render={<Link to="/tasks" />}>
+          {t.board}
+        </Button>
+        <Button variant="outline" nativeButton={false} role="link" render={<Link to="/admin/teams" />}>
+          {t.teams}
+        </Button>
+        <Button variant="outline" nativeButton={false} role="link" render={<Link to="/admin/members" />}>
+          {t.members}
+        </Button>
+      </nav>
     </>
-  );
-}
-
-function Attention({ rows }: { rows: BoardRow[] }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Cần bạn xử lý
-        </CardTitle>
-        <CardDescription>Kế hoạch chờ duyệt và việc đã xong phần agent, chờ review hoặc merge.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {rows.length === 0 ? (
-          <p className="text-muted-foreground">Không có việc nào đang chờ bạn.</p>
-        ) : (
-          <ul className="grid divide-y divide-border">
-            {rows.map(({ task, run, badge }) => (
-              <li key={task.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 first:pt-0 last:pb-0">
-                <span className="font-mono text-xs text-muted-foreground">{task.key}</span>
-                <span className="min-w-0 flex-1 truncate font-medium text-foreground">{task.title}</span>
-                <Pill tone={badge.tone} dot>
-                  {badge.label}
-                </Pill>
-                {task.status === "awaiting_plan" ? (
-                  <Link
-                    to="/tasks/$key/plan"
-                    params={{ key: task.key }}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    Duyệt kế hoạch
-                  </Link>
-                ) : run ? (
-                  <Link to="/runs/$id" params={{ id: run.id }} className="text-xs text-primary hover:underline">
-                    Xem run
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-const STEPS: { icon: LucideIcon; title: string; text: string; to: NonNullable<LinkProps["to"]> }[] = [
-  {
-    icon: FolderPlusIcon,
-    title: "Tạo dự án",
-    text: "Nối repo GitHub hoặc GitLab; hub tạo nhánh bảo vệ, webhook và file hướng dẫn cho agent.",
-    to: "/projects",
-  },
-  {
-    icon: MonitorIcon,
-    title: "Thêm máy",
-    text: "Cài worker bằng một lệnh trên máy đã đăng nhập Claude Code, Codex hoặc Gemini CLI.",
-    to: "/machines" as NonNullable<LinkProps["to"]>,
-  },
-  {
-    icon: UserPlusIcon,
-    title: "Mời thành viên",
-    text: "Mời người vào tổ chức và đội để cùng giao việc, review và merge.",
-    to: "/admin/members",
-  },
-];
-
-function GettingStarted() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Bắt đầu
-        </CardTitle>
-        <CardDescription>Tổ chức chưa có dự án. Ba bước để giao việc đầu tiên cho agent.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ol className="grid gap-3">
-          {STEPS.map(({ icon: IconComponent, title, text, to }, index) => (
-            <li key={title}>
-              <Link
-                to={to}
-                className="flex items-start gap-3 rounded-lg p-2.5 ring-1 ring-foreground/10 transition-colors hover:bg-muted"
-              >
-                <span className="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground">
-                  <IconComponent className="size-4" aria-hidden="true" />
-                </span>
-                <span className="grid gap-0.5">
-                  <span className="font-medium text-foreground">
-                    {index + 1}. {title}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{text}</span>
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ol>
-      </CardContent>
-    </Card>
-  );
-}
-
-const LINKS: { icon: LucideIcon; label: string; to: NonNullable<LinkProps["to"]> }[] = [
-  { icon: KanbanSquareIcon, label: "Bảng việc", to: "/tasks" },
-  { icon: PlayIcon, label: "Lượt chạy", to: "/runs" },
-  { icon: MessagesSquareIcon, label: "Leader", to: "/leader" },
-  { icon: MonitorIcon, label: "Máy", to: "/machines" as NonNullable<LinkProps["to"]> },
-];
-
-function QuickLinks() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Đi nhanh
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <nav aria-label="Đi nhanh" className="grid gap-1">
-          {LINKS.map(({ icon: IconComponent, label, to }) => (
-            <Link
-              key={label}
-              to={to}
-              className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
-            >
-              <IconComponent className="size-4 text-muted-foreground" aria-hidden="true" />
-              {label}
-              <ArrowRightIcon
-                className="ml-auto size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-                aria-hidden="true"
-              />
-            </Link>
-          ))}
-        </nav>
-      </CardContent>
-    </Card>
   );
 }
