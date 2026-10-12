@@ -1,6 +1,6 @@
 # 0014. Store skills in Git with a PostgreSQL read cache
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-12
 - Deciders: maintainers
 
@@ -33,7 +33,8 @@ read-optimized cache in PostgreSQL:
    - A manual "Sync now" API triggers an immediate bidirectional reconciliation.
 3. **Write Path**:
    - Direct edits on the hub create Git commits to the default branch (`main`) attributed to the editing user.
-   - Skill change proposals create Git pull requests; approving a proposal on the hub merges the pull request.
+   - Skill change proposals open a Git pull request for review in Git; the decision stays on the hub, which then
+     closes the pull request. An approved proposal reaches the default branch through the regular sync commit.
 4. **Read Path**:
    - Agent MCP calls and web catalog listings query the PostgreSQL cache using `withTenant()`, benefiting from
      indexes and database RLS.

@@ -124,6 +124,16 @@ export function createMemoryProvider(
     return pr;
   };
 
+  const headOf = (repo: MemoryRepo, branch: string): string | null => {
+    if (!repo.branches.has(branch)) return null;
+    return repo.commits.filter((c) => c.branch === branch).at(-1)?.sha ?? `${branch}@init`;
+  };
+  const filesAt = (repo: MemoryRepo, sha: string): Map<string, string> => {
+    for (const branch of repo.branches.keys())
+      if (headOf(repo, branch) === sha) return repo.branches.get(branch) as Map<string, string>;
+    throw new GitProviderError("not_found", `${host}: không có commit ${sha}`);
+  };
+
   const track = <A extends unknown[], R>(method: Method, fn: (...args: A) => R) =>
     (async (...args: A) => {
       calls.push({ method, args });
@@ -276,6 +286,18 @@ export function createMemoryProvider(
 
     removeWebhook: track("removeWebhook", (ref: RepoRef, id: string) => {
       repos.get(key(ref))?.hooks.delete(id);
+    }),
+
+    // Repo giả chỉ giữ nội dung mới nhất của mỗi nhánh: sha đọc được là commit cuối của nhánh đó.
+    branchHead: track("branchHead", (ref: RepoRef, branch: string) => headOf(need(ref), branch)),
+
+    listFiles: track("listFiles", (ref: RepoRef, sha: string) => [...filesAt(need(ref), sha).keys()].sort()),
+
+    readFile: track("readFile", (ref: RepoRef, path: string, sha: string) => filesAt(need(ref), sha).get(path) ?? null),
+
+    closePR: track("closePR", (ref: RepoRef, number: number) => {
+      const pr = need(ref).pulls.find((p) => p.number === number);
+      if (pr?.state === "open") pr.state = "closed";
     }),
   };
 }

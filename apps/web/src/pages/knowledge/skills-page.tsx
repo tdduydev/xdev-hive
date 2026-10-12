@@ -2,10 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import type { SkillSummary } from "@xdev-hive/contracts";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
 import { Markdown } from "@/pages/knowledge/markdown.tsx";
+import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
@@ -39,27 +40,19 @@ function SkillsScreen() {
       value: (row) => t[row.scope.level],
       cell: (row) => <ScopeBadge scope={row.scope} />,
     },
+    {
+      key: "git",
+      label: "Git",
+      value: (row) => (row.repoPath ? t.inGit : t.hubOnly),
+      cell: (row) => (row.repoPath ? <Pill tone="ok">{t.inGit}</Pill> : <Pill>{t.hubOnly}</Pill>),
+    },
     { key: "version", label: t.version, value: (row) => row.version, sortable: true },
     { key: "author", label: t.author, value: (row) => authorLabel(row.updatedBy) },
     { key: "updated", label: t.updated, value: (row) => row.updatedAt, sortable: true },
   ];
   return (
     <KnowledgeLayout title="Skills" lead={t.skillsLead}>
-      <DetailCard>
-        <section aria-label={t.skillsRepoAria} className="flex min-w-0 flex-wrap items-center gap-3">
-          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
-            <p className="text-xs text-muted-foreground">{t.skillsRepoLabel}</p>
-            <p className="font-medium">{t.repoNone}</p>
-            <p className="mt-1 text-sm text-warning">{t.repoUnavailable}</p>
-          </div>
-          <Button disabled size="sm">
-            {t.skillsSyncNow}
-          </Button>
-          <Button disabled variant="outline" size="sm">
-            {t.skillsRepoSettings}
-          </Button>
-        </section>
-      </DetailCard>
+      <SkillRepoCard />
       <QueryState query={list} />
       {list.data && (
         <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
@@ -92,7 +85,11 @@ function SkillDetail({ skill }: { skill: SkillSummary }) {
       <p className="font-mono text-xs text-muted-foreground">SKILL.md · v{skill.version}</p>
       <QueryState query={detail} />
       {detail.data && <Markdown content={detail.data.content} />}
-      {!detail.isPending && <p className="text-xs text-warning">{t.repoUnavailable}</p>}
+      {detail.data && (
+        <p className="text-xs text-muted-foreground">
+          {skill.repoPath ? <span className="font-mono">{skill.repoPath}</span> : t.hubOnlyHint}
+        </p>
+      )}
     </DetailCard>
   );
 }

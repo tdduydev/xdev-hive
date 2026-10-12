@@ -343,5 +343,25 @@ export function createLocalProvider(kind: GitProviderKind, opts: LocalProviderOp
     },
 
     async removeWebhook() {},
+
+    async branchHead(ref, branch) {
+      return branchSha(await need(ref), branch);
+    },
+
+    async listFiles(ref, sha) {
+      const out = await git(await need(ref), ["ls-tree", "-r", "--name-only", sha]);
+      return out ? out.split("\n") : [];
+    },
+
+    async readFile(ref, path, sha) {
+      const dir = await need(ref);
+      return git(dir, ["cat-file", "blob", `${sha}:${path}`]).catch(() => null);
+    },
+
+    async closePR(ref, number) {
+      const found = await findPR(ref, number);
+      if (!found || (found.pr.state ?? "open") !== "open") return;
+      await writeFile(found.file, `${JSON.stringify({ ...found.pr, state: "closed" }, null, 2)}\n`);
+    },
   };
 }

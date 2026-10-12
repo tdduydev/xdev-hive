@@ -623,3 +623,51 @@ describe("GitHub lỗi HTTP", () => {
     expect(e.retryAfterMs).toBe(5_000);
   });
 });
+
+describe("GitHub đọc cây và file (kho skill)", () => {
+  it("liệt kê file của commit, bỏ thư mục; cây bị cắt thì báo lỗi", async () => {
+    const { gh, pool } = setup();
+    pool.intercept({ path: "/repos/acme/web/git/trees/abc?recursive=1", method: "GET" }).reply(
+      200,
+      {
+        truncated: false,
+        tree: [
+          { path: "org", type: "tree" },
+          { path: "org/review/SKILL.md", type: "blob" },
+        ],
+      },
+      JSON_HEADERS,
+    );
+    expect(await gh.listFiles(ref, "abc")).toEqual(["org/review/SKILL.md"]);
+    pool
+      .intercept({ path: "/repos/acme/web/git/trees/big?recursive=1", method: "GET" })
+      .reply(200, { truncated: true, tree: [] }, JSON_HEADERS);
+    await expect(gh.listFiles(ref, "big")).rejects.toBeInstanceOf(GitProviderError);
+  });
+
+  it("đọc file base64 theo commit; không có file thì null", async () => {
+    const { gh, pool } = setup();
+    const body = "---\nname: review\n---\nĐọc kỹ diff.\n";
+    pool
+      .intercept({ path: "/repos/acme/web/contents/org/review/SKILL.md?ref=abc", method: "GET" })
+      .reply(200, { encoding: "base64", content: Buffer.from(body).toString("base64") }, JSON_HEADERS);
+    expect(await gh.readFile(ref, "org/review/SKILL.md", "abc")).toBe(body);
+    pool
+      .intercept({ path: "/repos/acme/web/contents/org/none/SKILL.md?ref=abc", method: "GET" })
+      .reply(404, { message: "Not Found" }, JSON_HEADERS);
+    expect(await gh.readFile(ref, "org/none/SKILL.md", "abc")).toBeNull();
+  });
+
+  it("đóng PR đang mở, bỏ qua PR đã đóng", async () => {
+    const { gh, pool } = setup();
+    pool
+      .intercept({ path: "/repos/acme/web/pulls/5", method: "GET" })
+      .reply(200, { number: 5, html_url: "u", state: "open", merged: false }, JSON_HEADERS);
+    pool.intercept({ path: "/repos/acme/web/pulls/5", method: "PATCH" }).reply(200, { number: 5 }, JSON_HEADERS);
+    await gh.closePR(ref, 5);
+    pool
+      .intercept({ path: "/repos/acme/web/pulls/6", method: "GET" })
+      .reply(200, { number: 6, html_url: "u", state: "closed", merged: false }, JSON_HEADERS);
+    await gh.closePR(ref, 6);
+  });
+});
