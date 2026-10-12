@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { CreateProjectButton } from "../components/create-project-dialog.tsx";
 import { Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
-import { buttonClass } from "../components/ui/button.tsx";
+import { buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
@@ -31,7 +31,7 @@ const REFRESH_MS = 30_000;
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -88,11 +88,11 @@ export function ProjectsPage() {
 function EmptyProjects({ canCreate }: { canCreate: boolean }) {
   return (
     <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-sel text-sel-fg">
+      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
         <Icon name="folder" className="size-5" />
       </span>
-      <h2 className="text-lg font-semibold text-ink">Chưa có dự án nào</h2>
-      <p className="max-w-md text-muted">
+      <h2 className="text-base font-semibold text-foreground">Chưa có dự án nào</h2>
+      <p className="max-w-md text-muted-foreground">
         {canCreate
           ? "Bấm “Tạo dự án” để nối một repo GitHub/GitLab có sẵn hoặc tạo repo mới cho agent làm việc."
           : "Bạn chưa ở trong đội nào có dự án. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội."}
@@ -102,7 +102,7 @@ function EmptyProjects({ canCreate }: { canCreate: boolean }) {
 }
 
 function TeamCell({ team }: { team: TeamWithCounts | undefined }) {
-  if (!team) return <span className="text-muted">—</span>;
+  if (!team) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="inline-flex items-center gap-2">
       <span
@@ -112,7 +112,7 @@ function TeamCell({ team }: { team: TeamWithCounts | undefined }) {
       >
         {teamInitials(team.name)}
       </span>
-      <span className="text-ink">{team.name}</span>
+      <span className="text-foreground">{team.name}</span>
     </span>
   );
 }
@@ -160,29 +160,29 @@ function ProjectTable({
                     <Link
                       to="/projects/$key"
                       params={{ key: p.key }}
-                      className="font-medium text-accent hover:text-accent-hover"
+                      className="font-medium text-primary hover:text-primary/90"
                     >
                       {p.name}
                     </Link>
-                    <span className="font-mono text-sm text-muted">{p.key}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{p.key}</span>
                   </span>
                 </Td>
                 <Td className="whitespace-nowrap">
                   <span className="inline-flex items-center gap-2">
-                    <Icon name={p.repo.kind} className="size-4 shrink-0 text-muted" />
+                    <Icon name={p.repo.kind} className="size-4 shrink-0 text-muted-foreground" />
                     <span className="sr-only">{SCM_LABEL[p.repo.kind]}: </span>
                     {p.repo.webUrl ? (
                       <a
                         href={p.repo.webUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-mono text-sm text-accent hover:text-accent-hover"
+                        className="font-mono text-xs text-primary hover:text-primary/90"
                       >
                         {repoPath(p)}
                         <span className="sr-only"> (mở ở tab mới)</span>
                       </a>
                     ) : (
-                      <span className="font-mono text-sm text-ink">{repoPath(p)}</span>
+                      <span className="font-mono text-xs text-foreground">{repoPath(p)}</span>
                     )}
                   </span>
                 </Td>
@@ -194,23 +194,23 @@ function ProjectTable({
                     {state.label}
                   </Pill>
                 </Td>
-                <Td className="text-right text-ink tabular-nums">{running ? (running.get(p.id) ?? 0) : "—"}</Td>
-                <Td className="text-right whitespace-nowrap text-ink tabular-nums">
+                <Td className="text-right text-foreground tabular-nums">{running ? (running.get(p.id) ?? 0) : "—"}</Td>
+                <Td className="text-right whitespace-nowrap text-foreground tabular-nums">
                   {!cost ? (
-                    <span title="Chỉ quản trị đội sở hữu xem được chi phí" className="text-muted">
+                    <span title="Chỉ quản trị đội sở hữu xem được chi phí" className="text-muted-foreground">
                       —<span className="sr-only">Chỉ quản trị đội sở hữu xem được chi phí</span>
                     </span>
                   ) : cost.data ? (
                     formatUsd(cost.data.total.costUsd)
                   ) : (
-                    <span className="text-muted">{cost.isPending ? "…" : "—"}</span>
+                    <span className="text-muted-foreground">{cost.isPending ? "…" : "—"}</span>
                   )}
                 </Td>
                 <Td className="text-right whitespace-nowrap">
                   <Link
                     to="/projects/$key/settings"
                     params={{ key: p.key }}
-                    className={buttonClass({ variant: "ghost", size: "sm" })}
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
                   >
                     <Icon name="gear" className="size-4" />
                     {canManage(p) ? "Cấu hình" : "Xem cấu hình"}

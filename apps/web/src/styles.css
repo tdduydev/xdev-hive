@@ -1,142 +1,188 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/ibm-plex-sans";
+@import "@fontsource-variable/jetbrains-mono";
 
 /*
- * Giá trị màu lấy từ docs/design-system/tokens.json; src/lib/contrast.test.ts đọc lại file đó để giá trị ở đây không lệch.
- * Tên token giữ theo mockup docs/ui (biến CSS ở đầu file mockup).
- * Bảng màu, cỡ chữ, bo góc, bóng mặc định của Tailwind bị xoá (`initial`) để class chỉ dùng được token của Hive:
- * cần màu, cỡ chữ, bo góc hay bóng mới thì thêm token ở đây, không viết giá trị tuỳ ý trong class.
- * Tên khác mockup ở chỗ trùng tiện ích Tailwind (`text-text`, `bg-bg`):
- * --bg → canvas, --text → body, --line2 → line-strong, --accent-h → accent-hover, --sel-bd → sel-line, --shadow → shadow-app.
+ * Design system v2: docs/design-system/xdev-hive/MASTER.md (UI UX Pro Max: Minimalism & Swiss, bảng màu công cụ dev,
+ * màu chính là xanh thương hiệu). Giá trị màu lấy từ docs/design-system/tokens.json; src/lib/contrast.test.ts đọc lại
+ * cả hai file để giá trị không lệch và các cặp chữ/nền vẫn đạt WCAG AA.
+ * Tên biến theo shadcn/ui để component thêm qua shadcn MCP dùng được ngay; success, warning, *-soft và brand-* là phần
+ * thêm của Hive. Font tự host (fontsource) để hub trong mạng nội bộ không phụ thuộc Google Fonts.
  */
-@theme {
-  --color-*: initial;
-  --color-white: #fff; /* chữ trên nền màu theo dữ liệu (màu đội), không phải nền accent */
-  --color-canvas: #f6f8fc;
-  --color-surface: #ffffff;
-  --color-subtle: #eef2fa;
-  --color-sunken: #f1f4fa;
-  --color-ink: #16213a;
-  --color-body: #344568;
-  --color-muted: #5a6782;
-  --color-faint: #8794ae;
-  --color-line: #d7dfec;
-  --color-line-strong: #7a8aa8;
-  --color-accent: #004cff;
-  --color-accent-hover: #003bcc;
-  --color-on-accent: #ffffff;
-  --color-sel: #e5eeff;
-  --color-sel-fg: #0036b8;
-  --color-sel-line: #9dbbff;
-  --color-focus: #1e90ff;
-  --color-ok: #0e7a49;
-  --color-ok-bg: #e4f5ec;
-  --color-warn: #935600;
-  --color-warn-bg: #fff3d9;
-  --color-bad: #c2261f;
-  --color-bad-bg: #fdebea;
-  --color-backdrop: rgb(12 23 41 / 0.45);
-  --color-brand-sky: #7bd4ff;
-  --color-brand-blue: #1e90ff;
-  --color-brand-deep: #004cff;
-  --color-brand-navy: #142745;
-  --color-brand-letter: #344568;
 
-  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+/* Tối theo class `.dark` trên <html>; index.html đặt class theo lựa chọn đã lưu hoặc theo hệ điều hành. */
+@custom-variant dark (&:is(.dark *));
 
-  /* Mockup dùng cỡ lẻ nửa pixel; dòng không ghi line-height thì kế thừa 1.55 của body như mockup. */
-  --text-*: initial;
-  --text-2xs: 11px; /* tiêu đề nhóm ở sidebar, nhãn mốc */
-  --text-xs: 12px; /* gợi ý, pill, chữ phụ */
-  --text-sm: 12.5px; /* nút nhỏ, breadcrumb, chữ mono */
-  --text-label: 13px; /* nhãn ô nhập, tên ở sidebar */
-  --text-nav: 13.5px; /* mục sidebar */
-  --text-base: 14px;
-  --text-base--line-height: 1.55;
-  --text-lg: 15px; /* tiêu đề card */
-  --text-xl: 16px; /* tên sản phẩm */
-  --text-2xl: 17px; /* tiêu đề dialog */
-  --text-3xl: 18px; /* tiêu đề trang */
-  --text-4xl: 22px; /* tiêu đề màn đăng nhập */
-  --text-4xl--line-height: 1.3;
-  --text-stat: 28px; /* con số trong ô số liệu */
-  --text-stat--line-height: 1.15;
-
-  --leading-tight: 1.2;
-  --tracking-*: initial;
-  --tracking-tight: -0.01em;
-  --tracking-caps: 0.06em;
-
-  /* Khoảng cách trong mockup là bội của 2px: dùng thang mặc định 4px với bước .5 (p-2.5 = 10px, h-9.5 = 38px). */
-
-  --radius-*: initial;
-  --radius-sm: 7px; /* mục sidebar */
-  --radius-md: 8px; /* nút, ô nhập, avatar tổ chức */
-  --radius-lg: 10px; /* ô chọn tổ chức, lời nhắn */
-  --radius-xl: 12px; /* card */
-  --radius-2xl: 14px; /* dialog */
-
-  --shadow-*: initial;
-  --shadow-app: 0 4px 12px -2px rgb(20 39 69 / 0.1), 0 2px 4px rgb(20 39 69 / 0.05);
-  --shadow-dialog: 0 24px 56px -12px rgb(20 39 69 / 0.35);
-
-  /* Mockup gập sidebar dưới 900px. */
-  --breakpoint-app: 56.25rem;
+:root {
+  --brand-sky: #7bd4ff;
+  --brand-blue: #1e90ff;
+  --brand-deep: #004cff;
+  --brand-navy: #142745;
+  --brand-letter: #344568;
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #1d4ed8;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --accent: #e5edff;
+  --accent-foreground: #1e3a8a;
+  --destructive: #c81e1e;
+  --destructive-soft: #fef2f2;
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
+  --border: #e2e8f0;
+  --input: #8492a6;
+  --ring: #2563eb;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --radius: 0.5rem;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+  --chart-1: #2563eb;
+  --chart-2: #16a34a;
+  --chart-3: #d97706;
+  --chart-4: #9333ea;
+  --chart-5: #0891b2;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: #0c1729;
-    --color-surface: #142745;
-    --color-subtle: #1b3157;
-    --color-sunken: #0f1f3a;
-    --color-ink: #f2f5fc;
-    --color-body: #d3daea;
-    --color-muted: #9aa9c8;
-    --color-faint: #6b7da3;
-    --color-line: #2a4169;
-    --color-line-strong: #6680b4;
-    --color-accent: #3fa9ff;
-    --color-accent-hover: #6cbeff;
-    --color-on-accent: #0b1730;
-    --color-sel: #1a3a6e;
-    --color-sel-fg: #b8f1ff;
-    --color-sel-line: #2f63b8;
-    --color-focus: #7bd4ff;
-    --color-ok: #4cd99a;
-    --color-ok-bg: #163a2c;
-    --color-warn: #f2b54a;
-    --color-warn-bg: #3a3020;
-    --color-bad: #ff8c85;
-    --color-bad-bg: #43222d;
-    --color-backdrop: rgb(0 0 0 / 0.6);
-    --color-brand-sky: #b8f1ff;
-    --color-brand-blue: #3fa9ff;
-    --color-brand-deep: #1c58ff;
-    --color-brand-navy: #142745;
-    --color-brand-letter: #e8ecf8;
-    --shadow-app: 0 6px 16px -4px rgb(0 0 0 / 0.45);
-    --shadow-dialog: 0 24px 56px -12px rgb(0 0 0 / 0.7);
-  }
+.dark {
+  --brand-sky: #b8f1ff;
+  --brand-blue: #3fa9ff;
+  --brand-deep: #1c58ff;
+  --brand-letter: #e8ecf8;
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1b2336;
+  --card-foreground: #f8fafc;
+  --popover: #1b2336;
+  --popover-foreground: #f8fafc;
+  --primary: #60a5fa;
+  --primary-foreground: #0f172a;
+  --secondary: #272f42;
+  --secondary-foreground: #f8fafc;
+  --muted: #272f42;
+  --muted-foreground: #94a3b8;
+  --accent: #1e3a5f;
+  --accent-foreground: #dbeafe;
+  --destructive: #f87171;
+  --destructive-soft: #3a1d24;
+  --success: #4ade80;
+  --success-soft: #16321f;
+  --warning: #fbbf24;
+  --warning-soft: #33290f;
+  --border: #334155;
+  --input: #64748b;
+  --ring: #93c5fd;
+  --sidebar: #111a2e;
+  --sidebar-foreground: #f8fafc;
+  --chart-1: #60a5fa;
+  --chart-2: #4ade80;
+  --chart-3: #fbbf24;
+  --chart-4: #c084fc;
+  --chart-5: #22d3ee;
+}
+
+@theme inline {
+  --color-brand-sky: var(--brand-sky);
+  --color-brand-blue: var(--brand-blue);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-navy: var(--brand-navy);
+  --color-brand-letter: var(--brand-letter);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@theme {
+  --text-2xs: 11px; /* nhãn nhóm ở sidebar */
+  --text-stat: 28px; /* con số trong ô số liệu */
+  --text-stat--line-height: 1.15;
+  --tracking-caps: 0.06em;
+  /* Gập sidebar dưới 900px. */
+  --breakpoint-app: 56.25rem;
 }
 
 @layer base {
   :root {
-    color-scheme: light dark;
+    color-scheme: light;
   }
-
+  .dark {
+    color-scheme: dark;
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
   body {
-    background: var(--color-canvas);
-    color: var(--color-body);
-    font-family: var(--font-sans);
-    font-size: var(--text-base);
-    line-height: var(--text-base--line-height);
-    -webkit-font-smoothing: antialiased;
+    @apply bg-background text-foreground font-sans text-sm antialiased;
   }
-
   :focus-visible {
-    outline: 2px solid var(--color-focus);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

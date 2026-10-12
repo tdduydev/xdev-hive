@@ -53,12 +53,12 @@ export function LeaderPage() {
                 aria-current={t.id === selected ? "page" : undefined}
                 onClick={() => open(t.id)}
                 className={cx(
-                  "grid rounded-md px-3 py-2 text-left text-sm",
-                  t.id === selected ? "bg-sel text-sel-fg" : "text-body hover:bg-subtle",
+                  "grid rounded-md px-3 py-2 text-left text-xs",
+                  t.id === selected ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted",
                 )}
               >
                 <span className="truncate font-medium">{t.title}</span>
-                <span className="text-xs text-muted">{formatDayTime(t.updatedAt)}</span>
+                <span className="text-xs text-muted-foreground">{formatDayTime(t.updatedAt)}</span>
               </button>
             ))}
           </nav>
@@ -130,7 +130,7 @@ function NewThread({
           </Select>
         </Field>
         {create.isError && <Alert>{apiErrorMessage(create.error)}</Alert>}
-        <Button type="submit" variant="primary" disabled={create.isPending}>
+        <Button type="submit" variant="default" disabled={create.isPending}>
           {create.isPending ? "Đang tạo…" : "Tạo"}
         </Button>
       </form>
@@ -173,14 +173,14 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
 
   return (
     <section aria-label={thread.data.thread.title} className="grid content-start gap-3">
-      <h2 className="text-lg font-semibold text-ink">{thread.data.thread.title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{thread.data.thread.title}</h2>
       <ol aria-label="Tin nhắn" className="grid gap-2.5">
         {thread.data.messages.map((m) => (
           <Message key={m.id} message={m} />
         ))}
       </ol>
       {waiting && (
-        <p role="status" className="text-sm text-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           Leader đang trả lời…
         </p>
       )}
@@ -188,7 +188,7 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
         <ApprovalCard key={a.id} approval={a} projects={projects} />
       ))}
       <form noValidate onSubmit={onSend} className="grid gap-2">
-        <label htmlFor={composer} className="text-sm font-medium text-ink">
+        <label htmlFor={composer} className="text-xs font-medium text-foreground">
           Nhắn cho leader
         </label>
         <Textarea
@@ -200,7 +200,7 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
         />
         {send.isError && <Alert>{apiErrorMessage(send.error)}</Alert>}
         <div className="flex justify-end">
-          <Button type="submit" variant="primary" disabled={send.isPending || !draft.trim()}>
+          <Button type="submit" variant="default" disabled={send.isPending || !draft.trim()}>
             {send.isPending ? "Đang gửi…" : "Gửi"}
           </Button>
         </div>
@@ -214,15 +214,15 @@ function Message({ message }: { message: ChatMessage }) {
     <li
       className={cx(
         "grid gap-1 rounded-lg border px-3.5 py-2.5",
-        message.role === "user" && "border-sel-line bg-sel",
-        message.role === "leader" && "border-line bg-surface",
-        message.role === "system" && "border-transparent bg-subtle text-sm",
+        message.role === "user" && "border-primary/40 bg-accent",
+        message.role === "leader" && "border-border bg-card",
+        message.role === "system" && "border-transparent bg-muted text-xs",
       )}
     >
-      <span className="text-xs text-muted">
+      <span className="text-xs text-muted-foreground">
         {ROLE_LABEL[message.role]} · {formatDayTime(message.createdAt)}
       </span>
-      <p className="whitespace-pre-wrap break-words text-ink">{message.content}</p>
+      <p className="whitespace-pre-wrap break-words text-foreground">{message.content}</p>
     </li>
   );
 }
@@ -249,14 +249,14 @@ function ApprovalCard({ approval, projects }: { approval: Approval; projects: re
   const error = approve.error ?? reject.error;
 
   return (
-    <Card className="grid gap-2.5 border-warn p-3.5" aria-label="Đề xuất của leader">
+    <Card className="grid gap-2.5 border-warning p-3.5" aria-label="Đề xuất của leader">
       <div className="flex flex-wrap items-center gap-2">
         <Pill tone="warn" small>
           Chờ duyệt
         </Pill>
-        <span className="text-xs text-muted">Hết hạn {formatDayTime(approval.expiresAt)}</span>
+        <span className="text-xs text-muted-foreground">Hết hạn {formatDayTime(approval.expiresAt)}</span>
       </div>
-      <p className="font-medium text-ink">{describeAction(approval.action, projects)}</p>
+      <p className="font-medium text-foreground">{describeAction(approval.action, projects)}</p>
       {error && <Alert>{apiErrorMessage(error)}</Alert>}
       {rejecting ? (
         <form
@@ -267,25 +267,25 @@ function ApprovalCard({ approval, projects }: { approval: Approval; projects: re
           }}
           className="grid gap-2"
         >
-          <label htmlFor={reasonId} className="text-sm font-medium text-ink">
+          <label htmlFor={reasonId} className="text-xs font-medium text-foreground">
             Lý do từ chối
           </label>
           <Textarea id={reasonId} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button onClick={() => setRejecting(false)} disabled={busy}>
+            <Button variant="outline" onClick={() => setRejecting(false)} disabled={busy}>
               Thôi
             </Button>
-            <Button type="submit" variant="danger" disabled={busy || !reason.trim()}>
+            <Button type="submit" variant="destructive" disabled={busy || !reason.trim()}>
               Từ chối
             </Button>
           </div>
         </form>
       ) : (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button onClick={() => setRejecting(true)} disabled={busy}>
+          <Button variant="outline" onClick={() => setRejecting(true)} disabled={busy}>
             Từ chối…
           </Button>
-          <Button variant="primary" onClick={() => approve.mutate()} disabled={busy}>
+          <Button variant="default" onClick={() => approve.mutate()} disabled={busy}>
             {approve.isPending ? "Đang thực hiện…" : "Duyệt và thực hiện"}
           </Button>
         </div>

@@ -31,27 +31,22 @@ function ratio(a: string, b: string): number {
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
-// [chữ hoặc viền, nền, tỉ lệ tối thiểu]: các cặp ghi trong docs/design-system/README.md và `usage` của tokens.json.
-// Ngưỡng là mức thấp nhất vẫn đạt WCAG AA (4.5 cho chữ, 3 cho viền và vòng focus) hoặc con số tokens.json ghi nếu giá trị
-// đạt. Bốn chỗ giá trị thấp hơn con số `usage` ghi (accent trên canvas sáng 5,68 thay vì 6; accent tối trên surface 5,93;
-// ink tối trên subtle 11,85 thay vì 12; focus sáng trên subtle 2,88) nên ngưỡng hạ xuống mức AA; vòng focus cách phần tử
-// 2px nên nằm trên nền ngoài (canvas/surface), không kiểm trên subtle.
+// [chữ hoặc viền, nền, tỉ lệ tối thiểu]: chữ 4.5 (WCAG AA), viền điều khiển và vòng focus 3 (WCAG 1.4.11).
 const pairs: [string, string, number][] = [
-  ...["canvas", "surface", "subtle", "sunken"].map((bg): [string, string, number] => ["ink", bg, 11.5]),
-  ...["canvas", "surface", "subtle"].map((bg): [string, string, number] => ["body", bg, 8]),
-  ...["canvas", "surface", "subtle"].map((bg): [string, string, number] => ["muted", bg, 5]),
-  ...["canvas", "surface"].map((bg): [string, string, number] => ["accent", bg, 4.5]),
-  ...["canvas", "surface", "subtle"].map((bg): [string, string, number] => ["line-strong", bg, 3]),
-  ...["canvas", "surface"].map((bg): [string, string, number] => ["focus", bg, 3]),
-  ["on-accent", "accent", 6],
-  ["on-accent", "accent-hover", 6],
-  ["sel-fg", "sel", 7],
-  ["ok", "surface", 4.5],
-  ["ok", "ok-bg", 4.5],
-  ["warn", "surface", 4.5],
-  ["warn", "warn-bg", 4.5],
-  ["bad", "surface", 4.5],
-  ["bad", "bad-bg", 4.5],
+  ...["background", "card", "muted", "sidebar"].map((bg): [string, string, number] => ["foreground", bg, 4.5]),
+  ...["background", "card", "muted", "sidebar"].map((bg): [string, string, number] => ["muted-foreground", bg, 4.5]),
+  ...["background", "card"].map((bg): [string, string, number] => ["primary", bg, 4.5]),
+  ...["background", "card"].map((bg): [string, string, number] => ["input", bg, 3]),
+  ...["background", "card"].map((bg): [string, string, number] => ["ring", bg, 3]),
+  ["primary-foreground", "primary", 4.5],
+  ["accent-foreground", "accent", 4.5],
+  ["background", "destructive", 4.5],
+  ["destructive", "card", 4.5],
+  ["destructive", "destructive-soft", 4.5],
+  ["success", "card", 4.5],
+  ["success", "success-soft", 4.5],
+  ["warning", "card", 4.5],
+  ["warning", "warning-soft", 4.5],
 ];
 
 describe.each(themes)("WCAG contrast ratios for theme %s", (theme) => {
@@ -61,17 +56,21 @@ describe.each(themes)("WCAG contrast ratios for theme %s", (theme) => {
 });
 
 describe("styles.css matches tokens.json", () => {
-  // Khối sáng nằm trong @theme; khối tối trong @media (prefers-color-scheme: dark).
-  const darkAt = css.indexOf("prefers-color-scheme: dark");
-  const blocks: Record<Theme, string> = { light: css.slice(0, darkAt), dark: css.slice(darkAt) };
+  // Giá trị sáng nằm trong `:root {`, giá trị tối trong `.dark {`.
+  const darkAt = css.indexOf(".dark {");
+  const themeAt = css.indexOf("@theme inline");
+  const blocks: Record<Theme, string> = {
+    light: css.slice(css.indexOf(":root {"), darkAt),
+    dark: css.slice(darkAt, themeAt),
+  };
   const names = tokensFile.color.tokens.map((t) => t.name);
 
   it.each(themes.flatMap((theme) => names.map((name): [Theme, string] => [theme, name])))("%s: %s", (theme, name) => {
-    const expected = token(name, theme).toLowerCase();
-    const found = new RegExp(`--color-${name}:\\s*([^;]+);`).exec(blocks[theme]);
-    if (!found) throw new Error(`Thiếu --color-${name} ở theme ${theme}`);
-    // backdrop viết lại từ rgba(...) sang rgb(... / a); so sánh qua các số.
-    const digits = (v: string) => v.match(/[\d.]+|#[0-9a-f]{6}/g)?.join(",");
-    expect(digits((found[1] ?? "").trim().toLowerCase())).toBe(digits(expected));
+    const entry = tokensFile.color.tokens.find((t) => t.name === name);
+    // Token chỉ có một giá trị (màu nền logo) không lặp lại trong khối tối.
+    const block = theme === "dark" && typeof entry?.value === "string" ? blocks.light : blocks[theme];
+    const found = new RegExp(`--${name}:\\s*([^;]+);`).exec(block);
+    if (!found) throw new Error(`Thiếu --${name} ở theme ${theme}`);
+    expect((found[1] ?? "").trim().toLowerCase()).toBe(token(name, theme).toLowerCase());
   });
 });

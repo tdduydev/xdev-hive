@@ -19,7 +19,7 @@ import { PageBody, PageHeader } from "../shell/page-header.tsx";
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <Card className="grid gap-3 p-5">
-      <h2 className="text-lg font-semibold text-ink">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {children}
     </Card>
   );
@@ -55,7 +55,7 @@ export function SandboxAdminPage() {
     };
     policy = (
       <div className="grid gap-3">
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex items-start gap-2 text-xs">
           <input
             type="checkbox"
             checked={s.useSuggestedDefaults}
@@ -63,13 +63,13 @@ export function SandboxAdminPage() {
             onChange={(e) => change({ ...s, useSuggestedDefaults: e.target.checked })}
           />
           <span>
-            <b className="font-medium text-ink">Dùng danh sách đề xuất</b>
-            <span className="block text-muted">
+            <b className="font-medium text-foreground">Dùng danh sách đề xuất</b>
+            <span className="block text-muted-foreground">
               Cho run ra các địa chỉ hay cần: <code className="font-mono">{SUGGESTED_EGRESS_RULES.join(", ")}</code>
             </span>
           </span>
         </label>
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex items-start gap-2 text-xs">
           <input
             type="checkbox"
             checked={s.locked}
@@ -77,8 +77,10 @@ export function SandboxAdminPage() {
             onChange={(e) => change({ ...s, locked: e.target.checked })}
           />
           <span>
-            <b className="font-medium text-ink">Khoá allowlist</b>
-            <span className="block text-muted">Dự án không thêm được mục riêng; chỉ dùng mục của tổ chức.</span>
+            <b className="font-medium text-foreground">Khoá allowlist</b>
+            <span className="block text-muted-foreground">
+              Dự án không thêm được mục riêng; chỉ dùng mục của tổ chức.
+            </span>
           </span>
         </label>
         {save.isError && <Alert>{apiErrorMessage(save.error)}</Alert>}
@@ -91,13 +93,15 @@ export function SandboxAdminPage() {
       <PageHeader title="Sandbox" />
       <PageBody>
         {!admin && (
-          <p role="note" className="rounded-lg border border-line bg-subtle px-3.5 py-2.5 text-sm text-body">
+          <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
             Bạn đang xem ở chế độ chỉ đọc. Chỉ quản trị tổ chức sửa được chính sách sandbox.
           </p>
         )}
         <Section title="Chính sách của tổ chức">{policy}</Section>
         <Section title="Mục mạng của tổ chức">
-          <p className="text-sm text-muted">Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.</p>
+          <p className="text-xs text-muted-foreground">
+            Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.
+          </p>
           <AllowlistEditor canEdit={admin} />
         </Section>
       </PageBody>
@@ -115,7 +119,7 @@ export function ProjectSandboxPage() {
   const project = projects.data?.find((p) => p.key === key);
   const crumb = (
     <>
-      <Link to="/projects" className="text-accent hover:text-accent-hover">
+      <Link to="/projects" className="text-primary hover:text-primary/90">
         Dự án
       </Link>
       {" / "}
@@ -146,12 +150,12 @@ function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boole
   return (
     <>
       {!project.settings.features.sandbox && (
-        <p role="note" className="rounded-lg border border-line bg-subtle px-3.5 py-2.5 text-sm text-body">
+        <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
           Dự án chưa bật sandbox nên run vẫn chạy trên máy dev. Bật ở{" "}
           <Link
             to="/projects/$key/settings"
             params={{ key: project.key }}
-            className="text-accent hover:text-accent-hover"
+            className="text-primary hover:text-primary/90"
           >
             cấu hình dự án
           </Link>
@@ -164,17 +168,17 @@ function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boole
         ) : effective.isError ? (
           <LoadFailure error={effective.error} retry={effective.refetch} />
         ) : effective.data.rules.length === 0 ? (
-          <p className="text-sm text-muted">Run sandbox của dự án không ra được địa chỉ nào.</p>
+          <p className="text-xs text-muted-foreground">Run sandbox của dự án không ra được địa chỉ nào.</p>
         ) : (
           <ul aria-label="Allowlist hiệu lực" className="flex flex-wrap gap-1.5">
             {effective.data.rules.map((rule) => (
               <li key={rule}>
-                <code className="rounded bg-subtle px-2 py-0.5 font-mono text-sm text-ink">{rule}</code>
+                <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-foreground">{rule}</code>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted">
+        <p className="text-xs text-muted-foreground">
           Gộp từ danh sách đề xuất (nếu tổ chức bật), mục của tổ chức và mục của dự án.
         </p>
       </Section>
@@ -273,13 +277,13 @@ function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean
       </Field>
       {save.isError && <Alert>{apiErrorMessage(save.error)}</Alert>}
       {done && (
-        <p role="status" className="text-sm text-ok">
+        <p role="status" className="text-xs text-success">
           Đã lưu image môi trường.
         </p>
       )}
       {canEdit && (
         <div className="flex justify-end">
-          <Button type="submit" variant="primary" disabled={save.isPending}>
+          <Button type="submit" variant="default" disabled={save.isPending}>
             {save.isPending ? "Đang lưu…" : "Lưu image"}
           </Button>
         </div>

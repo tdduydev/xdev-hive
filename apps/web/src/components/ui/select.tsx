@@ -13,8 +13,8 @@ export function Select({
   return (
     <select
       className={cx(
-        "w-full cursor-pointer rounded-md border border-line-strong bg-surface px-2.5 text-ink",
-        "aria-invalid:border-bad",
+        "w-full cursor-pointer rounded-md border border-input bg-card px-2.5 text-foreground",
+        "aria-invalid:border-destructive",
         "disabled:cursor-not-allowed disabled:opacity-60",
         size === "sm" ? "h-7.5" : "h-9.5",
         className,

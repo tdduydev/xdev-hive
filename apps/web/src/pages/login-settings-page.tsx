@@ -56,11 +56,13 @@ export function LoginSettingsPage() {
   let body: ReactNode;
   if (!admin)
     body = (
-      <Card className="px-6 py-10 text-center text-muted">Chỉ quản trị tổ chức xem và sửa được cài đặt đăng nhập.</Card>
+      <Card className="px-6 py-10 text-center text-muted-foreground">
+        Chỉ quản trị tổ chức xem và sửa được cài đặt đăng nhập.
+      </Card>
     );
   else if (settings.isPending)
     body = (
-      <p aria-busy="true" className="text-muted">
+      <p aria-busy="true" className="text-muted-foreground">
         Đang tải…
       </p>
     );
@@ -84,13 +86,13 @@ export function LoginSettingsPage() {
 
 function Method({ icon, name, detail, status }: { icon: IconName; name: string; detail: string; status: ReactNode }) {
   return (
-    <li className="flex items-center gap-3 border-b border-line px-4.5 py-3.5 last:border-b-0">
-      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-subtle">
+    <li className="flex items-center gap-3 border-b border-border px-4.5 py-3.5 last:border-b-0">
+      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted">
         <Icon name={icon} className="size-5" />
       </span>
       <span className="min-w-0">
-        <b className="block font-semibold text-ink">{name}</b>
-        <small className="block text-xs text-muted">{detail}</small>
+        <b className="block font-semibold text-foreground">{name}</b>
+        <small className="block text-xs text-muted-foreground">{detail}</small>
       </span>
       <span className="ml-auto">{status}</span>
     </li>
@@ -199,7 +201,7 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
   return (
     <Card className="grid gap-3.5 px-4.5 py-4">
       <div className="flex items-center gap-2.5">
-        <h2 className="text-lg font-semibold text-ink">SSO (OIDC)</h2>
+        <h2 className="text-base font-semibold text-foreground">SSO (OIDC)</h2>
         {configured && (
           <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setRemoving(true)} disabled={busy}>
             Gỡ SSO
@@ -235,7 +237,7 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
               <>
                 <FieldError>{errors.domain}</FieldError>
                 {taken && !claim.isSuccess && (
-                  <Button size="sm" onClick={() => claim.mutate(taken)} disabled={claim.isPending}>
+                  <Button variant="outline" size="sm" onClick={() => claim.mutate(taken)} disabled={claim.isPending}>
                     {claim.isPending ? "Đang lấy bản ghi…" : `Xác minh ${taken} bằng bản ghi TXT`}
                   </Button>
                 )}
@@ -290,7 +292,7 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
           <CopyField value={settings.callbackUrl} copyLabel="callback URL" />
         </Field>
         <div className="grid gap-1.5">
-          <label htmlFor={joinId} className="text-label font-medium text-ink">
+          <label htmlFor={joinId} className="text-sm font-medium text-foreground">
             Khi người mới đăng nhập SSO lần đầu
           </label>
           <Select id={joinId} name="join" defaultValue={settings.join} disabled={busy}>
@@ -303,12 +305,12 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
         </div>
         {failure && <Alert>{failure}</Alert>}
         {saved && !failure && (
-          <p role="status" className="rounded-lg bg-ok-bg px-3.5 py-2.5 text-label text-ok">
+          <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
             Đã lưu cấu hình SSO.
           </p>
         )}
         <div className="flex justify-end gap-2">
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button type="submit" variant="default" disabled={busy}>
             {busy ? "Đang lưu…" : "Lưu"}
           </Button>
         </div>
@@ -358,16 +360,16 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
   return (
     <Card className="grid gap-3.5 px-4.5 py-4">
       <div className="flex items-center gap-2.5">
-        <h2 className="text-lg font-semibold text-ink">Xác minh tên miền</h2>
+        <h2 className="text-base font-semibold text-foreground">Xác minh tên miền</h2>
         <span className="ml-auto">{status}</span>
       </div>
       {verified && provider ? (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           Tên miền {provider.domain} đã được xác minh là của tổ chức. Có thể xoá bản ghi TXT khỏi DNS.
         </p>
       ) : pending ? (
         <>
-          <p className="text-muted">
+          <p className="text-muted-foreground">
             Thêm bản ghi TXT dưới đây vào DNS của {pending.domain}, đợi DNS cập nhật (vài phút tới vài giờ) rồi bấm Kiểm
             tra. Bản ghi dùng được tới {formatDay(pending.expiresAt)}.
           </p>
@@ -382,13 +384,13 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
             </Field>
           </div>
           {pending.verified && (
-            <p role="status" className="rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+            <p role="status" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
               DNS đã khớp. Lưu cấu hình SSO với tên miền {pending.domain} để hoàn tất xác minh.
             </p>
           )}
         </>
       ) : (
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           Chứng minh tổ chức giữ tên miền {provider?.domain} bằng một bản ghi TXT trên DNS. Tên miền đang bị tổ chức
           chưa xác minh khác khai thì sẽ chuyển về tổ chức bạn.
         </p>
@@ -396,7 +398,7 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
       {check.isError && <Alert>{apiErrorMessage(check.error)}</Alert>}
       {request.isError && <Alert>{apiErrorMessage(request.error)}</Alert>}
       {checked && verified && provider && (
-        <p role="status" className="rounded-lg bg-ok-bg px-3.5 py-2.5 text-label text-ok">
+        <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
           Đã xác minh tên miền {provider.domain}.
         </p>
       )}
@@ -404,7 +406,7 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
         <div className="flex justify-end gap-2">
           {canRequest && (
             <Button
-              variant={pending ? "default" : "primary"}
+              variant={pending ? "outline" : "default"}
               onClick={() => request.mutate(undefined)}
               disabled={request.isPending}
             >
@@ -412,7 +414,7 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
             </Button>
           )}
           {pending && !pending.verified && (
-            <Button variant="primary" onClick={() => check.mutate()} disabled={check.isPending}>
+            <Button variant="default" onClick={() => check.mutate()} disabled={check.isPending}>
               {check.isPending ? "Đang kiểm tra…" : "Kiểm tra"}
             </Button>
           )}
@@ -440,10 +442,10 @@ function RemoveSso({ onDone, onRemoved }: { onDone: () => void; onRemoved: (next
       </DialogDescription>
       {remove.isError && <Alert>{apiErrorMessage(remove.error)}</Alert>}
       <DialogActions>
-        <Button onClick={onDone} disabled={remove.isPending}>
+        <Button variant="outline" onClick={onDone} disabled={remove.isPending}>
           Huỷ
         </Button>
-        <Button variant="primary" onClick={() => remove.mutate()} disabled={remove.isPending}>
+        <Button variant="default" onClick={() => remove.mutate()} disabled={remove.isPending}>
           {remove.isPending ? "Đang gỡ…" : "Gỡ SSO"}
         </Button>
       </DialogActions>

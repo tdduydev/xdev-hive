@@ -1,8 +1,11 @@
+> **Version 2 (2026-10-12).** Token names follow shadcn/ui and the values come from the UI UX Pro Max design system;
+> see [xdev-hive/MASTER.md](xdev-hive/MASTER.md) for the decisions and [tokens.json](tokens.json) for the values.
+
 xDev Hive is the hub where teams hand coding work to agent CLIs (Claude Code, Codex, Gemini), watch runs, review PRs and merge them through a queue. The UI is a dense, calm operations tool: blue from the logo marks action and selection, everything else stays quiet so run states read at a glance.
 
 ## Brand
 
-- The logo is the blue gradient **X** with **HIVE** and the descriptor **DEV HUB** (assets → Logos). Use `xdev-hive-light.svg` on `canvas`/`surface` in light theme and `xdev-hive-dark.svg` on `brand-navy` or dark `surface`. Use `xdev-hive-icon.svg` (X on a `brand-navy` rounded tile) for favicons, the desktop app icon and the tray.
+- The logo is the blue gradient **X** with **HIVE** and the descriptor **DEV HUB** (assets → Logos). Use `xdev-hive-light.svg` on `background`/`card` in light theme and `xdev-hive-dark.svg` on `brand-navy` or dark `card`. Use `xdev-hive-icon.svg` (X on a `brand-navy` rounded tile) for favicons, the desktop app icon and the tray.
 - Keep clear space of at least one quarter of the X height around the logo. Never recolour, outline, stretch or re-letter it, and never rebuild the X from a font.
 - The X gradient (`brand-sky` → `brand-blue` → `brand-deep`) belongs to the logo and brand art only. Never put it on buttons, headers or backgrounds of UI.
 - In written content the product is "xDev Hive"; the descriptor "DEV HUB" appears only inside the logo.
@@ -16,36 +19,36 @@ xDev Hive is the hub where teams hand coding work to agent CLIs (Claude Code, Co
 
 ## Colour
 
-- Lay pages on `canvas`; put content on `surface` cards with a 1px `line` border. Use `subtle` for hover rows and table headers, `sunken` for read-only copy boxes.
-- Text: `ink` for headings and key numbers, `body` for running text, `muted` for hints and metadata. Never use `faint` for text.
-- `accent` is for the one primary action per view, links and the active nav marker. Primary buttons are `accent` with `on-accent` text; hover `accent-hover`. In dark theme the accent is light, so its text is dark (`on-accent`).
-- Selection uses `sel` with `sel-fg` text and a `sel-line` border (selected nav item, selected row, picked option).
+- Lay pages on `background`; put content on `card` with a 1px `border`. Use `muted` for hover rows, table headers and read-only copy boxes.
+- Text: `foreground` for headings, key numbers and running text; `muted-foreground` for hints and metadata.
+- `primary` is for the one primary action per view, links and the active nav marker. Primary buttons are `primary` with `primary-foreground` text; hover `primary/90`. In dark theme the primary is light, so its text is dark (`primary-foreground`).
+- Selection uses `accent` with `accent-foreground` text and a `primary/40` border (selected nav item, selected row, picked option).
 - Status always pairs colour with a word and an icon; colour alone never carries state. Map states:
-  - running, updating, merging, leased → `sel` / `sel-fg` with a pulsing dot
-  - queued, removed, cancelled, offline-but-expected → `subtle` / `muted`
-  - waiting (CI, reviewers, budget near limit), needs review → `warn-bg` / `warn`
-  - succeeded, merged, online, sent → `ok-bg` / `ok`
-  - failed, merge failed, offline too long, delivery failed → `bad-bg` / `bad`
-- Dialogs sit on `backdrop` with `shadow-dialog`; floating menus and the login card use `shadow-app`. Regular cards use the border, not a shadow.
+  - running, updating, merging, leased → `accent` / `accent-foreground` with a pulsing dot
+  - queued, removed, cancelled, offline-but-expected → `muted` / `muted-foreground`
+  - waiting (CI, reviewers, budget near limit), needs review → `warning-soft` / `warning`
+  - succeeded, merged, online, sent → `success-soft` / `success`
+  - failed, merge failed, offline too long, delivery failed → `destructive-soft` / `destructive`
+- Dialogs sit on a `black/50` overlay with `shadow-lg`; floating menus and the login card use `shadow-sm`. Regular cards use the border, not a shadow.
 
 ## Type
 
-- `display` (Space Grotesk 600, the face of the logo's X) is only for `title-hero`, `page-title` and `stat`. Everything else is `sans` (Inter); ids, SHAs, branches and commands are `mono` (JetBrains Mono). All three load from Google Fonts.
-- Body is `body` 14/1.55. Labels and table headers `label`, metadata `small`, sidebar groups `caps`.
+- `heading` (JetBrains Mono) is for page, dialog and login titles and key figures. Everything else is `sans` (IBM Plex Sans); ids, SHAs, branches and commands are `mono` (JetBrains Mono). Both fonts are self-hosted with fontsource.
+- Body is `foreground` `text-sm` (14px). Labels and table headers `text-sm` medium, metadata `text-xs`, sidebar groups `text-2xs` with `tracking-caps`.
 - Use tabular figures (`font-variant-numeric: tabular-nums`) for costs, token counts, durations and queue positions.
 
 ## Layout and spacing
 
-- App shell: sidebar 240px on `surface` with a `line` right border; it collapses below 900px. Content max width 1200px, side gutter `space-6` (`space-4` on phones).
-- Cards: `radius-xl`, padding `space-5` (`space-4` on phones), gap between cards `space-6`. Controls: height 36px, `radius-md`, `line-strong` border.
-- Tables are the default for lists (runs, tasks, merge queue, channels): header row `subtle` + `label`, rows 44px, row hover `subtle`, numeric columns right-aligned.
+- App shell: sidebar 240px on `card` with a `border` right border; it collapses below 900px. Content max width 1200px, side gutter `space-6` (`space-4` on phones).
+- Cards: `radius-xl`, padding `space-5` (`space-4` on phones), gap between cards `space-6`. Controls: height 36px, `radius-md`, `input` border.
+- Tables are the default for lists (runs, tasks, merge queue, channels): header row `muted` + `label`, rows 44px, row hover `muted`, numeric columns right-aligned.
 
 ## States
 
-- Focus: 2px solid `focus` ring with 2px offset on every interactive element, both themes.
+- Focus: 2px solid `ring` ring with 2px offset on every interactive element, both themes.
 - Disabled: 50% opacity, no hover change, cursor `not-allowed`; explain why in a hint where the reason is not obvious.
-- Loading: skeleton bars in `subtle`; empty states say what will appear and offer the first action ("Chưa có PR nào trong hàng. Đưa PR vào hàng").
-- Destructive actions (remove channel, remove from queue) use a `bad` outline button and a confirm step inside the dialog.
+- Loading: skeleton bars in `muted`; empty states say what will appear and offer the first action ("Chưa có PR nào trong hàng. Đưa PR vào hàng").
+- Destructive actions (remove channel, remove from queue) use a `destructive` outline button and a confirm step inside the dialog.
 
 ## Iconography
 

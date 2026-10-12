@@ -51,25 +51,25 @@ export function McpConsentPage() {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-105 gap-4 p-7">
         <Brand />
-        <h1 className="mt-1 font-display text-3xl font-semibold text-ink">Cho phép công cụ dùng hub?</h1>
-        <p className="text-muted">
-          <span className="font-medium text-ink">{clientHost || "Một ứng dụng"}</span> muốn gọi các tool MCP của hub
-          thay bạn, với đúng quyền của bạn trong từng tổ chức.
+        <h1 className="mt-1 font-heading text-xl font-semibold text-foreground">Cho phép công cụ dùng hub?</h1>
+        <p className="text-muted-foreground">
+          <span className="font-medium text-foreground">{clientHost || "Một ứng dụng"}</span> muốn gọi các tool MCP của
+          hub thay bạn, với đúng quyền của bạn trong từng tổ chức.
         </p>
         {scopes.length > 0 && (
-          <ul className="grid list-disc gap-1 pl-5 text-sm text-muted">
+          <ul className="grid list-disc gap-1 pl-5 text-xs text-muted-foreground">
             {scopes.map((s) => (
               <li key={s}>{SCOPE_LABELS[s] ?? s}</li>
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted break-all">Mã client: {clientId}</p>
+        <p className="text-xs text-muted-foreground break-all">Mã client: {clientId}</p>
         {failure && <Alert>{failure}</Alert>}
         <div className="grid grid-cols-2 gap-2">
-          <Button disabled={pending !== null} onClick={() => answer(false)}>
+          <Button variant="outline" disabled={pending !== null} onClick={() => answer(false)}>
             {pending === "deny" ? "Đang từ chối…" : "Từ chối"}
           </Button>
-          <Button variant="primary" disabled={pending !== null} onClick={() => answer(true)}>
+          <Button variant="default" disabled={pending !== null} onClick={() => answer(true)}>
             {pending === "accept" ? "Đang cho phép…" : "Cho phép"}
           </Button>
         </div>

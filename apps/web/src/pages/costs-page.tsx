@@ -35,7 +35,7 @@ function number(value: number) {
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -83,11 +83,11 @@ export function CostsPage() {
         ) : projects.isError ? (
           <Alert>{apiErrorMessage(projects.error)}</Alert>
         ) : projects.data.length === 0 || !project ? (
-          <Card className="p-5 text-muted">Chưa có dự án để tổng hợp chi phí.</Card>
+          <Card className="p-5 text-muted-foreground">Chưa có dự án để tổng hợp chi phí.</Card>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
-              <label className="grid gap-1 text-sm font-medium" htmlFor="cost-project">
+              <label className="grid gap-1 text-xs font-medium" htmlFor="cost-project">
                 Dự án
                 <Select
                   id="cost-project"
@@ -101,7 +101,7 @@ export function CostsPage() {
                   ))}
                 </Select>
               </label>
-              <label className="grid gap-1 text-sm font-medium" htmlFor="cost-period">
+              <label className="grid gap-1 text-xs font-medium" htmlFor="cost-period">
                 Khoảng thời gian
                 <Select
                   id="cost-period"
@@ -128,8 +128,8 @@ export function CostsPage() {
                 </div>
                 <Card className="grid gap-3 p-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-ink">Chi phí theo ngày (USD)</h2>
-                    <p className="text-sm text-muted">Ngày tính theo UTC. Chỉ biểu đồ CLI có báo cáo USD.</p>
+                    <h2 className="text-base font-semibold text-foreground">Chi phí theo ngày (USD)</h2>
+                    <p className="text-xs text-muted-foreground">Ngày tính theo UTC. Chỉ biểu đồ CLI có báo cáo USD.</p>
                   </div>
                   <CostChart points={chart} max={max} />
                 </Card>
@@ -137,10 +137,10 @@ export function CostsPage() {
                   <Card className="grid min-w-0 gap-3 p-4">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
-                        <h2 className="text-lg font-semibold text-ink">Chi tiết chi phí</h2>
-                        <p className="text-sm text-muted">Nhóm theo CLI, máy hoặc việc.</p>
+                        <h2 className="text-base font-semibold text-foreground">Chi tiết chi phí</h2>
+                        <p className="text-xs text-muted-foreground">Nhóm theo CLI, máy hoặc việc.</p>
                       </div>
-                      <label className="grid min-w-36 gap-1 text-sm font-medium" htmlFor="cost-group">
+                      <label className="grid min-w-36 gap-1 text-xs font-medium" htmlFor="cost-group">
                         Nhóm theo
                         <Select
                           id="cost-group"
@@ -158,7 +158,7 @@ export function CostsPage() {
                     ) : grouped.isError ? (
                       <Alert>{apiErrorMessage(grouped.error)}</Alert>
                     ) : grouped.data.groups.length === 0 ? (
-                      <p className="py-4 text-center text-muted">Chưa có run trong khoảng thời gian này.</p>
+                      <p className="py-4 text-center text-muted-foreground">Chưa có run trong khoảng thời gian này.</p>
                     ) : (
                       <Table>
                         <thead>
@@ -190,15 +190,15 @@ export function CostsPage() {
                 </div>
                 <Card className="grid gap-3 p-4">
                   <div>
-                    <h2 className="text-lg font-semibold text-ink">Run bị dừng vì vượt ngân sách</h2>
-                    <p className="text-sm text-muted">Giá trị đo được và trần tại thời điểm run kết thúc.</p>
+                    <h2 className="text-base font-semibold text-foreground">Run bị dừng vì vượt ngân sách</h2>
+                    <p className="text-xs text-muted-foreground">Giá trị đo được và trần tại thời điểm run kết thúc.</p>
                   </div>
                   {stopped.isPending ? (
                     <Loading />
                   ) : stopped.isError ? (
                     <Alert>{apiErrorMessage(stopped.error)}</Alert>
                   ) : stopped.data.length === 0 ? (
-                    <p className="py-2 text-muted">Chưa có run nào bị dừng vì vượt ngân sách.</p>
+                    <p className="py-2 text-muted-foreground">Chưa có run nào bị dừng vì vượt ngân sách.</p>
                   ) : (
                     <Table>
                       <thead>
@@ -214,8 +214,8 @@ export function CostsPage() {
                         {stopped.data.map((item) => (
                           <tr key={`${item.runId}-${item.reason}`}>
                             <Td>
-                              <span className="font-mono text-sm">{item.taskKey}</span>
-                              <span className="block text-xs text-muted">{item.taskTitle}</span>
+                              <span className="font-mono text-xs">{item.taskKey}</span>
+                              <span className="block text-xs text-muted-foreground">{item.taskTitle}</span>
                             </Td>
                             <Td>
                               {item.reason === "per_run_usd"
@@ -290,11 +290,11 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
   return (
     <Card className="grid gap-3 p-4">
       <div>
-        <h2 className="text-lg font-semibold text-ink">Ngân sách dự án</h2>
-        <p className="text-sm text-muted">Để trống trường nào thì trường đó không giới hạn.</p>
+        <h2 className="text-base font-semibold text-foreground">Ngân sách dự án</h2>
+        <p className="text-xs text-muted-foreground">Để trống trường nào thì trường đó không giới hạn.</p>
       </div>
       <form ref={formRef} className="grid gap-3 sm:grid-cols-3" onSubmit={submit}>
-        <label className="grid gap-1 text-sm" htmlFor="budget-run">
+        <label className="grid gap-1 text-xs" htmlFor="budget-run">
           USD mỗi run
           <Input
             id="budget-run"
@@ -307,7 +307,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             placeholder="—"
           />
         </label>
-        <label className="grid gap-1 text-sm" htmlFor="budget-task">
+        <label className="grid gap-1 text-xs" htmlFor="budget-task">
           USD mỗi việc
           <Input
             id="budget-task"
@@ -320,7 +320,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
             placeholder="—"
           />
         </label>
-        <label className="grid gap-1 text-sm" htmlFor="budget-turns">
+        <label className="grid gap-1 text-xs" htmlFor="budget-turns">
           Lượt agent tối đa
           <Input
             id="budget-turns"
@@ -339,7 +339,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
           </div>
         )}
         <div className="sm:col-span-3">
-          <Button type="button" variant="primary" disabled={update.isPending} onClick={save}>
+          <Button type="button" variant="default" disabled={update.isPending} onClick={save}>
             {update.isPending ? "Đang lưu…" : "Lưu ngân sách"}
           </Button>
         </div>
@@ -351,14 +351,14 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <Card className="grid min-w-0 content-start gap-1 p-3">
-      <span className="text-xs text-muted">{label}</span>
-      <b className="break-words text-lg text-ink">{value}</b>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <b className="break-words text-base text-foreground">{value}</b>
     </Card>
   );
 }
 
 function CostChart({ points, max }: { points: Array<{ key: string; value: number }>; max: number }) {
-  if (!points.length) return <p className="text-muted">Không có dữ liệu biểu đồ.</p>;
+  if (!points.length) return <p className="text-muted-foreground">Không có dữ liệu biểu đồ.</p>;
   const width = 600;
   const height = 180;
   const barGap = 3;
@@ -376,7 +376,7 @@ function CostChart({ points, max }: { points: Array<{ key: string; value: number
         className="h-44 w-full overflow-visible"
       >
         <title>Chi phí theo ngày</title>
-        <line x1="0" x2={width} y1={height - 1} y2={height - 1} stroke="currentColor" className="text-line" />
+        <line x1="0" x2={width} y1={height - 1} y2={height - 1} stroke="currentColor" className="text-border" />
         {bars.map((bar) => (
           <rect
             key={bar.key}
@@ -385,7 +385,7 @@ function CostChart({ points, max }: { points: Array<{ key: string; value: number
             width={barWidth}
             height={bar.barHeight}
             rx="2"
-            className="fill-accent"
+            className="fill-primary"
           >
             <title>
               {bar.key}: {usd(bar.value)}
@@ -393,7 +393,7 @@ function CostChart({ points, max }: { points: Array<{ key: string; value: number
           </rect>
         ))}
       </svg>
-      <div className="flex justify-between text-xs text-muted">
+      <div className="flex justify-between text-xs text-muted-foreground">
         <span>{points[0]?.key}</span>
         <span>{points.at(-1)?.key}</span>
       </div>

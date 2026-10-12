@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 /** Thanh tiêu đề đầu mỗi trang trong khung app: breadcrumb, tiêu đề, nút thao tác bên phải. */
 export function PageHeader({ crumb, title, children }: { crumb?: ReactNode; title: string; children?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-6 py-4">
+    <header className="flex flex-wrap items-center gap-3 border-b border-border bg-card px-6 py-4">
       <div className="min-w-0">
-        {crumb && <div className="text-sm text-muted">{crumb}</div>}
-        <h1 className="font-display text-3xl font-semibold break-words text-ink">{title}</h1>
+        {crumb && <div className="text-xs text-muted-foreground">{crumb}</div>}
+        <h1 className="font-heading text-xl font-semibold break-words text-foreground">{title}</h1>
       </div>
       {children && <div className="ml-auto flex flex-wrap items-center gap-3">{children}</div>}
     </header>
