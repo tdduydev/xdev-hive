@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -150,4 +151,65 @@ func codexMCPArgs(j Job) []string {
 		out = append(out, "-c", "mcp_servers."+s.Name+"="+value)
 	}
 	return out
+}
+
+// geminiMCPServers là mục mcpServers của Gemini CLI: cổng MCP của hub (Gemini chưa có cách nào khác nhận run token) và
+// server ngoài được phép.
+func geminiMCPServers(j Job) map[string]any {
+	out := map[string]any{"xdev-hive": map[string]any{
+		"httpUrl": mcpURL(j.Env),
+		"headers": map[string]string{"Authorization": "Bearer " + j.Env["HIVE_RUN_TOKEN"]},
+	}}
+	blank := hubSecretEnv(j)
+	for _, s := range externalMCPServers(j) {
+		if s.Transport == "http" {
+			out[s.Name] = map[string]any{"httpUrl": s.URL}
+			continue
+		}
+		args := s.Args
+		if args == nil {
+			args = []string{}
+		}
+		out[s.Name] = map[string]any{"command": s.Command, "args": args, "env": blank}
+	}
+	return out
+}
+
+// geminiMCPArgs là cờ --allowed-mcp-server-names: Gemini chỉ nạp server có tên ở đây, nên server khai trong ~/.gemini
+// của máy mà hub không cho phép bị bỏ qua (đã thử `gemini mcp list` trên gemini-cli 0.63.0). Dạng `--cờ=giá-trị` vì cờ
+// là mảng: viết tách thì yargs nuốt cả tham số đứng sau.
+func geminiMCPArgs(j Job) []string {
+	names := []string{"xdev-hive"}
+	for _, s := range externalMCPServers(j) {
+		names = append(names, s.Name)
+	}
+	args := make([]string, 0, len(names))
+	for _, n := range names {
+		args = append(args, "--allowed-mcp-server-names="+n)
+	}
+	return args
+}
+
+// writeGeminiSettings ghi .gemini/settings.json (cấu hình workspace của Gemini) vào worktree của run và loại khỏi git để
+// agent không commit nó. Repo đã có file đó thì không ghi đè (sẽ thành thay đổi trong PR): run chỉ có server mà repo
+// khai, vẫn bị giới hạn theo tên ở geminiMCPArgs. Trả về false khi không ghi.
+func writeGeminiSettings(j Job) (bool, error) {
+	if j.workspace == "" {
+		return false, nil
+	}
+	path := filepath.Join(j.workspace, ".gemini", "settings.json")
+	if _, err := os.Stat(path); err == nil {
+		return false, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return false, err
+	}
+	b, err := json.MarshalIndent(map[string]any{"mcpServers": geminiMCPServers(j)}, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		return false, err
+	}
+	return true, appendExclude(j.workspace, ".gemini/settings.json")
 }
