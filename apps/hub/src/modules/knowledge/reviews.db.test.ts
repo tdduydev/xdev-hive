@@ -320,6 +320,36 @@ describe("phiên duyệt", () => {
     expect(await instanceOf(again.id)).toMatchObject({ status: "in_review", gate_index: 0 });
   });
 
+  it("người duyệt theo đội: thành viên đội đó duyệt được, người ngoài đội thì không; chi tiết có cấu hình gate", async () => {
+    await as("tadmin", (tx) =>
+      saveWorkflow(
+        tx,
+        org.user("tadmin"),
+        workflow([human("legal", { reviewers: { users: [], roles: [], teams: [org.otherTeamId], quorum: 1 } })]),
+      ),
+    );
+    const p = await propose("tmember");
+    const inst = await instanceOf(p.id);
+    const d = await as("oadmin", (tx) => getReview(tx, org.user("oadmin"), inst.id)).catch(() => null);
+    // oadmin không đọc được tài liệu của đội Thanh toán; quyền đọc vẫn theo phạm vi tài liệu.
+    expect(d).toBeNull();
+    const detail = await as("tadmin", (tx) => getReview(tx, org.user("tadmin"), inst.id));
+    expect(detail.currentGate).toMatchObject({ id: "legal", reviewers: { teams: [org.otherTeamId] } });
+    expect(detail.canDecide).toBe(false);
+    // Thêm tadmin vào đội kia thì duyệt được.
+    await admin.query("insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, 'member')", [
+      org.otherTeamId,
+      org.orgId,
+      org.user("tviewer"),
+    ]);
+    const viaTeam = await as("tviewer", (tx) => getReview(tx, org.user("tviewer"), inst.id));
+    expect(viaTeam.canDecide).toBe(true);
+    await admin.query("delete from hive.team_members where team_id = $1 and user_id = $2", [
+      org.otherTeamId,
+      org.user("tviewer"),
+    ]);
+  });
+
   it("từ chối ở trang Đề xuất thì huỷ phiên duyệt", async () => {
     await as("tadmin", (tx) => saveWorkflow(tx, org.user("tadmin"), workflow([human("po")])));
     const p = await propose("tmember");
