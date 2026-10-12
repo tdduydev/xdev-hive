@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "./ui/button.tsx";
-import { Input } from "./ui/input.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Input } from "@/components/ui/input.tsx";
 
 type Copied = "idle" | "done" | "failed";
 

@@ -1,11 +1,11 @@
 import type { KnowledgeAuthor, ScopeView } from "@xdev-hive/contracts";
 import type { ReactNode } from "react";
-import { Alert } from "../../components/ui/alert.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { Card } from "../../components/ui/card.tsx";
-import { apiErrorMessage } from "../../lib/api-errors.ts";
-import { useT } from "../../lib/i18n.ts";
-import { knowledgeText } from "./text.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { useT } from "@/lib/i18n.ts";
+import { knowledgeText } from "@/pages/knowledge/text.ts";
 
 const text = knowledgeText;
 export function KnowledgeLayout({

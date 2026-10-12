@@ -1,6 +1,6 @@
 import { type Plan, type PlanContent, type PlanStatus, planContent, type Run, type Task } from "@xdev-hive/contracts";
-import type { Lang } from "./i18n.ts";
-import type { Tone } from "./run-view.ts";
+import type { Lang } from "@/lib/i18n.ts";
+import type { Tone } from "@/lib/run-view.ts";
 
 export const PLAN_STATUS_LABEL: Record<PlanStatus, string> = {
   awaiting: "Chờ duyệt",

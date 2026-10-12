@@ -2,18 +2,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { GitPullRequestIcon, ShieldCheckIcon, SquareTerminalIcon } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
-import { Brand, Icon } from "../components/icons.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { authClient, oauthContinuation } from "../lib/auth-client.ts";
-import { type AuthErrorLike, type AuthMethod, authErrorLabel } from "../lib/auth-errors.ts";
-import { meQuery } from "../lib/me.ts";
-import { emailDomain } from "../lib/people.ts";
-import { loginHref, safeRedirect } from "../lib/redirect.ts";
-import { orpc } from "../lib/rpc.ts";
+import { Brand, Icon } from "@/components/icons.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { authClient, oauthContinuation } from "@/lib/auth-client.ts";
+import { type AuthErrorLike, type AuthMethod, authErrorLabel } from "@/lib/auth-errors.ts";
+import { meQuery } from "@/lib/me.ts";
+import { emailDomain } from "@/lib/people.ts";
+import { loginHref, safeRedirect } from "@/lib/redirect.ts";
+import { orpc } from "@/lib/rpc.ts";
 
 export interface LoginSearch {
   /** Trang muốn vào trước khi bị chuyển về đây. */

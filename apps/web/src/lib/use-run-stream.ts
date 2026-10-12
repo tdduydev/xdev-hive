@@ -1,6 +1,6 @@
 import type { RunEventView, RunLogChunk } from "@xdev-hive/contracts";
 import { useEffect, useRef, useState } from "react";
-import { LogBuffer, mergeEvents, runStreamUrl } from "./run-stream.ts";
+import { LogBuffer, mergeEvents, runStreamUrl } from "@/lib/run-stream.ts";
 
 /** connecting: đang mở. live: đang nhận. ended: run đã xong, hub đóng luồng. error: mất kết nối và không tự nối lại. */
 export type StreamStatus = "connecting" | "live" | "ended" | "error";

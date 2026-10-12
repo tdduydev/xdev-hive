@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authRedirect, legacyRedirect, loginHref, safeRedirect } from "./redirect.ts";
+import { authRedirect, legacyRedirect, loginHref, safeRedirect } from "@/lib/redirect.ts";
 
 describe("safeRedirect", () => {
   it("giữ đường dẫn trong hub, kèm query và hash", () => {

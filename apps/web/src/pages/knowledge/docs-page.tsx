@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import type { DocSummary } from "@xdev-hive/contracts";
 import { useId, useState } from "react";
-import { type Column, DataTable } from "../../components/data-table/data-table.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { NativeSelect } from "../../components/ui/native-select.tsx";
-import { useT } from "../../lib/i18n.ts";
-import { useOrg } from "../../shell/org-context.ts";
-import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "./common.tsx";
-import { Markdown } from "./markdown.tsx";
-import { knowledgeText } from "./text.ts";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { useT } from "@/lib/i18n.ts";
+import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import { Markdown } from "@/pages/knowledge/markdown.tsx";
+import { knowledgeText } from "@/pages/knowledge/text.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 const text = knowledgeText;
 export function DocsPage() {

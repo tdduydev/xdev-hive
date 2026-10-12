@@ -1,6 +1,6 @@
 import type { MyOrg } from "@xdev-hive/contracts";
 import { createContext, useContext } from "react";
-import type { OrgApi } from "../lib/rpc.ts";
+import type { OrgApi } from "@/lib/rpc.ts";
 
 export interface CurrentOrg {
   org: MyOrg;

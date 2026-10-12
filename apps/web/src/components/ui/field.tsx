@@ -1,5 +1,5 @@
 import { Field as BaseField } from "@base-ui/react/field";
-import { cx } from "../../lib/cx.ts";
+import { cx } from "@/lib/cx.ts";
 
 type WithClass<P> = Omit<P, "className"> & { className?: string };
 

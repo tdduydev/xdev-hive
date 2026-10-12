@@ -9,8 +9,8 @@ import {
   planStage,
   sameContent,
   toDraft,
-} from "./plan-view.ts";
-import { makeRun, makeTask } from "./test-fixtures.ts";
+} from "@/lib/plan-view.ts";
+import { makeRun, makeTask } from "@/lib/test-fixtures.ts";
 
 const content: PlanContent = {
   summary: "Làm tròn theo đồng.",

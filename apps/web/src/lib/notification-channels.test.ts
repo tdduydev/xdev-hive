@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChannelForm } from "./notification-channels.ts";
+import { parseChannelForm } from "@/lib/notification-channels.ts";
 
 const id = "00000000-0000-4000-8000-000000000001";
 function base() {

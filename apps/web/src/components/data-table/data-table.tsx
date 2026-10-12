@@ -11,21 +11,6 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { type Dict, useT } from "../../lib/i18n.ts";
-import { Button } from "../ui/button.tsx";
-import { Checkbox } from "../ui/checkbox.tsx";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu.tsx";
-import { Input } from "../ui/input.tsx";
-import { NativeSelect } from "../ui/native-select.tsx";
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "../ui/popover.tsx";
-import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "../ui/table.tsx";
 import {
   type Facet,
   type Filters,
@@ -35,7 +20,22 @@ import {
   type SearchColumn,
   type Sort,
   sortRows,
-} from "./model.ts";
+} from "@/components/data-table/model.ts";
+import { Button } from "@/components/ui/button.tsx";
+import { Checkbox } from "@/components/ui/checkbox.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover.tsx";
+import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@/components/ui/table.tsx";
+import { type Dict, useT } from "@/lib/i18n.ts";
 
 export interface Column<Row> extends SearchColumn<Row> {
   label: string;

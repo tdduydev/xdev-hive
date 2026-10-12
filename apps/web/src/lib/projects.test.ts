@@ -1,8 +1,8 @@
 import type { OrgMember } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { activeRunCounts, recentDays, teamRoleLookup } from "./projects.ts";
-import { searchInput, validateRunsSearch } from "./run-list.ts";
-import { makeRun } from "./test-fixtures.ts";
+import { activeRunCounts, recentDays, teamRoleLookup } from "@/lib/projects.ts";
+import { searchInput, validateRunsSearch } from "@/lib/run-list.ts";
+import { makeRun } from "@/lib/test-fixtures.ts";
 
 const member = (teams: OrgMember["teams"]): OrgMember => ({
   userId: "u1",

@@ -2,16 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import type { MergeQueueEntry, Project } from "@xdev-hive/contracts";
 import { type FormEvent, useId, useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { Table, Td, Th } from "../components/ui/table.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatDay } from "../lib/format.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { Table, Td, Th } from "@/components/ui/table.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatDay } from "@/lib/format.ts";
 import {
   canManageMergeQueue,
   canRemoveMerge,
@@ -22,11 +22,11 @@ import {
   MERGE_STATE_LABEL,
   MERGE_STATE_TONE,
   splitMergeQueue,
-} from "../lib/merge-queue.ts";
-import { isOrgAdmin } from "../lib/roles.ts";
-import { useMe } from "../shell/me-context.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/merge-queue.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 export function MergeQueuePage() {
   const { org } = useOrg();

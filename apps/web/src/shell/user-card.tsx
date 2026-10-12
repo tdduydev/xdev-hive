@@ -1,6 +1,6 @@
-import { PersonAvatar } from "../components/person.tsx";
-import { useMe } from "./me-context.ts";
-import { SignOutButton } from "./sign-out-button.tsx";
+import { PersonAvatar } from "@/components/person.tsx";
+import { useMe } from "@/shell/me-context.ts";
+import { SignOutButton } from "@/shell/sign-out-button.tsx";
 
 /** Chân sidebar: người đang đăng nhập, đăng xuất. Thu gọn còn ảnh đại diện. Giao diện và ngôn ngữ ở Topbar. */
 export function UserCard() {

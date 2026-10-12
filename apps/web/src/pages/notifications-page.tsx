@@ -6,23 +6,23 @@ import type {
   NotificationChannelUpdateInput,
 } from "@xdev-hive/contracts";
 import { type FormEvent, useId, useState } from "react";
-import { Icon } from "../components/icons.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Field, FieldHint, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { NativeSelect } from "../components/ui/native-select.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { Table, Td, Th } from "../components/ui/table.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "../lib/notification-channels.ts";
-import { isOrgAdmin } from "../lib/roles.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
-import { Inbox } from "./notification-inbox.tsx";
+import { Icon } from "@/components/icons.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Field, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { Table, Td, Th } from "@/components/ui/table.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { NOTIFICATION_EVENT_LABEL, NOTIFICATION_EVENTS, parseChannelForm } from "@/lib/notification-channels.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { Inbox } from "@/pages/notification-inbox.tsx";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 export function NotificationsPage() {
   const { org } = useOrg();

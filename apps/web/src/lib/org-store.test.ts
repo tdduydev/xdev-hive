@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createOrgStore, type KeyValueStorage, ORG_STORAGE_KEY, pickOrg } from "./org-store.ts";
+import { createOrgStore, type KeyValueStorage, ORG_STORAGE_KEY, pickOrg } from "@/lib/org-store.ts";
 
 function memoryStorage(initial: Record<string, string> = {}): KeyValueStorage & { data: Map<string, string> } {
   const data = new Map(Object.entries(initial));

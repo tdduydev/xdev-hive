@@ -9,7 +9,7 @@ import {
   MAX_INVITES,
   parseEmails,
   sameEmail,
-} from "./invites.ts";
+} from "@/lib/invites.ts";
 
 describe("parseEmails", () => {
   it("tách theo dấu phẩy, chấm phẩy, khoảng trắng và xuống dòng", () =>

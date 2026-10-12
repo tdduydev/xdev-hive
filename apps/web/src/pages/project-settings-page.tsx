@@ -2,18 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Project, ProjectSettings } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { NativeSelect } from "../components/ui/native-select.tsx";
-import { Switch } from "../components/ui/switch.tsx";
-import { Textarea } from "../components/ui/textarea.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { cx } from "../lib/cx.ts";
-import { type Dict, useT } from "../lib/i18n.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Switch } from "@/components/ui/switch.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   buildPatch,
   type FieldErrors,
@@ -22,12 +22,12 @@ import {
   SETTINGS_CLIS,
   type SettingsForm,
   saveErrors,
-} from "../lib/project-settings.ts";
-import { teamRoleLookup } from "../lib/projects.ts";
-import { CLI_LABEL } from "../lib/run-view.ts";
-import { useMe } from "../shell/me-context.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/project-settings.ts";
+import { teamRoleLookup } from "@/lib/projects.ts";
+import { CLI_LABEL } from "@/lib/run-view.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;

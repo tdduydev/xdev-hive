@@ -1,4 +1,4 @@
-import { cx } from "../../lib/cx.ts";
+import { cx } from "@/lib/cx.ts";
 
 /** Ô số liệu đầu trang: nhãn, con số lớn, một dòng giải thích. */
 export function StatTile({

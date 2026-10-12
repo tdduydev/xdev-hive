@@ -5,7 +5,7 @@ import {
   type ProjectSettingsPatch,
   projectSettingsPatch,
 } from "@xdev-hive/contracts";
-import { apiErrorMessage } from "./api-errors.ts";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
 
 export const SETTINGS_CLIS = ["claude", "codex", "gemini"] as const;
 export type SettingsCli = (typeof SETTINGS_CLIS)[number];

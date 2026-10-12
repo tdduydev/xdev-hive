@@ -1,14 +1,14 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatDay } from "../lib/format.ts";
-import { externalUrl } from "../lib/merge-queue.ts";
-import { useOrg } from "../shell/org-context.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatDay } from "@/lib/format.ts";
+import { externalUrl } from "@/lib/merge-queue.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 export function Inbox() {
   const { api } = useOrg();

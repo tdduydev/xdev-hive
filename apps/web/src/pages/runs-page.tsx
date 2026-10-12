@@ -2,20 +2,20 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { type Project, RUN_STATUS_GROUPS, type RunListItem, type RunState } from "@xdev-hive/contracts";
 import { useState } from "react";
-import { type ActiveFilter, type Column, DataTable } from "../components/data-table/data-table.tsx";
-import type { Facet } from "../components/data-table/model.ts";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatDayTime, formatUsd } from "../lib/format.ts";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { RUN_FILTERS, type RunsSearch, searchInput, validateRunsSearch } from "../lib/run-list.ts";
-import { CLI_LABEL, canCancel, prLabel, RUN_STATE_LABEL, runStateTone, shortId } from "../lib/run-view.ts";
-import { useNow } from "../lib/use-now.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { type ActiveFilter, type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import type { Facet } from "@/components/data-table/model.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatDayTime, formatUsd } from "@/lib/format.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { RUN_FILTERS, type RunsSearch, searchInput, validateRunsSearch } from "@/lib/run-list.ts";
+import { CLI_LABEL, canCancel, prLabel, RUN_STATE_LABEL, runStateTone, shortId } from "@/lib/run-view.ts";
+import { useNow } from "@/lib/use-now.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const REFRESH_MS = 30_000;
 const text: Dict<{

@@ -1,4 +1,4 @@
-import type { Dict } from "../../lib/i18n.ts";
+import type { Dict } from "@/lib/i18n.ts";
 
 export const knowledgeText: Dict<{
   docsTitle: string;

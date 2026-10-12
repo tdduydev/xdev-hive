@@ -1,9 +1,9 @@
 import { type ErrorComponentProps, Link, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Brand } from "../components/icons.tsx";
-import { OutsideLayout } from "../components/outside/outside-layout.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { type Dict, useT } from "../lib/i18n.ts";
+import { Brand } from "@/components/icons.tsx";
+import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{
   loading: string;
