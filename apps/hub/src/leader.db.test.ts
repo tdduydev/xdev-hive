@@ -168,8 +168,9 @@ async function until(check: () => Promise<boolean>, ms = 5000) {
 
 async function seedMachine(name: string, clis = ["claude", "codex"]) {
   const token = `hwm_${randomBytes(32).toString("base64url")}`;
+  // Máy dùng chung của đội: nhận cả run của đội (Leader, gate AI) lẫn run của mọi thành viên (ADR 0017).
   const { rows } = await admin.query(
-    "insert into hive.machines (org_id, team_id, name, os, version, clis, capacity) values ($1, $2, $3, 'linux', '1', $4, 2) returning id",
+    "insert into hive.machines (org_id, team_id, name, os, version, clis, capacity, shared) values ($1, $2, $3, 'linux', '1', $4, 2, true) returning id",
     [orgA.orgId, orgA.teamId, name, clis],
   );
   await admin.query(

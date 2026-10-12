@@ -21,6 +21,8 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
   status: m.pausedAt ? "paused" : m.status,
   lastSeenAt: m.lastSeenAt?.toISOString() ?? null,
   createdAt: m.createdAt.toISOString(),
+  shared: m.shared || m.kind === "host",
+  registeredBy: m.registeredBy,
 });
 
 export async function listMachines(tx: Tx, userId: string, teamId: string): Promise<Machine[]> {
@@ -117,6 +119,28 @@ export async function machineIsPaused(tx: Tx, machineId: string): Promise<boolea
     .where(eq(machines.id, machineId))
     .for("update");
   return row?.pausedAt !== null && row?.pausedAt !== undefined;
+}
+
+/**
+ * Quản trị đội bật dùng chung cho máy (máy chủ của đội), để máy nhận run của đội và của mọi thành viên. Máy cá nhân của
+ * ai thì bật cũng là cho cả đội dùng tài khoản CLI trên máy đó, nên chỉ quản trị đội được bật (ADR 0017).
+ */
+export async function setMachineShared(tx: Tx, userId: string, machineId: string, shared: boolean): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
+  const [row] = await tx.update(machines).set({ shared }).where(eq(machines.id, machineId)).returning();
+  if (!row) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  if (found.shared !== shared) {
+    await recordAudit(tx, {
+      action: shared ? "machine.share" : "machine.unshare",
+      targetType: "machine",
+      targetId: machineId,
+      data: { name: row.name, teamId: row.teamId, registeredBy: row.registeredBy },
+    });
+  }
+  return toMachine(row);
 }
 
 export const pauseMachine = (tx: Tx, userId: string, machineId: string) =>
@@ -307,7 +331,17 @@ export async function listOnlineMachines(
   tx: Tx,
   teamId: string,
   kind: MachineKind = "worker",
-): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number; capabilities: string[] }>> {
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    clis: string[];
+    capacity: number;
+    capabilities: string[];
+    shared: boolean;
+    registeredBy: string | null;
+  }>
+> {
   return tx
     .select({
       id: machines.id,
@@ -315,6 +349,8 @@ export async function listOnlineMachines(
       clis: machines.clis,
       capacity: machines.capacity,
       capabilities: machines.capabilities,
+      shared: machines.shared,
+      registeredBy: machines.registeredBy,
     })
     .from(machines)
     .where(
@@ -359,12 +395,35 @@ export async function machinesOfUser(tx: Tx, userId: string) {
 export async function findMachine(
   tx: Tx,
   id: string,
-): Promise<{ id: string; teamId: string; kind: MachineKind; revoked: boolean } | null> {
+): Promise<{
+  id: string;
+  teamId: string;
+  kind: MachineKind;
+  revoked: boolean;
+  shared: boolean;
+  registeredBy: string | null;
+} | null> {
   const [row] = await tx
-    .select({ id: machines.id, teamId: machines.teamId, kind: machines.kind, revokedAt: machines.revokedAt })
+    .select({
+      id: machines.id,
+      teamId: machines.teamId,
+      kind: machines.kind,
+      revokedAt: machines.revokedAt,
+      shared: machines.shared,
+      registeredBy: machines.registeredBy,
+    })
     .from(machines)
     .where(eq(machines.id, id));
-  return row ? { id: row.id, teamId: row.teamId, kind: row.kind, revoked: row.revokedAt !== null } : null;
+  return row
+    ? {
+        id: row.id,
+        teamId: row.teamId,
+        kind: row.kind,
+        revoked: row.revokedAt !== null,
+        shared: row.shared,
+        registeredBy: row.registeredBy,
+      }
+    : null;
 }
 
 /**

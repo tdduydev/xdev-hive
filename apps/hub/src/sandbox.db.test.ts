@@ -46,9 +46,10 @@ beforeAll(async () => {
     })
   ).projectId;
   const seedMachine = async (name: string, kind: string) =>
+    // Máy dùng chung của đội: nhận cả run của đội (Leader, gate AI) lẫn run của mọi thành viên (ADR 0017).
     (
       await admin.query(
-        "insert into hive.machines (org_id, team_id, name, kind, os, version, clis, status, last_seen_at, capacity) values ($1, $2, $3, $4, 'linux', '1', '{claude}', 'online', now(), 8) returning id",
+        "insert into hive.machines (org_id, team_id, name, kind, os, version, clis, status, last_seen_at, capacity, shared) values ($1, $2, $3, $4, 'linux', '1', '{claude}', 'online', now(), 8, true) returning id",
         [org.orgId, org.teamId, name, kind],
       )
     ).rows[0].id;

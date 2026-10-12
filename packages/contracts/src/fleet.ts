@@ -25,6 +25,13 @@ export const machine = z.object({
   status: machineStatus,
   lastSeenAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
+  /**
+   * Máy dùng chung của đội: nhận run của đội và của mọi thành viên. false là máy cá nhân, chỉ nhận run của người đã
+   * đăng ký máy (CLI trên máy đăng nhập bằng tài khoản của họ). Runner host luôn tính là dùng chung.
+   */
+  shared: z.boolean(),
+  /** Người đã đăng ký máy (chủ máy cá nhân). */
+  registeredBy: z.string().nullable(),
 });
 export type Machine = z.output<typeof machine>;
 
@@ -106,6 +113,16 @@ export const fleetContract = {
       .route({ method: "POST", path: "/v1/machines/{machineId}/pause", summary: "Tạm dừng máy", tags: ["fleet"] })
       .errors(userErrors)
       .input(z.object({ machineId: id }))
+      .output(machine),
+    setShared: oc
+      .route({
+        method: "POST",
+        path: "/v1/machines/{machineId}/shared",
+        summary: "Bật hoặc tắt dùng chung cho máy (quản trị đội)",
+        tags: ["fleet"],
+      })
+      .errors(userErrors)
+      .input(z.object({ machineId: id, shared: z.boolean() }))
       .output(machine),
     resume: oc
       .route({ method: "POST", path: "/v1/machines/{machineId}/resume", summary: "Chạy lại máy", tags: ["fleet"] })
