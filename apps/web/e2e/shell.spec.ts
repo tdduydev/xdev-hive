@@ -96,3 +96,17 @@ test("chọn giao diện tối được lưu qua lần tải lại; theo hệ th
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(html).toHaveClass(/\bdark\b/);
 });
+
+test("chọn ngôn ngữ EN được lưu và đặt lang của trang", async ({ page }) => {
+  await fakeHub(page, { signedIn: true });
+  await page.goto("/");
+  const group = page.locator("aside").getByRole("group", { name: "Ngôn ngữ" });
+  await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+  await group.getByRole("button", { name: "EN" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("aside").getByRole("group", { name: "Language" })).toBeVisible();
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await page.locator("aside").getByRole("group", { name: "Language" }).getByRole("button", { name: "VI" }).click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+});
