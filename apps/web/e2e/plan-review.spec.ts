@@ -236,6 +236,7 @@ test("màn kế hoạch: các bước, file, rủi ro, câu hỏi, run đã lậ
   await page.goto("/tasks/PAY-3/plan");
   await expect(page.getByText("Chờ duyệt", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Lần lập 2")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Thông tin", exact: true })).toContainText("Claude");
   await expect(page.getByText(CONTENT.summary)).toBeVisible();
   const steps = page.getByRole("region", { name: "Các bước" }).getByRole("listitem");
   await expect(steps).toHaveCount(3);
@@ -505,5 +506,37 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByRole("dialog")).toBeVisible();
     await noOverflow("dialog duyệt");
     await page.screenshot({ path: `test-results/screens/plan-approve-360-${scheme}.png` });
+  });
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`kế hoạch: bản tiếng Anh, lịch sử, form sửa và dialog (${scheme})`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
+    await open(page);
+    await page.goto("/tasks/PAY-3/plan");
+    await expect(page.getByRole("region", { name: "Summary", exact: true })).toContainText(CONTENT.summary);
+    await expect(page.getByRole("region", { name: "Steps", exact: true }).getByRole("listitem")).toHaveCount(3);
+    const history = page.getByRole("region", { name: "Versions", exact: true });
+    await expect(history).toContainText("Rejected");
+    await history.getByText("View version 1", { exact: true }).click();
+    await expect(history).toContainText("Làm tròn tổng hoá đơn.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: testInfo.outputPath(`plan-en-360-${scheme}.png`), fullPage: true });
+    await page.getByRole("button", { name: "Edit plan", exact: true }).click();
+    const editor = page.getByRole("form", { name: "Edit plan", exact: true });
+    await expect(editor.getByLabel("Summary", { exact: true })).toHaveValue(CONTENT.summary);
+    await editor.getByLabel("Summary", { exact: true }).fill("");
+    await editor.getByRole("button", { name: "Use edited version" }).click();
+    await expect(editor.getByText("Plan summary cannot be empty.")).toBeVisible();
+    await expect(editor.getByLabel("Summary", { exact: true })).toBeFocused();
+    await editor.getByRole("button", { name: "Cancel edits" }).click();
+    await page.getByRole("button", { name: "Approve plan", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Approve version 2?" });
+    await expect(dialog.getByLabel("Note for the agent (optional)")).toBeVisible();
+    await expect(dialog).toContainText("questions; answer them in the note:");
+    await dialog.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(dialog).toBeHidden();
   });
 }
