@@ -9919,6 +9919,23 @@
                         "type": "string",
                         "format": "date-time"
                       },
+                      "providers": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "lastSeenAt": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "teams": {
                         "type": "array",
                         "items": {

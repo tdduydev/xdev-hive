@@ -15,7 +15,7 @@ import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill, type PillProps } from "../components/ui/pill.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { formatDay } from "../lib/format.ts";
-import { type Dict, useT } from "../lib/i18n.ts";
+import { type Dict, useLang, useT } from "../lib/i18n.ts";
 import { canInvite, canRevoke } from "../lib/invites.ts";
 import { canSetOrgRole, canSetStatus, isOrgAdmin, ORG_ROLES } from "../lib/roles.ts";
 import { useMe } from "../shell/me-context.ts";
@@ -58,7 +58,10 @@ const memberText: Dict<{
   lock: string;
   loading: string;
   invitePeople: string;
-  noDataYet: string;
+  signIn: string;
+  neverSignedIn: string;
+  noLinkedSignIn: string;
+  password: string;
   invitePeopleToTheOrganization: string;
   noInvitationsYet: string;
   invitationHint: string;
@@ -115,7 +118,10 @@ const memberText: Dict<{
     lock: "Khoá",
     loading: "Đang tải…",
     invitePeople: "Mời người",
-    noDataYet: "Chưa có dữ liệu",
+    signIn: "Đăng nhập",
+    neverSignedIn: "Chưa đăng nhập",
+    noLinkedSignIn: "Chưa liên kết",
+    password: "Mật khẩu",
     invitePeopleToTheOrganization: "Mời người vào tổ chức",
     noInvitationsYet: "Chưa có lời mời nào",
     invitationHint: "Mời đồng nghiệp bằng email. Mỗi người nhận một link dùng một lần, hết hạn sau 7 ngày.",
@@ -172,7 +178,10 @@ const memberText: Dict<{
     lock: "Lock",
     loading: "Loading…",
     invitePeople: "Invite people",
-    noDataYet: "No data yet",
+    signIn: "Sign-in",
+    neverSignedIn: "Never signed in",
+    noLinkedSignIn: "Not linked",
+    password: "Password",
     invitePeopleToTheOrganization: "Invite people to the organization",
     noInvitationsYet: "No invitations yet",
     invitationHint: "Invite colleagues by email. Each person gets a single-use link that expires in 7 days.",
@@ -314,6 +323,14 @@ export function MembersPage() {
                 ]}
                 facets={[
                   {
+                    key: "login",
+                    label: t.signIn,
+                    value: (m) => (m.providers ?? []).map(signInMethod),
+                    options: Array.from(new Set(listed.flatMap((m) => (m.providers ?? []).map(signInMethod))))
+                      .sort()
+                      .map((provider) => ({ value: provider, label: providerLabel(provider, t.password) })),
+                  },
+                  {
                     key: "role",
                     label: t.role,
                     value: (m) => m.role,
@@ -384,15 +401,18 @@ export function MembersPage() {
                   {
                     key: "login",
                     label: t.signsInWith,
-                    value: () => null,
-                    cell: () => <span className="text-muted-foreground">{t.noDataYet}</span>,
+                    value: (m) =>
+                      (m.providers ?? [])
+                        .map((provider) => providerLabel(signInMethod(provider), t.password))
+                        .join(" "),
+                    cell: (m) => <MemberSignIns member={m} />,
                   },
                   {
                     key: "seen",
                     label: t.lastActive,
-                    value: () => null,
+                    value: (m) => m.lastSeenAt,
                     sortable: true,
-                    cell: () => <span className="text-muted-foreground">{t.noDataYet}</span>,
+                    cell: (m) => <MemberActivity member={m} />,
                   },
                   {
                     key: "joined",
@@ -750,6 +770,58 @@ function PendingCell({
       </span>
     );
   return null;
+}
+
+function signInMethod(provider: string): string {
+  return provider.startsWith("org-") ? "sso" : provider;
+}
+
+function providerLabel(provider: string, password: string): string {
+  const labels: Record<string, string> = {
+    credential: password,
+    google: "Google",
+    microsoft: "Microsoft",
+    github: "GitHub",
+    gitlab: "GitLab",
+    sso: "SSO",
+  };
+  return labels[provider] ?? provider;
+}
+
+function MemberSignIns({ member }: { member: OrgMember }) {
+  const t = useT(memberText);
+  const methods = Array.from(new Set((member.providers ?? []).map(signInMethod)));
+  return methods.length ? (
+    <span className="flex flex-wrap gap-1">
+      {methods.map((method) => (
+        <Pill key={method}>{providerLabel(method, t.password)}</Pill>
+      ))}
+    </span>
+  ) : (
+    <span className="text-muted-foreground">{t.noLinkedSignIn}</span>
+  );
+}
+
+function MemberActivity({ member }: { member: OrgMember }) {
+  const t = useT(memberText);
+  const lang = useLang();
+  if (!member.lastSeenAt) return <span className="text-muted-foreground">{t.neverSignedIn}</span>;
+  const date = new Date(member.lastSeenAt);
+  const seconds = Math.min(0, Math.round((date.getTime() - Date.now()) / 1000));
+  const [unit, divisor]: [Intl.RelativeTimeFormatUnit, number] =
+    seconds > -60
+      ? ["second", 1]
+      : seconds > -3600
+        ? ["minute", 60]
+        : seconds > -86400
+          ? ["hour", 3600]
+          : ["day", 86400];
+  const relative = new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(Math.round(seconds / divisor), unit);
+  return (
+    <time dateTime={member.lastSeenAt} title={date.toLocaleString(lang)} className="text-muted-foreground">
+      {relative}
+    </time>
+  );
 }
 
 function MemberTeams({ teams }: { teams: OrgMember["teams"] }) {
