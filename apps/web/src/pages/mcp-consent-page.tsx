@@ -1,8 +1,8 @@
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { useState } from "react";
 import { Brand } from "@/components/icons.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { authClient, oauthContinuation } from "@/lib/auth-client.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diffBlocks, lineDiff } from "@/lib/line-diff.ts";
+import { diffBlocks, lineDiff } from "./line-diff.ts";
 
 const kinds = (before: string, after: string) => lineDiff(before, after).map((l) => `${l.kind[0]}:${l.text}`);
 

@@ -7,6 +7,7 @@ import {
   type PermissionNode,
   type SystemRoleId,
 } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -17,11 +18,10 @@ import {
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { ChevronRightIcon, LockIcon, PlusIcon, XIcon } from "lucide-react";
 import { type FormEvent, useId, useMemo, useState } from "react";
-import { Alert } from "@/components/ui/alert.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";

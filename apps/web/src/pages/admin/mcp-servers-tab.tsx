@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type McpServerLaunch, type McpServerRule, type McpServerRuleInput, mcpServerKey } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -10,12 +11,11 @@ import {
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { Pencil, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
