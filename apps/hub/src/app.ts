@@ -6,7 +6,13 @@ import { RPCHandler } from "@orpc/server/fetch";
 import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import type pg from "pg";
-import { exportAudit, queryAudit, withAuditAccess } from "./modules/audit/index.ts";
+import {
+  exportAudit,
+  getAuditRetention,
+  queryAudit,
+  setAuditRetention,
+  withAuditAccess,
+} from "./modules/audit/index.ts";
 import {
   registerMcpTools as catalogMcpTools,
   catalogRouter,
@@ -126,6 +132,24 @@ export function createApp({
         { userId: context.user.id, orgId: context.orgId },
         (tx: Tx) => allowWith(tx, context.user.id, "audit.export", () => requireOrgRole(tx, context.user.id, "admin")),
         (tx) => exportAudit(tx, input),
+      ),
+    ),
+    retention: auditBase.retention.handler(({ context }) =>
+      withAuditAccess(
+        context.pool,
+        { userId: context.user.id, orgId: context.orgId },
+        (tx: Tx) => allowWith(tx, context.user.id, "audit.read", () => requireOrgRole(tx, context.user.id, "admin")),
+        getAuditRetention,
+      ),
+    ),
+    // Hạ thời hạn lưu làm mất nhật ký cũ, nên chỉ chủ sở hữu và quản trị tổ chức được đổi; vai trò tự tạo có audit.read
+    // hay audit.export thì không.
+    setRetention: auditBase.setRetention.handler(({ context, input }) =>
+      withAuditAccess(
+        context.pool,
+        { userId: context.user.id, orgId: context.orgId },
+        (tx: Tx) => requireOrgRole(tx, context.user.id, "admin"),
+        (tx) => setAuditRetention(tx, input),
       ),
     ),
   };

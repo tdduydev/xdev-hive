@@ -87,7 +87,8 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | sandbox | `egress_allowlists` | `rule`; `project_id` null means organization-wide |
 | sandbox | `env_images` | One per project: `base_image`, `setup_script_hash` |
 | notify | `notification_channels`, `notifications`, `inbox_items` | Channels hold `config_enc`; notifications have `status` (`queued`, `sent`, `failed`) and `attempts` |
-| audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app` |
+| audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app`; expired rows removed only by `hive.purge_expired_audit_log()` |
+| audit | `audit_settings` | One per organization: `retention_days` (90–3650, default 365 when absent); no DELETE for `hive_app` |
 
 Identity tables live in schema `auth` and are owned by Better Auth (`user`, `session`, `account`, `verification`,
 `ssoProvider`, `jwks`, `oauth*`).
