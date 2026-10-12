@@ -60,6 +60,11 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   là trang từ xa, không có capability nào, nên không gọi được lệnh của app. CSP không cho script inline, nên sáng/tối
   đặt trong `src/main.tsx` trước lần vẽ đầu.
 
+## Phát hành
+
+Tag `v*` đóng gói app cho macOS arm64, Windows x64, Linux amd64 và gắn vào GitHub Release cùng worker; mỗi lần đổi
+app trên `main` có bản thử ở mục Artifacts của workflow `Desktop`. Chi tiết, tên file và ký mã: `docs/releasing.md`.
+
 ## Cập nhật tự động
 
 `tauri-plugin-updater` đã cài, nhưng `pubkey` trong `tauri.conf.json` đang để trống. Khi `pubkey` trống, app không

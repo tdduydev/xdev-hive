@@ -1,0 +1,135 @@
+name: Desktop
+
+# Đóng gói app desktop (Tauri) cho macOS arm64, Windows x64, Linux amd64.
+# - Đẩy lên main (đổi app, worker hay token màu): dựng bản thử, tải ở mục Artifacts của lượt chạy.
+# - Tag v*: release.yml gọi workflow này với `release-tag`, file được gắn vào bản nháp của release đó.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Phiên bản semver không có chữ v (vd. 0.2.0)
+        type: string
+        required: true
+      release-tag:
+        description: Tag của bản nháp cần gắn file; để trống thì chỉ lưu artifact
+        type: string
+        required: false
+        default: ""
+  workflow_dispatch:
+  # Đổi chính workflow này thì đóng gói thử ngay trên PR, không đợi merge.
+  pull_request:
+    paths: [.github/workflows/desktop.yml]
+  push:
+    branches: [main]
+    paths:
+      - apps/desktop/**
+      - worker/**
+      - docs/design-system/tokens.json
+      - docs/design-system/assets/logos/**
+      - pnpm-lock.yaml
+      - .github/workflows/desktop.yml
+
+permissions:
+  contents: write
+  # Chứng thực nguồn gốc file cài (kiểm bằng `gh attestation verify`).
+  id-token: write
+  attestations: write
+
+jobs:
+  bundle:
+    name: Đóng gói (${{ matrix.platform }}-${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, platform: macos, arch: arm64 }
+          - { os: windows-latest, platform: windows, arch: x64 }
+          - { os: ubuntu-24.04, platform: linux, arch: amd64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Thư viện hệ thống cho Tauri trên Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev file
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: worker/go.mod
+          cache-dependency-path: worker/go.sum
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Phiên bản
+        run: |
+          version="${{ inputs.version }}"
+          # Bản thử từ main giữ 0.0.0 (MSI chỉ nhận x.y.z số); sidecar thì giữ 0.0.0-dev của worker.
+          if [ -n "$version" ]; then echo "HIVE_WORKER_VERSION=$version" >> "$GITHUB_ENV"; else version=0.0.0; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Ký macOS (chỉ khi repo có secret)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        # Tauri ký và notarize khi thấy các biến này; biến rỗng vẫn làm nó thử ký rồi lỗi, nên chỉ đặt biến có giá trị.
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            [ -n "${!name}" ] && echo "$name=${!name}" >> "$GITHUB_ENV"
+          done
+          [ -n "$APPLE_SIGNING_IDENTITY" ] && echo "Ký bằng $APPLE_SIGNING_IDENTITY" || echo "::notice::Chưa có secret ký macOS: bản dựng không ký."
+      - name: Dựng app
+        working-directory: apps/desktop
+        env:
+          # linuxdeploy (AppImage) không đọc được bảng .relr.dyn của binary mới khi strip.
+          NO_STRIP: "true"
+        run: pnpm tauri build --config "{\"version\":\"$VERSION\"}"
+      - name: Gom file cài, đặt tên cố định
+        # Tên không có số phiên bản để link /releases/latest/download/<tên> luôn trỏ tới bản mới nhất, như worker.
+        run: |
+          bundle=apps/desktop/src-tauri/target/release/bundle
+          out="$RUNNER_TEMP/desktop"
+          mkdir -p "$out"
+          name="xdev-hive-desktop_${{ matrix.platform }}_${{ matrix.arch }}"
+          take() { # take <glob> <đuôi>
+            # shellcheck disable=SC2086 # cố ý để bash mở rộng glob thành tên file thật
+            set -- $1 "$2"
+            [ -f "$1" ] || { echo "::error::Không thấy file cài $1"; exit 1; }
+            cp "$1" "$out/$name$2"
+          }
+          case "${{ matrix.platform }}" in
+            macos) take "$bundle/dmg/*.dmg" .dmg ;;
+            windows) take "$bundle/nsis/*-setup.exe" -setup.exe; take "$bundle/msi/*.msi" .msi ;;
+            linux) take "$bundle/deb/*.deb" .deb; take "$bundle/appimage/*.AppImage" .AppImage; take "$bundle/rpm/*.rpm" .rpm ;;
+          esac
+          (cd "$out" && for f in *; do
+            if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi
+          done > "$name.sha256")
+          ls -l "$out"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: xdev-hive-desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/desktop/*
+          retention-days: 14
+      - if: inputs.release-tag != ''
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ${{ runner.temp }}/desktop/*
+      - name: Gắn vào bản nháp release
+        if: inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.release-tag }}" "$RUNNER_TEMP"/desktop/* --repo "$GITHUB_REPOSITORY" --clobber
