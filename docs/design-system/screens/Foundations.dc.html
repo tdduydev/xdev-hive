@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Design system · Nền tảng</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.sec{display:flex;flex-direction:column;gap:14px}
+.sec h2{margin:0;font-family:var(--font-heading);font-size:20px;letter-spacing:-.03em}
+.cap{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground)}
+.sw{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; min-height: 2200px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 48px; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--border);">
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <dc-import name="Logo" height="56" hint-size="128px,56px"></dc-import>
+      <h1 style="margin: 0; font-family: var(--font-heading); font-size: 40px; line-height: 1.1; letter-spacing: -0.04em;">Design system · {{t.found}}</h1>
+      <p class="muted" style="margin: 0; max-width: 760px;">{{t.lead}}</p>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+      <div style="display: inline-flex; padding: 3px; background: var(--muted); border-radius: 8px;"><button type="button" onClick="{{toLight}}" style="{{lightS}}">Light</button><button type="button" onClick="{{toDark}}" style="{{darkS}}">Dark</button></div>
+      <span class="mono muted" style="font-size: 12px;">tokens.json v2 · shadcn/ui base-nova</span>
+    </div>
+  </header>
+
+  <section class="sec">
+    <h2>{{t.color}}</h2>
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span class="cap">{{g.label}}</span>
+        <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;">
+          <sc-for list="{{g.items}}" as="c" hint-placeholder-count="6">
+            <div class="sw">
+              <div style="{{c.fill}}"><span style="{{c.sample}}">Aa</span></div>
+              <div style="padding: 8px 10px; display: flex; flex-direction: column; gap: 1px;"><span class="mono" style="font-size: 12.5px; font-weight: 600;">--{{c.name}}</span><span class="mono muted" style="font-size: 11px;">{{c.value}}</span><span class="muted" style="font-size: 11.5px; line-height: 1.35;">{{c.use}}</span></div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </section>
+
+  <section class="sec">
+    <h2>{{t.status}}</h2>
+    <p class="muted" style="margin: -6px 0 0;">{{t.statusLead}}</p>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px;">
+      <sc-for list="{{states}}" as="s" hint-placeholder-count="5">
+        <div class="sw" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <span style="{{s.badge}}"><span style="width: 6px; height: 6px; border-radius: 9999px; background: currentColor;"></span>{{s.label}}</span>
+          <span class="mono muted" style="font-size: 11.5px;">{{s.tokens}}</span>
+          <span style="font-size: 12.5px;">{{s.when}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>{{t.type}}</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+      <div class="sw" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;"><span class="cap">heading · mono</span><span style="font-family: var(--font-heading); font-size: 30px; font-weight: 600; letter-spacing: -0.04em;">JetBrains Mono</span><span class="muted" style="font-size: 12.5px;">{{t.headUse}}</span></div>
+      <div class="sw" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;"><span class="cap">sans</span><span style="font-size: 30px; font-weight: 600; letter-spacing: -0.02em;">IBM Plex Sans</span><span class="muted" style="font-size: 12.5px;">{{t.sansUse}}</span></div>
+      <div class="sw" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;"><span class="cap">mono</span><span class="mono" style="font-size: 22px;">ai/TASK-42 · 7ff9637</span><span class="muted" style="font-size: 12.5px;">{{t.monoUse}}</span></div>
+    </div>
+    <div class="sw">
+      <sc-for list="{{scale}}" as="s" hint-placeholder-count="8">
+        <div style="display: grid; grid-template-columns: 140px 120px minmax(0, 1fr); gap: 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border);">
+          <span class="mono" style="font-size: 12.5px; font-weight: 600;">{{s.name}}</span><span class="mono muted" style="font-size: 12px;">{{s.spec}}</span><span style="{{s.style}}">{{s.sample}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+    <div class="sec">
+      <h2>{{t.space}}</h2>
+      <div class="sw" style="padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+        <sc-for list="{{spaces}}" as="s" hint-placeholder-count="9"><div style="display: grid; grid-template-columns: 72px 44px minmax(0, 1fr); gap: 10px; align-items: center;"><span class="mono" style="font-size: 12px;">{{s.name}}</span><span class="mono muted" style="font-size: 12px;">{{s.px}}</span><span style="{{s.bar}}"></span></div></sc-for>
+      </div>
+    </div>
+    <div class="sec">
+      <h2>{{t.radius}}</h2>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+        <sc-for list="{{radii}}" as="r" hint-placeholder-count="6"><div style="display: flex; flex-direction: column; align-items: center; gap: 6px;"><span style="{{r.box}}"></span><span class="mono" style="font-size: 11.5px;">{{r.name}}</span><span class="muted" style="font-size: 11px; text-align: center;">{{r.use}}</span></div></sc-for>
+      </div>
+    </div>
+    <div class="sec">
+      <h2>{{t.shadow}}</h2>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <sc-for list="{{shadows}}" as="s" hint-placeholder-count="3"><div style="{{s.box}}"><span class="mono" style="font-size: 12px; font-weight: 600;">{{s.name}}</span><span class="muted" style="font-size: 12px;">{{s.use}}</span></div></sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>{{t.brand}}</h2>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+      <div class="sw" style="padding: 28px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: #FFFFFF;"><div data-theme="light" style="--brand-letter: #344568;"><dc-import name="Logo" height="64" hint-size="146px,64px"></dc-import></div><span class="mono" style="font-size: 11.5px; color: #475569;">xdev-hive-light.svg</span></div>
+      <div class="sw" style="padding: 28px; display: flex; flex-direction: column; align-items: center; gap: 12px; background: #142745;"><div style="--brand-letter: #E8ECF8;"><dc-import name="Logo" height="64" hint-size="146px,64px"></dc-import></div><span class="mono" style="font-size: 11.5px; color: #CBD5E1;">xdev-hive-dark.svg · brand-navy</span></div>
+      <div class="sw" style="padding: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;"><span class="cap">{{t.rules}}</span><span>{{t.r1}}</span><span>{{t.r2}}</span><span>{{t.r3}}</span><span>{{t.r4}}</span></div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"$preview":{"width":1440,"height":2200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { dark: null }; }
+  renderVals() {
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = (this.props.lang ?? 'vi') === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      found: ['Nền tảng', 'Foundations'], lead: ['Token v2 theo tên biến shadcn/ui, màu chính là xanh thương hiệu. Nguồn: docs/design-system/tokens.json; apps/web/src/styles.css đọc cùng giá trị.', 'v2 tokens with shadcn/ui variable names; primary is the brand blue. Source: docs/design-system/tokens.json; apps/web/src/styles.css uses the same values.'],
+      color: ['Màu', 'Color'], status: ['Trạng thái', 'Status'], statusLead: ['Màu trạng thái luôn đi kèm chữ và chấm; không dùng màu một mình để báo trạng thái.', 'Status color always comes with a word and a dot; color never carries state alone.'],
+      type: ['Chữ', 'Typography'], headUse: ['Tiêu đề trang, số liệu lớn, tên thương hiệu trong app.', 'Page titles, key figures, brand name in the app.'], sansUse: ['Chữ giao diện và đoạn văn.', 'UI text and body copy.'], monoUse: ['Mã việc, SHA, nhánh, lệnh, đường dẫn file.', 'Task ids, SHAs, branches, commands, file paths.'],
+      space: ['Khoảng cách', 'Spacing'], radius: ['Bo góc', 'Radius'], shadow: ['Bóng', 'Shadow'], brand: ['Logo', 'Logo'], rules: ['Quy tắc', 'Rules'],
+      r1: ['Chừa trống quanh logo ít nhất 1/4 chiều cao chữ X.', 'Keep clear space of at least 1/4 of the X height.'], r2: ['Gradient X chỉ dùng cho logo và hình thương hiệu, không cho nút hay nền.', 'The X gradient is for the logo and brand art only, never buttons or backgrounds.'],
+      r3: ['Icon app, favicon, khay hệ thống dùng xdev-hive-icon.svg.', 'App icon, favicon and tray use xdev-hive-icon.svg.'], r4: ['Không đổi màu, kéo giãn hay vẽ lại chữ X bằng font khác.', 'Never recolor, stretch or redraw the X in another font.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const L = { background: '#F8FAFC', foreground: '#0F172A', card: '#FFFFFF', popover: '#FFFFFF', muted: '#F1F5F9', 'muted-foreground': '#475569', primary: '#1D4ED8', 'primary-foreground': '#FFFFFF', secondary: '#F1F5F9', accent: '#E5EDFF', 'accent-foreground': '#1E3A8A', border: '#E2E8F0', input: '#8492A6', ring: '#2563EB', destructive: '#C81E1E', 'destructive-soft': '#FEF2F2', success: '#15803D', 'success-soft': '#F0FDF4', warning: '#B45309', 'warning-soft': '#FFFBEB', sidebar: '#FFFFFF', 'brand-sky': '#7BD4FF', 'brand-blue': '#1E90FF', 'brand-deep': '#004CFF', 'brand-navy': '#142745', 'brand-letter': '#344568' };
+    const D = { background: '#0F172A', foreground: '#F8FAFC', card: '#1B2336', popover: '#1B2336', muted: '#272F42', 'muted-foreground': '#94A3B8', primary: '#60A5FA', 'primary-foreground': '#0F172A', secondary: '#272F42', accent: '#1E3A5F', 'accent-foreground': '#DBEAFE', border: '#334155', input: '#64748B', ring: '#93C5FD', destructive: '#F87171', 'destructive-soft': '#3A1D24', success: '#4ADE80', 'success-soft': '#16321F', warning: '#FBBF24', 'warning-soft': '#33290F', sidebar: '#111A2E', 'brand-sky': '#B8F1FF', 'brand-blue': '#3FA9FF', 'brand-deep': '#1C58FF', 'brand-navy': '#142745', 'brand-letter': '#E8ECF8' };
+    const fgOf = { primary: 'primary-foreground', accent: 'accent-foreground', destructive: 'background', success: 'background', warning: 'background', 'brand-navy': 'brand-sky', 'brand-deep': 'background', 'brand-blue': 'background', 'destructive-soft': 'destructive', 'success-soft': 'success', 'warning-soft': 'warning', 'muted-foreground': 'background', foreground: 'background', input: 'background', ring: 'background' };
+    const use = {
+      background: ['Nền trang', 'Page background'], foreground: ['Chữ mặc định', 'Default text'], card: ['Thẻ, hộp thoại, ô nhập', 'Cards, dialogs, inputs'], popover: ['Menu, popover', 'Menus, popovers'], muted: ['Hàng hover, đầu bảng, code', 'Hover rows, table heads, code'], 'muted-foreground': ['Chữ phụ, gợi ý', 'Secondary text, hints'],
+      primary: ['Nút chính, link, mục đang chọn', 'Primary buttons, links, selection'], 'primary-foreground': ['Chữ trên primary', 'Text on primary'], secondary: ['Nút phụ, tag', 'Secondary buttons, tags'], accent: ['Mục menu đang chọn, nền thông tin', 'Selected nav, info tint'], 'accent-foreground': ['Chữ trên accent', 'Text on accent'],
+      border: ['Viền thẻ, đường chia', 'Card borders, dividers'], input: ['Viền ô nhập (3:1)', 'Input borders (3:1)'], ring: ['Vòng focus', 'Focus ring'], destructive: ['Lỗi, xoá, huỷ', 'Errors, delete, cancel'], 'destructive-soft': ['Nền lỗi', 'Error background'],
+      success: ['Thành công, trực tuyến', 'Success, online'], 'success-soft': ['Nền thành công', 'Success background'], warning: ['Chờ người, sắp hết hạn', 'Needs you, due soon'], 'warning-soft': ['Nền cảnh báo', 'Warning background'], sidebar: ['Nền thanh bên', 'Sidebar background'],
+      'brand-sky': ['Điểm đầu gradient X', 'X gradient start'], 'brand-blue': ['Giữa gradient X, chuỗi biểu đồ 1', 'X gradient middle, chart 1'], 'brand-deep': ['Cuối gradient X', 'X gradient end'], 'brand-navy': ['Nền icon app, splash', 'App icon tile, splash'], 'brand-letter': ['Chữ HIVE / DEV HUB', 'HIVE / DEV HUB lettering'],
+    };
+    const P = dark ? D : L;
+    const sw = (n) => ({ name: n, value: P[n], use: x(use[n]), fill: 'height: 64px; display: flex; align-items: flex-end; padding: 8px 10px; background: var(--' + n + '); border-bottom: 1px solid var(--border);', sample: 'font-weight: 600; font-size: 16px; color: var(--' + (fgOf[n] || 'foreground') + ');' });
+    const groups = [
+      { label: x(['Bề mặt và chữ', 'Surfaces and text']), items: ['background', 'foreground', 'card', 'popover', 'muted', 'muted-foreground'].map(sw) },
+      { label: x(['Hành động và chọn', 'Action and selection']), items: ['primary', 'primary-foreground', 'secondary', 'accent', 'accent-foreground', 'ring'].map(sw) },
+      { label: x(['Trạng thái và viền', 'Status and borders']), items: ['success', 'success-soft', 'warning', 'warning-soft', 'destructive', 'destructive-soft'].map(sw) },
+      { label: x(['Thương hiệu', 'Brand']), items: ['brand-sky', 'brand-blue', 'brand-deep', 'brand-navy', 'brand-letter', 'border'].map(sw) },
+    ];
+    const badge = (bg, fg) => `display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; height: 22px; padding: 0 8px; border-radius: 9999px; font-size: 12px; font-weight: 500; background: var(--${bg}); color: var(--${fg});`;
+    const states = [
+      [['Đang chạy', 'Running'], 'accent', 'accent-foreground', ['Đang chạy, đang merge, đang khởi tạo', 'Running, merging, setting up']],
+      [['Chờ người', 'Needs you'], 'warning-soft', 'warning', ['Chờ duyệt, cần người xem, sắp hết hạn', 'Awaiting review, needs a person, due soon']],
+      [['Thành công', 'Succeeded'], 'success-soft', 'success', ['Thành công, đã merge, trực tuyến, đã duyệt', 'Succeeded, merged, online, approved']],
+      [['Lỗi', 'Failed'], 'destructive-soft', 'destructive', ['Lỗi, mất máy, bị từ chối, quá hạn', 'Failed, lost, rejected, overdue']],
+      [['Đã huỷ', 'Cancelled'], 'muted', 'muted-foreground', ['Đã huỷ, lưu trữ, không có thay đổi', 'Cancelled, archived, no changes']],
+    ].map(([l, bg, fg, w]) => ({ label: x(l), badge: badge(bg, fg), tokens: bg + ' / ' + fg, when: x(w) }));
+    const scale = [
+      ['page-title', 'mono 24/1.2 · 600', 'font-family: var(--font-heading); font-size: 24px; font-weight: 600; letter-spacing: -0.03em;', ['Lượt chạy', 'Runs']],
+      ['hero', 'mono 28–40 · 600', 'font-family: var(--font-heading); font-size: 32px; font-weight: 600; letter-spacing: -0.04em;', ['Kết nối máy của bạn', 'Connect your machine']],
+      ['stat', 'mono 26 · 600 · tabular', 'font-family: var(--font-mono); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums;', ['4,92 USD', '$4.92']],
+      ['dialog-title', 'sans 18 · 600', 'font-size: 18px; font-weight: 600;', ['Duyệt kế hoạch lần 2?', 'Approve plan v2?']],
+      ['card-title', 'sans 15 · 600', 'font-size: 15px; font-weight: 600;', ['Mục mạng của dự án', 'Project network rules']],
+      ['body', 'sans 14/1.5 · 400', 'font-size: 14px;', ['Run của TASK-42 thất bại sau 3 lần thử.', 'TASK-42 failed after 3 attempts.']],
+      ['label', 'sans 13 · 500', 'font-size: 13px; font-weight: 500;', ['Địa chỉ hub công khai', 'Public hub address']],
+      ['small', 'sans 12 · 400', 'font-size: 12px; color: var(--muted-foreground);', ['Cập nhật 2 phút trước', 'Updated 2 min ago']],
+      ['caps', 'mono 10.5 · 500 · upper', 'font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted-foreground);', ['Làm việc hằng ngày', 'Daily work']],
+      ['code', 'mono 12.5', 'font-family: var(--font-mono); font-size: 12.5px;', ['hive-worker register --hub …', 'hive-worker register --hub …']],
+    ].map(([n, spec, st, sm]) => ({ name: n, spec, style: st, sample: x(sm) }));
+    const spaces = [['space-0.5', 2], ['space-1', 4], ['space-2', 8], ['space-2.5', 10], ['space-3', 12], ['space-4', 16], ['space-5', 20], ['space-6', 24], ['space-8', 32], ['space-12', 48]].map(([n, v]) => ({ name: n, px: v + 'px', bar: `display: block; height: 10px; width: ${v * 3}px; border-radius: 3px; background: var(--primary);` }));
+    const radii = [['sm · 6', 6, ['Mục menu, tag', 'Nav items, tags']], ['md · 8', 8, ['Nút, ô nhập', 'Buttons, inputs']], ['lg · 10', 10, ['Banner, popover', 'Banners, popovers']], ['xl · 12', 12, ['Thẻ, bảng', 'Cards, tables']], ['2xl · 14', 14, ['Hộp thoại', 'Dialogs']], ['full', 9999, ['Badge, avatar', 'Badges, avatars']]].map(([n, r, u]) => ({ name: n, use: x(u), box: `width: 64px; height: 48px; border: 2px solid var(--primary); background: var(--accent); border-radius: ${Math.min(r, 24)}px;` }));
+    const shadows = [['shadow-sm', 'var(--shadow-sm)', ['Nút đang chọn trong segmented, thẻ nổi nhẹ', 'Active segmented item, light lift']], ['shadow-lg', 'var(--shadow-lg)', ['Hộp thoại, menu, popover', 'Dialogs, menus, popovers']], ['border', 'none', ['Thẻ thường: viền 1px, không bóng', 'Regular cards: 1px border, no shadow']]].map(([n, v, u]) => ({ name: n, use: x(u), box: `padding: 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); box-shadow: ${v}; display: flex; flex-direction: column; gap: 2px;` }));
+    const seg = (on) => 'height: 28px; padding: 0 12px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return { theme: dark ? 'dark' : 'light', t, groups, states, scale, spaces, radii, shadows, lightS: seg(!dark), darkS: seg(dark), toLight: () => this.setState({ dark: false }), toDark: () => this.setState({ dark: true }) };
+  }
+}
+</script>
+</body>
+</html>

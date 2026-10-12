@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Dự án</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="projects" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <button type="button" class="btn btn-default" onClick="{{open}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg>{{t.create}}</button>
+      </header>
+      <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,700px"></dc-import>
+    </main>
+  </div>
+
+  <sc-if value="{{dlgOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 30;">
+      <div role="dialog" aria-modal="true" aria-labelledby="cp-t" class="card" style="width: 100%; max-width: 560px; box-shadow: var(--shadow-lg); overflow: hidden;">
+        <div style="padding: 18px 20px 0;"><h2 id="cp-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.create}}</h2></div>
+        <form style="padding: 16px 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+          <label class="field" style="grid-column: 1 / -1;">{{t.fSystem}}<select class="input"><option>thanh-toan/cong</option></select></label>
+          <label class="field">{{t.fName}}<input class="input" placeholder="{{t.fNamePh}}"></label>
+          <label class="field">Project key<input class="input mono" placeholder="cong-thanh-toan"><span class="hint">{{t.fKeyHint}}</span></label>
+          <label class="field" style="grid-column: 1 / -1;">{{t.fUrl}}<input class="input mono" placeholder="https://github.com/acme-software/payment-api"></label>
+        </form>
+        <div style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px; background: var(--muted); border-top: 1px solid var(--border);">
+          <button type="button" class="btn btn-outline" onClick="{{close}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{close}}">{{t.check}}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { dlg: false, lang: null, dark: null };
+    const names = [['Cổng thanh toán', 'Payment gateway', 'payment-api'], ['Worker', 'Worker', 'hive-worker'], ['Ứng dụng di động', 'Mobile app', 'mobile-app'], ['Cổng đối tác', 'Partner portal', 'partner-portal'], ['Báo cáo', 'Reports', 'reports'], ['Đối soát', 'Reconciliation', 'reconcile'], ['Ví điện tử', 'E-wallet', 'wallet'], ['CRM nội bộ', 'Internal CRM', 'crm'], ['Cổng hoá đơn', 'Invoice portal', 'invoice'], ['Kho dữ liệu', 'Data warehouse', 'dwh']];
+    const teams = [['thanh-toan', ['Thanh toán', 'Payments']], ['nen-tang', ['Nền tảng', 'Platform']], ['di-dong', ['Di động', 'Mobile']], ['du-lieu', ['Dữ liệu', 'Data']]];
+    const st = ['ok', 'ok', 'ok', 'ok', 'init', 'bad', 'off'];
+    let s = 21; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 87 }, (_, i) => {
+      const n = names[i % names.length]; const tm = teams[Math.floor(rnd() * teams.length)]; const gl = rnd() > 0.7;
+      const k = n[2] + (i >= names.length ? '-' + Math.floor(i / names.length) : '');
+      return { id: 'pj' + i, name: [n[0] + (i >= names.length ? ' ' + Math.floor(i / names.length) : ''), n[1] + (i >= names.length ? ' ' + Math.floor(i / names.length) : '')], key: k, repo: (gl ? 'gitlab.acme.vn/' : 'acme-software/') + k, git: gl ? 'GitLab' : 'GitHub', team: tm, status: st[Math.floor(rnd() * st.length)], running: rnd() > 0.6 ? Math.floor(rnd() * 4) : 0, cost: Math.round(rnd() * 9000) / 100, plan: rnd() > 0.5, sandbox: rnd() > 0.7, days: Math.floor(rnd() * 300) };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      title: ['Dự án', 'Projects'], lead: ['Mỗi dự án nối một repo GitHub hoặc GitLab cho agent làm việc.', 'Each project links a GitHub or GitLab repo for agents to work in.'], create: ['Tạo dự án', 'New project'],
+      search: ['Tìm tên, key, repo…', 'Search name, key, repo…'], fSystem: ['Đội / Hệ thống', 'Team / system'], fName: ['Tên dự án', 'Project name'], fNamePh: ['Ví dụ: Cổng thanh toán', 'e.g. Payment gateway'],
+      fKeyHint: ['Không đổi được sau khi tạo.', 'Cannot change later.'], fUrl: ['URL repo', 'Repo URL'], cancel: ['Huỷ', 'Cancel'], check: ['Kiểm tra', 'Check'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const SL = { ok: [['Hoạt động', 'Active'], 'ok'], init: [['Đang khởi tạo', 'Setting up'], 'accent'], bad: [['Khởi tạo lỗi', 'Setup failed'], 'bad'], off: [['Lưu trữ', 'Archived'], 'off'] };
+    const money = (v) => (en ? '$' + v.toFixed(2) : v.toFixed(2).replace('.', ',') + ' USD');
+    const yes = x(['Bật', 'On']); const no = x(['Tắt', 'Off']);
+    const rows = this.data.map((d) => ({
+      id: d.id, name: x(d.name), key: d.key, repo: d.repo, git: d.git, team: x(d.team[1]), status: { text: x(SL[d.status][0]), tone: SL[d.status][1] },
+      running: d.running || '—', _sort_running: d.running, cost: money(d.cost), _sort_cost: d.cost,
+      plan: d.plan ? { text: yes, tone: 'accent', dot: false } : { text: no, tone: 'off', dot: false }, sandbox: d.sandbox ? { text: yes, tone: 'accent', dot: false } : { text: no, tone: 'off', dot: false },
+      _f_plan: 'Plan mode: ' + (d.plan ? yes : no), _f_sandbox: 'Sandbox: ' + (d.sandbox ? yes : no),
+      created: x([d.days + ' ngày trước', d.days + ' d ago']), _sort_created: -d.days,
+    }));
+    const columns = [
+      { key: 'name', label: x(['Dự án', 'Project']), type: 'title', sub: 'key', subMono: true, sortable: true },
+      { key: 'repo', label: 'Repo', type: 'mono', link: true },
+      { key: 'team', label: x(['Đội sở hữu', 'Owning team']), sortable: true },
+      { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' },
+      { key: 'plan', label: 'Plan mode', type: 'badge', hidden: true },
+      { key: 'sandbox', label: 'Sandbox', type: 'badge', hidden: true },
+      { key: 'running', label: x(['Đang chạy', 'Running']), type: 'num', sortable: true },
+      { key: 'cost', label: x(['Chi phí 30 ngày', 'Cost, 30 days']), type: 'num', sortable: true },
+      { key: 'created', label: x(['Tạo', 'Created']), type: 'muted', sortable: true },
+    ];
+    const facets = [{ key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'team', label: x(['Đội', 'Team']) }, { key: 'git', label: 'Git' }, { key: 'plan', label: 'Plan mode' }, { key: 'sandbox', label: 'Sandbox' }];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 10, minW: 1000,
+      bulk: [x(['Đổi đội sở hữu', 'Change owner']), x(['Bật plan mode', 'Enable plan mode']), x(['Lưu trữ', 'Archive'])],
+      dlgOpen: this.state.dlg, open: () => this.setState({ dlg: true }), close: () => this.setState({ dlg: false }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

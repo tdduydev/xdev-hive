@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Cấu hình dự án</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}a:hover{color:var(--accent-foreground)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-destructive-solid{background:var(--destructive);color:var(--background)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:16px 20px 0;display:flex;flex-direction:column;gap:2px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.card-b{padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.row-t{display:flex;flex-direction:column;gap:2px}
+.row-t strong{font-weight:500}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex;transition:background .2s}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+.suffix{position:relative}.suffix .input{padding-right:46px}.suffix em{position:absolute;right:10px;top:7px;font-style:normal;font-size:12px;color:var(--muted-foreground);font-family:var(--font-mono)}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:12px;border-radius:10px;cursor:pointer;font-size:14px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="projects" lang="{{lang}}" hint-size="240px,1900px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1180px; padding: 28px 32px 0; display: flex; flex-direction: column; gap: 20px;">
+      <header style="display: flex; flex-direction: column; gap: 8px;">
+        <div class="muted" style="font-size: 13px;"><a href="Projects.dc.html" style="text-decoration: none;">{{t.projects}}</a> / <a href="#" style="text-decoration: none;">{{t.payName}}</a></div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <span class="mono muted" style="font-size: 13px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;">payment-api</span>
+        </div>
+      </header>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start;">
+        <nav aria-label="{{t.sections}}" style="flex: 1 1 180px; max-width: 200px; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px;">
+          <sc-for list="{{toc}}" as="s" hint-placeholder-count="8">
+            <a href="{{s.href}}" style="{{s.style}}">{{s.label}}</a>
+          </sc-for>
+        </nav>
+
+        <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <section id="merge" class="card">
+            <div class="card-h"><h2 class="card-t">Merge</h2><span class="hint" style="font-size: 13px;">{{t.mergeHint}}</span></div>
+            <div class="card-b">
+              <div role="radiogroup" aria-label="{{t.mode}}" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+                <sc-for list="{{modes}}" as="m" hint-placeholder-count="2">
+                  <label class="opt" style="{{m.style}}"><input type="radio" name="mode" checked="{{m.on}}" onChange="{{m.pick}}" style="margin-top: 3px; accent-color: var(--primary);"><span class="row-t"><strong>{{m.label}}</strong><span class="hint">{{m.hint}}</span></span></label>
+                </sc-for>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+                <label class="field">{{t.reviewers}}<input class="input mono" value="1"><span class="hint">{{t.reviewersHint}}</span></label>
+                <label class="field">{{t.method}}<select class="input"><option>{{t.mDefault}}</option><option>Squash</option><option>Merge commit</option><option>Rebase</option></select></label>
+              </div>
+              <sc-for list="{{mergeSwitches}}" as="s" hint-placeholder-count="2">
+                <div class="row"><span class="row-t"><strong>{{s.label}}</strong><span class="hint">{{s.hint}}</span></span><button type="button" role="switch" aria-checked="{{s.aria}}" aria-label="{{s.label}}" class="sw" onClick="{{s.flip}}" style="{{s.track}}"><span style="{{s.knob}}"></span></button></div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section id="review" class="card">
+            <div class="card-h"><h2 class="card-t">{{t.review}}</h2><span class="hint" style="font-size: 13px;">{{t.reviewHint}}</span></div>
+            <div class="card-b">
+              <div class="row"><span class="row-t"><strong>{{t.reviewOn}}</strong></span><button type="button" role="switch" aria-checked="{{rv.aria}}" aria-label="{{t.reviewOn}}" class="sw" onClick="{{rv.flip}}" style="{{rv.track}}"><span style="{{rv.knob}}"></span></button></div>
+              <sc-if value="{{rv.on}}" hint-placeholder-val="{{true}}">
+                <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding-left: 14px; border-left: 2px solid var(--border);">
+                  <label class="field">{{t.reviewAgent}}<select class="input"><option>Codex</option><option>Claude</option><option>Gemini</option></select></label>
+                  <label class="field">{{t.minScore}}<input class="input mono" value="7"><span class="hint">{{t.minScoreHint}}</span></label>
+                  <div class="row" style="grid-column: 1 / -1;"><span class="row-t"><strong>{{t.mustPass}}</strong><span class="hint">{{t.mustPassHint}}</span></span><button type="button" role="switch" aria-checked="true" aria-label="{{t.mustPass}}" class="sw" style="background: var(--primary);"><span style="transform: translateX(16px);"></span></button></div>
+                  <fieldset style="grid-column: 1 / -1; margin: 0; padding: 12px; border: 1px dashed var(--border); border-radius: 10px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px;">
+                    <legend style="padding: 0 6px; font-size: 13px; font-weight: 500;">{{t.onlyWhen}}</legend>
+                    <label class="field">{{t.linesFrom}}<span class="suffix"><input class="input mono" value="200"><em>{{t.lines}}</em></span></label>
+                    <label class="field">{{t.filesMatch}}<textarea class="input mono" style="height: 64px; padding: 6px 10px; font-size: 12.5px; resize: vertical;">src/billing/**
+db/migrations/**</textarea><span class="hint">{{t.globHint}}</span></label>
+                    <span class="hint" style="grid-column: 1 / -1;">{{t.onlyWhenHint}}</span>
+                  </fieldset>
+                </div>
+              </sc-if>
+            </div>
+          </section>
+
+          <section id="plan" class="card">
+            <div class="card-b">
+              <div class="row"><span class="row-t"><strong style="font-size: 15px; font-weight: 600;">Plan mode</strong><span class="hint" style="font-size: 13px;">{{t.planHint}}</span></span><button type="button" role="switch" aria-checked="{{pm.aria}}" aria-label="Plan mode" class="sw" onClick="{{pm.flip}}" style="{{pm.track}}"><span style="{{pm.knob}}"></span></button></div>
+            </div>
+          </section>
+
+          <section id="sandbox" class="card">
+            <div class="card-b">
+              <div class="row"><span class="row-t"><strong style="font-size: 15px; font-weight: 600;">Sandbox</strong><span class="hint" style="font-size: 13px;">{{t.sbHint}}</span></span><button type="button" role="switch" aria-checked="{{sb.aria}}" aria-label="Sandbox" class="sw" onClick="{{sb.flip}}" style="{{sb.track}}"><span style="{{sb.knob}}"></span></button></div>
+              <a href="ProjectSandbox.dc.html" style="font-size: 13px; text-decoration: none;">{{t.sbLink}} →</a>
+            </div>
+          </section>
+
+          <section id="budget" class="card">
+            <div class="card-h"><h2 class="card-t">{{t.budget}}</h2><span class="hint" style="font-size: 13px;">{{t.budgetHint}}</span></div>
+            <div class="card-b" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+              <label class="field">{{t.perRun}}<span class="suffix"><input class="input mono" value="3"><em>USD</em></span></label>
+              <label class="field">{{t.perTask}}<span class="suffix"><input class="input mono" placeholder="{{t.unlimited}}"><em>USD</em></span><span class="hint">{{t.perTaskHint}}</span></label>
+              <label class="field">{{t.maxTurns}}<input class="input mono" placeholder="{{t.unlimited}}"><span class="hint">{{t.maxTurnsHint}}</span></label>
+            </div>
+          </section>
+
+          <section id="model" class="card">
+            <div class="card-h"><h2 class="card-t">Model</h2><span class="hint" style="font-size: 13px;">{{t.modelHint}}</span></div>
+            <div class="card-b" style="gap: 0; padding-top: 8px;">
+              <sc-for list="{{models}}" as="m" hint-placeholder-count="3">
+                <div style="display: grid; grid-template-columns: 90px repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--border);">
+                  <strong style="font-weight: 600; padding-bottom: 6px;">{{m.cli}}</strong>
+                  <label class="field">{{m.write}}<input class="input mono" placeholder="{{t.cliDefault}}" value="{{m.v1}}"></label>
+                  <label class="field">{{m.review}}<input class="input mono" placeholder="{{t.cliDefault}}" value="{{m.v2}}"></label>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+
+          <section id="perm" class="card">
+            <div class="card-h"><h2 class="card-t">{{t.perm}}</h2></div>
+            <div class="card-b">
+              <div role="radiogroup" aria-label="{{t.perm}}" style="display: flex; flex-direction: column; gap: 8px;">
+                <label class="opt" style="{{permA}}"><input type="radio" name="perm" checked="{{permWt}}" onChange="{{pickWt}}" style="margin-top: 3px; accent-color: var(--primary);"><span class="row-t"><strong>{{t.pWt}}</strong><span class="hint">{{t.pWtHint}}</span></span></label>
+                <label class="opt" style="{{permB}}"><input type="radio" name="perm" checked="{{permFull}}" onChange="{{askFull}}" style="margin-top: 3px; accent-color: var(--destructive);"><span class="row-t"><strong style="color: var(--destructive);">{{t.pFull}}</strong><span class="hint">{{t.pFullHint}}</span></span></label>
+              </div>
+              <sc-if value="{{permFull}}" hint-placeholder-val="{{false}}">
+                <div role="alert" style="padding: 10px 12px; border-radius: 8px; background: var(--destructive-soft); color: var(--destructive); font-size: 13px;">{{t.fullBanner}}</div>
+              </sc-if>
+            </div>
+          </section>
+          <div style="height: 8px;"></div>
+        </div>
+      </div>
+    </main>
+    <footer style="position: sticky; bottom: 0; margin-top: auto; padding: 12px 32px; display: flex; align-items: center; justify-content: flex-end; gap: 12px; background: var(--background); border-top: 1px solid var(--border);">
+      <span class="muted" style="font-size: 13px; margin-right: auto;">{{t.unsaved}}</span>
+      <button type="button" class="btn btn-outline">{{t.discard}}</button>
+      <button type="button" class="btn btn-default">{{t.save}}</button>
+    </footer>
+  </div>
+
+  <sc-if value="{{confirmOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;">
+      <div role="alertdialog" aria-modal="true" aria-labelledby="fp-t" class="card" style="width: 100%; max-width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-lg);">
+        <h2 id="fp-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.cfTitle}}</h2>
+        <p class="muted" style="margin: 0;">{{t.cfDesc}}</p>
+        <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px;"><li>{{t.cf1}}</li><li>{{t.cf2}}</li><li>{{t.cf3}}</li></ul>
+        <p style="margin: 0; font-size: 13px;">{{t.cfNote}}</p>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{keepWt}}">{{t.cfKeep}}</button><button type="button" class="btn btn-destructive-solid" onClick="{{goFull}}">{{t.cfGo}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { mode: 'auto', ci: true, queue: true, review: true, plan: true, sandbox: false, perm: 'wt', confirm: false, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      title: ['Cấu hình dự án', 'Project settings'], projects: ['Dự án', 'Projects'], payName: ['Cổng thanh toán', 'Payment gateway'], sections: ['Các phần', 'Sections'],
+      mergeHint: ['Cách PR của agent được merge vào nhánh chính.', 'How agent PRs merge into the main branch.'], mode: ['Chế độ', 'Mode'],
+      reviewers: ['Số người duyệt', 'Required reviewers'], reviewersHint: ['Từ 0 đến 6.', 'From 0 to 6.'], method: ['Cách merge', 'Merge method'], mDefault: ['Mặc định (squash)', 'Default (squash)'],
+      review: ['Review chéo', 'Cross-review'], reviewHint: ['Sau khi agent xong, một agent khác review thay đổi trước khi kết luận run.', 'After an agent finishes, another agent reviews the change before the run concludes.'],
+      reviewOn: ['Bật review chéo', 'Enable cross-review'], reviewAgent: ['Agent review', 'Reviewing agent'], minScore: ['Điểm tối thiểu', 'Minimum score'], minScoreHint: ['Thang 0 đến 10.', 'Scale of 0 to 10.'],
+      mustPass: ['Bắt buộc đạt', 'Must pass'], mustPassHint: ['Tắt thì kết quả review chỉ để tham khảo, run không hỏng vì review.', 'When off, the review is advisory and never fails the run.'],
+      onlyWhen: ['Chỉ review khi', 'Only review when'], linesFrom: ['Số dòng đổi từ', 'Changed lines from'], lines: ['dòng', 'lines'], filesMatch: ['Có đổi file khớp', 'Changed files match'],
+      globHint: ['Mỗi dòng một mẫu đường dẫn kiểu glob.', 'One glob path pattern per line.'],
+      onlyWhenHint: ['Bỏ trống cả hai thì review mọi run. Điền cả hai thì đạt một trong hai là review.', 'Leave both empty to review every run. Fill both and either one triggers a review.'],
+      planHint: ['Agent viết kế hoạch, người trong đội duyệt rồi run mới chạy.', 'The agent writes a plan; someone on the team approves it before the run starts.'],
+      sbHint: ['Run code chạy trên runner host, mỗi run một container gVisor không có mạng; chỉ ra được các địa chỉ trong allowlist.', 'Code runs on the runner host, one gVisor container per run with no network except the allowlist.'],
+      sbLink: ['Allowlist mạng và image môi trường của dự án', 'Network allowlist and environment image'],
+      budget: ['Ngân sách', 'Budget'], budgetHint: ['Bỏ trống là không giới hạn. Codex và Gemini không báo USD nên trần USD chỉ có tác dụng với Claude.', 'Empty means no limit. Codex and Gemini do not report USD, so USD caps only apply to Claude.'],
+      perRun: ['Mỗi run', 'Per run'], perTask: ['Mỗi việc', 'Per task'], perTaskHint: ['Cộng mọi run của việc.', 'Sum of every run of the task.'], maxTurns: ['Số lượt tối đa', 'Max turns'],
+      maxTurnsHint: ['Lượt trao đổi của agent trong một run.', 'Agent turns within one run.'], unlimited: ['Không giới hạn', 'No limit'],
+      modelHint: ['Bỏ trống thì CLI dùng model mặc định của nó.', 'Leave empty to use the CLI default model.'], cliDefault: ['Mặc định của CLI', 'CLI default'],
+      perm: ['Quyền CLI của run', 'CLI permissions for runs'],
+      pWt: ['Trong worktree (khuyên dùng)', 'Inside the worktree (recommended)'], pWtHint: ['Agent sửa file và chạy lệnh build, test trong worktree của run; CLI giữ sandbox và chặn thao tác ngoài worktree.', 'The agent edits files and runs builds and tests in the run worktree; the CLI keeps its sandbox and blocks anything outside it.'],
+      pFull: ['Toàn quyền', 'Full access'], pFullHint: ['Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.', 'Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.'],
+      fullBanner: ['Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.', 'Runs in this project use the full rights of the account on the machine that picks them up.'],
+      unsaved: ['Có 2 thay đổi chưa lưu', '2 unsaved changes'], discard: ['Bỏ thay đổi', 'Discard'], save: ['Lưu cấu hình', 'Save settings'],
+      cfTitle: ['Cho agent toàn quyền?', 'Give agents full access?'], cfDesc: ['CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo).', 'The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo).'],
+      cf1: ['Agent đọc và sửa được mọi file tài khoản đó truy cập.', 'The agent can read and change every file that account can reach.'], cf2: ['Agent chạy được mọi lệnh, kể cả lệnh mạng.', 'The agent can run any command, including network commands.'], cf3: ['Lỗi của agent có thể làm hỏng máy nhận việc.', 'An agent mistake can damage the machine.'],
+      cfNote: ['Chỉ bật khi run chạy trong container dùng một lần hoặc trên máy riêng cho agent, không chứa dữ liệu quan trọng.', 'Only turn this on for throwaway containers or agent-only machines with no important data.'],
+      cfKeep: ['Giữ trong worktree', 'Keep in worktree'], cfGo: ['Bật toàn quyền', 'Enable full access'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const sw = (key) => {
+      const on = !!this.state[key];
+      return { on, aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ [key]: !on }) };
+    };
+    const optOn = 'border: 1px solid var(--primary); background: var(--accent);';
+    const optOff = 'border: 1px solid var(--border);';
+    const modes = [
+      ['review', ['Cần người duyệt', 'Requires a reviewer'], ['Người duyệt PR rồi mới merge.', 'A person approves the PR before merge.']],
+      ['auto', ['Tự merge khi đạt điều kiện', 'Auto-merge when checks pass'], ['Hub merge khi đạt chính sách kết quả và CI (nếu bắt buộc).', 'The hub merges once the result policy and CI (if required) pass.']],
+    ].map(([k, l, h]) => ({ label: x(l), hint: x(h), on: this.state.mode === k, style: this.state.mode === k ? optOn : optOff, pick: () => this.setState({ mode: k }) }));
+    const mergeSwitches = [
+      ['ci', ['Bắt buộc CI xanh', 'Require green CI'], ['Tắt thì repo không có CI vẫn merge được.', 'When off, repos without CI can still merge.']],
+      ['queue', ['Merge queue', 'Merge queue'], ['PR vào hàng, hub cập nhật nhánh theo nhánh chính và merge lần lượt từng PR.', 'PRs queue up; the hub rebases each on main and merges them one by one.']],
+    ].map(([k, l, h]) => ({ label: x(l), hint: x(h), ...sw(k) }));
+    const toc = [['#merge', 'Merge'], ['#review', x(T.review)], ['#plan', 'Plan mode'], ['#sandbox', 'Sandbox'], ['#budget', x(T.budget)], ['#model', 'Model'], ['#perm', x(T.perm)]].map(([h, l], i) => ({
+      href: h, label: l, style: 'padding: 6px 10px; border-radius: 6px; text-decoration: none; ' + (i === 0 ? 'background: var(--muted); color: var(--foreground); font-weight: 500;' : 'color: var(--muted-foreground);'),
+    }));
+    const models = [['Claude', 'claude-opus-5-5', 'claude-sonnet-5-5'], ['Codex', '', ''], ['Gemini', '', '']].map(([c, a, b]) => ({
+      cli: c, v1: a, v2: b, write: x(['Viết code', 'Writing code']), review: x(['Review', 'Review']),
+    }));
+    const full = this.state.perm === 'full';
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, toc, modes, mergeSwitches, models,
+      rv: sw('review'), pm: sw('plan'), sb: sw('sandbox'),
+      permWt: !full, permFull: full, permA: full ? optOff : optOn, permB: full ? 'border: 1px solid var(--destructive); background: var(--destructive-soft);' : optOff,
+      pickWt: () => this.setState({ perm: 'wt' }), askFull: () => this.setState({ confirm: true }),
+      confirmOpen: this.state.confirm, keepWt: () => this.setState({ confirm: false, perm: 'wt' }), goFull: () => this.setState({ confirm: false, perm: 'full' }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Soạn tài liệu</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.tb{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--foreground);font:inherit;font-size:13px;cursor:pointer}
+.tb:hover{background:var(--muted)}
+.sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.doc{font-size:15.5px;line-height:1.75;color:var(--foreground)}
+.doc h1{font-family:var(--font-heading);font-size:28px;line-height:1.2;letter-spacing:-.03em;margin:0 0 6px}
+.doc h2{font-size:19px;margin:28px 0 8px;font-weight:600}
+.doc p{margin:0 0 12px}
+.doc code{font-family:var(--font-mono);font-size:13px;padding:1px 5px;border-radius:4px;background:var(--muted)}
+.ins{background:var(--success-soft);color:var(--success);border-bottom:2px solid var(--success);text-decoration:none}
+.del{background:var(--destructive-soft);color:var(--destructive);text-decoration:line-through}
+.hl{background:var(--warning-soft);border-bottom:2px solid var(--warning)}
+.menu{position:absolute;z-index:5;padding:4px;border-radius:10px;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);box-shadow:var(--shadow-lg)}
+.mi{display:flex;align-items:center;gap:10px;width:100%;min-height:34px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:13.5px;text-align:left;cursor:pointer}
+.mi:hover{background:var(--muted)}
+.ico{width:26px;height:26px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11px;background:var(--background)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="docs" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-bottom: 1px solid var(--border);">
+      <div class="muted" style="font-size: 13px; display: flex; align-items: center; gap: 6px;">{{t.docs}} / <span class="mono">payment-api/prd-partial-refund</span></div>
+      <span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{stageBadge}}</span>
+      <span style="flex: 1;"></span>
+      <span style="display: flex; align-items: center;" aria-label="{{t.presence}}">
+        <span style="width: 28px; height: 28px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: #DBEAFE; color: #1E3A8A; border: 2px solid var(--background);">TL</span>
+        <span style="width: 28px; height: 28px; margin-left: -8px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; background: #DCFCE7; color: #166534; border: 2px solid var(--background);">PH</span>
+        <span class="mono" style="width: 28px; height: 28px; margin-left: -8px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; background: var(--brand-navy); color: #B8F1FF; border: 2px solid var(--background);">AI</span>
+      </span>
+      <span class="muted" style="font-size: 12.5px;">{{t.saved}}</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--muted); border-radius: 8px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+      <button type="button" class="btn btn-outline btn-sm" onClick="{{flipMode}}">{{modeLabel}}</button>
+      <button type="button" class="btn btn-default btn-sm" onClick="{{openSubmit}}">{{t.submit}}</button>
+    </header>
+
+    <nav aria-label="{{t.flow}}" style="padding: 10px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); background: var(--muted); font-size: 12.5px;">
+      <span class="muted" style="margin-right: 6px;">{{t.flowName}}</span>
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+        <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="{{s.style}}"><span style="{{s.dot}}"></span>{{s.label}}</span><sc-if value="{{s.arrow}}" hint-placeholder-val="{{true}}"><span class="muted">→</span></sc-if></span>
+      </sc-for>
+    </nav>
+
+    <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0;">
+      <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+        <div role="toolbar" aria-label="{{t.toolbar}}" style="position: sticky; top: 0; z-index: 3; padding: 6px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); background: var(--background);">
+          <select aria-label="{{t.block}}" style="height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 13px;"><option>{{t.h2}}</option><option>{{t.para}}</option><option>{{t.h1}}</option></select>
+          <span class="sep"></span>
+          <button type="button" class="tb" aria-label="Bold" style="font-weight: 700;">B</button><button type="button" class="tb" aria-label="Italic" style="font-style: italic;">I</button><button type="button" class="tb" aria-label="Strike" style="text-decoration: line-through;">S</button><button type="button" class="tb mono" aria-label="Code">&lt;/&gt;</button><button type="button" class="tb" aria-label="Link">↗</button>
+          <span class="sep"></span>
+          <button type="button" class="tb" aria-label="{{t.bullet}}">•≡</button><button type="button" class="tb" aria-label="{{t.ordered}}">1≡</button><button type="button" class="tb" aria-label="{{t.checklist}}">☑</button><button type="button" class="tb" aria-label="{{t.table}}">▦</button><button type="button" class="tb" aria-label="{{t.callout}}">ⓘ</button><button type="button" class="tb mono" aria-label="Mermaid" style="font-size: 11px; width: auto; padding: 0 6px;">mmd</button>
+          <span class="sep"></span>
+          <button type="button" class="tb" aria-label="{{t.comment}}">❝</button>
+          <span style="flex: 1;"></span>
+          <button type="button" class="btn btn-ghost btn-sm" onClick="{{toggleAi}}" style="color: var(--primary);">✦ {{t.askAi}}</button>
+        </div>
+
+        <article class="doc" style="position: relative; box-sizing: border-box; width: 100%; max-width: 780px; margin: 0 auto; padding: 36px 32px 80px;">
+          <div class="muted" style="font-size: 12.5px; margin-bottom: 4px;">PRD · {{t.owner}} · v3 {{t.draft}}</div>
+          <h1>{{t.title}}</h1>
+          <p class="muted" style="font-size: 14px;">{{t.subtitle}}</p>
+
+          <div style="margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-foreground); font-size: 14px; display: flex; gap: 10px;"><span>ⓘ</span><span>{{t.callout1}}</span></div>
+
+          <h2>1. {{t.h_goal}}</h2>
+          <p>{{t.goal1}} <span class="hl" title="comment">{{t.goalHl}}</span>{{t.goal2}}</p>
+
+          <h2>2. {{t.h_req}}</h2>
+          <p>{{t.req1}}</p>
+          <p style="position: relative;">
+            {{t.req2a}}
+            <sc-if value="{{sugPending}}" hint-placeholder-val="{{true}}"><span class="del">{{t.req2del}}</span> <span class="ins">{{t.req2ins}}</span></sc-if>
+            <sc-if value="{{sugAccepted}}" hint-placeholder-val="{{false}}"><span>{{t.req2ins}}</span></sc-if>
+            <sc-if value="{{sugRejected}}" hint-placeholder-val="{{false}}"><span>{{t.req2del}}</span></sc-if>
+            {{t.req2b}}
+          </p>
+          <sc-if value="{{sugPending}}" hint-placeholder-val="{{true}}">
+            <div class="card" role="group" aria-label="{{t.suggestion}}" style="margin: -4px 0 14px; padding: 10px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; box-shadow: var(--shadow-sm);">
+              <span class="mono" style="width: 22px; height: 22px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 600; background: var(--brand-navy); color: #B8F1FF;">AI</span>
+              <span style="flex: 1; min-width: 200px;"><strong style="font-weight: 600;">{{t.sugBy}}</strong> <span class="muted">— {{t.sugWhy}}</span></span>
+              <button type="button" class="btn btn-outline btn-sm" onClick="{{reject}}">{{t.rejectSug}}</button>
+              <button type="button" class="btn btn-default btn-sm" onClick="{{accept}}">{{t.acceptSug}}</button>
+            </div>
+          </sc-if>
+
+          <table style="width: 100%; border-collapse: collapse; margin: 6px 0 16px; font-size: 14px;">
+            <thead><tr style="background: var(--muted);"><th style="padding: 8px 10px; text-align: left; border: 1px solid var(--border);">ID</th><th style="padding: 8px 10px; text-align: left; border: 1px solid var(--border);">{{t.req}}</th><th style="padding: 8px 10px; text-align: left; border: 1px solid var(--border);">{{t.priority}}</th></tr></thead>
+            <tbody>
+              <tr><td class="mono" style="padding: 8px 10px; border: 1px solid var(--border);">R-1</td><td style="padding: 8px 10px; border: 1px solid var(--border);">{{t.r1}}</td><td style="padding: 8px 10px; border: 1px solid var(--border);">P0</td></tr>
+              <tr><td class="mono" style="padding: 8px 10px; border: 1px solid var(--border);">R-2</td><td style="padding: 8px 10px; border: 1px solid var(--border);">{{t.r2}}</td><td style="padding: 8px 10px; border: 1px solid var(--border);">P0</td></tr>
+              <tr><td class="mono" style="padding: 8px 10px; border: 1px solid var(--border);">R-3</td><td style="padding: 8px 10px; border: 1px solid var(--border);">{{t.r3}}</td><td style="padding: 8px 10px; border: 1px solid var(--border);">P1</td></tr>
+            </tbody>
+          </table>
+
+          <h2>3. {{t.h_accept}}</h2>
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;">
+            <label style="display: flex; gap: 10px; align-items: flex-start;"><input type="checkbox" checked style="margin-top: 7px; accent-color: var(--primary);">{{t.ac1}}</label>
+            <label style="display: flex; gap: 10px; align-items: flex-start;"><input type="checkbox" style="margin-top: 7px; accent-color: var(--primary);">{{t.ac2}}</label>
+          </div>
+
+          <h2>4. {{t.h_api}}</h2>
+          <pre class="mono" style="margin: 0 0 12px; padding: 12px 14px; border-radius: 8px; background: var(--brand-navy); color: #E2E8F0; font-size: 13px; line-height: 1.6; white-space: pre-wrap;">POST /v1/payments/{id}/refunds
+{ "amount": 150000, "reason": "partial_return" }</pre>
+
+          <p style="position: relative;"><span class="muted">/</span><span style="border-left: 2px solid var(--primary); margin-left: 1px;">&#8203;</span></p>
+          <sc-if value="{{slashOpen}}" hint-placeholder-val="{{true}}">
+            <div class="menu" role="listbox" aria-label="{{t.slash}}" style="left: 32px; bottom: 6px; width: 290px;">
+              <div class="muted" style="padding: 6px 10px; font-size: 12px;">{{t.blocks}}</div>
+              <sc-for list="{{slash}}" as="m" hint-placeholder-count="6"><button type="button" class="mi" role="option"><span class="ico">{{m.ico}}</span><span style="display: flex; flex-direction: column; line-height: 1.3;"><span>{{m.label}}</span><span class="muted" style="font-size: 12px;">{{m.hint}}</span></span></button></sc-for>
+            </div>
+          </sc-if>
+        </article>
+      </section>
+
+      <aside style="flex: 1 1 320px; max-width: 360px; min-width: 280px; border-left: 1px solid var(--border); display: flex; flex-direction: column;">
+        <div role="tablist" style="display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border);">
+          <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3"><button type="button" role="tab" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}</button></sc-for>
+        </div>
+        <sc-if value="{{tabComments}}" hint-placeholder-val="{{true}}">
+          <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+            <div class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; border-color: var(--warning);">
+              <div class="muted" style="font-size: 12px; padding-left: 8px; border-left: 2px solid var(--warning);">"{{t.goalHl}}"</div>
+              <div style="display: flex; gap: 8px;"><span style="width: 24px; height: 24px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; background: #DCFCE7; color: #166534;">PH</span><div style="font-size: 13.5px;"><strong style="font-weight: 600;">Phạm Hà</strong> <span class="muted" style="font-size: 12px;">10:21</span><div>{{t.c1}}</div></div></div>
+              <div style="display: flex; gap: 8px;"><span style="width: 24px; height: 24px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; background: #DBEAFE; color: #1E3A8A;">TL</span><div style="font-size: 13.5px;"><strong style="font-weight: 600;">Trần Lan</strong> <span class="muted" style="font-size: 12px;">10:24</span><div>{{t.c2}}</div></div></div>
+              <div style="display: flex; gap: 6px;"><input aria-label="{{t.reply}}" placeholder="{{t.reply}}" style="flex: 1; height: 30px; padding: 0 10px; border: 1px solid var(--input); border-radius: 8px; background: transparent; color: var(--foreground); font: inherit; font-size: 13px;"><button type="button" class="btn btn-outline btn-sm">{{t.resolve}}</button></div>
+            </div>
+            <div class="muted" style="font-size: 12.5px; text-align: center;">{{t.resolved}}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{tabAi}}" hint-placeholder-val="{{false}}">
+          <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+            <div class="card" style="padding: 10px 12px; display: flex; align-items: center; gap: 10px; font-size: 13px;">
+              <span style="width: 8px; height: 8px; border-radius: 9999px; background: var(--success);"></span>
+              <span style="flex: 1;"><strong style="font-weight: 600;">Claude · {{t.planMax}}</strong><div class="muted" style="font-size: 12px;">{{t.planVia}}</div></span>
+              <select aria-label="{{t.provider}}" style="height: 28px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 12.5px;"><option>Claude</option><option>Codex</option><option>Gemini</option></select>
+            </div>
+            <sc-for list="{{aiActions}}" as="a" hint-placeholder-count="5"><button type="button" class="mi" style="border: 1px solid var(--border); border-radius: 8px;"><span style="color: var(--primary);">✦</span><span style="display: flex; flex-direction: column; line-height: 1.3;"><span>{{a.label}}</span><span class="muted" style="font-size: 12px;">{{a.hint}}</span></span></button></sc-for>
+            <textarea aria-label="{{t.askAi}}" placeholder="{{t.aiPh}}" style="height: 72px; padding: 8px 10px; border: 1px solid var(--input); border-radius: 10px; background: transparent; color: var(--foreground); font: inherit; font-size: 13.5px; resize: vertical;"></textarea>
+            <p class="muted" style="margin: 0; font-size: 12px;">{{t.aiNote}}</p>
+          </div>
+        </sc-if>
+        <sc-if value="{{tabHistory}}" hint-placeholder-val="{{false}}">
+          <ol style="margin: 0; padding: 14px 14px 14px 30px; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+            <sc-for list="{{history}}" as="h" hint-placeholder-count="4"><li><strong style="font-weight: 600;">{{h.v}}</strong> · {{h.who}} <span class="muted">· {{h.when}}</span><div class="muted" style="font-size: 12.5px;">{{h.note}}</div></li></sc-for>
+          </ol>
+        </sc-if>
+      </aside>
+    </div>
+  </div>
+
+  <sc-if value="{{submitOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 30;">
+      <div role="dialog" aria-modal="true" aria-labelledby="sb-t" class="card" style="width: 100%; max-width: 520px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+        <h2 id="sb-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.sbTitle}}</h2>
+        <p class="muted" style="margin: 0;">{{t.sbDesc}}</p>
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px;">
+          <sc-for list="{{nextGates}}" as="g" hint-placeholder-count="3"><li style="display: flex; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;"><span class="badge" style="{{g.kindStyle}}">{{g.kind}}</span><span style="flex: 1;">{{g.label}}</span><span class="muted" style="font-size: 12.5px;">{{g.who}}</span></li></sc-for>
+        </ol>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.sbNote}}<textarea style="height: 64px; padding: 8px 10px; border: 1px solid var(--input); border-radius: 8px; background: transparent; color: var(--foreground); font: inherit;"></textarea></label>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeSubmit}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{closeSubmit}}">{{t.sbGo}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sug: 'pending', tab: 'comments', submit: false, suggest: true, lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      docs: ['Tài liệu', 'Docs'], presence: ['Đang mở tài liệu', 'Viewing now'], saved: ['Đã lưu · 3 người đang sửa', 'Saved · 3 editing'], submit: ['Gửi duyệt', 'Submit for review'],
+      flow: ['Quy trình duyệt', 'Review workflow'], flowName: ['Quy trình: PRD chuẩn (AI-DLC · Inception)', 'Workflow: Standard PRD (AI-DLC · Inception)'], toolbar: ['Định dạng', 'Formatting'], block: ['Kiểu khối', 'Block type'],
+      h1: ['Tiêu đề 1', 'Heading 1'], h2: ['Tiêu đề 2', 'Heading 2'], para: ['Đoạn văn', 'Paragraph'], bullet: ['Danh sách', 'Bullet list'], ordered: ['Danh sách số', 'Numbered list'], checklist: ['Checklist', 'Checklist'], table: ['Bảng', 'Table'], callout: ['Ghi chú nổi', 'Callout'], comment: ['Bình luận', 'Comment'], askAi: ['Hỏi AI', 'Ask AI'],
+      owner: ['Trần Lan', 'Trần Lan'], draft: ['bản nháp', 'draft'], title: ['Hoàn tiền một phần', 'Partial refunds'], subtitle: ['Cổng thanh toán · payment-api · Đội Thanh toán', 'Payment gateway · payment-api · Payments team'],
+      callout1: ['Tài liệu này là đầu vào cho agent ở bước thiết kế. Mỗi yêu cầu cần mã R-n để task và test trỏ về được.', 'This doc feeds the agents at the design step. Each requirement needs an R-n id so tasks and tests can trace back.'],
+      h_goal: ['Mục tiêu', 'Goal'], goal1: ['Cho phép hoàn một phần số tiền của giao dịch đã thanh toán,', 'Let merchants refund part of a paid transaction,'], goalHl: ['không vượt số tiền gốc', 'never above the original amount'], goal2: [', và đối soát được với ngân hàng cuối ngày.', ', and reconcile it with the bank at end of day.'],
+      h_req: ['Yêu cầu', 'Requirements'], req1: ['Merchant tạo hoàn tiền từ màn chi tiết giao dịch hoặc qua API.', 'Merchants create refunds from the transaction screen or the API.'],
+      req2a: ['Tổng các lần hoàn', 'The sum of refunds'], req2del: ['phải nhỏ hơn số tiền gốc', 'must be lower than the original amount'], req2ins: ['không được vượt số tiền gốc trừ phí đã thu', 'must not exceed the original amount minus fees already charged'], req2b: ['; nếu vượt, API trả lỗi BILL-409.', '; otherwise the API returns BILL-409.'],
+      suggestion: ['Đề xuất sửa', 'Suggested edit'], sugBy: ['Claude gợi ý sửa', 'Claude suggests'], sugWhy: ['khớp với quy ước phí trong tài liệu payment-api/money v7', 'matches the fee rule in payment-api/money v7'], rejectSug: ['Bỏ', 'Reject'], acceptSug: ['Nhận', 'Accept'],
+      req: ['Yêu cầu', 'Requirement'], priority: ['Ưu tiên', 'Priority'], r1: ['Hoàn nhiều lần cho một giao dịch', 'Multiple refunds per transaction'], r2: ['Chặn tổng hoàn vượt số tiền gốc', 'Block refunds above the original amount'], r3: ['Hiện lịch sử hoàn trên web', 'Show refund history on web'],
+      h_accept: ['Tiêu chí chấp nhận', 'Acceptance criteria'], ac1: ['Hoàn 2 lần 50% thì lần thứ 3 bị chặn với BILL-409.', 'Two 50% refunds block the third with BILL-409.'], ac2: ['Đối soát cuối ngày khớp tổng tiền hoàn.', 'End-of-day reconciliation matches refunded totals.'],
+      h_api: ['API', 'API'], slash: ['Chèn khối', 'Insert block'], blocks: ['Khối cơ bản', 'Basic blocks'],
+      c1: ['Phí đã thu có được hoàn không? Pháp chế cần xác nhận.', 'Are collected fees refundable? Legal needs to confirm.'], c2: ['Đã hỏi pháp chế, chờ phản hồi trước checkpoint Pháp chế.', 'Asked legal; waiting before the Legal checkpoint.'], reply: ['Trả lời…', 'Reply…'], resolve: ['Đóng', 'Resolve'], resolved: ['4 bình luận đã đóng', '4 resolved comments'],
+      planMax: ['gói Max của bạn', 'your Max plan'], planVia: ['Chạy qua app xDev Hive trên máy bạn', 'Runs through the xDev Hive app on your machine'], provider: ['Nhà cung cấp', 'Provider'],
+      aiPh: ['Ví dụ: viết phần rủi ro dựa trên runbook thanh toán', 'e.g. write the risks section from the payments runbook'],
+      aiNote: ['Mọi chỉnh sửa của AI hiện thành đề xuất để bạn nhận hoặc bỏ. Tốn lượt của gói thuê bao, không tốn ngân sách tổ chức.', 'AI edits show as suggestions you accept or reject. They use your subscription, not the organization budget.'],
+      sbTitle: ['Gửi PRD vào quy trình duyệt?', 'Submit the PRD for review?'], sbDesc: ['Bản v3 được khoá lại. Các checkpoint tiếp theo:', 'v3 is frozen. Next checkpoints:'], sbNote: ['Ghi chú cho người duyệt', 'Note for reviewers'], cancel: ['Huỷ', 'Cancel'], sbGo: ['Gửi duyệt', 'Submit'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const done = 'background: var(--success-soft); color: var(--success);'; const cur = 'background: var(--warning-soft); color: var(--warning); font-weight: 600;'; const todo = 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);';
+    const steps = [[['Soạn', 'Draft'], cur], [['AI tự kiểm', 'AI pre-check'], todo], [['Product owner', 'Product owner'], todo], [['Pháp chế', 'Legal'], todo], [['Chốt v1', 'Baseline v1'], todo]].map(([l, st], i, a) => ({
+      label: x(l), arrow: i < a.length - 1, style: 'display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 9999px; ' + st, dot: 'width: 6px; height: 6px; border-radius: 9999px; background: currentColor;',
+    }));
+    const slash = [['H', ['Tiêu đề', 'Heading'], ['Mục lớn', 'Section']], ['☑', ['Checklist', 'Checklist'], ['Tiêu chí chấp nhận', 'Acceptance criteria']], ['▦', ['Bảng', 'Table'], ['Yêu cầu, ma trận', 'Requirements matrix']], ['R#', ['Yêu cầu có mã', 'Requirement with id'], ['Tự đánh R-4', 'Auto-numbers R-4']], ['{}', ['Khối code', 'Code block'], ['Có tô màu cú pháp', 'Syntax highlighted']], ['◇', ['Sơ đồ Mermaid', 'Mermaid diagram'], ['Luồng, sequence, ER', 'Flow, sequence, ER']], ['↗', ['Nhúng tài liệu', 'Embed doc'], ['Liên kết tới doc khác', 'Link another doc']], ['✦', ['Viết bằng AI', 'Write with AI'], ['Dùng gói thuê bao', 'Uses your subscription']]].map(([i, l, h]) => ({ ico: i, label: x(l), hint: x(h) }));
+    const aiActions = [[['Viết tiếp đoạn này', 'Continue writing'], ['Theo giọng của tài liệu', 'Matches the doc voice']], [['Kiểm đủ mục theo mẫu PRD', 'Check against the PRD template'], ['Báo mục còn thiếu', 'Lists missing sections']], [['Sinh tiêu chí chấp nhận từ yêu cầu', 'Draft acceptance criteria'], ['Mỗi R-n một tiêu chí', 'One per R-n']], [['Đối chiếu tài liệu liên quan', 'Cross-check related docs'], ['payment-api/money, runbook', 'payment-api/money, runbook']], [['Dịch sang tiếng Anh', 'Translate to English'], ['Giữ thuật ngữ trong glossary', 'Keeps glossary terms']]].map(([l, h]) => ({ label: x(l), hint: x(h) }));
+    const history = [['v3', 'Trần Lan', ['đang sửa', 'editing'], ['3 đề xuất AI chờ nhận', '3 AI suggestions pending']], ['v2', 'Trần Lan', ['hôm qua', 'yesterday'], ['Bị trả lại ở checkpoint Product owner: thiếu tiêu chí chấp nhận', 'Returned at Product owner: missing acceptance criteria']], ['v1', 'Claude (gói Max)', ['2 ngày trước', '2 d ago'], ['Bản nháp đầu, viết từ yêu cầu của leader', 'First draft from the leader brief']]].map(([v, w, wh, n]) => ({ v, who: w, when: x(wh), note: x(n) }));
+    const tb = this.state.tab;
+    const tabs = [['comments', ['Bình luận · 1', 'Comments · 1']], ['ai', ['AI', 'AI']], ['history', ['Phiên bản', 'Versions']]].map(([k, l]) => ({ label: x(l), sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), style: 'height: 40px; padding: 0 10px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13px; cursor: pointer; ' + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
+    const ai = 'background: var(--accent); color: var(--accent-foreground);'; const hu = 'background: var(--warning-soft); color: var(--warning);';
+    const nextGates = [[x(['AI', 'AI']), ai, x(['Kiểm đủ mục, mâu thuẫn với tài liệu khác', 'Completeness and conflicts with other docs']), 'Claude'], [x(['Người', 'Human']), hu, 'Product owner', 'Nguyễn Minh'], [x(['Người', 'Human']), hu, x(['Pháp chế (khi có từ khoá phí, hoàn tiền)', 'Legal (when fees or refunds are mentioned)']), x(['Nhóm Pháp chế', 'Legal group'])]].map(([k, s, l, w]) => ({ kind: k, kindStyle: s, label: l, who: w }));
+    const seg = (on) => 'height: 24px; min-width: 30px; padding: 0 6px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, t, steps, slash, aiActions, history, tabs, nextGates,
+      stageBadge: x(['Đang soạn · v3', 'Drafting · v3']), slashOpen: true,
+      sugPending: this.state.sug === 'pending', sugAccepted: this.state.sug === 'accepted', sugRejected: this.state.sug === 'rejected',
+      accept: () => this.setState({ sug: 'accepted' }), reject: () => this.setState({ sug: 'rejected' }),
+      modeLabel: this.state.suggest ? x(['Chế độ: Đề xuất', 'Mode: Suggesting']) : x(['Chế độ: Sửa thẳng', 'Mode: Editing']), flipMode: () => this.setState({ suggest: !this.state.suggest }),
+      tabComments: tb === 'comments', tabAi: tb === 'ai', tabHistory: tb === 'history', toggleAi: () => this.setState({ tab: 'ai' }),
+      submitOpen: this.state.submit, openSubmit: () => this.setState({ submit: true }), closeSubmit: () => this.setState({ submit: false }),
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Logo xDev Hive</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 78" fill="none" role="img" aria-label="xDev Hive — Dev Hub" style="{{size}}; display: block; color: var(--brand-letter);">
+  <defs>
+    <radialGradient id="{{gid}}" cx="50%" cy="50%" r="80%">
+      <stop offset="0%" stop-color="#7BD4FF"></stop>
+      <stop offset="40%" stop-color="#1E90FF"></stop>
+      <stop offset="90%" stop-color="#004CFF"></stop>
+    </radialGradient>
+  </defs>
+  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="{{gurl}}">X</text>
+  <g stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 12)"></path><path d="M0 0V24" transform="translate(94 12)"></path><path d="M0 0L10 24L20 0" transform="translate(105 12)"></path><path d="M18 0H0V24H18M0 12H15" transform="translate(137 12)"></path></g>
+  <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 43) scale(.31)"></path><path d="M18 0H0V24H18M0 12H15" transform="translate(72.68 43) scale(.31)"></path><path d="M0 0L10 24L20 0" transform="translate(80.43 43) scale(.31)"></path><path d="M0 0V24M18 0V24M0 12H18" transform="translate(92.21 43) scale(.31)"></path><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(99.96 43) scale(.31)"></path><path d="M0 0V24H9C22 24 22 12 9 12H0M0 0H9C21 0 21 12 9 12" transform="translate(108.02 43) scale(.31)"></path></g>
+</svg>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"height":{"editor":"int","default":36,"min":16,"max":160},"$preview":{"width":178,"height":78}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.gid = 'xg' + Math.random().toString(36).slice(2, 8); }
+  renderVals() {
+    const h = this.props.height ?? 36;
+    return { size: `height: ${h}px; width: ${Math.round(h * 178 / 78)}px`, gid: this.gid, gurl: `url(#${this.gid})` };
+  }
+}
+</script>
+</body>
+</html>

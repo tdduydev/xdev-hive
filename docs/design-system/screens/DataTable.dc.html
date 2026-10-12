@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>DataTable</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+.dt a:focus-visible,.dt button:focus-visible,.dt input:focus-visible,.dt select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.dt .b{height:30px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--background);color:var(--foreground);white-space:nowrap}
+.dt .b:hover{background:var(--muted)}
+.dt .b-dash{border-style:dashed;border-color:var(--input)}
+.dt .b-ghost{border-color:transparent;background:transparent}
+.dt .b-ico{width:30px;padding:0}
+.dt .b:disabled{opacity:.5;cursor:not-allowed}
+.dt .in{height:30px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px}
+.dt .cb{width:16px;height:16px;margin:0;accent-color:var(--primary);cursor:pointer}
+.dt .tag{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:var(--secondary);color:var(--secondary-foreground);font-size:12px;font-weight:400}
+.dt .pop{position:absolute;top:36px;left:0;z-index:20;min-width:230px;padding:4px;border-radius:10px;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);box-shadow:var(--shadow-lg)}
+.dt .pi{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 8px;border-radius:6px;font-size:13.5px;cursor:pointer}
+.dt .pi:hover{background:var(--muted)}
+.dt .badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dt .dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.dt table{width:100%;border-collapse:collapse;font-size:14px}
+.dt th{height:40px;padding:0 10px;color:var(--muted-foreground);font-size:12.5px;font-weight:500;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;background:var(--card)}
+.dt td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.dt tbody tr:hover{background:var(--muted)}
+.dt .sort{display:inline-flex;align-items:center;gap:4px;height:28px;margin-left:-8px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.dt .sort:hover{background:var(--muted);color:var(--foreground)}
+.dt .mono{font-family:var(--font-mono)}
+.dt .muted{color:var(--muted-foreground)}
+</style>
+</helmet>
+<div class="dt" style="display: flex; flex-direction: column; gap: 10px; font-family: var(--font-sans); font-size: 14px; line-height: 1.5; color: var(--foreground);">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+    <div style="position: relative;">
+      <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--muted-foreground)" stroke-width="2" stroke-linecap="round" style="position: absolute; left: 9px; top: 8px;"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+      <input class="in" aria-label="{{ph}}" placeholder="{{ph}}" value="{{q}}" onInput="{{onQ}}" style="width: 250px; padding-left: 28px;">
+    </div>
+    <sc-for list="{{facets}}" as="fc" hint-placeholder-count="2">
+      <div style="position: relative;">
+        <button type="button" class="b b-dash" onClick="{{fc.toggle}}" aria-expanded="{{fc.ariaOpen}}" aria-haspopup="listbox">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8M12 8v8"></path></svg>{{fc.label}}
+          <sc-if value="{{fc.has}}" hint-placeholder-val="{{false}}"><span style="width: 1px; height: 16px; background: var(--border);"></span><sc-for list="{{fc.chosen}}" as="c" hint-placeholder-count="1"><span class="tag">{{c}}</span></sc-for></sc-if>
+        </button>
+        <sc-if value="{{fc.open}}" hint-placeholder-val="{{false}}">
+          <div class="pop" role="listbox" aria-multiselectable="true" aria-label="{{fc.label}}">
+            <sc-if value="{{fc.many}}" hint-placeholder-val="{{false}}"><input class="in" placeholder="{{fc.findPh}}" aria-label="{{fc.findPh}}" value="{{fc.find}}" onInput="{{fc.onFind}}" style="width: 100%; margin-bottom: 4px;"></sc-if>
+            <div style="max-height: 260px; overflow-y: auto;">
+              <sc-for list="{{fc.options}}" as="o" hint-placeholder-count="5">
+                <label class="pi"><input type="checkbox" class="cb" checked="{{o.on}}" onChange="{{o.flip}}"><span style="flex: 1;">{{o.label}}</span><span class="mono muted" style="font-size: 12px;">{{o.count}}</span></label>
+              </sc-for>
+            </div>
+            <sc-if value="{{fc.has}}" hint-placeholder-val="{{false}}"><div style="height: 1px; margin: 4px 0; background: var(--border);"></div><button type="button" class="pi" onClick="{{fc.clear}}" style="width: 100%; border: 0; background: transparent; color: inherit; font: inherit; justify-content: center;">{{tx.clearOne}}</button></sc-if>
+          </div>
+        </sc-if>
+      </div>
+    </sc-for>
+    <span style="flex: 1;"></span>
+    <div style="position: relative;">
+      <button type="button" class="b" onClick="{{toggleCols}}" aria-expanded="{{colsAria}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M7 12h10M10 18h4"></path></svg>{{tx.cols}}</button>
+      <sc-if value="{{colsOpen}}" hint-placeholder-val="{{false}}">
+        <div class="pop" style="left: auto; right: 0; min-width: 200px;">
+          <div class="muted" style="padding: 6px 8px; font-size: 12px;">{{tx.showCols}}</div>
+          <sc-for list="{{colOpts}}" as="o" hint-placeholder-count="4"><label class="pi"><input type="checkbox" class="cb" checked="{{o.on}}" onChange="{{o.flip}}">{{o.label}}</label></sc-for>
+        </div>
+      </sc-if>
+    </div>
+    <button type="button" class="b"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 10l5 5 5-5M5 21h14"></path></svg>CSV</button>
+  </div>
+
+  <sc-if value="{{anyFilter}}" hint-placeholder-val="{{false}}">
+    <div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px;">
+      <span class="muted">{{tx.filtering}}</span>
+      <sc-for list="{{active}}" as="a" hint-placeholder-count="2">
+        <span style="display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 4px 0 10px; border-radius: 9999px; background: var(--accent); color: var(--accent-foreground);">
+          <span><strong style="font-weight: 600;">{{a.label}}:</strong> {{a.values}}</span>
+          <button type="button" onClick="{{a.clear}}" aria-label="{{a.clearAria}}" style="width: 20px; height: 20px; padding: 0; border: 0; border-radius: 9999px; background: transparent; color: inherit; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+        </span>
+      </sc-for>
+      <button type="button" class="b b-ghost" onClick="{{resetAll}}" style="height: 26px;">{{tx.clearAll}}</button>
+      <span class="muted mono" style="margin-left: auto; font-size: 12px;">{{matchLabel}}</span>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{hasSel}}" hint-placeholder-val="{{false}}">
+    <div role="toolbar" aria-label="{{tx.bulk}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-radius: 10px; background: var(--foreground); color: var(--background);">
+      <span style="font-size: 13px; font-weight: 500;">{{selLabel}}</span><span style="flex: 1;"></span>
+      <sc-for list="{{bulk}}" as="bk" hint-placeholder-count="2"><button type="button" class="b" style="background: transparent; color: var(--background); border-color: rgb(255 255 255 / .28);">{{bk}}</button></sc-for>
+      <button type="button" class="b b-ico" aria-label="{{tx.clearSel}}" onClick="{{clearSel}}" style="background: transparent; color: var(--background); border-color: transparent;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+    </div>
+  </sc-if>
+
+  <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+    <div style="overflow-x: auto;">
+      <table style="{{minW}}">
+        <thead>
+          <tr>
+            <sc-if value="{{selectable}}" hint-placeholder-val="{{true}}"><th style="width: 34px;"><input type="checkbox" class="cb" aria-label="{{tx.selPage}}" checked="{{pageAll}}" onChange="{{flipPage}}"></th></sc-if>
+            <sc-for list="{{heads}}" as="h" hint-placeholder-count="5">
+              <th style="{{h.style}}" aria-sort="{{h.ariaSort}}">
+                <sc-if value="{{h.sortable}}" hint-placeholder-val="{{true}}"><button type="button" class="sort" onClick="{{h.sort}}">{{h.label}}<span class="mono" style="font-size: 11px; opacity: .8;">{{h.arrow}}</span></button></sc-if>
+                <sc-if value="{{h.plain}}" hint-placeholder-val="{{false}}">{{h.label}}</sc-if>
+              </th>
+            </sc-for>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+            <tr onClick="{{r.click}}" style="{{r.style}}">
+              <sc-if value="{{selectable}}" hint-placeholder-val="{{true}}"><td><input type="checkbox" class="cb" aria-label="{{r.selAria}}" checked="{{r.sel}}" onChange="{{r.flip}}" onClick="{{stop}}"></td></sc-if>
+              <sc-for list="{{r.cells}}" as="c" hint-placeholder-count="5">
+                <td style="{{c.td}}">
+                  <sc-if value="{{c.isText}}" hint-placeholder-val="{{true}}"><span style="{{c.style}}">{{c.text}}</span></sc-if>
+                  <sc-if value="{{c.isTitle}}" hint-placeholder-val="{{false}}"><div style="display: flex; flex-direction: column; line-height: 1.35;"><span style="{{c.style}}">{{c.text}}</span><span class="muted" style="{{c.subStyle}}">{{c.sub}}</span></div></sc-if>
+                  <sc-if value="{{c.isBadge}}" hint-placeholder-val="{{false}}"><span class="badge" style="{{c.badge}}"><sc-if value="{{c.dot}}" hint-placeholder-val="{{true}}"><span class="dot"></span></sc-if>{{c.text}}</span></sc-if>
+                  <sc-if value="{{c.isAvatar}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 8px;"><span style="{{c.av}}">{{c.ini}}</span><span style="display: flex; flex-direction: column; line-height: 1.3;"><span style="font-weight: 500;">{{c.text}}</span><span class="muted" style="font-size: 12px;">{{c.sub}}</span></span></span></sc-if>
+                  <sc-if value="{{c.isTags}}" hint-placeholder-val="{{false}}"><span style="display: flex; flex-wrap: wrap; gap: 4px;"><sc-for list="{{c.tags}}" as="tg" hint-placeholder-count="2"><span class="tag mono">{{tg}}</span></sc-for></span></sc-if>
+                </td>
+              </sc-for>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+        <div style="padding: 48px 16px; display: flex; flex-direction: column; align-items: center; gap: 10px;" class="muted">
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3M8 11h6"></path></svg>
+          {{tx.noMatch}}
+          <button type="button" class="b" onClick="{{resetAll}}">{{tx.clearAll}}</button>
+        </div>
+      </sc-if>
+    </div>
+    <div style="padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; border-top: 1px solid var(--border); font-size: 13px;">
+      <span class="muted" style="flex: 1; min-width: 160px;">{{footLeft}}</span>
+      <label style="display: flex; align-items: center; gap: 8px; font-weight: 500;">{{tx.perPage}}<select class="in" onChange="{{onSize}}" style="width: 72px;"><sc-for list="{{sizes}}" as="z" hint-placeholder-count="4"><option value="{{z.v}}" selected="{{z.on}}">{{z.v}}</option></sc-for></select></label>
+      <span style="font-weight: 500;">{{pageLabel}}</span>
+      <div style="display: flex; gap: 4px;">
+        <button type="button" class="b b-ico" aria-label="{{tx.first}}" onClick="{{goFirst}}" disabled="{{atStart}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5M18 17l-5-5 5-5"></path></svg></button>
+        <button type="button" class="b b-ico" aria-label="{{tx.prev}}" onClick="{{goPrev}}" disabled="{{atStart}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+        <button type="button" class="b b-ico" aria-label="{{tx.next}}" onClick="{{goNext}}" disabled="{{atEnd}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+        <button type="button" class="b b-ico" aria-label="{{tx.last}}" onClick="{{goLast}}" disabled="{{atEnd}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 17 5-5-5-5M13 17l5-5-5-5"></path></svg></button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"columns":{"editor":null},"rows":{"editor":null},"facets":{"editor":null},"bulk":{"editor":null},"onRowClick":{"editor":null},"activeId":{"editor":null},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"placeholder":{"editor":"text","default":""},"selectable":{"editor":"boolean","default":true},"pageSize":{"editor":"int","default":10},"minWidth":{"editor":"int","default":900},"$preview":{"width":1100,"height":620}}'>
+// columns: [{key, label, type: text|mono|muted|num|title|badge|avatar|tags, sub?, sortable?, hidden?, width?, align?}]
+// rows: [{id, <key>: value}] — badge value {text, tone, dot?}; title uses row[key] + row[col.sub]; avatar uses {text, sub, ini, ai?}
+// row._sort_<key> overrides the sort value; facets: [{key, label}] read row._f_<key> ?? row[key] (string or array).
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { q: '', f: {}, open: null, find: '', colsOpen: false, hidden: null, sort: null, page: 0, size: null, sel: {} }; }
+  renderVals() {
+    const en = (this.props.lang ?? 'vi') === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const TX = {
+      cols: ['Cột', 'Columns'], showCols: ['Hiện cột', 'Show columns'], clearOne: ['Bỏ lọc này', 'Clear filter'], filtering: ['Đang lọc', 'Filtering'], clearAll: ['Xoá hết bộ lọc', 'Clear all filters'],
+      bulk: ['Thao tác hàng loạt', 'Bulk actions'], clearSel: ['Bỏ chọn', 'Clear selection'], selPage: ['Chọn cả trang', 'Select page'], noMatch: ['Không có dòng nào khớp bộ lọc.', 'No rows match these filters.'],
+      perPage: ['Số dòng', 'Rows'], first: ['Trang đầu', 'First page'], prev: ['Trang trước', 'Previous page'], next: ['Trang sau', 'Next page'], last: ['Trang cuối', 'Last page'], search: ['Tìm…', 'Search…'],
+    };
+    const tx = {}; Object.keys(TX).forEach((k) => { tx[k] = x(TX[k]); });
+    const S = this.state;
+    // Standalone preview of the component when no page feeds it.
+    if (!this.demo) {
+      const st = [['Đang chạy', 'accent'], ['Thành công', 'ok'], ['Lỗi', 'bad'], ['Cần người xem', 'warn']];
+      this.demo = Array.from({ length: 57 }, (_, i) => ({ id: 'r' + i, key: 'TASK-' + (300 - i), title: 'Việc mẫu số ' + (i + 1), status: { text: st[i % 4][0], tone: st[i % 4][1] }, cli: ['Claude', 'Codex', 'Gemini'][i % 3], cost: (i * 0.37 % 5).toFixed(2), _sort_cost: i * 0.37 % 5 }));
+    }
+    const cols = this.props.columns || [{ key: 'key', label: 'Mã', type: 'mono', sortable: true }, { key: 'title', label: 'Việc', type: 'text', sortable: true }, { key: 'status', label: 'Trạng thái', type: 'badge' }, { key: 'cli', label: 'Agent' }, { key: 'cost', label: 'Chi phí', type: 'num', sortable: true }];
+    const all = this.props.rows || this.demo;
+    const facetsDef = this.props.facets || (this.props.rows ? [] : [{ key: 'status', label: 'Trạng thái' }, { key: 'cli', label: 'Agent' }]);
+    const fv = (r, k) => { const v = r['_f_' + k] ?? r[k]; return v && typeof v === 'object' && !Array.isArray(v) ? v.text : v; };
+    const text = (r, c) => { const v = r[c.key]; return v == null ? '' : typeof v === 'object' ? (Array.isArray(v) ? v.join(' ') : (v.text || '') + ' ' + (v.sub || '')) : String(v); };
+    const q = S.q.trim().toLowerCase();
+    const pass = (r, skip) => (!q || cols.some((c) => text(r, c).toLowerCase().includes(q)) || (r.id && String(r.id).toLowerCase().includes(q)))
+      && facetsDef.every((fd) => { if (fd.key === skip) return true; const ch = S.f[fd.key] || []; if (!ch.length) return true; const v = fv(r, fd.key); return Array.isArray(v) ? v.some((y) => ch.includes(y)) : ch.includes(v); });
+    let list = all.filter((r) => pass(r));
+    if (S.sort) {
+      const { key, dir } = S.sort; const m = dir === 'asc' ? 1 : -1;
+      const sv = (r) => { const o = r['_sort_' + key]; if (o != null) return o; const v = r[key]; return v && typeof v === 'object' ? (v.text || '') : v ?? ''; };
+      list = list.slice().sort((a, b) => (sv(a) > sv(b) ? 1 : sv(a) < sv(b) ? -1 : 0) * m);
+    }
+    const size = S.size ?? this.props.pageSize ?? 10;
+    const total = list.length; const pages = Math.max(1, Math.ceil(total / size)); const page = Math.min(S.page, pages - 1);
+    const pageRows = list.slice(page * size, page * size + size);
+    const hidden = S.hidden ?? Object.fromEntries(cols.filter((c) => c.hidden).map((c) => [c.key, true]));
+    const vis = cols.filter((c) => !hidden[c.key]);
+    const tone = {
+      accent: 'background: var(--accent); color: var(--accent-foreground);', ok: 'background: var(--success-soft); color: var(--success);', warn: 'background: var(--warning-soft); color: var(--warning);',
+      bad: 'background: var(--destructive-soft); color: var(--destructive);', off: 'background: var(--muted); color: var(--muted-foreground);', sec: 'background: var(--secondary); color: var(--secondary-foreground);',
+      navy: 'background: var(--brand-navy); color: #B8F1FF;',
+    };
+    const cell = (r, c) => {
+      const v = r[c.key]; const right = c.type === 'num' || c.align === 'right';
+      const base = { td: (right ? 'text-align: right; ' : '') + (c.width ? 'width: ' + c.width + 'px; ' : '') + (c.type === 'title' || c.wrap ? 'min-width: 220px;' : 'white-space: nowrap;'), isText: false, isTitle: false, isBadge: false, isAvatar: false, isTags: false, text: '', sub: '', style: '', subStyle: 'font-size: 12px;', badge: '', dot: true, av: '', ini: '', tags: [] };
+      if (c.type === 'badge') return { ...base, isBadge: true, text: v ? v.text : '', badge: tone[(v && v.tone) || 'off'], dot: !(v && v.dot === false) };
+      if (c.type === 'title') return { ...base, isTitle: true, text: v ?? '', sub: r[c.sub] ?? '', style: 'font-weight: 500;' + (c.mono ? ' font-family: var(--font-mono); font-size: 13.5px;' : ''), subStyle: 'font-size: 12px;' + (c.subMono ? ' font-family: var(--font-mono);' : '') };
+      if (c.type === 'avatar') return { ...base, isAvatar: true, text: v ? v.text : '', sub: v ? v.sub || '' : '', ini: v ? v.ini : '', av: 'width: 26px; height: 26px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; font-size: 10.5px; font-weight: 600; ' + (v && v.ai ? tone.navy + ' font-family: var(--font-mono);' : tone.accent) };
+      if (c.type === 'tags') return { ...base, isTags: true, tags: v || [] };
+      const st = c.type === 'mono' ? 'font-family: var(--font-mono); font-size: 13px;' : c.type === 'num' ? 'font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums;' : c.type === 'muted' ? 'color: var(--muted-foreground); font-size: 13px;' : '';
+      return { ...base, isText: true, text: v ?? '', style: st + (c.link ? ' color: var(--primary);' : '') };
+    };
+    const activeId = this.props.activeId;
+    const rows = pageRows.map((r) => ({
+      cells: vis.map((c) => cell(r, c)), sel: !!S.sel[r.id], selAria: String(r.id),
+      style: (S.sel[r.id] || (activeId != null && r.id === activeId) ? 'background: var(--accent);' : '') + (this.props.onRowClick ? ' cursor: pointer;' : ''),
+      flip: () => this.setState({ sel: { ...S.sel, [r.id]: !S.sel[r.id] } }),
+      click: () => { if (typeof this.props.onRowClick === 'function') this.props.onRowClick(r); },
+    }));
+    const heads = vis.map((c) => {
+      const on = S.sort && S.sort.key === c.key;
+      return {
+        label: c.label, sortable: !!c.sortable, plain: !c.sortable, arrow: on ? (S.sort.dir === 'asc' ? '↑' : '↓') : '↕',
+        ariaSort: on ? (S.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none',
+        style: (c.type === 'num' || c.align === 'right' ? 'text-align: right;' : '') + (c.width ? ' width: ' + c.width + 'px;' : ''),
+        sort: () => this.setState({ sort: { key: c.key, dir: on && S.sort.dir === 'desc' ? 'asc' : 'desc' } }),
+      };
+    });
+    const facets = facetsDef.map((fd) => {
+      const ch = S.f[fd.key] || [];
+      const values = []; all.forEach((r) => { const v = fv(r, fd.key); (Array.isArray(v) ? v : [v]).forEach((y) => { if (y != null && y !== '' && !values.includes(y)) values.push(y); }); });
+      const isOpen = S.open === fd.key; const find = S.find.toLowerCase();
+      return {
+        label: fd.label, has: ch.length > 0, open: isOpen, ariaOpen: isOpen ? 'true' : 'false', many: values.length > 8, find: S.find, findPh: x(['Tìm ', 'Find ']) + fd.label.toLowerCase() + '…',
+        onFind: (e) => this.setState({ find: e.target.value }),
+        chosen: ch.length > 2 ? [x([ch.length + ' đã chọn', ch.length + ' selected'])] : ch,
+        toggle: () => this.setState({ open: isOpen ? null : fd.key, find: '', colsOpen: false }),
+        clear: () => this.setState({ f: { ...S.f, [fd.key]: [] }, page: 0 }),
+        options: values.filter((v) => !find || String(v).toLowerCase().includes(find)).map((v) => ({
+          label: v, on: ch.includes(v),
+          count: all.filter((r) => pass(r, fd.key) && (Array.isArray(fv(r, fd.key)) ? fv(r, fd.key).includes(v) : fv(r, fd.key) === v)).length,
+          flip: () => this.setState({ f: { ...S.f, [fd.key]: ch.includes(v) ? ch.filter((y) => y !== v) : [...ch, v] }, page: 0 }),
+        })),
+      };
+    });
+    const active = facetsDef.filter((fd) => (S.f[fd.key] || []).length).map((fd) => ({
+      label: fd.label, values: S.f[fd.key].join(', '), clearAria: x(['Bỏ lọc ', 'Clear ']) + fd.label,
+      clear: () => this.setState({ f: { ...S.f, [fd.key]: [] }, page: 0 }),
+    }));
+    if (q) active.unshift({ label: x(['Từ khoá', 'Keyword']), values: '"' + S.q + '"', clearAria: x(['Bỏ từ khoá', 'Clear keyword']), clear: () => this.setState({ q: '', page: 0 }) });
+    const selCount = Object.values(S.sel).filter(Boolean).length;
+    const pageAll = pageRows.length > 0 && pageRows.every((r) => S.sel[r.id]);
+    const n = (v) => v.toLocaleString(en ? 'en' : 'vi');
+    return {
+      tx, facets, active, heads, rows, sizes: [10, 20, 50, 100].map((v) => ({ v, on: v === size })),
+      ph: this.props.placeholder || tx.search, q: S.q, onQ: (e) => this.setState({ q: e.target.value, page: 0 }),
+      anyFilter: active.length > 0, matchLabel: x([n(total) + ' / ' + n(all.length) + ' dòng khớp', n(total) + ' / ' + n(all.length) + ' rows match']),
+      resetAll: () => this.setState({ q: '', f: {}, page: 0, open: null }),
+      colsOpen: S.colsOpen, colsAria: S.colsOpen ? 'true' : 'false', toggleCols: () => this.setState({ colsOpen: !S.colsOpen, open: null }),
+      colOpts: cols.map((c) => ({ label: c.label, on: !hidden[c.key], flip: () => this.setState({ hidden: { ...hidden, [c.key]: !hidden[c.key] } }) })),
+      selectable: this.props.selectable ?? true, bulk: this.props.bulk || [], hasSel: selCount > 0,
+      selLabel: x(['Đã chọn ' + n(selCount) + ' dòng', n(selCount) + ' selected']), clearSel: () => this.setState({ sel: {} }),
+      pageAll, flipPage: () => { const m = { ...S.sel }; pageRows.forEach((r) => { m[r.id] = !pageAll; }); this.setState({ sel: m }); },
+      stop: (e) => e.stopPropagation(), empty: total === 0, minW: 'min-width: ' + (this.props.minWidth ?? 900) + 'px;',
+      footLeft: x([n(selCount) + ' trên ' + n(total) + ' dòng được chọn.', n(selCount) + ' of ' + n(total) + ' row(s) selected.']),
+      pageLabel: x(['Trang ' + n(page + 1) + ' / ' + n(pages), 'Page ' + n(page + 1) + ' of ' + n(pages)]),
+      atStart: page === 0, atEnd: page >= pages - 1,
+      goFirst: () => this.setState({ page: 0 }), goPrev: () => this.setState({ page: Math.max(0, page - 1) }),
+      goNext: () => this.setState({ page: Math.min(pages - 1, page + 1) }), goLast: () => this.setState({ page: pages - 1 }),
+      onSize: (e) => this.setState({ size: Number(e.target.value), page: 0 }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Duyệt tài liệu</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-t{margin:0;font-size:14.5px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.diff{font-size:14px;line-height:1.7}
+.diff p{margin:0 0 10px}
+.ins{background:var(--success-soft);color:var(--success);text-decoration:none;border-bottom:2px solid var(--success)}
+.del{background:var(--destructive-soft);color:var(--destructive);text-decoration:line-through}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="reviews" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+      </header>
+      <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,420px"></dc-import>
+
+      <section style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <div style="flex: 3 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">PRD</span><strong style="font-size: 16px;">{{cur.title}}</strong><span class="mono muted" style="font-size: 12.5px;">v2 → v3</span><span style="flex: 1;"></span><span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{cur.sla}}</span></div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px;">
+              <sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="{{s.style}}">{{s.mark}} {{s.label}}</span><sc-if value="{{s.arrow}}" hint-placeholder-val="{{true}}"><span class="muted">→</span></sc-if></span></sc-for>
+            </div>
+          </div>
+          <div class="card" style="overflow: hidden;">
+            <div class="card-h"><h2 class="card-t">{{t.changes}}</h2><span class="muted" style="font-size: 12.5px;">{{t.changesMeta}}</span></div>
+            <div class="diff" style="padding: 14px 18px;">
+              <p><strong>2. {{t.h_req}}</strong></p>
+              <p>{{t.req2a}} <span class="del">{{t.req2del}}</span> <span class="ins">{{t.req2ins}}</span>{{t.req2b}}</p>
+              <p><strong>3. {{t.h_accept}}</strong> <span class="badge" style="background: var(--success-soft); color: var(--success); height: 18px; font-size: 11px;">{{t.newSection}}</span></p>
+              <p class="ins" style="display: block; padding: 4px 8px; border-bottom: 0; border-left: 3px solid var(--success);">☑ {{t.ac1}}<br>☐ {{t.ac2}}</p>
+            </div>
+          </div>
+        </div>
+
+        <aside style="flex: 2 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <div class="card" style="overflow: hidden;">
+            <div class="card-h"><h2 class="card-t">{{t.aiCheck}}</h2><span class="badge" style="background: var(--success-soft); color: var(--success);">8,5 / 10</span></div>
+            <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
+              <sc-for list="{{checks}}" as="c" hint-placeholder-count="5"><li style="display: flex; gap: 8px; align-items: flex-start;"><span style="{{c.icon}}">{{c.mark}}</span><span>{{c.text}}</span></li></sc-for>
+            </ul>
+          </div>
+          <div class="card" style="overflow: hidden;">
+            <div class="card-h"><h2 class="card-t">{{t.trace}}</h2><span class="muted" style="font-size: 12.5px;">3 / 3</span></div>
+            <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+              <li><span class="mono">R-1</span> → <span class="mono muted">TASK-45, TASK-47</span></li><li><span class="mono">R-2</span> → <span class="mono muted">TASK-45</span></li><li><span class="mono">R-3</span> → <span class="mono muted">TASK-47</span></li>
+            </ul>
+          </div>
+          <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <h2 class="card-t">{{t.decision}}</h2>
+            <textarea class="input" style="height: 72px; resize: vertical;" aria-label="{{t.note}}" placeholder="{{t.note}}"></textarea>
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.ifReturn}}<select class="input" style="height: 32px; padding: 0 10px;"><option>{{t.backAuthor}}</option><option>{{t.backAgent}}</option></select></label>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-destructive">{{t.requestChanges}}</button><button type="button" class="btn btn-default">{{t.approve}}</button></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cur: 'v0', lang: null, dark: null };
+    const docs = [['PRD', ['Hoàn tiền một phần', 'Partial refunds'], 'payment-api'], ['Design', ['Thiết kế kênh WebSocket qua proxy', 'WebSocket channel through proxies'], 'hive-worker'], ['ADR', ['ADR-012: Lưu skill trong Git', 'ADR-012: Store skills in Git'], 'xdev-hive'], ['Runbook', ['Runbook sự cố VNPAY', 'VNPAY incident runbook'], 'payment-api'], ['PRD', ['Ví điện tử: nạp tiền', 'E-wallet: top-up'], 'wallet'], ['Test plan', ['Kế hoạch test đối soát', 'Reconciliation test plan'], 'reconcile']];
+    const gates = [['Product owner', 'Product owner'], ['Kiến trúc sư', 'Architect'], ['Pháp chế', 'Legal'], ['Trực vận hành', 'On-call'], ['Duyệt kế hoạch task', 'Task plan']];
+    const by = ['Trần Lan', 'Phạm Hà', 'Claude (gói Max)', 'Lê Quang', 'Codex (gói Plus)'];
+    let s = 31; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 42 }, (_, i) => { const d = docs[i % docs.length]; return { id: 'v' + i, type: d[0], title: d[1], project: d[2], gate: gates[i === 0 ? 0 : Math.floor(rnd() * gates.length)], by: by[Math.floor(rnd() * by.length)], left: i === 0 ? 14 : Math.floor(rnd() * 60) - 8, ai: (6 + rnd() * 4).toFixed(1) }; });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], title: ['Chờ tôi duyệt', 'Awaiting my review'], search: ['Tìm tài liệu, dự án…', 'Search doc, project…'],
+      changes: ['Thay đổi so với bản đã duyệt', 'Changes since the approved version'], changesMeta: ['+14 / −3 dòng · 2 mục', '+14 / −3 lines · 2 sections'],
+      h_req: ['Yêu cầu', 'Requirements'], req2a: ['Tổng các lần hoàn', 'The sum of refunds'], req2del: ['phải nhỏ hơn số tiền gốc', 'must be lower than the original amount'], req2ins: ['không được vượt số tiền gốc trừ phí đã thu', 'must not exceed the original amount minus fees already charged'], req2b: ['; nếu vượt, API trả lỗi BILL-409.', '; otherwise the API returns BILL-409.'],
+      h_accept: ['Tiêu chí chấp nhận', 'Acceptance criteria'], newSection: ['mục mới', 'new section'], ac1: ['Hoàn 2 lần 50% thì lần thứ 3 bị chặn với BILL-409.', 'Two 50% refunds block the third with BILL-409.'], ac2: ['Đối soát cuối ngày khớp tổng tiền hoàn.', 'End-of-day reconciliation matches refunded totals.'],
+      aiCheck: ['AI tự kiểm (checkpoint trước)', 'AI pre-check (previous checkpoint)'], trace: ['Truy vết yêu cầu', 'Requirement traceability'],
+      decision: ['Quyết định của bạn', 'Your decision'], note: ['Góp ý cho người viết', 'Feedback for the author'], ifReturn: ['Nếu yêu cầu sửa', 'If you request changes'],
+      backAuthor: ['Trả về người viết', 'Back to the author'], backAgent: ['Agent sửa theo góp ý, rồi quay lại checkpoint này', 'Agent revises, then returns here'], requestChanges: ['Yêu cầu sửa', 'Request changes'], approve: ['Duyệt', 'Approve'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const rows = this.data.map((d) => ({
+      id: d.id, title: x(d.title), sub: d.project, type: { text: d.type, tone: 'sec', dot: false }, gate: x(d.gate), by: d.by,
+      sla: d.left < 0 ? { text: x(['Quá hạn ' + -d.left + ' giờ', Math.abs(d.left) + ' h overdue']), tone: 'bad' } : d.left < 12 ? { text: x(['còn ' + d.left + ' giờ', d.left + ' h left']), tone: 'warn' } : { text: x(['còn ' + d.left + ' giờ', d.left + ' h left']), tone: 'ok', dot: false },
+      _sort_sla: d.left, _f_sla: d.left < 0 ? x(['Quá hạn', 'Overdue']) : d.left < 12 ? x(['Sắp hạn', 'Due soon']) : x(['Còn hạn', 'On time']),
+      ai: d.ai, _sort_ai: Number(d.ai), _f_author: /gói|plan/.test(d.by) ? 'AI' : x(['Người', 'Person']),
+    }));
+    const columns = [
+      { key: 'title', label: x(['Tài liệu', 'Doc']), type: 'title', sub: 'sub', subMono: true, sortable: true },
+      { key: 'type', label: x(['Loại', 'Type']), type: 'badge' }, { key: 'gate', label: 'Checkpoint' }, { key: 'by', label: x(['Người gửi', 'Submitted by']), type: 'muted' },
+      { key: 'ai', label: x(['Điểm AI', 'AI score']), type: 'num', sortable: true }, { key: 'sla', label: 'SLA', type: 'badge', sortable: true },
+    ];
+    const facets = [{ key: 'type', label: x(['Loại', 'Type']) }, { key: 'gate', label: 'Checkpoint' }, { key: 'sla', label: 'SLA' }, { key: 'author', label: x(['Người gửi', 'Submitted by']) }];
+    const d = this.data.find((r) => r.id === this.state.cur) || this.data[0];
+    const done = 'background: var(--success-soft); color: var(--success);'; const now = 'background: var(--warning-soft); color: var(--warning); font-weight: 600;'; const todo = 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);';
+    const steps = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓'], [['Product owner', 'Product owner'], now, '●'], [['Pháp chế', 'Legal'], todo, '○'], [['Chốt v1', 'Baseline'], todo, '○']].map(([l, st, m], i, a) => ({ label: x(l), mark: m, arrow: i < a.length - 1, style: 'display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 9999px; ' + st }));
+    const ok = 'width: 18px; height: 18px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; background: var(--success-soft); color: var(--success);';
+    const warn = ok.replace('var(--success-soft)', 'var(--warning-soft)').replace('color: var(--success)', 'color: var(--warning)');
+    const checks = [[ok, '✓', ['Đủ 6/6 mục theo mẫu PRD', '6/6 PRD template sections present']], [ok, '✓', ['Mỗi R-n có tiêu chí chấp nhận', 'Every R-n has acceptance criteria']], [ok, '✓', ['Khớp payment-api/money v7 về phí', 'Consistent with payment-api/money v7 on fees']], [warn, '!', ['Chưa nêu giới hạn số lần hoàn trong một ngày', 'No daily cap on refund count']], [warn, '!', ['Bình luận về phí còn mở, chờ Pháp chế', 'Fee comment still open, waiting on Legal']]].map(([i, m, tx]) => ({ icon: i, mark: m, text: x(tx) }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 5, minW: 900, curId: d.id, pick: (r) => this.setState({ cur: r.id }),
+      bulk: [x(['Duyệt', 'Approve']), x(['Chuyển người duyệt', 'Reassign'])], steps, checks,
+      cur: { title: x(d.title), sla: d.left < 0 ? x(['Quá hạn', 'Overdue']) : x(['SLA còn ' + d.left + ' giờ', 'SLA ' + d.left + ' h left']) },
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>
