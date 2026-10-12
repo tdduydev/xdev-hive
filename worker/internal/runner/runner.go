@@ -572,6 +572,10 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			return &cliExecCmd{Cmd: exec.Command("codex", args...)}, nil
 		case "gemini":
 			args := []string{"-p", j.Prompt}
+			if _, err := writeGeminiSettings(j); err != nil {
+				return nil, fmt.Errorf("ghi cấu hình MCP cho Gemini: %w", err)
+			}
+			args = append(args, geminiMCPArgs(j)...)
 			if readOnlyKind(j.Kind) {
 				// "plan (read-only mode)" theo gemini --help bản 0.63.0.
 				args = append(args, "--approval-mode", "plan")

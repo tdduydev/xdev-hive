@@ -493,8 +493,8 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 		{"codex", "", []string{"exec", "--json", "-c", "mcp_servers={}", "-c", `mcp_servers.xdev-hive-run={url="https://hub.example/mcp",bearer_token_env_var="HIVE_RUN_TOKEN"}`, "prompt"}},
 		{"claude", "sonnet", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
 		{"claude", "", []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config"}},
-		{"gemini", "gemini-test", []string{"-p", "prompt", "-m", "gemini-test"}},
-		{"gemini", "", []string{"-p", "prompt"}},
+		{"gemini", "gemini-test", []string{"-p", "prompt", "--allowed-mcp-server-names=xdev-hive", "-m", "gemini-test"}},
+		{"gemini", "", []string{"-p", "prompt", "--allowed-mcp-server-names=xdev-hive"}},
 	} {
 		j := Job{CLI: tc.cli, Model: tc.model, Prompt: "prompt", Env: env}
 		cmd, err := (Runner{}).cliCommand(j)
