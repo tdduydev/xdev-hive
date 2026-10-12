@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Design system · Thành phần</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.sec{display:flex;flex-direction:column;gap:12px;padding:20px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.sec h2{margin:0;font-family:var(--font-heading);font-size:17px;letter-spacing:-.02em;display:flex;align-items:baseline;gap:10px}
+.sec h2 span{font-family:var(--font-mono);font-size:11.5px;font-weight:400;color:var(--muted-foreground)}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.lbl{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-foreground);width:100%}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.b-default{background:var(--primary);color:var(--primary-foreground)}
+.b-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.b-secondary{background:var(--secondary);color:var(--secondary-foreground)}
+.b-ghost{background:transparent;color:var(--foreground)}
+.b-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.b-dsolid{background:var(--destructive);color:var(--background)}
+.b-link{background:transparent;color:var(--primary);text-decoration:underline;text-underline-offset:4px}
+.xs{height:24px;font-size:12px;padding:0 8px}.sm{height:28px;font-size:13px}.lg{height:36px}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; min-height: 2200px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 24px; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <h1 style="margin: 0; font-family: var(--font-heading); font-size: 40px; line-height: 1.1; letter-spacing: -0.04em;">Design system · {{t.comp}}</h1>
+      <p class="muted" style="margin: 0; max-width: 820px;">{{t.lead}}</p>
+    </div>
+    <div style="display: inline-flex; padding: 3px; background: var(--muted); border-radius: 8px;"><button type="button" onClick="{{toLight}}" style="{{lightS}}">Light</button><button type="button" onClick="{{toDark}}" style="{{darkS}}">Dark</button></div>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start;">
+    <section class="sec">
+      <h2>Button <span>components/ui/button.tsx</span></h2>
+      <div class="row"><span class="lbl">variant</span><button type="button" class="btn b-default">Default</button><button type="button" class="btn b-outline">Outline</button><button type="button" class="btn b-secondary">Secondary</button><button type="button" class="btn b-ghost">Ghost</button><button type="button" class="btn b-destructive">Destructive</button><button type="button" class="btn b-dsolid">Destructive solid</button><button type="button" class="btn b-link">Link</button></div>
+      <div class="row"><span class="lbl">size</span><button type="button" class="btn b-default xs">xs · 24</button><button type="button" class="btn b-default sm">sm · 28</button><button type="button" class="btn b-default">default · 32</button><button type="button" class="btn b-default lg">lg · 36</button><button type="button" class="btn b-outline" aria-label="icon" style="width: 32px; padding: 0;">＋</button></div>
+      <div class="row"><span class="lbl">{{t.state}}</span><button type="button" class="btn b-default">{{t.withIcon}}</button><button type="button" class="btn b-default" disabled style="opacity: .5; cursor: not-allowed;">Disabled</button><button type="button" class="btn b-default" style="outline: 2px solid var(--ring); outline-offset: 2px;">Focus</button><button type="button" class="btn b-default" style="opacity: .8;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg>{{t.loading}}</button></div>
+    </section>
+
+    <section class="sec">
+      <h2>Badge <span>components/ui/pill.tsx</span></h2>
+      <div class="row"><sc-for list="{{badges}}" as="b" hint-placeholder-count="7"><span class="badge" style="{{b.style}}"><sc-if value="{{b.dot}}" hint-placeholder-val="{{true}}"><span class="dot"></span></sc-if>{{b.label}}</span></sc-for></div>
+      <div class="row"><span class="lbl">tag · kbd · avatar</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 5px; background: var(--secondary); color: var(--secondary-foreground); font-family: var(--font-mono); font-size: 12px;">payment-api</span><kbd class="mono" style="font-size: 11px; padding: 1px 6px; background: var(--card); border: 1px solid var(--border); border-radius: 4px;">⌘K</kbd><span style="width: 28px; height: 28px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-foreground); font-size: 11px; font-weight: 600;">TL</span><span class="mono" style="width: 28px; height: 28px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; background: var(--brand-navy); color: #B8F1FF; font-size: 10px; font-weight: 600;">AI</span></div>
+    </section>
+
+    <section class="sec">
+      <h2>Input · Select · Textarea <span>ui/input · select · textarea · field</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+        <label class="field">{{t.fName}}<input class="input" placeholder="{{t.fPh}}"><span class="hint">{{t.fHint}}</span></label>
+        <label class="field">{{t.fSel}}<select class="input"><option>Claude</option><option>Codex</option></select></label>
+        <label class="field" style="color: var(--destructive);">{{t.fErr}}<input class="input" value="thanh toan" style="border-color: var(--destructive);"><span style="font-size: 12px; font-weight: 400;">{{t.fErrMsg}}</span></label>
+        <label class="field">{{t.fSuffix}}<span style="position: relative;"><input class="input mono" value="3" style="padding-right: 46px;"><em class="mono muted" style="position: absolute; right: 10px; top: 7px; font-style: normal; font-size: 12px;">USD</em></span></label>
+        <label class="field" style="grid-column: 1 / -1;">Textarea<textarea class="input" style="height: 64px; padding: 8px 10px; resize: vertical;" placeholder="{{t.taPh}}"></textarea></label>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>Checkbox · Radio · Switch <span>ui/checkbox · radio-group · switch</span></h2>
+      <div class="row" style="gap: 20px;"><label style="display: flex; gap: 8px;"><input type="checkbox" checked style="accent-color: var(--primary);">{{t.on}}</label><label style="display: flex; gap: 8px;"><input type="checkbox" style="accent-color: var(--primary);">{{t.off}}</label><label style="display: flex; gap: 8px;"><input type="radio" name="r" checked style="accent-color: var(--primary);">{{t.r1}}</label><label style="display: flex; gap: 8px;"><input type="radio" name="r" style="accent-color: var(--primary);">{{t.r2}}</label></div>
+      <div class="row" style="gap: 20px;">
+        <span style="display: flex; align-items: center; gap: 8px;"><button type="button" role="switch" aria-checked="{{swAria}}" aria-label="Switch" class="sw" onClick="{{flipSw}}" style="{{swTrack}}"><span style="{{swKnob}}"></span></button>{{swLabel}}</span>
+        <span style="display: flex; align-items: center; gap: 8px;"><button type="button" role="switch" aria-checked="true" aria-label="Danger" class="sw" style="background: var(--destructive);"><span style="transform: translateX(16px);"></span></button>{{t.dangerOn}}</span>
+      </div>
+      <div class="row"><span class="lbl">{{t.tri}}</span>
+        <sc-for list="{{tri}}" as="c" hint-placeholder-count="3"><span style="display: flex; align-items: center; gap: 8px; margin-right: 12px;"><span style="{{c.box}}">{{c.mark}}</span>{{c.label}}</span></sc-for>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>Tabs · Segmented <span>ui/tabs (line, default)</span></h2>
+      <div style="display: flex; gap: 4px; border-bottom: 1px solid var(--border);"><sc-for list="{{lineTabs}}" as="tb" hint-placeholder-count="3"><button type="button" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}<span class="mono" style="font-size: 11px; padding: 0 6px; border-radius: 9999px; background: var(--muted); color: var(--muted-foreground);">{{tb.n}}</span></button></sc-for></div>
+      <div style="display: inline-flex; align-self: flex-start; padding: 3px; background: var(--muted); border-radius: 8px; gap: 2px;"><sc-for list="{{segTabs}}" as="s" hint-placeholder-count="3"><button type="button" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button></sc-for></div>
+    </section>
+
+    <section class="sec">
+      <h2>Alert · Toast <span>ui/alert</span></h2>
+      <sc-for list="{{alerts}}" as="a" hint-placeholder-count="4"><div role="status" style="{{a.style}}"><strong style="font-weight: 600;">{{a.title}}</strong><span>{{a.text}}</span></div></sc-for>
+      <div style="align-self: flex-end; padding: 10px 14px; border-radius: 10px; background: var(--foreground); color: var(--background); font-size: 13px; box-shadow: var(--shadow-lg);">{{t.toast}}</div>
+    </section>
+
+    <section class="sec">
+      <h2>Card <span>ui/card</span></h2>
+      <div style="border: 1px solid var(--border); border-radius: 12px; overflow: hidden;">
+        <div style="padding: 14px 16px 0;"><div style="font-size: 15px; font-weight: 600;">{{t.cardTitle}}</div><div class="hint" style="font-size: 13px;">{{t.cardDesc}}</div></div>
+        <div style="padding: 14px 16px;">{{t.cardBody}}</div>
+        <div style="padding: 10px 16px; display: flex; justify-content: flex-end; gap: 8px; background: var(--muted); border-top: 1px solid var(--border);"><button type="button" class="btn b-outline sm">{{t.cancel}}</button><button type="button" class="btn b-default sm">{{t.save}}</button></div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>Dialog <span>ui/dialog</span></h2>
+      <div style="position: relative; height: 220px; border-radius: 12px; background: rgb(15 23 42 / .45); display: flex; align-items: center; justify-content: center;">
+        <div role="dialog" aria-label="{{t.dlgTitle}}" style="width: 380px; padding: 18px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 10px;">
+          <div style="font-size: 17px; font-weight: 600;">{{t.dlgTitle}}</div><div class="muted" style="font-size: 13px;">{{t.dlgText}}</div>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn b-outline sm">{{t.keep}}</button><button type="button" class="btn b-dsolid sm">{{t.confirm}}</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>{{t.navTitle}} <span>Sidebar · tree</span></h2>
+      <div style="width: 240px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--sidebar); display: flex; flex-direction: column; gap: 2px; font-size: 14px;">
+        <span style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; font-weight: 600;">▾ {{t.navGroup}}</span>
+        <div style="margin-left: 17px; padding-left: 8px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 1px; font-size: 13.5px;">
+          <span style="height: 30px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; color: var(--muted-foreground);">{{t.nav1}}</span>
+          <span style="height: 30px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; background: var(--accent); color: var(--accent-foreground); font-weight: 600;">{{t.nav2}}<span class="mono" style="margin-left: auto; font-size: 11px;">3</span></span>
+          <span style="height: 30px; display: flex; align-items: center; padding: 0 10px; border-radius: 6px; background: var(--muted); color: var(--muted-foreground);">{{t.nav3}} · hover</span>
+        </div>
+        <span style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px;">▸ {{t.navGroup2}}<span class="mono" style="margin-left: auto; font-size: 11px; min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--primary); color: var(--primary-foreground);">4</span></span>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>{{t.empty}} <span>empty · skeleton</span></h2>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+        <div style="padding: 24px; border: 1px dashed var(--input); border-radius: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;"><span class="muted" style="font-size: 24px;">▢</span><strong style="font-weight: 600;">{{t.emptyTitle}}</strong><span class="muted" style="font-size: 13px;">{{t.emptyText}}</span><button type="button" class="btn b-default sm">{{t.emptyCta}}</button></div>
+        <div style="padding: 16px; border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;"><span style="height: 12px; width: 60%; border-radius: 6px; background: var(--muted);"></span><span style="height: 12px; width: 90%; border-radius: 6px; background: var(--muted);"></span><span style="height: 12px; width: 75%; border-radius: 6px; background: var(--muted);"></span><span style="height: 32px; width: 40%; border-radius: 8px; background: var(--muted);"></span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="sec">
+    <h2>DataTable <span>{{t.dtSub}}</span></h2>
+    <dc-import name="DataTable" lang="{{lang}}" page-size="{{five}}" hint-size="100%,560px"></dc-import>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"$preview":{"width":1440,"height":2200}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { dark: null, sw: true, tab: 0, seg: 1 }; }
+  renderVals() {
+    const dark = this.state.dark ?? !!this.props.dark;
+    const lang = this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      comp: ['Thành phần', 'Components'], lead: ['Bản vẽ của các component shadcn/ui (base-nova) trong apps/web/src/components/ui, dùng đúng token v2. Mỗi mục ghi file component tương ứng.', 'Drawings of the shadcn/ui (base-nova) components in apps/web/src/components/ui, using the v2 tokens. Each section names its component file.'],
+      state: ['trạng thái', 'states'], withIcon: ['＋ Có icon', '＋ With icon'], loading: ['Đang lưu…', 'Saving…'],
+      fName: ['Tên dự án', 'Project name'], fPh: ['Ví dụ: Cổng thanh toán', 'e.g. Payment gateway'], fHint: ['Gợi ý ngắn dưới ô.', 'Short hint under the field.'], fSel: ['Chọn agent', 'Agent'], fErr: ['Project key', 'Project key'],
+      fErrMsg: ['Chỉ dùng chữ thường, số và dấu gạch ngang.', 'Use lowercase letters, digits and hyphens only.'], fSuffix: ['Ngân sách mỗi run', 'Per-run budget'], taPh: ['Ghi chú cho agent…', 'Note for the agent…'],
+      on: ['Đã chọn', 'Checked'], off: ['Chưa chọn', 'Unchecked'], r1: ['Một người bất kỳ', 'Any one'], r2: ['Tất cả', 'Everyone'], dangerOn: ['Bật nguy hiểm (toàn quyền)', 'Dangerous on (full access)'],
+      tri: ['checkbox ba trạng thái (cây quyền)', 'tri-state checkbox (permission tree)'],
+      toast: ['Đã đưa PR #128 vào hàng merge', 'PR #128 added to the merge queue'],
+      cardTitle: ['Mục mạng của dự án', 'Project network rules'], cardDesc: ['Chỉ áp cho run sandbox của payment-api.', 'Applies only to payment-api sandbox runs.'], cardBody: ['Nội dung thẻ: form, bảng hoặc danh sách.', 'Card body: a form, table or list.'], cancel: ['Huỷ', 'Cancel'], save: ['Lưu', 'Save'],
+      dlgTitle: ['Cho agent toàn quyền?', 'Give agents full access?'], dlgText: ['CLI chạy không sandbox và không hỏi duyệt.', 'The CLI runs without a sandbox or approval prompts.'], keep: ['Giữ trong worktree', 'Keep in worktree'], confirm: ['Bật toàn quyền', 'Enable full access'],
+      navTitle: ['Menu nhiều cấp', 'Nested navigation'], navGroup: ['Công việc', 'Work'], nav1: ['Bảng việc', 'Board'], nav2: ['Lượt chạy', 'Runs'], nav3: ['Leader', 'Leader'], navGroup2: ['Kiến thức', 'Knowledge'],
+      empty: ['Trống · đang tải', 'Empty · loading'], emptyTitle: ['Chưa có PR nào trong hàng', 'No PRs in the queue'], emptyText: ['PR đạt điều kiện sẽ hiện ở đây.', 'PRs that pass checks show up here.'], emptyCta: ['Đưa PR vào hàng', 'Enqueue a PR'],
+      dtSub: ['DataTable.dc.html · lọc, sắp xếp, chọn, phân trang', 'DataTable.dc.html · filter, sort, select, paginate'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const tone = (bg, fg) => `background: var(--${bg}); color: var(--${fg});`;
+    const badges = [[['Đang chạy', 'Running'], tone('accent', 'accent-foreground'), true], [['Chờ duyệt', 'Pending'], tone('warning-soft', 'warning'), true], [['Thành công', 'Succeeded'], tone('success-soft', 'success'), true], [['Lỗi', 'Failed'], tone('destructive-soft', 'destructive'), true], [['Đã huỷ', 'Cancelled'], tone('muted', 'muted-foreground'), true], [['Dự án', 'Project'], tone('secondary', 'secondary-foreground'), false], [['3 đã chọn', '3 selected'], tone('primary', 'primary-foreground'), false]].map(([l, s, d]) => ({ label: x(l), style: s, dot: d }));
+    const box = (bg, bd) => `width: 16px; height: 16px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: var(--primary-foreground); background: ${bg}; border: 1.5px solid ${bd};`;
+    const tri = [[x(['Bật', 'On']), box('var(--primary)', 'var(--primary)'), '✓'], [x(['Một phần', 'Mixed']), box('var(--primary)', 'var(--primary)'), '–'], [x(['Tắt', 'Off']), box('transparent', 'var(--input)'), '']].map(([l, b, m]) => ({ label: l, box: b, mark: m }));
+    const lineTabs = [[x(['Đang hoạt động', 'Active']), 128], [x(['Lời mời', 'Invitations']), 23], [x(['Chờ duyệt', 'Pending']), 7]].map(([l, n], i) => ({ label: l, n, pick: () => this.setState({ tab: i }), style: 'height: 38px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13.5px; cursor: pointer; ' + (this.state.tab === i ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
+    const segTabs = [x(['Theo từ', 'Keyword']), x(['Theo nghĩa', 'Semantic']), 'VI / EN'].map((l, i) => ({ label: l, pick: () => this.setState({ seg: i }), style: 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (this.state.seg === i ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);') }));
+    const al = (bg, fg) => `padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; background: var(--${bg}); color: var(--${fg});`;
+    const alerts = [[x(['Thông tin', 'Info']), x(['Kế hoạch đang chờ người duyệt.', 'The plan is waiting for review.']), al('accent', 'accent-foreground')], [x(['Thành công', 'Success']), x(['Đã lưu cấu hình.', 'Settings saved.']), al('success-soft', 'success')], [x(['Cảnh báo', 'Warning']), x(['Dự án chưa bật sandbox.', 'Sandbox is off for this project.']), al('warning-soft', 'warning')], [x(['Lỗi', 'Error']), x(['Token đã hết hạn. Xin token mới từ admin đội.', 'The token expired. Ask your team admin for a new one.']), al('destructive-soft', 'destructive')]].map(([ti, tx, st]) => ({ title: ti, text: tx, style: st }));
+    const on = this.state.sw;
+    const seg = (o) => 'height: 28px; padding: 0 12px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (o ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: dark ? 'dark' : 'light', lang, t, badges, tri, lineTabs, segTabs, alerts, five: 5,
+      swAria: on ? 'true' : 'false', swTrack: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', swKnob: on ? 'transform: translateX(16px);' : '', swLabel: on ? x(['Bật', 'On']) : x(['Tắt', 'Off']), flipSw: () => this.setState({ sw: !on }),
+      lightS: seg(!dark), darkS: seg(dark), toLight: () => this.setState({ dark: false }), toDark: () => this.setState({ dark: true }),
+    };
+  }
+}
+</script>
+</body>
+</html>

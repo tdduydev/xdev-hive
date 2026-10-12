@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Nhật ký</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px}
+.muted{color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="audit" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 14px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <div class="seg" role="group" aria-label="{{t.range}}"><sc-for list="{{ranges}}" as="r" hint-placeholder-count="4"><button type="button" onClick="{{r.pick}}" aria-pressed="{{r.p}}" style="{{r.style}}">{{r.label}}</button></sc-for></div>
+      </header>
+      <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,760px"></dc-import>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { range: 7, lang: null, dark: null };
+    this.acts = [
+      ['members.invite', 'user', 'people', ['Mời an.do@acme.vn vào đội Thanh toán', 'Invited an.do@acme.vn to Payments']],
+      ['runs.cancel', 'user', 'work', ['Huỷ run 0d5f6a7b', 'Cancelled run 0d5f6a7b']],
+      ['memory.write', 'run', 'know', ['Ghi memory "Go test cần TZ"', 'Wrote memory "Go tests need TZ"']],
+      ['docs.update', 'run', 'know', ['payment-api/money v6 → v7', 'payment-api/money v6 → v7']],
+      ['skills.sync', 'system', 'know', ['Đẩy 64 skill lên tdduydev/xdev-skills', 'Pushed 64 skills to tdduydev/xdev-skills']],
+      ['projects.settings', 'user', 'proj', ['payment-api: bật review chéo', 'payment-api: enabled cross-review']],
+      ['merge.merged', 'system', 'proj', ['PR #124 đã merge vào main', 'PR #124 merged into main']],
+      ['plans.approve', 'user', 'work', ['Duyệt kế hoạch TASK-44 lần 2', 'Approved TASK-44 plan v2']],
+      ['members.role', 'user', 'people', ['Phạm Hà: Thành viên → Quản trị đội', 'Phạm Hà: Member → Team admin']],
+      ['machines.register', 'system', 'proj', ['Máy hc-linux-52 đã đăng ký', 'Machine hc-linux-52 registered']],
+      ['signin.sso', 'user', 'people', ['Đổi cách duyệt người mới SSO', 'Changed SSO new-user policy']],
+      ['mcp.token', 'user', 'agent', ['Tạo token MCP "Claude Code · MacBook"', 'Created MCP token "Claude Code · MacBook"']],
+      ['policies.update', 'user', 'agent', ['Thêm hook PostToolUse', 'Added a PostToolUse hook']],
+      ['roles.update', 'user', 'people', ['Vai trò "Người duyệt merge": +merge.enqueue', 'Role "Merge reviewer": +merge.enqueue']],
+    ];
+    const users = ['Trần Lan', 'Nguyễn Minh', 'Phạm Hà', 'Lê Quang'];
+    let s = 3; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 6830 }, (_, i) => {
+      const a = this.acts[Math.floor(rnd() * this.acts.length)];
+      return { id: 'e' + i, at: i * 7 + Math.floor(rnd() * 6), a, who: a[1] === 'user' ? users[Math.floor(rnd() * 4)] : a[1] === 'run' ? 'run ' + (0x7f3a91c2 - i * 7919 >>> 0).toString(16).slice(-8) : 'xDev Hive', src: a[1] === 'user' ? '10.86.140.' + (20 + Math.floor(rnd() * 80)) : a[1] === 'run' ? 'mcp' : 'hub', ok: rnd() > 0.04 };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const t = {
+      crumb: x(['Theo dõi', 'Monitoring']), title: x(['Nhật ký', 'Audit log']), range: x(['Khoảng thời gian', 'Time range']),
+      lead: x(['Mọi thao tác của người, agent và hub. Chỉ đọc, giữ 365 ngày.', 'Every action by people, agents and the hub. Read-only, kept for 365 days.']), search: x(['Tìm đối tượng, người làm, IP…', 'Search target, actor, IP…']),
+    };
+    const G = { work: ['Công việc', 'Work'], know: ['Kiến thức', 'Knowledge'], proj: ['Dự án và hạ tầng', 'Projects & infra'], people: ['Người và quyền', 'People & access'], agent: ['Quản trị agent', 'Agent governance'] };
+    const AK = { user: ['Người', 'Person'], run: ['Agent', 'Agent'], system: ['Hệ thống', 'System'] };
+    const pad = (n) => String(n).padStart(2, '0');
+    const time = (m) => { const d = new Date(Date.UTC(2026, 9, 12, 10, 42) - m * 60000); return (en ? (d.getUTCMonth() + 1) + '/' + pad(d.getUTCDate()) : pad(d.getUTCDate()) + '/' + pad(d.getUTCMonth() + 1)) + ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()); };
+    const tone = (a) => (/cancel|role|sso|policies/.test(a) ? 'warn' : /merged|approve|register|sync/.test(a) ? 'ok' : 'sec');
+    const key = lang + this.state.range;
+    if (!this.cache || this.cache.key !== key) {
+      const lim = this.state.range * 1440;
+      this.cache = { key, rows: this.data.filter((d) => d.at <= lim).map((d) => ({
+        id: d.id, time: time(d.at), _sort_time: -d.at,
+        actor: d.a[1] === 'user' ? { text: d.who, sub: x(AK.user), ini: d.who.split(' ').map((w) => w[0]).slice(-2).join('') } : { text: d.who, sub: x(AK[d.a[1]]), ini: d.a[1] === 'run' ? 'AI' : 'H', ai: true },
+        _f_actorType: x(AK[d.a[1]]), _f_actor: d.a[1] === 'run' ? 'Agent (run)' : d.who,
+        action: { text: d.a[0], tone: tone(d.a[0]), dot: false }, group: x(G[d.a[2]]), target: x(d.a[3]), src: d.src,
+        _f_src: d.src === 'mcp' ? 'MCP' : d.src === 'hub' ? 'Hub' : 'Web',
+        result: d.ok ? { text: x(['Thành công', 'Success']), tone: 'ok' } : { text: x(['Bị từ chối', 'Denied']), tone: 'bad' },
+      })) };
+    }
+    const columns = [
+      { key: 'time', label: x(['Thời điểm', 'Time']), type: 'mono', sortable: true },
+      { key: 'actor', label: x(['Người làm', 'Actor']), type: 'avatar' },
+      { key: 'action', label: x(['Hành động', 'Action']), type: 'badge' },
+      { key: 'group', label: x(['Nhóm', 'Area']), type: 'muted', hidden: true },
+      { key: 'target', label: x(['Đối tượng', 'Target']), type: 'text', wrap: true },
+      { key: 'result', label: x(['Kết quả', 'Result']), type: 'badge' },
+      { key: 'src', label: x(['Nguồn', 'Source']), type: 'mono' },
+    ];
+    const facets = [
+      { key: 'actorType', label: x(['Loại người làm', 'Actor type']) }, { key: 'actor', label: x(['Người làm', 'Actor']) }, { key: 'group', label: x(['Nhóm', 'Area']) },
+      { key: 'action', label: x(['Hành động', 'Action']) }, { key: 'result', label: x(['Kết quả', 'Result']) }, { key: 'src', label: x(['Nguồn', 'Source']) },
+    ];
+    const segS = (on) => 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const ranges = [[1, ['24 giờ', '24 h']], [7, ['7 ngày', '7 days']], [30, ['30 ngày', '30 days']], [365, ['365 ngày', '365 days']]].map(([v, l]) => ({ label: x(l), p: this.state.range === v ? 'true' : 'false', style: segS(this.state.range === v), pick: () => this.setState({ range: v }) }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, ranges, columns, facets, rows: this.cache.rows, size: 20, minW: 1040,
+      bulk: [x(['Xuất CSV', 'Export CSV']), x(['Xuất JSON', 'Export JSON'])],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

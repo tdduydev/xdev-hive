@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Tạo tổ chức</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:14px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:2px;background:var(--muted);border-radius:8px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column; background: var(--background); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 20px 20px; color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <header style="height: 56px; padding: 0 24px; display: flex; align-items: center; gap: 10px; background: var(--background); border-bottom: 1px solid var(--border);">
+    <dc-import name="Logo" height="38" hint-size="87px,38px"></dc-import>
+    <span style="flex: 1;"></span>
+    <div class="seg" role="group" aria-label="{{t.langAria}}"><button type="button" onClick="{{toVi}}" aria-pressed="{{viP}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{enP}}" style="{{enS}}">EN</button></div>
+    <button type="button" class="btn btn-ghost">{{t.signOut}}</button>
+  </header>
+  <main style="flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 56px 16px;">
+    <div class="card" style="width: 100%; max-width: 560px; box-shadow: var(--shadow-lg); overflow: hidden;">
+      <ol aria-label="{{t.stepsAria}}" style="margin: 0; padding: 16px 24px; list-style: none; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: var(--muted);">
+        <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+          <li style="display: flex; align-items: center; gap: 8px; flex: 1;" aria-current="{{s.current}}">
+            <span class="mono" style="{{s.circle}}">{{s.mark}}</span>
+            <span style="{{s.labelStyle}}">{{s.label}}</span>
+            <sc-if value="{{s.line}}" hint-placeholder-val="{{true}}"><span style="flex: 1; height: 1px; background: var(--border);"></span></sc-if>
+          </li>
+        </sc-for>
+      </ol>
+      <div style="padding: 28px 28px 8px; display: flex; flex-direction: column; gap: 6px;">
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; font-weight: 600; letter-spacing: -0.03em;">{{h}}</h1>
+        <p class="muted" style="margin: 0;">{{sub}}</p>
+      </div>
+      <sc-if value="{{s1}}" hint-placeholder-val="{{true}}">
+        <form style="padding: 16px 28px; display: flex; flex-direction: column; gap: 16px;">
+          <label class="field">{{t.orgName}}<input class="input" placeholder="{{t.orgNamePh}}" value="Acme Software"></label>
+          <label class="field">{{t.slug}}<span style="display: flex; border: 1px solid var(--input); border-radius: 8px; overflow: hidden;"><span class="mono muted" style="padding: 0 10px; height: 34px; display: inline-flex; align-items: center; background: var(--muted); border-right: 1px solid var(--input); font-size: 13px;">hive.acme.vn/</span><input class="input mono" value="acme" style="border: 0; border-radius: 0; height: 34px;"></span><span class="hint">{{t.slugHint}}</span></label>
+          <label class="field">{{t.domain}}<input class="input mono" placeholder="congty.vn"><span class="hint">{{t.domainHint}}</span></label>
+        </form>
+      </sc-if>
+      <sc-if value="{{s2}}" hint-placeholder-val="{{false}}">
+        <form style="padding: 16px 28px; display: flex; flex-direction: column; gap: 16px;">
+          <label class="field">{{t.teamName}}<input class="input" placeholder="{{t.teamNamePh}}"></label>
+          <label class="field">{{t.slug}}<input class="input mono" placeholder="thanh-toan"><span class="hint">{{t.teamSlugHint}}</span></label>
+        </form>
+      </sc-if>
+      <sc-if value="{{s3}}" hint-placeholder-val="{{false}}">
+        <form style="padding: 16px 28px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+          <label class="field" style="grid-column: 1 / -1;">Email<textarea class="input" style="height: 76px; padding: 8px 10px; resize: vertical;" placeholder="ten@congty.vn, ten2@congty.vn"></textarea><span class="hint">{{t.emailHint}}</span></label>
+          <label class="field">{{t.orgRole}}<select class="input"><option>{{t.rMember}}</option><option>{{t.rAdmin}}</option></select></label>
+          <label class="field">{{t.addTeam}}<select class="input"><option>{{t.tPay}}</option><option>{{t.noTeam}}</option></select></label>
+        </form>
+      </sc-if>
+      <div style="padding: 16px 28px 24px; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <button type="button" class="btn btn-ghost" onClick="{{back}}">{{backLabel}}</button>
+        <button type="button" class="btn btn-default" onClick="{{next}}">{{nextLabel}}<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { step: 1, lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      langAria: ['Ngôn ngữ', 'Language'], signOut: ['Đăng xuất', 'Sign out'], stepsAria: ['Các bước', 'Steps'],
+      orgName: ['Tên tổ chức', 'Organization name'], orgNamePh: ['Ví dụ: Acme Software xDev', 'e.g. Acme Software xDev'], slug: ['Định danh', 'Slug'],
+      slugHint: ['Dùng trong đường dẫn và trong lệnh của agent.', 'Used in URLs and agent commands.'], domain: ['Tên miền email (không bắt buộc)', 'Email domain (optional)'],
+      domainHint: ['Người có email tên miền này thấy tổ chức khi đăng nhập SSO. Họ vẫn cần được duyệt hoặc mời.', 'People with this email domain see the organization at SSO sign-in. They still need approval or an invite.'],
+      teamName: ['Tên đội', 'Team name'], teamNamePh: ['Ví dụ: Thanh toán', 'e.g. Payments'], teamSlugHint: ['Dùng trong đường dẫn và tên hệ thống.', 'Used in URLs and system names.'],
+      emailHint: ['Nhiều email cách nhau bằng dấu phẩy hoặc xuống dòng.', 'Separate several emails with commas or new lines.'], orgRole: ['Vai trò tổ chức', 'Organization role'],
+      rMember: ['Thành viên', 'Member'], rAdmin: ['Quản trị', 'Admin'], addTeam: ['Thêm vào đội', 'Add to team'], tPay: ['Thanh toán', 'Payments'], noTeam: ['Không thêm', 'No team'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const st = this.state.step;
+    const labels = [['Tổ chức', 'Organization'], ['Đội đầu tiên', 'First team'], ['Mời người', 'Invite people']];
+    const steps = labels.map((l, i) => {
+      const n = i + 1; const done = n < st; const cur = n === st;
+      return {
+        label: x(l), mark: done ? '✓' : String(n), current: cur ? 'step' : 'false', line: n < 3,
+        circle: 'width: 24px; height: 24px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; ' + (done ? 'background: var(--success); color: var(--background);' : cur ? 'background: var(--primary); color: var(--primary-foreground);' : 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);'),
+        labelStyle: 'font-size: 13px; white-space: nowrap; ' + (cur ? 'font-weight: 600;' : 'color: var(--muted-foreground);'),
+      };
+    });
+    const H = [
+      [['Tạo tổ chức', 'Create your organization'], ['Tổ chức chứa các đội, hệ thống và dự án. Bạn là chủ sở hữu.', 'An organization holds teams, systems and projects. You are the owner.']],
+      [['Tạo đội đầu tiên', 'Create the first team'], ['Đội của Acme Software sở hữu hệ thống và dự án. Bạn là quản trị của đội này.', 'Acme Software teams own systems and projects. You will be this team’s admin.']],
+      [['Mời người', 'Invite people'], ['Mời đồng nghiệp vào Acme Software. Mỗi người nhận một link dùng một lần, hết hạn sau 7 ngày.', 'Invite colleagues to Acme Software. Each person gets a one-time link that expires in 7 days.']],
+    ][st - 1];
+    const seg = (on) => 'height: 26px; min-width: 34px; padding: 0 8px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', t, steps, h: x(H[0]), sub: x(H[1]), s1: st === 1, s2: st === 2, s3: st === 3,
+      backLabel: st === 1 ? x(['Huỷ', 'Cancel']) : x(['Để sau', 'Later']),
+      nextLabel: st === 1 ? x(['Tiếp: tạo đội', 'Next: create team']) : st === 2 ? x(['Tiếp: mời người', 'Next: invite people']) : x(['Xong: vào Đội và hệ thống', 'Done: open Teams & systems']),
+      back: () => this.setState({ step: Math.max(1, st - 1) }), next: () => this.setState({ step: st === 3 ? 1 : st + 1 }),
+      viP: en ? 'false' : 'true', enP: en ? 'true' : 'false', viS: seg(!en), enS: seg(en),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

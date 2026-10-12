@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · Môi trường</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:30px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px;border-radius:9999px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);">
+    <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">xDev Hive · payment-api · {{t.title}}</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+    </div>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <dc-import name="AppNav" active="setup" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import>
+      <main style="flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+        <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px;">
+          <div role="img" aria-label="{{scoreLabel}}" style="{{ring}}"><span style="width: 56px; height: 56px; border-radius: 9999px; background: var(--background); display: inline-flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 15px; font-weight: 600;">{{score}}</span></div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; letter-spacing: -0.03em;">{{t.title}}</h1><p class="muted" style="margin: 0; font-size: 13px;">{{t.lead}}</p></div>
+          <button type="button" class="btn btn-outline">{{t.recheck}}</button>
+          <button type="button" class="btn btn-default" onClick="{{fixAll}}">{{fixLabel}}</button>
+        </header>
+        <div style="display: flex; gap: 14px; align-items: flex-start;">
+          <div style="flex: 3 1 0; min-width: 0;">
+            <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,620px"></dc-import>
+          </div>
+          <aside class="card" style="flex: 2 1 0; min-width: 0; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;"><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{cur.kind}}</span><span class="badge" style="{{cur.chip}}">{{cur.state}}</span></div>
+              <strong style="font-size: 15px;">{{cur.name}}</strong>
+              <span class="muted" style="font-size: 12.5px;">{{t.need}} <span class="mono" style="color: var(--foreground);">{{cur.need}}</span> · {{t.have}} <span class="mono" style="color: var(--foreground);">{{cur.have}}</span></span>
+              <span class="muted" style="font-size: 12.5px;">{{t.why}} {{cur.src}}</span>
+            </div>
+            <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+              <span class="mono muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: .05em;">{{t.cmd}} · macOS</span>
+              <pre class="mono" style="margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--brand-navy); color: #E2E8F0; font-size: 12.5px; white-space: pre-wrap;">{{cur.cmd}}</pre>
+              <span class="muted" style="font-size: 12px;">{{t.cmdNote}}</span>
+              <div style="display: flex; gap: 6px; justify-content: flex-end;"><button type="button" class="btn btn-outline">{{t.copy}}</button><button type="button" class="btn btn-outline">{{t.skip}}</button><button type="button" class="btn btn-default">{{t.run}}</button></div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { cur: 'e0', fixed: false, lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const t = {
+      title: x(['Môi trường', 'Environment']), lead: x(['Những gì máy này cần để làm việc với payment-api: lấy từ chính sách tổ chức, go.mod, package.json và .hive/setup.sh.', 'What this machine needs for payment-api, from org policy, go.mod, package.json and .hive/setup.sh.']),
+      recheck: x(['Kiểm tra lại', 'Re-check']), search: x(['Tìm công cụ, thư viện…', 'Search tools, libraries…']), need: x(['Cần', 'Needs']), have: x(['máy có', 'have']), why: x(['Vì:', 'Because:']),
+      cmd: x(['Lệnh cài', 'Install command']), cmdNote: x(['App chạy lệnh trong terminal sau khi bạn bấm Chạy; lệnh cần quyền quản trị thì app chỉ chép cho bạn.', 'The app runs it in a terminal when you press Run; commands that need admin rights are copied for you instead.']),
+      copy: x(['Chép lệnh', 'Copy']), skip: x(['Bỏ qua', 'Skip']), run: x(['Chạy', 'Run']),
+    };
+    const K = { cli: ['Agent CLI', 'Agent CLI'], rt: ['Runtime', 'Runtime'], tool: ['Công cụ', 'Tool'], mcp: ['MCP server', 'MCP server'], dep: ['Thư viện dự án', 'Project libraries'], env: ['Biến môi trường', 'Env variable'] };
+    const S = { ok: [['Đủ', 'OK'], 'ok'], old: [['Cũ', 'Outdated'], 'warn'], miss: [['Thiếu', 'Missing'], 'bad'], exp: [['Sắp hết hạn', 'Expiring'], 'warn'], opt: [['Không bắt buộc', 'Optional'], 'off'] };
+    const data = [
+      ['Go', 'rt', '1.27', '1.25.4', 'old', ['go.mod: go 1.27', 'go.mod: go 1.27'], 'brew install go@1.27\nbrew link --overwrite go@1.27'],
+      ['Codex CLI', 'cli', '≥ 0.160', '0.158.0', 'old', ['chính sách tổ chức', 'organization policy'], 'codex update\ncodex doctor'],
+      ['Token MCP xDev Hive', 'mcp', x(['còn hạn', 'valid']), x(['3 ngày', '3 days']), 'exp', ['MCP và công cụ', 'MCP & tools'], 'claude mcp list\ncodex mcp login hive'],
+      ['golangci-lint', 'tool', '2.x', '—', 'miss', ['.hive/setup.sh', '.hive/setup.sh'], 'brew install golangci-lint'],
+      ['Claude Code', 'cli', '≥ 2.1', '2.1.296', 'ok', ['chính sách tổ chức', 'organization policy'], 'claude install stable\nclaude doctor'],
+      ['Node.js', 'rt', '26.x', '26.10.0', 'ok', ['package.json engines', 'package.json engines'], 'nvm install 26'],
+      ['pnpm', 'tool', '10.x', '10.4.0', 'ok', ['package.json packageManager', 'package.json packageManager'], 'corepack enable pnpm'],
+      ['Docker', 'tool', x(['đang chạy', 'running']), 'Colima 0.9', 'ok', ['test *.db.test.ts', 'tests *.db.test.ts'], 'brew install colima docker && colima start'],
+      ['go mod download', 'dep', x(['84 gói', '84 modules']), x(['84 gói', '84 modules']), 'ok', ['go.sum', 'go.sum'], 'go mod download'],
+      ['pnpm install (web)', 'dep', x(['612 gói', '612 packages']), x(['chưa cài', 'not installed']), 'miss', ['pnpm-lock.yaml', 'pnpm-lock.yaml'], 'pnpm install --frozen-lockfile'],
+      ['MCP GitHub', 'mcp', x(['chỉ đọc', 'read-only']), x(['đã nối', 'connected']), 'ok', ['MCP được phép', 'allowed MCP'], 'claude mcp list\ncodex mcp list'],
+      ['MCP Playwright', 'mcp', '—', '—', 'opt', ['chỉ mobile-app cần', 'only mobile-app needs it'], 'claude mcp add playwright npx @playwright/mcp'],
+      ['HIVE_TEST_POSTGRES_IMAGE', 'env', x(['tuỳ chọn', 'optional']), '—', 'opt', ['AGENTS.md: khi Docker Hub giới hạn', 'AGENTS.md: when Docker Hub rate-limits'], 'export HIVE_TEST_POSTGRES_IMAGE=public.ecr.aws/docker/library/postgres:18-trixie'],
+      ['Gemini CLI', 'cli', x(['tuỳ chọn', 'optional']), '0.63.0', 'opt', ['chính sách tổ chức', 'organization policy'], 'npm install -g @google/gemini-cli'],
+    ];
+    const fixed = this.state.fixed;
+    const eff = (s) => (fixed && (s === 'old' || s === 'miss' || s === 'exp') ? 'ok' : s);
+    const rows = data.map((d, i) => { const s = eff(d[4]); return { id: 'e' + i, name: d[0], src: x(d[5]), kind: x(K[d[1]]), need: d[2], have: fixed && s !== d[4] ? d[2] : d[3], state: { text: x(S[s][0]), tone: S[s][1] }, _sort_state: ['miss', 'old', 'exp', 'opt', 'ok'].indexOf(s) }; });
+    const columns = [{ key: 'name', label: x(['Mục', 'Item']), type: 'title', sub: 'src', mono: true, sortable: true }, { key: 'kind', label: x(['Loại', 'Type']) }, { key: 'need', label: x(['Cần', 'Needs']), type: 'mono' }, { key: 'have', label: x(['Máy có', 'Have']), type: 'mono' }, { key: 'state', label: x(['Trạng thái', 'Status']), type: 'badge', sortable: true }];
+    const facets = [{ key: 'state', label: x(['Trạng thái', 'Status']) }, { key: 'kind', label: x(['Loại', 'Type']) }];
+    const bad = rows.filter((r) => ['miss', 'old', 'exp'].includes(data[Number(r.id.slice(1))][4]) && !fixed).length;
+    const req = data.filter((d) => d[4] !== 'opt').length; const okN = req - bad;
+    const pct = Math.round(okN / req * 100);
+    const d = data[Number(this.state.cur.slice(1))] || data[0]; const ds = eff(d[4]);
+    const tone = { ok: 'background: var(--success-soft); color: var(--success)', warn: 'background: var(--warning-soft); color: var(--warning)', bad: 'background: var(--destructive-soft); color: var(--destructive)', off: 'background: var(--muted); color: var(--muted-foreground)' };
+    const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, role: this.props.role ?? 'dev', t, rows, columns, facets, size: 10, minW: 680, curId: this.state.cur, pick: (r) => this.setState({ cur: r.id }),
+      bulk: [x(['Cài các mục đã chọn', 'Install selected']), x(['Bỏ qua', 'Skip'])],
+      score: okN + '/' + req, scoreLabel: x([okN + ' trên ' + req + ' mục bắt buộc đã đủ', okN + ' of ' + req + ' required items ready']),
+      ring: 'width: 72px; height: 72px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; background: conic-gradient(' + (pct === 100 ? 'var(--success)' : 'var(--primary)') + ' ' + pct + '%, var(--muted) 0);',
+      fixLabel: fixed ? x(['Đã sửa xong', 'All fixed']) : x(['Sửa ' + bad + ' mục', 'Fix ' + bad + ' items']), fixAll: () => this.setState({ fixed: true }),
+      cur: { name: d[0], kind: x(K[d[1]]), need: d[2], have: d[3], src: x(d[5]), cmd: d[6], state: x(S[ds][0]), chip: tone[S[ds][1]] },
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

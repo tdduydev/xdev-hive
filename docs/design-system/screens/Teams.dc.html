@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đội và hệ thống</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}a:hover{color:var(--accent-foreground)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border)}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.av{width:30px;height:30px;flex:none;border-radius:9999px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;background:var(--accent);color:var(--accent-foreground)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{height:36px;padding:0 12px;color:var(--muted-foreground);font-size:12px;font-weight:500;text-align:left;border-bottom:1px solid var(--border)}
+.tbl td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:0}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="teams" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1280px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div class="muted" style="font-size: 13px;">{{t.admin}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        </div>
+        <button type="button" class="btn btn-default" onClick="{{openTeam}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>{{t.newTeam}}</button>
+      </header>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <nav aria-label="{{t.teams}}" class="card" style="flex: 1 1 260px; max-width: 280px; padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+          <sc-for list="{{teams}}" as="tm" hint-placeholder-count="3">
+            <button type="button" onClick="{{tm.pick}}" style="{{tm.style}}">
+              <span class="mono" style="{{tm.badge}}">{{tm.ini}}</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; text-align: left;"><span style="font-weight: 600;">{{tm.name}}</span><span class="muted" style="font-size: 12px;">{{tm.meta}}</span></span>
+            </button>
+          </sc-for>
+        </nav>
+
+        <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{sysTitle}}</h2><button type="button" class="btn btn-outline btn-sm" onClick="{{openSys}}">+ {{t.system}}</button></div>
+            <div style="padding: 16px 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;">
+              <sc-for list="{{systems}}" as="s" hint-placeholder-count="2">
+                <div style="padding: 14px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+                  <span style="font-weight: 600;">{{s.name}}</span>
+                  <span class="muted" style="font-size: 13px; flex: 1;">{{s.desc}}</span>
+                  <span class="badge mono" style="align-self: flex-start; background: var(--accent); color: var(--accent-foreground); font-weight: 400;">{{s.slug}}</span>
+                </div>
+              </sc-for>
+              <button type="button" onClick="{{openSys}}" style="min-height: 120px; border: 1px dashed var(--input); border-radius: 10px; background: transparent; color: var(--muted-foreground); font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"></path></svg>{{t.addSystem}}</button>
+            </div>
+          </section>
+
+          <section style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;"><h2 class="card-t">{{t.members}}</h2><button type="button" class="btn btn-outline btn-sm">{{t.addPerson}}</button></div>
+            <dc-import name="DataTable" columns="{{mCols}}" rows="{{mRows}}" facets="{{mFacets}}" bulk="{{mBulk}}" lang="{{lang}}" placeholder="{{t.searchPeople}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,560px"></dc-import>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{sysOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;">
+      <div role="dialog" aria-modal="true" aria-labelledby="sy-t" class="card" style="width: 100%; max-width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+        <h2 id="sy-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.sysDlg}}</h2>
+        <label class="field">{{t.sysName}}<input class="input" placeholder="{{t.sysNamePh}}"></label>
+        <label class="field">{{t.slug}}<span style="display: flex; align-items: center; border: 1px solid var(--input); border-radius: 8px; overflow: hidden;"><span class="mono muted" style="padding: 0 8px; background: var(--muted); height: 30px; display: inline-flex; align-items: center; font-size: 13px; border-right: 1px solid var(--input);">thanh-toan/</span><input class="input mono" placeholder="cong" style="border: 0; border-radius: 0;"></span><span class="hint">{{t.slugHint}}</span></label>
+        <label class="field">{{t.desc}}<textarea class="input" style="height: 72px; padding: 8px 10px; resize: vertical;" placeholder="{{t.descPh}}"></textarea></label>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{close}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{close}}">{{t.add}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{teamOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;">
+      <div role="dialog" aria-modal="true" aria-labelledby="tm-t" class="card" style="width: 100%; max-width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+        <h2 id="tm-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.newTeamDlg}}</h2>
+        <label class="field">{{t.teamName}}<input class="input" placeholder="{{t.teamNamePh}}"></label>
+        <label class="field">{{t.slug}}<input class="input mono" placeholder="thanh-toan"><span class="hint">{{t.teamSlugHint}}</span></label>
+        <label class="field">{{t.teamAdmin}}<select class="input"><option>{{t.notChosen}}</option><option>Trần Lan · lan@acme.vn</option></select></label>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{close}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{close}}">{{t.newTeamDlg}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { team: 0, dlg: null, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      title: ['Đội và hệ thống', 'Teams & systems'], admin: ['Quản trị', 'Admin'], newTeam: ['Tạo đội', 'New team'], teams: ['Các đội', 'Teams'],
+      system: ['Hệ thống', 'System'], addSystem: ['Thêm hệ thống', 'Add a system'], members: ['Thành viên của đội', 'Team members'], addPerson: ['Thêm người', 'Add person'],
+      cPerson: ['Người', 'Person'], cRole: ['Vai trò trong đội', 'Team role'], rMember: ['Thành viên', 'Member'], rViewer: ['Chỉ xem', 'Viewer'], remove: ['Gỡ khỏi đội', 'Remove from team'],
+      sysDlg: ['Thêm hệ thống vào đội Thanh toán', 'Add a system to Payments'], sysName: ['Tên hệ thống', 'System name'], sysNamePh: ['Ví dụ: Cổng thanh toán', 'e.g. Payment gateway'],
+      slug: ['Định danh', 'Slug'], slugHint: ['Dùng trong đường dẫn và trong lệnh của agent.', 'Used in URLs and agent commands.'], desc: ['Mô tả', 'Description'], descPh: ['Hệ thống này làm gì, gồm những service nào', 'What the system does and which services it includes'],
+      cancel: ['Huỷ', 'Cancel'], add: ['Thêm', 'Add'], searchPeople: ['Tìm người…', 'Search people…'], newTeamDlg: ['Tạo đội', 'Create team'], teamName: ['Tên đội', 'Team name'], teamNamePh: ['Ví dụ: Thanh toán', 'e.g. Payments'],
+      teamSlugHint: ['Dùng trong đường dẫn và tên hệ thống.', 'Used in URLs and system names.'], teamAdmin: ['Quản trị đội', 'Team admin'], notChosen: ['Chưa chọn', 'Not chosen'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const data = [
+      { ini: 'TT', name: ['Thanh toán', 'Payments'], c: '#1D4ED8', sys: 2, ppl: 5 },
+      { ini: 'NT', name: ['Nền tảng', 'Platform'], c: '#0F766E', sys: 3, ppl: 4 },
+      { ini: 'DD', name: ['Di động', 'Mobile'], c: '#9333EA', sys: 1, ppl: 3 },
+    ];
+    const teams = data.map((d, i) => ({
+      ini: d.ini, name: x(d.name), meta: x([d.sys + ' hệ thống · ' + d.ppl + ' người', d.sys + ' systems · ' + d.ppl + ' people']),
+      badge: `width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; font-weight: 600; background: ${d.c}; color: #fff;`,
+      style: 'display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 8px; border: 0; font: inherit; color: var(--foreground); cursor: pointer; ' + (i === this.state.team ? 'background: var(--accent);' : 'background: transparent;'),
+      pick: () => this.setState({ team: i }),
+    }));
+    const systems = [
+      { name: x(['Cổng thanh toán', 'Payment gateway']), desc: x(['API thanh toán, hoàn tiền và webhook ngân hàng.', 'Payments, refunds and bank webhooks.']), slug: 'thanh-toan/cong' },
+      { name: x(['Đối soát', 'Reconciliation']), desc: x(['Job đối soát cuối ngày với ngân hàng.', 'End-of-day reconciliation jobs.']), slug: 'thanh-toan/doi-soat' },
+    ];
+    const first = ['Lan', 'Hà', 'An', 'Trang', 'Huy', 'Linh', 'Nam', 'Vy', 'Phúc', 'Ngọc', 'Khoa', 'Bình'];
+    const last = ['Trần', 'Phạm', 'Đỗ', 'Kiều', 'Bùi', 'Lê', 'Võ', 'Hoàng'];
+    const RS = [[['Quản trị đội', 'Team admin'], 'accent'], [['Thành viên', 'Member'], 'off'], [['Thành viên', 'Member'], 'off'], [['Chỉ xem', 'Viewer'], 'sec']];
+    let sd = 3 + this.state.team; const rnd = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+    const plain = (v) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').toLowerCase();
+    const mRows = Array.from({ length: 34 + this.state.team * 9 }, (_, i) => {
+      const f = first[i % first.length]; const l = last[Math.floor(rnd() * last.length)]; const r = i === 0 ? RS[0] : RS[Math.floor(rnd() * 4)]; const d = Math.floor(rnd() * 200);
+      return { id: 'tm' + i, person: { text: l + ' ' + f + (i === 0 ? x([' (bạn)', ' (you)']) : ''), sub: plain(f) + i + '@acme.vn', ini: l[0] + f[0] }, role: { text: x(r[0]), tone: r[1], dot: false },
+        systems: ['thanh-toan/cong', 'thanh-toan/doi-soat'].filter(() => rnd() > 0.4), joined: x([d + ' ngày trước', d + ' d ago']), _sort_joined: -d, runs: Math.floor(rnd() * 90), _sort_runs: 0 };
+    }).map((r) => ({ ...r, _sort_runs: r.runs }));
+    const mCols = [{ key: 'person', label: x(['Người', 'Person']), type: 'avatar', sortable: true }, { key: 'role', label: x(['Vai trò trong đội', 'Team role']), type: 'badge' }, { key: 'systems', label: x(['Hệ thống phụ trách', 'Systems']), type: 'tags' }, { key: 'runs', label: x(['Run 30 ngày', 'Runs, 30d']), type: 'num', sortable: true }, { key: 'joined', label: x(['Vào đội', 'Joined']), type: 'muted', sortable: true }];
+    const mFacets = [{ key: 'role', label: x(['Vai trò', 'Role']) }, { key: 'systems', label: x(['Hệ thống', 'System']) }];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, teams, systems, mCols, mRows, mFacets, size: 10, minW: 760, mBulk: [x(['Đổi vai trò', 'Change role']), x(['Gỡ khỏi đội', 'Remove from team'])],
+      sysTitle: x(['Hệ thống của đội ', 'Systems of ']) + teams[this.state.team].name,
+      sysOpen: this.state.dlg === 'sys', teamOpen: this.state.dlg === 'team',
+      openSys: () => this.setState({ dlg: 'sys' }), openTeam: () => this.setState({ dlg: 'team' }), close: () => this.setState({ dlg: null }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,483 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-12T09:00:00Z"
+  },
+  "title": "xDev Hive — các màn còn thiếu",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "title": "Lượt chạy · /runs",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Leader.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "title": "Leader · /leader",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Plan.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "title": "Kế hoạch · /tasks/$key/plan",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Projects.dc.html": {
+      "x": 0,
+      "y": 1660,
+      "w": 1440,
+      "h": 1000,
+      "title": "Dự án · /projects",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ProjectSettings.dc.html": {
+      "x": 1520,
+      "y": 1660,
+      "w": 1440,
+      "h": 1900,
+      "title": "Cấu hình dự án · /projects/$key/settings",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "ProjectSandbox.dc.html": {
+      "x": 3040,
+      "y": 1660,
+      "w": 1440,
+      "h": 1000,
+      "title": "Sandbox dự án · /projects/$key/sandbox",
+      "expand": "fill"
+    },
+    "Members.dc.html": {
+      "x": 0,
+      "y": 3980,
+      "w": 1440,
+      "h": 1000,
+      "title": "Thành viên · /admin/members",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Teams.dc.html": {
+      "x": 1520,
+      "y": 3980,
+      "w": 1440,
+      "h": 1000,
+      "title": "Đội và hệ thống · /admin/teams",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "LoginSettings.dc.html": {
+      "x": 3040,
+      "y": 3980,
+      "w": 1440,
+      "h": 1400,
+      "title": "Cài đặt đăng nhập · /admin/sign-in-settings",
+      "expand": "fill"
+    },
+    "OrgSandbox.dc.html": {
+      "x": 4560,
+      "y": 3980,
+      "w": 1440,
+      "h": 1000,
+      "title": "Sandbox tổ chức · /admin/sandbox",
+      "expand": "fill"
+    },
+    "Onboarding.dc.html": {
+      "x": 0,
+      "y": 5800,
+      "w": 1440,
+      "h": 900,
+      "title": "Tạo tổ chức · /orgs/new",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Invite.dc.html": {
+      "x": 1520,
+      "y": 5800,
+      "w": 1440,
+      "h": 900,
+      "title": "Nhận lời mời · /invite/$token",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "McpConsent.dc.html": {
+      "x": 3040,
+      "y": 5800,
+      "w": 1440,
+      "h": 900,
+      "title": "Cho phép MCP · /mcp/consent",
+      "expand": "fill"
+    },
+    "Status.dc.html": {
+      "x": 4560,
+      "y": 5800,
+      "w": 1440,
+      "h": 900,
+      "title": "Lỗi và không tìm thấy",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Home.dc.html": {
+      "x": 6080,
+      "y": 5800,
+      "w": 1440,
+      "h": 900,
+      "title": "Trang chủ · /",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Sidebar.dc.html": {
+      "x": -400,
+      "y": 0,
+      "w": 240,
+      "h": 1000,
+      "title": "Thanh bên (dùng chung)"
+    },
+    "Topbar.dc.html": {
+      "x": -1720,
+      "y": 1120,
+      "w": 1200,
+      "h": 52,
+      "title": "Thanh trên (dùng chung)"
+    },
+    "AppRegister.dc.html": {
+      "x": 0,
+      "y": 7120,
+      "w": 1280,
+      "h": 820,
+      "title": "App · cửa sổ đăng ký máy",
+      "is_interactive": true
+    },
+    "AppTray.dc.html": {
+      "x": 1360,
+      "y": 7120,
+      "w": 1280,
+      "h": 820,
+      "title": "App · khay hệ thống và thông báo",
+      "is_interactive": true
+    },
+    "Logo.dc.html": {
+      "x": -400,
+      "y": 1200,
+      "w": 178,
+      "h": 78,
+      "title": "Logo (dùng chung)"
+    },
+    "Docs.dc.html": {
+      "x": 0,
+      "y": 8360,
+      "w": 1440,
+      "h": 1000,
+      "title": "Tài liệu · /knowledge/docs",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Skills.dc.html": {
+      "x": 1520,
+      "y": 8360,
+      "w": 1440,
+      "h": 1000,
+      "title": "Skills · /knowledge/skills",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Memory.dc.html": {
+      "x": 3040,
+      "y": 8360,
+      "w": 1440,
+      "h": 1000,
+      "title": "Memory · /knowledge/memory",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Proposals.dc.html": {
+      "x": 4560,
+      "y": 8360,
+      "w": 1440,
+      "h": 1000,
+      "title": "Đề xuất sửa · /knowledge/proposals",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "McpTools.dc.html": {
+      "x": 0,
+      "y": 9780,
+      "w": 1440,
+      "h": 1000,
+      "title": "MCP và công cụ · /admin/mcp",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Policies.dc.html": {
+      "x": 1520,
+      "y": 9780,
+      "w": 1440,
+      "h": 1000,
+      "title": "Chính sách agent · /admin/policies",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Audit.dc.html": {
+      "x": 3040,
+      "y": 9780,
+      "w": 1440,
+      "h": 1000,
+      "title": "Nhật ký · /admin/audit",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Roles.dc.html": {
+      "x": 4560,
+      "y": 9780,
+      "w": 1440,
+      "h": 1100,
+      "title": "Vai trò và quyền · /admin/roles",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "DataTable.dc.html": {
+      "x": -1720,
+      "y": 2300,
+      "w": 1100,
+      "h": 620,
+      "title": "DataTable (dùng chung)",
+      "is_interactive": true
+    },
+    "DocEditor.dc.html": {
+      "x": 0,
+      "y": 11300,
+      "w": 1440,
+      "h": 1000,
+      "title": "Soạn tài liệu (web) · /knowledge/docs/$key/edit",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "Workflows.dc.html": {
+      "x": 1520,
+      "y": 11300,
+      "w": 1440,
+      "h": 1000,
+      "title": "Quy trình duyệt · /knowledge/workflows",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "DocReview.dc.html": {
+      "x": 3040,
+      "y": 11300,
+      "w": 1440,
+      "h": 1000,
+      "title": "Duyệt tài liệu tại checkpoint",
+      "is_interactive": true,
+      "expand": "fill"
+    },
+    "AppDocs.dc.html": {
+      "x": 4560,
+      "y": 11300,
+      "w": 1440,
+      "h": 900,
+      "title": "App · viết tài liệu bằng gói thuê bao",
+      "is_interactive": true
+    },
+    "Foundations.dc.html": {
+      "x": 0,
+      "y": -2800,
+      "w": 1440,
+      "h": 2200,
+      "title": "Design system · Nền tảng",
+      "is_interactive": true
+    },
+    "Components.dc.html": {
+      "x": 1520,
+      "y": -2800,
+      "w": 1440,
+      "h": 2200,
+      "title": "Design system · Thành phần",
+      "is_interactive": true
+    },
+    "AppNav.dc.html": {
+      "x": -400,
+      "y": 12720,
+      "w": 220,
+      "h": 800,
+      "title": "App · menu theo quyền (dùng chung)"
+    },
+    "AppHome.dc.html": {
+      "x": 0,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Tổng quan",
+      "is_interactive": true
+    },
+    "AppSkills.dc.html": {
+      "x": 1520,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Skills",
+      "is_interactive": true
+    },
+    "AppTokens.dc.html": {
+      "x": 3040,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Token và ngữ cảnh",
+      "is_interactive": true
+    },
+    "AppSetup.dc.html": {
+      "x": 4560,
+      "y": 12720,
+      "w": 1440,
+      "h": 900,
+      "title": "App · Môi trường",
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Foundations.dc.html",
+    "Components.dc.html",
+    "DataTable.dc.html",
+    "Logo.dc.html",
+    "Sidebar.dc.html",
+    "Topbar.dc.html",
+    "Main.dc.html",
+    "Leader.dc.html",
+    "Plan.dc.html",
+    "Projects.dc.html",
+    "ProjectSettings.dc.html",
+    "ProjectSandbox.dc.html",
+    "Members.dc.html",
+    "Teams.dc.html",
+    "LoginSettings.dc.html",
+    "OrgSandbox.dc.html",
+    "Onboarding.dc.html",
+    "Invite.dc.html",
+    "McpConsent.dc.html",
+    "Status.dc.html",
+    "Home.dc.html",
+    "AppRegister.dc.html",
+    "AppTray.dc.html",
+    "Docs.dc.html",
+    "Skills.dc.html",
+    "Memory.dc.html",
+    "Proposals.dc.html",
+    "McpTools.dc.html",
+    "Policies.dc.html",
+    "Audit.dc.html",
+    "Roles.dc.html",
+    "DocEditor.dc.html",
+    "Workflows.dc.html",
+    "DocReview.dc.html",
+    "AppDocs.dc.html",
+    "AppNav.dc.html",
+    "AppHome.dc.html",
+    "AppSkills.dc.html",
+    "AppTokens.dc.html",
+    "AppSetup.dc.html"
+  ],
+  "notes": {
+    "rowWork": {
+      "x": 0,
+      "y": -300,
+      "text": "Làm việc hằng ngày",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "rowProject": {
+      "x": 0,
+      "y": 1360,
+      "text": "Dự án",
+      "kind": "title1",
+      "maxW": 4480
+    },
+    "rowAdmin": {
+      "x": 0,
+      "y": 3680,
+      "text": "Quản trị tổ chức",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "rowOutside": {
+      "x": 0,
+      "y": 5500,
+      "text": "Ngoài khung app",
+      "kind": "title1",
+      "maxW": 7520
+    },
+    "shadcn": {
+      "x": -1720,
+      "y": 1300,
+      "w": 560,
+      "text": "Thành phần vẽ theo shadcn/ui base-nova của apps/web (components.json):\n• Nút → Button (default, outline, secondary, ghost, destructive, destructive-solid), h-8, rounded-lg\n• Thẻ → Card + CardHeader/CardContent\n• Nhãn trạng thái → Badge (pill có chấm)\n• Bảng → Table\n• Ô nhập → Input, Textarea, Select, Field\n• Lọc trạng thái → Tabs (variant line/default)\n• Hộp thoại → Dialog\nIcon theo lucide. Chữ VI/EN đổi bằng nút trên thanh trên hoặc Tweaks › lang.",
+      "size": "m",
+      "fill": "blue"
+    },
+    "rowApp": {
+      "x": 0,
+      "y": 6820,
+      "text": "App máy (desktop)",
+      "kind": "title1",
+      "maxW": 2640
+    },
+    "rowKnow": {
+      "x": 0,
+      "y": 8060,
+      "text": "Kiến thức (mới)",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "rowGov": {
+      "x": 0,
+      "y": 9480,
+      "text": "Quản trị agent (mới)",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "rowDocs": {
+      "x": 0,
+      "y": 11000,
+      "text": "Tài liệu, soạn thảo và quy trình duyệt (mới)",
+      "kind": "title1",
+      "maxW": 6000
+    },
+    "rowDS": {
+      "x": 0,
+      "y": -3100,
+      "text": "Design system",
+      "kind": "title1",
+      "maxW": 2960
+    },
+    "rowAppOne": {
+      "x": 0,
+      "y": 12420,
+      "text": "App máy · một app, menu theo quyền",
+      "kind": "title1",
+      "maxW": 6000
+    }
+  },
+  "designSystems": [
+    {
+      "title": "xDev Hive Design System v2",
+      "namespace": "xdev-hive",
+      "artifact": "https://claude.ai/artifact/KmbRzC7qetVFKFKE5uyhKi",
+      "version": null,
+      "copiedAt": "2026-10-12T09:00:00Z"
+    }
+  ]
+}

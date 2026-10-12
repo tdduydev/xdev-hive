@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Memory</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="memory" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="Memory" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">Memory</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div class="seg" role="group" aria-label="{{t.mode}}"><sc-for list="{{modes}}" as="m" hint-placeholder-count="2"><button type="button" onClick="{{m.pick}}" aria-pressed="{{m.p}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+          <button type="button" class="btn btn-default">{{t.add}}</button>
+        </div>
+      </header>
+      <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+        <sc-for list="{{kinds}}" as="k" hint-placeholder-count="4">
+          <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;">
+            <span class="muted" style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><span style="{{k.dot}}"></span>{{k.label}}</span>
+            <span class="mono" style="font-size: 24px; font-weight: 600; letter-spacing: -0.03em;">{{k.n}}</span>
+          </div>
+        </sc-for>
+      </section>
+      <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{searchPh}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,700px"></dc-import>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'text', lang: null, dark: null };
+    const texts = [
+      ['gotcha', ['Go test của billing cần TZ=Asia/Ho_Chi_Minh, nếu không test làm tròn theo ngày sẽ lệch.', 'Billing Go tests need TZ=Asia/Ho_Chi_Minh or per-day rounding tests drift.'], ['billing/round_test.go']],
+      ['decision', ['Dùng squash merge cho mọi PR của agent.', 'Squash-merge every agent PR.'], []],
+      ['convention', ['Mã lỗi API dùng tiền tố theo module: BILL-, AUTH-, RUN-.', 'API error codes are prefixed by module: BILL-, AUTH-, RUN-.'], ['api/errors.go']],
+      ['gotcha', ['Runner Windows không chạy .cmd trực tiếp; phải qua cmd.exe /c.', 'Windows runners cannot run .cmd directly; use cmd.exe /c.'], ['worker/internal/cli/exec_windows.go']],
+      ['note', ['Sandbox VNPAY trả 504 khoảng 23:00–23:30 khi bảo trì.', 'The VNPAY sandbox returns 504 around 23:00–23:30 during maintenance.'], []],
+      ['convention', ['Chữ giao diện viết tiếng Việt, tên trong code viết tiếng Anh.', 'UI copy is Vietnamese; code names are English.'], []],
+      ['decision', ['Bỏ float khỏi mọi phép tính tiền; dùng decimal.', 'No floats in money math; use decimal.'], ['billing/']],
+      ['gotcha', ['Migration mới quên ép RLS thì rls.db.test.ts hỏng.', 'New migrations without forced RLS break rls.db.test.ts.'], ['apps/hub/db/migrations/']],
+      ['note', ['Máy hc-linux-52 cần xvfb khi chạy test Electron.', 'hc-linux-52 needs xvfb for Electron tests.'], []],
+      ['convention', ['Import TypeScript ghi rõ đuôi .ts.', 'TypeScript imports spell out the .ts extension.'], []],
+    ];
+    const scopes = ['org', 'thanh-toan', 'nen-tang', 'payment-api', 'hive-worker', 'mobile-app'];
+    const users = ['Trần Lan', 'Nguyễn Minh', 'Phạm Hà', 'Lê Quang'];
+    let s = 9; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 1284 }, (_, i) => {
+      const b = texts[i % texts.length]; const run = rnd() > 0.45;
+      return { id: 'm' + i, kind: b[0], text: b[1], files: b[2], scope: scopes[Math.floor(rnd() * scopes.length)], run: run ? (0x5e0c22b8 + i * 7919 >>> 0).toString(16).slice(-8) : null, user: users[Math.floor(rnd() * 4)], pending: run && rnd() > 0.8, superseded: rnd() > 0.93, mins: i * 23 + Math.floor(rnd() * 20), score: (0.95 - (i % 40) / 60).toFixed(2) };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const sem = this.state.mode === 'semantic';
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], lead: ['Ghi nhớ ngắn của agent và người. Agent tìm qua memory_search trước khi làm.', 'Short notes from agents and people. Agents search them with memory_search before working.'],
+      mode: ['Cách tìm', 'Search mode'], add: ['Thêm memory', 'Add memory'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const K = { decision: [['Quyết định', 'Decision'], 'accent', 'var(--primary)'], convention: [['Quy ước', 'Convention'], 'ok', 'var(--success)'], gotcha: [['Bẫy đã gặp', 'Gotcha'], 'warn', 'var(--warning)'], note: [['Ghi chú', 'Note'], 'off', 'var(--muted-foreground)'] };
+    const ago = (m) => (m < 60 ? x([m + ' phút trước', m + ' min ago']) : m < 1440 ? x([Math.floor(m / 60) + ' giờ trước', Math.floor(m / 60) + ' h ago']) : x([Math.floor(m / 1440) + ' ngày trước', Math.floor(m / 1440) + ' d ago']));
+    const key = lang + sem;
+    if (!this.cache || this.cache.key !== key) {
+      this.cache = { key, rows: this.data.map((d) => ({
+        id: d.id, kind: { text: x(K[d.kind][0]), tone: K[d.kind][1], dot: false }, content: x(d.text), files: d.files,
+        scope: d.scope === 'org' ? x(['tổ chức', 'organization']) : d.scope,
+        author: d.run ? { text: 'run ' + d.run, sub: 'agent', ini: 'AI', ai: true } : { text: d.user, sub: x(['người', 'person']), ini: d.user.split(' ').map((w) => w[0]).slice(-2).join('') },
+        _f_author: d.run ? 'Agent' : x(['Người', 'Person']),
+        status: d.superseded ? { text: x(['Đã cũ', 'Superseded']), tone: 'off' } : d.pending ? { text: x(['Chờ duyệt', 'Pending']), tone: 'warn' } : { text: x(['Đã duyệt', 'Approved']), tone: 'ok' },
+        score: d.score, _sort_score: Number(d.score), created: ago(d.mins), _sort_created: -d.mins,
+      })) };
+    }
+    const columns = [
+      { key: 'kind', label: x(['Loại', 'Kind']), type: 'badge' },
+      { key: 'content', label: x(['Nội dung', 'Content']), type: 'text', wrap: true },
+      { key: 'files', label: 'File', type: 'tags' },
+      { key: 'scope', label: x(['Phạm vi', 'Scope']), type: 'mono' },
+      { key: 'author', label: x(['Người viết', 'Author']), type: 'avatar' },
+      { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' },
+      { key: 'score', label: x(['Độ gần', 'Similarity']), type: 'num', sortable: true, hidden: !sem },
+      { key: 'created', label: x(['Tạo lúc', 'Created']), type: 'muted', sortable: true },
+    ];
+    const facets = [{ key: 'kind', label: x(['Loại', 'Kind']) }, { key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'scope', label: x(['Phạm vi', 'Scope']) }, { key: 'author', label: x(['Người viết', 'Author']) }];
+    const segS = (on) => 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const modes = [['text', ['Theo từ', 'Keyword']], ['semantic', ['Theo nghĩa', 'Semantic']]].map(([k, l]) => ({ label: x(l), p: this.state.mode === k ? 'true' : 'false', style: segS(this.state.mode === k), pick: () => this.setState({ mode: k }) }));
+    const kinds = Object.keys(K).map((k) => ({ label: x(K[k][0]), n: this.data.filter((d) => d.kind === k).length.toLocaleString(en ? 'en' : 'vi'), dot: 'width: 8px; height: 8px; border-radius: 9999px; background: ' + K[k][2] + ';' }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows: this.cache.rows, size: 10, minW: 1080, modes, kinds,
+      searchPh: sem ? x(['Hỏi bằng câu: vì sao test làm tròn hỏng?', 'Ask a question: why do rounding tests fail?']) : x(['Tìm theo từ khoá, file…', 'Search keyword, file…']),
+      bulk: [x(['Duyệt', 'Approve']), x(['Đánh dấu đã cũ', 'Mark superseded']), x(['Chuyển phạm vi', 'Move scope']), x(['Xoá', 'Delete'])],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

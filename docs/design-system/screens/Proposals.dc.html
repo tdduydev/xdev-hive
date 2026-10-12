@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đề xuất sửa</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{box-sizing:border-box;padding:6px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.diff{font-family:var(--font-mono);font-size:12.5px;line-height:1.7}
+.diff div{padding:0 12px;white-space:pre-wrap}
+.add{background:var(--success-soft);color:var(--success)}
+.del{background:var(--destructive-soft);color:var(--destructive);text-decoration:line-through}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="proposals" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        <p class="muted" style="margin: 0;">{{t.lead}}</p>
+      </header>
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <div style="flex: 3 1 620px; min-width: 0;">
+          <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,700px"></dc-import>
+        </div>
+        <aside class="card" style="flex: 2 1 420px; min-width: 0; overflow: hidden; display: flex; flex-direction: column;">
+          <div style="padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="badge" style="{{cur.kindStyle}}">{{cur.kind}}</span><span class="mono" style="font-weight: 600;">{{cur.target}}</span><span class="mono muted" style="font-size: 12px;">v{{cur.base}} → v{{cur.next}}</span></div>
+            <p style="margin: 0;"><span class="muted">{{t.reason}}</span> {{cur.reason}}</p>
+            <span class="muted" style="font-size: 12.5px;">{{cur.author}} · {{cur.when}}<span class="mono">{{cur.prLine}}</span></span>
+          </div>
+          <sc-if value="{{cur.conflict}}" hint-placeholder-val="{{false}}"><div role="alert" style="margin: 12px 18px 0; padding: 10px 12px; border-radius: 8px; background: var(--destructive-soft); color: var(--destructive); font-size: 13px;">{{t.conflictNote}}</div></sc-if>
+          <div style="margin: 12px 18px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+            <div class="mono muted" style="padding: 6px 12px; font-size: 12px; background: var(--muted); border-bottom: 1px solid var(--border);">{{cur.file}}</div>
+            <div class="diff" style="padding: 6px 0;">
+              <div>## {{t.d0}}</div><div>- {{t.d1}}</div><div class="del">- {{t.d2old}}</div><div class="add">+ {{t.d2new}}</div><div class="add">+ {{t.d3new}}</div><div>- {{t.d4}}</div>
+            </div>
+          </div>
+          <div style="padding: 0 18px 16px; display: flex; flex-direction: column; gap: 10px;">
+            <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.note}}<textarea class="input" style="height: 60px; resize: vertical;" placeholder="{{t.notePh}}"></textarea></label>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-destructive">{{t.reject}}</button><button type="button" class="btn btn-default">{{t.approve}}</button></div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cur: 'p0', lang: null, dark: null };
+    const targets = [['doc', 'payment-api/money'], ['skill', 'db-migration'], ['doc', 'api-guidelines'], ['skill', 'code-review'], ['doc', 'release-process'], ['skill', 'vn-invoice'], ['doc', 'thanh-toan/runbook'], ['skill', 'write-tests']];
+    const reasons = [['Làm tròn theo dòng, thêm múi giờ cho test', 'Per-line rounding, timezone for tests'], ['Thêm bước kiểm RLS', 'Add the RLS check step'], ['Chuẩn hoá mã lỗi theo module', 'Module-prefixed error codes'], ['Hạ ngưỡng điểm cho thay đổi tài liệu', 'Lower the bar for doc-only changes'], ['Cập nhật lệnh phát hành mới', 'Update the release command']];
+    const authors = ['run 7f3a91c2', 'run 91aa3f5d', 'Phạm Hà', 'run 2c81d0ef', 'Lê Quang', 'run b04e7a19'];
+    const st = ['pending', 'pending', 'approved', 'approved', 'approved', 'rejected'];
+    let s = 13; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 214 }, (_, i) => {
+      const tg = targets[Math.floor(rnd() * targets.length)];
+      return { id: 'p' + i, kind: tg[0], target: tg[1], base: 2 + Math.floor(rnd() * 10), reason: reasons[Math.floor(rnd() * reasons.length)], author: authors[Math.floor(rnd() * authors.length)], status: i < 4 ? 'pending' : st[Math.floor(rnd() * st.length)], conflict: rnd() > 0.85, mins: i * 97 + Math.floor(rnd() * 60), pr: 300 - i };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], title: ['Đề xuất sửa', 'Proposals'],
+      lead: ['Agent và thành viên đề xuất sửa tài liệu hoặc skill; quản trị đội duyệt. Đề xuất sửa skill là pull request trên tdduydev/xdev-skills.', 'Agents and members propose edits to docs or skills; team admins decide. Skill proposals are pull requests on tdduydev/xdev-skills.'],
+      search: ['Tìm đích, lý do, người đề xuất…', 'Search target, reason, author…'], reason: ['Lý do:', 'Reason:'],
+      conflictNote: ['Bản gốc đã đổi sau khi đề xuất. Duyệt sẽ báo xung đột; mở trình sửa để gộp tay.', 'The original changed after this proposal. Approving reports a conflict; open the editor to merge by hand.'],
+      d0: ['Quy ước tiền tệ', 'Money conventions'], d1: ['Lưu tiền theo đơn vị nhỏ nhất.', 'Store money in the smallest unit.'], d2old: ['Làm tròn khi cộng tổng.', 'Round when summing.'],
+      d2new: ['Làm tròn theo từng dòng hoá đơn, rồi mới cộng tổng.', 'Round per invoice line, then sum.'], d3new: ['Test chạy với TZ=Asia/Ho_Chi_Minh.', 'Run tests with TZ=Asia/Ho_Chi_Minh.'], d4: ['Không dùng float.', 'Never use floats.'],
+      note: ['Ghi chú khi duyệt', 'Decision note'], notePh: ['Không bắt buộc', 'Optional'], reject: ['Từ chối', 'Reject'], approve: ['Duyệt và merge', 'Approve and merge'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const KS = { doc: [['Tài liệu', 'Doc'], 'accent'], skill: [['Skill', 'Skill'], 'sec'] };
+    const SS = { pending: [['Chờ duyệt', 'Pending'], 'warn'], approved: [['Đã duyệt', 'Approved'], 'ok'], rejected: [['Bị từ chối', 'Rejected'], 'bad'] };
+    const tone = { accent: 'background: var(--accent); color: var(--accent-foreground)', sec: 'background: var(--secondary); color: var(--secondary-foreground)' };
+    const ago = (m) => (m < 60 ? x([m + ' phút trước', m + ' min ago']) : m < 1440 ? x([Math.floor(m / 60) + ' giờ trước', Math.floor(m / 60) + ' h ago']) : x([Math.floor(m / 1440) + ' ngày trước', Math.floor(m / 1440) + ' d ago']));
+    const rows = this.data.map((d) => ({
+      id: d.id, target: d.target, reason: x(d.reason) + (d.conflict ? x([' · xung đột', ' · conflict']) : ''), kind: { text: x(KS[d.kind][0]), tone: KS[d.kind][1], dot: false },
+      status: { text: x(SS[d.status][0]), tone: SS[d.status][1] }, ver: 'v' + d.base + '→v' + (d.base + 1),
+      author: d.author.startsWith('run') ? { text: d.author, sub: 'agent', ini: 'AI', ai: true } : { text: d.author, sub: x(['người', 'person']), ini: d.author.split(' ').map((w) => w[0]).slice(-2).join('') },
+      _f_author: d.author.startsWith('run') ? 'Agent' : x(['Người', 'Person']), _f_conflict: d.conflict ? x(['Có xung đột', 'Conflict']) : x(['Không', 'None']),
+      when: ago(d.mins), _sort_when: -d.mins,
+    }));
+    const columns = [
+      { key: 'target', label: x(['Đề xuất', 'Proposal']), type: 'title', sub: 'reason', mono: true, sortable: true },
+      { key: 'kind', label: x(['Loại', 'Kind']), type: 'badge' },
+      { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' },
+      { key: 'ver', label: x(['Bản', 'Version']), type: 'mono' },
+      { key: 'author', label: x(['Người đề xuất', 'Author']), type: 'avatar' },
+      { key: 'when', label: x(['Lúc', 'When']), type: 'muted', sortable: true },
+    ];
+    const facets = [{ key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'kind', label: x(['Loại', 'Kind']) }, { key: 'author', label: x(['Người đề xuất', 'Author']) }, { key: 'conflict', label: x(['Xung đột', 'Conflict']) }];
+    const d = this.data.find((r) => r.id === this.state.cur) || this.data[0];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 10, minW: 780, curId: d.id, pick: (r) => this.setState({ cur: r.id }),
+      bulk: [x(['Duyệt', 'Approve']), x(['Từ chối', 'Reject'])],
+      cur: { kind: x(KS[d.kind][0]), kindStyle: tone[KS[d.kind][1]], target: d.target, base: d.base, next: d.base + 1, reason: x(d.reason), author: d.author, when: ago(d.mins), conflict: d.conflict, prLine: d.kind === 'skill' ? ' · PR #' + d.pr + ' · tdduydev/xdev-skills' : '', file: d.kind === 'skill' ? 'org/' + d.target + '/SKILL.md' : d.target + '.md' },
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

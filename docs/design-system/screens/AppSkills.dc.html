@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · Skills</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:30px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px;border-radius:9999px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.diff{font-family:var(--font-mono);font-size:12px;line-height:1.6}
+.diff div{padding:0 10px;white-space:pre-wrap}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);">
+    <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">xDev Hive · payment-api · Skills</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+    </div>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <dc-import name="AppNav" active="skills" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import>
+      <main style="flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; letter-spacing: -0.03em;">Skills</h1>
+            <p class="muted" style="margin: 0; font-size: 13px;">{{t.lead}}</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label class="muted" style="display: flex; align-items: center; gap: 6px; font-size: 12.5px;">{{t.target}}<select style="height: 30px; border: 1px solid var(--input); border-radius: 8px; background: var(--background); color: var(--foreground); font: inherit; font-size: 12.5px;"><option>{{t.tProject}}</option><option>{{t.tUser}}</option></select></label>
+            <button type="button" class="btn btn-default" onClick="{{syncAll}}">{{syncLabel}}</button>
+          </div>
+        </header>
+
+        <section style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+          <sc-for list="{{clis}}" as="c" hint-placeholder-count="3">
+            <div class="card" style="padding: 10px 12px; display: flex; flex-direction: column; gap: 4px;">
+              <span style="display: flex; align-items: center; gap: 8px;"><strong style="font-weight: 600;">{{c.name}}</strong><span class="badge" style="{{c.chip}}">{{c.state}}</span></span>
+              <span class="mono muted" style="font-size: 11.5px;">{{c.where}}</span>
+            </div>
+          </sc-for>
+        </section>
+
+        <div style="display: flex; gap: 14px; align-items: flex-start;">
+          <div style="flex: 3 1 0; min-width: 0;">
+            <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,560px"></dc-import>
+          </div>
+          <aside class="card" style="flex: 2 1 0; min-width: 0; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;"><span class="badge" style="{{cur.scopeStyle}}">{{cur.scope}}</span><span class="badge" style="{{cur.stateStyle}}">{{cur.state}}</span></div>
+              <strong class="mono" style="font-size: 15px;">{{cur.name}}</strong>
+              <span class="muted" style="font-size: 12.5px;">{{cur.desc}}</span>
+              <span class="mono muted" style="font-size: 11.5px;">{{cur.path}}</span>
+            </div>
+            <div style="padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;">
+              <span class="mono muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: .05em;">{{t.whatChanged}} · v4 → v5</span>
+              <div class="diff" style="border: 1px solid var(--border); border-radius: 8px; padding: 6px 0;">
+                <div>## Steps</div><div>1. pnpm db:generate</div><div style="background: var(--success-soft); color: var(--success);">+ 2. FORCE ROW LEVEL SECURITY {{t.onNew}}</div><div style="background: var(--success-soft); color: var(--success);">+ 3. pnpm test rls.db.test.ts</div><div style="background: var(--destructive-soft); color: var(--destructive);">- 2. {{t.oldStep}}</div>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px;" class="muted"><span>{{t.ctxCost}} <strong class="mono" style="color: var(--foreground);">~90</strong> token</span><span>·</span><span>{{t.usedBy}} <strong class="mono" style="color: var(--foreground);">14</strong></span></div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;">
+                <button type="button" class="btn btn-outline">{{t.disableMe}}</button>
+                <sc-if value="{{canPropose}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline">{{t.propose}}</button></sc-if>
+                <button type="button" class="btn btn-default">{{t.update}}</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { cur: 'k0', synced: false, lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const role = this.props.role ?? 'dev';
+    const t = {
+      lead: x(['Skill áp cho thư mục này theo phạm vi tổ chức → đội → dự án, lấy từ tdduydev/xdev-skills. App cài vào CLI trên máy để agent của bạn dùng được.', 'Skills that apply to this folder by organization → team → project scope, from tdduydev/xdev-skills. The app installs them into the CLIs on this machine.']),
+      target: x(['Cài vào', 'Install to']), tProject: x(['Thư mục dự án (.claude/skills, .agents/skills)', 'Project folder (.claude/skills, .agents/skills)']), tUser: x(['Tài khoản của tôi (~/.claude/skills, ~/.codex/skills)', 'My account (~/.claude/skills, ~/.codex/skills)']),
+      search: x(['Tìm skill…', 'Search skills…']), whatChanged: x(['Thay đổi', 'What changed']), onNew: x(['cho bảng mới', 'on new tables']), oldStep: x(['Nhớ bật RLS', 'Remember to enable RLS']),
+      ctxCost: x(['Chiếm ngữ cảnh khi chưa dùng', 'Context cost while idle']), usedBy: x(['Run của tôi đã dùng 30 ngày', 'My runs used it, 30d']),
+      disableMe: x(['Tắt với tôi', 'Disable for me']), propose: x(['Đề xuất sửa', 'Propose edit']), update: x(['Cập nhật lên v5', 'Update to v5']),
+    };
+    const ok = 'background: var(--success-soft); color: var(--success);'; const warn = 'background: var(--warning-soft); color: var(--warning);'; const off = 'background: var(--muted); color: var(--muted-foreground);';
+    const synced = this.state.synced;
+    const clis = [
+      { name: 'Claude Code', where: '.claude/skills/ · 12 skill', state: synced ? x(['Đã đồng bộ', 'Synced']) : x(['2 bản mới', '2 updates']), chip: synced ? ok : warn },
+      { name: 'Codex', where: '.agents/skills/ · 12 skill', state: synced ? x(['Đã đồng bộ', 'Synced']) : x(['2 bản mới', '2 updates']), chip: synced ? ok : warn },
+      { name: 'Gemini CLI', where: x(['0.63.0 · chưa đăng nhập', '0.63.0 · not signed in']), state: x(['Bỏ qua', 'Skipped']), chip: off },
+    ];
+    const SC = { org: [['Tổ chức', 'Organization'], 'accent'], team: [['Đội · thanh-toan', 'Team · thanh-toan'], 'ok'], project: [['Dự án · payment-api', 'Project · payment-api'], 'sec'] };
+    const ST = { installed: [['Đã cài', 'Installed'], 'ok'], update: [['Có bản mới', 'Update'], 'warn'], missing: [['Chưa cài', 'Not installed'], 'accent'], off: [['Tôi đã tắt', 'Disabled by me'], 'off'], shadowed: [['Bị bản dự án che', 'Hidden by project'], 'off'] };
+    const data = [
+      ['db-migration', ['Migration an toàn, ép RLS', 'Safe migrations with forced RLS'], 'project', 'update', 4, 5, 90, 14],
+      ['vn-invoice', ['Hoá đơn điện tử và VAT', 'Vietnam e-invoice and VAT'], 'team', 'installed', 2, 2, 70, 9],
+      ['code-review', ['Review chéo, thang 0–10', 'Cross-review, 0–10 scale'], 'org', 'update', 1, 2, 80, 22],
+      ['write-tests', ['Test bảng cho Go', 'Table-driven Go tests'], 'org', 'installed', 4, 4, 60, 31],
+      ['api-design', ['REST và mã lỗi', 'REST and error codes'], 'org', 'installed', 3, 3, 65, 6],
+      ['incident-triage', ['Đọc log, tìm nguyên nhân', 'Logs to root cause'], 'team', 'missing', 0, 1, 75, 0],
+      ['ui-copy-vi', ['Chữ giao diện tiếng Việt', 'Vietnamese UI copy'], 'org', 'off', 6, 6, 55, 0],
+      ['db-migration', ['Quy trình migration chung', 'Org migration workflow'], 'org', 'shadowed', 3, 3, 0, 0],
+      ['security-review', ['Rà OWASP trước PR', 'OWASP pass before PRs'], 'org', 'installed', 2, 2, 85, 4],
+      ['sql-tuning', ['EXPLAIN và index', 'EXPLAIN and indexes'], 'org', 'installed', 1, 1, 60, 3],
+      ['release-notes', ['Ghi chú phát hành', 'Release notes'], 'org', 'installed', 2, 2, 50, 1],
+      ['perf-profiling', ['Đo hiệu năng Go', 'Profile Go performance'], 'org', 'missing', 0, 1, 70, 0],
+    ];
+    const rows = data.map((d, i) => ({
+      id: 'k' + i, name: d[0], desc: x(d[1]), scope: { text: x(SC[d[2]][0]), tone: SC[d[2]][1], dot: false }, _f_scope: x(SC[d[2]][0]).split(' ·')[0],
+      state: synced && d[3] === 'update' ? { text: x(ST.installed[0]), tone: 'ok' } : { text: x(ST[d[3]][0]), tone: ST[d[3]][1] },
+      ver: d[4] ? 'v' + d[4] + (d[5] > d[4] && !synced ? ' → v' + d[5] : '') : '— → v' + d[5], ctx: d[6] ? d[6] : '—', _sort_ctx: d[6], used: d[7], _sort_used: d[7],
+    }));
+    const columns = [
+      { key: 'name', label: 'Skill', type: 'title', sub: 'desc', mono: true, sortable: true },
+      { key: 'scope', label: x(['Nguồn', 'Source']), type: 'badge' },
+      { key: 'state', label: x(['Trên máy', 'On this machine']), type: 'badge' },
+      { key: 'ver', label: x(['Bản', 'Version']), type: 'mono' },
+      { key: 'ctx', label: x(['Token khi chờ', 'Idle tokens']), type: 'num', sortable: true },
+      { key: 'used', label: x(['Tôi dùng', 'My use']), type: 'num', sortable: true },
+    ];
+    const facets = [{ key: 'state', label: x(['Trên máy', 'On this machine']) }, { key: 'scope', label: x(['Nguồn', 'Source']) }];
+    const tone = { accent: 'background: var(--accent); color: var(--accent-foreground)', ok: 'background: var(--success-soft); color: var(--success)', sec: 'background: var(--secondary); color: var(--secondary-foreground)', warn: 'background: var(--warning-soft); color: var(--warning)', off: 'background: var(--muted); color: var(--muted-foreground)' };
+    const cd = data[Number(this.state.cur.slice(1))] || data[0];
+    const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, role, t, clis, rows, columns, facets, size: 8, minW: 640, curId: this.state.cur,
+      bulk: [x(['Cài / cập nhật', 'Install / update']), x(['Tắt với tôi', 'Disable for me'])], pick: (r) => this.setState({ cur: r.id }),
+      canPropose: role !== 'writer', syncLabel: synced ? x(['Đã đồng bộ', 'Synced']) : x(['Đồng bộ 2 bản mới', 'Sync 2 updates']), syncAll: () => this.setState({ synced: true }),
+      cur: { name: cd[0], desc: x(cd[1]), scope: x(SC[cd[2]][0]), scopeStyle: tone[SC[cd[2]][1]], state: x(ST[cd[3]][0]), stateStyle: tone[ST[cd[3]][1]], path: (cd[2] === 'org' ? 'org/' : cd[2] === 'team' ? 'teams/thanh-toan/' : 'projects/payment-api/') + cd[0] + '/SKILL.md → .claude/skills/' + cd[0] + '/' },
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

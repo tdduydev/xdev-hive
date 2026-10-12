@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · Token và ngữ cảnh</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:28px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-bottom:1px solid var(--border)}
+.card-t{margin:0;font-size:14.5px;font-weight:600}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.big{font-family:var(--font-mono);font-size:24px;font-weight:600;letter-spacing:-.03em;line-height:1.1}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);">
+    <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">xDev Hive · payment-api · {{t.title}}</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+    </div>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <dc-import name="AppNav" active="tokens" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import>
+      <main style="flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; letter-spacing: -0.03em;">{{t.title}}</h1><p class="muted" style="margin: 0; font-size: 13px;">{{t.lead}}</p></div>
+          <div style="display: inline-flex; padding: 3px; background: var(--muted); border-radius: 8px; gap: 2px;"><sc-for list="{{engines}}" as="e" hint-placeholder-count="2"><button type="button" onClick="{{e.pick}}" style="{{e.style}}">{{e.label}}</button></sc-for></div>
+        </header>
+
+        <section style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+          <sc-for list="{{tiles}}" as="k" hint-placeholder-count="4"><div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 4px;"><span class="muted" style="font-size: 12.5px;">{{k.label}}</span><span class="big">{{k.value}}</span><span style="{{k.noteStyle}}">{{k.note}}</span></div></sc-for>
+        </section>
+
+        <section class="card" style="overflow: hidden;">
+          <div class="card-h"><h2 class="card-t">{{t.ctxTitle}}</h2><span class="mono muted" style="font-size: 12px;">{{ctxTotal}}</span></div>
+          <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div role="img" aria-label="{{t.ctxTitle}}" style="display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: var(--muted);"><sc-for list="{{segments}}" as="s" hint-placeholder-count="6"><span title="{{s.label}} · {{s.k}}" style="{{s.style}}"></span></sc-for></div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 16px; font-size: 12.5px;">
+              <sc-for list="{{segments}}" as="s" hint-placeholder-count="6"><span style="display: flex; align-items: center; gap: 8px;"><span style="{{s.dot}}"></span><span style="flex: 1;">{{s.label}}</span><span class="mono">{{s.k}}</span></span></sc-for>
+            </div>
+          </div>
+        </section>
+
+
+        <sc-if value="{{isClaude}}" hint-placeholder-val="{{true}}">
+          <section class="card" style="overflow: hidden;">
+            <div class="card-h"><h2 class="card-t">{{t.drivers}}</h2><span class="mono muted" style="font-size: 12px;">/usage · 7 {{t.days}}</span></div>
+            <ul style="margin: 0; padding: 10px 16px; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; font-size: 13px;">
+              <sc-for list="{{drivers}}" as="d" hint-placeholder-count="5"><li style="display: flex; align-items: center; gap: 10px;"><span class="mono" style="width: 44px; text-align: right; font-weight: 600;">{{d.pct}}</span><span style="flex: 1;">{{d.text}}</span></li></sc-for>
+            </ul>
+          </section>
+        </sc-if>
+        <section class="card" style="overflow: hidden;">
+          <div class="card-h"><h2 class="card-t">{{t.tips}}</h2><span class="muted" style="font-size: 12px;">{{t.tipsSub}}</span></div>
+          <ul style="margin: 0; padding: 0; list-style: none;">
+            <sc-for list="{{tips}}" as="g" hint-placeholder-count="5">
+              <li style="padding: 10px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px;">
+                <span class="mono" style="{{g.saveStyle}}">{{g.save}}</span>
+                <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35;"><strong style="font-weight: 600; font-size: 13.5px;">{{g.title}}</strong><span class="muted" style="font-size: 12.5px;">{{g.why}}</span></span>
+                <sc-if value="{{g.done}}" hint-placeholder-val="{{false}}"><span style="font-size: 12.5px; color: var(--success);">✓ {{t.applied}}</span></sc-if>
+                <sc-if value="{{g.todo}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline" onClick="{{g.apply}}">{{g.action}}</button></sc-if>
+              </li>
+            </sc-for>
+          </ul>
+        </section>
+
+        <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" selectable="{{no}}" hint-size="100%,520px"></dc-import>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { engine: 'claude', done: {}, lang: null };
+    let s = 41; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    const tasks = ['TASK-45', 'TASK-47', 'TASK-44', 'TASK-40', 'TASK-38', null];
+    this.sessions = Array.from({ length: 64 }, (_, i) => { const cl = rnd() > 0.35 ? 'Claude' : 'Codex'; const inp = 20 + Math.floor(rnd() * 400); return { id: 'se' + i, cli: cl, model: cl === 'Claude' ? (rnd() > 0.6 ? 'Opus' : 'Sonnet') : 'gpt-5-codex', task: tasks[Math.floor(rnd() * tasks.length)], inp, out: Math.floor(inp * (0.05 + rnd() * 0.15)), cache: Math.floor(40 + rnd() * 55), compact: rnd() > 0.7, mins: i * 160 + Math.floor(rnd() * 90) }; });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const claude = this.state.engine === 'claude';
+    const t = {
+      title: x(['Token và ngữ cảnh', 'Tokens & context']), lead: x(['Ngữ cảnh mỗi phiên bị chiếm bởi gì ở thư mục này, và cách giảm. Số liệu đọc từ phiên CLI trên máy bạn.', 'What fills each session’s context in this folder, and how to cut it. Figures come from CLI sessions on this machine.']),
+      ctxTitle: x(['Ngữ cảnh lúc mở phiên, trước khi bạn hỏi', 'Context at session start, before you ask anything']), tips: x(['Gợi ý tối ưu', 'Optimization tips']), tipsSub: x(['Ước lượng trên mỗi phiên', 'Estimated per session']),
+      applied: x(['Đã áp dụng', 'Applied']), drivers: x(['Thứ đang tiêu hạn mức', 'What drives your limits']), days: x(['ngày', 'days']), search: x(['Tìm phiên, việc…', 'Search sessions, tasks…']),
+    };
+    const segE = (on) => 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const engines = [['claude', 'Claude Code'], ['codex', 'Codex']].map(([k, l]) => ({ label: l, style: segE(this.state.engine === k), pick: () => this.setState({ engine: k }) }));
+    const D = this.state.done;
+    // Claude categories and figures follow `claude -p /context` (Claude Code 2.1.296) on this machine; Codex only reports % of context left in /status.
+    const segDefs = claude ? [
+      [['Prompt hệ thống', 'System prompt'], 2.2, 'var(--muted-foreground)'],
+      [['Tool hệ thống', 'System tools'], 13, '#64748B'],
+      [['Tool hoãn nạp (deferred)', 'System tools (deferred)'], 20, '#94A3B8'],
+      [['Tool MCP: xDev Hive, Playwright', 'MCP tools: xDev Hive, Playwright'], D.pw ? 4.1 : 10.4, 'var(--warning)'],
+      [['File nhớ (CLAUDE.md)', 'Memory files (CLAUDE.md)'], D.md ? 1.4 : 3.1, '#9333EA'],
+      [['Skills (mô tả)', 'Skills (descriptions)'], D.sk ? 7.9 : 8.3, 'var(--success)'],
+      [['Dự phòng autocompact', 'Autocompact buffer'], 33, '#CBD5E1'],
+    ] : [[['Ngữ cảnh đã dùng', 'Context used'], 23, 'var(--primary)']];
+    const win = claude ? 1000 : 258;
+    const total = segDefs.reduce((a, sg) => a + sg[1], 0);
+    const segments = segDefs.filter((s) => s[1] > 0).map(([l, k, c]) => ({ label: x(l), k: k.toFixed(1) + 'k', style: 'width: ' + Math.max(0.6, k / win * 100 * 6) + '%; background: ' + c + ';', dot: 'width: 10px; height: 10px; flex: none; border-radius: 3px; background: ' + c + ';' }));
+    const tipDefs = [
+      ['pw', '−6,3k', ['Tắt MCP Playwright ở thư mục này', 'Disable the Playwright MCP in this folder'], ['Chưa run nào ở payment-api gọi tool Playwright trong 30 ngày.', 'No payment-api run called a Playwright tool in 30 days.'], ['Tắt ở thư mục này', 'Disable here']],
+      ['md', '−1,7k', [claude ? 'Rút gọn CLAUDE.md' : 'Rút gọn AGENTS.md', claude ? 'Trim CLAUDE.md' : 'Trim AGENTS.md'], ['40% nội dung trùng tài liệu coding-style; thay bằng một dòng gọi doc_get.', '40% repeats the coding-style doc; replace it with a doc_get pointer.'], ['Xem đề xuất', 'Review suggestion']],
+      ['sk', '−0,2k', ['Gỡ 2 skill không dùng 90 ngày', 'Remove 2 skills unused for 90 days'], ['flutter-widgets, release-notes chưa được run nào ở đây dùng.', 'flutter-widgets and release-notes were never used here.'], ['Gỡ khỏi thư mục', 'Remove here']],
+      ['cmp', '~30%', [claude ? 'Đặt --autocompact 150k cho thư mục này' : 'Dùng /compact khi còn dưới 30% ngữ cảnh', claude ? 'Set --autocompact 150k for this folder' : 'Use /compact below 30% context left'], [claude ? '57% hạn mức tuần này tiêu ở mức ngữ cảnh trên 150k (theo /usage).' : 'Phiên dài nhất tuần này chạm giới hạn và phải mở lại.', claude ? '57% of this week’s usage was at >150k context (per /usage).' : 'The longest session this week hit the limit and restarted.'], ['Bật', 'Enable']],
+      ['mdl', '−38%', ['Dùng Sonnet cho việc đọc code và viết tài liệu', 'Use Sonnet for reading code and writing docs'], ['Opus chiếm 41% token nhưng phần lớn là việc đọc; chất lượng review không đổi theo dữ liệu 30 ngày.', 'Opus used 41% of tokens, mostly reading; review scores held steady over 30 days.'], ['Đặt mặc định', 'Set default']],
+    ];
+    const tips = tipDefs.map(([k, save, ti, why, act]) => ({ save, title: x(ti), why: x(why), action: x(act), done: !!D[k], todo: !D[k], apply: () => this.setState({ done: { ...D, [k]: true } }), saveStyle: 'min-width: 58px; text-align: center; padding: 3px 6px; border-radius: 6px; font-size: 12px; font-weight: 600; background: var(--success-soft); color: var(--success);' }));
+    const n = (v) => v.toLocaleString(en ? 'en' : 'vi');
+    const list = this.sessions.filter((r) => (claude ? r.cli === 'Claude' : r.cli === 'Codex'));
+    const sumIn = list.reduce((a, r) => a + r.inp, 0); const avgCache = Math.round(list.reduce((a, r) => a + r.cache, 0) / Math.max(1, list.length));
+    const tiles = [
+      { label: x(['Token vào 7 ngày', 'Input tokens, 7d']), value: n(Math.round(sumIn / 100) / 10) + 'M', note: x(['+12% so với tuần trước', '+12% vs last week']), noteStyle: 'font-size: 12px; color: var(--warning);' },
+      { label: x(['Cache trúng', 'Cache hit rate']), value: avgCache + '%', note: x(['cao là tốt', 'higher is better']), noteStyle: 'font-size: 12px; color: var(--muted-foreground);' },
+      { label: x(['Ngữ cảnh lúc mở phiên', 'Context at start']), value: total.toFixed(1) + 'k', note: claude ? x(['trên 1M của claude-opus-5-5', 'of claude-opus-5-5’s 1M']) : x(['Codex chỉ báo % còn lại', 'Codex only reports % left']), noteStyle: 'font-size: 12px; color: var(--muted-foreground);' },
+      { label: claude ? x(['Phiên gói đã dùng', 'Plan session used']) : x(['Hạn mức còn', 'Limit left']), value: claude ? '31%' : '85%', note: claude ? x(['tuần: đã dùng 58% · làm mới thứ 5', 'week: 58% used · resets Thu']) : x(['làm mới 19:00', 'resets 7pm']), noteStyle: 'font-size: 12px; color: var(--muted-foreground);' },
+    ];
+    const ago = (m) => (m < 1440 ? x([Math.floor(m / 60) + ' giờ trước', Math.floor(m / 60) + ' h ago']) : x([Math.floor(m / 1440) + ' ngày trước', Math.floor(m / 1440) + ' d ago']));
+    const rows = list.map((r) => ({ id: r.id, when: ago(r.mins), _sort_when: -r.mins, model: r.model, task: r.task || x(['Hỏi đáp', 'Q&A']), inp: n(r.inp) + 'k', _sort_inp: r.inp, out: n(r.out) + 'k', _sort_out: r.out, cache: { text: r.cache + '%', tone: r.cache < 60 ? 'warn' : 'ok', dot: false }, _sort_cache: r.cache, _f_cache: r.cache < 60 ? x(['Cache thấp', 'Low cache']) : x(['Cache tốt', 'Good cache']), compact: r.compact ? x(['Có', 'Yes']) : '—' }));
+    const columns = [{ key: 'when', label: x(['Phiên', 'Session']), type: 'muted', sortable: true }, { key: 'task', label: x(['Việc', 'Task']), type: 'mono' }, { key: 'model', label: 'Model' }, { key: 'inp', label: x(['Token vào', 'Input']), type: 'num', sortable: true }, { key: 'out', label: x(['Token ra', 'Output']), type: 'num', sortable: true }, { key: 'cache', label: 'Cache', type: 'badge', sortable: true }, { key: 'compact', label: '/compact' }];
+    const facets = [{ key: 'model', label: 'Model' }, { key: 'task', label: x(['Việc', 'Task']) }, { key: 'cache', label: 'Cache' }];
+    const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, role: this.props.role ?? 'dev', t, engines, tiles, segments, tips, rows, columns, facets, size: 6, minW: 760, no: false,
+      isClaude: claude, drivers: [['64%', ['đến từ phiên dùng nhiều subagent', 'came from subagent-heavy sessions']], ['57%', ['ở mức ngữ cảnh trên 150k', 'was at >150k context']], ['38%', ['từ phiên chạy liên tục 8 giờ trở lên', 'came from sessions active 8+ hours']], ['6%', ['skill db-migration (skill dùng nhiều nhất)', 'skill db-migration (top skill)']], ['4%', ['MCP xdev-hive', 'MCP xdev-hive']]].map(([p, tx]) => ({ pct: p, text: x(tx) })),
+      ctxTotal: claude ? total.toFixed(1) + 'k / 1M · /context' : x(['còn 77% · /status', '77% left · /status']),
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>
