@@ -32,6 +32,33 @@ jobs:
       - name: openapi.json khớp hợp đồng
         run: pnpm openapi && git diff --exit-code packages/contracts/openapi.json
 
+  web-e2e:
+    # Giao diện được làm lại theo thiết kế v2 bởi nhiều agent cùng lúc: chặn merge khi luồng người dùng vỡ.
+    name: Web E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Trình duyệt Chromium
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Playwright
+        working-directory: apps/web
+        run: pnpm exec playwright test
+      - name: Lưu trace khi hỏng
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
+
   worker:
     name: Worker Go (${{ matrix.os }})
     strategy:
