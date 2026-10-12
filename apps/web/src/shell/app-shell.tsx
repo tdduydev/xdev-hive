@@ -1,21 +1,18 @@
 import { Outlet } from "@tanstack/react-router";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "../components/ui/sidebar.tsx";
+import { SidebarInset, SidebarProvider } from "../components/ui/sidebar.tsx";
 import { AppSidebar } from "./sidebar.tsx";
+import { Topbar } from "./topbar.tsx";
 
 /**
- * Khung app: sidebar shadcn (thu gọn còn biểu tượng trên máy tính, Ctrl/Cmd+B), nội dung trang bên phải. Trên điện
- * thoại sidebar thành menu trượt, mở bằng nút ở thanh trên.
+ * Khung app theo Sidebar.dc.html và Topbar.dc.html: sidebar nhóm thu gọn được (Ctrl/Cmd+B thu còn biểu tượng; trên
+ * điện thoại là menu trượt), thanh trên có đường dẫn, ⌘K, VI/EN, sáng/tối, thông báo.
  */
 export function AppShell() {
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset className="min-w-0">
-        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2 backdrop-blur md:hidden">
-          <SidebarTrigger />
-          <img src="/xdev-hive-icon.svg" alt="" className="size-6" />
-          <span className="font-heading text-sm font-semibold text-foreground">xDev Hive</span>
-        </div>
+        <Topbar />
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
