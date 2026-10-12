@@ -309,6 +309,13 @@
       "when": 1791789627044,
       "tag": "0043_audit_log_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791793187227,
+      "tag": "0044_mcp_admin",
+      "breakpoints": true
     }
   ]
 }

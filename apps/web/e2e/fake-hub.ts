@@ -84,6 +84,79 @@ export async function fakeHub(
   return hub;
 }
 
+/** Fixtures for MCP administration only; the secret is deliberately not a valid hub token. */
+export function mcpAdminFixture(role: "owner" | "admin" | "member" = "admin") {
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const tool = {
+    id: "doc_get",
+    name: "doc_get",
+    description: "Đọc một tài liệu",
+    group: "knowledge",
+    caller: "both",
+    enabled: true,
+    calls: 12,
+    errors: 1,
+  };
+  const token = (id: number, userId = USER.id) => ({
+    id: `0a0a0a0a-0000-4000-8000-${String(id).padStart(12, "0")}`,
+    userId,
+    ownerName: userId === USER.id ? USER.name : "Người dùng khác",
+    prefix: `hive_pat_test${id}`,
+    clientId: "cursor",
+    createdAt,
+    expiresAt,
+    lastUsedAt: null as string | null,
+    revokedAt: null as string | null,
+  });
+  const state = {
+    tools: [tool],
+    tokens: [token(1), token(2, "u2")],
+    rawToken: "hive_pat_test_only_never_a_real_token",
+    nextId: 3,
+  };
+  const rpc: Record<string, RpcHandler> = {
+    "mcpAdmin/listTools": () => ok({ tools: state.tools }),
+    "mcpAdmin/setTool": (input) => {
+      if (role === "member") return fail("FORBIDDEN", 403, "Chỉ quản trị được bật/tắt tool.");
+      const data = input as { toolName: string; enabled: boolean };
+      const found = state.tools.find((t) => t.name === data.toolName);
+      if (!found) return fail("NOT_FOUND", 404, "Không tìm thấy tool MCP.");
+      found.enabled = data.enabled;
+      return ok({ enabled: found.enabled });
+    },
+    "mcpAdmin/listTokens": () =>
+      ok({ tokens: role === "member" ? state.tokens.filter((t) => t.userId === USER.id) : state.tokens }),
+    "mcpAdmin/createToken": (input) => {
+      const data = input as { clientId: string; lifetimeDays: number };
+      const info = {
+        ...token(state.nextId++),
+        clientId: data.clientId,
+        expiresAt: new Date(Date.now() + data.lifetimeDays * 86_400_000).toISOString(),
+      };
+      state.tokens.push(info);
+      return ok({ token: state.rawToken, info });
+    },
+    "mcpAdmin/revokeToken": (input) => {
+      const found = state.tokens.find((t) => t.id === (input as { id: string }).id);
+      if (!found) return fail("NOT_FOUND", 404, "Không tìm thấy token MCP.");
+      if (role === "member" && found.userId !== USER.id)
+        return fail("FORBIDDEN", 403, "Bạn chỉ được thu hồi token của mình.");
+      found.revokedAt = new Date().toISOString();
+      return ok({ revoked: true });
+    },
+    "mcpAdmin/extendToken": (input) => {
+      if (role === "member") return fail("FORBIDDEN", 403, "Chỉ quản trị được gia hạn.");
+      const data = input as { id: string; lifetimeDays: number };
+      const found = state.tokens.find((t) => t.id === data.id);
+      if (!found) return fail("NOT_FOUND", 404, "Không tìm thấy token MCP.");
+      found.expiresAt = new Date(Date.now() + data.lifetimeDays * 86_400_000).toISOString();
+      return ok(found);
+    },
+  };
+  return { state, rpc };
+}
+
 /** Audit export uses oRPC's multipart File response rather than a JSON fixture. */
 export async function fakeAuditExport(
   page: Page,
