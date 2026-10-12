@@ -153,10 +153,10 @@ message types are ignored by older peers.
 |---|---|
 | tenancy | `hive_whoami`, `orgs_list`, `teams_list`, `systems_list` |
 | runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs) |
-| knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `skill_list`, `skill_get` |
+| knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `skill_list`, `skill_get`, `skill_propose` |
 | leader | `leader_reply`, `leader_propose` (leader runs) |
 
-Read-only run kinds receive no write tools (`task_update`, `memory_write`, `doc_propose`).
+Read-only run kinds receive no write tools (`task_update`, `memory_write`, `doc_propose`, `skill_propose`).
 
 ### 4.4 Worker command line
 

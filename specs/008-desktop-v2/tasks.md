@@ -24,7 +24,7 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Purpose**: Establish the modern React 19 + Vite + Tailwind 4 frontend in `apps/desktop`, shadcn base-nova components, design tokens, bilingual i18n, light/dark theme, AppNav navigation shell, and AppRegister v2.
 
-- [ ] **T001 [US1] Foundation: React/Vite/Tailwind/shadcn Setup, i18n, AppNav and AppRegister v2**
+- [x] **T001 [US1] Foundation: React/Vite/Tailwind/shadcn Setup, i18n, AppNav and AppRegister v2**
   - **Goal**: Replace the vanilla TS frontend with React 19, Vite 8, and Tailwind 4. Add shadcn base-nova primitives, import CSS variables from `docs/design-system/tokens.json`, implement bilingual dictionary hook (`useT` in `src/lib/i18n.ts`), build `AppNav` (with role profiles `dev`, `writer`, `lead`, project breadcrumbs, and worker badge), and build `AppRegister` v2 (supporting 5 states: `empty`, `parsed`, `busy`, `error`, `done`, light/dark theme, language switcher, command pasting). Preserve existing Tauri commands `parse_registration` and `register_worker` with secure environment variable passing via `HIVE_REGISTRATION_TOKEN`.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/package.json`
@@ -43,7 +43,7 @@ description: "Task list for Desktop Application v2 implementation"
     - `apps/desktop/src-tauri/capabilities/default.json`
   - **Dependencies**: None.
 
-- [ ] **T002 [P] [US1] Unit and Component Tests for AppRegister & AppNav**
+- [x] **T002 [P] [US1] Unit and Component Tests for AppRegister & AppNav**
   - **Goal**: Implement component unit tests verifying `AppRegister` form validation, clipboard parsing, `parse_registration` IPC mocking, language switching, theme toggling, and `AppNav` role-based item visibility.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppRegister.test.tsx` (new)
@@ -64,21 +64,21 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Full 7-state worker management with colored status dots, native notifications, and graceful stdin shutdown.
 
-- [ ] **T004 [US2] Enhance Rust Worker State Machine for 7 States & Native Notifications**
+- [x] **T004 [US2] Enhance Rust Worker State Machine for 7 States & Native Notifications**
   - **Goal**: Update `apps/desktop/src-tauri/src/worker.rs` and `lib.rs` to support all 7 states (`stopped`, `starting`, `connecting`, `online`, `disconnected`, `stopping`, `failed`). Emit notification when disconnected >60s. Enforce graceful `stop\n` stdin shutdown with 30s timeout before forced kill. Expose `worker_get_state` and `worker_toggle` Tauri commands.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/worker.rs`
     - `apps/desktop/src-tauri/src/lib.rs`
   - **Dependencies**: T001.
 
-- [ ] **T005 [P] [US2] Implement System Tray Controller & Menu Sync (AppTray)**
+- [x] **T005 [P] [US2] Implement System Tray Controller & Menu Sync (AppTray)**
   - **Goal**: Update system tray menu creation in `src-tauri/src/lib.rs` to dynamically update menu item labels ("Bật worker" / "Tắt worker"), status label, and tooltip with error details. Add frontend listener in `src/screens/AppTray.tsx` or background listener in `App.tsx` responding to tray events.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppTray.tsx` (new)
     - `apps/desktop/src/lib/tauri.ts`
   - **Dependencies**: T004.
 
-- [ ] **T006 [P] [US2] Unit Tests for Worker 7-State Transitions & Shutdown**
+- [x] **T006 [P] [US2] Unit Tests for Worker 7-State Transitions & Shutdown**
   - **Goal**: Write tests in `src-tauri/src/worker.rs` validating transitions between all 7 states, timer countdowns for 60s notifications, retry backoffs, and rejection on exit code 3.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/worker.rs` (test module)
@@ -92,21 +92,21 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Deliver the workspace overview dashboard showing readiness metrics, applicable skills, recent document digests, and token charts.
 
-- [ ] **T007 [US3] Build AppHome Dashboard Screen**
+- [x] **T007 [US3] Build AppHome Dashboard Screen**
   - **Goal**: Implement `apps/desktop/src/screens/AppHome.tsx` based on `docs/design-system/screens/AppHome.dc.html`. Render header with active workspace and git branch, 4 metric tiles (Machine Readiness, Applicable Skills, Changed Docs, Weekly Tokens), approved document digest list with version badges and diff highlights, missing environment card, and 7-day token consumption bar chart. Respect role profiles (hide environment tiles for `writer`).
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppHome.tsx` (new)
     - `apps/desktop/src/App.tsx`
   - **Dependencies**: T001.
 
-- [ ] **T008 [P] [US3] Rust Workspace Metadata Inspection Command**
+- [x] **T008 [P] [US3] Rust Workspace Metadata Inspection Command**
   - **Goal**: Add Rust command `get_workspace_meta` in `src-tauri/src/lib.rs` to detect the current directory git branch (`git symbolic-ref --short HEAD`) and summarize project configuration status.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/lib.rs`
     - `apps/desktop/src-tauri/capabilities/default.json`
   - **Dependencies**: T001.
 
-- [ ] **T009 [P] [US3] Component Unit Tests for AppHome**
+- [x] **T009 [P] [US3] Component Unit Tests for AppHome**
   - **Goal**: Test metric tile calculations, document digest list rendering, role filtering for writer vs dev, and navigation link clicks ("Sửa →", "Chi tiết →").
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppHome.test.tsx` (new)
@@ -155,7 +155,7 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Synchronize skills from the hub repository into `.claude/skills/` and `.agents/skills/` with conflict detection.
 
-- [ ] **T014 [US5] Rust Skill File Sync Engine with SHA-256 Conflict Detection**
+- [x] **T014 [US5] Rust Skill File Sync Engine with SHA-256 Conflict Detection**
   - **Goal**: Implement `apps/desktop/src-tauri/src/skills.rs`. Expose `list_installed_skills(folder)` and `sync_skill_files(target, skill_name, files)`. Compute SHA-256 hashes to detect uncommitted local modifications. Prompt conflict on drift; overwrite atomically on clean versions. Support writing to `.claude/skills/<name>/` and `.agents/skills/<name>/`. Support deleting skill folders on disable.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/skills.rs` (new)
@@ -163,14 +163,14 @@ description: "Task list for Desktop Application v2 implementation"
     - `apps/desktop/src-tauri/capabilities/default.json`
   - **Dependencies**: T001.
 
-- [ ] **T015 [US5] Build AppSkills Screen (DataTable & Diff Inspector)**
+- [x] **T015 [US5] Build AppSkills Screen (DataTable & Diff Inspector)**
   - **Goal**: Implement `apps/desktop/src/screens/AppSkills.tsx` based on `AppSkills.dc.html`. Include skill DataTable (name, source, machine status, version, idle context cost, usage count), detail side pane with `SKILL.md` diff viewer, bulk actions ("Cài / cập nhật", "Tắt với tôi"), and target selector (project folder vs user home).
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppSkills.tsx` (new)
     - `apps/desktop/src/App.tsx`
   - **Dependencies**: T014.
 
-- [ ] **T016 [P] [US5] Tests for Skill Synchronization & Conflict Detection**
+- [x] **T016 [P] [US5] Tests for Skill Synchronization & Conflict Detection**
   - **Goal**: Test skill hash comparison, local modification detection, and directory removal on uninstall in both Rust backend and React frontend.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/skills.rs` (test module)
@@ -185,21 +185,21 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Inspect session context breakdown and quota drivers, providing actionable context reduction tips.
 
-- [ ] **T017 [US6] Rust CLI Context & Usage Reader**
+- [x] **T017 [US6] Rust CLI Context & Usage Reader**
   - **Goal**: Implement `read_claude_context(folder)` and `read_claude_usage(folder)` in `src-tauri/src/cli.rs`. Execute `claude -p /context` and `claude -p /usage` synchronously, parse stdout tables into structured JSON, and return to frontend. For Codex, scan `~/.codex/sessions` JSONL files to return token sums.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/cli.rs`
     - `apps/desktop/src-tauri/src/lib.rs`
   - **Dependencies**: T010.
 
-- [ ] **T018 [US6] Build AppTokens Screen**
+- [x] **T018 [US6] Build AppTokens Screen**
   - **Goal**: Implement `apps/desktop/src/screens/AppTokens.tsx` based on `AppTokens.dc.html`. Display engine selector (Claude Code vs Codex), metric tiles (Input tokens 7d, Cache hit rate, Context at start, Plan session used), initial context segmented bar chart (System prompt, MCP tools, Memory files, Skills, Autocompact buffer), quota drivers list, optimization tips list with one-click apply, and session history DataTable.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppTokens.tsx` (new)
     - `apps/desktop/src/App.tsx`
   - **Dependencies**: T017.
 
-- [ ] **T019 [P] [US6] Tests for AppTokens Parser & Optimization Toggles**
+- [x] **T019 [P] [US6] Tests for AppTokens Parser & Optimization Toggles**
   - **Goal**: Test parsing of `claude -p /context` markdown tables into segmented bar charts and test recommendation apply state transitions.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppTokens.test.tsx` (new)
@@ -213,7 +213,7 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Scan local system tools, runtimes, MCP servers, and project dependencies, providing safe one-click fixes.
 
-- [ ] **T020 [US7] Rust Environment Scanner & Safe Runner**
+- [x] **T020 [US7] Rust Environment Scanner & Safe Runner**
   - **Goal**: Implement `apps/desktop/src-tauri/src/doctor.rs`. Expose `scan_environment(folder)` and `run_remediation_command(cmd)`. Probe binaries on `$PATH` (`go`, `node`, `claude`, `codex`, `pnpm`, `docker`, `golangci-lint`) and extract versions. Read project requirements from `go.mod` and `package.json`. If command contains `sudo` or requires root, return `admin_required: true`. Only execute non-admin commands after confirmation.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/doctor.rs` (new)
@@ -221,14 +221,14 @@ description: "Task list for Desktop Application v2 implementation"
     - `apps/desktop/src-tauri/capabilities/default.json`
   - **Dependencies**: T001.
 
-- [ ] **T021 [US7] Build AppSetup Screen**
+- [x] **T021 [US7] Build AppSetup Screen**
   - **Goal**: Implement `apps/desktop/src/screens/AppSetup.tsx` based on `AppSetup.dc.html`. Render circular readiness score ring, diagnostic DataTable (Item, Type, Needs, Have, Status), detail side pane with OS-tailored install command, copy button, and "Chạy" button with confirmation modal. Disable direct execution for admin commands.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppSetup.tsx` (new)
     - `apps/desktop/src/App.tsx`
   - **Dependencies**: T020.
 
-- [ ] **T022 [P] [US7] Tests for Environment Scanner & Safety Guardrails**
+- [x] **T022 [P] [US7] Tests for Environment Scanner & Safety Guardrails**
   - **Goal**: Test version comparison logic (semver comparison for Go, Node, Codex), verify admin command detection flags `sudo`, and test confirmation dialog interactions.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/doctor.rs` (test module)
@@ -243,7 +243,7 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Persist personal user tokens in the OS keychain, isolate remote webviews, and configure updater workflows.
 
-- [ ] **T023 [US8] Native Keychain Storage for Personal User Tokens**
+- [x] **T023 [US8] Native Keychain Storage for Personal User Tokens**
   - **Goal**: Add the Rust `keyring` crate to `src-tauri/Cargo.toml`. Implement `apps/desktop/src-tauri/src/keychain.rs` exposing `get_user_token()` and `set_user_token(token)`. Connect to desktop settings dialog so users can store and update personal token `hive_pat_…` without saving plain text to disk.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/Cargo.toml`
