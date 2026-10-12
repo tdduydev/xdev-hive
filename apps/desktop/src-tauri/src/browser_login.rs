@@ -312,4 +312,112 @@ mod tests {
         assert!(send(&format!("/callback?code=hdc_ok&state={state}")).contains("Đã kết nối"));
         assert_eq!(waiter.join().unwrap(), Ok("hdc_ok".into()));
     }
+
+    /// Hub giả nhận POST /api/v1/desktop/connect/exchange: trả 200 khi verifier khớp challenge, không thì 401.
+    fn fake_hub(challenge: String) -> (u16, std::thread::JoinHandle<serde_json::Value>) {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            let mut buf = vec![0u8; 64 * 1024];
+            let mut got = Vec::new();
+            loop {
+                let n = s.read(&mut buf).unwrap();
+                got.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&got).to_string();
+                if let Some(at) = text.find("\r\n\r\n") {
+                    let len: usize = text
+                        .lines()
+                        .find_map(|l| {
+                            l.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if got.len() >= at + 4 + len {
+                        break;
+                    }
+                }
+                if n == 0 {
+                    break;
+                }
+            }
+            let text = String::from_utf8_lossy(&got).to_string();
+            let (head, body) = text.split_once("\r\n\r\n").unwrap();
+            assert!(
+                head.starts_with("POST /api/v1/desktop/connect/exchange "),
+                "{head}"
+            );
+            let body: serde_json::Value = serde_json::from_str(body).unwrap();
+            let ok = challenge_of(body["verifier"].as_str().unwrap()) == challenge;
+            let (status, reply) = if ok {
+                (
+                    "200 OK",
+                    r#"{"hubUrl":"http://hub","machine":"mac-test","teamId":"t1","registrationToken":"hwr_x","personalToken":"hive_pat_y","personalTokenExpiresAt":"2027-01-01T00:00:00.000Z"}"#,
+                )
+            } else {
+                (
+                    "401 Unauthorized",
+                    r#"{"message":"Mã đăng nhập không hợp lệ."}"#,
+                )
+            };
+            write!(s, "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}", reply.len()).unwrap();
+            body
+        });
+        (port, handle)
+    }
+
+    /// Cả luồng của lệnh browser_login trừ cửa sổ Tauri: cổng tạm, trình duyệt gọi về, đổi mã với hub bằng client
+    /// HTTP thật. v0.2.1 hỏng ở đây (client panic vì chưa có TLS provider) mà không test nào bắt được.
+    #[test]
+    fn full_flow_against_a_fake_hub() {
+        let pkce = new_pkce().unwrap();
+        let (listener, port) = listen().unwrap();
+        let url = connect_url("http://hub.test", port, &pkce, "mac-test").unwrap();
+        assert!(url.contains(&format!("challenge={}", pkce.challenge)));
+        let state = pkce.state.clone();
+        let browser = std::thread::spawn(move || {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            write!(
+                s,
+                "GET /callback?code=hdc_from_hub&state={state} HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n"
+            )
+            .unwrap();
+            let mut page = String::new();
+            let _ = s.read_to_string(&mut page);
+            page
+        });
+        let code = wait_for_code(listener, &pkce.state).unwrap();
+        assert_eq!(code, "hdc_from_hub");
+        assert!(browser.join().unwrap().contains("Đã kết nối"));
+
+        let (hub_port, hub) = fake_hub(pkce.challenge.clone());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let ex = rt
+            .block_on(exchange(
+                &format!("http://127.0.0.1:{hub_port}"),
+                &code,
+                &pkce.verifier,
+            ))
+            .unwrap();
+        assert_eq!(ex.machine, "mac-test");
+        assert_eq!(ex.registration_token, "hwr_x");
+        assert_eq!(ex.personal_token, "hive_pat_y");
+        assert_eq!(hub.join().unwrap()["code"], "hdc_from_hub");
+
+        // Verifier sai: hub từ chối, app trả câu lỗi của hub thay vì panic.
+        let (hub_port, hub) = fake_hub(pkce.challenge.clone());
+        let err = rt
+            .block_on(exchange(
+                &format!("http://127.0.0.1:{hub_port}"),
+                &code,
+                &new_pkce().unwrap().verifier,
+            ))
+            .unwrap_err();
+        assert_eq!(err, "Mã đăng nhập không hợp lệ.");
+        hub.join().unwrap();
+    }
 }
