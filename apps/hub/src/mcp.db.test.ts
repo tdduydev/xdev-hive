@@ -306,6 +306,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "review_submit",
       "skill_get",
       "skill_list",
+      "skill_propose",
       "systems_list",
       "task_get",
       "task_update",
@@ -313,7 +314,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
     ]);
     // plan_submit và review_submit ghi lên hub nhưng vẫn khai chỉ đọc: run plan và run review chạy Claude Code ở chế độ
     // plan, chỉ gọi được tool MCP chỉ đọc.
-    const writes = ["task_update", "memory_write", "doc_propose"];
+    const writes = ["task_update", "memory_write", "doc_propose", "skill_propose"];
     for (const t of tools) {
       expect(t.inputSchema.properties).toHaveProperty("org");
       expect(t.annotations?.readOnlyHint).toBe(!writes.includes(t.name));

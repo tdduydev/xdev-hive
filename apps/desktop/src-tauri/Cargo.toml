@@ -28,3 +28,5 @@ tokio = { version = "1", features = ["time"] }
 reqwest = { version = "0.13", default-features = false }
 # Token cá nhân lưu trong keychain của hệ điều hành (macOS Keychain, Windows Credential Manager, Secret Service).
 keyring = "4.2"
+# sha256 của SKILL.md đã cài để nhận ra file người dùng sửa tay. Cùng bản đã có trong cây phụ thuộc.
+sha2 = "0.10"

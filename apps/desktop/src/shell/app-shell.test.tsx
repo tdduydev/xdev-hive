@@ -59,12 +59,16 @@ describe("AppShell", () => {
     expect(within(nav).getByRole("link", { name: "Tổng quan" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeTruthy();
     await act(async () => {
-      location.hash = "#/skills";
+      location.hash = "#/docs";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Skills" })).toBeTruthy();
-    expect(within(nav).getByRole("link", { name: "Skills" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByText(/AppSkills\.dc\.html/)).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Tài liệu" })).toBeTruthy();
+    expect(
+      within(nav)
+        .getByRole("link", { name: /^Tài liệu/ })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(screen.getByText(/AppDocs\.dc\.html/)).toBeTruthy();
   });
 
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
@@ -72,7 +76,8 @@ describe("AppShell", () => {
     expect(screen.getByText("Chưa liên kết tài khoản")).toBeTruthy();
     expect(screen.getByText("Chưa chọn thư mục")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Môi trường" })).toBeNull();
-    expect(screen.getByText("chỉ đọc")).toBeTruthy();
+    // Người xem đội: Tài liệu và Skills đều chỉ đọc (không cài skill lên máy).
+    expect(screen.getAllByText("chỉ đọc")).toHaveLength(2);
   });
 
   it("tiếng Anh", () => {

@@ -145,6 +145,18 @@ export async function saveSkill(tx: Tx, principal: Principal, input: SkillSaveIn
  * phạm vi hẹp nhất thắng. Hàm public cho MCP.
  */
 export async function listSkills(tx: Tx, principal: Principal, input: SkillListInput = {}): Promise<SkillSummary[]> {
+  return (await listSkillsWithHidden(tx, principal, input)).skills;
+}
+
+/**
+ * Như listSkills, kèm skill cùng tên ở phạm vi rộng hơn bị bản hẹp hơn che (chỉ khi có dự án). App desktop dùng để
+ * báo "Bị bản dự án che" thay vì để người dùng tưởng skill của tổ chức đã mất.
+ */
+export async function listSkillsWithHidden(
+  tx: Tx,
+  principal: Principal,
+  input: SkillListInput = {},
+): Promise<{ skills: SkillSummary[]; hidden: SkillSummary[] }> {
   const data = skillListInput.parse(input);
   const reader = await readerFor(tx, principal);
   const project = await projectContext(tx, reader, data.project);
@@ -153,13 +165,14 @@ export async function listSkills(tx: Tx, principal: Principal, input: SkillListI
     .from(skills)
     .where(visibleWhere(reader, skills, project))
     .orderBy(asc(skills.name));
-  if (!project) return rows.map(summary);
+  if (!project) return { skills: rows.map(summary), hidden: [] };
   const best = new Map<string, SkillRow>();
   for (const r of rows) {
     const cur = best.get(r.name);
     if (!cur || specificity(r) > specificity(cur)) best.set(r.name, r);
   }
-  return [...best.values()].map(summary);
+  const winners = new Set(best.values());
+  return { skills: [...winners].map(summary), hidden: rows.filter((r) => !winners.has(r)).map(summary) };
 }
 
 /**

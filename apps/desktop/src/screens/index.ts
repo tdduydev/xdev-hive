@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
 import { HomeScreen } from "@/screens/home-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
+import { SkillsScreen } from "@/screens/skills-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
 
 /**
@@ -11,5 +12,6 @@ import { TokensScreen } from "@/screens/tokens-screen.tsx";
 export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   home: HomeScreen,
   setup: SetupScreen,
+  skills: SkillsScreen,
   tokens: TokensScreen,
 };

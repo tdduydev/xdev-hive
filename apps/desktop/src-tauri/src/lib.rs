@@ -4,6 +4,7 @@ mod account;
 mod doctor;
 mod hub;
 mod register;
+mod skills;
 mod tray_icon;
 mod usage;
 mod worker;
@@ -585,7 +586,12 @@ pub fn run() {
             account::account_link,
             account::account_unlink,
             workspace::workspace_meta,
-            workspace::hub_tool
+            workspace::hub_tool,
+            usage::skill_uses,
+            skills::installed_skills,
+            skills::install_skills,
+            skills::remove_skills,
+            skills::propose_skill
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.

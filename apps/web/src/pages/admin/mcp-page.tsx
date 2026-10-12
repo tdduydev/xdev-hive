@@ -186,6 +186,7 @@ const text: Dict<{
       doc_propose: "Propose a doc edit",
       skill_list: "List skills",
       skill_get: "Read a SKILL.md",
+      skill_propose: "Propose a skill edit",
       memory_search: "Search memory",
       memory_write: "Write a memory (pending)",
       task_get: "Read the current task",

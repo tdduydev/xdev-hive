@@ -460,6 +460,44 @@ describe("tool knowledge với token người dùng", () => {
     expect(inB.isError).toBe(true);
   });
 
+  it("skill_propose gửi SKILL.md sửa trên máy thành đề xuất ở đúng phạm vi", async () => {
+    const skill = (
+      await call(member, "skill_get", { org: orgA.slug, name: "tao-hoa-don", project: proj.a.key })
+    ).json();
+    const text =
+      '---\nname: tao-hoa-don\ndescription: "Tạo hoá đơn, có VAT"\n---\n\n# Tạo hoá đơn\nCác bước, thêm VAT.\n';
+    const p = await call(member, "skill_propose", {
+      org: orgA.slug,
+      name: "tao-hoa-don",
+      project: proj.a.key,
+      baseVersion: skill.version,
+      content: text,
+      note: "Thêm bước VAT.",
+    });
+    expect(p.isError).toBe(false);
+    const { rows } = await admin.query(
+      "select kind, target, description, content, reason, author_user_id from hive.proposals where id = $1",
+      [p.json().proposalId],
+    );
+    expect(rows[0]).toMatchObject({
+      kind: "skill",
+      target: "tao-hoa-don",
+      description: "Tạo hoá đơn, có VAT",
+      content: "# Tạo hoá đơn\nCác bước, thêm VAT.",
+      reason: "Thêm bước VAT.",
+      author_user_id: orgA.user("tmember"),
+    });
+    const stale = await call(member, "skill_propose", {
+      org: orgA.slug,
+      name: "tao-hoa-don",
+      project: proj.a.key,
+      baseVersion: skill.version + 5,
+      content: text,
+      note: "Cũ.",
+    });
+    expect(stale).toMatchObject({ isError: true, text: expect.stringContaining("Skill đã ở phiên bản 1") });
+  });
+
   it("người không thuộc tổ chức B không chọn được B", async () => {
     const loner = await connect(await userToken(orgA.user("loner")));
     const res = await call(loner, "doc_get", { org: orgB.slug, key: "org/quy-uoc" });

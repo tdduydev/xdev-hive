@@ -5,6 +5,8 @@ import {
   memoryFiles,
   memoryKind,
   projectRef,
+  SKILL_MAX_CHARS,
+  type SkillSummary,
   skillName,
 } from "@xdev-hive/contracts";
 import { z } from "zod";
@@ -15,8 +17,9 @@ import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
 import { getDoc, listDocs } from "./docs.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
-import { proposeDoc } from "./proposals.ts";
-import { getSkill, listSkills } from "./skills.ts";
+import { createProposal, proposeDoc } from "./proposals.ts";
+import { parseSkillFile } from "./skill-repo.ts";
+import { getSkill, listSkillsWithHidden } from "./skills.ts";
 
 /**
  * Giới hạn kết quả trả cho agent. Kết quả tool đi thẳng vào context của mô hình, nên trả có chừng mực và cho cách
@@ -247,6 +250,46 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
   });
 
   registry.register({
+    name: "skill_propose",
+    title: "Đề xuất sửa skill",
+    description: "Đề xuất toàn bộ SKILL.md mới của một skill đang áp cho dự án để quản trị duyệt.",
+    input: z.object({
+      name: skillName.describe("Tên skill, lấy từ skill_list."),
+      project: PROJECT,
+      baseVersion: z.number().int().min(1).describe("version đọc được từ skill_get."),
+      content: z
+        .string()
+        .min(1)
+        .max(SKILL_MAX_CHARS)
+        .describe("Toàn bộ SKILL.md mới; có frontmatter thì lấy description từ đó."),
+      note: z.string().trim().min(1).max(2000).describe("Vì sao cần sửa, cho người duyệt đọc."),
+    }),
+    handler: async ({ name, project, baseVersion, content, note }, { tx, principal }) => {
+      const who = await knowledgePrincipal(tx, principal);
+      // Đề xuất vào đúng phạm vi đang áp cho dự án (bản hẹp nhất), như skill mà agent đã đọc bằng skill_get.
+      const current = await getSkill(tx, who, { name, project });
+      const parsed = parseSkillFile(content);
+      const { level, teamId, projectId } = current.scope;
+      const scope =
+        level === "project" && projectId
+          ? { level, projectId }
+          : level === "team" && teamId
+            ? { level, teamId }
+            : { level: "org" as const };
+      const p = await createProposal(tx, who, {
+        kind: "skill",
+        scope,
+        name,
+        description: parsed.description || current.description,
+        content: parsed.content,
+        baseVersion,
+        reason: note,
+      });
+      return { proposalId: p.id, status: p.status, name: p.target, baseVersion: p.baseVersion };
+    },
+  });
+
+  registry.register({
     name: "skill_list",
     title: "Danh sách skill",
     description: "Liệt kê skill áp dụng cho dự án.",
@@ -257,15 +300,20 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
     }),
     readOnly: true,
     handler: async ({ project, limit, offset }, { tx, principal }) => {
-      const skills = await listSkills(tx, await knowledgePrincipal(tx, principal), { project });
+      const { skills, hidden } = await listSkillsWithHidden(tx, await knowledgePrincipal(tx, principal), { project });
       const { items, truncated, nextOffset } = capped(skills, limit, offset);
+      const brief = (s: SkillSummary) => ({
+        name: s.name,
+        description: s.description,
+        scope: s.scope.level,
+        version: s.version,
+        // Đội của skill phạm vi đội và đường dẫn trong kho Git: app desktop ghi nguồn "Đội · <tên>" và nơi lấy file.
+        ...(s.scope.teamId ? { teamId: s.scope.teamId } : {}),
+        ...(s.repoPath ? { repoPath: s.repoPath } : {}),
+      });
       return {
-        skills: items.map((s) => ({
-          name: s.name,
-          description: s.description,
-          scope: s.scope.level,
-          version: s.version,
-        })),
+        skills: items.map(brief),
+        ...(hidden.length ? { hidden: hidden.map(brief) } : {}),
         truncated,
         nextOffset,
       };
