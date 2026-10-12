@@ -337,6 +337,13 @@
       "when": 1791800462750,
       "tag": "0047_skills_repo_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791803245503,
+      "tag": "0048_mcp_server_rules",
+      "breakpoints": true
     }
   ]
 }
