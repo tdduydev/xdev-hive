@@ -12,6 +12,11 @@ description: "Task list for Desktop Application v2 implementation"
 - **[P]**: Can run in parallel (operates on disjoint file sets with no blocking dependencies)
 - **[Story]**: Identifies the associated user story from `spec.md` (e.g. US1, US2, ...)
 - Every task includes an explicit **PHẠM VI** (file scope) defining the exact paths permitted for edits, ensuring parallel agent tasks do not collide.
+- Every implementation task ships with its own tests in the same PR (constitution IV). The separate test tasks below
+  (T002, T003, T006, T009, T013, T016, T019, T022) are folded into the task they test, not dispatched on their own.
+- `src-tauri/src/lib.rs`, `src/App.tsx` and `src-tauri/capabilities/default.json` are touched by many tasks. Tasks
+  that edit them are not truly parallel: run them one after another or keep each edit to a single registration line and
+  merge `main` before opening the PR.
 
 ---
 
@@ -239,7 +244,7 @@ description: "Task list for Desktop Application v2 implementation"
 **Goal**: Persist personal user tokens in the OS keychain, isolate remote webviews, and configure updater workflows.
 
 - [ ] **T023 [US8] Native Keychain Storage for Personal User Tokens**
-  - **Goal**: Add `tauri-plugin-keyring` / `keyring-rs` to `src-tauri/Cargo.toml`. Implement `apps/desktop/src-tauri/src/keychain.rs` exposing `get_user_token()` and `set_user_token(token)`. Connect to desktop settings dialog so users can store and update personal token `hmt_...` without saving plain text to disk.
+  - **Goal**: Add the Rust `keyring` crate to `src-tauri/Cargo.toml`. Implement `apps/desktop/src-tauri/src/keychain.rs` exposing `get_user_token()` and `set_user_token(token)`. Connect to desktop settings dialog so users can store and update personal token `hive_pat_…` without saving plain text to disk.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/Cargo.toml`
     - `apps/desktop/src-tauri/src/keychain.rs` (new)
