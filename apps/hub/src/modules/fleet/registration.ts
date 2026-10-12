@@ -3,7 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { type Tx, withTenant } from "../platform/index.ts";
-import { requireTeamRole } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole } from "../tenancy/index.ts";
 import { FleetError, invalidRegistration } from "./errors.ts";
 import { machines, machineTokens, registrationTokens } from "./schema.ts";
 import { hashToken, MACHINE_PREFIX, newToken, REGISTRATION_PREFIX, withTokenLookup } from "./tokens.ts";
@@ -17,7 +17,7 @@ export async function createRegistration(
   teamId: string,
   kind: MachineKind = "worker",
 ): Promise<{ token: string; expiresAt: Date }> {
-  await requireTeamRole(tx, userId, teamId, "admin");
+  await allowWith(tx, userId, "machines.register", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
   const token = newToken(REGISTRATION_PREFIX);
   const expiresAt = new Date(Date.now() + REGISTRATION_TTL_MS);
   const [row] = await tx

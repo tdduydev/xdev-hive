@@ -9,6 +9,7 @@ import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -138,16 +139,21 @@ const text: Dict<{
 export function AuditPage() {
   const { org } = useOrg();
   const t = useT(text);
+  const can = usePermissions();
   return (
     <>
       <PageHeader crumb={t.crumb} title={t.title} />
-      <PageBody>{isOrgAdmin(org.role) ? <AuditViewer key={org.id} /> : <Alert>{t.forbidden}</Alert>}</PageBody>
+      <PageBody>
+        {isOrgAdmin(org.role) || can("audit.read") ? <AuditViewer key={org.id} /> : <Alert>{t.forbidden}</Alert>}
+      </PageBody>
     </>
   );
 }
 
 function AuditViewer() {
-  const { api } = useOrg();
+  const { api, org } = useOrg();
+  const can = usePermissions();
+  const canExport = isOrgAdmin(org.role) || can("audit.export");
   const t = useT(text);
   const lang = useLang();
   const fieldId = useId();
@@ -350,23 +356,25 @@ function AuditViewer() {
           />
         </label>
       </div>
-      <fieldset className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          disabled={download.isPending}
-          onClick={() => download.mutate({ ...filters, format: "csv" })}
-        >
-          {t.csv}
-        </Button>
-        <Button
-          variant="outline"
-          disabled={download.isPending}
-          onClick={() => download.mutate({ ...filters, format: "json" })}
-        >
-          {t.json}
-        </Button>
-        <p className="text-xs text-muted-foreground">{t.exportLimit}</p>
-      </fieldset>
+      {canExport && (
+        <fieldset className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={download.isPending}
+            onClick={() => download.mutate({ ...filters, format: "csv" })}
+          >
+            {t.csv}
+          </Button>
+          <Button
+            variant="outline"
+            disabled={download.isPending}
+            onClick={() => download.mutate({ ...filters, format: "json" })}
+          >
+            {t.json}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t.exportLimit}</p>
+        </fieldset>
+      )}
       {download.isError && <Alert variant="destructive">{apiErrorMessage(download.error)}</Alert>}
       {list.isPending ? (
         <p role="status" aria-busy="true">

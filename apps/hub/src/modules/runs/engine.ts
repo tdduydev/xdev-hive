@@ -1435,7 +1435,7 @@ export function createRunsEngine(deps: RunsDeps) {
   // ---- API cho người dùng ------------------------------------------------------------------------------------
 
   async function startRun(tx: Tx, userId: string, input: RunStartInput) {
-    const task = await taskForUser(tx, userId, input.taskId, "member");
+    const task = await taskForUser(tx, userId, input.taskId, "member", "tasks.assign");
     const project = await loadProject(tx, task.projectId);
     if (input.machineId) {
       const m = await findMachine(tx, input.machineId);
@@ -1633,7 +1633,7 @@ export function createRunsEngine(deps: RunsDeps) {
    * thành viên đội sở hữu dự án.
    */
   async function lockPlanDecision(tx: Tx, userId: string, taskId: string, planId: string) {
-    const task = await taskForUser(tx, userId, taskId, "member");
+    const task = await taskForUser(tx, userId, taskId, "member", "plans.decide");
     const found = await findPlan(tx, task.id, planId);
     const run = await lockRun(tx, found.runId);
     const plan = await lockAwaitingPlan(tx, task.id, planId);

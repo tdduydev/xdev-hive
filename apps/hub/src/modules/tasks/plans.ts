@@ -1,7 +1,7 @@
 import type { Plan, PlanContent, PlanHistory } from "@xdev-hive/contracts";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { teamRoleOf } from "../tenancy/index.ts";
+import { customPermissions, teamRoleOf } from "../tenancy/index.ts";
 import { plans } from "./schema.ts";
 import { taskForUser } from "./tasks.ts";
 
@@ -45,7 +45,9 @@ export async function listPlans(tx: Tx, userId: string, taskId: string): Promise
   const rows = await tx.select().from(plans).where(eq(plans.taskId, taskId)).orderBy(desc(plans.revision));
   // Cùng mức quyền mà approve/reject đòi (taskForUser "member"); người chỉ xem thấy màn chỉ đọc.
   const role = await teamRoleOf(tx, userId, task.teamId);
-  return { plans: rows.map(toPlan), canDecide: role === "admin" || role === "member" };
+  const canDecide =
+    role === "admin" || role === "member" || (await customPermissions(tx, userId, task.teamId)).has("plans.decide");
+  return { plans: rows.map(toPlan), canDecide };
 }
 
 /** Kế hoạch theo id trong task, không khoá; dùng để biết run nào cần khoá trước khi khoá kế hoạch. */

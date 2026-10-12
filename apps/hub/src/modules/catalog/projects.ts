@@ -27,7 +27,7 @@ import {
   type ProviderFactory,
   type ResolvedConnection,
 } from "../scm/index.ts";
-import { findSystem, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, findSystem, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { projectProvisionSteps, projects } from "./schema.ts";
 import { type PlannedStep, planSteps } from "./steps.ts";
 import { renderTemplate } from "./template.ts";
@@ -228,7 +228,13 @@ interface Prepared {
 async function prepare(tx: Tx, deps: CatalogDeps, actor: Actor, input: ProjectCreateRequest): Promise<Prepared> {
   const system = await findSystem(tx, input.systemId);
   if (!system) throw new NotFoundError("SYSTEM_NOT_FOUND", "Không tìm thấy hệ thống trong tổ chức.");
-  await requireTeamRole(tx, actor.userId, system.teamId, "admin");
+  await allowWith(
+    tx,
+    actor.userId,
+    "projects.create",
+    () => requireTeamRole(tx, actor.userId, system.teamId, "admin"),
+    system.teamId,
+  );
   const conn = await loadConnection(tx, needKey(deps), input.repo.connectionId);
   if (!conn) throw new NotFoundError("SCM_CONNECTION_NOT_FOUND", "Không tìm thấy kết nối Git trong tổ chức.");
   let repo: Prepared["repo"];
