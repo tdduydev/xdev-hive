@@ -5,8 +5,8 @@ xDev Hive is the hub where teams hand coding work to agent CLIs (Claude Code, Co
 
 ## Brand
 
-- The logo is the blue gradient **X** with **HIVE** and the descriptor **DEV HUB** (assets → Logos). Use `xdev-hive-light.svg` on `background`/`card` in light theme and `xdev-hive-dark.svg` on `brand-navy` or dark `card`. Use `xdev-hive-icon.svg` (X on a `brand-navy` rounded tile) for favicons, the desktop app icon and the tray.
-- Keep clear space of at least one quarter of the X height around the logo. Never recolour, outline, stretch or re-letter it, and never rebuild the X from a font.
+- The logo is the blue gradient **X** on a navy **hexagon** (a hive cell), with **HIVE** and the descriptor **DEV HUB** (assets → Logos). The hexagon is what makes the mark read as Hive at 16–32 px, so never drop it or swap it for a square. Use `xdev-hive-light.svg` on `background`/`card` in light theme and `xdev-hive-dark.svg` on `brand-navy` or dark `card`. Use `xdev-hive-icon.svg` for favicons and the desktop app icon, and the one-colour `tray-template.svg` for the tray.
+- Keep clear space of at least one quarter of the hexagon height around the logo. Never recolour, outline, stretch or re-letter it, never add glow, and never rebuild the X from a font.
 - The X gradient (`brand-sky` → `brand-blue` → `brand-deep`) belongs to the logo and brand art only. Never put it on buttons, headers or backgrounds of UI.
 - In written content the product is "xDev Hive"; the descriptor "DEV HUB" appears only inside the logo.
 

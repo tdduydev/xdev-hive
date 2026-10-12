@@ -13,7 +13,7 @@ export function Wordmark({ className }: { className?: string }) {
   );
 }
 
-/** Biểu tượng X trên nền navy, dùng khi AppNav thu gọn. */
+/** Biểu tượng X trên ô lục giác navy, dùng khi AppNav thu gọn. */
 export function LogoIcon({ className }: { className?: string }) {
   return <img src={icon} alt="xDev Hive" className={cn("size-8", className)} />;
 }
