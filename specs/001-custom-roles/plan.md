@@ -8,7 +8,7 @@
 
 Implement custom roles and hierarchical permissions tree for xDev Hive. This feature allows organization administrators
 to create custom roles (e.g. "Merge reviewer", "Auditor"), configure granular permission nodes grouped by areas, and
-assign these roles to members and teams. System roles (`owner`, `admin`, `member`, `teamAdmin`, `viewer`) remain immutable
+assign these roles to members and teams. System roles (organization roles `owner`, `admin`, `member`; team roles `admin`, `member`, `viewer`) remain immutable
 but cloneable.
 
 ## Technical Context

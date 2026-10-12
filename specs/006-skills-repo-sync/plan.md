@@ -8,7 +8,7 @@
 
 Implement bidirectional skills synchronization between xDev Hive and a designated Git repository (e.g. `tdduydev/xdev-skills`)
 following ADR 0014. Skills are laid out by directory scope (`org/`, `teams/<slug>/`, `projects/<key>/`) containing `SKILL.md`.
-The hub uses Git webhooks and manual triggers to synchronize changes into a PostgreSQL read cache for sub-millisecond agent
+The hub uses Git webhooks and manual triggers to synchronize changes into a PostgreSQL read cache for low-latency agent
 MCP access, and commits direct hub edits to the default branch.
 
 ## Technical Context
@@ -58,7 +58,7 @@ packages/contracts/src/
 apps/hub/src/modules/knowledge/
 ├── skills-sync-schema.ts              # Table: skill_repo_configs, alterations to skills table
 ├── skills-sync-service.ts             # Git tree puller, frontmatter parser, diff reconciler, commit pusher
-├── skills-webhook-handler.ts          # Handler for /hooks/git/skills
+├── skills-webhook-handler.ts          # Handler for /hooks/skills/{repoId}
 ├── skills-sync-router.ts              # oRPC endpoints for repo configuration, sync trigger, bulk push
 └── skills-sync.db.test.ts             # DB and Git provider integration tests
 
@@ -117,7 +117,7 @@ Exported from `packages/contracts/src/skills-sync.ts`:
 - `POST /skills/sync`: Trigger manual immediate reconciliation job.
 - `GET /skills/sync-status`: Check current sync status and count of unsynced skills.
 - `POST /skills/push-bulk`: Push unsynced hub-only skills into the Git repository in a single commit.
-- `POST /hooks/git/skills`: Webhook receiver for push events on skill repository.
+- `POST /hooks/skills/{repoId}`: Webhook receiver for push events on skill repository.
 
 ---
 

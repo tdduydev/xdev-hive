@@ -32,7 +32,7 @@ clicking "Sync now", and verifying that both skills appear in the hub catalog wi
 ### User Story 2 - Sub-second webhook-driven update on Git push (Priority: P1)
 
 When a developer pushes changes to the skill repository default branch (`main`), the hub receives an incoming webhook
-at `/hooks/git/skills` and reconciles updated skills within seconds.
+at `/hooks/skills/{repoId}` and reconciles updated skills within seconds.
 
 **Why this priority**: Developers pushing new skills directly via Git should see their changes immediately available to agents
 without waiting for manual sync or polling cycles.
@@ -42,7 +42,7 @@ that the hub updates the cached version and commit SHA immediately.
 
 **Acceptance Scenarios**:
 
-1. **Given** an incoming webhook on `/hooks/git/skills` with a valid signature, **When** processed by the hub, **Then** modified and added skills are updated in PostgreSQL within 5 seconds.
+1. **Given** an incoming webhook on `/hooks/skills/{repoId}` with a valid signature, **When** processed by the hub, **Then** modified and added skills are updated in PostgreSQL within 5 seconds.
 2. **Given** a deleted skill folder in the Git commit, **When** reconciled, **Then** the cached skill in PostgreSQL is archived or deleted.
 
 ---
@@ -116,7 +116,7 @@ payment team, and verifying that the agent retrieves the team's specialized skil
 
 - **FR-001 (SKILL-01)**: System MUST synchronize skills with a designated Git repository (e.g., `tdduydev/xdev-skills`), mapping folder structure to scopes: `org/<skill>/`, `teams/<team>/<skill>/`, `projects/<key>/<skill>/`.
 - **FR-002 (SKILL-02)**: System MUST parse each skill directory containing `SKILL.md` with YAML frontmatter (`name`, `description`) and Markdown body.
-- **FR-003 (SKILL-03, IF-06)**: System MUST receive Git webhooks at `/hooks/git/skills` on push events, synchronizing updated skills within seconds, and provide a manual "Sync now" endpoint.
+- **FR-003 (SKILL-03, IF-06)**: System MUST receive Git webhooks at `/hooks/skills/{repoId}` on push events, synchronizing updated skills within seconds, and provide a manual "Sync now" endpoint.
 - **FR-004 (SKILL-04)**: System MUST commit direct hub edits to the Git default branch with user attribution, and convert skill proposals into Git pull requests that are merged upon hub approval.
 - **FR-005 (SKILL-05)**: System MUST enforce scope resolution where project skills shadow team skills, and team skills shadow organization skills with identical keys.
 - **FR-006**: System MUST track sync status for every skill: `synced` (Đã đồng bộ), `hub_only` (Chưa đẩy lên repo), `diverged` (Khác repo).
