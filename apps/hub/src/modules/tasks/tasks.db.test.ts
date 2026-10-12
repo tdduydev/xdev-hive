@@ -118,6 +118,27 @@ describe("tasks đọc, sửa, huỷ", () => {
     expect(done.map((x) => x.id)).toContain(t.id);
   });
 
+  it("việc của tôi: task mình tạo hoặc có run mình là chủ, không lấy task của người khác", async () => {
+    const mineCreated = await as("tmember", (tx) =>
+      createTask(tx, org.user("tmember"), { projectId, title: "Của tôi", body: "" }),
+    );
+    const mineByRun = await as("tadmin", (tx) =>
+      createTask(tx, org.user("tadmin"), { projectId, title: "Giao tôi", body: "" }),
+    );
+    const others = await as("tadmin", (tx) =>
+      createTask(tx, org.user("tadmin"), { projectId, title: "Người khác", body: "" }),
+    );
+    await admin.query(
+      `insert into hive.runs (org_id, team_id, task_id, project_id, kind, state, branch, policy_snapshot, created_by, owner_user_id)
+       select org_id, team_id, id, project_id, 'code', 'succeeded', 'ai/x', '[]', $2, $2 from hive.tasks where id = $1`,
+      [mineByRun.id, org.user("tmember")],
+    );
+    const list = await as("tmember", (tx) => listTasks(tx, org.user("tmember"), undefined, undefined, true));
+    const ids = list.map((x) => x.id);
+    expect(ids).toEqual(expect.arrayContaining([mineCreated.id, mineByRun.id]));
+    expect(ids).not.toContain(others.id);
+  });
+
   it("huỷ task gọi huỷ run và không sửa được nữa", async () => {
     const t = await as("tmember", (tx) => createTask(tx, org.user("tmember"), { projectId, title: "Huỷ", body: "" }));
     let called = "";

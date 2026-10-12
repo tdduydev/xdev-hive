@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, orgRoute } from "./common.ts";
+import { id, orgRoute, queryFlag } from "./common.ts";
 import { outcomeCheck } from "./projects.ts";
 import { cli } from "./worker-protocol.ts";
 
@@ -176,6 +176,8 @@ export const runSearchInput = z.object({
   projectId: id.optional(),
   cli: cli.optional(),
   machineId: id.optional(),
+  /** Run mình giao (chủ run, ADR 0017), cho mục Việc của tôi của app desktop. */
+  mine: queryFlag.optional(),
   /** `nextCursor` của trang trước; bỏ trống là trang đầu. */
   cursor: id.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

@@ -181,8 +181,19 @@ export async function findTaskByIssue(
 }
 
 /** Task của một dự án theo số thứ tự; không có `projectId` thì lấy task của mọi đội mình có vai trò, mới nhất trước. */
-export async function listTasks(tx: Tx, userId: string, projectId?: string, status?: TaskStatus): Promise<Task[]> {
-  const byStatus = status ? eq(tasks.status, status) : undefined;
+export async function listTasks(
+  tx: Tx,
+  userId: string,
+  projectId?: string,
+  status?: TaskStatus,
+  mine?: boolean,
+): Promise<Task[]> {
+  // Việc của tôi: task mình tạo, hoặc có run mình giao. Hỏi bảng runs bằng SQL vì module tasks không import runs
+  // (runs đã import tasks).
+  const byMine = mine
+    ? sql`(${tasks.createdBy} = ${userId} or exists (select 1 from hive.runs r where r.task_id = ${tasks.id} and r.owner_user_id = ${userId}))`
+    : undefined;
+  const byStatus = and(status ? eq(tasks.status, status) : undefined, byMine);
   if (projectId) {
     const project = await loadProject(tx, projectId);
     if (!project || !(await teamRoleOf(tx, userId, project.teamId))) throw projectNotFound();
