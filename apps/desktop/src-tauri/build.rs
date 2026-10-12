@@ -5,6 +5,7 @@ fn main() {
         "parse_registration",
         "register_worker",
         "browser_login",
+        "hub_rpc",
         "scan_environment",
         "run_install",
         "claude_context",
