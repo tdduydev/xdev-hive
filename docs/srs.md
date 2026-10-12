@@ -202,11 +202,10 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
-| ROLE-01 | Organization administrators shall define custom roles with unique keys, names, descriptions, and hierarchical permission node selections. | Planned | — |
-| ROLE-02 | System roles (organization roles owner, admin, member; team roles admin, member, viewer) shall be immutable but cloneable into custom roles. | Planned | — |
-| ROLE-03 | The hub shall enforce permissions structured as a tree across access, work, knowledge, projects, agents, and monitoring areas, where checking a parent node grants all descendant leaf permissions. | Planned | — |
-| ROLE-04 | Organization administrators shall assign custom roles to organization members and teams, and the hub shall evaluate effective permissions with tenant isolation. | Planned | — |
-
+| ROLE-01 | Organization administrators shall define custom roles with unique keys, names, descriptions, and hierarchical permission node selections. | Implemented | `hub:modules/tenancy/roles.db.test.ts`, `web:roles.spec.ts` |
+| ROLE-02 | System roles (organization roles owner, admin, member; team roles admin, member, viewer) shall be immutable but cloneable into custom roles. | Implemented | `hub:modules/tenancy/roles.db.test.ts`, `web:roles.spec.ts` |
+| ROLE-03 | The hub shall enforce permissions structured as a tree across access, work, knowledge, projects, agents, and monitoring areas, where checking a parent node grants all descendant leaf permissions. | Implemented | `hub:modules/tenancy/roles.db.test.ts` (custom roles extend audit, costs, members, teams, SSO, machines, sandbox, projects, plans, runs checks) |
+| ROLE-04 | Organization administrators shall assign custom roles to organization members and teams, and the hub shall evaluate effective permissions with tenant isolation. | Implemented | `hub:modules/tenancy/roles.db.test.ts`, `web:roles.spec.ts` |
 ### 3.13 Agent policies (POL)
 
 | ID | Requirement | Status | Verification |

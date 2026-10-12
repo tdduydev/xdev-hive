@@ -4,6 +4,7 @@ import { authUser } from "../identity/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
 import { requireOrgRole, requireTeamRole } from "./permissions.ts";
 import { iso, onUnique, type Procedures, slugTaken } from "./procedures.ts";
+import { allowWith } from "./roles.ts";
 import { orgMembers, teamMembers, teams } from "./schema.ts";
 
 const toTeam = (t: typeof teams.$inferSelect) => ({
@@ -70,7 +71,7 @@ export function teamsRouter({ inOrg }: Procedures) {
     }),
 
     create: inOrg.teams.create.handler(async ({ context: { tx, user, orgId }, input }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "teams.create", () => requireOrgRole(tx, user.id, "admin"));
       const [row] = await onUnique(
         () => tx.insert(teams).values({ orgId, slug: input.slug, name: input.name, color: input.color }).returning(),
         slugTaken("teams_org_slug", "đội", input.slug),
@@ -142,7 +143,7 @@ export function teamMembersRouter({ inOrg }: Procedures) {
 
     add: inOrg.teamMembers.add.handler(async ({ context: { tx, user, orgId }, input }) => {
       const team = await getTeam(tx, input.teamId);
-      await requireTeamRole(tx, user.id, team.id, "admin");
+      await allowWith(tx, user.id, "teams.manage", () => requireTeamRole(tx, user.id, team.id, "admin"), team.id);
       await requireActiveMember(tx, input.userId);
       await onUnique(
         () => tx.insert(teamMembers).values({ teamId: team.id, orgId, userId: input.userId, role: input.role }),
@@ -159,7 +160,7 @@ export function teamMembersRouter({ inOrg }: Procedures) {
 
     setRole: inOrg.teamMembers.setRole.handler(async ({ context: { tx, user }, input }) => {
       const team = await getTeam(tx, input.teamId);
-      await requireTeamRole(tx, user.id, team.id, "admin");
+      await allowWith(tx, user.id, "teams.manage", () => requireTeamRole(tx, user.id, team.id, "admin"), team.id);
       const before = await teamMemberView(tx, team.id, input.userId);
       await tx
         .update(teamMembers)
@@ -176,7 +177,7 @@ export function teamMembersRouter({ inOrg }: Procedures) {
 
     remove: inOrg.teamMembers.remove.handler(async ({ context: { tx, user }, input }) => {
       const team = await getTeam(tx, input.teamId);
-      await requireTeamRole(tx, user.id, team.id, "admin");
+      await allowWith(tx, user.id, "teams.manage", () => requireTeamRole(tx, user.id, team.id, "admin"), team.id);
       const removed = await tx
         .delete(teamMembers)
         .where(and(eq(teamMembers.teamId, team.id), eq(teamMembers.userId, input.userId)))

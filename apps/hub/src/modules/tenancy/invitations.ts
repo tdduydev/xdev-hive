@@ -6,6 +6,7 @@ import { recordAudit } from "../audit/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import { requireOrgRole } from "./permissions.ts";
 import { iso, type Procedures, type TenancyDeps } from "./procedures.ts";
+import { allowWith } from "./roles.ts";
 import { invitations, orgMembers, orgs, teamMembers, teams } from "./schema.ts";
 import { getTeam } from "./teams.ts";
 
@@ -160,7 +161,9 @@ export function invitationsRouter({ base, authed, inOrg }: Procedures, deps: Ten
     create: inOrg.invitations.create.handler(async ({ context: { tx, user, orgId }, input }) => {
       // Mời làm quản trị là cấp vai trò quản trị; đổi vai trò (orgMembers.setRole) chỉ chủ sở hữu được làm, nên mời
       // cũng vậy, không thì quản trị tự nhân bản quyền của mình qua lời mời.
-      await requireOrgRole(tx, user.id, input.orgRole === "admin" ? "owner" : "admin");
+      // Mời làm quản trị luôn cần chủ sở hữu; mời thành viên thì quản trị hoặc vai trò tự tạo có members.invite.
+      if (input.orgRole === "admin") await requireOrgRole(tx, user.id, "owner");
+      else await allowWith(tx, user.id, "members.invite", () => requireOrgRole(tx, user.id, "admin"));
       if (input.teamId) await getTeam(tx, input.teamId);
       const emails = [...new Set(input.emails)];
       // Mời lại cùng email thì thay lời mời cũ chưa dùng: link chỉ hiện một lần, nên mời lại là cách lấy link mới.
@@ -197,7 +200,7 @@ export function invitationsRouter({ base, authed, inOrg }: Procedures, deps: Ten
     }),
 
     list: inOrg.invitations.list.handler(async ({ context: { tx, user } }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "members.invite", () => requireOrgRole(tx, user.id, "admin"));
       const rows = await tx
         .select({ inv: invitations, teamName: teams.name })
         .from(invitations)
@@ -220,7 +223,7 @@ export function invitationsRouter({ base, authed, inOrg }: Procedures, deps: Ten
     }),
 
     revoke: inOrg.invitations.revoke.handler(async ({ context: { tx, user }, input }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "members.invite", () => requireOrgRole(tx, user.id, "admin"));
       const [inv] = await tx.select().from(invitations).where(eq(invitations.id, input.invitationId));
       if (!inv) throw new NotFoundError("INVITE_NOT_FOUND", "Không tìm thấy lời mời.");
       if (inv.acceptedAt) throw new ConflictError("INVITE_USED", "Lời mời đã được dùng, không thu hồi được.");

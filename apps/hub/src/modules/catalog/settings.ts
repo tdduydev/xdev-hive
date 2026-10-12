@@ -2,7 +2,7 @@ import { type ProjectSettings, type ProjectSettingsPatch, projectSettings } from
 import { eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { BadRequestError, NotFoundError, type Tx } from "../platform/index.ts";
-import { requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { findProject } from "./projects.ts";
 import { projects } from "./schema.ts";
 
@@ -74,7 +74,7 @@ export async function updateProjectSettings(
   if (!ref || !(await teamRoleOf(tx, userId, ref.teamId))) {
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
   }
-  await requireTeamRole(tx, userId, ref.teamId, "admin");
+  await allowWith(tx, userId, "projects.settings", () => requireTeamRole(tx, userId, ref.teamId, "admin"), ref.teamId);
   const [row] = await tx
     .select({ settings: projects.settings })
     .from(projects)
