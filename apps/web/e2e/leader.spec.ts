@@ -187,6 +187,8 @@ test("leader: Shift+Enter xuống dòng, Enter gửi và chờ câu trả lời 
     id: THREAD.id,
     content: "API trước\nUI sau",
   });
+  // Ô soạn được xoá khi gửi xong; gõ trước lúc đó thì chữ mới bị xoá theo và nút Gửi tắt luôn.
+  await expect(composer).toHaveValue("");
   await composer.fill("Tin tiếp theo");
   await expect(page.getByRole("button", { name: "Gửi", exact: true })).toBeDisabled();
   replied = true;

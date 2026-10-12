@@ -1,9 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
+import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
+import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import type pg from "pg";
+import { exportAudit, queryAudit, withAuditAccess } from "./modules/audit/index.ts";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
@@ -12,7 +15,7 @@ import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter }
 import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
 import { createMcpEndpoint, McpToolRegistry, mcpAdminRouter, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
-import type { HubConfig, Jobs } from "./modules/platform/index.ts";
+import type { HubConfig, Jobs, RequestContext, Tx } from "./modules/platform/index.ts";
 import {
   RunNotifier,
   type RunsEngine,
@@ -24,7 +27,12 @@ import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
-import { requireOrgRole, registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
+import {
+  orgMiddlewares,
+  requireOrgRole,
+  registerMcpTools as tenancyMcpTools,
+  tenancyRouter,
+} from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
@@ -78,7 +86,31 @@ export function createApp({
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs });
   leaderMcpTools(registry);
+  const auditMiddleware = orgMiddlewares({ auth, pool });
+  const auditBase = implement(contract.audit)
+    .$context<RequestContext>()
+    .use(auditMiddleware.authed)
+    .use(auditMiddleware.orgMember);
+  const audit = {
+    list: auditBase.list.handler(({ context, input }) =>
+      withAuditAccess(
+        context.pool,
+        { userId: context.user.id, orgId: context.orgId },
+        (tx: Tx) => requireOrgRole(tx, context.user.id, "admin"),
+        (tx) => queryAudit(tx, input),
+      ),
+    ),
+    export: auditBase.export.handler(({ context, input }) =>
+      withAuditAccess(
+        context.pool,
+        { userId: context.user.id, orgId: context.orgId },
+        (tx: Tx) => requireOrgRole(tx, context.user.id, "admin"),
+        (tx) => exportAudit(tx, input),
+      ),
+    ),
+  };
   const router = {
+    audit,
     system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
