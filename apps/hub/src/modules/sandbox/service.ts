@@ -13,7 +13,7 @@ import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { findProject, type ProjectRef } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { requireOrgRole, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, requireOrgRole, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { egressAllowlists, envImages, sandboxOrgSettings } from "./schema.ts";
 
 const defaults: SandboxOrgSettings = { locked: false, useSuggestedDefaults: false };
@@ -37,13 +37,16 @@ async function projectFor(tx: Tx, userId: string, projectId: string, write = fal
   if (!p || !(await teamRoleOf(tx, userId, p.teamId))) {
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
   }
-  await requireTeamRole(tx, userId, p.teamId, write ? "admin" : "viewer");
+  const key = write ? "sandbox.write" : "sandbox.read";
+  await allowWith(tx, userId, key, () => requireTeamRole(tx, userId, p.teamId, write ? "admin" : "viewer"), p.teamId);
   return p;
 }
 
 async function scopeFor(tx: Tx, userId: string, projectId?: string, write = false) {
   if (projectId) return projectFor(tx, userId, projectId, write);
-  await requireOrgRole(tx, userId, write ? "admin" : "member");
+  await allowWith(tx, userId, write ? "sandbox.write" : "sandbox.read", () =>
+    requireOrgRole(tx, userId, write ? "admin" : "member"),
+  );
   return null;
 }
 
@@ -65,7 +68,7 @@ export async function getOrgSettings(tx: Tx, userId: string) {
 }
 
 export async function updateOrgSettings(tx: Tx, userId: string, settings: SandboxOrgSettings) {
-  await requireOrgRole(tx, userId, "admin");
+  await allowWith(tx, userId, "sandbox.write", () => requireOrgRole(tx, userId, "admin"));
   await lockPolicy(tx);
   const before = await readSettings(tx);
   await tx

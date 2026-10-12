@@ -7,6 +7,7 @@ import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
 import { AuditPage } from "@/pages/admin/audit-page.tsx";
 import { McpPage } from "@/pages/admin/mcp-page.tsx";
+import { RolesPage } from "@/pages/admin/roles-page.tsx";
 import { ComingSoonPage } from "@/pages/coming-soon-page.tsx";
 import { CostsPage } from "@/pages/costs-page.tsx";
 import { HomePage } from "@/pages/home-page.tsx";
@@ -253,7 +254,7 @@ const comingSoonRoutes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
   comingSoon("workflows", "/knowledge/workflows", "Workflows.dc.html"),
   comingSoon("reviews", "/knowledge/reviews", "DocReview.dc.html"),
-  comingSoon("roles", "/admin/roles", "Roles.dc.html"),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/roles", component: RolesPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/mcp", component: McpPage }),
   comingSoon("policies", "/admin/policies", "Policies.dc.html"),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/audit", component: AuditPage }),

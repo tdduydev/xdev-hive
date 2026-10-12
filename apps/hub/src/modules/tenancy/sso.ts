@@ -18,6 +18,7 @@ import { NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import { invitationService } from "./invitations.ts";
 import { requireOrgRole } from "./permissions.ts";
 import type { Procedures, TenancyDeps } from "./procedures.ts";
+import { allowWith } from "./roles.ts";
 import { orgMembers, orgs } from "./schema.ts";
 
 // providerId suy ra từ id tổ chức chứ không từ slug: slug đổi được, còn callback URL đã dán bên nhà cung cấp thì
@@ -140,12 +141,12 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
 
   return {
     get: inOrg.ssoProviders.get.handler(async ({ context: { tx, user, orgId } }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "signin.write", () => requireOrgRole(tx, user.id, "admin"));
       return settings(tx, auth(), orgId);
     }),
 
     upsert: inOrg.ssoProviders.upsert.handler(async ({ context: { tx, pool, user, orgId, headers }, input }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "signin.write", () => requireOrgRole(tx, user.id, "admin"));
       // Ghi phần của hub trước, gọi plugin sau cùng: plugin lỗi thì transaction rollback, không để lại chính sách
       // và audit cho một cấu hình chưa lưu được.
       await tx.update(orgs).set({ ssoJoin: input.join }).where(eq(orgs.id, orgId));
@@ -177,7 +178,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
 
     requestDomainVerification: inOrg.ssoProviders.requestDomainVerification.handler(
       async ({ context: { tx, user, orgId }, input }) => {
-        await requireOrgRole(tx, user.id, "admin");
+        await allowWith(tx, user.id, "signin.write", () => requireOrgRole(tx, user.id, "admin"));
         const v = await requestDomainVerification(auth(), ssoProviderIdOf(orgId), input.domain);
         await recordAudit(tx, {
           action: "sso.domain_verification_request",
@@ -191,7 +192,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
 
     checkDomainVerification: inOrg.ssoProviders.checkDomainVerification.handler(
       async ({ context: { tx, pool, user, orgId, headers } }) => {
-        await requireOrgRole(tx, user.id, "admin");
+        await allowWith(tx, user.id, "signin.write", () => requireOrgRole(tx, user.id, "admin"));
         const result = await checkDomainVerification(
           auth(),
           { userId: user.id, headers },
@@ -210,7 +211,7 @@ export function ssoProvidersRouter({ inOrg }: Procedures, deps: TenancyDeps) {
     ),
 
     remove: inOrg.ssoProviders.remove.handler(async ({ context: { tx, user, orgId, headers } }) => {
-      await requireOrgRole(tx, user.id, "admin");
+      await allowWith(tx, user.id, "signin.write", () => requireOrgRole(tx, user.id, "admin"));
       await recordAudit(tx, { action: "sso.remove", targetType: "org", targetId: orgId });
       const removed = await removeSsoProvider(auth(), { userId: user.id, headers }, ssoProviderIdOf(orgId));
       if (!removed) throw new NotFoundError("SSO_NOT_CONFIGURED", "Tổ chức chưa cấu hình SSO.");

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { AuditExportInput } from "@xdev-hive/contracts";
+import { type AuditExportInput, SYSTEM_ROLE_PERMISSIONS } from "@xdev-hive/contracts";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -177,4 +177,157 @@ export async function fakeAuditExport(
       body: Buffer.from(await response.arrayBuffer()),
     });
   });
+}
+
+/** Vai trò cho màn /admin/roles: vai trò hệ thống lấy đúng bộ quyền của contracts, vai trò tự tạo giữ trong state. */
+export function rolesFixture(opts: { mine?: string[] } = {}) {
+  const now = "2026-10-12T08:00:00.000Z";
+  const state = {
+    custom: [
+      {
+        id: "7e7e7e7e-0000-4000-8000-000000000001",
+        name: "Kiểm toán",
+        description: "Chỉ xem chi phí và nhật ký.",
+        scope: "org" as const,
+        permissions: ["members.read", "costs.read", "audit.read", "audit.export"],
+        assignments: [{ kind: "member" as const, userId: "u-lan", name: "Trần Lan", email: "lan@acme.vn" }],
+        updatedAt: now,
+      },
+    ] as Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      scope: "org" | "team";
+      permissions: string[];
+      assignments: Array<
+        { kind: "member"; userId: string; name: string; email: string } | { kind: "team"; teamId: string; name: string }
+      >;
+      updatedAt: string;
+    }>,
+    calls: [] as { path: string; input: unknown }[],
+  };
+  const members = [
+    {
+      userId: "u-lan",
+      name: "Trần Lan",
+      email: "lan@acme.vn",
+      image: null,
+      role: "member",
+      status: "active",
+      joinedAt: now,
+      teams: [],
+    },
+    {
+      userId: "u-ha",
+      name: "Phạm Hà",
+      email: "ha@acme.vn",
+      image: null,
+      role: "member",
+      status: "active",
+      joinedAt: now,
+      teams: [],
+    },
+  ];
+  const teamsList = [
+    {
+      id: "5a5a5a5a-0000-4000-8000-000000000001",
+      slug: "pay",
+      name: "Thanh toán",
+      color: null,
+      createdAt: now,
+      systemCount: 0,
+      memberCount: 2,
+    },
+  ];
+  const system = (Object.keys(SYSTEM_ROLE_PERMISSIONS) as (keyof typeof SYSTEM_ROLE_PERMISSIONS)[]).map((id) => ({
+    id,
+    scope: id.startsWith("team-") ? "team" : "org",
+    permissions: [...SYSTEM_ROLE_PERMISSIONS[id]],
+    memberCount: id === "owner" ? 1 : 2,
+  }));
+  const find = (id: string) => state.custom.find((r) => r.id === id);
+  const rpc: Record<string, RpcHandler> = {
+    "roles/list": () => ok({ system, custom: state.custom }),
+    "roles/mine": () => ok({ permissions: opts.mine ?? [...SYSTEM_ROLE_PERMISSIONS.admin] }),
+    "roles/create": (input) => {
+      const i = input as {
+        name: string;
+        description?: string;
+        scope: "org" | "team";
+        permissions: string[];
+        copyOf?: keyof typeof SYSTEM_ROLE_PERMISSIONS;
+      };
+      state.calls.push({ path: "roles/create", input });
+      const role = {
+        id: `7e7e7e7e-0000-4000-8000-00000000000${state.custom.length + 1}`,
+        name: i.name,
+        description: i.description || null,
+        scope: i.scope,
+        permissions: i.copyOf ? [...SYSTEM_ROLE_PERMISSIONS[i.copyOf]] : i.permissions,
+        assignments: [],
+        updatedAt: now,
+      };
+      state.custom.push(role);
+      return ok(role);
+    },
+    "roles/update": (input) => {
+      const i = input as { roleId: string; name?: string; description?: string; permissions?: string[] };
+      state.calls.push({ path: "roles/update", input });
+      const role = find(i.roleId);
+      if (!role) return fail("NOT_FOUND", 404, "Không tìm thấy vai trò.");
+      if (i.permissions) role.permissions = i.permissions;
+      if (i.name) role.name = i.name;
+      role.updatedAt = new Date().toISOString();
+      return ok(role);
+    },
+    "roles/remove": (input) => {
+      const i = input as { roleId: string };
+      const role = find(i.roleId);
+      if (role?.assignments.length)
+        return fail(
+          "CONFLICT",
+          409,
+          `Vai trò đang gán cho ${role.assignments.length} người hoặc đội; gỡ hết trước khi xoá.`,
+          {
+            code: "ROLE_IN_USE",
+          },
+        );
+      state.custom = state.custom.filter((r) => r.id !== i.roleId);
+      return ok({ ok: true });
+    },
+    "roles/assign": (input) => {
+      const i = input as
+        | { roleId: string; kind: "member"; userId: string }
+        | { roleId: string; kind: "team"; teamId: string };
+      state.calls.push({ path: "roles/assign", input });
+      const role = find(i.roleId);
+      if (!role) return fail("NOT_FOUND", 404, "Không tìm thấy vai trò.");
+      if (i.kind === "member") {
+        const m = members.find((x) => x.userId === i.userId);
+        if (m) role.assignments.push({ kind: "member", userId: m.userId, name: m.name, email: m.email });
+      } else {
+        const tm = teamsList.find((x) => x.id === i.teamId);
+        if (tm) role.assignments.push({ kind: "team", teamId: tm.id, name: tm.name });
+      }
+      role.updatedAt = new Date().toISOString();
+      return ok(role);
+    },
+    "roles/unassign": (input) => {
+      const i = input as
+        | { roleId: string; kind: "member"; userId: string }
+        | { roleId: string; kind: "team"; teamId: string };
+      const role = find(i.roleId);
+      if (!role) return fail("NOT_FOUND", 404, "Không tìm thấy vai trò.");
+      role.assignments = role.assignments.filter((a) =>
+        a.kind === "member"
+          ? !(i.kind === "member" && a.userId === i.userId)
+          : !(i.kind === "team" && a.teamId === i.teamId),
+      );
+      role.updatedAt = new Date().toISOString();
+      return ok(role);
+    },
+    "orgMembers/list": () => ok(members),
+    "teams/list": () => ok(teamsList),
+  };
+  return { state, rpc };
 }

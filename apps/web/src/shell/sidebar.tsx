@@ -19,6 +19,7 @@ import {
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { activeNavItem, NAV_HOME, type NavGroup, type NavItem, visibleGroups } from "@/lib/nav.ts";
 import { orgStore } from "@/lib/org-store.ts";
+import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin, ORG_ROLE_LABEL } from "@/lib/roles.ts";
 import { useOrgs } from "@/shell/org-context.ts";
 import { OrgSwitcher } from "@/shell/org-switcher.tsx";
@@ -135,7 +136,8 @@ export function AppSidebar() {
   const lang = useLang();
   const hasOrg = current !== null;
   const active = activeNavItem(pathname);
-  const groups = visibleGroups(!current || isOrgAdmin(current.org.role));
+  const can = usePermissions();
+  const groups = visibleGroups(!current || isOrgAdmin(current.org.role), can);
   const [userOpen, setUserOpen] = useState<Record<string, boolean>>(readOpen);
   const setOpen = (id: string, open: boolean) => {
     const next = { ...userOpen, [id]: open };

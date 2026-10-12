@@ -8,6 +8,7 @@ import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
+import { rolesContract } from "./roles.ts";
 import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
@@ -22,6 +23,7 @@ export * from "./mcp-admin.ts";
 export * from "./notify.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
+export * from "./roles.ts";
 export * from "./runs.ts";
 export * from "./sandbox.ts";
 export * from "./scm.ts";
@@ -101,6 +103,7 @@ export const contract = {
   sandbox: sandboxContract,
   leader: leaderContract,
   mcpAdmin: mcpAdminContract,
+  roles: rolesContract,
 };
 
 export type Contract = typeof contract;

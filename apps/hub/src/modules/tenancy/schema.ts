@@ -181,3 +181,74 @@ export const invitations = hive
     ],
   )
   .enableRLS();
+
+/** Vai trò tự tạo dùng được ở đâu: `org` gán cho người (cả tổ chức) hoặc đội, `team` chỉ gán cho đội. */
+export const roleScope = hive.enum("role_scope", ["org", "team"]);
+
+/**
+ * Vai trò tự tạo (specs/001-custom-roles). Quyền là khoá lá của PERMISSION_TREE trong @xdev-hive/contracts, lưu thành
+ * mảng: vai trò luôn đọc và ghi trọn bộ quyền, không cần bảng nối riêng.
+ */
+export const customRoles = hive
+  .table(
+    "custom_roles",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id")
+        .notNull()
+        .references(() => orgs.id, { onDelete: "cascade" }),
+      name: text("name").notNull(),
+      description: text("description"),
+      scope: roleScope("scope").notNull(),
+      permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`),
+      createdBy: text("created_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("custom_roles_org_name").on(t.orgId, t.name),
+      unique("custom_roles_id_org").on(t.id, t.orgId),
+      ...orgScoped("custom_roles"),
+    ],
+  )
+  .enableRLS();
+
+/** Vai trò gán thẳng cho một người: có hiệu lực trong cả tổ chức. */
+export const memberCustomRoles = hive
+  .table(
+    "member_custom_roles",
+    {
+      roleId: uuid("role_id").notNull(),
+      orgId: uuid("org_id").notNull(),
+      userId: text("user_id")
+        .notNull()
+        .references(() => authUser.id, { onDelete: "cascade" }),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      primaryKey({ columns: [t.roleId, t.userId] }),
+      // Không cascade khi xoá vai trò: hub từ chối xoá vai trò còn gán (FR-007), khoá ngoại là lớp chặn cuối.
+      foreignKey({ columns: [t.roleId, t.orgId], foreignColumns: [customRoles.id, customRoles.orgId] }),
+      ...orgScoped("member_custom_roles"),
+    ],
+  )
+  .enableRLS();
+
+/** Vai trò gán cho đội: thành viên đội có thêm quyền đó, chỉ trong đội đó. */
+export const teamCustomRoles = hive
+  .table(
+    "team_custom_roles",
+    {
+      roleId: uuid("role_id").notNull(),
+      orgId: uuid("org_id").notNull(),
+      teamId: uuid("team_id").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      primaryKey({ columns: [t.roleId, t.teamId] }),
+      foreignKey({ columns: [t.roleId, t.orgId], foreignColumns: [customRoles.id, customRoles.orgId] }),
+      foreignKey({ columns: [t.teamId, t.orgId], foreignColumns: [teams.id, teams.orgId] }).onDelete("cascade"),
+      ...orgScoped("team_custom_roles"),
+    ],
+  )
+  .enableRLS();

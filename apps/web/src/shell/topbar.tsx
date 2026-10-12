@@ -31,6 +31,7 @@ import { Kbd } from "@/components/ui/kbd.tsx";
 import { SidebarTrigger } from "@/components/ui/sidebar.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { activeNavItem, NAV_HOME, visibleGroups } from "@/lib/nav.ts";
+import { usePermissions } from "@/lib/permissions.ts";
 import { isOrgAdmin } from "@/lib/roles.ts";
 import { readTheme, setTheme, type ThemeChoice } from "@/lib/theme.ts";
 import { cn } from "@/lib/utils.ts";
@@ -128,7 +129,8 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
   const lang = useLang();
   const navigate = useNavigate();
   const { current } = useOrgs();
-  const groups = current ? visibleGroups(isOrgAdmin(current.org.role)) : [];
+  const can = usePermissions();
+  const groups = current ? visibleGroups(isOrgAdmin(current.org.role), can) : [];
   const go = (to: string) => {
     onOpenChange(false);
     void navigate({ to });

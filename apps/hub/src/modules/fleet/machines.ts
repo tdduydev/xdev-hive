@@ -4,7 +4,7 @@ import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { notify } from "../notify/index.ts";
 import { type Jobs, type Tx, withTenant } from "../platform/index.ts";
-import { requireTeamRole, teams } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole, teams } from "../tenancy/index.ts";
 import { FleetError } from "./errors.ts";
 import { machines, machineTokens } from "./schema.ts";
 import { hashToken, MACHINE_PREFIX, withTokenLookup } from "./tokens.ts";
@@ -24,7 +24,7 @@ export const toMachine = (m: typeof machines.$inferSelect): Machine => ({
 });
 
 export async function listMachines(tx: Tx, userId: string, teamId: string): Promise<Machine[]> {
-  await requireTeamRole(tx, userId, teamId, "admin");
+  await allowWith(tx, userId, "machines.read", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
   const rows = await tx.select().from(machines).where(eq(machines.teamId, teamId)).orderBy(asc(machines.name));
   return rows.map(toMachine);
 }
@@ -36,7 +36,13 @@ export async function listMachines(tx: Tx, userId: string, teamId: string): Prom
 export async function revokeMachine(tx: Tx, userId: string, machineId: string): Promise<Machine> {
   const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
   if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
-  await requireTeamRole(tx, userId, found.teamId, "admin");
+  await allowWith(
+    tx,
+    userId,
+    "machines.remove",
+    () => requireTeamRole(tx, userId, found.teamId, "admin"),
+    found.teamId,
+  );
   await tx.delete(machineTokens).where(eq(machineTokens.machineId, machineId));
   const [row] = await tx
     .update(machines)
