@@ -12,9 +12,10 @@ import { reviewReportInput } from "./review.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, lockRun, notifyRun, ON_MACHINE } from "./state.ts";
 
+/** Run không có task (leader, doccheck) cũng gọi được: tool tự kiểm loại run của mình. */
 function requireRun(principal: McpPrincipal) {
   const { kind, runId, taskId, attempt } = principal;
-  if (kind !== "run" || !runId || !taskId || attempt === undefined) {
+  if (kind !== "run" || !runId || attempt === undefined) {
     throw new ForbiddenError(
       "RUN_TOKEN_REQUIRED",
       "Chỉ agent đang chạy trong run (HIVE_RUN_TOKEN) mới gọi được tool này.",

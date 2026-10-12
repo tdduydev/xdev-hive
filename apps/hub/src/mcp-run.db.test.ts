@@ -222,6 +222,18 @@ describe("run token ở /mcp", () => {
     expect((await client.listTools()).tools.map((t) => t.name)).toContain("doc_check_submit");
     const listed = text(await client.callTool({ name: "doc_list", arguments: {} }));
     expect(listed.isError).toBe(false);
+    const submitted = text(
+      await client.callTool({
+        name: "doc_check_submit",
+        arguments: { score: 8, checklist: [{ label: "Đủ mục", passed: true }], summary: "Ổn" },
+      }),
+    );
+    expect(submitted.isError).toBe(false);
+    const { rows: events } = await admin.query(
+      "select count(*)::int as n from hive.run_events where run_id = $1 and type = 'doccheck_result'",
+      [runId],
+    );
+    expect(events[0].n).toBe(1);
     // Token ghép run không có task với task của run khác thì bị từ chối.
     expect((await rawList(tokenFor({ ...check, taskId: a.taskId }))).status).toBe(401);
   });
