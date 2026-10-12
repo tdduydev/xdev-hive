@@ -73,7 +73,7 @@ flowchart LR
   RH --- EP
   W -->|"run token"| MCP
   Jobs <--> SCM
-  W -->|"git push, PR"| SCM
+  W -->|"git push"| SCM
 ```
 
 1. A task is assigned to an agent CLI. The hub offers the run to an online machine that has that CLI and free capacity.
@@ -83,6 +83,53 @@ flowchart LR
    cross-review run, and moves the PR into the merge queue.
 
 Machines connect out to the hub, so dev machines behind NAT or a firewall work without inbound ports.
+
+## Deployment
+
+```mermaid
+flowchart LR
+  subgraph People["People"]
+    B["Browser or desktop app"]
+    M["MCP clients"]
+  end
+  subgraph Server["Hub server: Linux, Docker Compose"]
+    C["Caddy (optional, profile https)<br/>:80, :443"]
+    H["hub container (Node 24)<br/>web app, /rpc, /api, /mcp, /hooks<br/>/ws/worker, pg-boss jobs"]
+    P[("postgres container<br/>PostgreSQL 18 + pgvector")]
+  end
+  subgraph Dev["Developer machines: macOS, Linux, Windows"]
+    W["hive-worker run<br/>(user service)"]
+    A["Claude Code, Codex, Gemini CLI<br/>in temporary git worktrees"]
+  end
+  subgraph RH["Runner host: Linux (optional)"]
+    HW["hive-worker host"]
+    G["Docker + gVisor runsc<br/>one container per run, no network"]
+    E["egress proxy per run<br/>(allowlist, Unix socket)"]
+  end
+  SCM["GitHub / GitLab"]
+  REL["GitHub Releases<br/>signed hive-worker builds"]
+
+  B -->|HTTPS| C --> H
+  M -->|"HTTPS /mcp"| C
+  H --- P
+  W -->|"outbound WSS /ws/worker"| C
+  HW -->|"outbound WSS /ws/worker"| C
+  W --> A
+  HW --> G -->|"only route out"| E
+  A -->|"git push"| SCM
+  H <-->|"REST API, webhooks"| SCM
+  W -.->|"install, update"| REL
+```
+
+| Node | Runs | Listens on | Talks to |
+|---|---|---|---|
+| Hub server | `postgres`, `hub` and optionally `caddy` from `deploy/compose.yaml` | `HIVE_BIND:3000` (loopback by default), or 80/443 through Caddy | GitHub/GitLab, GitHub Releases API, optional embeddings API and notification channels |
+| Developer machine | `hive-worker run` as a systemd user service, LaunchAgent or Task Scheduler task, or inside the desktop app | nothing | the hub over HTTPS and WSS, the Git host |
+| Runner host | `hive-worker host`, Docker with the gVisor `runsc` runtime | nothing | the hub over WSS, the Git host; each run reaches only its allowlist through a per-run egress proxy |
+
+Machines only make outbound connections, so they work behind NAT or a firewall. The hub process can be split by
+role (`HIVE_ROLES=api` or `jobs`) when one container is not enough. Design details are in the
+[Architecture Design Document](docs/add.md).
 
 ## Quick start (local development)
 
@@ -147,8 +194,10 @@ plain HTTP on trusted networks, backups and restore, background workers and sand
 
 ## Documentation
 
-- [Self-hosting guide](docs/self-hosting.md)
-- [Architecture](docs/architecture.md): components, modules, data model, worker protocol, security and operations
+- [Architecture Design Document](docs/add.md): goals, context, building blocks, runtime and deployment views,
+  security, decisions, risks. Describes the code as built.
+- [Self-hosting guide](docs/self-hosting.md) and [releasing the worker](docs/releasing.md) (Vietnamese).
+- [Architecture notes](docs/architecture.md): the original design notes, with what is not built yet marked
   (Vietnamese).
 - [Decisions](docs/decisions.md): scope, stack and pinned versions (Vietnamese).
 - [Design system](docs/design-system/README.md) and [screen designs](docs/design-system/screens/README.md).

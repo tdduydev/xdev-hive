@@ -1,6 +1,6 @@
 # Kiến trúc xDev Hive
 
-Bản nháp ngày 11/10/2026. Các lựa chọn công nghệ và phạm vi đã chốt nằm ở [decisions.md](decisions.md). Nguồn tham khảo ghi ở cuối file. Điều tự suy ra, chưa có nguồn, ghi **[Suy luận]**.
+Bản thiết kế ngày 11/10/2026, đối chiếu lại với code ngày 12/10/2026 (commit `c550537`). Phần thiết kế chưa có trong code ghi **[Chưa làm]**. Hiện trạng đầy đủ, bằng tiếng Anh, ở [add.md](add.md). Các lựa chọn công nghệ và phạm vi đã chốt nằm ở [decisions.md](decisions.md). Nguồn tham khảo ghi ở cuối file. Điều tự suy ra, chưa có nguồn, ghi **[Suy luận]**.
 
 ## 1. Tổng quan
 
@@ -10,18 +10,14 @@ Hệ thống có bốn khối:
 
 | Khối | Là gì | Viết bằng |
 |---|---|---|
-| **Hub** | Một modular monolith. Một image, chạy bốn vai trò tiến trình: `api`, `gateway`, `jobs`, `collab` | TypeScript (Node) |
+| **Hub** | Một modular monolith. Một image, hai vai trò tiến trình: `api` (HTTP, MCP, SSE và cổng WSS cho worker) và `jobs` (pg-boss). **[Chưa làm]** tách `gateway` riêng, vai trò `collab` | TypeScript (Node) |
 | **Worker** | Daemon trên máy dev. Gọi ra hub, chạy CLI trong git worktree tạm | Go |
 | **Runner host** | Cùng binary Go ở chế độ `host`, trên server nội bộ. Chạy mỗi run trong một container gVisor dùng một lần | Go |
-| **Dữ liệu** | PostgreSQL (dữ liệu, hàng đợi, outbox, vector) + kho blob tương thích S3 cho log đã lưu trữ và artifact | — |
+| **Dữ liệu** | PostgreSQL (dữ liệu, hàng đợi pg-boss, NOTIFY, vector, log run). **[Chưa làm]** kho blob tương thích S3 cho log đã lưu trữ và artifact | — |
 
 Web là ứng dụng React do hub phục vụ. App desktop là Tauri, gói cửa sổ web và worker Go (sidecar).
 
-**Vì sao là modular monolith, không tách service:** GitHub Actions, GitLab Runner, Buildkite và Coder đều có một control plane tập trung, còn agent là tiến trình mỏng tự gọi ra. Đội nhỏ, tự host, cần ranh giới module rõ chứ chưa cần deploy riêng từng phần. Ranh giới được ép bằng kiểm tra phụ thuộc trong test, theo cách Shopify làm với Packwerk. [1][2][3][4][5]
-
-![Thành phần](diagrams/thanh-phan.svg)
-
-<details><summary>Mã Mermaid</summary>
+**Vì sao là modular monolith, không tách service:** GitHub Actions, GitLab Runner, Buildkite và Coder đều có một control plane tập trung, còn agent là tiến trình mỏng tự gọi ra. Đội nhỏ, tự host, cần ranh giới module rõ chứ chưa cần deploy riêng từng phần. Ranh giới được ép bằng kiểm tra phụ thuộc (`pnpm deps`, chạy trong `pnpm check` và CI), theo cách Shopify làm với Packwerk. [1][2][3][4][5]
 
 ```mermaid
 flowchart TB
@@ -32,33 +28,30 @@ flowchart TB
     CLIAG["CLI agent<br/>gọi MCP"]
     GITU["Issue / PR trên<br/>GitHub, GitLab"]
   end
-  EDGE["Edge: Caddy hoặc Cloudflare Tunnel<br/>/api · /mcp · /ws · /collab · /hooks"]
-  subgraph HUB["Hub (một image, bốn vai trò)"]
+  EDGE["Caddy (tuỳ chọn, profile https)<br/>/rpc · /api · /mcp · /ws/worker · /hooks/git"]
+  subgraph HUB["Hub (một image, hai vai trò)"]
     direction LR
-    API["api<br/>oRPC, SSE, MCP, webhook"]
-    GW["gateway<br/>WSS cho worker, runner host"]
-    JOBS["jobs<br/>pg-boss, outbox, saga"]
-    COL["collab<br/>Hocuspocus"]
+    API["api<br/>oRPC, SSE, MCP, webhook,<br/>WSS cho worker và runner host"]
+    JOBS["jobs<br/>pg-boss, saga, merge queue"]
   end
   subgraph DATA["Dữ liệu"]
-    direction LR
-    PG[("PostgreSQL 18<br/>RLS · pgvector · pg-boss · outbox")]
-    BLOB[("Kho blob S3<br/>log, artifact")]
+    PG[("PostgreSQL 18<br/>RLS · pgvector · pg-boss · log run")]
   end
   subgraph EXEC["Thực thi"]
     direction LR
     WK["Worker Go<br/>trên máy dev"]
     RH["Runner host Go<br/>Docker + gVisor"]
-    EGP["Egress proxy<br/>allowlist"]
+    EGP["Egress proxy riêng mỗi run<br/>allowlist"]
   end
   SCM["GitHub App · GitLab"]
   NOTI["Telegram · email"]
 
   C --> EDGE --> HUB
   HUB --> DATA
-  WK -->|"gọi ra, WSS"| GW
-  RH -->|"gọi ra, WSS"| GW
+  WK -->|"gọi ra, WSS"| API
+  RH -->|"gọi ra, WSS"| API
   RH --> EGP
+  API --> SCM
   JOBS --> SCM
   SCM -->|"webhook"| API
   JOBS --> NOTI
@@ -66,80 +59,71 @@ flowchart TB
   RH -->|"push nhánh"| SCM
 ```
 
-</details>
-
 ## 2. Module của hub
 
-Mỗi module là một thư mục trong `apps/hub/src/modules/<tên>/`, chỉ lộ ra ngoài qua `index.ts`. Module khác chỉ được import `index.ts` đó. `dependency-cruiser` chạy trong `pnpm test` và chặn import vượt ranh giới. [5]
+Mỗi module là một thư mục trong `apps/hub/src/modules/<tên>/`, chỉ lộ ra ngoài qua `index.ts`. Module khác chỉ được import `index.ts` đó. `dependency-cruiser` chạy trong `pnpm deps` (gồm trong `pnpm check` và CI) và chặn import vượt ranh giới. [5]
+
+Bảng thuộc schema `hive`, trừ bảng có tiền tố `auth.` (Better Auth).
 
 | Module | Việc | Sở hữu bảng chính |
 |---|---|---|
-| `identity` | Đăng nhập (Better Auth: SSO OIDC, GitHub/GitLab, email), phiên, token người dùng | `users`, `accounts`, `sessions` |
-| `tenancy` | Tổ chức, đội, hệ thống, vai trò, cấp quyền | `orgs`, `teams`, `team_members`, `systems`, `role_bindings` |
-| `catalog` | Dự án, template, cấu hình dự án (merge, chính sách kết quả, tính năng bật/tắt) | `projects`, `templates`, `project_settings` |
-| `scm` | GitHub App, GitLab, webhook vào, mở PR/MR, merge queue | `scm_installations`, `webhook_deliveries`, `merge_queue_entries` |
-| `tasks` | Task, phụ thuộc, plan mode, nhận việc từ issue | `tasks`, `task_deps`, `plans` |
-| `runs` | Máy trạng thái của run, chính sách kết quả, review chéo | `runs`, `run_events`, `run_logs`, `artifacts` |
-| `fleet` | Máy, đăng ký, lease, giao job, phiên bản worker | `machines`, `machine_tokens`, `run_leases` |
-| `sandbox` | Runner host, image môi trường, allowlist mạng | `sandbox_hosts`, `sandboxes`, `env_images`, `egress_allowlists` |
-| `knowledge` | Memory (pgvector), tài liệu (Yjs), skill, đề xuất sửa | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals` |
+| `identity` | Đăng nhập (Better Auth: SSO OIDC, GitHub/GitLab, email), phiên, JWT, OAuth cho MCP | `auth.user`, `auth.account`, `auth.session`, `auth.ssoProvider`, `auth.oauth*` |
+| `tenancy` | Tổ chức, thành viên, đội, hệ thống, lời mời, cấp quyền | `orgs`, `org_members`, `teams`, `team_members`, `systems`, `invitations` |
+| `catalog` | Dự án, file mẫu cho agent, saga tạo dự án, cấu hình dự án (jsonb `settings` trên `projects`), merge queue | `projects`, `project_provision_steps`, `merge_queue_entries` |
+| `scm` | GitHub App, GitLab, kết nối Git của tổ chức, webhook vào, mở PR/MR | `scm_connections`, `webhook_deliveries` |
+| `tasks` | Task, plan mode, nhận việc từ issue | `tasks`, `plans` |
+| `runs` | Máy trạng thái của run, lease, chính sách kết quả, review chéo, SSE | `runs`, `run_events`, `run_logs`, `run_leases` |
+| `fleet` | Máy, đăng ký, cổng WSS, phiên bản worker | `machines`, `machine_tokens`, `registration_tokens` |
+| `sandbox` | Image môi trường, allowlist mạng, cấu hình sandbox của tổ chức | `sandbox_org_settings`, `env_images`, `egress_allowlists` |
+| `knowledge` | Memory (tìm theo từ và pgvector), tài liệu có phiên bản, skill, đề xuất sửa, nhập từ hệ cũ. **[Chưa làm]** sửa tài liệu cộng tác (Yjs) | `memories`, `docs`, `doc_versions`, `skills`, `skill_versions`, `proposals`, `legacy_*` |
 | `leader` | Chat với leader agent, đề xuất hành động cần người duyệt | `chat_threads`, `chat_messages`, `approvals` |
 | `mcp` | Cổng MCP: xác thực token, giới hạn tool theo vai trò, ghi audit | — (dùng module khác) |
-| `notify` | Telegram, email, theo cấu hình nhóm quản trị | `notification_channels`, `notifications` |
-| `cost` | Ghi token, chi phí theo run, đội, dự án, người, CLI. Chỉ theo dõi | `cost_entries` |
+| `notify` | Telegram, email, hộp thư trong app | `notification_channels`, `notifications`, `inbox_items` |
+| `cost` | Tổng hợp token, chi phí theo run, đội, dự án, người, CLI. Chỉ theo dõi; cột chi phí nằm trên `runs` | — |
 | `audit` | Nhật ký append-only mọi thao tác ghi và mọi lời gọi MCP | `audit_log` |
-| `platform` | Lõi dùng chung: `db` + transaction có tenant, outbox, cấu hình, secrets | `outbox`, `secrets` |
+| `system` | Health, phiên bản, manifest cập nhật app desktop | — |
+| `platform` | Lõi dùng chung: `db` + transaction có tenant, cấu hình, mã hoá secret, migration, pg-boss | `migrations` |
 
 Giao tiếp giữa module:
 - **Đồng bộ:** gọi hàm public trong cùng transaction khi cần nhất quán (ví dụ tạo task kèm audit).
-- **Bất đồng bộ:** ghi sự kiện vào `outbox` trong cùng transaction. Bộ phát của vai trò `jobs` đọc outbox, đẩy thành job pg-boss hoặc NOTIFY. Consumer phải idempotent. [6]
+- **Bất đồng bộ:** đẩy job pg-boss ngay trong transaction nghiệp vụ (`enqueue(..., { tx })`), nên job có khi và chỉ khi thay đổi được commit; cập nhật run gọi `pg_notify('hive_runs', runId)` trong cùng transaction. Consumer phải idempotent. **[Chưa làm]** bảng `outbox`. [6]
 
 ## 3. Mô hình dữ liệu
 
-![Dữ liệu cốt lõi](diagrams/du-lieu.svg)
-
-<details><summary>Mã Mermaid</summary>
-
 ```mermaid
 erDiagram
+  ORGS ||--o{ ORG_MEMBERS : "gồm"
   ORGS ||--o{ TEAMS : "có"
   TEAMS ||--o{ TEAM_MEMBERS : "gồm"
-  USERS ||--o{ TEAM_MEMBERS : "là"
+  AUTH_USER ||--o{ ORG_MEMBERS : "là"
+  AUTH_USER ||--o{ TEAM_MEMBERS : "là"
   TEAMS ||--o{ SYSTEMS : "sở hữu"
   SYSTEMS ||--o{ PROJECTS : "gồm"
   PROJECTS ||--o{ TASKS : "có"
-  TASKS ||--o{ TASK_DEPS : "phụ thuộc"
   TASKS ||--o{ RUNS : "chạy"
   RUNS ||--o{ RUN_EVENTS : "ghi"
   RUNS ||--o{ RUN_LOGS : "log"
   RUNS ||--o| RUN_LEASES : "giữ"
   MACHINES ||--o{ RUN_LEASES : "nhận"
-  SANDBOXES ||--o| RUNS : "chạy trong"
   TEAMS ||--o{ MACHINES : "sở hữu"
   PROJECTS ||--o{ MERGE_QUEUE_ENTRIES : "xếp hàng"
   PROJECTS ||--o{ MEMORIES : "nhớ"
   PROJECTS ||--o{ DOCS : "tài liệu"
   TEAMS ||--o{ SKILLS : "skill"
-  RUNS ||--o{ COST_ENTRIES : "tốn"
+  PROJECTS ||--o{ EGRESS_ALLOWLISTS : "mạng"
 ```
-
-</details>
 
 Quy tắc chung:
 - Mọi bảng thuộc tenant có `org_id`, `team_id` (có index) và bật **RLS + FORCE RLS**. Mỗi policy có cả `USING` và `WITH CHECK`, để UPDATE không chuyển được dòng sang đội khác. [7][8]
-- Hub gắn tenant vào **transaction**, không vào kết nối: `select set_config('app.org_id', $1, true)`, `set_config('app.team_ids', $2, true)`. Gắn ở mức session sẽ rò sang request khác qua pool. [7]
-- Ba role Postgres: `hive_app` (không owner, không BYPASSRLS), `hive_jobs` (cho pg-boss), `hive_migrator` (chỉ dùng khi migrate). [8]
+- Hub gắn tenant vào **transaction**, không vào kết nối: `withTenant()` gọi `set_config('app.user_id', $1, true)` và `set_config('app.org_id', $2, true)`. Gắn ở mức session sẽ rò sang request khác qua pool. [7]
+- Bốn role Postgres, không role nào là superuser hay có BYPASSRLS: `hive_owner` (sở hữu schema `hive`, chạy migration), `hive_app` (hub dùng, chịu RLS), `hive_auth` (schema `auth` của Better Auth), `hive_jobs` (schema `pgboss`). [8]
 - Test bắt buộc: truy vấn không có tenant context trả về 0 dòng ở mọi bảng tenant.
-- Dự án thuộc một hệ thống, hệ thống thuộc một đội. Có thể cấp quyền thêm cho một dự án qua `role_bindings` (người hoặc đội khác).
-- `run_events`, `audit_log`, `cost_entries` là append-only: role `hive_app` chỉ có INSERT và SELECT.
+- Dự án thuộc một hệ thống, hệ thống thuộc một đội. **[Chưa làm]** cấp quyền thêm cho một dự án qua `role_bindings` (người hoặc đội khác).
+- `audit_log` là append-only: role `hive_app` không có UPDATE, DELETE, TRUNCATE.
 
 ## 4. Run
 
 ### 4.1 Máy trạng thái
-
-![Trạng thái run](diagrams/trang-thai-run.svg)
-
-<details><summary>Mã Mermaid</summary>
 
 ```mermaid
 stateDiagram-v2
@@ -150,8 +134,8 @@ stateDiagram-v2
   awaiting_plan --> cancelled: người từ chối
   queued --> leased: worker hoặc runner nhận
   leased --> preparing: tạo worktree / container, setup
-  preparing --> running: xoá secret của pha setup
-  running --> awaiting_input: agent cần duyệt
+  preparing --> running: chạy CLI
+  running --> awaiting_input: agent cần duyệt (chưa làm)
   awaiting_input --> running: có trả lời
   running --> verifying: agent kết thúc
   verifying --> succeeded
@@ -172,42 +156,41 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-</details>
-
-- Mọi chuyển trạng thái ghi một dòng `run_events` và một sự kiện outbox trong cùng transaction.
+- Mọi chuyển trạng thái ghi một dòng `run_events` và gọi `pg_notify('hive_runs', runId)` trong cùng transaction. **[Chưa làm]** chuyển sang `awaiting_input`: hub chưa xử lý `approval_needed`.
 - Mỗi lần thử có `attempt` riêng. Hub từ chối mọi gói của `attempt` cũ (fencing), nên worker treo rồi sống lại không ghi đè được run đã giao lại. [9]
-- **Chính sách kết quả** chạy ở hub, ở bước `verifying`, theo cấu hình dự án ([decisions.md](decisions.md)). Các bước `command` chạy trên worker hoặc container theo lệnh của hub, kết quả gửi về như `run_event`. Hub lưu `policy_snapshot` vào run để kết quả không đổi khi cấu hình đổi sau.
-- **Review chéo:** bước `review` tạo một run con loại `review` cho agent khác (ví dụ Codex viết, Claude review). Run cha chờ kết quả.
+- **Chính sách kết quả** chạy ở hub, ở bước `verifying`, theo cấu hình dự án ([decisions.md](decisions.md)). **[Chưa làm]** kiểm tra `command` và `ci`: hub nhận cấu hình nhưng chưa chạy, kết quả thành `needs_review`. Hub lưu `policy_snapshot` vào run để kết quả không đổi khi cấu hình đổi sau.
+- **Review chéo:** bước `review` tạo một run con loại `review` trên cùng nhánh, với CLI ghi trong kiểm tra review (ví dụ Codex viết, Claude review; trùng CLI run cha vẫn được, để dự án chỉ có một loại CLI vẫn dùng được). Run cha chờ kết quả.
 
 ### 4.2 Giao job và lease
 
-- Run `queued` được ghép với máy theo: đội sở hữu, CLI có sẵn, nhãn máy, chế độ của dự án (máy dev, container, hoặc ưu tiên máy dev rảnh rồi mới tới container).
-- Hub giữ job bằng `run_leases` với `FOR UPDATE SKIP LOCKED`. Lease có hạn và được gia hạn bằng heartbeat. Máy mất kết nối thì lease hết hạn, run sang `lost`. [9][10]
-- Ưu tiên đẩy job qua WSS. Khi WSS không qua được proxy công ty thì worker dùng long-poll `POST /v1/worker/claim` (khoảng 50 giây), giống GitHub runner. [11][12]
+- Run `queued` được ghép với máy theo: đội sở hữu, CLI có sẵn, chỗ trống, loại máy (dự án bật sandbox chỉ giao cho runner host). **[Chưa làm]** nhãn máy; ưu tiên máy dev rảnh rồi mới tới container.
+- Lease lưu trong `run_leases`, có hạn (mặc định 90 giây) và được gia hạn bằng heartbeat. Máy mất kết nối thì lease hết hạn, run sang `lost`. Chỉ một tiến trình `api` giao job, vì đề nghị đi qua socket mà tiến trình đó giữ; **[Chưa làm]** chuyển tiếp qua NOTIFY để chạy nhiều tiến trình `api`. [9][10]
+- Job đẩy qua WSS. **[Chưa làm]** long-poll `POST /v1/worker/claim` (khoảng 50 giây) khi WSS không qua được proxy công ty, giống GitHub runner. [11][12]
 
 ## 5. Giao thức worker
 
-WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), `id`, và `seq` (với gói của một run). Định nghĩa bằng zod ở hub, sinh JSON Schema và OpenAPI, rồi sinh kiểu Go bằng `oapi-codegen`.
+WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), `id`, và `seq` (với gói của một run). Định nghĩa bằng zod trong `packages/contracts/src/worker-protocol.ts`. Kiểu Go viết tay trong `worker/internal/channel/protocol.go`, giữ khớp bằng file mẫu dùng chung `packages/contracts/fixtures/worker-protocol.json` mà test hai bên cùng đọc. `oapi-codegen` chỉ sinh client REST cho đăng ký và health.
 
 | Hướng | Gói | Ý nghĩa |
 |---|---|---|
 | W → H | `hello{machineId, version, protoRange, os, clis[], capacity, resumeRuns[]}` | Mở phiên, báo các run đang dở |
-| H → W | `welcome{sessionId, heartbeatSec, accessTokenExp}` · `upgrade_required{url, sha256, sig}` | Chấp nhận, hoặc buộc cập nhật |
+| H → W | `welcome{sessionId, heartbeatSec, accessTokenExp}` · `upgrade_required{url, sha256, sig}` | Chấp nhận, hoặc buộc cập nhật. `accessTokenExp` chưa dùng. **[Chưa gửi]** `upgrade_required`: lệch giao thức thì hub đóng kết nối mã 4426 |
 | W → H | `heartbeat{load, runs[{runId, attempt, leaseId}]}` | Gia hạn lease |
 | H → W | `heartbeat_ack{renewed[], cancel[]}` | Lệnh huỷ đi kèm heartbeat, nên huỷ vẫn tới khi kênh khác lỗi [13] |
 | H → W | `job_offer{runId, attempt, spec, ttl}` | Đề nghị job |
 | W → H | `job_accept` · `job_reject{reason}` | Nhận hoặc từ chối |
 | H → W | `lease{leaseId, expiresAt, runToken}` | Cấp lease và token của run |
-| W → H | `run_event{runId, attempt, seq, type, data}` | phase, plan, tool_call, cost, approval_needed, check_result |
+| W → H | `run_event{runId, attempt, seq, type, data}` | phase, plan, tool_call, cost, approval_needed (hub chưa xử lý), check_result, agent_report, steer_result |
 | W → H | `log_chunk{runId, attempt, offset, bytes}` | Log terminal |
 | H → W | `ack{runId, uptoSeq}` | Xác nhận, worker bỏ phần đã ack khỏi bộ đệm |
-| H → W | `steer{runId, input}` · `approval_result{requestId, decision}` | Điều khiển giữa chừng |
+| H → W | `steer{runId, steerId, input}` · `approval_result{requestId, decision}` | Điều khiển giữa chừng. **[Chưa gửi]** `approval_result` |
 | H → W | `cancel{runId, graceSec}` | Worker gửi SIGINT, hết thời gian chờ thì kill |
 | W → H | `run_result{runId, attempt, exit, headSha, report}` | Kết thúc phần agent; hub chạy chính sách kết quả |
-| H → W | `drain` | Không nhận job mới (trước khi cập nhật hoặc tắt máy) |
+| H → W | `drain` | Không nhận job mới rồi thoát khi hết việc. **[Chưa gửi]** |
+| H → W | `update{version?}` | Admin bấm cập nhật: worker ngừng nhận job, chờ run đang chạy xong, tự cập nhật rồi chạy lại |
 
-- **At-least-once:** worker giữ gói chưa ack trên đĩa, gửi lại khi nối lại. Hub loại trùng theo `(run_id, attempt, seq)`.
-- **Phiên bản:** hai bên thoả thuận trong `protoRange`. Worker quá cũ nhận `upgrade_required` và tự cập nhật bằng `go-selfupdate` (kiểm `sha256` và chữ ký).
+- **At-least-once:** worker giữ gói chưa ack trên đĩa, gửi lại khi nối lại. Hub loại trùng theo `(run_id, attempt, seq)` với sự kiện và `(run_id, attempt, offset)` với log.
+- **Phiên bản:** hai bên thoả thuận trong `protoRange`; lệch thì hub đóng kết nối mã 4426. Worker tự cập nhật bằng gói `worker/internal/update` (kiểm chữ ký ECDSA của `checksums.txt` và `sha256`) khi admin bấm cập nhật hoặc khi chạy `hive-worker update`. Không dùng `go-selfupdate` vì riêng thư viện đó thêm khoảng 8 MB và hơn 15 module ([add.md](add.md) mục 9).
 - **Worktree:** worker tạo worktree trong thư mục riêng của nó, và luôn gỡ ở bước `finally`. Khi khởi động, worker quét và gỡ worktree không thuộc run đang sống. Hệ cũ để lọt hơn 50 worktree vì thiếu bước này.
 
 ## 6. Bảo mật và token
@@ -216,31 +199,27 @@ WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), 
 |---|---|---|---|
 | Phiên người dùng | Trình duyệt, app desktop | Theo phiên | Better Auth |
 | Registration token | Lần cài worker hoặc runner host đầu tiên | Một lần, khoảng 1 giờ | Admin đội tạo trên web |
-| Khoá máy | Worker, runner host | Đến khi thu hồi | Máy tạo cặp khoá, gửi public key lúc đăng ký |
-| Access token máy | Worker, runner host | Ngắn (khoảng 15 phút) | Máy ký challenge bằng khoá máy để đổi lấy |
-| Run token | Một run | Đến khi run kết thúc | Hub cấp cùng `lease`. JWT có `run_id`, `task_id`, `aud` |
+| Machine token | Worker, runner host | Đến khi thu hồi | `hwm_…`, hub trả một lần lúc đăng ký và chỉ lưu băm |
+| Khoá máy, access token máy | Worker, runner host | Ngắn (khoảng 15 phút) | **[Chưa làm]** Máy tạo cặp khoá lúc đăng ký, ký challenge bằng khoá máy để đổi lấy access token |
+| Run token | Một run | Hết hạn theo thời gian chờ của run | Hub cấp cùng `lease`. JWT HS256 có `run_id`, `task_id`, `org_id`, `attempt`, `aud`; khoá suy ra từ `HIVE_AUTH_SECRET` bằng HKDF |
 | Token MCP | CLI agent trong run | Như run token | Agent dùng run token với `aud=/mcp`; người dùng ngoài run dùng OAuth (Better Auth + CIMD) |
-| Token git | Push nhánh trong run | Ngắn, chỉ repo của dự án | Hub đổi từ GitHub App installation token hoặc GitLab project token, chỉ quyền repo đó |
+| Token git | Push nhánh trong run | Ngắn, chỉ repo của dự án | **[Chưa làm]** Hub đổi từ GitHub App installation token hoặc GitLab project token. Hiện run clone và push bằng thông tin đăng nhập git sẵn có trên máy |
 
 - Không dùng mTLS cho máy vì proxy công ty hay chặn hoặc làm hỏng. [Suy luận]
 - Cổng MCP kiểm `aud`, không chuyển tiếp token xuống dịch vụ sau, giới hạn tool theo vai trò và theo loại run, ghi audit mọi lời gọi. [14][15]
-- Secrets mã hoá kiểu envelope: mỗi bản ghi có khoá dữ liệu riêng, khoá dữ liệu được mã hoá bằng khoá chủ của hub. Khoá chủ đọc từ biến môi trường hoặc file mount. [Suy luận]
-- Secret của dự án chỉ đưa vào pha `preparing` (setup), xoá trước pha `running`. Log stream che mọi giá trị secret đã biết. [16]
+- Secrets mã hoá kiểu envelope (AES-256-GCM): mỗi bản ghi có khoá dữ liệu riêng, khoá dữ liệu được mã hoá bằng khoá chủ của hub (`HIVE_MASTER_KEY` hoặc `HIVE_MASTER_KEY_FILE`). Áp dụng cho secret của kết nối Git, cấu hình kênh thông báo và secret webhook của dự án.
+- **[Chưa làm]** Secret của dự án chỉ đưa vào pha `preparing` (setup), xoá trước pha `running`. Log stream che mọi giá trị secret đã biết. [16]
 - Tài khoản AI trong container dùng API key của đội hoặc gói đăng ký của người giao việc, theo cấu hình đội ([decisions.md](decisions.md)).
 
 ## 7. Container runner
 
 - Runner host là binary Go ở chế độ `host`. Nó gọi ra hub như worker, báo dung lượng (số slot, CPU, RAM) và nhận job loại `sandbox`.
-- Mỗi run một container chạy runtime gVisor (`runsc`) với `--network=none`. Đường ra duy nhất là egress proxy (sidecar) theo allowlist. [17]
-- **Allowlist:** mặc định chặn. Có danh sách đề xuất (registry npm/Go nội bộ, API của nhà cung cấp AI). Dự án thêm được mục riêng. Tổ chức khoá được để dự án không nới. Chặn IPv6 và ép DNS qua proxy để không lách được. [18][19]
-- **Image môi trường:** mỗi dự án khai báo image gốc và script setup (`.hive/setup.sh`). Runner host build sẵn rồi cache theo hash của script. Có thể giữ vài container chờ sẵn để khởi động nhanh. [16]
-- Hết run thì container bị xoá. Kết quả chỉ ra ngoài bằng nhánh đã push và artifact gửi lên hub.
+- Mỗi run một container chạy runtime gVisor (`runsc`) với `--network=none`. Đường ra duy nhất là egress proxy theo allowlist: proxy chạy trong tiến trình runner host, riêng cho từng run, nối vào container qua Unix socket; `hive-worker sandbox-init` trong container chuyển `127.0.0.1:3128` sang socket đó. gVisor phải cho nối Unix socket của máy chủ (`--host-uds=open`). [17]
+- **Allowlist:** mặc định chặn. Có danh sách đề xuất gồm năm địa chỉ công khai (API Anthropic, OpenAI, registry npm, proxy và sum của Go). Dự án thêm được mục riêng. Tổ chức khoá được để dự án không nới. Chặn IPv6 và ép DNS qua proxy để không lách được. [18][19]
+- **Image môi trường:** mỗi dự án khai báo image gốc và sha256 của script setup (`.hive/setup.sh`). Runner host kiểm hash rồi chạy script trong một container riêng từ image gốc. **[Chưa làm]** build sẵn rồi cache theo hash của script; giữ vài container chờ sẵn để khởi động nhanh. [16]
+- Hết run thì container bị xoá. Kết quả chỉ ra ngoài bằng nhánh đã push. **[Chưa làm]** artifact gửi lên hub.
 
 ## 8. Tạo dự án trên web
-
-![Tạo dự án](diagrams/tao-du-an.svg)
-
-<details><summary>Mã Mermaid</summary>
 
 ```mermaid
 sequenceDiagram
@@ -250,7 +229,6 @@ sequenceDiagram
   participant API as Hub api
   participant J as Hub jobs
   participant S as GitHub App / GitLab
-  participant M as Worker hoặc runner host
 
   A->>W: Điền form tạo dự án
   W->>API: projects.create dryRun
@@ -258,43 +236,36 @@ sequenceDiagram
   API-->>W: Kế hoạch các bước, cảnh báo
   A->>W: Xác nhận
   W->>API: projects.create với idempotencyKey
-  API->>API: Một transaction: project provisioning, saga, audit, outbox
-  API-->>W: projectId, sagaId
-  J->>S: Tạo repo, commit file mẫu
+  API->>API: Một transaction: dự án, các bước saga, audit, job pg-boss
+  API-->>W: projectId
+  J->>S: check-access, tạo hoặc nối repo
+  J->>S: Commit file mẫu
   J->>S: Bảo vệ nhánh, thêm webhook
-  J->>API: Nạp tài liệu, skill mặc định
-  J->>M: Đề nghị job clone cho máy đã chọn
-  M->>S: Clone bằng token git ngắn hạn
-  M-->>API: Kết quả clone
-  API->>API: Dự án active, tạo task đầu tiên
-  J->>M: Giao run đầu tiên
-  M->>S: Push nhánh ai/task-id
-  J->>S: Mở PR hoặc MR
-  S-->>API: Webhook PR mở
-  API-->>W: SSE: dự án sẵn sàng
+  J->>API: Ghi tiến độ từng bước vào project_provision_steps
+  API-->>W: Màn tiến trình: dự án sẵn sàng
 ```
 
-</details>
+**[Chưa làm]** trong luồng trên: nạp tài liệu và skill mặc định, đề nghị máy clone repo bằng token git ngắn hạn, tạo và giao task đầu tiên.
 
-- Saga chạy trên pg-boss, mỗi bước có khoá idempotent và ghi tiến độ vào `run_events` của một run loại `provision`. Màn tiến trình trên web chỉ là màn xem run đó.
+- Saga chạy trên pg-boss (hàng `catalog-provision`). Các bước `check-access`, `create-repo` hoặc `link-repo`, `commit-template`, `protect-branch`, `add-webhook` ghi trạng thái vào `project_provision_steps`; bước lỗi dừng saga, báo thông báo và chạy lại được.
 - Template do hub giữ. Hub render file mẫu (AGENTS.md có project key, cấu hình MCP, skill) rồi commit bằng API. Cách này chạy được trên cả GitHub và GitLab gói Free. [20][21]
 - Không dùng Temporal: tự host cần nhiều service. Nếu saga phình ra nhiều loại, cân nhắc DBOS (thư viện chạy trên Postgres). [22]
 
 ## 9. Realtime và log
 
-- Mỗi tiến trình `api` giữ **một** kết nối `LISTEN` và phát lại trong bộ nhớ cho các luồng SSE. Payload của NOTIFY chỉ chứa id và loại. NOTIFY được gom theo lô, không gửi cho từng dòng log, vì NOTIFY lấy lock toàn cục lúc commit. [23]
+- Mỗi tiến trình `api` giữ **một** kết nối `LISTEN hive_runs` và phát lại trong bộ nhớ cho các luồng SSE. Payload của NOTIFY chỉ chứa `runId`. NOTIFY được gom theo lô, không gửi cho từng dòng log, vì NOTIFY lấy lock toàn cục lúc commit. [23]
 - **Log run:**
   - Đoạn log mới nằm trong `run_logs` (Postgres) để web xem trực tiếp.
-  - Khi run kết thúc, job gộp log thành một file nén, đẩy lên kho blob, rồi xoá các đoạn trong Postgres. GitLab làm theo cách này. [24]
-- Web nhận log trực tiếp qua SSE theo `runId`, kèm `offset` để nối tiếp khi mất kết nối.
+  - **[Chưa làm]** Khi run kết thúc, job gộp log thành một file nén, đẩy lên kho blob, rồi xoá các đoạn trong Postgres. GitLab làm theo cách này. [24]
+- Web nhận log trực tiếp qua SSE theo `runId`. Con trỏ `<eventId>.<logId>` là `Last-Event-ID`, nên nối lại không mất đoạn nào.
 
 ## 10. Vận hành
 
-- **Triển khai:** Docker Compose trên một server cho hub: `hub-api` (2 bản sau proxy), `hub-gateway`, `hub-jobs`, `hub-collab`, `postgres`, `blob` (Garage hoặc S3 ngoài), `caddy` hoặc `cloudflared`, `otel-collector`. Runner host cài trên các server khác bằng một lệnh.
+- **Triển khai:** Docker Compose trên một server (`deploy/compose.yaml`): `postgres`, `hub` (một container, vai trò `api,jobs`), `caddy` (profile `https`, tuỳ chọn). `deploy/remote.sh` triển khai qua SSH. Runner host cài worker bằng script cài rồi chạy `hive-worker host`. **[Chưa làm]** tách `hub-api` (2 bản), `hub-gateway`, `hub-jobs`, `hub-collab`; `blob` (Garage hoặc S3 ngoài); `cloudflared`; `otel-collector`; cài runner host thành dịch vụ bằng một lệnh.
   - Không dùng Kubernetes. Gitpod đã rời K8s cho tải có nhiều trạng thái. [25] [Suy luận cho quy mô này]
-- **Nâng cấp không gián đoạn:** migration kiểu expand rồi contract. Đổi lần lượt hai bản `hub-api`. Worker nối lại theo giao thức ở mục 5. pg-boss tự nhả job khi tiến trình dừng. [Suy luận]
-- **Backup:** pgBackRest (full + incremental, khôi phục theo thời điểm) lên kho blob. Diễn tập khôi phục hằng tháng. [26]
-- **Quan sát:** OpenTelemetry cho hub (HTTP, pg) và worker. Span của run theo quy ước GenAI (`invoke_agent`, `gen_ai.usage.*`), nối thẳng với `cost_entries`. [27]
+- **Nâng cấp:** migration kiểu expand rồi contract; test `migrations-upgrade.db.test.ts` nâng cấp một database đã migrate tới ngay trước mỗi migration có `ALTER TYPE ... ADD VALUE`, để bắt lỗi chỉ hiện khi nâng cấp. Hiện chỉ có một container hub nên nâng cấp gián đoạn ngắn lúc container khởi động lại; worker tự nối lại theo giao thức ở mục 5. **[Chưa làm]** đổi lần lượt hai bản `hub-api` để không gián đoạn. [Suy luận]
+- **Backup:** `deploy/backup.sh` (pg_dump kèm `.env` và `SHA256SUMS`, giữ theo `HIVE_BACKUP_KEEP`), `deploy/restore.sh` khôi phục trong một transaction. **[Chưa làm]** pgBackRest (full + incremental, khôi phục theo thời điểm) lên kho blob; diễn tập khôi phục hằng tháng. [26]
+- **Quan sát:** hub ghi log ra stdout, `GET /api/v1/health` báo trạng thái và commit đang chạy. **[Chưa làm]** OpenTelemetry cho hub (HTTP, pg) và worker; span của run theo quy ước GenAI (`invoke_agent`, `gen_ai.usage.*`). [27]
 
 ## 11. Rủi ro và cách tránh
 
@@ -306,7 +277,7 @@ sequenceDiagram
 | NOTIFY làm nghẽn commit | Chỉ gửi id, gom lô, không NOTIFY cho log |
 | Worker treo ghi đè run đã giao lại | Fencing bằng `attempt`, kiểm lease khi ghi |
 | Lệnh huỷ không tới | Gửi kèm heartbeat, có hạn cứng ở hub |
-| Secret lọt vào pha agent hoặc log | Chỉ có ở setup, che trong log |
+| Secret lọt vào pha agent hoặc log | Chỉ có ở setup, che trong log (**[Chưa làm]**) |
 | Lách allowlist qua IPv6, DNS, tiến trình con | `--network=none` + proxy, chặn IPv6, ép DNS |
 | Token MCP bị dùng sai chỗ | Kiểm `aud`, không chuyển tiếp, audit |
 | Saga đổi code giữa chừng | Lưu phiên bản saga theo từng instance, chạy hết bằng bản cũ |
