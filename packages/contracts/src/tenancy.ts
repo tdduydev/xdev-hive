@@ -78,6 +78,9 @@ export const orgMember = z.object({
   role: orgRole,
   status: memberStatus,
   joinedAt: z.iso.datetime(),
+  providers: z.array(z.string()).optional(),
+  /** Latest creation/refresh of retained Better Auth sessions; null when none remain. */
+  lastSeenAt: z.iso.datetime().nullable().optional(),
   teams: z.array(z.object({ teamId: id, name: z.string(), role: teamRole })),
 });
 const email = z.email("Email không hợp lệ.").trim().toLowerCase();

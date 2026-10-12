@@ -65,9 +65,12 @@ export function orgMembersRouter(p: Procedures) {
           name: authUser.name,
           email: authUser.email,
           image: authUser.image,
+          providers: sql<string[]>`activity.providers`,
+          lastSeenAt: sql<string | null>`activity.last_seen_at`,
         })
         .from(orgMembers)
         .innerJoin(authUser, eq(authUser.id, orgMembers.userId))
+        .innerJoin(sql`hive.org_member_activity() AS activity`, sql`activity.user_id = ${orgMembers.userId}`)
         .where(inCtxOrg)
         .orderBy(asc(authUser.name));
       const memberships = await tx
@@ -79,6 +82,7 @@ export function orgMembersRouter(p: Procedures) {
       return members.map((m) => ({
         ...m,
         joinedAt: iso(m.joinedAt),
+        lastSeenAt: m.lastSeenAt === null ? null : new Date(m.lastSeenAt).toISOString(),
         teams: (byUser.get(m.userId) ?? []).map(({ teamId, name, role }) => ({ teamId, name, role })),
       }));
     }),
