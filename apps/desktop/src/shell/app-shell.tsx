@@ -3,7 +3,7 @@ import { useState, useSyncExternalStore } from "react";
 import { AccountDialog } from "@/components/account-dialog.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
-import { profileOf, useAccount } from "@/lib/account.ts";
+import { AccountContext, profileOf, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { SCREENS } from "@/screens/index.ts";
@@ -54,7 +54,9 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
         </header>
         <div className="p-5">
           {Screen ? (
-            <Screen />
+            <AccountContext.Provider value={account}>
+              <Screen />
+            </AccountContext.Provider>
           ) : (
             <Empty className="border border-dashed">
               <EmptyHeader>

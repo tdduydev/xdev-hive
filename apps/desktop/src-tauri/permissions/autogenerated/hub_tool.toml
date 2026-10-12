@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hub-tool"
+description = "Enables the hub_tool command without any pre-configured scope."
+commands.allow = ["hub_tool"]
+
+[[permission]]
+identifier = "deny-hub-tool"
+description = "Denies the hub_tool command without any pre-configured scope."
+commands.deny = ["hub_tool"]

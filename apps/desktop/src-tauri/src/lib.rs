@@ -6,6 +6,7 @@ mod hub;
 mod register;
 mod usage;
 mod worker;
+mod workspace;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -469,6 +470,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(State::default())
         .invoke_handler(tauri::generate_handler![
@@ -481,7 +483,9 @@ pub fn run() {
             usage::session_stats,
             account::account_status,
             account::account_link,
-            account::account_unlink
+            account::account_unlink,
+            workspace::workspace_meta,
+            workspace::hub_tool
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.

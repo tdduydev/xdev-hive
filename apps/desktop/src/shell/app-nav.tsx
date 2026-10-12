@@ -1,6 +1,7 @@
 import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
+import { folderName, pickFolder, shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
 import { cn } from "@/lib/utils.ts";
@@ -10,6 +11,7 @@ const text: Dict<{
   readOnly: string;
   folder: string;
   noFolder: string;
+  pick: string;
   notLinked: string;
   profiles: Record<Profile, string>;
 }> = {
@@ -18,6 +20,7 @@ const text: Dict<{
     readOnly: "chỉ đọc",
     folder: "Thư mục làm việc",
     noFolder: "Chưa chọn thư mục",
+    pick: "Chọn thư mục làm việc",
     notLinked: "Chưa liên kết tài khoản",
     profiles: { dev: "Dev", writer: "Viết tài liệu", lead: "Trưởng nhóm" },
   },
@@ -26,6 +29,7 @@ const text: Dict<{
     readOnly: "read-only",
     folder: "Working folder",
     noFolder: "No folder chosen",
+    pick: "Choose a working folder",
     notLinked: "Account not linked",
     profiles: { dev: "Dev", writer: "Writer", lead: "Lead" },
   },
@@ -50,6 +54,7 @@ export function AppNav({
 }) {
   const t = useT(text);
   const lang = useLang();
+  const [folder, setFolder] = useFolder();
   const roleLine = account ? `${t.profiles[profile]} · ${account.teams[0]?.name ?? account.orgName}` : "";
   return (
     <nav
@@ -62,13 +67,25 @@ export function AppNav({
       <LogoIcon className="mx-auto mb-2.5 hidden max-[760px]:block" />
       <button
         type="button"
-        disabled
-        title={t.folder}
-        className="mb-2 flex items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left disabled:cursor-not-allowed max-[760px]:hidden"
+        title={folder || t.folder}
+        aria-label={`${t.folder}: ${folder ? folderName(folder) : t.noFolder}`}
+        onClick={async () => {
+          try {
+            const picked = await pickFolder(t.pick);
+            if (picked) setFolder(picked);
+          } catch {
+            /* Ngoài Tauri không có bộ chọn thư mục; các màn vẫn cho nhập tay. */
+          }
+        }}
+        className="mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left hover:bg-muted max-[760px]:hidden"
       >
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="text-[11px] text-muted-foreground">{t.folder}</span>
-          <span className="truncate font-mono text-xs">{t.noFolder}</span>
+          <span className="truncate font-mono text-[12.5px] font-semibold">
+            {folder ? folderName(folder) : t.noFolder}
+          </span>
+          <span className="truncate font-mono text-[11px] text-muted-foreground">
+            {folder ? shortPath(folder) : t.folder}
+          </span>
         </span>
         <ChevronsUpDownIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
       </button>
