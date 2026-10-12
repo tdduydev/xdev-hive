@@ -344,6 +344,13 @@
       "when": 1791803245503,
       "tag": "0048_mcp_server_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791806230111,
+      "tag": "0049_audit_retention",
+      "breakpoints": true
     }
   ]
 }

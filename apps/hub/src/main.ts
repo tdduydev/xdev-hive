@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
+import { auditRetentionQueue, registerAuditRetentionWorker } from "./modules/audit/index.ts";
 import { mergeQueue, provisionQueue, registerMergeWorker, registerProvisionWorker } from "./modules/catalog/index.ts";
 import {
   attachWorkerGateway,
@@ -94,6 +95,7 @@ jobs = config.jobsDatabaseUrl
         fleetOfflineQueue,
         orphanUsersQueue,
         skillGitQueue,
+        auditRetentionQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -156,6 +158,7 @@ if (roles.includes("jobs") && jobs) {
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
     await registerInboxCleanupWorker(jobs, pool);
+    await registerAuditRetentionWorker(jobs, { pool });
   }
 }
 
