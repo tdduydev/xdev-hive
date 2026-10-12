@@ -126,11 +126,16 @@ pub async fn account_link(app: AppHandle, token: String) -> Result<AccountStatus
     if !looks_like_pat(&token) {
         return Err("Đây không phải token MCP cá nhân (bắt đầu bằng hive_pat_).".into());
     }
-    whoami(&hub, &token).await.map_err(|e| e.text())?;
-    entry(&hub)?
-        .set_password(&token)
-        .map_err(|e| format!("Không lưu được token vào keychain: {e}"))?;
+    save_checked(&hub, &token).await?;
     Ok(status_for(Some(hub)).await)
+}
+
+/// Kiểm token với hub rồi lưu vào keychain; đăng nhập bằng trình duyệt cũng đi qua đây.
+pub(crate) async fn save_checked(hub: &str, token: &str) -> Result<(), String> {
+    whoami(hub, token).await.map_err(|e| e.text())?;
+    entry(hub)?
+        .set_password(token)
+        .map_err(|e| format!("Không lưu được token vào keychain: {e}"))
 }
 
 #[tauri::command]

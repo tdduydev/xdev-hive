@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-login"
+description = "Enables the browser_login command without any pre-configured scope."
+commands.allow = ["browser_login"]
+
+[[permission]]
+identifier = "deny-browser-login"
+description = "Denies the browser_login command without any pre-configured scope."
+commands.deny = ["browser_login"]

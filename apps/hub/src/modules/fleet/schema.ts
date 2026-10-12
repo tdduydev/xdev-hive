@@ -118,3 +118,29 @@ export const registrationTokens = hive
     ],
   )
   .enableRLS();
+
+/**
+ * Mã đổi của đăng nhập app desktop bằng trình duyệt (contracts/desktop-connect.ts). Chỉ giữ băm của mã và PKCE
+ * challenge, không giữ token nào: lúc app đổi mã, hub mới tạo mã đăng ký máy và token cá nhân, sau khi kiểm lại quyền.
+ */
+export const desktopConnectCodes = hive
+  .table(
+    "desktop_connect_codes",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      teamId: uuid("team_id").notNull(),
+      userId: text("user_id").notNull(),
+      tokenHash: text("token_hash").notNull().unique(),
+      challenge: text("challenge").notNull(),
+      machine: text("machine").notNull(),
+      expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+      usedAt: timestamp("used_at", { withTimezone: true }),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      foreignKey({ columns: [t.teamId, t.orgId], foreignColumns: [teams.id, teams.orgId] }).onDelete("cascade"),
+      ...tokenPolicies("desktop_connect_codes"),
+    ],
+  )
+  .enableRLS();

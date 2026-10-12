@@ -4,6 +4,7 @@ fn main() {
     let manifest = tauri_build::AppManifest::new().commands(&[
         "parse_registration",
         "register_worker",
+        "browser_login",
         "scan_environment",
         "run_install",
         "claude_context",

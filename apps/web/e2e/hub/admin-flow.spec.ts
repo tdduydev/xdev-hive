@@ -26,10 +26,12 @@ async function signUp(request: APIRequestContext, user: User): Promise<string> {
 async function signIn(page: Page, user: User) {
   await page.goto("/");
   await expect(page).toHaveURL("/login");
-  await page.getByText("Đăng nhập bằng email và mật khẩu").click();
-  await page.getByLabel("Email", { exact: true }).fill(user.email);
-  await page.getByLabel("Mật khẩu").fill(user.password);
-  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+  // Trang đăng nhập có hai ô Email (link đăng nhập và mật khẩu): chỉ làm trong khối mật khẩu.
+  const form = page.locator("details", { hasText: "Đăng nhập bằng email và mật khẩu" });
+  await form.locator("summary").click();
+  await form.getByLabel("Email", { exact: true }).fill(user.email);
+  await form.getByLabel("Mật khẩu").fill(user.password);
+  await form.getByRole("button", { name: "Đăng nhập", exact: true }).click();
   await page.waitForURL((url) => url.pathname !== "/login");
 }
 

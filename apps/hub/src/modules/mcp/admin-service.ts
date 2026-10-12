@@ -138,6 +138,16 @@ export async function createToken(
   return { token, info: tokenInfo(row) };
 }
 
+/** Token cá nhân cho app desktop đăng nhập bằng trình duyệt (fleet/desktop-connect.ts); hạn dài nhất cho phép. */
+export async function issueDesktopToken(
+  tx: Tx,
+  userId: string,
+  registry: McpToolRegistry,
+): Promise<{ token: string; expiresAt: Date }> {
+  const { token, info } = await createToken(tx, userId, registry, { clientId: "xdev-hive-desktop", lifetimeDays: 90 });
+  return { token, expiresAt: new Date(info.expiresAt) };
+}
+
 async function managedToken(tx: Tx, userId: string, registry: McpToolRegistry, id: string, adminOnly = false) {
   const role = await registry.authorize(tx, userId, adminOnly ? "admin" : "member");
   const [row] = await tx.select().from(mcpUserTokens).where(eq(mcpUserTokens.id, id)).for("update");

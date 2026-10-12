@@ -9,6 +9,7 @@ import { McpPage } from "@/pages/admin/mcp-page.tsx";
 import { PoliciesPage } from "@/pages/admin/policies-page.tsx";
 import { RolesPage } from "@/pages/admin/roles-page.tsx";
 import { CostsPage } from "@/pages/costs-page.tsx";
+import { DesktopConnectPage } from "@/pages/desktop-connect-page.tsx";
 import { HomePage } from "@/pages/home-page.tsx";
 import { InvitePage } from "@/pages/invite-page.tsx";
 import { DocEditorPage } from "@/pages/knowledge/doc-editor-page.tsx";
@@ -94,6 +95,13 @@ const sessionRoute = createRoute({
   id: "session",
   beforeLoad: ({ context }) => context.queryClient.ensureQueryData(orgsMineQuery),
   component: SessionLayout,
+});
+
+/** Trang đồng ý của app desktop đăng nhập bằng trình duyệt; cần phiên đăng nhập nhưng đứng ngoài khung app. */
+const desktopConnectRoute = createRoute({
+  getParentRoute: () => sessionRoute,
+  path: "/desktop/connect",
+  component: DesktopConnectPage,
 });
 
 /**
@@ -262,6 +270,7 @@ const routeTree = rootRoute.addChildren([
   mcpConsentRoute,
   sessionRoute.addChildren([
     onboardingRoute,
+    desktopConnectRoute,
     appRoute.addChildren([
       homeRoute,
       inOrgRoute.addChildren([

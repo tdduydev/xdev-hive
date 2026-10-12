@@ -2,6 +2,7 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { auditContract } from "./audit.ts";
 import { costsContract } from "./cost.ts";
+import { desktopConnectContract } from "./desktop-connect.ts";
 import { docEditorContract } from "./doc-editor.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
@@ -21,6 +22,7 @@ import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./audit.ts";
 export * from "./cost.ts";
+export * from "./desktop-connect.ts";
 export * from "./doc-editor.ts";
 export * from "./doc-text.ts";
 export * from "./egress.ts";
@@ -118,6 +120,7 @@ export const contract = {
   reviewWorkflows: workflowsContract,
   reviews: reviewsContract,
   docEditor: docEditorContract,
+  desktopConnect: desktopConnectContract,
 };
 
 export type Contract = typeof contract;

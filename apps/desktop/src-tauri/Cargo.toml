@@ -30,6 +30,9 @@ reqwest = { version = "0.13", default-features = false }
 keyring = "4.2"
 # sha256 của SKILL.md đã cài để nhận ra file người dùng sửa tay. Cùng bản đã có trong cây phụ thuộc.
 sha2 = "0.10"
+# Verifier và state của PKCE khi đăng nhập bằng trình duyệt. Cùng bản đã có trong cây phụ thuộc.
+getrandom = "0.3"
+base64 = "0.22"
 
 [target.'cfg(unix)'.dependencies]
 # Huỷ agent CLI của màn Tài liệu: gửi tín hiệu cho cả nhóm tiến trình. Cùng bản đã có trong cây phụ thuộc.
