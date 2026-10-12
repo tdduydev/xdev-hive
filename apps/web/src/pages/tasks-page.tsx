@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { Project } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { buttonVariants } from "@xdev-hive/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@xdev-hive/ui/empty";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
@@ -8,7 +9,6 @@ import { KanbanSquareIcon, SearchIcon } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { CreateTaskButton } from "@/components/create-task-dialog.tsx";
 import { Icon } from "@/components/icons.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group.tsx";

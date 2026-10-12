@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { GitPullRequestIcon, ShieldCheckIcon, SquareTerminalIcon } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { Brand, Icon } from "@/components/icons.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { authClient, oauthContinuation } from "@/lib/auth-client.ts";

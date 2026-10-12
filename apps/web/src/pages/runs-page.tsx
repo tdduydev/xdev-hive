@@ -1,12 +1,12 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { type Project, RUN_STATUS_GROUPS, type RunListItem, type RunState } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { useState } from "react";
 import { type ActiveFilter, type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import type { Facet } from "@/components/data-table/model.ts";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDayTime, formatUsd } from "@/lib/format.ts";

@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -11,7 +12,6 @@ import {
 } from "@/components/outside/onboarding-name-fields.tsx";
 import { OnboardingSignOut } from "@/components/outside/onboarding-sign-out.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
 import { formError } from "@/lib/api-errors.ts";
