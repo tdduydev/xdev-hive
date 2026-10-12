@@ -1,6 +1,10 @@
-# Cài hoặc nâng cấp hive-worker trên Windows từ bản phát hành của xDev Hive. Chạy được trên Windows PowerShell 5.1.
+﻿# Cài hoặc nâng cấp hive-worker trên Windows từ bản phát hành của xDev Hive. Chạy được trên Windows PowerShell 5.1.
 #
-#   & ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub URL -Token MÃ
+#   irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+#   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub URL -Token MÃ
+#
+# Chạy từ file (không qua iex): PowerShell 5.1 chỉ đọc đúng UTF-8 khi file có BOM, nên file này lưu kèm BOM. Chỉ dùng
+# lớp .NET thay cho Get-FileHash, Expand-Archive vì hai lệnh đó không nạp được khi powershell.exe được gọi từ pwsh 7.
 #
 # Có -Token: cài binary, đăng ký máy với hub rồi cài tác vụ chạy nền khi đăng nhập. Không có -Token: chỉ thay binary
 # bằng bản mới và khởi động lại tác vụ nếu đang chạy, nên chạy lại đúng lệnh này là cách nâng cấp.
@@ -18,6 +22,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Thông báo tiếng Việt ra đúng khi chạy trong Windows Terminal hoặc bị chuyển hướng; cửa sổ không có console thì bỏ qua.
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 # Invoke-WebRequest của PowerShell 5.1 chậm hẳn khi vẽ thanh tiến trình.
 $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -95,10 +101,12 @@ try {
     if ($fields.Length -eq 2 -and $fields[1].TrimStart("*") -eq $asset) { $want = $fields[0].ToLowerInvariant() }
   }
   if (-not $want) { throw "Bản phát hành không có $asset." }
-  $got = (Get-FileHash -Algorithm SHA256 -Path (Join-Path $tmp $asset)).Hash.ToLowerInvariant()
+  $hash = [Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes((Join-Path $tmp $asset)))
+  $got = ([BitConverter]::ToString($hash) -replace "-", "").ToLowerInvariant()
   if ($got -ne $want) { throw "sha256 của $asset không khớp checksums.txt." }
 
-  Expand-Archive -Path (Join-Path $tmp $asset) -DestinationPath (Join-Path $tmp "x") -Force
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $tmp $asset), (Join-Path $tmp "x"))
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $bin = Join-Path $Dir "hive-worker.exe"
   $new = Join-Path $Dir ".hive-worker.new.exe"

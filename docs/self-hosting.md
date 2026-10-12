@@ -95,7 +95,8 @@ curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/instal
 
 ```powershell
 # Windows (PowerShell 5.1 or later): installs to %LOCALAPPDATA%\xdev-hive\bin and adds it to the user PATH
-& ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub https://hive.example.com -Token <token>
+irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub https://hive.example.com -Token <token>
 ```
 
 The script picks the build for the OS and CPU, verifies the ECDSA signature of `checksums.txt` and the archive's
