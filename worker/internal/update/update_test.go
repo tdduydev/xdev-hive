@@ -74,7 +74,8 @@ func TestEmbeddedKeyParses(t *testing.T) {
 // install.sh kiểm chữ ký bằng openssl với khoá viết sẵn trong script; lệch với khoá trong binary thì một trong hai
 // đường cài sẽ từ chối mọi bản phát hành.
 func TestInstallScriptsCarrySameKey(t *testing.T) {
-	body := strings.TrimSpace(string(releaseKeyPEM))
+	// Checkout trên Windows có thể đổi xuống dòng thành CRLF; so nội dung, không so kiểu xuống dòng.
+	body := strings.TrimSpace(strings.ReplaceAll(string(releaseKeyPEM), "\r\n", "\n"))
 	for _, script := range []string{"../../../scripts/install.sh", "../../../scripts/install.ps1"} {
 		data, err := os.ReadFile(script)
 		if err != nil {

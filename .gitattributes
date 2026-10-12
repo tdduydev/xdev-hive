@@ -1,0 +1,3 @@
+# Script cài chạy bằng sh và được tải thẳng từ trang phát hành: giữ LF dù checkout trên Windows.
+*.sh text eol=lf
+worker/internal/update/release-signing.pem text eol=lf
