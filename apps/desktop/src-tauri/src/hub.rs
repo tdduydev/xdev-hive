@@ -135,3 +135,117 @@ mod tests {
         assert!(HubError::Unauthorized.text().contains("Token MCP"));
     }
 }
+
+/// Tổ chức của token cá nhân: `hive_pat_<id tổ chức>_<bí mật>`. Hub chỉ nhận token đúng tổ chức (header `x-hive-org`).
+pub fn org_of_pat(token: &str) -> Option<&str> {
+    let rest = token.strip_prefix("hive_pat_")?;
+    let (org, secret) = rest.split_at_checked(36)?;
+    (secret.starts_with('_')
+        && org.len() == 36
+        && org.chars().all(|c| c.is_ascii_hexdigit() || c == '-'))
+    .then_some(org)
+}
+
+/// Đường dẫn RPC của hub mà giao diện được gọi: chỉ `/rpc/<thủ tục>` (kèm query của GET), không đi ra ngoài hub.
+pub fn safe_rpc_path(path: &str) -> bool {
+    path.starts_with("/rpc/")
+        && !path.contains("..")
+        && !path.contains("//")
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/_-.?=&%+".contains(c))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcReply {
+    pub status: u16,
+    pub content_type: String,
+    pub body: String,
+}
+
+/// Gọi RPC của hub bằng token cá nhân trong keychain (spec 008 FR-026): giao diện dùng đúng hợp đồng của web
+/// (`packages/contracts`) mà không bao giờ thấy token.
+#[tauri::command]
+pub async fn hub_rpc(
+    app: tauri::AppHandle,
+    method: String,
+    path: String,
+    body: Option<String>,
+    content_type: Option<String>,
+) -> Result<RpcReply, String> {
+    if method != "GET" && method != "POST" {
+        return Err("Phương thức không được phép.".into());
+    }
+    if !safe_rpc_path(&path) {
+        return Err("Đường dẫn không hợp lệ.".into());
+    }
+    let hub = crate::hub_of(&app).ok_or("Máy chưa đăng ký với hub nào.")?;
+    let token = crate::account::stored_token(&hub)
+        .ok_or("Chưa liên kết tài khoản. Đăng nhập bằng trình duyệt hoặc dán token cá nhân ở mục Tài khoản.")?;
+    let org = org_of_pat(&token).ok_or("Token đã lưu không đúng dạng; liên kết lại tài khoản.")?;
+    let url = format!("{}{}", hub.trim_end_matches('/'), path);
+    let client = crate::tls::client();
+    let mut request = if method == "GET" {
+        client.get(&url)
+    } else {
+        client.post(&url)
+    };
+    request = request
+        .timeout(TIMEOUT)
+        .header("authorization", format!("Bearer {token}"))
+        .header("x-hive-org", org);
+    if let Some(ct) = content_type {
+        request = request.header("content-type", ct);
+    }
+    if let Some(b) = body {
+        request = request.body(b);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("Không gọi được hub: {e}"))?;
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/json")
+        .to_string();
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Không đọc được trả lời của hub: {e}"))?;
+    Ok(RpcReply {
+        status,
+        content_type,
+        body,
+    })
+}
+
+#[cfg(test)]
+mod rpc_tests {
+    use super::*;
+
+    #[test]
+    fn reads_org_from_personal_token() {
+        let org = "0a0a0a0a-0000-4000-8000-00000000000a";
+        assert_eq!(
+            org_of_pat(&format!("hive_pat_{org}_{}", "s".repeat(43))),
+            Some(org)
+        );
+        assert_eq!(org_of_pat("hive_pat_short"), None);
+        assert_eq!(org_of_pat(&format!("hwm_{org}_x")), None);
+        assert_eq!(org_of_pat(&format!("hive_pat_{}_x", "z".repeat(36))), None);
+    }
+
+    #[test]
+    fn only_rpc_paths_of_the_hub() {
+        assert!(safe_rpc_path("/rpc/docEditor/state"));
+        assert!(safe_rpc_path("/rpc/teams/list?data=%7B%7D"));
+        assert!(!safe_rpc_path("/api/auth/sign-out"));
+        assert!(!safe_rpc_path("/rpc/../api/auth"));
+        assert!(!safe_rpc_path("//evil.com/rpc/x"));
+        assert!(!safe_rpc_path("/rpc/x#frag"));
+    }
+}
