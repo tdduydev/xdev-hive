@@ -80,7 +80,6 @@ import {
   parseCostData,
   taskSpentUsd,
 } from "./cost.ts";
-import { createMcpRunTokens } from "./mcp.ts";
 import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
 import {
   evaluatePlanRun,
@@ -91,6 +90,7 @@ import {
   reviewSkipReason,
 } from "./policy.ts";
 import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
+import { createMcpRunTokens } from "./run-tokens.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
 import {
