@@ -34,6 +34,8 @@ export const workflowsText: Dict<{
   addOutput: (phase: string) => string;
   outputPh: string;
   phaseName: (n: number) => string;
+  phaseDesc: (n: number) => string;
+  phaseDescPh: string;
   addPhase: string;
   newPhase: (n: number) => string;
   removePhase: (name: string) => string;
@@ -48,6 +50,8 @@ export const workflowsText: Dict<{
   type: string;
   approvers: string;
   rolePrefix: string;
+  teamPrefix: string;
+  teams: string;
   addApprover: string;
   addApproverPh: string;
   roles: string;
@@ -58,6 +62,8 @@ export const workflowsText: Dict<{
   ruleN: string;
   quorumN: string;
   ofM: (m: number) => string;
+  aiModel: string;
+  aiModelHint: string;
   aiChecks: string;
   aiChecksHint: string;
   passScore: string;
@@ -160,6 +166,8 @@ export const workflowsText: Dict<{
     addOutput: (phase) => `Thêm tài liệu đầu ra cho ${phase}`,
     outputPh: "spec.md",
     phaseName: (n) => `Tên giai đoạn ${n}`,
+    phaseDesc: (n) => `Mô tả giai đoạn ${n}`,
+    phaseDescPh: "Thêm mô tả",
     addPhase: "Thêm giai đoạn",
     newPhase: (n) => `Giai đoạn ${n}`,
     removePhase: (name) => `Xoá giai đoạn ${name}`,
@@ -174,8 +182,10 @@ export const workflowsText: Dict<{
     type: "Loại",
     approvers: "Người duyệt",
     rolePrefix: "Vai trò",
+    teamPrefix: "Đội",
+    teams: "Đội",
     addApprover: "Thêm người duyệt",
-    addApproverPh: "vai trò, người",
+    addApproverPh: "vai trò, đội, người",
     roles: "Vai trò",
     people: "Người",
     rule: "Cách duyệt",
@@ -184,6 +194,8 @@ export const workflowsText: Dict<{
     ruleN: "N trên M người",
     quorumN: "Số người cần duyệt",
     ofM: (m) => (m ? `trên ${m} người được chỉ định` : "người"),
+    aiModel: "Model kiểm",
+    aiModelHint: "Bỏ trống là model review của dự án. Chính sách agent của tổ chức vẫn áp.",
     aiChecks: "AI kiểm gì",
     aiChecksHint: "Mỗi dòng một mục; agent chấm từng mục rồi cho điểm.",
     passScore: "Điểm đạt",
@@ -294,6 +306,8 @@ export const workflowsText: Dict<{
     addOutput: (phase) => `Add an output artifact to ${phase}`,
     outputPh: "spec.md",
     phaseName: (n) => `Phase ${n} name`,
+    phaseDesc: (n) => `Phase ${n} description`,
+    phaseDescPh: "Add a description",
     addPhase: "Add phase",
     newPhase: (n) => `Phase ${n}`,
     removePhase: (name) => `Delete phase ${name}`,
@@ -308,8 +322,10 @@ export const workflowsText: Dict<{
     type: "Type",
     approvers: "Approvers",
     rolePrefix: "Role",
+    teamPrefix: "Team",
+    teams: "Teams",
     addApprover: "Add approver",
-    addApproverPh: "role, person",
+    addApproverPh: "role, team, person",
     roles: "Roles",
     people: "People",
     rule: "Approval rule",
@@ -318,6 +334,8 @@ export const workflowsText: Dict<{
     ruleN: "N of M",
     quorumN: "Approvals needed",
     ofM: (m) => (m ? `of ${m} named approvers` : "people"),
+    aiModel: "Checking model",
+    aiModelHint: "Leave empty to use the project's review model. Organization agent policies still apply.",
     aiChecks: "What the AI checks",
     aiChecksHint: "One item per line; the agent grades each one and scores the doc.",
     passScore: "Pass score",

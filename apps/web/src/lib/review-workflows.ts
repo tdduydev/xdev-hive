@@ -54,7 +54,7 @@ export const PRESET_LABEL: Dict<Record<WorkflowPreset, string>> = {
   en: { aidlc: "AI-DLC (AWS)", speckit: "Spec Kit", bmad: "BMAD", custom: "Custom" },
 };
 
-/** Mô tả giai đoạn của khung mẫu (Workflows.dc.html); giai đoạn tự đặt tên thì không có. */
+/** Mô tả mặc định của giai đoạn khung mẫu (Workflows.dc.html), hiện khi giai đoạn chưa có mô tả riêng. */
 export const PHASE_DESC: Record<string, Dict<string>> = {
   Inception: { vi: "Ý định → yêu cầu, story", en: "Intent → requirements, stories" },
   Construction: { vi: "Thiết kế, ADR, kế hoạch task, code", en: "Design, ADR, task plan, code" },
@@ -107,7 +107,11 @@ export function gateInput(g: ReviewGate): ReviewGate {
   };
   if (g.onPass === "task" && g.nextTaskTitle?.trim()) base.nextTaskTitle = g.nextTaskTitle.trim();
   if (g.kind === "human" && g.reviewers) base.reviewers = g.reviewers;
-  if (g.kind === "ai" && g.ai) base.ai = g.ai;
+  if (g.kind === "ai" && g.ai) {
+    // Ô model để trống nghĩa là dùng model review của dự án; hợp đồng không nhận chuỗi rỗng.
+    const model = g.ai.model?.trim();
+    base.ai = { checks: g.ai.checks, passScore: g.ai.passScore, ...(model ? { model } : {}) };
+  }
   if (g.kind === "ext") base.ext = g.ext ?? { check: "ci" };
   if (g.kind === "rule") {
     base.rules = g.rules ?? [];
@@ -124,7 +128,15 @@ export function toInput(d: WorkflowDraft): WorkflowInput {
     preset: d.preset,
     teamId: d.teamId,
     docPrefixes: d.docPrefixes,
-    phases: d.phases.map((p) => ({ name: p.name.trim(), outputs: p.outputs, gates: p.gates.map(gateInput) })),
+    phases: d.phases.map((p) => {
+      const description = p.description?.trim();
+      return {
+        name: p.name.trim(),
+        ...(description ? { description } : {}),
+        outputs: p.outputs,
+        gates: p.gates.map(gateInput),
+      };
+    }),
     enabled: d.enabled,
   };
 }
@@ -152,7 +164,7 @@ export function uniqueGateId(name: string, taken: Iterable<string>): string {
 /** Đổi loại gate, thêm cấu hình tối thiểu mà hợp đồng đòi cho loại mới. */
 export function withKind(g: ReviewGate, kind: GateKind, lang: Lang): ReviewGate {
   const next: ReviewGate = { ...g, kind };
-  if (kind === "human" && !next.reviewers) next.reviewers = { users: [], roles: ["team-admin"], quorum: 1 };
+  if (kind === "human" && !next.reviewers) next.reviewers = { users: [], roles: ["team-admin"], teams: [], quorum: 1 };
   if (kind === "ai" && !next.ai) next.ai = { checks: [...DEFAULT_AI_CHECKS[lang]], passScore: 7 };
   if (kind === "rule" && !next.rules?.length) next.rules = ["requirements"];
   if (kind === "ext" && !next.ext) next.ext = { check: "ci" };
@@ -224,6 +236,7 @@ const WHERE: Dict<{
     gate: (name) => `Checkpoint “${name}”`,
     field: {
       name: "tên",
+      description: "mô tả",
       outputs: "tài liệu đầu ra",
       gates: "checkpoint",
       ai: "AI kiểm",
@@ -244,6 +257,7 @@ const WHERE: Dict<{
     gate: (name) => `Checkpoint “${name}”`,
     field: {
       name: "name",
+      description: "description",
       outputs: "outputs",
       gates: "checkpoints",
       ai: "AI checks",
