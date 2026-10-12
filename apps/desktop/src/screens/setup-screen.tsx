@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/dialog.tsx";
 import { Pill, type PillProps } from "@/components/ui/pill.tsx";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@/components/ui/table.tsx";
+import { useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
+import { projectKeyOf } from "@/lib/hub.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   type CheckItem,
@@ -45,6 +47,9 @@ const text: Dict<{
   have: string;
   status: string;
   kinds: Record<CheckKind, string>;
+  allowedMcp: string;
+  mcpTools: string;
+  linkHint: string;
   statuses: Record<CheckStatus, string>;
   thisMachine: string;
   because: string;
@@ -64,7 +69,7 @@ const text: Dict<{
   pick: string;
 }> = {
   vi: {
-    lead: "Những gì máy này cần để làm việc: công cụ chung của worker và yêu cầu của thư mục dự án (go.mod, package.json, .nvmrc).",
+    lead: "Những gì máy này cần để làm việc: công cụ chung của worker, yêu cầu của thư mục dự án (go.mod, package.json, .nvmrc, .hive/setup.sh) và MCP server tổ chức cho phép.",
     folderHint: "Để trống thì chỉ kiểm công cụ trên máy.",
     check: "Kiểm tra",
     recheck: "Kiểm tra lại",
@@ -78,7 +83,11 @@ const text: Dict<{
     needs: "Cần",
     have: "Máy có",
     status: "Trạng thái",
-    kinds: { cli: "Agent CLI", runtime: "Runtime", tool: "Công cụ", dependency: "Thư viện dự án" },
+    kinds: { cli: "Agent CLI", runtime: "Runtime", tool: "Công cụ", dependency: "Thư viện dự án", mcp: "MCP server" },
+    allowedMcp: "MCP được phép",
+    mcpTools: "MCP và công cụ",
+    linkHint:
+      "Liên kết tài khoản ở thẻ người dùng góc dưới bên trái để agent trên máy gọi được tài liệu, skill và memory của hub.",
     statuses: { ok: "Đủ", outdated: "Cũ", mismatch: "Khác bản", missing: "Thiếu", optional: "Không bắt buộc" },
     thisMachine: "máy này",
     because: "Vì:",
@@ -99,7 +108,7 @@ const text: Dict<{
     pick: "Chọn một mục để xem lệnh cài.",
   },
   en: {
-    lead: "What this machine needs: the worker's common tools and the project folder's requirements (go.mod, package.json, .nvmrc).",
+    lead: "What this machine needs: the worker's common tools, the project folder's requirements (go.mod, package.json, .nvmrc, .hive/setup.sh) and the MCP servers the organization allows.",
     folderHint: "Leave empty to check only the tools on this machine.",
     check: "Check",
     recheck: "Re-check",
@@ -113,7 +122,11 @@ const text: Dict<{
     needs: "Needs",
     have: "Have",
     status: "Status",
-    kinds: { cli: "Agent CLI", runtime: "Runtime", tool: "Tool", dependency: "Project libraries" },
+    kinds: { cli: "Agent CLI", runtime: "Runtime", tool: "Tool", dependency: "Project libraries", mcp: "MCP server" },
+    allowedMcp: "Allowed MCP",
+    mcpTools: "MCP & tools",
+    linkHint:
+      "Link your account from the user card at the bottom left so agents on this machine can reach the hub's docs, skills and memory.",
     statuses: {
       ok: "OK",
       outdated: "Outdated",
@@ -167,6 +180,12 @@ function ScoreRing({ ready, required, label }: { ready: number; required: number
   );
 }
 
+/** Nguồn của yêu cầu để hiện: file dự án, hoặc hub (MCP được phép, token MCP). */
+function sourceLabel(item: CheckItem, t: (typeof text)["vi"]): string {
+  if (item.source === "hub") return item.id.startsWith("mcp:") ? t.allowedMcp : t.mcpTools;
+  return item.source || t.thisMachine;
+}
+
 /** Màn Môi trường (AppSetup.dc.html): dò công cụ và yêu cầu của thư mục dự án, chép hoặc chạy lệnh cài. */
 export function SetupScreen() {
   const t = useT(text);
@@ -177,20 +196,28 @@ export function SetupScreen() {
   const [scanning, setScanning] = useState(false);
   const [onlyTodo, setOnlyTodo] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const account = useLinkedAccount();
+  const [project, setProject] = useState<string | null>(null);
 
-  const scan = useCallback(async (dir: string) => {
-    setScanning(true);
-    setError(null);
-    try {
-      const found = sortChecks(await scanEnvironment(dir));
-      setItems(found);
-      setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setScanning(false);
-    }
-  }, []);
+  const scan = useCallback(
+    async (dir: string) => {
+      setScanning(true);
+      setError(null);
+      try {
+        // Thư mục khớp dự án nào trên hub thì Rust hỏi hub MCP server được phép của dự án đó.
+        const key = account ? await projectKeyOf(dir) : null;
+        setProject(key);
+        const found = sortChecks(await scanEnvironment(dir, key));
+        setItems(found);
+        setSelectedId((id) => (id && found.some((i) => i.id === id) ? id : (found[0]?.id ?? null)));
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setScanning(false);
+      }
+    },
+    [account],
+  );
 
   // Quét khi mở màn và mỗi khi thư mục làm việc đổi (chọn ở AppNav hoặc gửi ô nhập dưới đây).
   useEffect(() => {
@@ -278,7 +305,7 @@ export function SetupScreen() {
                           onClick={() => setSelectedId(item.id)}
                         >
                           <span className="font-mono text-[13px] font-medium whitespace-nowrap">{item.name}</span>
-                          <span className="text-xs text-muted-foreground">{item.source || t.thisMachine}</span>
+                          <span className="text-xs text-muted-foreground">{sourceLabel(item, t)}</span>
                         </button>
                       </Td>
                       <Td className="text-[13px] whitespace-nowrap">{t.kinds[item.kind]}</Td>
@@ -297,7 +324,7 @@ export function SetupScreen() {
           </section>
           <aside className="w-full min-w-0 rounded-xl border bg-card text-card-foreground min-[1000px]:flex-[2]">
             {selected ? (
-              <Detail key={selected.id} item={selected} folder={folder} onDone={() => scan(folder)} />
+              <Detail key={selected.id} item={selected} folder={folder} project={project} onDone={() => scan(folder)} />
             ) : (
               <p className="p-4 text-muted-foreground">{t.pick}</p>
             )}
@@ -308,7 +335,17 @@ export function SetupScreen() {
   );
 }
 
-function Detail({ item, folder, onDone }: { item: CheckItem; folder: string; onDone: () => Promise<void> }) {
+function Detail({
+  item,
+  folder,
+  project,
+  onDone,
+}: {
+  item: CheckItem;
+  folder: string;
+  project: string | null;
+  onDone: () => Promise<void>;
+}) {
   const t = useT(text);
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -331,7 +368,7 @@ function Detail({ item, folder, onDone }: { item: CheckItem; folder: string; onD
     setRunning(true);
     setResult(null);
     try {
-      setResult(await runInstall(item.id, folder));
+      setResult(await runInstall(item.id, folder, project));
       await onDone();
     } catch (e) {
       setResult({ error: errorText(e) });
@@ -353,7 +390,7 @@ function Detail({ item, folder, onDone }: { item: CheckItem; folder: string; onD
           <span className="font-mono text-foreground">{item.have ?? "—"}</span>
         </p>
         <p className="text-[12.5px] text-muted-foreground">
-          {t.because} {item.source || t.thisMachine}
+          {t.because} {sourceLabel(item, t)}
         </p>
       </div>
       <div className="flex flex-col gap-2.5 px-3.5 py-3">
@@ -394,7 +431,9 @@ function Detail({ item, folder, onDone }: { item: CheckItem; folder: string; onD
             )}
           </>
         ) : (
-          <p className="text-[13px] text-muted-foreground">{t.nothingToDo}</p>
+          <p className="text-[13px] text-muted-foreground">
+            {item.id === "hive-token" && item.status !== "ok" ? t.linkHint : t.nothingToDo}
+          </p>
         )}
       </div>
       <Dialog open={confirming} onOpenChange={setConfirming}>
