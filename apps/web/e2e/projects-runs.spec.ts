@@ -128,7 +128,7 @@ test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền 
     },
   });
   await page.goto("/projects/PAY/settings");
-  await page.getByLabel("Mỗi run").fill("3.5");
+  await page.getByRole("textbox", { name: "Mỗi run" }).fill("3.5");
 
   await page.getByLabel(/Toàn quyền/).click();
   const dialog = page.getByRole("dialog", { name: "Cho agent toàn quyền?" });
@@ -154,7 +154,7 @@ test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) 
   await open(page, "member");
   await page.goto("/projects/PAY/settings");
   await expect(page.getByRole("note")).toContainText("chế độ chỉ đọc");
-  await expect(page.getByLabel("Mỗi run")).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Mỗi run" })).toBeDisabled();
 });
 
 test("danh sách run: lọc theo trạng thái gửi đúng tham số và giữ trên URL", async ({ page }) => {
