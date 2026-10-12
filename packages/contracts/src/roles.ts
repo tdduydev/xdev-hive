@@ -25,7 +25,7 @@ export const PERMISSION_TREE: readonly PermissionNode[] = [
     branch("docs", [leaf("docs.read"), leaf("docs.write"), leaf("docs.delete")]),
     branch("skills", [leaf("skills.read"), leaf("skills.write")]),
     branch("memory", [leaf("memory.read"), leaf("memory.write"), leaf("memory.approve")]),
-    branch("proposals", [leaf("proposals.create"), leaf("proposals.decide")]),
+    branch("proposals", [leaf("proposals.create"), leaf("proposals.decide"), leaf("workflows.write")]),
   ]),
   branch("projects", [
     branch("project", [
@@ -90,6 +90,7 @@ const TEAM_ADMIN_EXTRA = new Set([
   "skills.write",
   "memory.approve",
   "proposals.decide",
+  "workflows.write",
   "sandbox.write",
   "sandbox.read",
   "costs.read",

@@ -1,7 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { meQuery } from "@/lib/me.ts";
-import { NAV_GROUPS } from "@/lib/nav.ts";
 import { orgsMineQuery } from "@/lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
@@ -9,14 +8,15 @@ import { AuditPage } from "@/pages/admin/audit-page.tsx";
 import { McpPage } from "@/pages/admin/mcp-page.tsx";
 import { PoliciesPage } from "@/pages/admin/policies-page.tsx";
 import { RolesPage } from "@/pages/admin/roles-page.tsx";
-import { ComingSoonPage } from "@/pages/coming-soon-page.tsx";
 import { CostsPage } from "@/pages/costs-page.tsx";
 import { HomePage } from "@/pages/home-page.tsx";
 import { InvitePage } from "@/pages/invite-page.tsx";
 import { DocsPage } from "@/pages/knowledge/docs-page.tsx";
 import { MemoryPage } from "@/pages/knowledge/memory-page.tsx";
 import { ProposalsPage } from "@/pages/knowledge/proposals-page.tsx";
+import { ReviewsPage, validateReviewsSearch } from "@/pages/knowledge/reviews-page.tsx";
 import { SkillsPage } from "@/pages/knowledge/skills-page.tsx";
+import { WorkflowsPage } from "@/pages/knowledge/workflows-page.tsx";
 import { LeaderPage, validateLeaderSearch } from "@/pages/leader-page.tsx";
 import { LoginPage, validateLoginSearch } from "@/pages/login-page.tsx";
 import { LoginSettingsPage } from "@/pages/login-settings-page.tsx";
@@ -235,26 +235,19 @@ const notificationsRoute = createRoute({
 const machinesRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/machines", component: MachinesPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
-/**
- * Màn của thiết kế v2 chưa làm (docs/design-system/screens): route có sẵn để sidebar và ⌘K không dẫn tới trang lỗi.
- * Task làm màn thật thay component của route tương ứng.
- */
-const comingSoon = (id: string, path: string, design: string) => {
-  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === id);
-  if (!item) throw new Error(`Thiếu mục ${id} trong lib/nav.ts`);
-  return createRoute({
-    getParentRoute: () => inOrgRoute,
-    path,
-    component: () => <ComingSoonPage item={item} design={design} />,
-  });
-};
-const comingSoonRoutes = [
+/** Màn của thiết kế v2 (docs/design-system/screens) ở nhóm Kiến thức và quản trị. */
+const v2Routes = [
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/docs", component: DocsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/skills", component: SkillsPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/memory", component: MemoryPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/proposals", component: ProposalsPage }),
-  comingSoon("workflows", "/knowledge/workflows", "Workflows.dc.html"),
-  comingSoon("reviews", "/knowledge/reviews", "DocReview.dc.html"),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/knowledge/workflows", component: WorkflowsPage }),
+  createRoute({
+    getParentRoute: () => inOrgRoute,
+    path: "/knowledge/reviews",
+    validateSearch: validateReviewsSearch,
+    component: ReviewsPage,
+  }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/roles", component: RolesPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/mcp", component: McpPage }),
   createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/policies", component: PoliciesPage }),
@@ -287,7 +280,7 @@ const routeTree = rootRoute.addChildren([
         notificationsRoute,
         machinesRoute,
         costsRoute,
-        ...comingSoonRoutes,
+        ...v2Routes,
       ]),
     ]),
   ]),

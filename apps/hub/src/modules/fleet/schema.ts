@@ -46,6 +46,8 @@ export const machines = hive
       version: text("version").notNull(),
       clis: text("clis").array().notNull().default(sql`'{}'::text[]`),
       capacity: integer("capacity").notNull().default(1),
+      /** Việc ngoài run code mà worker khai làm được trong hello (vd. `doccheck`). */
+      capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
       status: machineStatus("status").notNull().default("offline"),
       pausedAt: timestamp("paused_at", { withTimezone: true }),
       /** Khoá công khai máy gửi lúc đăng ký (mục 6). Chưa dùng tới khi có access token ngắn hạn. */

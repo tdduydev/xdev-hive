@@ -83,7 +83,7 @@ const text: Dict<{
     anyCli: "CLI bất kỳ",
     unassigned: "Chưa có máy",
     crossReview: "review chéo",
-    kinds: { code: "Viết code", review: "Review chéo", plan: "Kế hoạch", leader: "Leader" },
+    kinds: { code: "Viết code", review: "Review chéo", plan: "Kế hoạch", leader: "Leader", doccheck: "Kiểm tài liệu" },
     states: RUN_STATE_LABEL,
     groups: Object.fromEntries(RUN_FILTERS.map((filter) => [filter.key, filter.label])),
     missingProject: (key) => `Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`,
@@ -119,7 +119,7 @@ const text: Dict<{
     anyCli: "Any CLI",
     unassigned: "Unassigned",
     crossReview: "cross-review",
-    kinds: { code: "Coding", review: "Cross-review", plan: "Plan", leader: "Leader" },
+    kinds: { code: "Coding", review: "Cross-review", plan: "Plan", leader: "Leader", doccheck: "Doc check" },
     states: {
       queued: "Queued",
       planning: "Planning",

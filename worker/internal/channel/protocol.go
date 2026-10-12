@@ -31,7 +31,9 @@ type Hello struct {
 	MemoryMB   uint64   `json:"memoryMB,omitempty"`
 	CLIs       []string `json:"clis"`
 	Capacity   int      `json:"capacity"`
-	ResumeRuns []string `json:"resumeRuns"`
+	// Capabilities: việc ngoài run code worker làm được (runner.Capabilities).
+	Capabilities []string `json:"capabilities,omitempty"`
+	ResumeRuns   []string `json:"resumeRuns"`
 }
 
 type HeartbeatRun struct {

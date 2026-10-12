@@ -6,7 +6,17 @@ import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tena
 import type { Principal } from "./access.ts";
 import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
 import { embedQuery, type KnowledgeDeps, listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
-import { approveProposal, createProposal, listProposals, rejectProposal } from "./proposals.ts";
+import { approveProposal, listProposals, rejectProposal } from "./proposals.ts";
+import {
+  decideReview,
+  dryRunWorkflow,
+  getReview,
+  listReviews,
+  listWorkflows,
+  proposeWithReview,
+  removeWorkflow,
+  saveWorkflow,
+} from "./reviews.ts";
 import {
   afterSkillChange,
   getSkillRepo,
@@ -34,6 +44,9 @@ export function knowledgeRouter(
   const docs = implement(contract.docs).$context<RequestContext>().use(authed).use(inOrg);
   const skills = implement(contract.skills).$context<RequestContext>().use(authed).use(inOrg);
   const proposals = implement(contract.proposals).$context<RequestContext>().use(authed).use(inOrg);
+  const workflows = implement(contract.reviewWorkflows).$context<RequestContext>().use(authed).use(inOrg);
+  const reviews = implement(contract.reviews).$context<RequestContext>().use(authed).use(inOrg);
+  const reviewDeps = { jobs: deps.jobs, publicUrl: deps.publicUrl };
   return {
     memory: {
       write: memory.write
@@ -69,7 +82,7 @@ export function knowledgeRouter(
     },
     proposals: {
       create: proposals.create.handler(async ({ context: { tx, user, orgId }, input }) => {
-        const p = await createProposal(tx, asUser(user), input);
+        const p = await proposeWithReview(tx, asUser(user), input, reviewDeps);
         if (p.kind === "skill") await afterSkillChange(tx, deps, { kind: "open-pr", orgId, proposalId: p.id });
         return p;
       }),
@@ -87,6 +100,22 @@ export function knowledgeRouter(
         if (p.kind === "skill") await afterSkillChange(tx, deps, { kind: "close-pr", orgId, proposalId: p.id });
         return p;
       }),
+    },
+    reviewWorkflows: {
+      list: workflows.list.handler(({ context: { tx, user } }) => listWorkflows(tx, asUser(user))),
+      save: workflows.save.handler(({ context: { tx, user }, input }) => saveWorkflow(tx, user.id, input)),
+      remove: workflows.remove.handler(async ({ context: { tx, user }, input }) => {
+        await removeWorkflow(tx, user.id, input.id);
+        return { ok: true as const };
+      }),
+      dryRun: workflows.dryRun.handler(({ context: { tx, user }, input }) => dryRunWorkflow(tx, asUser(user), input)),
+    },
+    reviews: {
+      list: reviews.list.handler(({ context: { tx, user }, input }) => listReviews(tx, user.id, input)),
+      get: reviews.get.handler(({ context: { tx, user }, input }) => getReview(tx, user.id, input.id)),
+      decide: reviews.decide.handler(({ context: { tx, user }, input }) =>
+        decideReview(tx, user.id, input, reviewDeps),
+      ),
     },
     skillRepo: {
       get: skillRepo.get.use(inOrg).handler(({ context: { tx } }) => getSkillRepo(tx)),

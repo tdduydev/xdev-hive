@@ -36,6 +36,8 @@ export const hello = z.object({
   memoryMB: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
   clis: z.array(cli).max(10),
   capacity: z.number().int().min(0).max(64),
+  /** Việc worker làm được ngoài run code (vd. `doccheck`: run chỉ đọc kiểm tài liệu). Worker cũ không gửi. */
+  capabilities: z.array(z.string().max(40)).max(20).default([]),
   resumeRuns: z.array(z.string().max(64)).max(64).default([]),
 });
 
