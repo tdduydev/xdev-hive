@@ -302,7 +302,7 @@ description: "Task list for Desktop Application v2 implementation"
 - [x] **T029 AppMyWork (US10, FR-023)**: My tasks and my runs, start a task, live log, waiting reason. Hub filter for
   tasks assigned to the caller if missing. **Dependencies**: T027.
 - [x] **T030 AppReviews (US11, FR-024)**: Awaiting my review with diff, checklist, approve/return. **Dependencies**: T027.
-- [ ] **T031 AppKnowledge (US12, FR-025)**: read-only search over docs, memory, skills. **Dependencies**: T027.
+- [x] **T031 AppKnowledge (US12, FR-025)**: read-only search over docs, memory, skills. **Dependencies**: T027.
 - [ ] **T032 Navigation profiles**: show T028–T031 in `AppNav` by profile (`dev`, `writer`, `lead`); designs
   `App*.dc.html` for each new screen. **Dependencies**: T028–T031.
 
