@@ -160,6 +160,16 @@
   --breakpoint-app: 56.25rem;
 }
 
+/* Bảng nào cũng có nền tiêu đề và đổi nền khi rê chuột như TableRow của shadcn, kể cả bảng viết bằng <tr> thường. */
+@layer components {
+  [data-slot="table"] > thead {
+    @apply bg-muted/50;
+  }
+  [data-slot="table"] > tbody > tr {
+    @apply transition-colors hover:bg-muted/40;
+  }
+}
+
 @layer base {
   :root {
     color-scheme: light;
