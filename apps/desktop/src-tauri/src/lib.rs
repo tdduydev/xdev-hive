@@ -21,6 +21,8 @@ use worker::{Action, Event, Worker};
 const SIDECAR: &str = "hive-worker";
 const MAIN: &str = "main";
 const REGISTER: &str = "register";
+/// Cửa sổ app cục bộ (AppNav và các màn trên máy). Chỉ nạp file trong dist của app, không nạp trang từ xa.
+const APP: &str = "app";
 const TRAY: &str = "tray";
 /// Worker chờ run đang chạy ghi xong kết quả tối đa 30 giây (StopTimeout của kênh); chờ thêm chút rồi mới giết.
 const STOP_GRACE: Duration = Duration::from_secs(35);
@@ -203,6 +205,23 @@ fn show_main(app: &AppHandle, hub: &str) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn show_app(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(APP) {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return;
+    }
+    let built = WebviewWindowBuilder::new(app, APP, WebviewUrl::App("index.html".into()))
+        .title("xDev Hive")
+        .inner_size(1100.0, 720.0)
+        .min_inner_size(640.0, 480.0)
+        .build();
+    if let Err(e) = built {
+        eprintln!("Không mở được cửa sổ app: {e}");
+    }
 }
 
 fn show_register(app: &AppHandle) {
@@ -397,6 +416,7 @@ async fn check_updates(app: &AppHandle, hub: &str) {
 fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     let status = MenuItem::with_id(app, "status", "Worker: đã tắt", false, None::<&str>)?;
     let open = MenuItem::with_id(app, "open", "Mở xDev Hive", true, None::<&str>)?;
+    let open_app = MenuItem::with_id(app, "app", "Mở app trên máy", true, None::<&str>)?;
     let toggle_item = MenuItem::with_id(app, "toggle", "Bật worker", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
     let menu = Menu::with_items(
@@ -405,6 +425,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
             &status,
             &PredefinedMenuItem::separator(app)?,
             &open,
+            &open_app,
             &toggle_item,
             &PredefinedMenuItem::separator(app)?,
             &quit_item,
@@ -427,6 +448,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     }
     tray.on_menu_event(|app, event| match event.id().as_ref() {
         "open" => open_hub(app),
+        "app" => show_app(app),
         "toggle" => toggle(app),
         "quit" => quit(app),
         _ => {}
