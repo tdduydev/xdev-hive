@@ -2,7 +2,7 @@ import { Loader2Icon } from "lucide-react";
 import { apiErrorMessage } from "../../lib/api-errors.ts";
 import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
-import { Card } from "./card.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./empty.tsx";
 
 export function LoadingState({ label = "Đang tải…" }: { label?: string }) {
   return (
@@ -26,9 +26,13 @@ export function LoadFailure({ error, retry }: { error: unknown; retry: () => unk
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <Card className="grid gap-2 px-4 py-8 text-center">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      <p className="text-muted-foreground">{description}</p>
-    </Card>
+    <Empty className="border border-dashed border-border">
+      <EmptyHeader>
+        <EmptyTitle role="heading" aria-level={2}>
+          {title}
+        </EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }

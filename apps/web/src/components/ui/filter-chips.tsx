@@ -34,14 +34,16 @@ export function FilterChips<K extends string>({
             aria-pressed={on}
             onClick={() => onChange(chip.key)}
             className={cx(
-              "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm",
+              "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors",
               on
-                ? "border-primary/40 bg-accent font-semibold text-accent-foreground"
-                : "border-input bg-card hover:bg-muted",
+                ? "border-primary/40 bg-accent text-accent-foreground"
+                : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             {chip.label}
-            {chip.count !== undefined && <span className="tabular-nums opacity-80">{chip.count}</span>}
+            {chip.count !== undefined && (
+              <span className="rounded-sm bg-foreground/5 px-1 font-mono text-2xs tabular-nums">{chip.count}</span>
+            )}
           </button>
         );
       })}

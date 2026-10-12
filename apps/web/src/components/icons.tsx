@@ -142,9 +142,10 @@ export function Icon({ name, className, ...props }: { name: IconName } & Compone
  */
 export function Brand({ className }: { className?: string }) {
   return (
-    <>
+    // Bọc trong span: Card của shadcn bỏ padding trên khi con đầu tiên là <img>.
+    <span className="inline-flex">
       <img src="/xdev-hive-light.svg" alt="xDev Hive" className={cx("h-10 w-auto dark:hidden", className)} />
       <img src="/xdev-hive-dark.svg" alt="xDev Hive" className={cx("hidden h-10 w-auto dark:block", className)} />
-    </>
+    </span>
   );
 }
