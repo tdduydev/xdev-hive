@@ -203,6 +203,13 @@ type Msg<T extends HubToWorker["type"]> = Extract<HubToWorker, { type: T }>;
 const openWorkers = new Set<FakeWorker>();
 afterEach(async () => {
   await Promise.all([...openWorkers].map((w) => w.close()));
+  // Run còn dở của kịch bản trước (vd. run plan con chưa ai nhận) sẽ được đề nghị cho máy của kịch bản sau trước run
+  // đang thử; máy chỉ có một slot nên run đang thử không bao giờ nhận được job_offer. Huỷ hết để các kịch bản độc lập.
+  await admin.query(
+    `update hive.runs set state = 'cancelled', offer_machine_id = null, offer_expires_at = null, finished_at = now()
+     where org_id = $1 and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`,
+    [org.orgId],
+  );
 });
 
 class FakeWorker {
