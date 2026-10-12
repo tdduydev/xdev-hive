@@ -81,6 +81,7 @@ export async function searchRuns(tx: Tx, userId: string, input: RunSearchInput):
     input.projectId ? eq(runs.projectId, input.projectId) : undefined,
     input.cli ? eq(runs.cli, input.cli) : undefined,
     input.machineId ? eq(runs.machineId, input.machineId) : undefined,
+    input.mine ? eq(runs.ownerUserId, userId) : undefined,
     // Con trỏ không còn (run đã bị xoá cùng task) thì so với null, trang trả rỗng thay vì quay về trang đầu.
     input.cursor
       ? sql`(${runs.createdAt}, ${runs.id}) < (select r.created_at, r.id from hive.runs r where r.id = ${input.cursor})`

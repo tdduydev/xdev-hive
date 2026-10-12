@@ -33,7 +33,7 @@ export function tasksRouter(deps: TasksDeps) {
     create: os.create.use(inOrg).handler(({ context: { tx, user }, input }) => createTask(tx, user.id, input)),
     list: os.list
       .use(inOrg)
-      .handler(({ context: { tx, user }, input }) => listTasks(tx, user.id, input.projectId, input.status)),
+      .handler(({ context: { tx, user }, input }) => listTasks(tx, user.id, input.projectId, input.status, input.mine)),
     get: os.get.use(inOrg).handler(({ context: { tx, user }, input }) => getTask(tx, user.id, input.id)),
     update: os.update.use(inOrg).handler(({ context: { tx, user }, input }) => updateTask(tx, user.id, input)),
     // Tự mở transaction để gửi lệnh huỷ tới máy sau khi commit, không gửi khi transaction rollback.

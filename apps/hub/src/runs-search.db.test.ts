@@ -251,4 +251,12 @@ describe("runs.search", () => {
       );
     }
   });
+
+  it("mine: chỉ run mình là chủ (ADR 0017)", async () => {
+    await admin.query("update hive.runs set owner_user_id = $1 where id = $2", [devUserId, runIds.r2]);
+    const { status, data } = await search("mine=true");
+    expect(status, JSON.stringify(data)).toBe(200);
+    expect(data.items.map((r) => r.id)).toEqual([runIds.r2]);
+    expect((await search("mine=false")).data.items.length).toBeGreaterThan(1);
+  });
 });
