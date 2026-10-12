@@ -8,6 +8,7 @@ import {
   listMachines,
   listOnlineMachines,
   pauseMachine,
+  requestMachineUpdate,
   resumeMachine,
   revokeMachine,
 } from "./machines.ts";
@@ -245,6 +246,40 @@ describe("tạm dừng máy", () => {
       [orgA, machine.id],
     );
     expect(rows.map((row) => row.action)).toEqual(["machine.pause", "machine.resume"]);
+  });
+});
+
+describe("yêu cầu cập nhật worker", () => {
+  const asUser = (name: string, machineId: string, version?: string) =>
+    withTenant(app, { userId: user(name), orgId: orgA }, (tx) =>
+      requestMachineUpdate(tx, user(name), machineId, version),
+    );
+
+  it("admin đội gửi được cho máy online và có audit; thành viên thường thì không", async () => {
+    const machine = await register((await newRegistration()).token, `update-${tag}`);
+    await admin.query("update hive.machines set status = 'online' where id = $1", [machine.id]);
+    expect(await fleetCode(() => asUser("member", machine.id))).toBe("TEAM_ROLE_REQUIRED");
+    const m = await asUser("admin", machine.id, "0.2.0");
+    expect(m).toMatchObject({ id: machine.id, version: "0.1.0" });
+    const { rows } = await admin.query(
+      "select actor_user_id, data from hive.audit_log where action = 'machine.update' and target_id = $1",
+      [machine.id],
+    );
+    expect(rows).toEqual([
+      { actor_user_id: user("admin"), data: { name: `update-${tag}`, teamId: teamA, from: "0.1.0", to: "0.2.0" } },
+    ]);
+  });
+
+  it("máy mất kết nối hoặc đã thu hồi thì báo xung đột, không ghi audit", async () => {
+    const machine = await register((await newRegistration()).token, `update-off-${tag}`);
+    expect(await fleetCode(() => asUser("admin", machine.id))).toBe("MACHINE_OFFLINE");
+    await withTenant(app, { userId: user("admin"), orgId: orgA }, (tx) => revokeMachine(tx, user("admin"), machine.id));
+    expect(await fleetCode(() => asUser("admin", machine.id))).toBe("MACHINE_REVOKED");
+    const { rows } = await admin.query(
+      "select count(*)::int as n from hive.audit_log where action = 'machine.update' and target_id = $1",
+      [machine.id],
+    );
+    expect(rows[0].n).toBe(0);
   });
 });
 

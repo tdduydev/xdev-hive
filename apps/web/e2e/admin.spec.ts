@@ -171,11 +171,29 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
             createdAt: at,
           },
         ]),
-      "machines/createRegistration": () =>
+      "machines/createRegistration": (input) =>
         ok({
           token: "reg-once-token",
           expiresAt: "2026-10-11T17:00:00.000Z",
           command: "hive-worker register --hub https://hive.test --token reg-once-token",
+          installCommand: `curl -fsSL https://dl.test/install.sh | sh -s -- --hub https://hive.test --token reg-once-token${(input as { kind: string }).kind === "host" ? " --no-service" : ""}`,
+          installCommandWindows:
+            "& ([scriptblock]::Create((irm https://dl.test/install.ps1))) -Hub https://hive.test -Token reg-once-token",
+        }),
+      "machines/workerRelease": () =>
+        ok({ version: "1.3.0", url: "https://github.com/tdduydev/xdev-hive/releases/tag/v1.3.0", publishedAt: at }),
+      "machines/update": (input) =>
+        ok({
+          id: (input as { machineId: string }).machineId,
+          teamId: TEAM.id,
+          name: "mac-mini-01",
+          os: "darwin",
+          version: "1.2.3",
+          clis: ["claude", "codex"],
+          capacity: 2,
+          status: "online",
+          lastSeenAt: at,
+          createdAt: at,
         }),
       "machines/revoke": (input) =>
         ok({
@@ -221,7 +239,13 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
   await page.goto("/machines");
   await expect(page.getByRole("heading", { name: "Máy", exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: /mac-mini-01/ })).toContainText("Sẵn sàng");
+  await expect(page.getByRole("row", { name: /mac-mini-01/ })).toContainText("Có bản 1.3.0");
   await page.screenshot({ path: "e2e/screenshots/machines.png", fullPage: true });
+  await page.getByRole("button", { name: "Cập nhật worker trên mac-mini-01" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Đã gửi lệnh cập nhật" })).toContainText("mac-mini-01");
+  expect(hub.rpcCalls.find((call) => call.path === "machines/update")?.input).toEqual({
+    machineId: "8e8e8e8e-0000-4000-8000-000000000001",
+  });
   await page.getByRole("button", { name: "Tạm dừng", exact: true }).click();
   expect(hub.rpcCalls.find((call) => call.path === "machines/pause")).toMatchObject({
     org: ORG_A.id,
@@ -231,8 +255,19 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "Tạo mã đăng ký" }).click();
   await expect(dialog.getByRole("status", { name: "Mã đăng ký dùng một lần" })).toHaveText("reg-once-token");
-  await expect(dialog.getByText("go install github.com/tdduydev/xdev-hive/worker/cmd/hive-worker@main")).toBeVisible();
-  await expect(dialog.getByText("hive-worker service install", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText(
+      "curl -fsSL https://dl.test/install.sh | sh -s -- --hub https://hive.test --token reg-once-token",
+      {
+        exact: true,
+      },
+    ),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("hive-worker register --hub https://hive.test --token reg-once-token", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Windows" }).click();
+  await expect(dialog.getByText(/irm https:\/\/dl\.test\/install\.ps1/)).toBeVisible();
   await dialog.getByRole("button", { name: "Linux" }).click();
   await expect(dialog.getByText(/loginctl enable-linger/)).toBeVisible();
   await dialog.getByRole("button", { name: "Đóng" }).click();
@@ -248,6 +283,7 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
     .getByLabel(/Runner host/)
     .check();
   await page.getByRole("dialog").getByRole("button", { name: "Tạo mã đăng ký" }).click();
+  await expect(page.getByRole("dialog").getByText(/--token reg-once-token --no-service$/)).toBeVisible();
   await expect(page.getByRole("dialog").getByText(/^hive-worker host --image/)).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Linux" })).toHaveCount(0);
   expect(hub.rpcCalls.filter((call) => call.path === "machines/createRegistration").at(-1)?.input).toMatchObject({

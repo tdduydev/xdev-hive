@@ -53,6 +53,35 @@ export async function revokeMachine(tx: Tx, userId: string, machineId: string): 
   return toMachine(row);
 }
 
+/**
+ * Kiểm quyền và trạng thái trước khi gửi lệnh cập nhật: admin đội, máy chưa thu hồi và đang online. Router gửi gói
+ * `update` sau khi commit, như thu hồi; worker tự chờ run đang chạy xong rồi mới cập nhật.
+ */
+export async function requestMachineUpdate(
+  tx: Tx,
+  userId: string,
+  machineId: string,
+  version: string | undefined,
+): Promise<Machine> {
+  const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
+  if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");
+  await requireTeamRole(tx, userId, found.teamId, "admin");
+  if (found.status === "revoked") throw new FleetError("conflict", "MACHINE_REVOKED", "Máy đã bị thu hồi.");
+  if (found.status !== "online")
+    throw new FleetError(
+      "conflict",
+      "MACHINE_OFFLINE",
+      "Máy đang mất kết nối. Cập nhật khi máy nối lại, hoặc chạy hive-worker update trên máy.",
+    );
+  await recordAudit(tx, {
+    action: "machine.update",
+    targetType: "machine",
+    targetId: machineId,
+    data: { name: found.name, teamId: found.teamId, from: found.version, to: version ?? "latest" },
+  });
+  return toMachine(found);
+}
+
 async function setMachinePaused(tx: Tx, userId: string, machineId: string, paused: boolean): Promise<Machine> {
   const [found] = await tx.select().from(machines).where(eq(machines.id, machineId));
   if (!found) throw new FleetError("not_found", "MACHINE_NOT_FOUND", "Không tìm thấy máy.");

@@ -32,9 +32,22 @@ export const registrationOutput = z.object({
   /** Chỉ hiện một lần; hub chỉ lưu băm. */
   token: z.string(),
   expiresAt: z.iso.datetime(),
-  /** Lệnh cài một dòng để dán vào máy dev. */
+  /** Lệnh đăng ký cho máy đã có hive-worker (app desktop đọc lệnh này khi người dùng dán vào). */
   command: z.string(),
+  /** Một dòng cho Linux, macOS: tải bản phát hành, kiểm chữ ký, đăng ký máy, cài dịch vụ (runner host thì không). */
+  installCommand: z.string(),
+  /** Như installCommand, cho PowerShell trên Windows. */
+  installCommandWindows: z.string(),
 });
+
+/** Bản worker mới nhất trên trang phát hành, để web chỉ ra máy đang chạy bản cũ. */
+export const workerRelease = z.object({
+  /** Không có tiền tố v. */
+  version: z.string(),
+  url: z.url(),
+  publishedAt: z.iso.datetime().nullable(),
+});
+export type WorkerRelease = z.output<typeof workerRelease>;
 
 export const registerInput = z.object({
   registrationToken: z.string().min(1).max(200),
@@ -99,6 +112,34 @@ export const fleetContract = {
       .errors(userErrors)
       .input(z.object({ machineId: id }))
       .output(machine),
+    update: oc
+      .route({
+        method: "POST",
+        path: "/v1/machines/{machineId}/update",
+        summary: "Yêu cầu máy tự cập nhật worker (chờ run đang chạy xong)",
+        tags: ["fleet"],
+      })
+      .errors({ ...userErrors, CONFLICT: { message: "Máy không ở trạng thái cập nhật được.", data: reason } })
+      .input(
+        z.object({
+          machineId: id,
+          /** Bỏ trống là bản mới nhất. */
+          version: z
+            .string()
+            .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, "Phiên bản phải dạng X.Y.Z.")
+            .optional(),
+        }),
+      )
+      .output(machine),
+    workerRelease: oc
+      .route({
+        method: "GET",
+        path: "/v1/worker/releases/latest",
+        summary: "Bản worker mới nhất (null khi hub không tra được)",
+        tags: ["fleet"],
+      })
+      .errors({ UNAUTHORIZED: userErrors.UNAUTHORIZED })
+      .output(workerRelease.nullable()),
   },
   worker: {
     register: oc

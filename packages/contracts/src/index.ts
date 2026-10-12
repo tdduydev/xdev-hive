@@ -23,6 +23,7 @@ export * from "./sandbox.ts";
 export * from "./scm.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
+export * from "./version.ts";
 
 // Lỗi kiểm tra đầu vào được trả thẳng cho người dùng (hub) và hiện trên form (web), nên dùng tiếng Việt cho mọi
 // thông báo mặc định của zod. Schema nào cần câu rõ hơn thì tự ghi message riêng.

@@ -1,4 +1,8 @@
 import { readFile } from "node:fs/promises";
+import { newerVersion, validVersion } from "@xdev-hive/contracts";
+
+// Test và module khác vẫn lấy newerVersion từ đây như trước khi chuyển sang contracts.
+export { newerVersion };
 
 type PlatformRelease = { signature: string; url: string };
 type Manifest = {
@@ -7,40 +11,6 @@ type Manifest = {
   pub_date?: string | null;
   platforms: Record<string, PlatformRelease>;
 };
-const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
-
-export function validVersion(v: string) {
-  return semver.test(v);
-}
-export function newerVersion(a: string, b: string): boolean {
-  const x = semver.exec(a),
-    y = semver.exec(b);
-  if (!x || !y) return false;
-  for (let i = 1; i <= 3; i++) {
-    const d = Number(x[i]) - Number(y[i]);
-    if (d) return d > 0;
-  }
-  const xp = x[4],
-    yp = y[4];
-  if (xp === undefined || yp === undefined) return xp === undefined && yp !== undefined;
-  const xs = xp.split("."),
-    ys = yp.split(".");
-  for (let i = 0; i < Math.max(xs.length, ys.length); i++) {
-    if (xs[i] === undefined) return false;
-    if (ys[i] === undefined) return true;
-    const xv = xs[i];
-    const yv = ys[i];
-    if (xv === yv) continue;
-    if (xv === undefined || yv === undefined) continue;
-    const xn = /^\d+$/.test(xv),
-      yn = /^\d+$/.test(yv);
-    if (xn && yn) return BigInt(xv) > BigInt(yv);
-    if (xn !== yn) return !xn;
-    return xv > yv;
-  }
-  return false;
-}
-
 function parseManifest(value: unknown): Manifest {
   if (!value || typeof value !== "object") throw new Error("manifest không hợp lệ");
   const m = value as Manifest;
