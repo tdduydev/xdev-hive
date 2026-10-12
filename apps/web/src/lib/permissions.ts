@@ -37,6 +37,7 @@ export const PERMISSION_LABEL: Record<string, Dict<string>> = {
   proposals: { vi: "Đề xuất sửa", en: "Proposals" },
   "proposals.create": { vi: "Tạo đề xuất", en: "Create" },
   "proposals.decide": { vi: "Duyệt đề xuất", en: "Decide" },
+  "workflows.write": { vi: "Sửa quy trình duyệt", en: "Edit review workflows" },
   projects: { vi: "Dự án và hạ tầng", en: "Projects & infra" },
   project: { vi: "Dự án", en: "Projects" },
   "projects.read": { vi: "Xem dự án", en: "View projects" },

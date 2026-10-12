@@ -16,6 +16,7 @@ import { scmContract } from "./scm.ts";
 import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
+import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./audit.ts";
 export * from "./cost.ts";
@@ -34,6 +35,7 @@ export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
 export * from "./version.ts";
+export * from "./workflows.ts";
 
 // Lỗi kiểm tra đầu vào được trả thẳng cho người dùng (hub) và hiện trên form (web), nên dùng tiếng Việt cho mọi
 // thông báo mặc định của zod. Schema nào cần câu rõ hơn thì tự ghi message riêng.
@@ -110,6 +112,8 @@ export const contract = {
   roles: rolesContract,
   skillRepo: skillRepoContract,
   policies: policiesContract,
+  reviewWorkflows: workflowsContract,
+  reviews: reviewsContract,
 };
 
 export type Contract = typeof contract;
