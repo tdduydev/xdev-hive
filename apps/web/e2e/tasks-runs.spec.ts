@@ -176,9 +176,15 @@ test("bảng việc: số liệu, lọc, tìm, mở run gần nhất", async ({ 
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
   await expect(nav.getByRole("link", { name: "Bảng việc" })).toHaveAttribute("aria-current", "page");
   // Mục chưa có màn vẫn trỏ tới route sẽ có.
-  await expect(nav.getByRole("link", { name: "Máy" })).toHaveAttribute("href", "/machines");
-  await expect(nav.getByRole("link", { name: "Chi phí và token" })).toHaveAttribute("href", "/admin/costs");
-  await expect(nav.getByRole("link", { name: "Thông báo" })).toHaveAttribute("href", "/notifications");
+  await expect(nav.getByRole("link", { name: "Máy", includeHidden: true })).toHaveAttribute("href", "/machines");
+  await expect(nav.getByRole("link", { name: "Chi phí và token", includeHidden: true })).toHaveAttribute(
+    "href",
+    "/admin/costs",
+  );
+  await expect(nav.getByRole("link", { name: "Thông báo", includeHidden: true })).toHaveAttribute(
+    "href",
+    "/notifications",
+  );
 
   const stats = page.getByRole("region", { name: "Số liệu" });
   await expect(stats).toContainText("Đang chạy1trên 1 máy");

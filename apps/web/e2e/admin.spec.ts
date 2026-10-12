@@ -652,7 +652,10 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
     },
   });
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Điều hướng chính" }).getByRole("link", { name: "Đăng nhập" }).click();
+  const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
+  // Nhóm "Người và quyền" đóng khi đang ở trang chủ: mở rồi mới bấm.
+  await nav.getByRole("button", { name: "Người và quyền" }).click();
+  await nav.getByRole("link", { name: "Đăng nhập" }).click();
   await expect(page).toHaveURL("/admin/sign-in-settings");
 
   const methods = page.getByRole("list", { name: "Các cách đăng nhập" });
