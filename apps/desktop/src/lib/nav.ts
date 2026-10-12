@@ -4,6 +4,7 @@ import {
   FilePenLineIcon,
   FileTextIcon,
   HouseIcon,
+  LibraryIcon,
   ListTodoIcon,
   type LucideIcon,
   PlayIcon,
@@ -64,7 +65,17 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
   ],
 };
 
-export type ScreenId = "home" | "work" | "reviews" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
+export type ScreenId =
+  | "home"
+  | "work"
+  | "reviews"
+  | "knowledge"
+  | "docs"
+  | "write"
+  | "skills"
+  | "tokens"
+  | "setup"
+  | "runs";
 
 export interface NavItem {
   id: ScreenId;
@@ -101,6 +112,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: { vi: "Chờ tôi duyệt", en: "Awaiting my review" },
     icon: ClipboardCheckIcon,
     design: "DocReview.dc.html",
+    needs: "docs.read",
+  },
+  {
+    // Tìm tài liệu đã duyệt, memory và skill của đội khi đang làm việc, chỉ đọc (spec 008 US12).
+    id: "knowledge",
+    label: { vi: "Tra cứu tri thức", en: "Knowledge" },
+    icon: LibraryIcon,
+    design: "AppNav.dc.html",
     needs: "docs.read",
   },
   {
