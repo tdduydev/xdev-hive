@@ -40,6 +40,11 @@ function useSidebar() {
   return context;
 }
 
+/** Hive: như useSidebar nhưng trả null ngoài SidebarProvider (PageHeader dùng cả ở trang không có khung app). */
+function useSidebarOptional() {
+  return React.useContext(SidebarContext);
+}
+
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -177,7 +182,7 @@ function Sidebar({
             <SheetTitle>Điều hướng</SheetTitle>
             <SheetDescription>Menu điều hướng trên điện thoại.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <aside className="flex h-full w-full flex-col">{children}</aside>
         </SheetContent>
       </Sheet>
     );
@@ -204,7 +209,7 @@ function Sidebar({
             : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
         )}
       />
-      <div
+      <aside
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
@@ -224,7 +229,7 @@ function Sidebar({
         >
           {children}
         </div>
-      </div>
+      </aside>
     </div>
   );
 }
@@ -669,4 +674,5 @@ export {
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
+  useSidebarOptional,
 };
