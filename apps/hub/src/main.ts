@@ -9,7 +9,13 @@ import {
   registerRunHandlers,
 } from "./modules/fleet/index.ts";
 import { createAuth, mcpMode } from "./modules/identity/index.ts";
-import { createOpenAIEmbedder, embedQueue, registerEmbedWorker } from "./modules/knowledge/index.ts";
+import {
+  createOpenAIEmbedder,
+  embedQueue,
+  registerEmbedWorker,
+  registerSkillGitWorker,
+  skillGitQueue,
+} from "./modules/knowledge/index.ts";
 import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
 import {
   inboxCleanupQueue,
@@ -87,6 +93,7 @@ jobs = config.jobsDatabaseUrl
         inboxCleanupQueue,
         fleetOfflineQueue,
         orphanUsersQueue,
+        skillGitQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -127,6 +134,13 @@ if (roles.includes("jobs") && jobs) {
     };
     await registerProvisionWorker(jobs, catalogDeps);
     await registerMergeWorker(jobs, catalogDeps);
+    await registerSkillGitWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      providerFactory: defaultProviderFactory,
+      publicUrl: catalogDeps.publicUrl,
+      jobs,
+    });
   }
   if (pool) {
     await registerFleetOfflineWorker(jobs, {
