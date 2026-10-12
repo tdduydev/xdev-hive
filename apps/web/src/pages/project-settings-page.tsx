@@ -8,7 +8,7 @@ import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
-import { Select } from "../components/ui/select.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Textarea } from "../components/ui/textarea.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { cx } from "../lib/cx.ts";
@@ -49,7 +49,7 @@ export function ProjectSettingsPage() {
   } else if (projects.isError || !project) {
     body = (
       <>
-        <Alert>
+        <Alert variant="destructive">
           {projects.isError
             ? apiErrorMessage(projects.error)
             : `Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`}
@@ -283,7 +283,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
           />
           <Field invalid={errors.mergeMethod !== undefined}>
             <FieldLabel htmlFor={ids.method}>Cách merge</FieldLabel>
-            <Select
+            <NativeSelect
               id={ids.method}
               value={form.mergeMethod}
               onChange={(e) => set("mergeMethod", e.currentTarget.value as SettingsForm["mergeMethod"])}
@@ -293,7 +293,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
               <option value="squash">Squash</option>
               <option value="merge">Merge commit</option>
               <option value="rebase">Rebase</option>
-            </Select>
+            </NativeSelect>
             {errors.mergeMethod && <FieldError>{errors.mergeMethod}</FieldError>}
           </Field>
         </div>
@@ -325,7 +325,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
             <div className="grid gap-4 app:grid-cols-2">
               <Field invalid={errors.reviewBy !== undefined}>
                 <FieldLabel htmlFor={ids.reviewBy}>Agent review</FieldLabel>
-                <Select
+                <NativeSelect
                   id={ids.reviewBy}
                   value={form.reviewBy}
                   onChange={(e) => set("reviewBy", e.currentTarget.value as SettingsForm["reviewBy"])}
@@ -336,7 +336,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                       {CLI_LABEL[c]}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
                 {errors.reviewBy && <FieldError>{errors.reviewBy}</FieldError>}
               </Field>
               <TextField
@@ -542,7 +542,11 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
 
       {canEdit && (
         <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-background py-3">
-          {failure && <Alert className="mr-auto">{failure}</Alert>}
+          {failure && (
+            <Alert variant="destructive" className="mr-auto">
+              {failure}
+            </Alert>
+          )}
           {done && !failure && (
             <p role="status" className="mr-auto text-sm text-success">
               Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.

@@ -7,8 +7,8 @@ import { Alert } from "../components/ui/alert.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { FilterChips } from "../components/ui/filter-chips.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { formatDayTime, formatUsd } from "../lib/format.ts";
@@ -48,15 +48,20 @@ export function RunsPage() {
 
   let body: ReactNode;
   if (search.project && projects.isSuccess && !project) {
-    body = <Alert>Không tìm thấy dự án {search.project}, hoặc bạn không ở trong đội sở hữu dự án.</Alert>;
-  } else if (projects.isError && search.project) body = <Alert>{apiErrorMessage(projects.error)}</Alert>;
+    body = (
+      <Alert variant="destructive">
+        Không tìm thấy dự án {search.project}, hoặc bạn không ở trong đội sở hữu dự án.
+      </Alert>
+    );
+  } else if (projects.isError && search.project)
+    body = <Alert variant="destructive">{apiErrorMessage(projects.error)}</Alert>;
   else if (runs.isPending) {
     body = (
       <p aria-busy="true" className="text-muted-foreground">
         Đang tải…
       </p>
     );
-  } else if (!runs.data) body = <Alert>{apiErrorMessage(runs.error)}</Alert>;
+  } else if (!runs.data) body = <Alert variant="destructive">{apiErrorMessage(runs.error)}</Alert>;
   else {
     const items = runs.data.pages.flatMap((p) => p.items);
     body =
@@ -81,7 +86,7 @@ export function RunsPage() {
               </Button>
             </div>
           )}
-          {runs.isFetchNextPageError && <Alert>{apiErrorMessage(runs.error)}</Alert>}
+          {runs.isFetchNextPageError && <Alert variant="destructive">{apiErrorMessage(runs.error)}</Alert>}
         </>
       );
   }
@@ -126,7 +131,7 @@ function Filters({
       <legend className="sr-only">Lọc theo dự án, agent, máy</legend>
       <label htmlFor={ids.project} className={box}>
         Dự án
-        <Select
+        <NativeSelect
           id={ids.project}
           size="sm"
           value={search.project ?? ""}
@@ -141,11 +146,11 @@ function Filters({
               {p.name} ({p.key})
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </label>
       <label htmlFor={ids.cli} className={box}>
         Agent
-        <Select
+        <NativeSelect
           id={ids.cli}
           size="sm"
           value={search.cli ?? ""}
@@ -157,11 +162,11 @@ function Filters({
               {label}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </label>
       <label htmlFor={ids.machine} className={box}>
         Máy
-        <Select
+        <NativeSelect
           id={ids.machine}
           size="sm"
           value={search.machine ?? ""}
@@ -173,7 +178,7 @@ function Filters({
               {m.name}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </label>
     </fieldset>
   );

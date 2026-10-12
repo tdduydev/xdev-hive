@@ -5,7 +5,7 @@ import { Alert } from "../components/ui/alert.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Input } from "../components/ui/input.tsx";
-import { Select } from "../components/ui/select.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage, formError } from "../lib/api-errors.ts";
 import { useOrg } from "../shell/org-context.ts";
@@ -81,7 +81,7 @@ export function CostsPage() {
         {projects.isPending ? (
           <Loading />
         ) : projects.isError ? (
-          <Alert>{apiErrorMessage(projects.error)}</Alert>
+          <Alert variant="destructive">{apiErrorMessage(projects.error)}</Alert>
         ) : projects.data.length === 0 || !project ? (
           <Card className="p-5 text-muted-foreground">Chưa có dự án để tổng hợp chi phí.</Card>
         ) : (
@@ -89,7 +89,7 @@ export function CostsPage() {
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
               <label className="grid gap-1 text-xs font-medium" htmlFor="cost-project">
                 Dự án
-                <Select
+                <NativeSelect
                   id="cost-project"
                   value={project?.id ?? ""}
                   onChange={(event) => setProjectId(event.target.value)}
@@ -99,11 +99,11 @@ export function CostsPage() {
                       {item.name} · {item.key}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1 text-xs font-medium" htmlFor="cost-period">
                 Khoảng thời gian
-                <Select
+                <NativeSelect
                   id="cost-period"
                   value={period}
                   onChange={(event) => setPeriod(Number(event.target.value) as Period)}
@@ -111,13 +111,13 @@ export function CostsPage() {
                   <option value={7}>7 ngày</option>
                   <option value={14}>14 ngày</option>
                   <option value={30}>30 ngày</option>
-                </Select>
+                </NativeSelect>
               </label>
             </div>
             {daily.isPending ? (
               <Loading />
             ) : daily.isError ? (
-              <Alert>{apiErrorMessage(daily.error)}</Alert>
+              <Alert variant="destructive">{apiErrorMessage(daily.error)}</Alert>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -142,7 +142,7 @@ export function CostsPage() {
                       </div>
                       <label className="grid min-w-36 gap-1 text-xs font-medium" htmlFor="cost-group">
                         Nhóm theo
-                        <Select
+                        <NativeSelect
                           id="cost-group"
                           value={groupBy}
                           onChange={(event) => setGroupBy(event.target.value as GroupBy)}
@@ -150,13 +150,13 @@ export function CostsPage() {
                           <option value="cli">CLI</option>
                           <option value="machine">Máy</option>
                           <option value="task">Việc</option>
-                        </Select>
+                        </NativeSelect>
                       </label>
                     </div>
                     {grouped.isPending ? (
                       <Loading />
                     ) : grouped.isError ? (
-                      <Alert>{apiErrorMessage(grouped.error)}</Alert>
+                      <Alert variant="destructive">{apiErrorMessage(grouped.error)}</Alert>
                     ) : grouped.data.groups.length === 0 ? (
                       <p className="py-4 text-center text-muted-foreground">Chưa có run trong khoảng thời gian này.</p>
                     ) : (
@@ -196,7 +196,7 @@ export function CostsPage() {
                   {stopped.isPending ? (
                     <Loading />
                   ) : stopped.isError ? (
-                    <Alert>{apiErrorMessage(stopped.error)}</Alert>
+                    <Alert variant="destructive">{apiErrorMessage(stopped.error)}</Alert>
                   ) : stopped.data.length === 0 ? (
                     <p className="py-2 text-muted-foreground">Chưa có run nào bị dừng vì vượt ngân sách.</p>
                   ) : (
@@ -335,7 +335,7 @@ function BudgetForm({ project, onSaved }: { project: Project; onSaved: () => Pro
         </label>
         {failure && (
           <div className="sm:col-span-3">
-            <Alert>{failure}</Alert>
+            <Alert variant="destructive">{failure}</Alert>
           </div>
         )}
         <div className="sm:col-span-3">

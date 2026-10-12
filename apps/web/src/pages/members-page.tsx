@@ -11,8 +11,8 @@ import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog.tsx";
 import { Input } from "../components/ui/input.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill, type PillProps } from "../components/ui/pill.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { formatDay } from "../lib/format.ts";
@@ -111,11 +111,11 @@ export function MembersPage() {
         </Tabs.List>
         <Tabs.Panel value="dang-hoat-dong">
           <PageBody>
-            {failure && <Alert>{failure}</Alert>}
+            {failure && <Alert variant="destructive">{failure}</Alert>}
             {members.isPending ? (
               <Loading />
             ) : members.isError ? (
-              <Alert>{apiErrorMessage(members.error)}</Alert>
+              <Alert variant="destructive">{apiErrorMessage(members.error)}</Alert>
             ) : (
               <Card>
                 <Table>
@@ -187,7 +187,7 @@ function InvitationsTab({
 }) {
   const [failure, setFailure] = useState<string | null>(null);
   if (invitations.isPending) return <Loading />;
-  if (invitations.isError) return <Alert>{apiErrorMessage(invitations.error)}</Alert>;
+  if (invitations.isError) return <Alert variant="destructive">{apiErrorMessage(invitations.error)}</Alert>;
   const q = query.trim();
   const shown = invitations.data.filter((i) => matchesPerson({ name: "", email: i.email }, q));
   if (invitations.data.length === 0)
@@ -205,7 +205,7 @@ function InvitationsTab({
     );
   return (
     <>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <Card>
         <Table>
           <thead>
@@ -293,14 +293,14 @@ function InvitationRow({ invitation: inv, report }: { invitation: Invitation; re
 function PendingTab({ members, pending }: { members: UseQueryResult<OrgMember[]>; pending: OrgMember[] }) {
   const [failure, setFailure] = useState<string | null>(null);
   if (members.isPending) return <Loading />;
-  if (members.isError) return <Alert>{apiErrorMessage(members.error)}</Alert>;
+  if (members.isError) return <Alert variant="destructive">{apiErrorMessage(members.error)}</Alert>;
   return (
     <>
       <p className="text-muted-foreground">
         Người đăng nhập SSO lần đầu bằng email của tổ chức chờ ở đây khi tổ chức chọn "Vào hàng chờ duyệt". Duyệt thì họ
         thành thành viên, chưa thuộc đội nào. Từ chối thì họ bị khoá, lần đăng nhập sau không vào lại hàng chờ.
       </p>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <Card>
         <Table>
           <thead>
@@ -428,7 +428,7 @@ function MemberRow({ member, report }: { member: OrgMember; report: (message: st
       </Td>
       <Td>
         {canSetOrgRole(org.role, self) ? (
-          <Select
+          <NativeSelect
             size="sm"
             className="w-32.5"
             aria-label={`Vai trò tổ chức của ${member.name}`}
@@ -444,7 +444,7 @@ function MemberRow({ member, report }: { member: OrgMember; report: (message: st
                 {ORG_ROLE_LABEL[r]}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         ) : (
           <Pill tone={member.role === "owner" ? "sel" : "neutral"}>{ORG_ROLE_LABEL[member.role]}</Pill>
         )}

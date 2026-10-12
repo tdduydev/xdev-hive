@@ -10,7 +10,7 @@ import { Button } from "./ui/button.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog.tsx";
 import { Field, FieldError, FieldLabel } from "./ui/field.tsx";
 import { Input } from "./ui/input.tsx";
-import { Select } from "./ui/select.tsx";
+import { NativeSelect } from "./ui/native-select.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 
 type Cli = "claude" | "codex" | "gemini";
@@ -84,7 +84,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
     return (
       <div className="grid gap-3.5">
         <DialogTitle>Đã tạo {created.task.key}</DialogTitle>
-        <Alert>Việc đã được tạo nhưng chưa giao được cho agent: {created.startError}</Alert>
+        <Alert variant="destructive">Việc đã được tạo nhưng chưa giao được cho agent: {created.startError}</Alert>
         <DialogActions>
           <Button variant="default" onClick={onDone}>
             Đóng
@@ -126,13 +126,13 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
           <label htmlFor={ids.project} className="text-sm font-medium text-foreground">
             Dự án
           </label>
-          <Select id={ids.project} name="projectId" disabled={busy}>
+          <NativeSelect id={ids.project} name="projectId" disabled={busy}>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.key})
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         </div>
       ) : (
         <input type="hidden" name="projectId" value={projects[0]?.id ?? ""} />
@@ -165,14 +165,14 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
         <label htmlFor={ids.cli} className="text-sm font-medium text-foreground">
           Agent
         </label>
-        <Select id={ids.cli} name="cli" defaultValue="" disabled={busy}>
+        <NativeSelect id={ids.cli} name="cli" defaultValue="" disabled={busy}>
           <option value="">Máy nào rảnh có CLI là nhận</option>
           {CLIS.map((c) => (
             <option key={c} value={c}>
               {CLI_LABEL[c]}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </div>
       <label htmlFor={ids.start} className="flex items-center gap-2 text-sm text-foreground">
         <input
@@ -185,7 +185,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
         />
         Giao cho agent ngay sau khi tạo
       </label>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Huỷ

@@ -149,7 +149,7 @@ export function LoginPage() {
         <Brand />
         <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">Đăng nhập</h1>
         <p className="-mt-2 text-muted-foreground">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
-        {errorAt("redirect") && <Alert>{errorAt("redirect")}</Alert>}
+        {errorAt("redirect") && <Alert variant="destructive">{errorAt("redirect")}</Alert>}
 
         {firstAdmin && (
           <section
@@ -177,7 +177,7 @@ export function LoginPage() {
                 <Input name="password" type="password" autoComplete="new-password" minLength={MIN_PASSWORD} />
                 <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
               </Field>
-              {errorAt("signup") && <Alert>{errorAt("signup")}</Alert>}
+              {errorAt("signup") && <Alert variant="destructive">{errorAt("signup")}</Alert>}
               <Button type="submit" variant="default" className="w-full" disabled={busy}>
                 <Icon name="key" />
                 {pending === "signup" ? "Đang tạo tài khoản…" : "Tạo tài khoản quản trị"}
@@ -222,7 +222,7 @@ export function LoginPage() {
             {pending === "gitlab" ? "Đang chuyển…" : "GitLab"}
           </Button>
         </div>
-        {errorAt("social") && <Alert>{errorAt("social")}</Alert>}
+        {errorAt("social") && <Alert variant="destructive">{errorAt("social")}</Alert>}
 
         <details>
           <summary className="cursor-pointer text-sm text-muted-foreground">Đăng nhập bằng email và mật khẩu</summary>
@@ -235,7 +235,7 @@ export function LoginPage() {
               <FieldLabel>Mật khẩu</FieldLabel>
               <Input name="password" type="password" autoComplete="current-password" />
             </Field>
-            {errorAt("email") && <Alert>{errorAt("email")}</Alert>}
+            {errorAt("email") && <Alert variant="destructive">{errorAt("email")}</Alert>}
             <Button variant="outline" type="submit" className="w-full" disabled={busy}>
               <Icon name="mail" />
               {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}

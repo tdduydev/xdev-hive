@@ -14,7 +14,7 @@ import { Button } from "./ui/button.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "./ui/field.tsx";
 import { Input } from "./ui/input.tsx";
-import { Select } from "./ui/select.tsx";
+import { NativeSelect } from "./ui/native-select.tsx";
 
 /** Nút "Tạo dự án" và dialog của nó; chỉ hiện cho quản trị đội hoặc quản trị tổ chức. */
 export function CreateProjectButton() {
@@ -187,7 +187,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
             ))}
           </ul>
         )}
-        {failure && <Alert>{failure}</Alert>}
+        {failure && <Alert variant="destructive">{failure}</Alert>}
         <DialogActions>
           <Button variant="outline" onClick={() => setPlanned(null)} disabled={busy}>
             Quay lại sửa
@@ -220,9 +220,9 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
           Đang tải…
         </p>
       ) : loadError ? (
-        <Alert>{apiErrorMessage(loadError)}</Alert>
+        <Alert variant="destructive">{apiErrorMessage(loadError)}</Alert>
       ) : ownSystems.length === 0 || !connection ? (
-        <Alert>
+        <Alert variant="destructive">
           {ownSystems.length === 0
             ? "Chưa có hệ thống nào trong đội bạn quản trị. Thêm hệ thống ở “Đội và hệ thống” trước."
             : "Tổ chức chưa có kết nối GitHub/GitLab. Nhờ quản trị tổ chức thêm kết nối trước."}
@@ -231,13 +231,13 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         <>
           <Field invalid={errors.systemId !== undefined}>
             <FieldLabel htmlFor={ids.system}>Hệ thống</FieldLabel>
-            <Select id={ids.system} name="systemId" disabled={busy}>
+            <NativeSelect id={ids.system} name="systemId" disabled={busy}>
               {ownSystems.map((s) => (
                 <option key={s.id} value={s.id}>
                   {teamName.get(s.teamId) ?? "Đội"} / {s.name}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
             {errors.systemId && <FieldError>{errors.systemId}</FieldError>}
           </Field>
           <Field invalid={errors.name !== undefined}>
@@ -273,7 +273,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
           </Field>
           <Field invalid={errors.connectionId !== undefined}>
             <FieldLabel htmlFor={ids.connection}>Kết nối Git</FieldLabel>
-            <Select
+            <NativeSelect
               id={ids.connection}
               value={connection.id}
               onChange={(e) => setConnectionId(e.currentTarget.value)}
@@ -284,7 +284,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
                   {SCM_LABEL[c.kind]}: {c.name}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
             {errors.connectionId && <FieldError>{errors.connectionId}</FieldError>}
           </Field>
           <fieldset className="grid gap-1.5">
@@ -363,17 +363,17 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
                 <label htmlFor={ids.visibility} className="text-sm font-medium text-foreground">
                   Ai xem được repo
                 </label>
-                <Select id={ids.visibility} name="visibility" defaultValue="private" disabled={busy}>
+                <NativeSelect id={ids.visibility} name="visibility" defaultValue="private" disabled={busy}>
                   <option value="private">Riêng tư</option>
                   <option value="internal">Nội bộ tổ chức</option>
                   <option value="public">Công khai</option>
-                </Select>
+                </NativeSelect>
               </div>
             </>
           )}
         </>
       )}
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Huỷ

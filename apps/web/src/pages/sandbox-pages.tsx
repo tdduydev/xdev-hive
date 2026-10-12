@@ -83,7 +83,7 @@ export function SandboxAdminPage() {
             </span>
           </span>
         </label>
-        {save.isError && <Alert>{apiErrorMessage(save.error)}</Alert>}
+        {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
       </div>
     );
   }
@@ -131,7 +131,10 @@ export function ProjectSandboxPage() {
   let body: ReactNode;
   if (projects.isPending || members.isPending) body = <LoadingState />;
   else if (projects.isError) body = <LoadFailure error={projects.error} retry={projects.refetch} />;
-  else if (!project) body = <Alert>{`Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`}</Alert>;
+  else if (!project)
+    body = (
+      <Alert variant="destructive">{`Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`}</Alert>
+    );
   else {
     const canEdit = teamRoleLookup(org.role, members.data, me.id)(project.teamId) === "admin";
     body = <ProjectSandbox project={project} canEdit={canEdit} />;
@@ -275,7 +278,7 @@ function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean
           </FieldHint>
         )}
       </Field>
-      {save.isError && <Alert>{apiErrorMessage(save.error)}</Alert>}
+      {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
       {done && (
         <p role="status" className="text-xs text-success">
           Đã lưu image môi trường.

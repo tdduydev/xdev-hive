@@ -165,7 +165,7 @@ function OrgStep() {
           </FieldHint>
         )}
       </Field>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <div className="flex justify-end gap-2">
         {orgs.length > 0 && (
           <Link to="/" className={buttonVariants({ variant: "ghost" })}>
@@ -226,7 +226,7 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
         disabled={busy}
         autoFocus
       />
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <div className="flex justify-end gap-2">
         <Link to="/admin/teams" className={buttonVariants({ variant: "ghost" })}>
           Để sau

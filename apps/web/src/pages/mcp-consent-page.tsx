@@ -64,7 +64,7 @@ export function McpConsentPage() {
           </ul>
         )}
         <p className="text-xs text-muted-foreground break-all">Mã client: {clientId}</p>
-        {failure && <Alert>{failure}</Alert>}
+        {failure && <Alert variant="destructive">{failure}</Alert>}
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" disabled={pending !== null} onClick={() => answer(false)}>
             {pending === "deny" ? "Đang từ chối…" : "Từ chối"}
