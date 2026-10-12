@@ -49,13 +49,15 @@ const NEW = "new";
 const text = workflowsText;
 type T = WorkflowsText;
 
-function gateWho(g: ReviewGate, names: Map<string, string>, lang: Lang, t: T): string {
-  if (g.kind === "ai") return g.ai ? t.aiWho(g.ai.checks.length, g.ai.passScore) : t.ruleWho;
+function gateWho(g: ReviewGate, names: Map<string, string>, teamNames: Map<string, string>, lang: Lang, t: T): string {
+  if (g.kind === "ai")
+    return g.ai ? [g.ai.model, t.aiWho(g.ai.checks.length, g.ai.passScore)].filter(Boolean).join(" · ") : t.ruleWho;
   if (g.kind === "rule") return t.ruleWho;
   if (g.kind === "ext") return t.extWho;
   const r = g.reviewers;
   const who = [
     ...(r?.roles ?? []).map((role) => ROLE_LABEL[lang][role]),
+    ...(r?.teams ?? []).map((id) => `${t.teamPrefix} ${teamNames.get(id) ?? id}`),
     ...(r?.users ?? []).map((u) => names.get(u) ?? u),
   ];
   if (!who.length) return t.whoNone;
@@ -166,6 +168,7 @@ function WorkflowsScreen() {
   const ids = useId();
   const fresh = useMemo(() => newDraft("aidlc", text[lang].newName, lang), [lang]);
   const names = useMemo(() => new Map((members.data ?? []).map((m) => [m.userId, m.name])), [members.data]);
+  const teamNames = useMemo(() => new Map((teams.data ?? []).map((team) => [team.id, team.name])), [teams.data]);
 
   const workflows = list.data ?? [];
   const key = selected ?? workflows[0]?.id ?? (canWrite ? NEW : null);
@@ -398,8 +401,27 @@ function WorkflowsScreen() {
                         </Button>
                       )}
                     </div>
-                    {PHASE_DESC[p.name] && (
-                      <span className="-mt-1.5 text-xs text-muted-foreground">{PHASE_DESC[p.name]?.[lang]}</span>
+                    {canWrite ? (
+                      <textarea
+                        aria-label={t.phaseDesc(pi + 1)}
+                        rows={1}
+                        maxLength={300}
+                        // Giai đoạn của khung mẫu chưa có mô tả riêng thì gợi ý mô tả mặc định như thiết kế.
+                        placeholder={PHASE_DESC[p.name]?.[lang] ?? t.phaseDescPh}
+                        value={p.description ?? ""}
+                        onChange={(e) =>
+                          update({
+                            phases: draft.phases.map((x, i) => (i === pi ? { ...x, description: e.target.value } : x)),
+                          })
+                        }
+                        className="-mt-1.5 field-sizing-content resize-none rounded-sm bg-transparent text-xs text-muted-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+                      />
+                    ) : (
+                      (p.description || PHASE_DESC[p.name]) && (
+                        <span className="-mt-1.5 text-xs text-muted-foreground">
+                          {p.description || PHASE_DESC[p.name]?.[lang]}
+                        </span>
+                      )
                     )}
                     {p.gates.length === 0 && <span className="text-xs text-muted-foreground">{t.noGates}</span>}
                     {p.gates.map((g, gi) => {
@@ -424,7 +446,9 @@ function WorkflowsScreen() {
                               </span>
                             </span>
                             <span className="text-[13.5px] font-semibold">{g.name}</span>
-                            <span className="text-xs text-muted-foreground">{gateWho(g, names, lang, t)}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {gateWho(g, names, teamNames, lang, t)}
+                            </span>
                             {cond && <span className="text-[11.5px] text-warning">⤷ {cond}</span>}
                           </button>
                           {gi < p.gates.length - 1 && (
@@ -496,6 +520,7 @@ function WorkflowsScreen() {
                     gate={cur}
                     canWrite={canWrite}
                     members={members.data ?? []}
+                    teams={teams.data ?? []}
                     canMoveUp={gates[0]?.id !== cur.id}
                     canMoveDown={gates.at(-1)?.id !== cur.id}
                     onChange={(fn) => patchGate(cur.id, fn)}

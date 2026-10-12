@@ -49,7 +49,10 @@ test("hàng chờ: bảng, thay đổi so với bản đã duyệt, AI tự ki�
   await expect(trace.getByRole("row").filter({ hasText: "R-3" })).toContainText("Chưa có tiêu chí");
 
   const decision = detail.getByRole("region", { name: "Quyết định của bạn" });
-  // Gate trước không có người duyệt: không có lựa chọn "về checkpoint trước".
+  await expect(decision).toContainText("Người duyệt ở checkpoint này: Quản trị đội, Đội Thanh toán, Phạm Hà");
+  await expect(decision).toContainText("Đã duyệt 1/2: Trần Lan");
+  // Mặc định theo cấu hình của checkpoint (agent sửa); gate trước không có người duyệt nên không có "về checkpoint trước".
+  await expect(decision.getByRole("combobox", { name: "Nếu yêu cầu sửa" })).toHaveValue("agent");
   await expect(decision.getByRole("combobox", { name: "Nếu yêu cầu sửa" }).locator("option")).toHaveText([
     "Trả về người viết",
     "Agent sửa theo góp ý, rồi quay lại checkpoint này",
@@ -64,6 +67,8 @@ test("hàng chờ: bảng, thay đổi so với bản đã duyệt, AI tự ki�
   await expect(page).toHaveURL(new RegExp(`id=${REVIEW_PRD}`));
   await expect(detail.getByRole("list", { name: "Các checkpoint" })).toContainText("Pháp chế: đang chờ");
   await expect(decision.getByRole("button", { name: "Duyệt" })).toHaveCount(0);
+  await expect(decision).toContainText("Người duyệt ở checkpoint này: Quản trị tổ chức");
+  await expect(decision).toContainText("Đã duyệt 0/1");
 });
 
 test("đường dẫn ?id= mở đúng tài liệu; yêu cầu sửa cần góp ý và trả về checkpoint trước", async ({ page }) => {
@@ -93,9 +98,11 @@ test("đường dẫn ?id= mở đúng tài liệu; yêu cầu sửa cần góp 
   await decision
     .getByRole("textbox", { name: "Góp ý cho người viết" })
     .fill("Thiếu phần thử lại khi proxy cắt kết nối.");
-  await decision
-    .getByRole("combobox", { name: "Nếu yêu cầu sửa" })
-    .selectOption({ label: "Về checkpoint trước (Product owner duyệt)" });
+  // Checkpoint này cấu hình trả về checkpoint trước, nên đó là lựa chọn mặc định.
+  await expect(decision.getByRole("combobox", { name: "Nếu yêu cầu sửa" })).toHaveValue("previous");
+  await expect(decision.getByRole("combobox", { name: "Nếu yêu cầu sửa" }).locator("option:checked")).toHaveText(
+    "Về checkpoint trước (Product owner duyệt)",
+  );
   await decision.getByRole("button", { name: "Yêu cầu sửa" }).click();
   await expect(decision.getByRole("status")).toHaveText("Đã trả lại: Về checkpoint trước (Product owner duyệt).");
   expect(state.decisions).toEqual([
