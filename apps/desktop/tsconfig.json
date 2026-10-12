@@ -5,8 +5,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
+    // Vite đóng gói, tsc không emit; tắt để import theo alias (@/…, @design/…) giữ được đuôi .ts/.tsx.
+    "rewriteRelativeImportExtensions": false,
     "types": ["vite/client", "node"],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": { "@/*": ["./src/*"], "@design/*": ["../../docs/design-system/*"] }
   },
   "include": ["src", "scripts", "vite.config.ts", "vitest.config.ts"]
 }

@@ -1,11 +1,11 @@
 import { ConstructionIcon } from "lucide-react";
 import { useSyncExternalStore } from "react";
-import { LangToggle } from "../components/lang-toggle.tsx";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { NAV_ITEMS, type Profile, screenFromHash } from "../lib/nav.ts";
-import { SCREENS } from "../screens/index.ts";
-import { AppNav } from "./app-nav.tsx";
+import { LangToggle } from "@/components/lang-toggle.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
+import { SCREENS } from "@/screens/index.ts";
+import { AppNav } from "@/shell/app-nav.tsx";
 
 const text: Dict<{ soon: string; body: (design: string) => string }> = {
   vi: {

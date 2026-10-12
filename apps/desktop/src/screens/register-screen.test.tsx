@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { setLang } from "../lib/i18n.ts";
-import { RegisterScreen } from "./register-screen.tsx";
+import { setLang } from "@/lib/i18n.ts";
+import { RegisterScreen } from "@/screens/register-screen.tsx";
 
 type Handler = (args?: Record<string, unknown>) => unknown;
 

@@ -1,7 +1,7 @@
-import dark from "../../../../docs/design-system/assets/logos/xdev-hive-dark.svg";
-import icon from "../../../../docs/design-system/assets/logos/xdev-hive-icon.svg";
-import light from "../../../../docs/design-system/assets/logos/xdev-hive-light.svg";
-import { cn } from "../lib/utils.ts";
+import dark from "@design/assets/logos/xdev-hive-dark.svg";
+import icon from "@design/assets/logos/xdev-hive-icon.svg";
+import light from "@design/assets/logos/xdev-hive-light.svg";
+import { cn } from "@/lib/utils.ts";
 
 /** Logo chữ theo sáng/tối (Logo.dc.html). Lấy file từ docs/design-system để app và web cùng một nguồn. */
 export function Wordmark({ className }: { className?: string }) {

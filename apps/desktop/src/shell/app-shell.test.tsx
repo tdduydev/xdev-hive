@@ -1,9 +1,9 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
-import { setLang } from "../lib/i18n.ts";
-import { navItems, screenFromHash } from "../lib/nav.ts";
-import { windowKind } from "../lib/tauri.ts";
-import { AppShell } from "./app-shell.tsx";
+import { setLang } from "@/lib/i18n.ts";
+import { navItems, screenFromHash } from "@/lib/nav.ts";
+import { windowKind } from "@/lib/tauri.ts";
+import { AppShell } from "@/shell/app-shell.tsx";
 
 describe("menu theo hồ sơ", () => {
   it("dev: không có quyền viết tài liệu nên Tài liệu chỉ đọc", () => {
