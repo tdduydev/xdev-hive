@@ -23,7 +23,7 @@ export function windowKind(): WindowKind {
   return label === "app" ? "app" : "register";
 }
 
-function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+export function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const tauri = window.__TAURI__;
   if (!tauri) return Promise.reject(new Error("Chỉ chạy được trong app xDev Hive."));
   return tauri.core.invoke<T>(command, args);
