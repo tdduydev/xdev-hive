@@ -14,6 +14,7 @@ export {
   checkMachineOffline,
   FLEET_OFFLINE_QUEUE,
   findMachine,
+  findMachineByRef,
   fleetOfflineQueue,
   listOnlineMachines,
   machineIsPaused,

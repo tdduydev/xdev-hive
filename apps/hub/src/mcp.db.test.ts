@@ -305,6 +305,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "plan_submit",
       "project_list",
       "review_submit",
+      "run_list",
       "skill_get",
       "skill_list",
       "skill_propose",
