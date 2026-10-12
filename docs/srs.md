@@ -179,7 +179,7 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
 | MCP-01 | The hub shall expose MCP tools for identity, organization structure, tasks, plans, reviews, memory, documents, skills and leader replies. | Implemented | `hub:mcp.db.test.ts`, `hub:mcp-run.db.test.ts` |
-| MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Partial: OAuth requires HTTPS; on plain HTTP only run tokens with `HIVE_MCP_ALLOW_HTTP=1` | `hub:mcp-http.db.test.ts` |
+| MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Implemented (OAuth chỉ bật khi hub chạy HTTPS theo spec MCP; hub HTTP như máy 34 nhận run token và token cá nhân `hive_pat_` với `HIVE_MCP_ALLOW_HTTP=1`) | `hub:mcp-http.db.test.ts`, `hub:mcp.db.test.ts` (OAuth, client ID metadata) |
 | MCP-03 | Tools shall be limited by principal and run kind (read-only kinds get no write tools), run inside the tenant context and be audited. | Implemented | `hub:mcp.db.test.ts`, `hub:modules/mcp/registry.test.ts` |
 | MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Implemented | `hub:modules/mcp/mcp-admin.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
 | MCP-05 | Organization administrators shall configure external MCP server rules (allow or deny by URL, name, command, or wildcard) with deny precedence, scoped to organization or project. | Implemented | `hub:modules/mcp/server-rules.test.ts`, `hub:modules/mcp/server-rules.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
