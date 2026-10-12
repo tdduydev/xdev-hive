@@ -48,6 +48,12 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 - **Dừng:** app gửi dòng `stop` qua stdin; Windows không có SIGTERM nên dùng cách này cho mọi hệ điều hành. Worker chờ
   run đang chạy ghi xong kết quả, tối đa 30 giây; quá 35 giây thì app giết tiến trình. App chết đột ngột thì stdin
   đóng và worker cũng tự dừng, không chạy mồ côi.
+- **Màn Môi trường** (`src-tauri/src/doctor.rs`): dò công cụ bằng `--version` với PATH của shell đăng nhập (app mở
+  từ Finder chỉ có PATH tối thiểu) và yêu cầu trong go.mod, .nvmrc, package.json của thư mục dự án. `run_install` chỉ
+  nhận id của mục, Rust tự sinh lại lệnh; lệnh cần quyền quản trị hoặc cần shell chỉ để chép.
+- **Màn Token và ngữ cảnh** (`src-tauri/src/usage.rs`): `claude -p "/context"` và `claude -p "/usage"` (lệnh cục bộ,
+  không gọi model), cộng `usage` trong `~/.claude/projects/*/*.jsonl` và `token_count`, `rate_limits` trong
+  `~/.codex/sessions/**/*.jsonl` của 7 ngày gần nhất. Chỉ đọc, không gửi ra ngoài máy.
 - **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`) khai báo trong `build.rs`. Capability chỉ cấp
   các lệnh này cho cửa sổ `register` (`capabilities/default.json`). Cửa sổ `app` có capability riêng
   (`capabilities/app.json`), hiện chỉ `core:default`; màn nào cần lệnh Rust thì thêm đúng lệnh đó. Cửa sổ web của hub

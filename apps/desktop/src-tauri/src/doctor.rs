@@ -256,7 +256,7 @@ fn read_project(folder: &Path) -> ProjectNeeds {
 
 /// PATH của shell đăng nhập. App mở từ Finder chỉ có PATH tối thiểu (/usr/bin:/bin…), không thấy công cụ cài bằng
 /// Homebrew, nvm hay npm -g; hỏi shell của người dùng một lần, lỗi thì thêm các thư mục hay gặp.
-fn user_path() -> &'static str {
+pub(crate) fn user_path() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
     PATH.get_or_init(|| {
         let current = std::env::var("PATH").unwrap_or_default();
@@ -285,14 +285,14 @@ fn user_path() -> &'static str {
     })
 }
 
-struct Output {
-    code: Option<i32>,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
+pub(crate) struct Output {
+    pub code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
 }
 
 /// Chạy lệnh không qua shell, đóng stdin, quá hạn thì giết. Trả None khi không chạy được hoặc quá hạn.
-fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<Output> {
+pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<Output> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

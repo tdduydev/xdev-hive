@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
+import { TokensScreen } from "@/screens/tokens-screen.tsx";
 
 /**
  * Màn đã làm của cửa sổ app, theo mục AppNav. Mục chưa có ở đây hiện trang "Sắp có". Mỗi task trong
@@ -8,4 +9,5 @@ import { SetupScreen } from "@/screens/setup-screen.tsx";
  */
 export const SCREENS: Partial<Record<ScreenId, ComponentType>> = {
   setup: SetupScreen,
+  tokens: TokensScreen,
 };
