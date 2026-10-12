@@ -122,7 +122,8 @@ curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/instal
 
 ```powershell
 # Windows
-& ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub https://hive.example.com -Token <mã dùng một lần>
+irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub https://hive.example.com -Token <mã dùng một lần>
 ```
 
 `hive-worker update` nâng máy lên bản phát hành mới nhất.
