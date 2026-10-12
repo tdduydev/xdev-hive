@@ -55,10 +55,10 @@ test("đăng xuất thì về trang đăng nhập", async ({ page }) => {
   expect(hub.authCalls.map((c) => c.path)).toEqual(["/sign-out"]);
 });
 
-// Giá trị theo docs/design-system/tokens.json: canvas, surface, accent, on-accent.
+// Giá trị theo docs/design-system/tokens.json: background, card, primary, primary-foreground.
 for (const [scheme, canvas, surface, accent, onAccent] of [
-  ["light", "rgb(246, 248, 252)", "rgb(255, 255, 255)", "rgb(0, 76, 255)", "rgb(255, 255, 255)"],
-  ["dark", "rgb(12, 23, 41)", "rgb(20, 39, 69)", "rgb(63, 169, 255)", "rgb(11, 23, 48)"],
+  ["light", "rgb(248, 250, 252)", "rgb(255, 255, 255)", "rgb(29, 78, 216)", "rgb(255, 255, 255)"],
+  ["dark", "rgb(15, 23, 42)", "rgb(27, 35, 54)", "rgb(96, 165, 250)", "rgb(15, 23, 42)"],
 ] as const) {
   test(`màu theo chế độ ${scheme} của hệ điều hành, đúng token mockup`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
@@ -74,3 +74,25 @@ for (const [scheme, canvas, surface, accent, onAccent] of [
     await expect(page.locator(`img[src="/xdev-hive-${scheme}.svg"]`)).toBeVisible();
   });
 }
+
+test("chọn giao diện tối được lưu qua lần tải lại; theo hệ thống thì đi theo hệ điều hành", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await fakeHub(page, { signedIn: true });
+  await page.goto("/");
+  const html = page.locator("html");
+  const toggle = page.locator("aside").getByRole("group", { name: "Giao diện" });
+  await expect(html).not.toHaveClass(/\bdark\b/);
+  await toggle.getByRole("button", { name: "Tối" }).click();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await expect(toggle.getByRole("button", { name: "Tối" })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await page
+    .locator("aside")
+    .getByRole("group", { name: "Giao diện" })
+    .getByRole("button", { name: "Theo hệ thống" })
+    .click();
+  await expect(html).not.toHaveClass(/\bdark\b/);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(html).toHaveClass(/\bdark\b/);
+});

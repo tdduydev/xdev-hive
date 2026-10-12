@@ -17,10 +17,10 @@ const STATUS_TEXT: Record<StepStatus, string> = {
 };
 
 const STYLE: Record<StepStatus, string> = {
-  done: "border-transparent bg-ok-bg text-ok",
-  current: "border-sel-line bg-sel font-semibold text-sel-fg",
-  stopped: "border-transparent bg-bad-bg font-semibold text-bad",
-  next: "border-dashed border-line-strong bg-surface text-muted",
+  done: "border-transparent bg-success-soft text-success",
+  current: "border-primary/40 bg-accent font-semibold text-accent-foreground",
+  stopped: "border-transparent bg-destructive-soft font-semibold text-destructive",
+  next: "border-dashed border-input bg-card text-muted-foreground",
 };
 
 /** Các bước nối tiếp nhau (pha của run). Trạng thái từng bước được đọc ra cho trình đọc màn hình, không chỉ bằng màu. */
@@ -31,15 +31,12 @@ export function Steps({ label, steps }: { label: string; steps: Step[] }) {
         <li
           key={step.label}
           aria-current={step.status === "current" ? "step" : undefined}
-          className={cx(
-            "inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-label",
-            STYLE[step.status],
-          )}
+          className={cx("inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-sm", STYLE[step.status])}
         >
           <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
           {step.label}
           <span className="sr-only">: {STATUS_TEXT[step.status]}</span>
-          {step.time && <span className="text-xs text-muted tabular-nums">{step.time}</span>}
+          {step.time && <span className="text-xs text-muted-foreground tabular-nums">{step.time}</span>}
         </li>
       ))}
     </ol>

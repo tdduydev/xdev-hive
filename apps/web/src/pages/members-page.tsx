@@ -35,11 +35,11 @@ export function validateMembersSearch(search: Record<string, unknown>): MembersS
 }
 
 const tab =
-  "flex cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-label font-medium text-muted data-active:border-accent data-active:text-ink data-disabled:cursor-not-allowed data-disabled:opacity-60";
+  "flex cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground data-active:border-primary data-active:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60";
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -78,7 +78,7 @@ export function MembersPage() {
           className="w-55"
         />
         {canInvite(org.role) && (
-          <Button variant="primary" onClick={() => setInviting(true)}>
+          <Button variant="default" onClick={() => setInviting(true)}>
             <Icon name="plus" />
             Mời người
           </Button>
@@ -94,7 +94,7 @@ export function MembersPage() {
           })
         }
       >
-        <Tabs.List aria-label="Nhóm thành viên" className="flex gap-0.5 border-b border-line bg-surface px-6">
+        <Tabs.List aria-label="Nhóm thành viên" className="flex gap-0.5 border-b border-border bg-card px-6">
           <Tabs.Tab value="dang-hoat-dong" className={tab}>
             Đang hoạt động{members.data ? ` · ${activeCount}` : ""}
           </Tabs.Tab>
@@ -136,7 +136,7 @@ export function MembersPage() {
                     ))}
                     {shown.length === 0 && (
                       <tr>
-                        <Td colSpan={5} className="text-muted">
+                        <Td colSpan={5} className="text-muted-foreground">
                           {query.trim() ? `Không có ai khớp với "${query.trim()}".` : "Chưa có thành viên nào."}
                         </Td>
                       </tr>
@@ -193,11 +193,11 @@ function InvitationsTab({
   if (invitations.data.length === 0)
     return (
       <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-        <h2 className="text-lg font-semibold text-ink">Chưa có lời mời nào</h2>
-        <p className="max-w-md text-muted">
+        <h2 className="text-base font-semibold text-foreground">Chưa có lời mời nào</h2>
+        <p className="max-w-md text-muted-foreground">
           Mời đồng nghiệp bằng email. Mỗi người nhận một link dùng một lần, hết hạn sau 7 ngày.
         </p>
-        <Button variant="primary" className="mt-2" onClick={onInvite}>
+        <Button variant="default" className="mt-2" onClick={onInvite}>
           <Icon name="plus" />
           Mời người
         </Button>
@@ -226,7 +226,7 @@ function InvitationsTab({
             ))}
             {shown.length === 0 && (
               <tr>
-                <Td colSpan={6} className="text-muted">
+                <Td colSpan={6} className="text-muted-foreground">
                   Không có lời mời nào khớp với "{q}".
                 </Td>
               </tr>
@@ -255,16 +255,16 @@ function InvitationRow({ invitation: inv, report }: { invitation: Invitation; re
   });
   return (
     <tr>
-      <Td className="font-medium text-ink">{inv.email}</Td>
+      <Td className="font-medium text-foreground">{inv.email}</Td>
       <Td>{ORG_ROLE_LABEL[inv.orgRole]}</Td>
       <Td>
         {inv.teamId ? (
           <span className="inline-flex items-center gap-1">
-            {inv.teamName ?? <span className="text-muted">Đội đã xoá</span>}
+            {inv.teamName ?? <span className="text-muted-foreground">Đội đã xoá</span>}
             {inv.teamRole && <Pill>{TEAM_ROLE_LABEL[inv.teamRole].toLowerCase()}</Pill>}
           </span>
         ) : (
-          <span className="text-muted">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </Td>
       <Td>
@@ -296,7 +296,7 @@ function PendingTab({ members, pending }: { members: UseQueryResult<OrgMember[]>
   if (members.isError) return <Alert>{apiErrorMessage(members.error)}</Alert>;
   return (
     <>
-      <p className="text-muted">
+      <p className="text-muted-foreground">
         Người đăng nhập SSO lần đầu bằng email của tổ chức chờ ở đây khi tổ chức chọn "Vào hàng chờ duyệt". Duyệt thì họ
         thành thành viên, chưa thuộc đội nào. Từ chối thì họ bị khoá, lần đăng nhập sau không vào lại hàng chờ.
       </p>
@@ -318,7 +318,7 @@ function PendingTab({ members, pending }: { members: UseQueryResult<OrgMember[]>
             ))}
             {pending.length === 0 && (
               <tr>
-                <Td colSpan={3} className="text-muted">
+                <Td colSpan={3} className="text-muted-foreground">
                   Không có ai đang chờ duyệt.
                 </Td>
               </tr>
@@ -351,6 +351,7 @@ function PendingRow({ member, report }: { member: OrgMember; report: (message: s
       <Td className="text-right whitespace-nowrap">
         <span className="inline-flex gap-1.5">
           <Button
+            variant="outline"
             size="sm"
             aria-label={`Duyệt ${member.name}`}
             disabled={decide.isPending}
@@ -374,7 +375,7 @@ function PendingRow({ member, report }: { member: OrgMember; report: (message: s
 }
 
 function MemberTeams({ teams }: { teams: OrgMember["teams"] }) {
-  if (teams.length === 0) return <span className="text-muted">—</span>;
+  if (teams.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
       {teams.map((t, i) => (
@@ -419,7 +420,7 @@ function MemberRow({ member, report }: { member: OrgMember; report: (message: st
           person={member}
           extra={
             <>
-              {self && <small className="text-xs text-muted">(bạn)</small>}
+              {self && <small className="text-xs text-muted-foreground">(bạn)</small>}
               {blocked && <Pill tone="bad">Đã khoá</Pill>}
             </>
           }
@@ -455,7 +456,7 @@ function MemberRow({ member, report }: { member: OrgMember; report: (message: st
       <Td className="text-right">
         {canSetStatus(org.role, member.role, self) && (
           <Button
-            variant={blocked ? "default" : "ghost"}
+            variant={blocked ? "outline" : "ghost"}
             size="sm"
             aria-label={`${blocked ? "Mở khoá" : "Khoá"} ${member.name}`}
             disabled={busy}

@@ -53,9 +53,9 @@ const GROUPS: { title: string; entries: NavEntry[] }[] = [
   },
 ];
 
-const item = "flex items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-nav";
-const on = "bg-sel font-semibold text-sel-fg";
-const off = "font-medium text-body";
+const item = "flex items-center gap-2.5 rounded-sm px-2.5 py-1.75 text-sm";
+const on = "bg-accent font-semibold text-accent-foreground";
+const off = "font-medium text-foreground";
 
 function NavItem({ entry, hasOrg, pathname }: { entry: NavEntry; hasOrg: boolean; pathname: string }) {
   const active = entry.match !== undefined && pathname.startsWith(entry.match);
@@ -82,7 +82,7 @@ function NavItem({ entry, hasOrg, pathname }: { entry: NavEntry; hasOrg: boolean
     <Link
       to={entry.to}
       aria-current={active ? "page" : undefined}
-      className={cx(item, active ? on : cx(off, "hover:bg-subtle"))}
+      className={cx(item, active ? on : cx(off, "hover:bg-muted"))}
     >
       {body}
     </Link>
@@ -97,13 +97,13 @@ export function Sidebar({ className }: { className?: string }) {
   return (
     <aside
       className={cx(
-        "sticky top-0 h-dvh flex-col gap-5 overflow-y-auto border-r border-line bg-surface px-3 py-4",
+        "sticky top-0 h-dvh flex-col gap-5 overflow-y-auto border-r border-border bg-card px-3 py-4",
         className,
       )}
     >
       <div className="flex items-center gap-2.5 px-1.5 py-1">
         <img src="/xdev-hive-icon.svg" alt="" className="size-7" />
-        <span className="text-xl font-semibold text-ink">xDev Hive</span>
+        <span className="text-base font-semibold text-foreground">xDev Hive</span>
       </div>
       <OrgSwitcher
         orgs={orgs.map((o) => ({ id: o.id, name: o.name, role: ORG_ROLE_LABEL[o.role] }))}
@@ -114,7 +114,9 @@ export function Sidebar({ className }: { className?: string }) {
       <nav aria-label="Điều hướng chính" className="grid gap-5">
         {GROUPS.map((group) => (
           <div key={group.title} className="grid gap-0.5">
-            <div className="px-2.5 pb-1.5 text-2xs font-semibold tracking-caps text-muted uppercase">{group.title}</div>
+            <div className="px-2.5 pb-1.5 text-2xs font-semibold tracking-caps text-muted-foreground uppercase">
+              {group.title}
+            </div>
             {group.entries
               .filter((entry) => !entry.adminOnly || !current || isOrgAdmin(current.org.role))
               .map((entry) => (

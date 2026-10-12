@@ -371,7 +371,7 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(page.getByRole("region", { name: "Đang trong hàng" })).toBeVisible();
     await expect(page.locator("body")).toHaveCSS(
       "background-color",
-      scheme === "light" ? "rgb(246, 248, 252)" : "rgb(12, 23, 41)",
+      scheme === "light" ? "rgb(248, 250, 252)" : "rgb(15, 23, 42)",
     );
     await page.screenshot({
       path: testInfo.outputPath(`merge-queue-${scheme}.png`),

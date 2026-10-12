@@ -21,7 +21,7 @@ export function CreateProjectButton() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)}>
+      <Button variant="default" onClick={() => setOpen(true)}>
         <Icon name="plus" />
         Tạo dự án
       </Button>
@@ -169,16 +169,19 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
           Hub sẽ làm các bước dưới đây cho <span className="font-mono">{planned.input.key}</span>. Bước nào lỗi thì xem
           và chạy lại ở trang dự án.
         </DialogDescription>
-        <ol className="grid list-decimal gap-1 pl-5 text-ink">
+        <ol className="grid list-decimal gap-1 pl-5 text-foreground">
           {planned.plan.steps.map((s) => (
             <li key={`${s.kind}-${s.target ?? ""}`}>
               {s.title}
-              {s.target && <span className="font-mono text-sm text-muted"> {s.target}</span>}
+              {s.target && <span className="font-mono text-xs text-muted-foreground"> {s.target}</span>}
             </li>
           ))}
         </ol>
         {planned.plan.warnings.length > 0 && (
-          <ul aria-label="Cảnh báo" className="grid gap-1 rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+          <ul
+            aria-label="Cảnh báo"
+            className="grid gap-1 rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning"
+          >
             {planned.plan.warnings.map((w) => (
               <li key={w.code}>{w.message}</li>
             ))}
@@ -186,11 +189,11 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         )}
         {failure && <Alert>{failure}</Alert>}
         <DialogActions>
-          <Button onClick={() => setPlanned(null)} disabled={busy}>
+          <Button variant="outline" onClick={() => setPlanned(null)} disabled={busy}>
             Quay lại sửa
           </Button>
           <Button
-            variant="primary"
+            variant="default"
             disabled={busy}
             onClick={() => {
               setFailure(null);
@@ -213,7 +216,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
         Nối một repo có sẵn hoặc tạo repo mới. Hub thêm AGENTS.md, bảo vệ nhánh chính và webhook cho repo.
       </DialogDescription>
       {loading ? (
-        <p aria-busy="true" className="text-muted">
+        <p aria-busy="true" className="text-muted-foreground">
           Đang tải…
         </p>
       ) : loadError ? (
@@ -285,7 +288,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
             {errors.connectionId && <FieldError>{errors.connectionId}</FieldError>}
           </Field>
           <fieldset className="grid gap-1.5">
-            <legend className="mb-1.5 text-label font-medium text-ink">Repo</legend>
+            <legend className="mb-1.5 text-sm font-medium text-foreground">Repo</legend>
             <div className="flex flex-wrap gap-x-5 gap-y-1.5">
               {(
                 [
@@ -293,7 +296,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
                   ["new", "Tạo repo mới"],
                 ] as const
               ).map(([value, label]) => (
-                <label key={value} className="flex items-center gap-2 text-label text-ink">
+                <label key={value} className="flex items-center gap-2 text-sm text-foreground">
                   <input
                     type="radio"
                     name="repoMode"
@@ -357,7 +360,7 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
                 </Field>
               </div>
               <div className="grid gap-1.5">
-                <label htmlFor={ids.visibility} className="text-label font-medium text-ink">
+                <label htmlFor={ids.visibility} className="text-sm font-medium text-foreground">
                   Ai xem được repo
                 </label>
                 <Select id={ids.visibility} name="visibility" defaultValue="private" disabled={busy}>
@@ -372,8 +375,10 @@ function CreateProjectForm({ onDone }: { onDone: () => void }) {
       )}
       {failure && <Alert>{failure}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Huỷ</Button>
-        <Button type="submit" variant="primary" disabled={busy || loading || ownSystems.length === 0 || !connection}>
+        <Button variant="outline" onClick={onDone}>
+          Huỷ
+        </Button>
+        <Button type="submit" variant="default" disabled={busy || loading || ownSystems.length === 0 || !connection}>
           {busy ? "Đang kiểm tra…" : "Kiểm tra"}
         </Button>
       </DialogActions>

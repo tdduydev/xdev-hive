@@ -22,7 +22,7 @@ export function CreateTaskButton({ projects }: { projects: Project[] }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)} disabled={projects.length === 0}>
+      <Button variant="default" onClick={() => setOpen(true)} disabled={projects.length === 0}>
         <Icon name="plus" />
         Tạo việc
       </Button>
@@ -86,7 +86,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
         <DialogTitle>Đã tạo {created.task.key}</DialogTitle>
         <Alert>Việc đã được tạo nhưng chưa giao được cho agent: {created.startError}</Alert>
         <DialogActions>
-          <Button variant="primary" onClick={onDone}>
+          <Button variant="default" onClick={onDone}>
             Đóng
           </Button>
         </DialogActions>
@@ -123,7 +123,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
       </DialogDescription>
       {projects.length > 1 ? (
         <div className="grid gap-1.5">
-          <label htmlFor={ids.project} className="text-label font-medium text-ink">
+          <label htmlFor={ids.project} className="text-sm font-medium text-foreground">
             Dự án
           </label>
           <Select id={ids.project} name="projectId" disabled={busy}>
@@ -149,7 +149,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
         {titleError && <FieldError>{titleError}</FieldError>}
       </Field>
       <div className="grid gap-1.5">
-        <label htmlFor={ids.body} className="text-label font-medium text-ink">
+        <label htmlFor={ids.body} className="text-sm font-medium text-foreground">
           Mô tả
         </label>
         <Textarea
@@ -162,7 +162,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
         />
       </div>
       <div className="grid gap-1.5">
-        <label htmlFor={ids.cli} className="text-label font-medium text-ink">
+        <label htmlFor={ids.cli} className="text-sm font-medium text-foreground">
           Agent
         </label>
         <Select id={ids.cli} name="cli" defaultValue="" disabled={busy}>
@@ -174,7 +174,7 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
           ))}
         </Select>
       </div>
-      <label htmlFor={ids.start} className="flex items-center gap-2 text-label text-ink">
+      <label htmlFor={ids.start} className="flex items-center gap-2 text-sm text-foreground">
         <input
           id={ids.start}
           type="checkbox"
@@ -187,8 +187,10 @@ function CreateTaskForm({ projects, onDone }: { projects: Project[]; onDone: () 
       </label>
       {failure && <Alert>{failure}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Huỷ</Button>
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button variant="outline" onClick={onDone}>
+          Huỷ
+        </Button>
+        <Button type="submit" variant="default" disabled={busy}>
           {busy ? "Đang tạo…" : "Tạo việc"}
         </Button>
       </DialogActions>

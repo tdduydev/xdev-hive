@@ -42,7 +42,7 @@ export function ProjectSettingsPage() {
   let body: ReactNode;
   if (projects.isPending || (members.isPending && org.role === "member")) {
     body = (
-      <p aria-busy="true" className="text-muted">
+      <p aria-busy="true" className="text-muted-foreground">
         Đang tải…
       </p>
     );
@@ -54,7 +54,7 @@ export function ProjectSettingsPage() {
             ? apiErrorMessage(projects.error)
             : `Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`}
         </Alert>
-        <Link to="/projects" className="text-accent hover:text-accent-hover">
+        <Link to="/projects" className="text-primary hover:text-primary/90">
           Về danh sách dự án
         </Link>
       </>
@@ -75,11 +75,11 @@ export function ProjectSettingsPage() {
 function Crumb({ project, projectKey }: { project: Project | undefined; projectKey: string }) {
   return (
     <>
-      <Link to="/projects" className="text-accent hover:text-accent-hover">
+      <Link to="/projects" className="text-primary hover:text-primary/90">
         Dự án
       </Link>{" "}
       /{" "}
-      <Link to="/projects/$key" params={{ key: projectKey }} className="text-accent hover:text-accent-hover">
+      <Link to="/projects/$key" params={{ key: projectKey }} className="text-primary hover:text-primary/90">
         {project?.name ?? projectKey}
       </Link>
     </>
@@ -91,10 +91,10 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   return (
     <Card className="grid gap-4 p-5" role="group" aria-labelledby={id}>
       <div className="grid gap-0.5">
-        <h2 id={id} className="text-lg font-semibold text-ink">
+        <h2 id={id} className="text-base font-semibold text-foreground">
           {title}
         </h2>
-        {hint && <p className="text-sm text-muted">{hint}</p>}
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
       {children}
     </Card>
@@ -117,7 +117,7 @@ function Check({
   const id = useId();
   return (
     <div className="grid gap-0.5">
-      <label htmlFor={id} className="flex items-center gap-2 text-label font-medium text-ink">
+      <label htmlFor={id} className="flex items-center gap-2 text-sm font-medium text-foreground">
         <input
           id={id}
           type="checkbox"
@@ -130,7 +130,7 @@ function Check({
         {label}
       </label>
       {hint && (
-        <p id={`${id}-hint`} className="pl-6 text-xs text-muted">
+        <p id={`${id}-hint`} className="pl-6 text-xs text-muted-foreground">
           {hint}
         </p>
       )}
@@ -172,7 +172,7 @@ function TextField({
           autoComplete="off"
           spellCheck={false}
         />
-        {suffix && <span className="text-sm whitespace-nowrap text-muted">{suffix}</span>}
+        {suffix && <span className="text-xs whitespace-nowrap text-muted-foreground">{suffix}</span>}
       </div>
       {error ? <FieldError>{error}</FieldError> : hint && <FieldHint>{hint}</FieldHint>}
     </Field>
@@ -240,21 +240,21 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
   return (
     <form noValidate onSubmit={onSubmit} className="grid gap-4">
       {!canEdit && (
-        <p role="note" className="rounded-lg border border-line bg-subtle px-3.5 py-2.5 text-label text-body">
+        <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
           Bạn đang xem ở chế độ chỉ đọc. Quản trị đội sở hữu dự án hoặc quản trị tổ chức mới sửa được cấu hình.
         </p>
       )}
 
       <Section title="Merge" hint="Cách PR của agent được merge vào nhánh chính.">
         <fieldset className="grid gap-2">
-          <legend className="mb-1.5 text-label font-medium text-ink">Chế độ</legend>
+          <legend className="mb-1.5 text-sm font-medium text-foreground">Chế độ</legend>
           {(
             [
               ["review", "Cần người duyệt", "Người duyệt PR rồi mới merge."],
               ["auto", "Tự merge khi đạt điều kiện", "Hub merge khi đạt chính sách kết quả và CI (nếu bắt buộc)."],
             ] as const
           ).map(([value, label, hint]) => (
-            <label key={value} className="flex items-start gap-2 text-label text-ink">
+            <label key={value} className="flex items-start gap-2 text-sm text-foreground">
               <input
                 type="radio"
                 name="mergeMode"
@@ -266,7 +266,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
               />
               <span className="grid">
                 <span className="font-medium">{label}</span>
-                <span className="text-xs text-muted">{hint}</span>
+                <span className="text-xs text-muted-foreground">{hint}</span>
               </span>
             </label>
           ))}
@@ -357,8 +357,8 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
               disabled={disabled}
             />
             <fieldset className="grid gap-3">
-              <legend className="mb-1 text-label font-medium text-ink">Chỉ review khi</legend>
-              <p className="-mt-1 text-xs text-muted">
+              <legend className="mb-1 text-sm font-medium text-foreground">Chỉ review khi</legend>
+              <p className="-mt-1 text-xs text-muted-foreground">
                 Bỏ trống cả hai thì review mọi run. Điền cả hai thì đạt một trong hai là review.
               </p>
               <TextField
@@ -371,7 +371,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                 suffix="dòng trở lên"
               />
               <div className="grid gap-1.5">
-                <label htmlFor={ids.paths} className="text-label font-medium text-ink">
+                <label htmlFor={ids.paths} className="text-sm font-medium text-foreground">
                   Có đổi file khớp
                 </label>
                 <Textarea
@@ -384,14 +384,14 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                   spellCheck={false}
                   aria-invalid={errors.reviewPaths ? true : undefined}
                   aria-describedby={errors.reviewPaths ? ids.pathsError : ids.pathsHint}
-                  className="font-mono text-sm"
+                  className="font-mono text-xs"
                 />
                 {errors.reviewPaths ? (
-                  <p id={ids.pathsError} className="text-xs text-bad">
+                  <p id={ids.pathsError} className="text-xs text-destructive">
                     {errors.reviewPaths}
                   </p>
                 ) : (
-                  <p id={ids.pathsHint} className="text-xs text-muted">
+                  <p id={ids.pathsHint} className="text-xs text-muted-foreground">
                     Mỗi dòng một mẫu đường dẫn kiểu glob.
                   </p>
                 )}
@@ -419,11 +419,11 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
           onChange={(v) => set("sandbox", v)}
           disabled={disabled}
         />
-        <p className="text-sm">
+        <p className="text-xs">
           <Link
             to="/projects/$key/sandbox"
             params={{ key: project.key }}
-            className="text-accent hover:text-accent-hover"
+            className="text-primary hover:text-primary/90"
           >
             Allowlist mạng và image môi trường của dự án
           </Link>
@@ -474,7 +474,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
           {SETTINGS_CLIS.map((cli) => (
             <fieldset key={cli} className="grid gap-3 app:grid-cols-[6rem_1fr_1fr] app:items-start">
               <legend className="sr-only">{CLI_LABEL[cli]}</legend>
-              <span aria-hidden="true" className="pt-1 font-medium text-ink app:pt-8">
+              <span aria-hidden="true" className="pt-1 font-medium text-foreground app:pt-8">
                 {CLI_LABEL[cli]}
               </span>
               <TextField
@@ -515,7 +515,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
               ],
             ] as const
           ).map(([value, label, hint]) => (
-            <label key={value} className="flex items-start gap-2 text-label text-ink">
+            <label key={value} className="flex items-start gap-2 text-sm text-foreground">
               <input
                 type="radio"
                 name="runPermissions"
@@ -526,29 +526,30 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                 className="mt-0.5 size-4 accent-accent"
               />
               <span className="grid">
-                <span className={cx("font-medium", value === "full" && "text-bad")}>{label}</span>
-                <span className="text-xs text-muted">{hint}</span>
+                <span className={cx("font-medium", value === "full" && "text-destructive")}>{label}</span>
+                <span className="text-xs text-muted-foreground">{hint}</span>
               </span>
             </label>
           ))}
         </fieldset>
         {form.runPermissions === "full" && (
-          <p className="rounded-lg bg-bad-bg px-3.5 py-2.5 text-label text-bad">
+          <p className="rounded-lg bg-destructive-soft px-3.5 py-2.5 text-sm text-destructive">
             Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.
           </p>
         )}
-        {errors.runPermissions && <p className="text-xs text-bad">{errors.runPermissions}</p>}
+        {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
       </Section>
 
       {canEdit && (
-        <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-line bg-canvas py-3">
+        <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-background py-3">
           {failure && <Alert className="mr-auto">{failure}</Alert>}
           {done && !failure && (
-            <p role="status" className="mr-auto text-label text-ok">
+            <p role="status" className="mr-auto text-sm text-success">
               Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.
             </p>
           )}
           <Button
+            variant="outline"
             onClick={() => {
               setForm(formFromSettings(saved));
               setErrors({});
@@ -558,7 +559,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
           >
             Bỏ thay đổi
           </Button>
-          <Button type="submit" variant="primary" disabled={!dirty || save.isPending}>
+          <Button type="submit" variant="default" disabled={!dirty || save.isPending}>
             {save.isPending ? "Đang lưu…" : "Lưu cấu hình"}
           </Button>
         </div>
@@ -570,7 +571,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
           <DialogDescription>
             CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo).
           </DialogDescription>
-          <ul className="grid list-disc gap-1 pl-5 text-label text-body">
+          <ul className="grid list-disc gap-1 pl-5 text-sm text-foreground">
             <li>
               Agent đọc, sửa, xoá được mọi file mà tài khoản trên máy truy cập được, kể cả ngoài worktree: khoá SSH,
               token, cấu hình CLI, mã nguồn dự án khác.
@@ -580,14 +581,16 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
               Nội dung độc trong issue, tài liệu hay mã nguồn có thể khiến agent xoá dữ liệu hoặc gửi secret ra ngoài.
             </li>
           </ul>
-          <p className="text-label text-ink">
+          <p className="text-sm text-foreground">
             Chỉ bật khi run chạy trong container dùng một lần hoặc trên máy riêng cho agent, không chứa dữ liệu quan
             trọng.
           </p>
           <DialogActions>
-            <Button onClick={() => setConfirmFull(false)}>Giữ trong worktree</Button>
+            <Button variant="outline" onClick={() => setConfirmFull(false)}>
+              Giữ trong worktree
+            </Button>
             <Button
-              variant="dangerSolid"
+              variant="destructive-solid"
               onClick={() => {
                 set("runPermissions", "full");
                 setConfirmFull(false);

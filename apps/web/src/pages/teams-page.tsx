@@ -37,7 +37,7 @@ type Access = "loading" | "none" | "view" | "manage";
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -84,11 +84,11 @@ export function TeamsPage() {
           <Alert>{apiErrorMessage(teams.error)}</Alert>
         ) : !selected ? (
           <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-            <span className="mb-1 grid size-10 place-items-center rounded-lg bg-sel text-sel-fg">
+            <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
               <Icon name="users" className="size-5" />
             </span>
-            <h2 className="text-lg font-semibold text-ink">Chưa có đội nào</h2>
-            <p className="max-w-md text-muted">
+            <h2 className="text-base font-semibold text-foreground">Chưa có đội nào</h2>
+            <p className="max-w-md text-muted-foreground">
               {orgAdmin ? "Tạo đội đầu tiên để thêm hệ thống và người vào đội." : "Quản trị tổ chức chưa tạo đội nào."}
             </p>
           </Card>
@@ -131,12 +131,12 @@ function TeamList({ teams, selectedId }: { teams: TeamWithCounts[]; selectedId: 
               to="/admin/teams"
               search={{ doi: team.id }}
               aria-current={on ? "page" : undefined}
-              className={cx("flex items-center gap-2.5 rounded-md p-2.5", on ? "bg-sel" : "hover:bg-subtle")}
+              className={cx("flex items-center gap-2.5 rounded-md p-2.5", on ? "bg-accent" : "hover:bg-muted")}
             >
               <TeamBadge team={team} />
               <span className="min-w-0">
-                <b className="block truncate text-nav font-medium text-ink">{team.name}</b>
-                <small className="block text-xs text-muted">
+                <b className="block truncate text-sm font-medium text-foreground">{team.name}</b>
+                <small className="block text-xs text-muted-foreground">
                   {team.systemCount} hệ thống · {team.memberCount} người
                 </small>
               </span>
@@ -155,9 +155,9 @@ function SystemsCard({ team, canManage }: { team: TeamWithCounts; canManage: boo
   return (
     <Card className="grid gap-3 px-4.5 py-4">
       <div className="flex items-center gap-2.5">
-        <h2 className="text-lg font-semibold text-ink">Hệ thống của đội {team.name}</h2>
+        <h2 className="text-base font-semibold text-foreground">Hệ thống của đội {team.name}</h2>
         {canManage && (
-          <Button size="sm" className="ml-auto" onClick={() => setAdding(true)}>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => setAdding(true)}>
             <Icon name="plus" />
             Hệ thống
           </Button>
@@ -176,7 +176,7 @@ function SystemsCard({ team, canManage }: { team: TeamWithCounts; canManage: boo
             <button
               type="button"
               onClick={() => setAdding(true)}
-              className="grid min-h-23 cursor-pointer place-items-center rounded-lg border border-dashed border-line-strong text-muted hover:bg-subtle"
+              className="grid min-h-23 cursor-pointer place-items-center rounded-lg border border-dashed border-input text-muted-foreground hover:bg-muted"
             >
               <span className="flex items-center gap-1.5">
                 <Icon name="plus" />
@@ -184,7 +184,7 @@ function SystemsCard({ team, canManage }: { team: TeamWithCounts; canManage: boo
               </span>
             </button>
           ) : (
-            systems.data.length === 0 && <p className="text-muted">Đội chưa có hệ thống nào.</p>
+            systems.data.length === 0 && <p className="text-muted-foreground">Đội chưa có hệ thống nào.</p>
           )}
         </div>
       )}
@@ -199,9 +199,9 @@ function SystemsCard({ team, canManage }: { team: TeamWithCounts; canManage: boo
 
 function SystemCard({ system, teamSlug }: { system: System; teamSlug: string }) {
   return (
-    <div className="grid content-start gap-1.5 rounded-lg border border-line bg-surface p-3">
-      <b className="font-semibold text-ink">{system.name}</b>
-      <small className="line-clamp-2 text-xs text-muted">{system.description || "Chưa có mô tả"}</small>
+    <div className="grid content-start gap-1.5 rounded-lg border border-border bg-card p-3">
+      <b className="font-semibold text-foreground">{system.name}</b>
+      <small className="line-clamp-2 text-xs text-muted-foreground">{system.description || "Chưa có mô tả"}</small>
       <span>
         <Pill tone="sel">
           {teamSlug}/{system.slug}
@@ -262,7 +262,7 @@ function AddSystemForm({ team, onDone }: { team: TeamWithCounts; onDone: () => v
         autoFocus
       />
       <div className="grid gap-1.5">
-        <label htmlFor={descriptionId} className="text-label font-medium text-ink">
+        <label htmlFor={descriptionId} className="text-sm font-medium text-foreground">
           Mô tả
         </label>
         <Textarea
@@ -275,8 +275,10 @@ function AddSystemForm({ team, onDone }: { team: TeamWithCounts; onDone: () => v
       </div>
       {failure && <Alert>{failure}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Huỷ</Button>
-        <Button type="submit" variant="primary" disabled={create.isPending}>
+        <Button variant="outline" onClick={onDone}>
+          Huỷ
+        </Button>
+        <Button type="submit" variant="default" disabled={create.isPending}>
           {create.isPending ? "Đang thêm…" : "Thêm"}
         </Button>
       </DialogActions>
@@ -305,9 +307,9 @@ function TeamMembersCard({
   let body: ReactNode;
   if (access === "loading" || (canView && members.isPending)) body = <Loading />;
   else if (access === "none")
-    body = <p className="text-muted">Bạn không ở trong đội này nên chưa xem được thành viên.</p>;
+    body = <p className="text-muted-foreground">Bạn không ở trong đội này nên chưa xem được thành viên.</p>;
   else if (members.isError) body = <Alert>{apiErrorMessage(members.error)}</Alert>;
-  else if (!members.data?.length) body = <p className="text-muted">Đội chưa có ai.</p>;
+  else if (!members.data?.length) body = <p className="text-muted-foreground">Đội chưa có ai.</p>;
   else
     body = (
       <Table>
@@ -333,9 +335,9 @@ function TeamMembersCard({
   return (
     <Card className="grid gap-3 px-4.5 py-4">
       <div className="flex items-center gap-2.5">
-        <h2 className="text-lg font-semibold text-ink">Thành viên của đội</h2>
+        <h2 className="text-base font-semibold text-foreground">Thành viên của đội</h2>
         {manage && (
-          <Button size="sm" className="ml-auto" onClick={() => setAdding(true)}>
+          <Button variant="outline" size="sm" className="ml-auto" onClick={() => setAdding(true)}>
             Thêm người
           </Button>
         )}
@@ -409,7 +411,7 @@ function TeamMemberRow({
   return (
     <tr>
       <Td>
-        <Who person={member} extra={self && <small className="text-xs text-muted">(bạn)</small>} />
+        <Who person={member} extra={self && <small className="text-xs text-muted-foreground">(bạn)</small>} />
       </Td>
       <Td>
         {manage ? (
@@ -500,7 +502,11 @@ function AddTeamMemberForm({
           <>
             {" "}
             Người chưa vào tổ chức thì{" "}
-            <button type="button" onClick={onInvite} className="cursor-pointer font-medium text-accent hover:underline">
+            <button
+              type="button"
+              onClick={onInvite}
+              className="cursor-pointer font-medium text-primary hover:underline"
+            >
               mời bằng email
             </button>
             .
@@ -508,15 +514,15 @@ function AddTeamMemberForm({
         )}
       </DialogDescription>
       {!orgMembers ? (
-        <p aria-busy="true" className="text-muted">
+        <p aria-busy="true" className="text-muted-foreground">
           Đang tải…
         </p>
       ) : candidates.length === 0 ? (
-        <p className="text-muted">Mọi người đang hoạt động trong tổ chức đều đã ở trong đội này.</p>
+        <p className="text-muted-foreground">Mọi người đang hoạt động trong tổ chức đều đã ở trong đội này.</p>
       ) : (
         <div className="grid grid-cols-1 gap-3.5 app:grid-cols-[minmax(0,1fr)_160px]">
           <div className="grid gap-1.5">
-            <label htmlFor={personId} className="text-label font-medium text-ink">
+            <label htmlFor={personId} className="text-sm font-medium text-foreground">
               Người
             </label>
             <Select id={personId} name="userId" disabled={add.isPending}>
@@ -528,7 +534,7 @@ function AddTeamMemberForm({
             </Select>
           </div>
           <div className="grid gap-1.5">
-            <label htmlFor={roleId} className="text-label font-medium text-ink">
+            <label htmlFor={roleId} className="text-sm font-medium text-foreground">
               Vai trò trong đội
             </label>
             <Select id={roleId} name="role" defaultValue="member" disabled={add.isPending}>
@@ -543,8 +549,10 @@ function AddTeamMemberForm({
       )}
       {failure && <Alert>{failure}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Huỷ</Button>
-        <Button type="submit" variant="primary" disabled={add.isPending || candidates.length === 0}>
+        <Button variant="outline" onClick={onDone}>
+          Huỷ
+        </Button>
+        <Button type="submit" variant="default" disabled={add.isPending || candidates.length === 0}>
           {add.isPending ? "Đang thêm…" : "Thêm"}
         </Button>
       </DialogActions>
@@ -556,7 +564,7 @@ function CreateTeamDialog({ teamCount, members }: { teamCount: number; members: 
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)}>
+      <Button variant="default" onClick={() => setOpen(true)}>
         <Icon name="plus" />
         Tạo đội
       </Button>
@@ -629,7 +637,7 @@ function CreateTeamForm({
         autoFocus
       />
       <div className="grid gap-1.5">
-        <label htmlFor={adminId} className="text-label font-medium text-ink">
+        <label htmlFor={adminId} className="text-sm font-medium text-foreground">
           Quản trị đội
         </label>
         <Select id={adminId} name="adminUserId" defaultValue={me.id} disabled={create.isPending}>
@@ -649,8 +657,10 @@ function CreateTeamForm({
       </div>
       {failure && <Alert>{failure}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Huỷ</Button>
-        <Button type="submit" variant="primary" disabled={create.isPending}>
+        <Button variant="outline" onClick={onDone}>
+          Huỷ
+        </Button>
+        <Button type="submit" variant="default" disabled={create.isPending}>
           {create.isPending ? "Đang tạo…" : "Tạo đội"}
         </Button>
       </DialogActions>

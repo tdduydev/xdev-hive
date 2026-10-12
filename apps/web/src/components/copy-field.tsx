@@ -47,14 +47,14 @@ export function CopyField({ value, copyLabel }: { value: string; copyLabel?: str
           value={value}
           spellCheck={false}
           onFocus={(e) => e.currentTarget.select()}
-          className="min-w-0 flex-1 font-mono text-sm"
+          className="min-w-0 flex-1 font-mono text-xs"
         />
-        <Button onClick={onCopy} aria-label={copyLabel ? `${text} ${copyLabel}` : undefined}>
+        <Button variant="outline" onClick={onCopy} aria-label={copyLabel ? `${text} ${copyLabel}` : undefined}>
           {text}
         </Button>
       </div>
       {copied === "failed" && (
-        <small role="status" className="text-xs text-muted">
+        <small role="status" className="text-xs text-muted-foreground">
           Trình duyệt chặn chép tự động. Ô đã được chọn sẵn, bấm Ctrl+C (⌘C trên Mac) để chép.
         </small>
       )}

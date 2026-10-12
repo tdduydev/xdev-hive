@@ -10,7 +10,7 @@ export interface PersonLike {
 
 export function PersonAvatar({ person }: { person: PersonLike }) {
   return (
-    <Avatar.Root className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-subtle text-xs font-semibold text-ink">
+    <Avatar.Root className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-xs font-semibold text-foreground">
       {person.image && <Avatar.Image src={person.image} alt="" className="size-full object-cover" />}
       <Avatar.Fallback>{initials(person.name, person.email)}</Avatar.Fallback>
     </Avatar.Root>
@@ -24,11 +24,11 @@ export function Who({ person, extra }: { person: PersonLike; extra?: ReactNode }
       <PersonAvatar person={person} />
       <span className="min-w-0">
         <span className="flex items-center gap-1.5">
-          <b className="truncate font-medium text-ink">{person.name}</b>
+          <b className="truncate font-medium text-foreground">{person.name}</b>
           {extra}
         </span>
         <span className="block truncate">
-          <small className="text-xs text-muted">{person.email}</small>
+          <small className="text-xs text-muted-foreground">{person.email}</small>
         </span>
       </span>
     </div>
