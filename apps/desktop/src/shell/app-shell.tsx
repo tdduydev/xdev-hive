@@ -6,8 +6,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 import { AccountContext, profileOf, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
+import { cn } from "@/lib/utils.ts";
 import { useWorkerState } from "@/lib/worker.ts";
-import { SCREENS } from "@/screens/index.ts";
+import { FULL_BLEED, SCREENS } from "@/screens/index.ts";
 import { AppNav } from "@/shell/app-nav.tsx";
 
 const text: Dict<{ soon: string; body: (design: string) => string }> = {
@@ -45,6 +46,7 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
   );
   const item = NAV_ITEMS.find((i) => i.id === active) ?? NAV_ITEMS[0];
   const Screen = SCREENS[active];
+  const bleed = !!Screen && FULL_BLEED.has(active);
   return (
     <div className="flex h-svh">
       <AppNav
@@ -53,14 +55,15 @@ export function AppShell({ profile: forced }: { profile?: Profile }) {
         account={account}
         onAccount={() => setAccountOpen(true)}
         worker={worker}
+        compact={bleed}
       />
       <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
-      <main className="flex min-w-0 flex-1 flex-col overflow-auto">
+      <main className={cn("flex min-w-0 flex-1 flex-col", bleed ? "overflow-hidden" : "overflow-auto")}>
         <header className="flex h-13 items-center gap-3 border-b px-5">
           <h1 className="flex-1 truncate font-heading text-base font-semibold">{item?.label[lang]}</h1>
           <LangToggle />
         </header>
-        <div className="p-5">
+        <div className={bleed ? "flex min-h-0 flex-1" : "p-5"}>
           {Screen ? (
             <AccountContext.Provider value={account}>
               <Screen />

@@ -120,32 +120,50 @@ description: "Task list for Desktop Application v2 implementation"
 
 **Goal**: Drive local agent CLIs (`claude`, `codex`) non-interactively with streaming JSON in a chosen folder to propose doc updates with diffs.
 
-- [ ] **T010 [US4] Rust Backend CLI Runner with Streaming JSON & Sandbox Isolation**
+- [x] **T010 [US4] Rust Backend CLI Runner with Streaming JSON & Sandbox Isolation**
   - **Goal**: Implement `apps/desktop/src-tauri/src/cli.rs`. Expose `run_cli_stream(engine, folder, prompt)`. For Claude: invoke `claude -p --output-format=stream-json --restricted --tools "Read,Edit,Write,Glob,Grep" --permission-prompts none` with `cwd` set to folder. For Codex: invoke `codex exec -C <folder> -s workspace-write --approve-for-me --json`. Scrub process env of all hub secrets. Stream JSON lines over Tauri event `cli:event`.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src-tauri/src/cli.rs` (new)
     - `apps/desktop/src-tauri/src/lib.rs`
     - `apps/desktop/src-tauri/capabilities/default.json`
   - **Dependencies**: T001.
+  - **Done as**: `run_cli_stream(engine, folder, prompt, session)` and `cancel_cli_stream(runId)` in `cli.rs`, events on
+    `cli:event` to the `app` window only. The agent is read-only because drafts live in the app and reach the hub only
+    as proposals: Claude gets `--restricted --strict-mcp-config --tools Read,Glob,Grep --permission-prompts none` (no
+    `Edit`/`Write`), Codex gets `--sandbox read-only --ignore-user-config` instead of `workspace-write --approve-for-me`.
+    The child environment is built from an allowlist; the prompt goes through stdin. Commands are registered in
+    `capabilities/app.json` (the `app` window), not `default.json`.
 
-- [ ] **T011 [US4] Build AppDocs Screen (Folder Picker, Explorer & Chat/Review Pane)**
+- [x] **T011 [US4] Build AppDocs Screen (Folder Picker, Explorer & Chat/Review Pane)**
   - **Goal**: Implement `apps/desktop/src/screens/AppDocs.tsx` following `AppDocs.dc.html`. Include folder picker modal, explorer file tree with AI read indicators (blue dots), live streaming chat pane showing tool calls, todos, and patches, side-by-side document review pane with insertion highlights and code citations, and batch "Nhận tất cả" / "Bỏ tất cả" buttons.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppDocs.tsx` (new)
     - `apps/desktop/src/App.tsx`
   - **Dependencies**: T010.
+  - **Done as**: `src/screens/docs-screen.tsx` (`#/docs`): folder picker with recent folders, explorer with the
+    project's hub docs and a two-level code tree (blue dots from Read tools and Codex shell arguments), editor with
+    view/edit/diff-vs-hub, AI insertions in green with `path:line` citations, removals struck, "dự kiến" paragraphs in
+    amber, "Nhận tất cả" / "Bỏ tất cả", and "Đẩy lên hub và gửi duyệt" through `propose_doc` (`doc_propose`). Permission
+    prompts from the design do not exist because the agent cannot write.
 
-- [ ] **T012 [P] [US4] Account & Subscription Modal for AI Engines**
+- [x] **T012 [P] [US4] Account & Subscription Modal for AI Engines**
   - **Goal**: Build the account modal in `AppDocs.tsx` displaying subscription quota usage, weekly window reset dates, and fallback configuration (use default / logout / manual login instructions).
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/components/AccountModal.tsx` (new)
   - **Dependencies**: T011.
+  - **Done as**: `src/components/ai-accounts-dialog.tsx` with `cli_accounts` (`claude auth status`, `codex login
+    status`), session and week limits from `/usage` and Codex session files, "Đặt mặc định", and the sign-in command
+    to run in a terminal. Not done: sign-out and the "when the default plan runs out" fallback, which need the app to
+    drive each CLI's login flow.
 
-- [ ] **T013 [P] [US4] Tests for CLI Stream Parser & Event Formatting**
+- [x] **T013 [P] [US4] Tests for CLI Stream Parser & Event Formatting**
   - **Goal**: Write unit tests simulating Claude stream-json lines and Codex JSONL events, verifying that tool calls, file reading events, and patch proposals are properly formatted for UI consumption.
   - **PHẠM VI (File scope)**:
     - `apps/desktop/src/screens/AppDocs.test.tsx` (new)
   - **Dependencies**: T011.
+  - **Done as**: Rust tests in `cli.rs` on lines captured from Claude Code 2.1.296 and codex-cli 0.162.1, env
+    allowlist (including a spawned `env`), argument sets, folder and session validation, process-group cancel;
+    Vitest in `src/screens/docs-screen.test.tsx` (run → streamed events → accept → `propose_doc` arguments).
 
 **Checkpoint**: AppDocs drives local agent CLIs safely inside workspace bounds and streams live doc review diffs.
 

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-accounts"
+description = "Enables the cli_accounts command without any pre-configured scope."
+commands.allow = ["cli_accounts"]
+
+[[permission]]
+identifier = "deny-cli-accounts"
+description = "Denies the cli_accounts command without any pre-configured scope."
+commands.deny = ["cli_accounts"]

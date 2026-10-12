@@ -5439,6 +5439,7 @@ name = "xdev-hive-desktop"
 version = "0.0.0"
 dependencies = [
  "keyring",
+ "libc",
  "reqwest",
  "serde",
  "serde_json",

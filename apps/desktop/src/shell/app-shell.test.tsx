@@ -59,16 +59,13 @@ describe("AppShell", () => {
     expect(within(nav).getByRole("link", { name: "Tổng quan" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeTruthy();
     await act(async () => {
-      location.hash = "#/docs";
+      location.hash = "#/runs";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Tài liệu" })).toBeTruthy();
-    expect(
-      within(nav)
-        .getByRole("link", { name: /^Tài liệu/ })
-        .getAttribute("aria-current"),
-    ).toBe("page");
-    expect(screen.getByText(/AppDocs\.dc\.html/)).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Lượt chạy trên máy" })).toBeTruthy();
+    expect(within(nav).getByRole("link", { name: "Lượt chạy trên máy" }).getAttribute("aria-current")).toBe("page");
+    // Lượt chạy là màn còn lại chưa làm: trang "Sắp có" ghi file thiết kế.
+    expect(screen.getByText(/AppNav\.dc\.html/)).toBeTruthy();
   });
 
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
@@ -82,8 +79,8 @@ describe("AppShell", () => {
 
   it("tiếng Anh", () => {
     setLang("en");
-    // Màn chưa làm (Tài liệu) hiện "Coming soon"; Tổng quan đã là màn thật.
-    location.hash = "#/docs";
+    // Màn chưa làm (Lượt chạy trên máy) hiện "Coming soon".
+    location.hash = "#/runs";
     render(<AppShell />);
     expect(screen.getByRole("navigation", { name: "App navigation" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Tokens & context" })).toBeTruthy();

@@ -9,6 +9,16 @@
 /* Tối theo class `.dark` trên <html>, đặt trong main.tsx theo lựa chọn đã lưu hoặc theo hệ điều hành. */
 @custom-variant dark (&:is(.dark *));
 
+/* AppNav chỉ còn icon: cửa sổ hẹp hơn 760px, hoặc màn cần chỗ đặt data-compact (Tài liệu). */
+@custom-variant compact {
+  @media (max-width: 760px) {
+    @slot;
+  }
+  &:where([data-compact], [data-compact] *) {
+    @slot;
+  }
+}
+
 /* Biến shadcn cần mà tokens.json không có: suy ra từ token chung như web (apps/web/src/styles.css). */
 :root {
   --sidebar-primary: var(--primary);

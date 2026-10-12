@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-run-cli-stream"
+description = "Enables the run_cli_stream command without any pre-configured scope."
+commands.allow = ["run_cli_stream"]
+
+[[permission]]
+identifier = "deny-run-cli-stream"
+description = "Denies the run_cli_stream command without any pre-configured scope."
+commands.deny = ["run_cli_stream"]

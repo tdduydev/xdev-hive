@@ -1,6 +1,7 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
 
 mod account;
+mod cli;
 mod doctor;
 mod hub;
 mod register;
@@ -572,6 +573,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(State::default())
+        .manage(cli::Runs::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
             register_worker,
@@ -591,7 +593,12 @@ pub fn run() {
             skills::installed_skills,
             skills::install_skills,
             skills::remove_skills,
-            skills::propose_skill
+            skills::propose_skill,
+            cli::run_cli_stream,
+            cli::cancel_cli_stream,
+            cli::cli_accounts,
+            cli::folder_tree,
+            cli::propose_doc
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.

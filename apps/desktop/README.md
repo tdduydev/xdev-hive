@@ -57,6 +57,12 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 - **Màn Token và ngữ cảnh** (`src-tauri/src/usage.rs`): `claude -p "/context"` và `claude -p "/usage"` (lệnh cục bộ,
   không gọi model), cộng `usage` trong `~/.claude/projects/*/*.jsonl` và `token_count`, `rate_limits` trong
   `~/.codex/sessions/**/*.jsonl` của 7 ngày gần nhất. Chỉ đọc, không gửi ra ngoài máy.
+- **Màn Tài liệu** (`src-tauri/src/cli.rs`): chạy Claude Code (`-p --output-format stream-json --verbose --restricted
+  --strict-mcp-config --tools Read,Glob,Grep --permission-prompts none`) hoặc Codex (`exec --json --sandbox read-only
+  --ignore-user-config`) trong thư mục dự án, không nhận thư mục gốc hay thư mục nhà. Agent chỉ đọc code; lời nhắc đi
+  qua stdin; sự kiện `cli:event` chỉ gửi cho cửa sổ `app`. Môi trường của CLI dựng từ danh sách cho phép (không biến
+  `HIVE_*`, token, khoá API hay biến của phiên agent khác). Đề xuất của agent vào bản nháp trong app; bản nháp lên hub
+  bằng `propose_doc` (tool `doc_propose`, token cá nhân), người duyệt quyết.
 - **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`) khai báo trong `build.rs`. Capability chỉ cấp
   các lệnh này cho cửa sổ `register` (`capabilities/default.json`). Cửa sổ `app` có capability riêng
   (`capabilities/app.json`), hiện chỉ `core:default`; màn nào cần lệnh Rust thì thêm đúng lệnh đó. Cửa sổ web của hub
