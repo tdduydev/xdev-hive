@@ -3,6 +3,9 @@ import { z } from "zod";
 
 export const id = z.uuid("Mã không hợp lệ.");
 
+/** Cờ trong query: RPC gửi boolean, REST (query string) gửi "true"/"false". */
+export const queryFlag = z.union([z.boolean(), z.enum(["true", "false"]).transform((v) => v === "true")]);
+
 // `code` ổn định để client phân biệt lý do mà không phải đọc message.
 const reason = z.object({ code: z.string() }).optional();
 export const orgErrors = {

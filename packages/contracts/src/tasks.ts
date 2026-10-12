@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, orgRoute } from "./common.ts";
+import { id, orgRoute, queryFlag } from "./common.ts";
 import { run } from "./runs.ts";
 import { cli } from "./worker-protocol.ts";
 
@@ -189,7 +189,14 @@ export const tasksContract = {
     .output(task),
   list: orgRoute("GET", "/v1/tasks", "Task của một dự án, hoặc của mọi dự án mình thấy được", "tasks")
     // Bỏ trống projectId cho bảng việc chung của cả tổ chức (web /tasks).
-    .input(z.object({ projectId: id.optional(), status: taskStatus.optional() }))
+    .input(
+      z.object({
+        projectId: id.optional(),
+        status: taskStatus.optional(),
+        /** Việc của tôi (app desktop): task mình tạo hoặc có run mình giao (chủ run, ADR 0017). */
+        mine: queryFlag.optional(),
+      }),
+    )
     .output(z.array(task)),
   get: orgRoute("GET", "/v1/tasks/{id}", "Thông tin task", "tasks").input(z.object({ id })).output(task),
   update: orgRoute("PATCH", "/v1/tasks/{id}", "Sửa task (thành viên đội)", "tasks").input(taskUpdateInput).output(task),
