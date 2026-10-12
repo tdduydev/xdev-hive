@@ -202,6 +202,15 @@ importers:
       '@fontsource-variable/jetbrains-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@orpc/client':
+        specifier: ^1.15.5
+        version: 1.15.5(@opentelemetry/api@1.9.1)
+      '@orpc/contract':
+        specifier: ^1.15.5
+        version: 1.15.5(@opentelemetry/api@1.9.1)
+      '@xdev-hive/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

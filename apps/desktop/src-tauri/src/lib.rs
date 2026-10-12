@@ -671,6 +671,7 @@ pub fn run() {
             parse_registration,
             register_worker,
             browser_login,
+            hub::hub_rpc,
             doctor::scan_environment,
             doctor::run_install,
             usage::claude_context,
