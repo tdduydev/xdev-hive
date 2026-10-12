@@ -1,6 +1,9 @@
 import { Avatar } from "@base-ui/react/avatar";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type Dict, useT } from "../lib/i18n.ts";
 import { initials } from "../lib/people.ts";
+import { Button } from "./ui/button.tsx";
+import { Input } from "./ui/input.tsx";
 
 export interface PersonLike {
   name: string;
@@ -31,6 +34,63 @@ export function Who({ person, extra }: { person: PersonLike; extra?: ReactNode }
           <small className="text-xs text-muted-foreground">{person.email}</small>
         </span>
       </span>
+    </div>
+  );
+}
+
+const copyText: Dict<{ copy: string; copied: string; failed: string }> = {
+  vi: {
+    copy: "Chép",
+    copied: "Đã chép",
+    failed: "Trình duyệt chặn chép tự động. Ô đã được chọn sẵn, bấm Ctrl+C (⌘C trên Mac) để chép.",
+  },
+  en: {
+    copy: "Copy",
+    copied: "Copied",
+    failed: "The browser blocked automatic copying. The field is selected; press Ctrl+C (⌘C on Mac) to copy.",
+  },
+};
+
+/** These people screens need localized copy feedback while the existing shared CopyField remains unchanged. */
+export function PeopleCopyField({ value, copyLabel }: { value: string; copyLabel: string }) {
+  const t = useT(copyText);
+  const input = useRef<HTMLInputElement>(null);
+  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+  useEffect(() => {
+    if (copied !== "done") return;
+    const timer = setTimeout(() => setCopied("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied("done");
+    } catch {
+      input.current?.select();
+      setCopied("failed");
+    }
+  }
+  const label = copied === "done" ? t.copied : t.copy;
+  return (
+    <div className="grid min-w-0 gap-1">
+      <div className="flex min-w-0 gap-2">
+        <Input
+          ref={input}
+          readOnly
+          value={value}
+          spellCheck={false}
+          onFocus={(event) => event.currentTarget.select()}
+          className="min-w-0 flex-1 font-mono text-xs"
+        />
+        <Button variant="outline" onClick={onCopy} aria-label={`${label} ${copyLabel}`}>
+          {label}
+        </Button>
+      </div>
+      {copied === "failed" && (
+        <small role="status" className="text-xs text-muted-foreground">
+          {t.failed}
+        </small>
+      )}
     </div>
   );
 }

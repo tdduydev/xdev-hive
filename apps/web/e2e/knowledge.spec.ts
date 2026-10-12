@@ -1,0 +1,380 @@
+import { expect, type Page, test } from "@playwright/test";
+import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
+
+const at = "2026-10-12T03:00:00.000Z";
+const orgId = "0a0a0a0a-0000-4000-8000-000000000001";
+const teamId = "0a0a0a0a-0000-4000-8000-000000000002";
+const projectId = "0a0a0a0a-0000-4000-8000-000000000003";
+const scope = { level: "org", teamId: null, projectId: null };
+const author = { userId: USER.id, runId: null };
+const doc = {
+  id: "0a0a0a0a-0000-4000-8000-000000000004",
+  key: "org/money",
+  title: "Quy ước tiền tệ",
+  scope,
+  version: 2,
+  updatedAt: at,
+  updatedBy: author,
+};
+const skill = {
+  id: "0a0a0a0a-0000-4000-8000-000000000005",
+  name: "code-review",
+  description: "Kiểm tra code",
+  scope,
+  version: 2,
+  updatedAt: at,
+  updatedBy: author,
+};
+const memory = {
+  id: "0a0a0a0a-0000-4000-8000-000000000006",
+  kind: "decision",
+  content: "Lưu tiền theo đơn vị nhỏ nhất.",
+  files: ["money.ts"],
+  scope,
+  author,
+  createdAt: at,
+  supersededBy: null as string | null,
+};
+const proposal = {
+  id: "0a0a0a0a-0000-4000-8000-000000000007",
+  kind: "doc",
+  target: doc.key,
+  scope,
+  baseVersion: 1,
+  title: null,
+  description: null,
+  content: "# Money\nRound per line.\nNo float.",
+  reason: "Làm tròn theo từng dòng",
+  status: "pending",
+  author,
+  createdAt: at,
+  decidedBy: null,
+  decidedAt: null,
+  decisionNote: null as string | null,
+  resultVersion: null,
+};
+
+async function setup(
+  page: Page,
+  options: { role?: string; teamRole?: string; overrides?: Record<string, RpcHandler> } = {},
+) {
+  let memories = [memory];
+  let proposals = [proposal];
+  return fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () =>
+        ok({
+          orgs: [
+            { id: orgId, slug: "acme", name: "Acme", role: options.role ?? "owner", emailDomain: null, createdAt: at },
+          ],
+          canCreateOrg: false,
+        }),
+      "orgMembers/list": () =>
+        ok([
+          {
+            userId: USER.id,
+            name: USER.name,
+            email: USER.email,
+            image: null,
+            role: "member",
+            status: "active",
+            joinedAt: at,
+            teams: [{ teamId, name: "Platform", role: options.teamRole ?? "viewer" }],
+          },
+        ]),
+      "teams/list": () =>
+        ok([
+          {
+            id: teamId,
+            name: "Platform",
+            slug: "platform",
+            color: null,
+            createdAt: at,
+            systemCount: 0,
+            memberCount: 1,
+          },
+        ]),
+      "projects/list": () => ok([{ id: projectId, teamId, name: "Hive", key: "hive", createdAt: at }]),
+      "notifications/unreadCount": () => ok({ count: 0 }),
+      "docs/list": () => ok([doc]),
+      "docs/get": (input) =>
+        ok({
+          ...doc,
+          version: (input as { version?: number }).version ?? 2,
+          content:
+            (input as { version?: number }).version === 1
+              ? "# Money\nRound total.\nNo float."
+              : "# Money\nRound per line.\n**No float.**\n[Unsafe](javascript:alert)\n<script>alert(1)</script>\n\n| Rule | Value |\n| --- | --- |\n| Currency | VND |",
+        }),
+      "docs/history": () =>
+        ok(
+          [2, 1].map((version) => ({
+            version,
+            title: doc.title,
+            author,
+            message: `Revision ${version}`,
+            proposalId: null,
+            chars: 40,
+            createdAt: at,
+          })),
+        ),
+      "skills/list": () => ok([skill]),
+      "skills/get": () => ok({ ...skill, content: "# Review\n- Check permissions\n```ts\nconst safe = true;\n```" }),
+      "memory/list": (input) =>
+        ok(
+          (input as { includeSuperseded?: boolean }).includeSuperseded
+            ? memories
+            : memories.filter((item) => !item.supersededBy),
+        ),
+      "memory/search": () => ok([{ ...memory, score: 0.98, matchedBy: ["text", "vector"] }]),
+      "memory/write": (input) => {
+        const item = { ...memory, ...(input as object), id: "0a0a0a0a-0000-4000-8000-000000000008" };
+        memories = [item, ...memories];
+        return ok(item);
+      },
+      "memory/supersede": (input) => {
+        const item = { ...memory, ...(input as object), id: "0a0a0a0a-0000-4000-8000-000000000009" };
+        memories = [item, { ...memory, supersededBy: item.id }];
+        return ok(item);
+      },
+      "proposals/list": (input) =>
+        ok(
+          proposals.filter(
+            (item) => !(input as { status?: string }).status || item.status === (input as { status?: string }).status,
+          ),
+        ),
+      ...Object.fromEntries(
+        ["approve", "reject"].map((action) => [
+          `proposals/${action}`,
+          (input: unknown) => {
+            const item = {
+              ...proposal,
+              status: action === "approve" ? "approved" : "rejected",
+              decisionNote: (input as { note: string }).note,
+            };
+            proposals = [item];
+            return ok(item);
+          },
+        ]),
+      ),
+      ...options.overrides,
+    },
+  });
+}
+
+test("docs: read markdown safely and select historical version using the keyboard", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto("/knowledge/docs");
+  await page.getByRole("button", { name: "Mở dòng Quy ước tiền tệ" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Money", exact: true })).toBeVisible();
+  await expect(page.locator("article strong")).toHaveText("No float.");
+  await expect(page.locator('article a[href^="javascript:"]')).toHaveCount(0);
+  await expect(page.locator("article script")).toHaveCount(0);
+  await expect(page.locator("article table")).toContainText("Currency");
+  await page.getByRole("button", { name: "Lịch sử", exact: true }).click();
+  await page.getByLabel("Bản", { exact: true }).selectOption("1");
+  await expect(page.locator("article")).toContainText("Round total.");
+  expect(
+    hub.rpcCalls.some(
+      (call) => call.path === "docs/get" && (call.input as { version: number }).version === 1 && call.org === orgId,
+    ),
+  ).toBeTruthy();
+  await expect(page.getByRole("button", { name: "Sửa", exact: true })).toHaveCount(0);
+});
+
+test("skills: read SKILL.md and show unavailable repo sync", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto("/knowledge/skills");
+  await expect(page.getByRole("button", { name: "Đồng bộ ngay" })).toBeDisabled();
+  await page.getByRole("button", { name: "Mở dòng code-review" }).click();
+  await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
+  await expect(page.locator("article pre")).toContainText("const safe = true;");
+  expect(hub.rpcCalls.filter((call) => call.path.includes("sync"))).toHaveLength(0);
+});
+
+test("memory: hybrid search, kind filter, write and supersede", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto("/knowledge/memory");
+  await page.getByRole("button", { name: "Loại", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Quyết định", exact: true }).check();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("status").filter({ hasText: "Đang lọc" })).toContainText("Quyết định");
+  await page.getByRole("button", { name: "Xoá hết bộ lọc" }).click();
+  await page.getByRole("button", { name: "Thêm memory" }).click();
+  await page.getByRole("dialog").getByRole("textbox", { name: "Nội dung", exact: true }).fill("Quy ước mới");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("table")).toContainText("Quy ước mới");
+  await page.getByRole("button", { name: "Mở dòng Quy ước mới" }).click();
+  await page.getByRole("button", { name: "Thay memory", exact: true }).click();
+  await page.getByRole("dialog").getByRole("textbox", { name: "Nội dung", exact: true }).fill("Quy ước thay thế");
+  await page.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("Quy ước thay thế");
+  await page.getByRole("textbox", { name: "Tìm theo từ và theo nghĩa…" }).fill("tiền");
+  await page.getByRole("button", { name: "Tìm", exact: true }).click();
+  await expect(page.getByRole("table")).toContainText("Từ, Nghĩa");
+  expect(hub.rpcCalls.find((call) => call.path === "memory/search")?.input).toEqual({ query: "tiền", limit: 50 });
+  expect(hub.rpcCalls.find((call) => call.path === "memory/write")?.input).toMatchObject({
+    scope: { level: "org" },
+    content: "Quy ước mới",
+  });
+  expect(hub.rpcCalls.find((call) => call.path === "memory/supersede")?.input).toMatchObject({
+    content: "Quy ước thay thế",
+  });
+});
+
+for (const action of ["approve", "reject"] as const) {
+  test(`proposals: diff and ${action} with a note`, async ({ page }) => {
+    const hub = await setup(page);
+    await page.goto("/knowledge/proposals");
+    await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
+    const diff = page.getByRole("region", { name: "Thay đổi nội dung" });
+    await expect(diff).toContainText("Round total.");
+    await expect(diff).toContainText("Round per line.");
+    await expect(diff.locator(".bg-destructive-soft")).toContainText("Round total.");
+    await expect(diff.locator(".bg-success-soft")).toContainText("Round per line.");
+    await page.getByLabel("Ghi chú khi duyệt").fill("Đã kiểm tra");
+    await page.getByRole("button", { name: action === "approve" ? "Duyệt" : "Từ chối", exact: true }).click();
+    await expect(page.getByRole("table")).not.toContainText(doc.key);
+    await page.getByLabel("Trạng thái", { exact: true }).selectOption(action === "approve" ? "approved" : "rejected");
+    await expect(page.getByRole("table")).toContainText(doc.key);
+    expect(hub.rpcCalls.find((call) => call.path === `proposals/${action}`)?.input).toEqual({
+      id: proposal.id,
+      note: "Đã kiểm tra",
+    });
+  });
+}
+
+test("proposals: conflict preserves note and does not pretend approval succeeded", async ({ page }) => {
+  await setup(page, {
+    overrides: { "proposals/approve": () => fail("CONFLICT", 409, "Bản gốc đã đổi sau khi đề xuất.") },
+  });
+  await page.goto("/knowledge/proposals");
+  await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
+  await page.getByLabel("Ghi chú khi duyệt").fill("Giữ ghi chú");
+  await page.getByRole("button", { name: "Duyệt", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Bản gốc đã đổi");
+  await expect(page.getByLabel("Ghi chú khi duyệt")).toHaveValue("Giữ ghi chú");
+});
+
+test("viewer has no memory write or proposal decision controls", async ({ page }) => {
+  await setup(page, { role: "member" });
+  await page.goto("/knowledge/memory");
+  await expect(page.getByRole("table")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thêm memory" })).toHaveCount(0);
+  await page.getByRole("button", { name: `Mở dòng ${memory.content}` }).click();
+  await expect(page.getByRole("button", { name: "Thay memory", exact: true })).toHaveCount(0);
+  await page.goto("/knowledge/proposals");
+  await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
+  await expect(page.getByRole("region", { name: "Thay đổi nội dung" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Từ chối", exact: true })).toHaveCount(0);
+});
+
+test("team admin can decide team proposals but cannot decide org proposals", async ({ page }) => {
+  await setup(page, {
+    role: "member",
+    teamRole: "admin",
+    overrides: {
+      "proposals/list": () =>
+        ok([
+          proposal,
+          {
+            ...proposal,
+            id: "team-proposal",
+            target: "team/platform/money",
+            scope: { level: "team", teamId, projectId: null },
+          },
+        ]),
+    },
+  });
+  await page.goto("/knowledge/proposals");
+  await page.getByRole("button", { name: `Mở dòng ${doc.key}` }).click();
+  await expect(page.getByRole("region", { name: "Thay đổi nội dung" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Mở dòng team/platform/money" }).click();
+  await expect(page.getByRole("button", { name: "Duyệt", exact: true })).toBeEnabled();
+});
+
+test("skill proposal reads the exact scope and base version when names repeat", async ({ page }) => {
+  const hub = await setup(page, {
+    overrides: {
+      "proposals/list": () =>
+        ok([
+          {
+            ...proposal,
+            kind: "skill",
+            target: skill.name,
+            scope: { level: "team", teamId, projectId: null },
+            content: "# Review\nNew policy",
+          },
+        ]),
+      "skills/list": () =>
+        ok([skill, { ...skill, id: "team-skill", scope: { level: "team", teamId, projectId: null } }]),
+      "skills/get": () => ok({ ...skill, id: "team-skill", content: "# Review\nOld policy" }),
+    },
+  });
+  await page.goto("/knowledge/proposals");
+  await page.getByRole("button", { name: `Mở dòng ${skill.name}` }).click();
+  const diff = page.getByRole("region", { name: "Thay đổi nội dung" });
+  await expect(diff).toContainText("Old policy");
+  await expect(diff).toContainText("New policy");
+  expect(hub.rpcCalls.find((call) => call.path === "skills/get")?.input).toEqual({ id: "team-skill", version: 1 });
+});
+
+test("memory write error preserves form content", async ({ page }) => {
+  await setup(page, { overrides: { "memory/write": () => fail("FORBIDDEN", 403, "Bạn không có quyền ghi.") } });
+  await page.goto("/knowledge/memory");
+  await page.getByRole("button", { name: "Thêm memory" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Nội dung", exact: true }).fill("Giữ nội dung");
+  await dialog.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Bạn không có quyền ghi.");
+  await expect(dialog.getByRole("textbox", { name: "Nội dung", exact: true })).toHaveValue("Giữ nội dung");
+});
+
+for (const route of ["docs", "skills", "memory", "proposals"]) {
+  test(`${route}: empty and recoverable load error`, async ({ page }) => {
+    let broken = true;
+    await setup(page, {
+      overrides: {
+        [`${route === "memory" ? "memory" : route}/list`]: () =>
+          broken ? fail("FORBIDDEN", 403, "Không có quyền đọc.") : ok([]),
+      },
+    });
+    await page.goto(`/knowledge/${route}`);
+    await expect(page.getByRole("alert")).toContainText("Không có quyền đọc.");
+    broken = false;
+    await page.getByRole("button", { name: "Thử lại", exact: true }).click();
+    await expect(page.getByText("Chưa có dữ liệu.", { exact: true })).toBeVisible();
+  });
+  for (const scheme of ["light", "dark"] as const) {
+    test(`${route}: ${scheme}, English, 360px without page overflow`, async ({ page }, testInfo) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.setViewportSize({ width: 360, height: 800 });
+      await page.addInitScript(() => localStorage.setItem("hive.lang", "en"));
+      await setup(page);
+      await page.goto(`/knowledge/${route}`);
+      await expect(page.getByRole("table")).toBeVisible();
+      await page
+        .getByRole("button", { name: /Open row/ })
+        .first()
+        .click();
+      await expect(page.locator("main").last()).toContainText(
+        route === "docs"
+          ? "Versioned markdown docs"
+          : route === "skills"
+            ? "Not synced"
+            : route === "memory"
+              ? "Short notes"
+              : "team admins decide",
+      );
+      if (route === "docs" || route === "skills") await expect(page.locator("article")).toBeVisible();
+      if (route === "proposals") await expect(page.getByRole("region", { name: "Content changes" })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`${route}-${scheme}.png`), fullPage: true });
+    });
+  }
+}

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import type { AuditExportInput } from "@xdev-hive/contracts";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -154,4 +155,26 @@ export function mcpAdminFixture(role: "owner" | "admin" | "member" = "admin") {
     },
   };
   return { state, rpc };
+}
+
+/** Audit export uses oRPC's multipart File response rather than a JSON fixture. */
+export async function fakeAuditExport(
+  page: Page,
+  hub: FakeHub,
+  createFile: (input: AuditExportInput) => File,
+): Promise<void> {
+  await page.route("**/rpc/audit/export", async (route) => {
+    const request = route.request();
+    const input = request.postDataJSON().json;
+    hub.rpcCalls.push({ path: "audit/export", method: request.method(), org: request.headers()["x-hive-org"], input });
+    const form = new FormData();
+    form.set("data", JSON.stringify({ json: {}, maps: [[]] }));
+    form.set("0", createFile(input));
+    const response = new Response(form);
+    await route.fulfill({
+      status: 200,
+      contentType: response.headers.get("content-type") ?? "",
+      body: Buffer.from(await response.arrayBuffer()),
+    });
+  });
 }

@@ -194,9 +194,9 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
 | OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
-| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Planned | — |
-| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Planned | — |
-| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Planned | — |
+| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Implemented | `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (owner/admin; custom auditor roles await RBAC) |
+| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Implemented | `hub:modules/audit/audit.db.test.ts`, `hub:modules/audit/csv.test.ts`, `web:audit.spec.ts` (owner/admin; 20,000-row limit) |
+| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Partial | `hub:modules/audit/audit.db.test.ts` (append-only enforced; organization retention policy and archival/cleanup not implemented) |
 
 ### 3.12 Roles and custom permissions (ROLE)
 
@@ -246,6 +246,21 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | SKILL-03 | The hub shall process Git webhooks on push events to update the skill catalog within seconds, and provide manual "Sync now" triggering. | Planned | — |
 | SKILL-04 | Edits made on the hub shall commit to the Git repository default branch as the editing user, and skill change proposals shall be managed as Git pull requests. | Planned | — |
 | SKILL-05 | The hub shall resolve skill lookups by scope hierarchy, allowing team or project skills to shadow organization skills with identical keys. | Planned | — |
+
+### 3.17 Desktop application (DESK)
+
+| ID | Requirement | Status | Verification |
+|---|---|---|---|
+| DESK-01 | The desktop app shall provide a local user interface built with React, Vite, and Tailwind matching design system v2, containing screens: AppNav, AppRegister, AppTray, AppHome, AppDocs, AppSkills, AppTokens, and AppSetup. | Planned | `desktop:` |
+| DESK-02 | The desktop app shall register machines with single-use tokens from command strings or form inputs, passing the token to the worker sidecar via environment variable `HIVE_REGISTRATION_TOKEN`. | Planned | `desktop:` |
+| DESK-03 | The desktop app shall manage worker sidecar lifecycle through a system tray menu and native notifications across all 7 states: stopped, starting, connecting, online, disconnected, stopping, and failed. | Planned | `desktop:`, `worker:` |
+| DESK-04 | The desktop app shall provide an overview dashboard (AppHome) displaying machine readiness score, synced skills, recent document summaries, and weekly token consumption. | Planned | `desktop:` |
+| DESK-05 | The desktop app shall execute local agent CLIs (Claude Code, Codex) non-interactively with streaming JSON in a user-selected project directory to inspect code and propose documentation, without exposing hub secrets to the CLI environment. | Planned | `desktop:` |
+| DESK-06 | The desktop app shall synchronize skills between the hub and local folders (`.claude/skills/`, `.agents/skills/`) and user home folders, detecting local modifications before updating or removing skill files. | Planned | `desktop:` |
+| DESK-07 | The desktop app shall inspect token consumption and context allocations (via non-interactive `/context` and `/usage` for Claude Code; session turn metrics for Codex) and display actionable optimization recommendations. | Planned | `desktop:` |
+| DESK-08 | The desktop app shall diagnose local development environments (CLIs, runtimes, tools, MCP servers, project dependencies), show remediation commands, and require explicit user confirmation before executing non-admin install commands. | Planned | `desktop:` |
+| DESK-09 | The desktop app shall authenticate human users via personal tokens stored in the OS keychain, mapping hub roles (`owner`, `admin`, `member`, `viewer`) to app permission profiles (`lead`, `dev`, `writer`). | Planned | `desktop:` |
+| DESK-10 | The desktop app shall install bundle updates via `tauri-plugin-updater` from `/api/v1/desktop/updates/{os}/{arch}/{version}`, with worker sidecar self-update disabled to prevent binary drift. | Planned | `desktop:` |
 
 ## 4. External interface requirements
 
