@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { jobMcpServer } from "./mcp-admin.ts";
 import { sandboxJobConfig } from "./sandbox.ts";
 
 /** Phiên bản giao thức worker ↔ hub (docs/architecture.md mục 5). Tăng khi đổi gói theo cách không tương thích. */
@@ -168,6 +169,8 @@ export const jobOffer = z.object({
     .object({
       execution: z.enum(["worker", "sandbox"]).optional(),
       sandbox: sandboxJobConfig.optional(),
+      /** MCP server ngoài được phép (MCP-06); worker chỉ nạp những server này, ngoài cổng MCP của hub. */
+      mcpServers: z.array(jobMcpServer).max(64).optional(),
     })
     .catchall(z.unknown())
     .refine((spec) => (spec.execution === "sandbox") === (spec.sandbox !== undefined), {

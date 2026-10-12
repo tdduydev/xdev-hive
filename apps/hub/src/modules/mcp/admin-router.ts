@@ -5,6 +5,13 @@ import type { Auth } from "../identity/index.ts";
 import { type RequestContext, withTenant } from "../platform/index.ts";
 import { createToken, extendToken, listTokens, listTools, revokeToken, setTool } from "./admin-service.ts";
 import type { McpToolRegistry } from "./registry.ts";
+import {
+  createServerRule,
+  deleteServerRule,
+  listServerRules,
+  previewServers,
+  updateServerRule,
+} from "./server-rules-service.ts";
 
 export function mcpAdminRouter(deps: {
   auth?: Auth | undefined;
@@ -39,6 +46,19 @@ export function mcpAdminRouter(deps: {
     ),
     revokeToken: os.revokeToken.handler(({ context: { tx, userId }, input }) =>
       revokeToken(tx, userId, registry, input.id),
+    ),
+    listServers: os.listServers.handler(({ context: { tx, userId } }) => listServerRules(tx, userId, registry)),
+    createServer: os.createServer.handler(({ context: { tx, userId }, input }) =>
+      createServerRule(tx, userId, registry, input),
+    ),
+    updateServer: os.updateServer.handler(({ context: { tx, userId }, input: { id, ...input } }) =>
+      updateServerRule(tx, userId, registry, id, input),
+    ),
+    deleteServer: os.deleteServer.handler(({ context: { tx, userId }, input }) =>
+      deleteServerRule(tx, userId, registry, input.id),
+    ),
+    previewServers: os.previewServers.handler(({ context: { tx, userId }, input }) =>
+      previewServers(tx, userId, registry, input.projectId),
     ),
   };
 }

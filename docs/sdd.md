@@ -158,6 +158,12 @@ message types are ignored by older peers.
 
 Read-only run kinds receive no write tools (`task_update`, `memory_write`, `doc_propose`, `skill_propose`).
 
+External MCP servers (MCP-05, MCP-06) are rules in `mcp_server_rules`, for the organization or one project. Specific
+rules (name, URL, command) decide before `*` rules, deny wins over allow, and a server no rule allows is blocked.
+`job_offer.spec.mcpServers` of a code run carries the allowed servers. The worker writes them next to the hub gateway
+in the Claude Code `--mcp-config` file (run with `--strict-mcp-config`) or the Codex `mcp_servers` overrides (after
+`mcp_servers={}`), so servers configured on the machine are not loaded, and blanks hub tokens in their environment.
+
 ### 4.4 Worker command line
 
 | Command | Purpose |
@@ -286,5 +292,5 @@ Decisions are recorded in [docs/adr](adr/README.md). Requirement areas map to mo
 | SBX | `sandbox` | worker `runner`, `egress` |
 | KNOW | `knowledge` | |
 | LEAD | `leader` | |
-| MCP | `mcp` and the modules that register tools | |
+| MCP | `mcp` and the modules that register tools, `runs` (external servers in the job) | worker `runner` (MCP configuration) |
 | OPS | `notify`, `cost`, `audit` | `deploy/` |

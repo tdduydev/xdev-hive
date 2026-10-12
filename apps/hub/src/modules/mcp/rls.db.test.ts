@@ -4,7 +4,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { pgCode, seedOrg } from "../../../test/org-fixture.ts";
 import { createPool, type Tx, withTenant } from "../platform/index.ts";
-import { mcpToolOverrides, mcpUserTokens } from "./schema.ts";
+import { mcpServerRules, mcpToolOverrides, mcpUserTokens } from "./schema.ts";
 
 const db = inject("db");
 const admin = new pg.Pool({ connectionString: db.adminUrl });
@@ -12,7 +12,7 @@ const app = createPool(db.appUrl);
 const owner = createPool(db.ownerUrl);
 let org: Awaited<ReturnType<typeof seedOrg>>;
 let other: typeof org;
-const tables = [mcpToolOverrides, mcpUserTokens];
+const tables = [mcpToolOverrides, mcpUserTokens, mcpServerRules];
 const tenant = <T>(fn: (tx: Tx) => Promise<T>) => withTenant(app, { orgId: org.orgId, userId: org.user("owner") }, fn);
 const token = (orgId: string) => ({
   orgId,
@@ -21,6 +21,15 @@ const token = (orgId: string) => ({
   prefix: "test-prefix",
   clientId: "test",
   expiresAt: new Date(Date.now() + 86_400_000),
+});
+
+const serverRule = (orgId: string) => ({
+  orgId,
+  name: "Shell",
+  rule: "deny" as const,
+  matchType: "name" as const,
+  pattern: "shell",
+  updatedBy: "test",
 });
 
 beforeAll(async () => {
@@ -33,6 +42,7 @@ beforeAll(async () => {
         .insert(mcpToolOverrides)
         .values({ orgId: o.orgId, toolName: "task_get", enabled: false, updatedBy: "test" });
       await tx.insert(mcpUserTokens).values(token(o.orgId));
+      await tx.insert(mcpServerRules).values(serverRule(o.orgId));
     });
 });
 afterAll(async () => {
@@ -46,9 +56,9 @@ describe("MCP RLS", () => {
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
       join pg_policies p on p.tablename = c.relname and p.schemaname = n.nspname
       where n.nspname = 'hive' and c.relname = any($1)`,
-      [["mcp_tool_overrides", "mcp_user_tokens"]],
+      [["mcp_tool_overrides", "mcp_user_tokens", "mcp_server_rules"]],
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect([row.relrowsecurity, row.relforcerowsecurity]).toEqual([true, true]);
       expect(row.qual).toContain("ctx_org()");
@@ -81,6 +91,7 @@ describe("MCP RLS", () => {
   });
   it("rejects inserting a foreign tenant and moving own rows to a foreign tenant", async () => {
     expect(await pgCode(() => tenant((tx) => tx.insert(mcpUserTokens).values(token(other.orgId))))).toBe("42501");
+    expect(await pgCode(() => tenant((tx) => tx.insert(mcpServerRules).values(serverRule(other.orgId))))).toBe("42501");
     expect(
       await pgCode(() =>
         tenant((tx) =>

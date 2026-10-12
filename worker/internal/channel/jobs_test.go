@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -119,6 +120,26 @@ func TestDecodeJobPassesLeaseEnvironment(t *testing.T) {
 		if job.Env[k] != want {
 			t.Fatalf("%s = %q, cần %q", k, job.Env[k], want)
 		}
+	}
+}
+
+func TestDecodeJobPassesExternalMCPServers(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repoUrl":"https://git.example/a.git","cli":"claude","mcpServers":[{"name":"github","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-github"]},{"name":"context7","transport":"http","url":"https://mcp.context7.com/mcp"}]}`)}
+	job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []runner.MCPServer{
+		{Name: "github", Transport: "stdio", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"}},
+		{Name: "context7", Transport: "http", URL: "https://mcp.context7.com/mcp"},
+	}
+	if !reflect.DeepEqual(job.MCPServers, want) {
+		t.Fatalf("MCPServers = %+v", job.MCPServers)
+	}
+	// Hub cũ không gửi mcpServers: không có server ngoài nào.
+	offer.Spec = json.RawMessage(`{"repoUrl":"https://git.example/a.git","cli":"claude"}`)
+	if job, err = decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p"); err != nil || job.MCPServers != nil {
+		t.Fatalf("job = %+v, err = %v", job.MCPServers, err)
 	}
 }
 

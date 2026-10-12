@@ -7,7 +7,12 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import type pg from "pg";
 import { exportAudit, queryAudit, withAuditAccess } from "./modules/audit/index.ts";
-import { registerMcpTools as catalogMcpTools, catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
+import {
+  registerMcpTools as catalogMcpTools,
+  catalogRouter,
+  findProject,
+  findWebhookTarget,
+} from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
@@ -89,7 +94,13 @@ export function createApp({
   const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   const registry = new McpToolRegistry();
   tenancyMcpTools(registry);
-  registry.provideAuthorization(requireOrgRole);
+  // Vai trò tự tạo có quyền tương ứng (vd. mcp.servers) được nhận thay vai trò quản trị tổ chức.
+  registry.provideAuthorization(async (tx, userId, min, permission) =>
+    permission
+      ? ((await allowWith(tx, userId, permission, () => requireOrgRole(tx, userId, min))) ?? "member")
+      : requireOrgRole(tx, userId, min),
+  );
+  registry.provideProjects(findProject);
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs });
   catalogMcpTools(registry);

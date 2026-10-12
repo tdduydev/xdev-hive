@@ -1,4 +1,5 @@
 import {
+  type JobMcpServer,
   type OutcomeCheck,
   type PlanApproveInput,
   type PlanDecision,
@@ -25,6 +26,7 @@ import {
   sendToMachine,
 } from "../fleet/index.ts";
 import { authUser } from "../identity/index.ts";
+import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
 import {
   BadRequestError,
@@ -235,6 +237,8 @@ interface SpecContext {
   /** Dự án bật sandbox: cấu hình image và allowlist cho runner host. */
   sandbox?: SandboxJobConfig | undefined;
   leaderPrompt: string | null;
+  /** MCP server ngoài được phép (MCP-06); chỉ run code nhận, xem dispatch. */
+  mcpServers: JobMcpServer[];
 }
 
 function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecContext): string {
@@ -276,7 +280,7 @@ function buildSpec(
 ): Record<string, unknown> {
   const taskPrompt = task ?? ({ id: "", key: "leader", title: "Trao đổi với leader", body: "" } as TaskRow);
   const prompt = promptOf(run, taskPrompt, project, ctx);
-  const { instructions, budget, sandbox } = ctx;
+  const { instructions, budget, sandbox, mcpServers } = ctx;
   return {
     kind: run.kind,
     execution: sandbox ? "sandbox" : "worker",
@@ -298,6 +302,7 @@ function buildSpec(
     branch: run.branch,
     timeoutSec: run.timeoutSec,
     ...(budget ? { budget } : {}),
+    ...(mcpServers.length ? { mcpServers } : {}),
   };
 }
 
@@ -427,6 +432,9 @@ export function createRunsEngine(deps: RunsDeps) {
       ];
       const sandbox = project.settings.features.sandbox ? await loadSandboxJobConfig(tx, project.id) : undefined;
       const budget = jobBudget(project.settings.budget, task ? await taskSpentUsd(tx, task.id) : 0);
+      // Run review, plan, leader là run chỉ đọc: server ngoài (vd. GitHub) có tool ghi mà chế độ chỉ đọc của CLI không
+      // chặn hết, nên chỉ run code nhận.
+      const mcpServers = run.kind === "code" ? await mcpServersForProject(tx, project.id) : [];
       const [parent] = run.parentRunId
         ? await tx.select({ prUrl: runs.prUrl }).from(runs).where(eq(runs.id, run.parentRunId))
         : [];
@@ -471,6 +479,7 @@ export function createRunsEngine(deps: RunsDeps) {
             rejectedPlan: latest?.status === "rejected" ? latest : null,
             sandbox,
             leaderPrompt: typeof leaderContext?.prompt.prompt === "string" ? leaderContext.prompt.prompt : null,
+            mcpServers,
           }),
         } satisfies OutgoingMessage,
       };
