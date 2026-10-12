@@ -144,7 +144,7 @@ test("cấu hình dự án: bật sandbox gửi đúng bản vá và có link t�
     "projects/updateSettings": (input) => ok({ ...PROJECT.settings, ...(input as { settings: object }).settings }),
   });
   await page.goto("/projects/PAY/settings");
-  await page.getByLabel(/Chạy run trong sandbox/).check();
+  await page.getByRole("switch", { name: "Sandbox" }).click();
   await page.getByRole("button", { name: "Lưu cấu hình" }).click();
   await expect
     .poll(() => hub.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
