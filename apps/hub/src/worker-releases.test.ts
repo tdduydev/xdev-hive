@@ -78,7 +78,7 @@ describe("lệnh cài một dòng", () => {
       "curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/install.sh | sh -s -- --hub https://hive.example.com --token hwr_abc",
     );
     expect(worker.installCommandWindows).toBe(
-      "& ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub https://hive.example.com -Token hwr_abc",
+      'irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\\hive-install.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\\hive-install.ps1" -Hub https://hive.example.com -Token hwr_abc',
     );
     expect(installCommands("https://hive.example.com", "hwr_abc", "host").installCommand).toMatch(/ --no-service$/);
   });

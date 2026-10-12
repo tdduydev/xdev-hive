@@ -10,7 +10,8 @@ export const WORKER_DOWNLOADS = "https://github.com/tdduydev/xdev-hive/releases/
 export function installCommands(hubUrl: string, token: string, kind: MachineKind) {
   return {
     installCommand: `curl -fsSL ${WORKER_DOWNLOADS}/install.sh | sh -s -- --hub ${hubUrl} --token ${token}${kind === "host" ? " --no-service" : ""}`,
-    installCommandWindows: `& ([scriptblock]::Create((irm ${WORKER_DOWNLOADS}/install.ps1))) -Hub ${hubUrl} -Token ${token}`,
+    // Chạy từ file với -File: PowerShell 5.1 chỉ đọc đúng UTF-8 của script khi đọc từ file có BOM, không qua iex.
+    installCommandWindows: `irm ${WORKER_DOWNLOADS}/install.ps1 -OutFile "$env:TEMP\\hive-install.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\\hive-install.ps1" -Hub ${hubUrl} -Token ${token}`,
   };
 }
 
