@@ -196,6 +196,14 @@ plain HTTP on trusted networks, backups and restore, background workers and sand
 
 - [Architecture Design Document](docs/add.md): goals, context, building blocks, runtime and deployment views,
   security, decisions, risks. Describes the code as built.
+- [Software Requirements Specification](docs/srs.md): numbered requirements with status and the tests that verify
+  them.
+- [Software Design Description](docs/sdd.md): data, interfaces, state machines, algorithms and limits.
+- [Architecture decision records](docs/adr/README.md).
+- New features follow [Spec Kit](https://github.com/github/spec-kit) (`/speckit-specify`, `/speckit-plan`,
+  `/speckit-tasks`, `/speckit-implement`; principles in `.specify/memory/constitution.md`) and the
+  [feature checklist](docs/feature-checklist.md). Interfaces are designed with the `ui-ux-pro-max` skill and built
+  with shadcn/ui through the shadcn MCP server (`.mcp.json`).
 - [Self-hosting guide](docs/self-hosting.md) and [releasing the worker](docs/releasing.md) (Vietnamese).
 - [Architecture notes](docs/architecture.md): the original design notes, with what is not built yet marked
   (Vietnamese).
