@@ -2,12 +2,11 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
-import { saveFolder } from "@/lib/folder.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ folder: string }> = { vi: { folder: "Thư mục dự án" }, en: { folder: "Project folder" } };
 
-/** Ô nhập thư mục dự án dùng chung; gửi thì nhớ thư mục cho các màn khác. */
+/** Ô nhập thư mục dự án dùng chung; màn gọi `onSubmit` để đổi thư mục chung (useFolder). */
 export function FolderForm({
   value,
   onChange,
@@ -26,7 +25,6 @@ export function FolderForm({
   const t = useT(text);
   function submit(event: FormEvent) {
     event.preventDefault();
-    saveFolder(value);
     onSubmit(value);
   }
   return (
