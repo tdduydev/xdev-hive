@@ -1,5 +1,4 @@
-import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { QueryClient, QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useMutation, useQuery } from "@tanstack/react-query";
 import {
   LogBuffer,
   mergeEvents,
@@ -11,10 +10,11 @@ import {
 } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { ArrowLeftIcon, ExternalLinkIcon, PlayIcon } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Pill } from "@/components/ui/pill.tsx";
+import { api, queryClient } from "@/lib/hub-query.tsx";
 import { hub } from "@/lib/hub-rpc.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { screenParam } from "@/lib/nav.ts";
@@ -122,9 +122,6 @@ const TASK_TONE: Record<TaskStatus, "neutral" | "ok" | "warn" | "sel"> = {
 
 /** Hỏi lại hub chừng này một lần khi run chưa xong; app không mở được SSE của hub vì token nằm ở Rust. */
 export const POLL_MS = 2000;
-
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-const api = createTanstackQueryUtils(hub);
 
 const go = (runId?: string) => {
   location.hash = runId ? `#/work/${encodeURIComponent(runId)}` : "#/work";

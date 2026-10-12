@@ -4,12 +4,12 @@ import type { Run, RunEventView, RunSteerStatus, Task } from "@xdev-hive/contrac
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
 import { Meter } from "@/components/ui/meter.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { Steps } from "@/components/ui/steps.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";

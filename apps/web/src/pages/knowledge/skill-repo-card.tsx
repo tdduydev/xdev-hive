@@ -12,8 +12,8 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill, type PillProps } from "@xdev-hive/ui/pill";
 import { type FormEvent, useId, useState } from "react";
-import { Pill, type PillProps } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";

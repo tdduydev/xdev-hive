@@ -1,9 +1,9 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pill } from "@/components/ui/pill.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
 import { type HubProject, hubTool, matchProject } from "@/lib/hub.ts";

@@ -1,9 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
+import { Pill } from "@xdev-hive/ui/pill";
 import { useState } from "react";
 import { Card } from "@/components/ui/card.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDay } from "@/lib/format.ts";

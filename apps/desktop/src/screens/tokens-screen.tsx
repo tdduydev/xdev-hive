@@ -1,9 +1,9 @@
 import { Button } from "@xdev-hive/ui/button";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { FolderForm } from "@/components/folder-form.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
