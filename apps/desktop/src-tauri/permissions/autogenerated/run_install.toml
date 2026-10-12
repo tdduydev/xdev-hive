@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-run-install"
+description = "Enables the run_install command without any pre-configured scope."
+commands.allow = ["run_install"]
+
+[[permission]]
+identifier = "deny-run-install"
+description = "Denies the run_install command without any pre-configured scope."
+commands.deny = ["run_install"]
