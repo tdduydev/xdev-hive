@@ -78,6 +78,39 @@ describe("RegisterScreen", () => {
     expect(screen.queryByLabelText("Token đăng ký")).toBeNull();
   });
 
+  it("đăng nhập bằng trình duyệt: cần địa chỉ hub, chờ trình duyệt rồi báo đã đăng ký", async () => {
+    let finish: (id: string) => void = () => {};
+    const calls = fakeTauri({
+      ...notification,
+      browser_login: () => new Promise<string>((resolve) => (finish = resolve)),
+    });
+    render(<RegisterScreen />);
+    const user = userEvent.setup();
+    const button = screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    await user.type(screen.getByLabelText("Địa chỉ hub công khai"), " http://192.0.2.10:3000 ");
+    await user.click(button);
+    expect(await screen.findByText("Đang chờ bạn đăng nhập trên trình duyệt…")).toBeTruthy();
+    expect(calls.find((c) => c.command === "browser_login")?.args).toEqual({ hub: "http://192.0.2.10:3000" });
+    finish("mac-duy");
+    expect(await screen.findByText("Đã đăng ký. Worker đang kết nối với hub.")).toBeTruthy();
+  });
+
+  it("đăng nhập bằng trình duyệt bị từ chối: hiện lỗi và cho thử lại", async () => {
+    fakeTauri({
+      ...notification,
+      browser_login: () => Promise.reject("Bạn đã từ chối kết nối trên trình duyệt."),
+    });
+    render(<RegisterScreen />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Địa chỉ hub công khai"), "https://hive.acme.vn");
+    await user.click(screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }));
+    expect(await screen.findByText("Bạn đã từ chối kết nối trên trình duyệt.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Đăng nhập bằng trình duyệt" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
   it("lỗi: hiện lỗi của Rust và cho gửi lại", async () => {
     fakeTauri({
       ...notification,

@@ -2,6 +2,7 @@
 // để đăng ký tool qua registerMcpTools(registry) của chính nó, và (runs) để lấy MCP server ngoài được phép cho job.
 
 export { mcpAdminRouter } from "./admin-router.ts";
+export { issueDesktopToken } from "./admin-service.ts";
 export { createMcpEndpoint, type McpEndpointDeps } from "./endpoint.ts";
 export { type McpPrincipal, noRunTokens, type RunTokenVerifier } from "./principal.ts";
 export {
