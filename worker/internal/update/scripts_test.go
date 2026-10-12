@@ -81,7 +81,7 @@ func (r *scriptRelease) script(t *testing.T, name string) string {
 		t.Fatal(err)
 	}
 	body := strings.ReplaceAll(string(data), "\r\n", "\n")
-	real := strings.TrimSpace(string(releaseKeyPEM))
+	real := strings.TrimSpace(strings.ReplaceAll(string(releaseKeyPEM), "\r\n", "\n"))
 	if !strings.Contains(body, real) {
 		t.Fatalf("%s không chứa khoá công khai thật", name)
 	}
