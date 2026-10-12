@@ -1,10 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type McpServerLaunch, type McpServerRule, type McpServerRuleInput, mcpServerKey } from "@xdev-hive/contracts";
-import { Pencil, Trash2 } from "lucide-react";
-import { type FormEvent, type ReactNode, useId, useState } from "react";
-import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -12,12 +8,16 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
+import { Pencil, Trash2 } from "lucide-react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { useOrg } from "@/shell/org-context.ts";

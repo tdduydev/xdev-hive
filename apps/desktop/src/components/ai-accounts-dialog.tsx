@@ -1,6 +1,6 @@
+import { Button } from "@xdev-hive/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@xdev-hive/ui/dialog";
 import { useCallback, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button.tsx";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { type CliAccount, cliAccounts, type Engine } from "@/lib/agent.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";

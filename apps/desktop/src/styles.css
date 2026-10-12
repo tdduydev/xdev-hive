@@ -5,6 +5,8 @@
 @import "@fontsource-variable/jetbrains-mono";
 /* Màu và bo góc sinh từ docs/design-system/tokens.json (scripts/build-frontend.ts), cùng nguồn với web. */
 @import "./generated/tokens.css";
+/* Component dùng chung (packages/ui) nằm ngoài src của app: chỉ cho Tailwind quét class trong đó. */
+@source "../../../packages/ui/src";
 
 /* Tối theo class `.dark` trên <html>, đặt trong main.tsx theo lựa chọn đã lưu hoặc theo hệ điều hành. */
 @custom-variant dark (&:is(.dark *));

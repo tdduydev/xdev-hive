@@ -1,7 +1,7 @@
 import type { KnowledgeAuthor, ScopeView } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
 import type { ReactNode } from "react";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useT } from "@/lib/i18n.ts";

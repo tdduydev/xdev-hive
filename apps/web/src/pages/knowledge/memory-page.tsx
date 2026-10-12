@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { KnowledgeScope, Memory, MemoryKind, MemorySearchHit } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
 import { useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Checkbox } from "@/components/ui/checkbox.tsx";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { useT } from "@/lib/i18n.ts";
 import { useKnowledgeAccess } from "@/lib/knowledge.ts";

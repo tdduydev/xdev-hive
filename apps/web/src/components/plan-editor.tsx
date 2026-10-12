@@ -1,11 +1,11 @@
 import type { PlanContent } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { cx } from "@/lib/cx.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import {
