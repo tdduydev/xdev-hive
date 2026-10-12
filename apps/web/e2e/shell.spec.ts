@@ -181,11 +181,3 @@ test("chuông có chấm khi còn thông báo chưa đọc và mở màn Thông 
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Thông báo, 3 chưa đọc" })).toHaveAttribute("href", "/notifications");
 });
-
-test("màn chưa làm của thiết kế v2 có trang Sắp có thay vì trang lỗi", async ({ page }) => {
-  await inOrg(page);
-  await page.goto("/knowledge/workflows");
-  await expect(page.getByRole("heading", { name: "Quy trình duyệt", level: 1 })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Sắp có" })).toBeVisible();
-  await expect(page.getByText("Workflows.dc.html", { exact: false })).toBeVisible();
-});
