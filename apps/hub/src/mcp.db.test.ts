@@ -298,6 +298,7 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       "doc_list",
       "doc_propose",
       "hive_whoami",
+      "mcp_server_list",
       "memory_search",
       "memory_write",
       "orgs_list",

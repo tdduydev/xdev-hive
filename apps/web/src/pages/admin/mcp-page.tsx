@@ -186,6 +186,7 @@ const text: Dict<{
       skill_list: "List skills",
       skill_get: "Read a SKILL.md",
       skill_propose: "Propose a skill edit",
+      mcp_server_list: "Allowed external MCP servers",
       memory_search: "Search memory",
       memory_write: "Write a memory (pending)",
       task_get: "Read the current task",
