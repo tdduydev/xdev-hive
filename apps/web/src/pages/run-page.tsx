@@ -3,7 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import type { Run, RunEventView, RunSteerStatus, Task } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
 import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonClass } from "../components/ui/button.tsx";
+import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { DescriptionList } from "../components/ui/description-list.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
@@ -54,7 +54,7 @@ export function RunPage() {
 
   const crumb = (
     <>
-      <Link to="/tasks" className="text-accent hover:text-accent-hover">
+      <Link to="/tasks" className="text-primary hover:text-primary/90">
         Bảng việc
       </Link>
       {task.data && (
@@ -71,7 +71,7 @@ export function RunPage() {
       <>
         <PageHeader crumb={crumb} title="Lượt chạy" />
         <PageBody>
-          <p aria-busy="true" className="text-muted">
+          <p aria-busy="true" className="text-muted-foreground">
             Đang tải…
           </p>
         </PageBody>
@@ -123,7 +123,7 @@ export function RunPage() {
 
 function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
   return (
-    <div className="flex flex-wrap items-center gap-2.5 text-sm text-muted">
+    <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
       <Pill tone={runStateTone(run.state)} dot>
         {RUN_STATE_LABEL[run.state]}
       </Pill>
@@ -135,17 +135,17 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
       {run.kind === "review" && <span>Review chéo</span>}
       {run.kind === "plan" && <span>Lập kế hoạch (chỉ đọc)</span>}
       {run.kind === "plan" && task && (
-        <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-accent hover:text-accent-hover">
+        <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-primary hover:text-primary/90">
           Xem kế hoạch
         </Link>
       )}
       {run.parentRunId && (
-        <Link to="/runs/$id" params={{ id: run.parentRunId }} className="text-accent hover:text-accent-hover">
+        <Link to="/runs/$id" params={{ id: run.parentRunId }} className="text-primary hover:text-primary/90">
           Run cha <span className="font-mono">{shortId(run.parentRunId)}</span>
         </Link>
       )}
       {run.prUrl && (
-        <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">
+        <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary/90">
           PR {prLabel(run.prUrl)}
         </a>
       )}
@@ -165,19 +165,19 @@ function PlanNotice({ run, task }: { run: Run; task: Task }) {
   const child = runs.data?.find((r) => r.kind === "plan" && r.parentRunId === run.id);
   if (run.kind !== "code" || (run.state !== "planning" && run.state !== "awaiting_plan")) return null;
   return (
-    <Card className="flex flex-wrap items-center gap-3 border-warn-bg px-4 py-3">
-      <p className="min-w-0 flex-1 text-body">
+    <Card className="flex flex-wrap items-center gap-3 border-warning-soft px-4 py-3">
+      <p className="min-w-0 flex-1 text-foreground">
         {planning
           ? "Agent đang lập kế hoạch trong một run riêng chỉ đọc. Lập xong thì kế hoạch chờ người duyệt, run này mới chạy."
           : "Kế hoạch đang chờ duyệt. Run này chỉ chạy tiếp sau khi kế hoạch được duyệt."}
       </p>
       {planning && child && (
-        <Link to="/runs/$id" params={{ id: child.id }} className={buttonClass()}>
+        <Link to="/runs/$id" params={{ id: child.id }} className={buttonVariants({ variant: "outline" })}>
           Xem log lập kế hoạch
         </Link>
       )}
       {!planning && (
-        <Link to="/tasks/$key/plan" params={{ key: task.key }} className={buttonClass({ variant: "primary" })}>
+        <Link to="/tasks/$key/plan" params={{ key: task.key }} className={buttonVariants({ variant: "default" })}>
           Xem và duyệt kế hoạch
         </Link>
       )}
@@ -191,7 +191,7 @@ function SectionCard({ title, aside, children }: { title: string; aside?: ReactN
     <Card>
       <section aria-labelledby={headingId} className="grid gap-2.5 px-5 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id={headingId} className="text-lg font-semibold text-ink">
+          <h2 id={headingId} className="text-base font-semibold text-foreground">
             {title}
           </h2>
           {aside}
@@ -221,18 +221,18 @@ function LogCard({ log, status, onRetry }: { log: string; status: StreamStatus; 
   return (
     <Card className="overflow-hidden">
       <section aria-labelledby={headingId}>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-          <h2 id={headingId} className="text-lg font-semibold text-ink">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+          <h2 id={headingId} className="text-base font-semibold text-foreground">
             Log trực tiếp
           </h2>
-          <span role="status" className="text-xs text-muted">
+          <span role="status" className="text-xs text-muted-foreground">
             {STREAM_TEXT[status]}
           </span>
         </div>
         {status === "error" && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
             <Alert className="flex-1">Không nhận được log trực tiếp từ hub. Kiểm tra mạng rồi thử lại.</Alert>
-            <Button size="sm" onClick={onRetry}>
+            <Button variant="outline" size="sm" onClick={onRetry}>
               Thử lại
             </Button>
           </div>
@@ -247,9 +247,9 @@ function LogCard({ log, status, onRetry }: { log: string; status: StreamStatus; 
             const el = e.currentTarget;
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           }}
-          className="max-h-160 min-h-80 overflow-auto bg-sunken px-4 py-3.5"
+          className="max-h-160 min-h-80 overflow-auto bg-muted px-4 py-3.5"
         >
-          <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-body">
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-foreground">
             {log || (status === "ended" ? "Run không có log." : "Chưa có log.")}
           </pre>
         </section>
@@ -266,17 +266,17 @@ function EventsCard({ events }: { events: RunEventView[] }) {
   return (
     <SectionCard title="Sự kiện">
       {lines.length === 0 ? (
-        <p className="text-muted">Chưa có sự kiện.</p>
+        <p className="text-muted-foreground">Chưa có sự kiện.</p>
       ) : (
-        <ol className="grid gap-1 text-label">
+        <ol className="grid gap-1 text-sm">
           {lines.map((l) => (
             <li key={l.id} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3">
-              <time dateTime={l.at} className="font-mono text-sm text-muted tabular-nums">
+              <time dateTime={l.at} className="font-mono text-xs text-muted-foreground tabular-nums">
                 {formatClock(l.at)}
               </time>
-              <span className="break-words text-ink">
+              <span className="break-words text-foreground">
                 {l.text}
-                {l.attempt > 1 && <span className="text-muted"> · lần thử {l.attempt}</span>}
+                {l.attempt > 1 && <span className="text-muted-foreground"> · lần thử {l.attempt}</span>}
               </span>
             </li>
           ))}
@@ -316,19 +316,21 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
     <SectionCard
       title="Token và chi phí"
       aside={
-        <span className="font-display text-4xl font-semibold text-ink tabular-nums">{formatUsd(run.cost.costUsd)}</span>
+        <span className="font-heading text-2xl font-semibold text-foreground tabular-nums">
+          {formatUsd(run.cost.costUsd)}
+        </span>
       }
     >
       {percent !== null && capUsd !== undefined && (
         <>
           <Meter value={percent} label={`Đã dùng ${percent}% trần chi phí của run`} />
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             {percent}% trần {formatUsd(capUsd)} mỗi run. Vượt trần thì hub dừng run và ghi lý do.
           </p>
         </>
       )}
       {run.cost.costUsd === null && (
-        <p className="text-xs text-muted">CLI này không báo chi phí USD; xem số token bên dưới.</p>
+        <p className="text-xs text-muted-foreground">CLI này không báo chi phí USD; xem số token bên dưới.</p>
       )}
       <DescriptionList
         alignEnd
@@ -344,21 +346,25 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
   );
 }
 
-const CHECK_TONE = { ok: "font-medium text-ok", bad: "font-medium text-bad", muted: "text-muted" } as const;
+const CHECK_TONE = {
+  ok: "font-medium text-success",
+  bad: "font-medium text-destructive",
+  muted: "text-muted-foreground",
+} as const;
 
 function PolicyCard({ run }: { run: Run }) {
   const rows = checkRows(run);
   return (
     <SectionCard title="Chính sách kết quả">
       {rows.length === 0 ? (
-        <p className="text-muted">Dự án không đặt bước kiểm tra nào cho run này.</p>
+        <p className="text-muted-foreground">Dự án không đặt bước kiểm tra nào cho run này.</p>
       ) : (
-        <ul className="grid gap-2 text-label">
+        <ul className="grid gap-2 text-sm">
           {rows.map((row, i) => (
             // Một chính sách có thể có hai bước cùng loại (hai lệnh command), nên khoá theo vị trí.
             // biome-ignore lint/suspicious/noArrayIndexKey: danh sách cố định theo policySnapshot của run.
             <li key={i} className="grid gap-0.5">
-              <span className="text-ink">{row.label}</span>
+              <span className="text-foreground">{row.label}</span>
               <span className={cx("break-words", CHECK_TONE[row.tone])}>{row.state}</span>
             </li>
           ))}
@@ -396,12 +402,17 @@ function RunActions({
   return (
     <>
       {steerable && (
-        <Button onClick={onToggleSteer} aria-expanded={steerOpen} aria-controls={steerOpen ? steerPanelId : undefined}>
+        <Button
+          variant="outline"
+          onClick={onToggleSteer}
+          aria-expanded={steerOpen}
+          aria-controls={steerOpen ? steerPanelId : undefined}
+        >
           Gửi chỉ dẫn
         </Button>
       )}
       {cancellable && (
-        <Button variant="danger" onClick={() => setCancelling(true)} aria-haspopup="dialog">
+        <Button variant="destructive" onClick={() => setCancelling(true)} aria-haspopup="dialog">
           Huỷ run
         </Button>
       )}
@@ -451,9 +462,9 @@ function SteerPanel({ id, run, onClose }: { id: string; run: Run; onClose: () =>
   }
 
   return (
-    <Card id={id} className="border-sel-line">
+    <Card id={id} className="border-primary/40">
       <form noValidate onSubmit={onSubmit} className="grid gap-2 p-4">
-        <label htmlFor={fieldId} className="text-label font-medium text-ink">
+        <label htmlFor={fieldId} className="text-sm font-medium text-foreground">
           Chỉ dẫn cho agent đang chạy
         </label>
         <Textarea
@@ -471,16 +482,18 @@ function SteerPanel({ id, run, onClose }: { id: string; run: Run; onClose: () =>
           }}
         />
         {error && <Alert>{error}</Alert>}
-        <p role="status" className={cx("text-label", result === "closing" ? "text-bad" : "text-ok")}>
+        <p role="status" className={cx("text-sm", result === "closing" ? "text-destructive" : "text-success")}>
           {result ? STEER_RESULT[result] : ""}
         </p>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span id={hintId} className="text-xs text-muted">
+          <span id={hintId} className="text-xs text-muted-foreground">
             Agent nhận chỉ dẫn ở lượt kế tiếp. Run chưa tới máy thì chỉ dẫn vào đề bài khi giao.
           </span>
           <span className="flex gap-2">
-            <Button onClick={onClose}>Đóng</Button>
-            <Button type="submit" variant="primary" disabled={steer.isPending}>
+            <Button variant="outline" onClick={onClose}>
+              Đóng
+            </Button>
+            <Button type="submit" variant="default" disabled={steer.isPending}>
               {steer.isPending ? "Đang gửi…" : "Gửi"}
             </Button>
           </span>
@@ -512,8 +525,10 @@ function CancelConfirm({ run, onDone }: { run: Run; onDone: () => void }) {
       </DialogDescription>
       {error && <Alert>{error}</Alert>}
       <DialogActions>
-        <Button onClick={onDone}>Không huỷ</Button>
-        <Button variant="dangerSolid" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
+        <Button variant="outline" onClick={onDone}>
+          Không huỷ
+        </Button>
+        <Button variant="destructive-solid" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
           {cancel.isPending ? "Đang huỷ…" : "Huỷ run"}
         </Button>
       </DialogActions>

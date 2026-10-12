@@ -5,7 +5,7 @@ import { type ReactNode, useId } from "react";
 import { CreateTaskButton } from "../components/create-task-dialog.tsx";
 import { Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
-import { buttonClass } from "../components/ui/button.tsx";
+import { buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { FilterChips } from "../components/ui/filter-chips.tsx";
 import { Input } from "../components/ui/input.tsx";
@@ -49,7 +49,7 @@ const REFRESH_MS = 30_000;
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -100,7 +100,7 @@ export function ProjectTasksPage() {
               ? apiErrorMessage(projects.error)
               : `Không tìm thấy dự án ${projectKey}, hoặc bạn không ở trong đội sở hữu dự án.`}
           </Alert>
-          <Link to="/tasks" className="text-accent hover:text-accent-hover">
+          <Link to="/tasks" className="text-primary hover:text-primary/90">
             Về bảng việc chung
           </Link>
         </PageBody>
@@ -115,7 +115,7 @@ export function ProjectTasksPage() {
         <Link
           to="/projects/$key/settings"
           params={{ key: project.key }}
-          className={buttonClass({ variant: "default" })}
+          className={buttonVariants({ variant: "outline" })}
         >
           <Icon name="gear" />
           Cấu hình
@@ -131,7 +131,7 @@ export function ProjectTasksPage() {
 function ProjectCrumb({ project }: { project: Project }) {
   return (
     <>
-      <Link to="/projects" className="text-accent hover:text-accent-hover">
+      <Link to="/projects" className="text-primary hover:text-primary/90">
         Dự án
       </Link>{" "}
       / {project.name} / <span className="font-mono">{project.key}</span>
@@ -189,7 +189,7 @@ function Board({
         {rows.length === 0 ? (
           <EmptyBoard canCreate={creatable.length > 0} />
         ) : shown.length === 0 ? (
-          <Card className="px-6 py-8 text-center text-muted">Không có việc nào khớp bộ lọc.</Card>
+          <Card className="px-6 py-8 text-center text-muted-foreground">Không có việc nào khớp bộ lọc.</Card>
         ) : (
           <TaskTable rows={shown} now={now} />
         )}
@@ -223,11 +223,11 @@ function Board({
 function EmptyBoard({ canCreate }: { canCreate: boolean }) {
   return (
     <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-sel text-sel-fg">
+      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
         <Icon name="columns" className="size-5" />
       </span>
-      <h2 className="text-lg font-semibold text-ink">Chưa có việc nào</h2>
-      <p className="max-w-md text-muted">
+      <h2 className="text-base font-semibold text-foreground">Chưa có việc nào</h2>
+      <p className="max-w-md text-muted-foreground">
         {canCreate
           ? "Bấm “Tạo việc” để giao việc đầu tiên cho agent, hoặc gắn nhãn cho issue trên GitHub/GitLab nếu dự án bật nhận việc từ issue."
           : "Chưa có dự án nào đang hoạt động mà bạn thấy được. Nhờ quản trị đội tạo dự án hoặc thêm bạn vào đội."}
@@ -260,15 +260,15 @@ function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
                     <Link
                       to="/runs/$id"
                       params={{ id: run.id }}
-                      className="font-mono text-sm text-accent hover:text-accent-hover"
+                      className="font-mono text-xs text-primary hover:text-primary/90"
                       aria-label={`${task.key}: mở run gần nhất`}
                     >
                       {task.key}
                     </Link>
                   ) : (
-                    <span className="font-mono text-sm text-muted">{task.key}</span>
+                    <span className="font-mono text-xs text-muted-foreground">{task.key}</span>
                   )}
-                  <span className="font-medium text-ink">{task.title}</span>
+                  <span className="font-medium text-foreground">{task.title}</span>
                 </span>
               </Td>
               <Td className="whitespace-nowrap">
@@ -280,7 +280,7 @@ function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
                     <Link
                       to="/tasks/$key/plan"
                       params={{ key: task.key }}
-                      className="text-sm text-accent hover:text-accent-hover"
+                      className="text-xs text-primary hover:text-primary/90"
                       aria-label={`Xem và duyệt kế hoạch của ${task.key}`}
                     >
                       Xem kế hoạch
@@ -289,16 +289,16 @@ function TaskTable({ rows, now }: { rows: BoardRow[]; now: number }) {
                 </span>
               </Td>
               <Td className="whitespace-nowrap">
-                <span className="text-ink">{cliLabel(run?.cli ?? task.preferredCli)}</span>{" "}
-                {run?.machineName && <span className="font-mono text-sm text-muted">{run.machineName}</span>}
+                <span className="text-foreground">{cliLabel(run?.cli ?? task.preferredCli)}</span>{" "}
+                {run?.machineName && <span className="font-mono text-xs text-muted-foreground">{run.machineName}</span>}
               </Td>
-              <Td className="whitespace-nowrap text-muted">{runActivity(run, now)}</Td>
-              <Td className="text-right whitespace-nowrap text-ink tabular-nums">
+              <Td className="whitespace-nowrap text-muted-foreground">{runActivity(run, now)}</Td>
+              <Td className="text-right whitespace-nowrap text-foreground tabular-nums">
                 {run ? formatUsd(run.cost.costUsd) : "—"}
               </Td>
-              <Td className="whitespace-nowrap font-mono text-sm">
+              <Td className="whitespace-nowrap font-mono text-xs">
                 {run?.prUrl ? (
-                  <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-accent hover:text-accent-hover">
+                  <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary/90">
                     {prLabel(run.prUrl)}
                     <span className="sr-only"> (mở PR của {task.key} ở tab mới)</span>
                   </a>

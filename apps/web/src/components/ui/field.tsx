@@ -9,14 +9,14 @@ export function Field({ className, ...props }: WithClass<BaseField.Root.Props>) 
 }
 
 export function FieldLabel({ className, ...props }: WithClass<BaseField.Label.Props>) {
-  return <BaseField.Label className={cx("text-label font-medium text-ink", className)} {...props} />;
+  return <BaseField.Label className={cx("text-sm font-medium text-foreground", className)} {...props} />;
 }
 
 export function FieldHint({ className, ...props }: WithClass<BaseField.Description.Props>) {
-  return <BaseField.Description className={cx("text-xs text-muted", className)} {...props} />;
+  return <BaseField.Description className={cx("text-xs text-muted-foreground", className)} {...props} />;
 }
 
 /** Luôn hiện khi được render; điều kiện hiện do nơi gọi quyết (đặt kèm `invalid` trên `<Field>`). */
 export function FieldError({ className, ...props }: WithClass<Omit<BaseField.Error.Props, "match">>) {
-  return <BaseField.Error match className={cx("text-xs text-bad", className)} {...props} />;
+  return <BaseField.Error match className={cx("text-xs text-destructive", className)} {...props} />;
 }

@@ -44,7 +44,7 @@ export function PlanPage() {
 
   const crumb = (
     <>
-      <Link to="/tasks" className="text-accent hover:text-accent-hover">
+      <Link to="/tasks" className="text-primary hover:text-primary/90">
         Bảng việc
       </Link>
       {" / "}
@@ -65,7 +65,7 @@ export function PlanPage() {
                 ? apiErrorMessage(tasks.error)
                 : `Không tìm thấy việc ${key}, hoặc bạn không ở trong đội sở hữu việc này.`}
             </Alert>
-            <Link to="/tasks" className="text-accent hover:text-accent-hover">
+            <Link to="/tasks" className="text-primary hover:text-primary/90">
               Về bảng việc
             </Link>
           </>
@@ -89,9 +89,9 @@ function Loading() {
   return (
     <div aria-busy="true" className="grid gap-3">
       <span className="sr-only">Đang tải…</span>
-      <div className="h-6 w-1/3 rounded bg-subtle" />
-      <div className="h-40 rounded-xl bg-subtle" />
-      <div className="h-24 rounded-xl bg-subtle" />
+      <div className="h-6 w-1/3 rounded bg-muted" />
+      <div className="h-40 rounded-xl bg-muted" />
+      <div className="h-24 rounded-xl bg-muted" />
     </div>
   );
 }
@@ -141,11 +141,13 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
     <PageHeader crumb={crumb} title={task.title}>
       {decidable && !editing && (
         <>
-          <Button variant="danger" onClick={() => setDialog("reject")} aria-haspopup="dialog">
+          <Button variant="destructive" onClick={() => setDialog("reject")} aria-haspopup="dialog">
             Từ chối
           </Button>
-          <Button onClick={() => setEditing(true)}>Sửa kế hoạch</Button>
-          <Button variant="primary" onClick={() => setDialog("approve")} aria-haspopup="dialog">
+          <Button variant="outline" onClick={() => setEditing(true)}>
+            Sửa kế hoạch
+          </Button>
+          <Button variant="default" onClick={() => setDialog("approve")} aria-haspopup="dialog">
             Duyệt kế hoạch
           </Button>
         </>
@@ -159,8 +161,8 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
         {header}
         <PageBody>
           <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-            <h2 className="text-lg font-semibold text-ink">Chưa có kế hoạch</h2>
-            <p className="max-w-md text-muted">
+            <h2 className="text-base font-semibold text-foreground">Chưa có kế hoạch</h2>
+            <p className="max-w-md text-muted-foreground">
               {stage ??
                 "Việc này chưa có kế hoạch nào. Khi dự án bật plan mode, agent đọc code, lập kế hoạch rồi chờ người duyệt trước khi viết code."}
             </p>
@@ -183,7 +185,7 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
       {header}
       <PageBody>
         {outcome && (
-          <p role="status" className="rounded-lg bg-ok-bg px-3.5 py-2.5 text-label text-ok">
+          <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
             {OUTCOME_TEXT[outcome.kind]}{" "}
             <Link to="/runs/$id" params={{ id: outcome.run.id }} className="font-medium underline">
               Mở run {shortId(outcome.run.id)}
@@ -191,9 +193,9 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
           </p>
         )}
         <PlanMeta plan={latest} />
-        {stage && <p className="text-muted">{stage}</p>}
+        {stage && <p className="text-muted-foreground">{stage}</p>}
         {latest.status === "awaiting" && !canDecide && (
-          <p className="rounded-lg border border-line bg-sunken px-3.5 py-2.5 text-label text-body">
+          <p className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
             Bạn chỉ có quyền xem việc của đội này. Thành viên hoặc quản trị đội mới duyệt hay từ chối được kế hoạch.
           </p>
         )}
@@ -261,7 +263,7 @@ function personName(members: OrgMember[] | undefined, userId: string | null): st
 
 function PlanMeta({ plan }: { plan: Plan }) {
   return (
-    <div className="flex flex-wrap items-center gap-2.5 text-sm text-muted">
+    <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
       <Pill tone={PLAN_STATUS_TONE[plan.status]} dot>
         {PLAN_STATUS_LABEL[plan.status]}
       </Pill>
@@ -269,7 +271,7 @@ function PlanMeta({ plan }: { plan: Plan }) {
       <span>
         nộp lúc <time dateTime={plan.createdAt}>{formatDayTime(plan.createdAt)}</time>
       </span>
-      <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-accent hover:text-accent-hover">
+      <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-primary hover:text-primary/90">
         Log run lập kế hoạch <span className="font-mono">{shortId(plan.planRunId)}</span>
       </Link>
     </div>
@@ -298,7 +300,7 @@ function VersionSwitch({
         <legend className="sr-only">Bản kế hoạch đang xem</legend>
         <Button
           size="sm"
-          variant={showOriginal ? "ghost" : "default"}
+          variant={showOriginal ? "ghost" : "outline"}
           aria-pressed={!showOriginal}
           onClick={() => onShowOriginal(false)}
         >
@@ -306,7 +308,7 @@ function VersionSwitch({
         </Button>
         <Button
           size="sm"
-          variant={showOriginal ? "default" : "ghost"}
+          variant={showOriginal ? "outline" : "ghost"}
           aria-pressed={showOriginal}
           onClick={() => onShowOriginal(true)}
         >
@@ -315,7 +317,7 @@ function VersionSwitch({
       </fieldset>
       {draft && (
         <>
-          <span className="text-xs text-muted">Bản sửa được gửi khi bạn duyệt.</span>
+          <span className="text-xs text-muted-foreground">Bản sửa được gửi khi bạn duyệt.</span>
           <Button size="sm" variant="ghost" className="ml-auto" onClick={onDiscardDraft}>
             Bỏ bản sửa
           </Button>
@@ -331,7 +333,7 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
     <Card>
       <section aria-labelledby={headingId} className="grid gap-2.5 px-5 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id={headingId} className="text-lg font-semibold text-ink">
+          <h2 id={headingId} className="text-base font-semibold text-foreground">
             {title}
           </h2>
           {aside}
@@ -342,25 +344,30 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
   );
 }
 
-const Empty = ({ children }: { children: ReactNode }) => <p className="text-muted">{children}</p>;
+const Empty = ({ children }: { children: ReactNode }) => <p className="text-muted-foreground">{children}</p>;
 
 export function PlanContentView({ content }: { content: PlanContent }) {
   return (
     <>
       <Section title="Tóm tắt">
-        <p className="whitespace-pre-wrap break-words text-body">{content.summary}</p>
+        <p className="whitespace-pre-wrap break-words text-foreground">{content.summary}</p>
       </Section>
-      <Section title="Các bước" aside={<span className="text-xs text-muted">{content.steps.length} bước</span>}>
+      <Section
+        title="Các bước"
+        aside={<span className="text-xs text-muted-foreground">{content.steps.length} bước</span>}
+      >
         <ol className="grid gap-2.5">
           {content.steps.map((s, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: thứ tự bước là một phần nội dung, không đổi khi đang xem.
             <li key={i} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
-              <span className="grid size-6 place-items-center rounded-full bg-sel text-xs font-semibold text-sel-fg tabular-nums">
+              <span className="grid size-6 place-items-center rounded-full bg-accent text-xs font-semibold text-accent-foreground tabular-nums">
                 {i + 1}
               </span>
               <span className="grid gap-0.5">
-                <span className="font-medium break-words text-ink">{s.title}</span>
-                {s.detail && <span className="whitespace-pre-wrap break-words text-label text-body">{s.detail}</span>}
+                <span className="font-medium break-words text-foreground">{s.title}</span>
+                {s.detail && (
+                  <span className="whitespace-pre-wrap break-words text-sm text-foreground">{s.detail}</span>
+                )}
               </span>
             </li>
           ))}
@@ -368,7 +375,7 @@ export function PlanContentView({ content }: { content: PlanContent }) {
       </Section>
       <Section
         title="File dự kiến đụng"
-        aside={<span className="text-xs text-muted">{content.files.length} file</span>}
+        aside={<span className="text-xs text-muted-foreground">{content.files.length} file</span>}
       >
         {content.files.length === 0 ? (
           <Empty>Agent không liệt kê file nào.</Empty>
@@ -381,9 +388,9 @@ export function PlanContentView({ content }: { content: PlanContent }) {
                   {f.change && (
                     <Pill tone={f.change === "delete" ? "bad" : "neutral"}>{FILE_CHANGE_LABEL[f.change]}</Pill>
                   )}
-                  <span className="font-mono text-sm break-all text-ink">{f.path}</span>
+                  <span className="font-mono text-xs break-all text-foreground">{f.path}</span>
                 </span>
-                {f.reason && <span className="break-words text-label text-muted">{f.reason}</span>}
+                {f.reason && <span className="break-words text-sm text-muted-foreground">{f.reason}</span>}
               </li>
             ))}
           </ul>
@@ -396,7 +403,7 @@ export function PlanContentView({ content }: { content: PlanContent }) {
           <ul className="grid list-disc gap-1.5 pl-5">
             {content.risks.map((r, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
-              <li key={i} className="whitespace-pre-wrap break-words text-body">
+              <li key={i} className="whitespace-pre-wrap break-words text-foreground">
                 {r}
               </li>
             ))}
@@ -411,12 +418,12 @@ export function PlanContentView({ content }: { content: PlanContent }) {
             <ol className="grid list-decimal gap-1.5 pl-5">
               {content.questions.map((q, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
-                <li key={i} className="whitespace-pre-wrap break-words text-body">
+                <li key={i} className="whitespace-pre-wrap break-words text-foreground">
                   {q}
                 </li>
               ))}
             </ol>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               Trả lời trong ô ghi chú khi duyệt; agent đọc ghi chú trước khi viết code.
             </p>
           </>
@@ -436,7 +443,7 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
           {
             term: "Run lập",
             detail: (
-              <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-accent hover:text-accent-hover">
+              <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-primary hover:text-primary/90">
                 {shortId(plan.planRunId)}
               </Link>
             ),
@@ -445,7 +452,7 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
           {
             term: "Run code",
             detail: (
-              <Link to="/runs/$id" params={{ id: plan.runId }} className="text-accent hover:text-accent-hover">
+              <Link to="/runs/$id" params={{ id: plan.runId }} className="text-primary hover:text-primary/90">
                 {shortId(plan.runId)}
               </Link>
             ),
@@ -466,16 +473,16 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
 
 function HistoryCard({ plans, nameOf }: { plans: Plan[]; nameOf: (id: string | null) => string }) {
   return (
-    <Section title="Các lần lập" aside={<span className="text-xs text-muted">{plans.length} lần</span>}>
+    <Section title="Các lần lập" aside={<span className="text-xs text-muted-foreground">{plans.length} lần</span>}>
       <ol className="grid gap-3">
         {plans.map((p, i) => (
-          <li key={p.id} className={cx("grid gap-1", i > 0 && "border-t border-line pt-3")}>
+          <li key={p.id} className={cx("grid gap-1", i > 0 && "border-t border-border pt-3")}>
             <span className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-ink">Lần {p.revision}</span>
+              <span className="font-medium text-foreground">Lần {p.revision}</span>
               <Pill tone={PLAN_STATUS_TONE[p.status]}>{PLAN_STATUS_LABEL[p.status]}</Pill>
-              {i === 0 && <span className="text-xs text-muted">đang xem</span>}
+              {i === 0 && <span className="text-xs text-muted-foreground">đang xem</span>}
             </span>
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               nộp <time dateTime={p.createdAt}>{formatDayTime(p.createdAt)}</time>
               {p.decidedAt && (
                 <>
@@ -485,26 +492,24 @@ function HistoryCard({ plans, nameOf }: { plans: Plan[]; nameOf: (id: string | n
               )}
             </span>
             {p.note && (
-              <span className={cx("break-words text-label", p.status === "rejected" ? "text-bad" : "text-body")}>
+              <span
+                className={cx("break-words text-sm", p.status === "rejected" ? "text-destructive" : "text-foreground")}
+              >
                 {p.status === "rejected" ? "Lý do: " : "Ghi chú: "}
                 {p.note}
               </span>
             )}
-            <Link
-              to="/runs/$id"
-              params={{ id: p.planRunId }}
-              className="text-label text-accent hover:text-accent-hover"
-            >
+            <Link to="/runs/$id" params={{ id: p.planRunId }} className="text-sm text-primary hover:text-primary/90">
               Log run lập kế hoạch
             </Link>
             {i > 0 && (
-              <details className="text-label">
-                <summary className="cursor-pointer text-accent hover:text-accent-hover">
+              <details className="text-sm">
+                <summary className="cursor-pointer text-primary hover:text-primary/90">
                   Xem kế hoạch lần {p.revision}
                 </summary>
-                <div className="mt-1.5 grid gap-1.5 rounded-lg bg-sunken px-3 py-2">
-                  <p className="whitespace-pre-wrap break-words text-body">{effectiveContent(p).summary}</p>
-                  <ol className="grid list-decimal gap-0.5 pl-5 text-body">
+                <div className="mt-1.5 grid gap-1.5 rounded-lg bg-muted px-3 py-2">
+                  <p className="whitespace-pre-wrap break-words text-foreground">{effectiveContent(p).summary}</p>
+                  <ol className="grid list-decimal gap-0.5 pl-5 text-foreground">
                     {effectiveContent(p).steps.map((s, j) => (
                       // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
                       <li key={j} className="break-words">
@@ -569,7 +574,7 @@ function ApproveConfirm({
         {draft ? "bản bạn vừa sửa" : plan.editedContent ? "bản đã sửa" : "kế hoạch agent nộp"}.
       </DialogDescription>
       {questions.length > 0 && (
-        <div className="grid gap-1 rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+        <div className="grid gap-1 rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
           <span className="font-medium">Agent có {questions.length} câu hỏi; trả lời trong ghi chú:</span>
           <ol className="grid list-decimal gap-0.5 pl-5">
             {questions.map((q, i) => (
@@ -582,7 +587,7 @@ function ApproveConfirm({
         </div>
       )}
       <div className="grid gap-1.5">
-        <label htmlFor={noteId} className="text-label font-medium text-ink">
+        <label htmlFor={noteId} className="text-sm font-medium text-foreground">
           Ghi chú cho agent (không bắt buộc)
         </label>
         <Textarea
@@ -596,8 +601,10 @@ function ApproveConfirm({
       </div>
       {error && <Alert>{error}</Alert>}
       <DialogActions>
-        <Button onClick={onCancel}>Quay lại</Button>
-        <Button type="submit" variant="primary" disabled={approve.isPending}>
+        <Button variant="outline" onClick={onCancel}>
+          Quay lại
+        </Button>
+        <Button type="submit" variant="default" disabled={approve.isPending}>
           {approve.isPending ? "Đang duyệt…" : "Duyệt và chạy"}
         </Button>
       </DialogActions>
@@ -655,7 +662,7 @@ function RejectConfirm({
         Run code đang chờ kế hoạch của <span className="font-mono">{task.key}</span> sẽ bị huỷ.
       </DialogDescription>
       <div className="grid gap-1.5">
-        <label htmlFor={reasonId} className="text-label font-medium text-ink">
+        <label htmlFor={reasonId} className="text-sm font-medium text-foreground">
           Lý do từ chối
         </label>
         <Textarea
@@ -670,12 +677,12 @@ function RejectConfirm({
           autoFocus
         />
         {reasonError && (
-          <p id={reasonErrorId} className="text-xs text-bad">
+          <p id={reasonErrorId} className="text-xs text-destructive">
             {reasonError}
           </p>
         )}
       </div>
-      <label htmlFor={replanId} className="flex items-start gap-2 text-label text-ink">
+      <label htmlFor={replanId} className="flex items-start gap-2 text-sm text-foreground">
         <input
           id={replanId}
           type="checkbox"
@@ -685,15 +692,17 @@ function RejectConfirm({
         />
         <span className="grid gap-0.5">
           <span>Lập lại kế hoạch</span>
-          <span className="text-xs text-muted">
+          <span className="text-xs text-muted-foreground">
             Agent lập kế hoạch mới, có đọc bản này và lý do của bạn. Không chọn thì việc quay về chưa giao.
           </span>
         </span>
       </label>
       {error && <Alert>{error}</Alert>}
       <DialogActions>
-        <Button onClick={onCancel}>Quay lại</Button>
-        <Button type="submit" variant="dangerSolid" disabled={reject.isPending}>
+        <Button variant="outline" onClick={onCancel}>
+          Quay lại
+        </Button>
+        <Button type="submit" variant="destructive-solid" disabled={reject.isPending}>
           {reject.isPending ? "Đang từ chối…" : "Từ chối kế hoạch"}
         </Button>
       </DialogActions>

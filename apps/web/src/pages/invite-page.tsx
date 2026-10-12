@@ -5,7 +5,7 @@ import type { InvitationPreview, Me } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useState } from "react";
 import { Brand, Icon } from "../components/icons.tsx";
 import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonClass } from "../components/ui/button.tsx";
+import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
@@ -18,6 +18,7 @@ import { meQuery } from "../lib/me.ts";
 import { orgStore } from "../lib/org-store.ts";
 import { orgsMineQuery } from "../lib/orgs.ts";
 import { client, orpc } from "../lib/rpc.ts";
+import { cn } from "../lib/utils.ts";
 
 /** Độ dài tối thiểu mật khẩu, khớp `minPasswordLength` của Better Auth trong apps/hub (identity/auth.ts). */
 const MIN_PASSWORD = 10;
@@ -27,7 +28,7 @@ function Frame({ title, children }: { title: string; children: ReactNode }) {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-110 gap-4 p-7">
         <Brand />
-        <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
         {children}
       </Card>
     </main>
@@ -51,7 +52,7 @@ export function InvitePage() {
   if (!isInviteToken(token))
     return (
       <Frame title="Link mời không hợp lệ">
-        <p className="text-muted">
+        <p className="text-muted-foreground">
           Link bị thiếu hoặc thừa ký tự. Chép lại đủ link, hoặc nhờ quản trị tổ chức gửi lại.
         </p>
         <HomeLink signedIn={me !== null} />
@@ -60,7 +61,7 @@ export function InvitePage() {
   if (preview.isPending)
     return (
       <Frame title="Lời mời">
-        <p aria-busy="true" className="text-muted">
+        <p aria-busy="true" className="text-muted-foreground">
           Đang tải…
         </p>
       </Frame>
@@ -78,9 +79,9 @@ export function InvitePage() {
   if (invite.status === "accepted")
     return (
       <Frame title="Lời mời đã được dùng">
-        <p className="text-muted">
-          Lời mời vào <b className="text-ink">{invite.orgName}</b> cho {invite.email} đã được nhận. Mỗi link chỉ dùng
-          được một lần. Nếu đó là bạn, đăng nhập để vào tổ chức; nếu không, nhờ quản trị tổ chức gửi lời mời mới.
+        <p className="text-muted-foreground">
+          Lời mời vào <b className="text-foreground">{invite.orgName}</b> cho {invite.email} đã được nhận. Mỗi link chỉ
+          dùng được một lần. Nếu đó là bạn, đăng nhập để vào tổ chức; nếu không, nhờ quản trị tổ chức gửi lời mời mới.
         </p>
         <HomeLink signedIn={me !== null} />
       </Frame>
@@ -88,8 +89,8 @@ export function InvitePage() {
   if (invite.status === "expired")
     return (
       <Frame title="Lời mời đã hết hạn">
-        <p className="text-muted">
-          Lời mời vào <b className="text-ink">{invite.orgName}</b> cho {invite.email} đã hết hạn ngày{" "}
+        <p className="text-muted-foreground">
+          Lời mời vào <b className="text-foreground">{invite.orgName}</b> cho {invite.email} đã hết hạn ngày{" "}
           {formatDay(invite.expiresAt)}. Nhờ quản trị tổ chức gửi lời mời mới.
         </p>
         <HomeLink signedIn={me !== null} />
@@ -98,16 +99,16 @@ export function InvitePage() {
 
   return (
     <Frame title={`Lời mời vào ${invite.orgName}`}>
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg bg-subtle px-3.5 py-3 text-label">
-        <dt className="text-muted">Tổ chức</dt>
-        <dd className="font-medium text-ink">{invite.orgName}</dd>
-        <dt className="text-muted">Email được mời</dt>
-        <dd className="truncate font-medium text-ink">{invite.email}</dd>
-        <dt className="text-muted">Hạn</dt>
-        <dd className="text-ink">Dùng trước ngày {formatDay(invite.expiresAt)}, một lần</dd>
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 rounded-lg bg-muted px-3.5 py-3 text-sm">
+        <dt className="text-muted-foreground">Tổ chức</dt>
+        <dd className="font-medium text-foreground">{invite.orgName}</dd>
+        <dt className="text-muted-foreground">Email được mời</dt>
+        <dd className="truncate font-medium text-foreground">{invite.email}</dd>
+        <dt className="text-muted-foreground">Hạn</dt>
+        <dd className="text-foreground">Dùng trước ngày {formatDay(invite.expiresAt)}, một lần</dd>
       </dl>
       {entering ? (
-        <p aria-busy="true" className="text-muted">
+        <p aria-busy="true" className="text-muted-foreground">
           Đang vào {invite.orgName}…
         </p>
       ) : me ? (
@@ -121,11 +122,11 @@ export function InvitePage() {
 
 function HomeLink({ signedIn }: { signedIn: boolean }) {
   return signedIn ? (
-    <Link to="/" className={buttonClass({ variant: "primary" })}>
+    <Link to="/" className={buttonVariants({ variant: "default" })}>
       Về trang chủ
     </Link>
   ) : (
-    <Link to="/login" className={buttonClass({ variant: "primary" })}>
+    <Link to="/login" className={buttonVariants({ variant: "default" })}>
       Đăng nhập
     </Link>
   );
@@ -166,16 +167,16 @@ function AcceptInvite({ token, invite, me }: { token: string; invite: Invitation
   if (!sameEmail(me.email, invite.email))
     return (
       <>
-        <p role="alert" className="rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+        <p role="alert" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
           Lời mời này dành cho <b>{invite.email}</b>, nhưng bạn đang đăng nhập bằng <b>{me.email}</b>. Đăng xuất rồi
           đăng nhập hoặc đăng ký bằng {invite.email} để nhận lời mời.
         </p>
         {signOut.isError && <Alert>Không đăng xuất được. Thử lại.</Alert>}
         <div className="flex justify-end gap-2">
-          <Link to="/" className={buttonClass({ variant: "ghost" })}>
+          <Link to="/" className={buttonVariants({ variant: "ghost" })}>
             Về trang chủ
           </Link>
-          <Button variant="primary" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
+          <Button variant="default" disabled={signOut.isPending} onClick={() => signOut.mutate()}>
             <Icon name="logout" />
             {signOut.isPending ? "Đang đăng xuất…" : "Đăng xuất"}
           </Button>
@@ -186,12 +187,12 @@ function AcceptInvite({ token, invite, me }: { token: string; invite: Invitation
   const busy = accept.isPending || accept.isSuccess;
   return (
     <>
-      <p className="text-muted">
-        Bạn đang đăng nhập bằng <span className="font-medium text-ink">{me.email}</span>. Nhận lời mời để vào{" "}
+      <p className="text-muted-foreground">
+        Bạn đang đăng nhập bằng <span className="font-medium text-foreground">{me.email}</span>. Nhận lời mời để vào{" "}
         {invite.orgName}.
       </p>
       {accept.isError && <Alert>{apiErrorMessage(accept.error)}</Alert>}
-      <Button variant="primary" block disabled={busy} onClick={() => accept.mutate()}>
+      <Button variant="default" className="w-full" disabled={busy} onClick={() => accept.mutate()}>
         {busy ? "Đang vào tổ chức…" : "Nhận lời mời và vào tổ chức"}
       </Button>
     </>
@@ -261,7 +262,7 @@ function SignUpForInvite({
   return (
     <>
       <form noValidate onSubmit={onSubmit} className="grid gap-3">
-        <h2 className="text-lg font-semibold text-ink">Tạo tài khoản bằng email</h2>
+        <h2 className="text-base font-semibold text-foreground">Tạo tài khoản bằng email</h2>
         <Field invalid={errors.name !== undefined}>
           <FieldLabel>Họ và tên</FieldLabel>
           <Input name="name" autoComplete="name" disabled={busy} autoFocus />
@@ -276,7 +277,7 @@ function SignUpForInvite({
             value={invite.email}
             readOnly
             autoComplete="username"
-            className="bg-subtle text-muted"
+            className="bg-muted text-muted-foreground"
           />
         </Field>
         <Field invalid={errors.password !== undefined}>
@@ -289,22 +290,26 @@ function SignUpForInvite({
           )}
         </Field>
         {failure && <Alert>{failure}</Alert>}
-        <Button type="submit" variant="primary" block disabled={busy}>
+        <Button type="submit" variant="default" className="w-full" disabled={busy}>
           <Icon name="mail" />
           {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản và vào tổ chức"}
         </Button>
       </form>
-      <div className="flex items-center gap-2.5 text-xs text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+      <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
         hoặc
       </div>
       <div className="grid gap-1.5">
         {/* Đăng nhập rồi quay lại đúng trang này để nhận lời mời; trang đăng nhập có đủ SSO, GitHub, GitLab, email.
             GitHub/GitLab lần đầu cũng tạo được tài khoản nhờ lời mời này, nếu email ở đó trùng email được mời. */}
-        <Link to="/login" search={{ redirect: `/invite/${token}` }} className={buttonClass({ block: true })}>
+        <Link
+          to="/login"
+          search={{ redirect: `/invite/${token}` }}
+          className={cn(buttonVariants({ variant: "outline" }), "w-full")}
+        >
           <Icon name="key" />
           Đăng nhập bằng GitHub, GitLab hoặc tài khoản đã có
         </Link>
-        <small className="text-center text-xs text-muted">
+        <small className="text-center text-xs text-muted-foreground">
           Dùng tài khoản có email {invite.email} (đã xác minh với GitHub/GitLab).
         </small>
       </div>

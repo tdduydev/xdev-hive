@@ -60,9 +60,9 @@ export function PlanEditor({
 
   return (
     <form noValidate onSubmit={onSubmit} aria-label="Sửa kế hoạch" className="grid gap-4">
-      <Card className="border-sel-line px-5 py-4">
+      <Card className="border-primary/40 px-5 py-4">
         <div className="grid gap-1.5">
-          <label htmlFor={ids.summary} className="text-label font-medium text-ink">
+          <label htmlFor={ids.summary} className="text-sm font-medium text-foreground">
             Tóm tắt
           </label>
           <Textarea
@@ -171,8 +171,10 @@ export function PlanEditor({
         <Alert>Kế hoạch còn ô chưa hợp lệ. Sửa các ô được đánh dấu rồi bấm lại.</Alert>
       )}
       <div className="flex flex-wrap justify-end gap-2">
-        <Button onClick={onCancel}>Huỷ sửa</Button>
-        <Button type="submit" variant="primary">
+        <Button variant="outline" onClick={onCancel}>
+          Huỷ sửa
+        </Button>
+        <Button type="submit" variant="default">
           Dùng bản sửa
         </Button>
       </div>
@@ -183,7 +185,7 @@ export function PlanEditor({
 function FieldErrorText({ id, message }: { id: string; message: string | undefined }) {
   if (!message) return null;
   return (
-    <p id={id} className="text-xs text-bad">
+    <p id={id} className="text-xs text-destructive">
       {message}
     </p>
   );
@@ -208,14 +210,14 @@ function EditorSection({
   return (
     <Card>
       <fieldset aria-labelledby={headingId} className="grid gap-3 px-5 py-4">
-        <h2 id={headingId} className="text-lg font-semibold text-ink">
+        <h2 id={headingId} className="text-base font-semibold text-foreground">
           {title}
         </h2>
-        {children.length === 0 && empty && <p className="text-muted">{empty}</p>}
+        {children.length === 0 && empty && <p className="text-muted-foreground">{empty}</p>}
         {children}
-        {error && <p className="text-xs text-bad">{error}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
         <div>
-          <Button size="sm" onClick={onAdd}>
+          <Button variant="outline" size="sm" onClick={onAdd}>
             {addLabel}
           </Button>
         </div>
@@ -239,10 +241,10 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <fieldset className="grid gap-2 rounded-lg border border-line p-3">
+    <fieldset className="grid gap-2 rounded-lg border border-border p-3">
       <legend className="sr-only">{label}</legend>
       <div className="flex flex-wrap items-center gap-1.5">
-        <span aria-hidden="true" className="mr-auto text-label font-medium text-ink">
+        <span aria-hidden="true" className="mr-auto text-sm font-medium text-foreground">
           {label}
         </span>
         {(onUp || onDown) && (
@@ -296,7 +298,7 @@ function LabeledInput({
   const id = useId();
   return (
     <div className="grid min-w-0 gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-muted">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
       <Input
@@ -304,7 +306,7 @@ function LabeledInput({
         value={value}
         maxLength={maxLength}
         placeholder={placeholder}
-        className={cx(mono && "font-mono text-sm", error && "border-bad")}
+        className={cx(mono && "font-mono text-xs", error && "border-destructive")}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         onChange={(e) => onChange(e.currentTarget.value)}
@@ -328,7 +330,7 @@ function LabeledTextarea({
   const id = useId();
   return (
     <div className="grid min-w-0 gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-muted">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
       <Textarea
@@ -354,7 +356,7 @@ function LabeledSelect({
   const id = useId();
   return (
     <div className="grid min-w-0 gap-1">
-      <label htmlFor={id} className="text-xs font-medium text-muted">
+      <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </label>
       <Select id={id} value={value} onChange={(e) => onChange(e.currentTarget.value as FileChange | "")}>

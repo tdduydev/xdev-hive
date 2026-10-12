@@ -5,7 +5,7 @@ import { Brand } from "../components/icons.tsx";
 import { InviteForm } from "../components/invite-form.tsx";
 import { checkNameSlug, type NameSlugErrors, NameSlugFields } from "../components/name-slug-fields.tsx";
 import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonClass } from "../components/ui/button.tsx";
+import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
@@ -38,7 +38,7 @@ const STEPS = ["Tổ chức", "Đội đầu tiên", "Mời người"];
 
 function Steps({ current }: { current: number }) {
   return (
-    <ol aria-label="Các bước" className="flex flex-wrap items-center gap-2 text-sm text-muted">
+    <ol aria-label="Các bước" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
       {STEPS.map((label, i) => (
         <li key={label} aria-current={i === current ? "step" : undefined} className="flex items-center gap-1.5">
           {i > 0 && (
@@ -49,9 +49,9 @@ function Steps({ current }: { current: number }) {
           <span
             className={cx(
               "grid size-5.5 place-items-center rounded-full border text-2xs font-semibold",
-              i === current && "border-accent bg-accent text-on-accent",
-              i < current && "border-transparent bg-ok-bg text-ok",
-              i > current && "border-line-strong",
+              i === current && "border-primary bg-primary text-primary-foreground",
+              i < current && "border-transparent bg-success-soft text-success",
+              i > current && "border-input",
             )}
           >
             {i + 1}
@@ -66,8 +66,8 @@ function Steps({ current }: { current: number }) {
 function Heading({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div>
-      <h1 className="flex items-center gap-2 font-display text-4xl font-semibold text-ink">{title}</h1>
-      <p className="mt-1 text-muted">{children}</p>
+      <h1 className="flex items-center gap-2 font-heading text-2xl font-semibold text-foreground">{title}</h1>
+      <p className="mt-1 text-muted-foreground">{children}</p>
     </div>
   );
 }
@@ -93,7 +93,7 @@ export function OnboardingPage() {
           (current ? (
             <TeamStep current={current} />
           ) : (
-            <p aria-busy="true" className="text-muted">
+            <p aria-busy="true" className="text-muted-foreground">
               Đang tải…
             </p>
           ))}
@@ -168,11 +168,11 @@ function OrgStep() {
       {failure && <Alert>{failure}</Alert>}
       <div className="flex justify-end gap-2">
         {orgs.length > 0 && (
-          <Link to="/" className={buttonClass({ variant: "ghost" })}>
+          <Link to="/" className={buttonVariants({ variant: "ghost" })}>
             Huỷ
           </Link>
         )}
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button type="submit" variant="default" disabled={busy}>
           {busy ? "Đang tạo tổ chức…" : "Tiếp: tạo đội"}
         </Button>
       </div>
@@ -228,10 +228,10 @@ function TeamStep({ current: { org, api } }: { current: CurrentOrg }) {
       />
       {failure && <Alert>{failure}</Alert>}
       <div className="flex justify-end gap-2">
-        <Link to="/admin/teams" className={buttonClass({ variant: "ghost" })}>
+        <Link to="/admin/teams" className={buttonVariants({ variant: "ghost" })}>
           Để sau
         </Link>
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button type="submit" variant="default" disabled={busy}>
           {busy ? "Đang tạo đội…" : "Tiếp: mời người"}
         </Button>
       </div>
@@ -245,7 +245,7 @@ function InviteStep({ teamId }: { teamId: string | undefined }) {
   const leave = () => navigate({ to: "/admin/teams", search: teamId ? { doi: teamId } : {} });
   if (!current)
     return (
-      <p aria-busy="true" className="text-muted">
+      <p aria-busy="true" className="text-muted-foreground">
         Đang tải…
       </p>
     );
@@ -255,7 +255,7 @@ function InviteStep({ teamId }: { teamId: string | undefined }) {
       <div className="grid gap-4.5">
         <Heading title="Mời người">Chỉ quản trị tổ chức mời được người vào {current.org.name}.</Heading>
         <div className="flex justify-end">
-          <Button variant="primary" onClick={leave}>
+          <Button variant="default" onClick={leave}>
             Vào trang Đội và hệ thống
           </Button>
         </div>
