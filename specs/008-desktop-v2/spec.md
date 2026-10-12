@@ -214,6 +214,69 @@ securely and enforcing least-privilege window capabilities protects organization
 
 ---
 
+### User Story 9 - Document Editor in the App for BA (Priority: P1)
+
+A business analyst writes and revises PRDs, specs and ADRs from the app instead of the admin web. The app opens the
+same document editor as the web (draft, suggestions, comments, snapshots, submit for review), and the AI assistant runs
+on the analyst's own machine with their own CLI login (ADR 0017).
+
+**Independent Test**: With a linked account, open a document from the app's Docs list, edit a block, accept an AI
+suggestion, add a comment and submit; the hub records the same draft, suggestion, thread and proposal as the web.
+
+**Acceptance Scenarios**:
+1. **Given** a linked account with team member rights, **When** the user opens a document in the app, **Then** the
+   editor shows the shared draft, its workflow steps, presence, comments and pending suggestions.
+2. **Given** the user presses an AI action, **When** the run starts, **Then** it is pinned to this machine and never to a
+   colleague's personal machine.
+3. **Given** a viewer, **When** they open a document, **Then** they can read and comment but not edit or submit.
+
+---
+
+### User Story 10 - My Tasks and My Runs (Priority: P1)
+
+A developer or analyst sees only the tasks assigned to them and the runs they started, hands a task to an agent CLI on
+their own machine, and follows the run live. The full team board stays on the admin web.
+
+**Independent Test**: Assign a task to the user on the web; it appears in the app's My tasks; starting it creates a run
+owned by the user that is offered only to the user's machines or shared machines.
+
+**Acceptance Scenarios**:
+1. **Given** tasks assigned to several people, **When** the user opens My tasks, **Then** only tasks assigned to them
+   (or created by them and unassigned) are listed.
+2. **Given** a task, **When** the user starts it, **Then** the run's owner is the user and its log streams in the app.
+3. **Given** a run waiting for a machine, **When** the user opens it, **Then** the app shows why it waits.
+
+---
+
+### User Story 11 - Awaiting My Review (Priority: P2)
+
+A reviewer (BA, PO, tech lead) approves or returns document proposals at the checkpoint assigned to them without
+opening the admin web.
+
+**Independent Test**: Submit a draft into a workflow whose current gate names the user; it appears in the app's
+Awaiting my review with the diff and checklist; approving it advances the review on the hub.
+
+**Acceptance Scenarios**:
+1. **Given** reviews at gates the user may decide, **When** the user opens Awaiting my review, **Then** only those
+   reviews are listed, with SLA state.
+2. **Given** a review, **When** the user returns it with a note and route, **Then** the hub records the decision and
+   notifies the author exactly as from the web.
+
+---
+
+### User Story 12 - Knowledge Lookup (Priority: P3)
+
+A developer or analyst searches approved documents, memory and team skills while working, read-only.
+
+**Independent Test**: Search a keyword present in an approved doc and a memory entry; both appear; opening the doc
+shows the approved version; no edit control is offered.
+
+**Acceptance Scenarios**:
+1. **Given** a query, **When** the user searches, **Then** results come from docs, memory and skills the user can read.
+2. **Given** a result, **When** opened, **Then** it is read-only with a link to edit in the document editor (US9).
+
+---
+
 ### Edge Cases
 
 - **What happens if the user's personal MCP token expires while the worker machine token is still valid?**
@@ -252,6 +315,14 @@ securely and enforcing least-privilege window capabilities protects organization
 - **FR-017**: All user-facing copy MUST support bilingual display (Vietnamese and English) using the `useT` dictionary pattern, defaulting to Vietnamese.
 - **FR-018**: All screens MUST support both light and dark themes, deriving styles strictly from design tokens in `tokens.css`.
 - **FR-019**: All screens MUST be operable at 360 px width without horizontal scrolling, supporting keyboard navigation and visible focus rings.
+- **FR-020 (ADR 0017)**: After registration and on every start of a registered machine, the app MUST open `AppNav`, never the hub web as its main window; the hub web opens only on explicit user action (tray, link to one hub page).
+- **FR-021 (ADR 0017)**: The app MUST offer only client features for BA and DEV: machine, environment, skills, tokens, docs from code, document editor, my tasks and runs, awaiting my review, knowledge lookup. Administration (members, roles, policies, sign-in, machines, sandbox, audit, costs, workflow setup) stays on the admin web.
+- **FR-022 (US9)**: The app MUST provide the document editor with the same contracts as the web (`docEditor.*`); AI actions MUST run as `docassist` runs pinned to this machine.
+- **FR-023 (US10)**: The app MUST list tasks assigned to the user and runs the user owns, start a task as a run owned by the user, and stream its events and logs.
+- **FR-024 (US11)**: The app MUST list reviews the user may decide at the current gate and support approve and return with note and route, using the `reviews.*` contracts.
+- **FR-025 (US12)**: The app MUST search approved docs, memory and skills the user can read, read-only.
+- **FR-026**: The hub MUST accept the user's personal token (`hive_pat_…`) as `Authorization: Bearer` on the user-scoped REST API (`/api/v1/…`) with exactly the user's rights, so the app reuses the web contracts; machine and run tokens MUST NOT be accepted there.
+- **FR-027**: Screens present on both surfaces MUST share contracts and data logic through `packages/`; UI is not copied between `apps/web` and `apps/desktop`.
 
 ### Key Entities
 
@@ -364,3 +435,19 @@ To generate documentation from local code without passing hub secrets:
 - The desktop app uses `tauri-plugin-updater` targeting `/api/v1/desktop/updates/{os}/{arch}/{version}`.
 - When an update is downloaded, Tauri replaces the entire desktop application bundle, including the embedded `binaries/hive-worker` sidecar.
 - In desktop sidecar mode (`--stdin-control`), worker self-update is explicitly disabled (`SelfUpdate: false`). This guarantees that the worker binary version always matches the Tauri application version and prevents sidecar executable corruption.
+
+
+### 8. How the App Calls the Hub for Client Features
+
+Today the app calls the hub only through MCP tools with the personal token (`hub_tool`). The document editor, tasks,
+runs and reviews already have typed REST contracts used by the web. Writing an MCP tool per screen would duplicate those
+contracts. Decision: the hub accepts the personal token as a bearer credential on the user-scoped REST API (FR-026),
+resolved to the same user session the web gets, limited by the token's expiry and revocation; the app calls the
+OpenAPI routes through a typed client generated from `packages/contracts`. Machine tokens (`hwm_`) and run tokens stay
+limited to the worker channel and MCP.
+
+### 9. Designs for the New Screens
+
+There are no `App*` design files yet for the document editor, my tasks, reviews and knowledge in the app. They follow
+the web designs (`DocEditor.dc.html`, `Reviews.dc.html`, task and run screens) inside the `AppNav` shell, at app widths
+(900–1280 px, down to 360 px). New `App*.dc.html` files are added with each screen's PR.
