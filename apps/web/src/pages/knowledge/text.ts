@@ -57,6 +57,7 @@ export const knowledgeText: Dict<{
   vector: string;
   score: string;
   repoUnavailable: string;
+  repoNone: string;
   approve: string;
   original: string;
   proposed: string;
@@ -78,7 +79,7 @@ export const knowledgeText: Dict<{
     skillsLead: "Skill (SKILL.md) nạp cho agent khi chạy.",
     skillsRepoAria: "Kho skill",
     skillsRepoLabel: "Kho skill",
-    skillsRepoSettings: "Đổi repo",
+    skillsRepoSettings: "Kết nối repo",
     skillsSyncNow: "Đồng bộ ngay",
     skillsSearch: "Tìm skill, mô tả, đường dẫn…",
     memoryLead: "Ghi nhớ ngắn của agent và người. Agent tìm qua memory_search trước khi làm.",
@@ -127,6 +128,7 @@ export const knowledgeText: Dict<{
     vector: "Nghĩa",
     score: "Điểm",
     repoUnavailable: "Chưa đồng bộ — hub đang lưu skill trong cơ sở dữ liệu.",
+    repoNone: "Chưa kết nối kho Git",
     approve: "Duyệt",
     original: "Bản gốc",
     proposed: "Bản đề xuất",
@@ -148,7 +150,7 @@ export const knowledgeText: Dict<{
     skillsLead: "Skills (SKILL.md) loaded into agent runs.",
     skillsRepoAria: "Skill repository",
     skillsRepoLabel: "Skill repo",
-    skillsRepoSettings: "Change repo",
+    skillsRepoSettings: "Connect repo",
     skillsSyncNow: "Sync now",
     skillsSearch: "Search skill, description, path…",
     memoryLead: "Short notes from agents and people. Agents search them with memory_search before working.",
@@ -197,6 +199,7 @@ export const knowledgeText: Dict<{
     vector: "Meaning",
     score: "Score",
     repoUnavailable: "Not synced — the hub stores skills in the database.",
+    repoNone: "No Git repository connected",
     approve: "Approve",
     original: "Original",
     proposed: "Proposed",
