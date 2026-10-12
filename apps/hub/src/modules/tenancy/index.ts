@@ -9,6 +9,7 @@ export {
   requireOrgRole,
   requireTeamRole,
   type TeamRole,
+  teamMemberIds,
   teamRoleOf,
   visibleTeamIds,
 } from "./permissions.ts";

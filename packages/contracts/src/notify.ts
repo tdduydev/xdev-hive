@@ -10,6 +10,8 @@ export const notificationEvent = z.enum([
   "machine.offline",
   "member.pending",
   "merge.failed",
+  "review.awaiting",
+  "review.overdue",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
 

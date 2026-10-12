@@ -17,7 +17,8 @@ import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
 import { getDoc, listDocs } from "./docs.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
-import { createProposal, proposeDoc } from "./proposals.ts";
+import { createProposal } from "./proposals.ts";
+import { proposeWithReview } from "./reviews.ts";
 import { parseSkillFile } from "./skill-repo.ts";
 import { getSkill, listSkillsWithHidden } from "./skills.ts";
 
@@ -239,12 +240,12 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
       note: z.string().trim().min(1).max(2000).describe("Vì sao cần sửa, cho người duyệt đọc."),
     }),
     handler: async ({ key, baseVersion, content, note }, { tx, principal }) => {
-      const p = await proposeDoc(tx, await knowledgePrincipal(tx, principal), {
-        key,
-        baseVersion,
-        content,
-        reason: note,
-      });
+      const p = await proposeWithReview(
+        tx,
+        await knowledgePrincipal(tx, principal),
+        { kind: "doc", key, baseVersion, content, reason: note },
+        { jobs: deps.jobs, publicUrl: deps.publicUrl },
+      );
       return { proposalId: p.id, status: p.status, key: p.target, baseVersion: p.baseVersion };
     },
   });

@@ -33,7 +33,7 @@ export const TERMINAL_RUN_STATES: readonly RunState[] = [
 ];
 
 /** `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động. */
-export const runKind = z.enum(["code", "review", "plan", "leader"]);
+export const runKind = z.enum(["code", "review", "plan", "leader", "doccheck"]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({

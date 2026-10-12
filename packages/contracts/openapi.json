@@ -18087,7 +18087,9 @@
                             "project.provision_failed",
                             "machine.offline",
                             "member.pending",
-                            "merge.failed"
+                            "merge.failed",
+                            "review.awaiting",
+                            "review.overdue"
                           ],
                           "type": "string"
                         }
@@ -18476,7 +18478,7 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 7,
+                    "maxItems": 9,
                     "items": {
                       "enum": [
                         "run.failed",
@@ -18485,7 +18487,9 @@
                         "project.provision_failed",
                         "machine.offline",
                         "member.pending",
-                        "merge.failed"
+                        "merge.failed",
+                        "review.awaiting",
+                        "review.overdue"
                       ],
                       "type": "string"
                     }
@@ -18617,7 +18621,9 @@
                           "project.provision_failed",
                           "machine.offline",
                           "member.pending",
-                          "merge.failed"
+                          "merge.failed",
+                          "review.awaiting",
+                          "review.overdue"
                         ],
                         "type": "string"
                       }
@@ -19018,7 +19024,7 @@
                   "events": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 7,
+                    "maxItems": 9,
                     "items": {
                       "enum": [
                         "run.failed",
@@ -19027,7 +19033,9 @@
                         "project.provision_failed",
                         "machine.offline",
                         "member.pending",
-                        "merge.failed"
+                        "merge.failed",
+                        "review.awaiting",
+                        "review.overdue"
                       ],
                       "type": "string"
                     }
@@ -19153,7 +19161,9 @@
                           "project.provision_failed",
                           "machine.offline",
                           "member.pending",
-                          "merge.failed"
+                          "merge.failed",
+                          "review.awaiting",
+                          "review.overdue"
                         ],
                         "type": "string"
                       }
@@ -20343,7 +20353,9 @@
                               "project.provision_failed",
                               "machine.offline",
                               "member.pending",
-                              "merge.failed"
+                              "merge.failed",
+                              "review.awaiting",
+                              "review.overdue"
                             ],
                             "type": "string"
                           },
@@ -42252,7 +42264,8 @@
                             "code",
                             "review",
                             "plan",
-                            "leader"
+                            "leader",
+                            "doccheck"
                           ],
                           "type": "string"
                         },
@@ -43440,7 +43453,8 @@
                             "code",
                             "review",
                             "plan",
-                            "leader"
+                            "leader",
+                            "doccheck"
                           ],
                           "type": "string"
                         },
@@ -44350,7 +44364,8 @@
                         "code",
                         "review",
                         "plan",
-                        "leader"
+                        "leader",
+                        "doccheck"
                       ],
                       "type": "string"
                     },
@@ -45223,7 +45238,8 @@
                           "code",
                           "review",
                           "plan",
-                          "leader"
+                          "leader",
+                          "doccheck"
                         ],
                         "type": "string"
                       },
@@ -46098,7 +46114,8 @@
                           "code",
                           "review",
                           "plan",
-                          "leader"
+                          "leader",
+                          "doccheck"
                         ],
                         "type": "string"
                       },
@@ -47039,7 +47056,8 @@
                               "code",
                               "review",
                               "plan",
-                              "leader"
+                              "leader",
+                              "doccheck"
                             ],
                             "type": "string"
                           },
@@ -47957,7 +47975,8 @@
                         "code",
                         "review",
                         "plan",
-                        "leader"
+                        "leader",
+                        "doccheck"
                       ],
                       "type": "string"
                     },
@@ -48829,7 +48848,8 @@
                         "code",
                         "review",
                         "plan",
-                        "leader"
+                        "leader",
+                        "doccheck"
                       ],
                       "type": "string"
                     },

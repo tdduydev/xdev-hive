@@ -8,7 +8,7 @@ import {
   type ProvisionView,
   parseRepoUrl,
 } from "@xdev-hive/contracts";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { loadPolicy } from "../governance/index.ts";
@@ -567,4 +567,18 @@ export async function retryStep(
   });
   const updated = (await loadProject(tx, id)) as ProjectRow;
   return { project: projectView(updated), steps: stepViews(updated, await loadSteps(tx, id), deps) };
+}
+
+/**
+ * Dự án đang hoạt động cập nhật gần nhất của một đội (hoặc của cả tổ chức khi `teamId` null). Run kiểm tài liệu của đội
+ * hay tổ chức cần một repo để agent đọc code; tài liệu của dự án thì dùng chính dự án đó.
+ */
+export async function latestActiveProject(tx: Tx, teamId: string | null): Promise<ProjectRow | null> {
+  const [row] = await tx
+    .select()
+    .from(projects)
+    .where(and(eq(projects.state, "active"), teamId ? eq(projects.teamId, teamId) : undefined))
+    .orderBy(desc(projects.updatedAt))
+    .limit(1);
+  return row ?? null;
 }

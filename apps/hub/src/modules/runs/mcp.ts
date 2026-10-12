@@ -187,4 +187,44 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       return { runId: run.id, attempt: run.attempt, recorded: "plan_report", steps: content.steps.length };
     },
   });
+
+  registry.register({
+    name: "doc_check_submit",
+    title: "Nộp kết quả kiểm tài liệu",
+    description:
+      "Chỉ dành cho run kiểm tài liệu của quy trình duyệt: nộp điểm 0–10, kết quả từng mục kiểm (đạt hay không, ghi " +
+      "chú) và tóm tắt cho người duyệt. Gọi lại thì lần sau cùng được tính.",
+    input: z.object({
+      score: z.number().min(0).max(10).describe("Điểm chất lượng 0–10."),
+      checklist: z
+        .array(
+          z.object({
+            label: z.string().trim().min(1).max(300).describe("Mục kiểm, đúng chữ trong danh sách được giao."),
+            passed: z.boolean(),
+            note: z.string().trim().max(2000).nullable().optional().describe("Lý do khi không đạt; trích dòng nếu có."),
+          }),
+        )
+        .min(1)
+        .max(30),
+      summary: z.string().trim().min(1).max(4000).describe("Tóm tắt cho người duyệt."),
+    }),
+    runKinds: ["doccheck"],
+    // Như plan_submit: chế độ plan của Claude Code chỉ cho gọi tool MCP có readOnlyHint; tool chỉ ghi kết quả lên hub.
+    readOnly: true,
+    handler: async (input, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      if (run.kind !== "doccheck") {
+        throw new ForbiddenError("DOCCHECK_RUN_REQUIRED", "Chỉ run kiểm tài liệu mới gọi được doc_check_submit.");
+      }
+      await hubEvent(tx, run, "doccheck_result", {
+        score: input.score,
+        checklist: input.checklist.map((c) => ({ label: c.label, passed: c.passed, note: c.note ?? null })),
+        summary: input.summary,
+      });
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "doccheck_result" };
+    },
+  });
 }
