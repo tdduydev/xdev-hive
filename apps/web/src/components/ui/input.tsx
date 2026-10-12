@@ -1,20 +1,19 @@
-import { Input as BaseInput } from "@base-ui/react/input";
-import { cx } from "../../lib/cx.ts";
+import { Input as InputPrimitive } from "@base-ui/react/input";
+import { cn } from "cn";
 
-export interface InputProps extends Omit<BaseInput.Props, "className"> {
-  className?: string;
-}
-
-/** Ô nhập một dòng. Đặt trong `<Field>` để tự gắn nhãn, gợi ý và lỗi. */
-export function Input({ className, ...props }: InputProps) {
+/** Ô nhập một dòng (Base UI, nên `onValueChange` và nhãn của `<Field>` vẫn dùng được). */
+function Input({ className, type, ...props }: Omit<InputPrimitive.Props, "className"> & { className?: string }) {
   return (
-    <BaseInput
-      className={cx(
-        "h-9.5 w-full rounded-md border border-input bg-card px-2.75 placeholder:text-muted-foreground",
-        "data-invalid:border-destructive",
+    <InputPrimitive
+      type={type}
+      data-slot="input"
+      className={cn(
+        "h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         className,
       )}
       {...props}
     />
   );
 }
+
+export { Input };

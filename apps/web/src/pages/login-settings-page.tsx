@@ -9,8 +9,8 @@ import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { apiErrorCode, apiErrorMessage, formError } from "../lib/api-errors.ts";
 import { formatDay } from "../lib/format.ts";
 import { isOrgAdmin } from "../lib/roles.ts";
@@ -66,7 +66,7 @@ export function LoginSettingsPage() {
         Đang tải…
       </p>
     );
-  else if (settings.isError) body = <Alert>{apiErrorMessage(settings.error)}</Alert>;
+  else if (settings.isError) body = <Alert variant="destructive">{apiErrorMessage(settings.error)}</Alert>;
   else
     body = (
       <>
@@ -295,15 +295,15 @@ function SsoForm({ settings, defaultDomain }: { settings: SsoSettings; defaultDo
           <label htmlFor={joinId} className="text-sm font-medium text-foreground">
             Khi người mới đăng nhập SSO lần đầu
           </label>
-          <Select id={joinId} name="join" defaultValue={settings.join} disabled={busy}>
+          <NativeSelect id={joinId} name="join" defaultValue={settings.join} disabled={busy}>
             {SSO_JOINS.map((j) => (
               <option key={j} value={j}>
                 {SSO_JOIN_LABEL[j]}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         </div>
-        {failure && <Alert>{failure}</Alert>}
+        {failure && <Alert variant="destructive">{failure}</Alert>}
         {saved && !failure && (
           <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
             Đã lưu cấu hình SSO.
@@ -395,8 +395,8 @@ function DomainVerification({ settings }: { settings: SsoSettings }) {
           chưa xác minh khác khai thì sẽ chuyển về tổ chức bạn.
         </p>
       )}
-      {check.isError && <Alert>{apiErrorMessage(check.error)}</Alert>}
-      {request.isError && <Alert>{apiErrorMessage(request.error)}</Alert>}
+      {check.isError && <Alert variant="destructive">{apiErrorMessage(check.error)}</Alert>}
+      {request.isError && <Alert variant="destructive">{apiErrorMessage(request.error)}</Alert>}
       {checked && verified && provider && (
         <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
           Đã xác minh tên miền {provider.domain}.
@@ -440,7 +440,7 @@ function RemoveSso({ onDone, onRemoved }: { onDone: () => void; onRemoved: (next
         Người đang đăng nhập bằng SSO sẽ phải dùng cách khác (GitHub, GitLab, email). Họ vẫn là thành viên của tổ chức.
         Cấu hình lại SSO thì callback URL giữ nguyên.
       </DialogDescription>
-      {remove.isError && <Alert>{apiErrorMessage(remove.error)}</Alert>}
+      {remove.isError && <Alert variant="destructive">{apiErrorMessage(remove.error)}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone} disabled={remove.isPending}>
           Huỷ

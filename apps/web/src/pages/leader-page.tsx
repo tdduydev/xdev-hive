@@ -7,9 +7,9 @@ import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Field, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Textarea } from "../components/ui/textarea.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
 import { cx } from "../lib/cx.ts";
@@ -120,16 +120,16 @@ function NewThread({
         </Field>
         <Field>
           <FieldLabel htmlFor={ids.project}>Dự án</FieldLabel>
-          <Select id={ids.project} name="project" defaultValue="">
+          <NativeSelect id={ids.project} name="project" defaultValue="">
             <option value="">Cả tổ chức</option>
             {projects?.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.key} · {p.name}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         </Field>
-        {create.isError && <Alert>{apiErrorMessage(create.error)}</Alert>}
+        {create.isError && <Alert variant="destructive">{apiErrorMessage(create.error)}</Alert>}
         <Button type="submit" variant="default" disabled={create.isPending}>
           {create.isPending ? "Đang tạo…" : "Tạo"}
         </Button>
@@ -198,7 +198,7 @@ function Thread({ threadId, projects }: { threadId: string; projects: readonly P
           rows={3}
           placeholder="Hỏi về dự án, nhờ chia việc, hoặc nhờ giao việc cho agent"
         />
-        {send.isError && <Alert>{apiErrorMessage(send.error)}</Alert>}
+        {send.isError && <Alert variant="destructive">{apiErrorMessage(send.error)}</Alert>}
         <div className="flex justify-end">
           <Button type="submit" variant="default" disabled={send.isPending || !draft.trim()}>
             {send.isPending ? "Đang gửi…" : "Gửi"}
@@ -257,7 +257,7 @@ function ApprovalCard({ approval, projects }: { approval: Approval; projects: re
         <span className="text-xs text-muted-foreground">Hết hạn {formatDayTime(approval.expiresAt)}</span>
       </div>
       <p className="font-medium text-foreground">{describeAction(approval.action, projects)}</p>
-      {error && <Alert>{apiErrorMessage(error)}</Alert>}
+      {error && <Alert variant="destructive">{apiErrorMessage(error)}</Alert>}
       {rejecting ? (
         <form
           noValidate

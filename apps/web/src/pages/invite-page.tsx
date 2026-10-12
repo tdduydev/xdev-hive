@@ -70,7 +70,7 @@ export function InvitePage() {
     const notFound = preview.error instanceof ORPCError && preview.error.code === "NOT_FOUND";
     return (
       <Frame title={notFound ? "Không tìm thấy lời mời" : "Không mở được lời mời"}>
-        <Alert>{apiErrorMessage(preview.error)}</Alert>
+        <Alert variant="destructive">{apiErrorMessage(preview.error)}</Alert>
         <HomeLink signedIn={me !== null} />
       </Frame>
     );
@@ -171,7 +171,7 @@ function AcceptInvite({ token, invite, me }: { token: string; invite: Invitation
           Lời mời này dành cho <b>{invite.email}</b>, nhưng bạn đang đăng nhập bằng <b>{me.email}</b>. Đăng xuất rồi
           đăng nhập hoặc đăng ký bằng {invite.email} để nhận lời mời.
         </p>
-        {signOut.isError && <Alert>Không đăng xuất được. Thử lại.</Alert>}
+        {signOut.isError && <Alert variant="destructive">Không đăng xuất được. Thử lại.</Alert>}
         <div className="flex justify-end gap-2">
           <Link to="/" className={buttonVariants({ variant: "ghost" })}>
             Về trang chủ
@@ -191,7 +191,7 @@ function AcceptInvite({ token, invite, me }: { token: string; invite: Invitation
         Bạn đang đăng nhập bằng <span className="font-medium text-foreground">{me.email}</span>. Nhận lời mời để vào{" "}
         {invite.orgName}.
       </p>
-      {accept.isError && <Alert>{apiErrorMessage(accept.error)}</Alert>}
+      {accept.isError && <Alert variant="destructive">{apiErrorMessage(accept.error)}</Alert>}
       <Button variant="default" className="w-full" disabled={busy} onClick={() => accept.mutate()}>
         {busy ? "Đang vào tổ chức…" : "Nhận lời mời và vào tổ chức"}
       </Button>
@@ -289,7 +289,7 @@ function SignUpForInvite({
             <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
           )}
         </Field>
-        {failure && <Alert>{failure}</Alert>}
+        {failure && <Alert variant="destructive">{failure}</Alert>}
         <Button type="submit" variant="default" className="w-full" disabled={busy}>
           <Icon name="mail" />
           {busy ? "Đang tạo tài khoản…" : "Tạo tài khoản và vào tổ chức"}
