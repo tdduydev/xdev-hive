@@ -1,0 +1,594 @@
+import { cn } from "cn";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  PlusCircle,
+  Search,
+  X,
+} from "lucide-react";
+import { type ReactNode, useId, useState } from "react";
+import { type Dict, useT } from "../../lib/i18n.ts";
+import { Button } from "../ui/button.tsx";
+import { Checkbox } from "../ui/checkbox.tsx";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu.tsx";
+import { Input } from "../ui/input.tsx";
+import { NativeSelect } from "../ui/native-select.tsx";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "../ui/popover.tsx";
+import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "../ui/table.tsx";
+import {
+  type Facet,
+  type Filters,
+  facetOptions,
+  filterRows,
+  paginateRows,
+  type SearchColumn,
+  type Sort,
+  sortRows,
+} from "./model.ts";
+
+export interface Column<Row> extends SearchColumn<Row> {
+  label: string;
+  cell?: (row: Row) => ReactNode;
+  sortable?: boolean;
+  hideable?: boolean;
+  hidden?: boolean;
+  className?: string;
+}
+export interface BulkAction<Row> {
+  key: string;
+  label: string;
+  onClick: (rows: Row[]) => void;
+  disabled?: (rows: Row[]) => boolean;
+}
+export interface ActiveFilter {
+  key: string;
+  label: string;
+  values: string;
+  clear: () => void;
+}
+export interface DataTableProps<Row extends { id: string }> {
+  columns: readonly Column<Row>[];
+  rows: readonly Row[];
+  facets?: readonly Facet<Row>[];
+  bulk?: readonly BulkAction<Row>[];
+  pageSize?: number;
+  onRowClick?: (row: Row) => void;
+  activeId?: string;
+  rowLabel?: (row: Row) => string;
+  placeholder?: string;
+  caption?: string;
+  selectable?: boolean;
+  /** Server-side scopes remain visible and clearable alongside local filters. */
+  activeFilters?: readonly ActiveFilter[];
+  emptyContent?: ReactNode;
+}
+
+const text: Dict<{
+  columns: string;
+  showColumns: string;
+  clearOne: string;
+  filtering: string;
+  clearAll: string;
+  bulk: string;
+  clearSelection: string;
+  selectPage: string;
+  noMatch: string;
+  perPage: string;
+  previous: string;
+  next: string;
+  search: string;
+  keyword: string;
+  clear: string;
+  select: string;
+  selected: (n: number) => string;
+  range: (from: number, to: number, total: number) => string;
+  page: (n: number, total: number) => string;
+  matches: (n: number, total: number) => string;
+  find: (label: string) => string;
+  open: (label: string) => string;
+}> = {
+  vi: {
+    columns: "Cột",
+    showColumns: "Hiện cột",
+    clearOne: "Bỏ lọc này",
+    filtering: "Đang lọc",
+    clearAll: "Xoá hết bộ lọc",
+    bulk: "Thao tác hàng loạt",
+    clearSelection: "Bỏ chọn",
+    selectPage: "Chọn cả trang",
+    noMatch: "Không có dòng nào khớp bộ lọc.",
+    perPage: "Số dòng",
+    previous: "Trang trước",
+    next: "Trang sau",
+    search: "Tìm…",
+    keyword: "Từ khoá",
+    clear: "Bỏ lọc",
+    select: "Chọn",
+    selected: (n) => `Đã chọn ${n} dòng`,
+    range: (from, to, total) => `${from}–${to} trên ${total}`,
+    page: (n, total) => `Trang ${n} / ${total}`,
+    matches: (n, total) => `${n} / ${total} dòng khớp`,
+    find: (label) => `Tìm ${label.toLocaleLowerCase()}…`,
+    open: (label) => `Mở dòng ${label}`,
+  },
+  en: {
+    columns: "Columns",
+    showColumns: "Show columns",
+    clearOne: "Clear filter",
+    filtering: "Filtering",
+    clearAll: "Clear all filters",
+    bulk: "Bulk actions",
+    clearSelection: "Clear selection",
+    selectPage: "Select page",
+    noMatch: "No rows match these filters.",
+    perPage: "Rows",
+    previous: "Previous page",
+    next: "Next page",
+    search: "Search…",
+    keyword: "Keyword",
+    clear: "Clear",
+    select: "Select",
+    selected: (n) => `${n} selected`,
+    range: (from, to, total) => `${from}–${to} of ${total}`,
+    page: (n, total) => `Page ${n} of ${total}`,
+    matches: (n, total) => `${n} / ${total} rows match`,
+    find: (label) => `Find ${label.toLocaleLowerCase()}…`,
+    open: (label) => `Open row ${label}`,
+  },
+};
+
+export function DataTable<Row extends { id: string }>({
+  columns,
+  rows,
+  facets = [],
+  bulk = [],
+  pageSize = 10,
+  onRowClick,
+  activeId,
+  rowLabel = (row) => row.id,
+  placeholder,
+  caption,
+  selectable = true,
+  activeFilters = [],
+  emptyContent,
+}: DataTableProps<Row>) {
+  const t = useT(text);
+  const sizeId = useId();
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<Filters>({});
+  const [sort, setSort] = useState<Sort | null>(null);
+  const [hidden, setHidden] = useState(
+    () => new Set(columns.filter((column) => column.hidden).map((column) => column.key)),
+  );
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState(pageSize);
+  const state = { query, filters };
+  const filtered = filterRows(rows, columns, facets, state);
+  const result = paginateRows(sortRows(filtered, columns, sort), page, size);
+  const visible = columns.filter((column) => !hidden.has(column.key));
+  // Filtering and refreshes must not leave hidden rows in a bulk operation.
+  const selectedRows = filtered.filter((row) => selected.has(row.id));
+  const allPage = result.rows.length > 0 && result.rows.every((row) => selected.has(row.id));
+  const somePage = result.rows.some((row) => selected.has(row.id));
+  const updateFilter = (key: string, values: readonly string[]) => {
+    setFilters((prev) => ({ ...prev, [key]: values }));
+    setPage(0);
+    setSelected(new Set());
+  };
+  const active: ActiveFilter[] = [
+    ...activeFilters,
+    ...facets
+      .filter((facet) => filters[facet.key]?.length)
+      .map((facet) => ({
+        key: `local-${facet.key}`,
+        label: facet.label,
+        values: (filters[facet.key] ?? [])
+          .map((value) => facet.options?.find((option) => option.value === value)?.label ?? value)
+          .join(", "),
+        clear: () => updateFilter(facet.key, []),
+      })),
+  ];
+  if (query.trim())
+    active.unshift({
+      key: "query",
+      label: t.keyword,
+      values: query,
+      clear: () => {
+        setQuery("");
+        setPage(0);
+        setSelected(new Set());
+      },
+    });
+  const clearAll = () => {
+    setQuery("");
+    setFilters({});
+    setPage(0);
+    setSelected(new Set());
+    for (const filter of activeFilters) filter.clear();
+  };
+  return (
+    <div className="grid min-w-0 gap-2.5 [&_button:not(:disabled)]:cursor-pointer">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-64">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-2 left-2.5 size-4 text-muted-foreground"
+          />
+          <Input
+            className="pl-8"
+            aria-label={placeholder ?? t.search}
+            placeholder={placeholder ?? t.search}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setPage(0);
+              setSelected(new Set());
+            }}
+          />
+        </div>
+        {facets.map((facet) => (
+          <FacetFilter
+            key={facet.key}
+            facet={facet}
+            options={facetOptions(rows, columns, facets, state, facet)}
+            chosen={filters[facet.key] ?? []}
+            onChange={(values) => updateFilter(facet.key, values)}
+          />
+        ))}
+        <div className="sm:ml-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              <Columns3 aria-hidden="true" />
+              {t.columns}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{t.showColumns}</DropdownMenuLabel>
+                {columns
+                  .filter((column) => column.hideable !== false)
+                  .map((column) => (
+                    <DropdownMenuCheckboxItem
+                      key={column.key}
+                      className="cursor-pointer"
+                      checked={!hidden.has(column.key)}
+                      disabled={visible.length === 1 && !hidden.has(column.key)}
+                      closeOnClick={false}
+                      onCheckedChange={(checked) =>
+                        setHidden((prev) => {
+                          const next = new Set(prev);
+                          if (checked) next.delete(column.key);
+                          else next.add(column.key);
+                          return next;
+                        })
+                      }
+                    >
+                      {column.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      {active.length > 0 && (
+        <div role="status" className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted-foreground">{t.filtering}</span>
+          {active.map((filter) => (
+            <span
+              key={filter.key}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-accent py-0.5 pr-1 pl-2.5 text-accent-foreground"
+            >
+              <span className="min-w-0 break-words">
+                <strong>{filter.label}:</strong> {filter.values}
+              </span>
+              <Button variant="ghost" size="icon-xs" aria-label={`${t.clear} ${filter.label}`} onClick={filter.clear}>
+                <X aria-hidden="true" />
+              </Button>
+            </span>
+          ))}
+          <Button variant="ghost" size="xs" onClick={clearAll}>
+            {t.clearAll}
+          </Button>
+          <span className="text-muted-foreground sm:ml-auto">{t.matches(filtered.length, rows.length)}</span>
+        </div>
+      )}
+      {selectable && selectedRows.length > 0 && (
+        <div
+          role="toolbar"
+          aria-label={t.bulk}
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-background"
+        >
+          <span className="text-sm font-medium">{t.selected(selectedRows.length)}</span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {bulk.map((action) => (
+              <Button
+                key={action.key}
+                className="border-background/30 bg-transparent text-background hover:bg-background/10 hover:text-background dark:border-background/30 dark:bg-transparent dark:hover:bg-background/10"
+                variant="outline"
+                size="sm"
+                disabled={action.disabled?.(selectedRows)}
+                onClick={() => action.onClick(selectedRows)}
+              >
+                {action.label}
+              </Button>
+            ))}
+            <Button
+              className="text-background hover:bg-background/10 hover:text-background"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t.clearSelection}
+              onClick={() => setSelected(new Set())}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      )}
+      <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
+        <Table className="min-w-265">
+          {caption && <caption className="sr-only">{caption}</caption>}
+          <TableHeader>
+            <TableRow>
+              {selectable && (
+                <TableHead className="w-10 pl-3">
+                  <Checkbox
+                    aria-label={t.selectPage}
+                    checked={allPage}
+                    indeterminate={!allPage && somePage}
+                    disabled={!result.rows.length}
+                    onCheckedChange={(checked) =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        for (const row of result.rows) {
+                          if (checked) next.add(row.id);
+                          else next.delete(row.id);
+                        }
+                        return next;
+                      })
+                    }
+                  />
+                </TableHead>
+              )}
+              {visible.map((column) => (
+                <TableHead
+                  key={column.key}
+                  className={cn("text-xs text-muted-foreground", column.className)}
+                  aria-sort={
+                    column.sortable
+                      ? sort?.key === column.key
+                        ? sort.direction === "asc"
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                      : undefined
+                  }
+                >
+                  {column.sortable ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2 text-inherit"
+                      onClick={() => {
+                        setSort({
+                          key: column.key,
+                          direction: sort?.key === column.key && sort.direction === "asc" ? "desc" : "asc",
+                        });
+                        setPage(0);
+                      }}
+                    >
+                      {column.label}
+                      {sort?.key === column.key ? (
+                        sort.direction === "asc" ? (
+                          <ArrowUp aria-hidden="true" />
+                        ) : (
+                          <ArrowDown aria-hidden="true" />
+                        )
+                      ) : (
+                        <ArrowUpDown aria-hidden="true" />
+                      )}
+                    </Button>
+                  ) : (
+                    column.label
+                  )}
+                </TableHead>
+              ))}
+              {onRowClick && (
+                <TableHead>
+                  <span className="sr-only">{t.open("")}</span>
+                </TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {result.rows.map((row) => (
+              <TableRow
+                key={row.id}
+                data-state={selected.has(row.id) || row.id === activeId ? "selected" : undefined}
+                className={onRowClick ? "cursor-pointer" : undefined}
+                onClick={
+                  onRowClick
+                    ? (event) => {
+                        if (!(event.target as HTMLElement).closest("a,button,input,[role=checkbox]")) onRowClick(row);
+                      }
+                    : undefined
+                }
+              >
+                {selectable && (
+                  <Td className="w-10">
+                    <Checkbox
+                      aria-label={`${t.select} ${rowLabel(row)}`}
+                      checked={selected.has(row.id)}
+                      onCheckedChange={(checked) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev);
+                          if (checked) next.add(row.id);
+                          else next.delete(row.id);
+                          return next;
+                        })
+                      }
+                    />
+                  </Td>
+                )}
+                {visible.map((column) => (
+                  <Td key={column.key} className={column.className}>
+                    {column.cell ? column.cell(row) : (column.value(row) ?? "—")}
+                  </Td>
+                ))}
+                {onRowClick && (
+                  <Td>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.open(rowLabel(row))}
+                      onClick={() => onRowClick(row)}
+                    >
+                      <ChevronRight aria-hidden="true" />
+                    </Button>
+                  </Td>
+                )}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        {!result.rows.length && (
+          <div className="grid justify-items-center gap-3 px-4 py-10 text-center text-muted-foreground">
+            {active.length ? (
+              <>
+                <p>{t.noMatch}</p>
+                <Button variant="outline" size="sm" onClick={clearAll}>
+                  {t.clearAll}
+                </Button>
+              </>
+            ) : (
+              (emptyContent ?? t.noMatch)
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs">
+          <span className="text-muted-foreground" aria-live="polite">
+            {t.range(result.from, result.to, result.total)}
+          </span>
+          <label htmlFor={sizeId} className="flex items-center gap-2 sm:ml-auto">
+            {t.perPage}
+            <NativeSelect
+              id={sizeId}
+              className="w-18"
+              size="sm"
+              value={size}
+              onChange={(event) => {
+                setSize(Number(event.currentTarget.value));
+                setPage(0);
+              }}
+            >
+              {[...new Set([10, 20, 50, 100, pageSize])]
+                .sort((a, b) => a - b)
+                .map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+            </NativeSelect>
+          </label>
+          <span>{t.page(result.page + 1, result.pages)}</span>
+          <div className="flex gap-1">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={t.previous}
+              disabled={result.page === 0}
+              onClick={() => setPage(result.page - 1)}
+            >
+              <ChevronLeft aria-hidden="true" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={t.next}
+              disabled={result.page === result.pages - 1}
+              onClick={() => setPage(result.page + 1)}
+            >
+              <ChevronRight aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FacetFilter<Row>({
+  facet,
+  options,
+  chosen,
+  onChange,
+}: {
+  facet: Facet<Row>;
+  options: { value: string; label: string; count: number }[];
+  chosen: readonly string[];
+  onChange: (values: string[]) => void;
+}) {
+  const t = useT(text);
+  const [find, setFind] = useState("");
+  const optionId = useId();
+  return (
+    <Popover onOpenChange={() => setFind("")}>
+      <PopoverTrigger render={<Button variant="outline" size="sm" className="max-w-full border-dashed" />}>
+        <PlusCircle aria-hidden="true" />
+        {facet.label}
+        {chosen.length > 0 && (
+          <span className="rounded bg-secondary px-1.5 text-xs text-secondary-foreground">{chosen.length}</span>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="max-w-[calc(100vw-2rem)] gap-1">
+        <PopoverTitle>{facet.label}</PopoverTitle>
+        {options.length > 8 && (
+          <Input
+            aria-label={t.find(facet.label)}
+            placeholder={t.find(facet.label)}
+            value={find}
+            onChange={(event) => setFind(event.currentTarget.value)}
+          />
+        )}
+        <div className="max-h-64 overflow-y-auto p-1">
+          {options
+            .filter((option) => option.label.toLocaleLowerCase().includes(find.toLocaleLowerCase()))
+            .map((option) => (
+              <label
+                key={option.value}
+                htmlFor={`${optionId}-${option.value}`}
+                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
+              >
+                <Checkbox
+                  id={`${optionId}-${option.value}`}
+                  aria-label={option.label}
+                  checked={chosen.includes(option.value)}
+                  onCheckedChange={(checked) =>
+                    onChange(checked ? [...chosen, option.value] : chosen.filter((value) => value !== option.value))
+                  }
+                />
+                <span className="min-w-0 flex-1 break-words">{option.label}</span>
+                <span className="font-mono text-xs text-muted-foreground">{option.count}</span>
+              </label>
+            ))}
+        </div>
+        {chosen.length > 0 && (
+          <Button className="cursor-pointer" variant="ghost" size="sm" onClick={() => onChange([])}>
+            {t.clearOne}
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
