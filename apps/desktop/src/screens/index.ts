@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { ScreenId } from "@/lib/nav.ts";
 import { DocsScreen } from "@/screens/docs-screen.tsx";
 import { HomeScreen } from "@/screens/home-screen.tsx";
+import { KnowledgeScreen } from "@/screens/knowledge-screen.tsx";
 import { ReviewsScreen } from "@/screens/reviews-screen.tsx";
 import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
@@ -14,6 +15,7 @@ import { WriteScreen } from "@/screens/write-screen.tsx";
 export const SCREENS: Record<ScreenId, ComponentType> = {
   docs: DocsScreen,
   home: HomeScreen,
+  knowledge: KnowledgeScreen,
   reviews: ReviewsScreen,
   runs: RunsScreen,
   setup: SetupScreen,
