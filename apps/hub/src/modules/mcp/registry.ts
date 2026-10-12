@@ -41,6 +41,17 @@ export interface McpTool<Input extends z.ZodObject = z.ZodObject, Prepared = und
 export class McpToolRegistry {
   readonly #tools = new Map<string, McpTool<z.ZodObject, unknown>>();
   #memberships: ((tx: Tx, userId: string) => Promise<McpOrgMembership[]>) | undefined;
+  #authorize: ((tx: Tx, userId: string, min: "member" | "admin") => Promise<"member" | "admin" | "owner">) | undefined;
+
+  // Ghép tại app để tenancy vẫn chỉ phụ thuộc registry, không tạo vòng import giữa hai module.
+  provideAuthorization(fn: NonNullable<McpToolRegistry["authorize"]>): void {
+    this.#authorize = fn;
+  }
+
+  authorize(tx: Tx, userId: string, min: "member" | "admin"): Promise<"member" | "admin" | "owner"> {
+    if (!this.#authorize) throw new Error("Chưa cấu hình phân quyền MCP.");
+    return this.#authorize(tx, userId, min);
+  }
 
   register<Input extends z.ZodObject, Prepared = undefined>(tool: McpTool<Input, Prepared>): void {
     if (this.#tools.has(tool.name)) throw new Error(`Tool MCP "${tool.name}" đã được đăng ký.`);

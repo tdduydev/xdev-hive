@@ -4,6 +4,7 @@ import { costsContract } from "./cost.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
 import { leaderContract } from "./leader.ts";
+import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
 import { projectsContract } from "./projects.ts";
 import { runsContract } from "./runs.ts";
@@ -15,6 +16,7 @@ import { tenancyContract } from "./tenancy.ts";
 export * from "./cost.ts";
 export * from "./egress.ts";
 export * from "./knowledge.ts";
+export * from "./mcp-admin.ts";
 export * from "./notify.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
@@ -95,6 +97,7 @@ export const contract = {
   costs: costsContract,
   sandbox: sandboxContract,
   leader: leaderContract,
+  mcpAdmin: mcpAdminContract,
 };
 
 export type Contract = typeof contract;

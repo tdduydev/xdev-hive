@@ -181,10 +181,10 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | MCP-01 | The hub shall expose MCP tools for identity, organization structure, tasks, plans, reviews, memory, documents, skills and leader replies. | Implemented | `hub:mcp.db.test.ts`, `hub:mcp-run.db.test.ts` |
 | MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Partial: OAuth requires HTTPS; on plain HTTP only run tokens with `HIVE_MCP_ALLOW_HTTP=1` | `hub:mcp-http.db.test.ts` |
 | MCP-03 | Tools shall be limited by principal and run kind (read-only kinds get no write tools), run inside the tenant context and be audited. | Implemented | `hub:mcp.db.test.ts`, `hub:modules/mcp/registry.test.ts` |
-| MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Planned | — |
+| MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Implemented | `hub:modules/mcp/mcp-admin.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
 | MCP-05 | Organization administrators shall configure external MCP server rules (allow or deny by URL, name, command, or wildcard) with deny precedence, scoped to organization or project. | Planned | — |
 | MCP-06 | The hub shall distribute allowed external MCP servers and configuration to CLI managed settings on assigned run machines, blocking unauthorized servers. | Planned | — |
-| MCP-07 | Organization members shall create personal MCP tokens with expiration periods, and administrators shall view, extend lifetime, and revoke MCP tokens. | Planned | — |
+| MCP-07 | Organization members shall create personal MCP tokens with expiration periods, and administrators shall view, extend lifetime, and revoke MCP tokens. | Implemented | `hub:modules/mcp/mcp-admin.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
 
 ### 3.11 Notifications, costs and audit (OPS)
 
