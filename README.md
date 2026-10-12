@@ -9,6 +9,32 @@
 
 <p align="center">English · <a href="README.vi.md">Tiếng Việt</a></p>
 
+<p align="center">
+  <a href="https://github.com/tdduydev/xdev-hive/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/tdduydev/xdev-hive?sort=semver"></a>
+  <a href="https://github.com/tdduydev/xdev-hive/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/tdduydev/xdev-hive/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/github/license/tdduydev/xdev-hive"></a>
+  <img alt="Node.js 24" src="https://img.shields.io/badge/node-24-339933?logo=node.js&amp;logoColor=white">
+  <img alt="Go 1.27" src="https://img.shields.io/badge/go-1.27-00ADD8?logo=go&amp;logoColor=white">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-server-6E56CF">
+  <img alt="macOS, Windows, Linux" src="https://img.shields.io/badge/desktop-macOS%20%7C%20Windows%20%7C%20Linux-555">
+  <a href="https://github.com/tdduydev/xdev-hive/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/tdduydev/xdev-hive?style=social"></a>
+</p>
+
+<p align="center">
+  <a href="https://xdev.asia/hive/">Website</a> ·
+  <a href="docs/self-hosting.md">Self-hosting</a> ·
+  <a href="https://github.com/tdduydev/xdev-hive/releases/latest">Download</a> ·
+  <a href="docs/architecture.md">Architecture</a>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#deployment">Deployment</a> ·
+  <a href="#quick-start-local-development">Quick start</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
+
 # xDev Hive
 
 xDev Hive lets several teams in one organization hand work to coding-agent CLIs (Claude Code, Codex, Gemini CLI),
