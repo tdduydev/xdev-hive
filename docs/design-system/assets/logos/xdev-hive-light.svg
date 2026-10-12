@@ -1,13 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 78" fill="none" role="img" aria-label="xDev Hive — Dev Hub">
   <defs>
-    <radialGradient id="x-gradient-ai-light" cx="50%" cy="50%" r="80%">
-      <stop offset="0%" stop-color="#7BD4FF"/>
-      <stop offset="40%" stop-color="#1E90FF"/>
-      <stop offset="90%" stop-color="#004CFF"/>
+    <radialGradient id="x-mark-light" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="344">
+      <stop offset="0" stop-color="#B8F1FF"/>
+      <stop offset="0.55" stop-color="#3FA9FF"/>
+      <stop offset="1" stop-color="#1C58FF"/>
     </radialGradient>
-    <filter id="x-soft-glow-light" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#3399FF" flood-opacity="0.35"/>
-    </filter>
   </defs>
-  <text x="8" y="52" transform="scale(1.1,1)" font-family="Space Grotesk, Inter, sans-serif" font-weight="600" font-size="60" fill="url(#x-gradient-ai-light)" filter="url(#x-soft-glow-light)">X</text>
-<g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 12)"/><path d="M0 0V24" transform="translate(94 12)"/><path d="M0 0L10 24L20 0" transform="translate(105 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 12)"/></g><g stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 43) scale(.31)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(72.68 43) scale(.31)"/><path d="M0 0L10 24L20 0" transform="translate(80.43 43) scale(.31)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(92.21 43) scale(.31)"/><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(99.96 43) scale(.31)"/><path d="M0 0V24H9C22 24 22 12 9 12H0M0 0H9C21 0 21 12 9 12" transform="translate(108.02 43) scale(.31)"/></g></svg>
+  <g transform="translate(0.25 1.5) scale(0.0586)"><path fill="#142745" d="M64 512 288 124H736L960 512 736 900H288Z"/><path fill="url(#x-mark-light)" d="M284 264H380Q398 264 410 280L496 390Q512 410 528 390L614 280Q626 264 644 264H740C770 264 786 298 766 324L626 500Q616 512 626 524L766 700C786 726 770 760 740 760H644Q626 760 614 744L528 634Q512 614 496 634L410 744Q398 760 380 760H284C254 760 238 726 258 700L398 524Q408 512 398 500L258 324C238 298 254 264 284 264Z"/></g>
+
+  <g stroke="#344568" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24M18 0V24M0 12H18" transform="translate(64 12)"/><path d="M0 0V24" transform="translate(94 12)"/><path d="M0 0L10 24L20 0" transform="translate(105 12)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(137 12)"/></g><g stroke="#344568" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M0 0V24H7C22 24 22 0 7 0Z" transform="translate(64 43) scale(.31)"/><path d="M18 0H0V24H18M0 12H15" transform="translate(72.68 43) scale(.31)"/><path d="M0 0L10 24L20 0" transform="translate(80.43 43) scale(.31)"/><path d="M0 0V24M18 0V24M0 12H18" transform="translate(92.21 43) scale(.31)"/><path d="M0 0V15C0 28 19 28 19 15V0" transform="translate(99.96 43) scale(.31)"/><path d="M0 0V24H9C22 24 22 12 9 12H0M0 0H9C21 0 21 12 9 12" transform="translate(108.02 43) scale(.31)"/></g></svg>

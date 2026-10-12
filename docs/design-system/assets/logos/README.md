@@ -1,9 +1,16 @@
-The xDev Hive logo: blue gradient X with HIVE / DEV HUB lettering.
+The xDev Hive logo: the blue gradient X on a navy hexagon (a hive cell), with HIVE / DEV HUB lettering.
 
-- `xdev-hive-light.svg`: for light theme on `canvas` or `surface`. Lettering ink `#344568` (`brand-letter` light).
-- `xdev-hive-dark.svg`: for dark theme on `brand-navy` or dark `surface`. Lettering ink `#E8ECF8` (`brand-letter` dark).
-- `xdev-hive-icon.svg`: the X on a `brand-navy` rounded tile, 1024×1024. App icon, favicon, tray.
+- `xdev-hive-icon.svg`: the mark alone, 1024×1024: X on a `brand-navy` (`#142745`) hexagon. App icon, favicon.
+- `xdev-hive-light.svg`: mark plus lettering for light theme on `canvas` or `surface`. Lettering ink `#344568`
+  (`brand-letter` light).
+- `xdev-hive-dark.svg`: for dark theme on `brand-navy` or dark `surface`. Lettering ink `#E8ECF8` (`brand-letter`
+  dark); the hexagon is lifted to `#22406E` so it still reads on a navy background.
+- `apps/desktop/src-tauri/icons/tray-template.svg`: one-colour version for the tray (hexagon with the X cut out), a
+  macOS template image; the app draws the status dot on top.
 
-The two wordmark files set the X as Space Grotesk 600 text; load Space Grotesk on the page or the X falls back to Inter. The icon draws the X as a path and needs no font.
+Every file draws the X and the hexagon as paths, so no font is needed. `png/` holds both wordmarks rendered at 4×
+and cropped, for places that cannot show SVG (GitHub README). After changing an SVG, regenerate:
 
-`png/` holds both wordmarks rendered with Space Grotesk and cropped, for places that cannot load web fonts (GitHub README).
+- desktop icons: `pnpm --filter @xdev-hive/desktop tauri icon ../../docs/design-system/assets/logos/xdev-hive-icon.svg`;
+- tray PNG: `tauri icon <tray-template.svg> -o <dir> -p 44`, then copy `44x44.png` to `icons/tray-template.png`;
+- `apps/web/public/` keeps copies of the three SVGs (favicon, sidebar, sign-in pages).
