@@ -96,8 +96,17 @@ jobs:
         env:
           # linuxdeploy (AppImage) không đọc được bảng .relr.dyn của binary mới khi strip.
           NO_STRIP: "true"
-        run: pnpm tauri build --config "{\"version\":\"$VERSION\"}"
+          # Khoá ký bản cập nhật (DESK-10): app chỉ nhận bản ký đúng khoá công khai trong tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        # Gói cập nhật (.app.tar.gz, AppImage, setup.exe kèm .sig) chỉ dựng khi có khoá: thiếu khoá thì Tauri báo lỗi.
+        run: |
+          updater=false
+          [ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && updater=true || echo "::notice::Chưa có khoá ký bản cập nhật: không dựng gói cập nhật."
+          pnpm tauri build --config "{\"version\":\"$VERSION\",\"bundle\":{\"createUpdaterArtifacts\":$updater}}"
       - name: Gom file cài, đặt tên cố định
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         # Tên không có số phiên bản để link /releases/latest/download/<tên> luôn trỏ tới bản mới nhất, như worker.
         run: |
           bundle=apps/desktop/src-tauri/target/release/bundle
@@ -115,6 +124,14 @@ jobs:
             windows) take "$bundle/nsis/*-setup.exe" -setup.exe; take "$bundle/msi/*.msi" .msi ;;
             linux) take "$bundle/deb/*.deb" .deb; take "$bundle/appimage/*.AppImage" .AppImage; take "$bundle/rpm/*.rpm" .rpm ;;
           esac
+          # Gói cập nhật và chữ ký: release.yml ghép thành latest.json cho updater (hub trả lại cho app).
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            case "${{ matrix.platform }}" in
+              macos) take "$bundle/macos/*.app.tar.gz" .app.tar.gz; take "$bundle/macos/*.app.tar.gz.sig" .app.tar.gz.sig ;;
+              windows) take "$bundle/nsis/*-setup.exe.sig" -setup.exe.sig ;;
+              linux) take "$bundle/appimage/*.AppImage.sig" .AppImage.sig ;;
+            esac
+          fi
           (cd "$out" && for f in *; do
             if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi
           done > "$name.sha256")
