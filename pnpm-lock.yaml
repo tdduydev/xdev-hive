@@ -208,9 +208,18 @@ importers:
       '@orpc/contract':
         specifier: ^1.15.5
         version: 1.15.5(@opentelemetry/api@1.9.1)
+      '@orpc/tanstack-query':
+        specifier: ^1.15.5
+        version: 1.15.5(@opentelemetry/api@1.9.1)(@orpc/client@1.15.5(@opentelemetry/api@1.9.1))(@tanstack/query-core@5.104.1)
+      '@tanstack/react-query':
+        specifier: ^5.104.1
+        version: 5.104.1(react@19.3.0)
       '@xdev-hive/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@xdev-hive/doc-editor':
+        specifier: workspace:*
+        version: link:../../packages/doc-editor
       '@xdev-hive/ui':
         specifier: workspace:*
         version: link:../../packages/ui
