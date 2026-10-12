@@ -660,7 +660,15 @@ describe("plan mode", () => {
       // Task không treo: giao lại được ngay.
       const again = await api<Run>("POST", "/v1/runs", { taskId: task.id, cli: "claude" });
       expect(again.status).toBe(200);
-      await api("POST", `/v1/runs/${again.data.id}/cancel`, {});
+      // Run plan của lần giao lại đã được đề nghị cho máy duy nhất: phải huỷ xong (bỏ đề nghị) trước kịch bản sau,
+      // không thì máy còn bận và run plan kế tiếp không nhận được job_offer.
+      const cancelled = await api<Run>("POST", `/v1/runs/${again.data.id}/cancel`, {});
+      expect(cancelled.status, JSON.stringify(cancelled.data)).toBe(200);
+      await until(async () =>
+        (await planChildren(again.data.id)).every(
+          (r: { state: string; offer_machine_id: string | null }) => r.state === "cancelled" && !r.offer_machine_id,
+        ),
+      );
     }
   });
 

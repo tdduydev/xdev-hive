@@ -550,6 +550,33 @@ describe("review chéo", () => {
     expect((await runRow(runId)).result.reasons.join(" ")).toContain("huỷ");
   });
 
+  it("huỷ run của task khoá run cha trước run con: không deadlock với giao dịch khoá cha rồi con", async () => {
+    await crossReview({ required: true });
+    const w = await FakeWorker.connect(await seedMachine(`dl-${tag}`));
+    const { taskId, runId } = await queueRun();
+    await w.take(runId);
+    await w.finish(runId, 0, { commitCount: 1, changedFiles: ["a.ts"] });
+    await until(async () => (await reviewRunsOf(runId)).length === 1);
+    await w.close();
+    const [child] = await reviewRunsOf(runId);
+    // Giao dịch khác (vòng kiểm kết quả của run cha) giữ run cha rồi mới khoá run con.
+    const other = await admin.connect();
+    try {
+      await other.query("begin");
+      await other.query("select id from hive.runs where id = $1 for update", [runId]);
+      const cancel = withTenant(pool, { orgId: org.orgId }, (tx) => engine.cancelRunsOfTask(tx, taskId));
+      // Lệnh huỷ đứng chờ ở run cha, chưa giữ run con: giao dịch kia khoá được run con mà không deadlock.
+      await new Promise((r) => setTimeout(r, 300));
+      await other.query("set local lock_timeout = '5s'");
+      await other.query("select id from hive.runs where id = $1 for update", [child.id]);
+      await other.query("commit");
+      (await cancel)();
+    } finally {
+      other.release();
+    }
+    expect((await runRow(child.id)).state).toBe("cancelled");
+  });
+
   it("tắt review chéo → như cũ: không tạo run review, kiểm tra review cần người xem", async () => {
     await crossReview({ enabled: false });
     const w = await FakeWorker.connect(await seedMachine(`off-${tag}`));
