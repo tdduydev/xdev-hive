@@ -1,12 +1,13 @@
 import type { OrgMember, OrgRole, Project, ProjectState, Run, TeamRole } from "@xdev-hive/contracts";
+import type { Dict } from "./i18n.ts";
 import { effectiveTeamRole } from "./roles.ts";
 import { isTerminal, type Tone } from "./run-view.ts";
 
-export const PROJECT_STATE: Record<ProjectState, { label: string; tone: Tone }> = {
-  provisioning: { label: "Đang khởi tạo", tone: "sel" },
-  active: { label: "Hoạt động", tone: "ok" },
-  failed: { label: "Khởi tạo lỗi", tone: "bad" },
-  archived: { label: "Lưu trữ", tone: "neutral" },
+export const PROJECT_STATE: Record<ProjectState, { label: Dict<string>; tone: Tone }> = {
+  provisioning: { label: { vi: "Đang khởi tạo", en: "Setting up" }, tone: "sel" },
+  active: { label: { vi: "Hoạt động", en: "Active" }, tone: "ok" },
+  failed: { label: { vi: "Khởi tạo lỗi", en: "Setup failed" }, tone: "bad" },
+  archived: { label: { vi: "Lưu trữ", en: "Archived" }, tone: "neutral" },
 };
 
 export const SCM_LABEL = { github: "GitHub", gitlab: "GitLab" } as const;
