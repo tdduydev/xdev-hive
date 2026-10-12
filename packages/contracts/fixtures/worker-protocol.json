@@ -110,6 +110,7 @@
       "decision": "approve"
     },
     { "type": "cancel", "v": 1, "id": "h-cancel", "runId": "run-1", "graceSec": 10 },
-    { "type": "drain", "v": 1, "id": "h-drain" }
+    { "type": "drain", "v": 1, "id": "h-drain" },
+    { "type": "update", "v": 1, "id": "h-update", "version": "0.2.0" }
   ]
 }

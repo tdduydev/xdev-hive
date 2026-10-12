@@ -113,13 +113,21 @@ development machine with SSH access to a server:
 HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com deploy/remote.sh user@server
 ```
 
-Secrets are generated on the server and never printed. Then register machines from the web app (Machines → Add machine)
-and install the worker on each one:
+Secrets are generated on the server and never printed. Then create a one-time token in the web app (Machines → Add
+machine) and install the worker on each machine. The script downloads the prebuilt binary, checks the release signature
+and checksum, registers the machine and installs a background service:
 
 ```sh
-hive-worker register --hub https://hive.example.com --token <one-time token>
-hive-worker service install
+# Linux, macOS
+curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/install.sh | sh -s -- --hub https://hive.example.com --token <one-time token>
 ```
+
+```powershell
+# Windows
+& ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub https://hive.example.com -Token <one-time token>
+```
+
+`hive-worker update` upgrades a machine to the latest release.
 
 See [docs/self-hosting.md](docs/self-hosting.md) for configuration, the first administrator account, HTTPS, MCP over
 plain HTTP on trusted networks, backups and restore, background workers and sandboxed runs.

@@ -1,0 +1,59 @@
+# Bản phát hành của hive-worker, chạy bởi .github/workflows/release.yml khi đẩy tag v*.
+# Tên file nén không có số phiên bản để link /releases/latest/download/<file> luôn trỏ tới bản mới nhất; install.sh,
+# install.ps1 và worker/internal/update dựa vào tên này.
+version: 2
+project_name: hive-worker
+
+builds:
+  - id: hive-worker
+    main: ./cmd/hive-worker
+    binary: hive-worker
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/tdduydev/xdev-hive/worker/internal/version.Version={{ .Version }}
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: hive-worker
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Chỉ có binary: install.sh giải nén đúng một file.
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+# Ký checksums.txt bằng ECDSA P-256 (chữ ký DER), khoá bí mật nằm trong secret WORKER_SIGNING_KEY. Khoá công khai
+# nằm trong worker/internal/update/release-signing.pem và hai script cài.
+signs:
+  - id: checksums
+    artifacts: checksum
+    cmd: openssl
+    args: ["dgst", "-sha256", "-sign", "{{ .Env.WORKER_SIGNING_KEY_FILE }}", "-out", "${signature}", "${artifact}"]
+    signature: "${artifact}.sig"
+
+# Tạo bản nháp: workflow kiểm chữ ký và phiên bản xong mới công bố, để /releases/latest không bao giờ trỏ tới bản hỏng.
+release:
+  github:
+    owner: tdduydev
+    name: xdev-hive
+  draft: true
+  replace_existing_draft: true
+  extra_files:
+    - glob: ../scripts/install.sh
+    - glob: ../scripts/install.ps1
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^Merge "

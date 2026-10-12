@@ -213,6 +213,18 @@ export const cancel = z.object({ ...envelope("cancel"), runId, graceSec: z.numbe
 
 export const drain = z.object({ ...envelope("drain") });
 
+/**
+ * Admin bấm cập nhật trên web: worker ngừng nhận job như `drain`, chờ run đang chạy xong rồi tự tải bản phát hành (kiểm
+ * chữ ký và sha256) và khởi động lại. Bỏ `version` là bản mới nhất. Worker đi kèm app desktop bỏ qua, vì app tự cập nhật.
+ */
+export const update = z.object({
+  ...envelope("update"),
+  version: z
+    .string()
+    .regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+    .optional(),
+});
+
 export const workerToHub = z.discriminatedUnion("type", [
   hello,
   heartbeat,
@@ -233,6 +245,7 @@ export const hubToWorker = z.discriminatedUnion("type", [
   approvalResult,
   cancel,
   drain,
+  update,
 ]);
 export type WorkerToHub = z.output<typeof workerToHub>;
 export type HubToWorker = z.output<typeof hubToWorker>;

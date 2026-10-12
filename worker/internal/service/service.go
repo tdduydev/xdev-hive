@@ -184,6 +184,25 @@ func (m Manager) Uninstall(plan Plan) error {
 	}
 }
 
+// Restart khởi động lại dịch vụ đang chạy để nạp binary mới. Dịch vụ chưa cài hoặc đang dừng thì để nguyên và trả
+// false, vì người dùng có thể đang chạy worker bằng tay hoặc qua app desktop.
+func (m Manager) Restart(plan Plan) (bool, error) {
+	if !m.Status(plan, io.Discard) {
+		return false, nil
+	}
+	switch plan.OS {
+	case "linux":
+		return true, m.command("systemctl", "--user", "restart", "hive-worker.service")
+	case "darwin":
+		return true, m.command("launchctl", "kickstart", "-k", "gui/"+strconv.Itoa(os.Getuid())+"/"+ID)
+	case "windows":
+		_ = m.command("schtasks", "/End", "/TN", ID)
+		return true, m.command("schtasks", "/Run", "/TN", ID)
+	default:
+		return false, fmt.Errorf("hệ điều hành %s chưa được hỗ trợ", plan.OS)
+	}
+}
+
 func (m Manager) Status(plan Plan, out io.Writer) bool {
 	var err error
 	switch plan.OS {

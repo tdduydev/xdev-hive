@@ -86,6 +86,9 @@ type jobs struct {
 	offers   map[string]pendingOffer
 	draining bool
 	flushing bool
+	// updating: đang drain để cập nhật (lệnh `update` của hub) chứ không phải để tắt; update là phiên bản cần cài.
+	updating bool
+	update   string
 	done     chan struct{}
 	wg       sync.WaitGroup
 }
@@ -324,6 +327,23 @@ func (j *jobs) drain() {
 	j.draining = true
 	j.mu.Unlock()
 	j.checkIdle()
+}
+
+func (j *jobs) requestUpdate(version string) {
+	j.mu.Lock()
+	j.updating, j.update = true, version
+	j.mu.Unlock()
+	j.drain()
+}
+
+// exitReason là kết quả của Run sau khi drain xong: nil khi hub chỉ bảo thoát, UpdateRequest khi drain để cập nhật.
+func (j *jobs) exitReason() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if !j.updating {
+		return nil
+	}
+	return &UpdateRequest{Version: j.update}
 }
 
 func (j *jobs) expireOffers() {
