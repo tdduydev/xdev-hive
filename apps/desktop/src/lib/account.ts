@@ -1,0 +1,61 @@
+import { useCallback, useEffect, useState } from "react";
+import type { Profile } from "@/lib/nav.ts";
+import { errorText, invoke } from "@/lib/tauri.ts";
+
+/** Kiểu khớp với src-tauri/src/account.rs. Token không bao giờ đi về giao diện. */
+export interface Account {
+  name: string;
+  email: string;
+  orgId: string;
+  orgName: string;
+  orgRole: "owner" | "admin" | "member" | null;
+  teams: { id: string; name: string; role: "admin" | "member" | "viewer" }[];
+}
+
+export interface AccountStatus {
+  hub: string | null;
+  linked: boolean;
+  account: Account | null;
+  error: string | null;
+}
+
+export const accountStatus = () => invoke<AccountStatus>("account_status");
+export const linkAccount = (token: string) => invoke<AccountStatus>("account_link", { token });
+export const unlinkAccount = () => invoke<AccountStatus>("account_unlink");
+
+/**
+ * Hồ sơ menu từ vai trò thật (specs/008-desktop-v2): lead = owner/admin tổ chức hoặc admin một đội; writer = chỉ là
+ * người xem ở mọi đội mình thuộc; còn lại là dev. Chưa liên kết tài khoản thì dev, như trước khi có danh tính.
+ */
+export function profileOf(account: Account | null): Profile {
+  if (!account) return "dev";
+  if (account.orgRole === "owner" || account.orgRole === "admin") return "lead";
+  if (account.teams.some((t) => t.role === "admin")) return "lead";
+  if (account.teams.length > 0 && account.teams.every((t) => t.role === "viewer")) return "writer";
+  return "dev";
+}
+
+export function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+/** Trạng thái tài khoản của app, đọc một lần khi mở và sau mỗi lần liên kết hoặc gỡ. */
+export function useAccount() {
+  const [status, setStatus] = useState<AccountStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const refresh = useCallback(async () => {
+    try {
+      setStatus(await accountStatus());
+      setError(null);
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, []);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  return { status, error, refresh, setStatus };
+}
