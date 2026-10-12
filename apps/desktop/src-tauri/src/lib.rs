@@ -5,6 +5,7 @@ mod cli;
 mod doctor;
 mod hub;
 mod register;
+mod setup_extra;
 mod skills;
 mod tray_icon;
 mod usage;

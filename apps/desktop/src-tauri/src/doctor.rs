@@ -4,6 +4,10 @@
 //! giao diện, để một lỗi chèn script ở cửa sổ cũng không chạy được lệnh tuỳ ý. Lệnh cần quyền quản trị hoặc cần shell
 //! (nvm, &&) chỉ để chép.
 
+use crate::setup_extra::{
+    HubFacts, SETUP_SCRIPT, claude_config_file, claude_mcp_names, codex_home, codex_mcp_names,
+    hub_facts, in_path, mark_setup_ran, mcp_add_argv, setup_ran, setup_tools,
+};
 use serde::Serialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -22,6 +26,7 @@ pub enum Kind {
     Runtime,
     Tool,
     Dependency,
+    Mcp,
 }
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +93,14 @@ impl Spec {
         Spec {
             display: cmd.to_string(),
             argv: None,
+            admin: false,
+        }
+    }
+    /// Lệnh dựng sẵn từng tham số (tên MCP server, URL…): không tách theo khoảng trắng.
+    fn argv(argv: Vec<String>) -> Self {
+        Spec {
+            display: argv.join(" "),
+            argv: Some(argv),
             admin: false,
         }
     }
@@ -344,6 +357,7 @@ fn probe(program: &str, args: &[&str]) -> Option<String> {
     extract_version(&text)
 }
 
+#[derive(Clone, Copy)]
 struct Tool {
     id: &'static str,
     name: &'static str,
@@ -506,13 +520,34 @@ fn evaluate(tool: &Tool, have: Option<String>, need: Option<&(Need, &'static str
     }
 }
 
-fn scan(folder: Option<&Path>) -> Vec<CheckItem> {
+/// Một mục của màn kèm lệnh cài nội bộ: lệnh chạy lấy từ đây, không từ giao diện.
+struct Entry {
+    item: CheckItem,
+    spec: Option<Spec>,
+}
+
+fn entry(item: CheckItem, spec: Option<Spec>) -> Entry {
+    let spec = (item.status != Status::Ok).then_some(spec).flatten();
+    let item = CheckItem {
+        install: spec.as_ref().map(|s| Install {
+            command: s.display.clone(),
+            runnable: s.argv.is_some() && !s.admin,
+            admin: s.admin,
+        }),
+        ..item
+    };
+    Entry { item, spec }
+}
+
+fn scan(folder: Option<&Path>, facts: &HubFacts) -> Vec<Entry> {
     let needs = folder.map(read_project).unwrap_or_default();
+    let setup = folder.and_then(|f| std::fs::read_to_string(f.join(SETUP_SCRIPT)).ok());
+    let setup_needs = setup.as_deref().map(setup_tools).unwrap_or_default();
     let probes: Vec<_> = TOOLS
         .iter()
         .map(|tool| std::thread::spawn(move || probe(tool.program, tool.args)))
         .collect();
-    let mut items: Vec<CheckItem> = TOOLS
+    let mut items: Vec<Entry> = TOOLS
         .iter()
         .zip(probes)
         .map(|(tool, handle)| {
@@ -523,54 +558,207 @@ fn scan(folder: Option<&Path>) -> Vec<CheckItem> {
                 "pnpm" => needs.pnpm.as_ref(),
                 _ => None,
             };
-            evaluate(tool, have, need)
+            let mut item = evaluate(tool, have, need);
+            // setup.sh của dự án cần công cụ này mà file khác không nói gì: bắt buộc, nguồn là setup.sh.
+            if !item.required && setup_needs.iter().any(|t| t == tool.program) {
+                item = evaluate(
+                    &Tool {
+                        always_required: true,
+                        ..*tool
+                    },
+                    item.have,
+                    None,
+                );
+                item.source = SETUP_SCRIPT.into();
+            }
+            let spec = install_spec(
+                tool.id,
+                item.status == Status::Outdated,
+                need.map(|(n, _)| n),
+            );
+            entry(item, spec)
         })
         .collect();
     if let Some(missing) = needs.pnpm_install_missing {
-        items.push(CheckItem {
-            id: "pnpm-install".into(),
-            name: "pnpm install".into(),
+        items.push(entry(
+            CheckItem {
+                id: "pnpm-install".into(),
+                name: "pnpm install".into(),
+                kind: Kind::Dependency,
+                required: true,
+                need: None,
+                have: None,
+                status: if missing { Status::Missing } else { Status::Ok },
+                source: "pnpm-lock.yaml".into(),
+                install: None,
+            },
+            install_spec("pnpm-install", false, None),
+        ));
+    }
+    if let (Some(dir), Some(script)) = (folder, setup.as_deref()) {
+        items.extend(setup_entries(dir, script, &setup_needs));
+    }
+    items.extend(hub_entries(folder, facts));
+    items
+}
+
+/// Mục từ `.hive/setup.sh`: công cụ script cần (ngoài các công cụ quen thuộc ở TOOLS) và chính script.
+fn setup_entries(dir: &Path, script: &str, tools: &[String]) -> Vec<Entry> {
+    let known: Vec<&str> = TOOLS.iter().map(|t| t.program).collect();
+    let run = || {
+        if cfg!(windows) {
+            Spec::copy("sh .hive/setup.sh")
+        } else {
+            Spec::argv(vec!["sh".into(), SETUP_SCRIPT.into()])
+        }
+    };
+    let mut out: Vec<Entry> = tools
+        .iter()
+        .filter(|t| !known.contains(&t.as_str()))
+        .map(|t| {
+            let version = probe(t, &["--version"]);
+            let found = version.is_some() || in_path(t, user_path());
+            entry(
+                CheckItem {
+                    id: format!("setup:{t}"),
+                    name: t.clone(),
+                    kind: Kind::Tool,
+                    required: true,
+                    need: None,
+                    have: version.or_else(|| found.then(|| "có".into())),
+                    status: if found { Status::Ok } else { Status::Missing },
+                    source: SETUP_SCRIPT.into(),
+                    install: None,
+                },
+                // Cài từng công cụ là việc của chính setup.sh; chép lệnh chạy script.
+                Some(Spec::copy("sh .hive/setup.sh")),
+            )
+        })
+        .collect();
+    out.push(entry(
+        CheckItem {
+            id: "setup-sh".into(),
+            name: SETUP_SCRIPT.into(),
             kind: Kind::Dependency,
             required: true,
             need: None,
             have: None,
-            status: if missing { Status::Missing } else { Status::Ok },
-            source: "pnpm-lock.yaml".into(),
-            install: missing
-                .then(|| install_spec("pnpm-install", false, None))
-                .flatten()
-                .map(public),
-        });
+            status: if setup_ran(dir, script) {
+                Status::Ok
+            } else {
+                Status::Missing
+            },
+            source: SETUP_SCRIPT.into(),
+            install: None,
+        },
+        Some(run()),
+    ));
+    out
+}
+
+/// Mục từ hub: token MCP cá nhân đã liên kết, và MCP server tổ chức cho phép đã khai cho CLI nào trên máy.
+fn hub_entries(folder: Option<&Path>, facts: &HubFacts) -> Vec<Entry> {
+    let mut out = Vec::new();
+    if let Some(linked) = facts.linked {
+        out.push(entry(
+            CheckItem {
+                id: "hive-token".into(),
+                name: "Token MCP xDev Hive".into(),
+                kind: Kind::Mcp,
+                required: true,
+                need: None,
+                have: linked.then(|| "đã liên kết".into()),
+                status: if linked { Status::Ok } else { Status::Missing },
+                source: "hub".into(),
+                install: None,
+            },
+            None,
+        ));
     }
-    items
+    if facts.servers.is_empty() {
+        return out;
+    }
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let claude_on = probe("claude", &["--version"]).is_some();
+    let codex_on = probe("codex", &["--version"]).is_some();
+    let claude = claude_mcp_names(&claude_config_file(&home), folder);
+    let codex = codex_mcp_names(&codex_home(&home));
+    for s in &facts.servers {
+        let mut have = Vec::new();
+        if claude.contains(&s.name) {
+            have.push("Claude Code");
+        }
+        if codex.contains(&s.name) {
+            have.push("Codex");
+        }
+        // Cài vào CLI đang có trên máy, ưu tiên Claude Code.
+        let cli = if claude_on || !codex_on {
+            "claude"
+        } else {
+            "codex"
+        };
+        out.push(entry(
+            CheckItem {
+                id: format!("mcp:{}", s.name),
+                name: format!("MCP {}", s.name),
+                kind: Kind::Mcp,
+                required: false,
+                need: Some(s.transport.clone()),
+                have: (!have.is_empty()).then(|| have.join(", ")),
+                status: if have.is_empty() {
+                    Status::Optional
+                } else {
+                    Status::Ok
+                },
+                source: "hub".into(),
+                install: None,
+            },
+            mcp_add_argv(cli, s).map(Spec::argv),
+        ));
+    }
+    out
 }
 
 #[tauri::command]
-pub async fn scan_environment(folder: Option<String>) -> Result<Vec<CheckItem>, String> {
+pub async fn scan_environment(
+    app: tauri::AppHandle,
+    folder: Option<String>,
+    project: Option<String>,
+) -> Result<Vec<CheckItem>, String> {
     let dir = project_dir(folder.as_deref())?;
-    tauri::async_runtime::spawn_blocking(move || scan(dir.as_deref()))
-        .await
-        .map_err(|e| e.to_string())
+    let facts = hub_facts(&app, project.as_deref()).await;
+    tauri::async_runtime::spawn_blocking(move || {
+        scan(dir.as_deref(), &facts)
+            .into_iter()
+            .map(|e| e.item)
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Chạy lệnh cài của một mục sau khi người dùng xác nhận. Quét lại để lấy đúng lệnh hiện tại của mục đó.
 #[tauri::command]
-pub async fn run_install(id: String, folder: Option<String>) -> Result<InstallResult, String> {
+pub async fn run_install(
+    app: tauri::AppHandle,
+    id: String,
+    folder: Option<String>,
+    project: Option<String>,
+) -> Result<InstallResult, String> {
     let dir = project_dir(folder.as_deref())?;
+    let facts = hub_facts(&app, project.as_deref()).await;
     tauri::async_runtime::spawn_blocking(move || {
-        let item = scan(dir.as_deref())
+        let Entry { item, spec } = scan(dir.as_deref(), &facts)
             .into_iter()
-            .find(|i| i.id == id)
+            .find(|e| e.item.id == id)
             .ok_or("Không có mục này.")?;
-        let need = match (item.id.as_str(), dir.as_deref().map(read_project)) {
-            ("node", Some(n)) => n.node.map(|(n, _)| n),
-            _ => None,
-        };
-        let spec = install_spec(&item.id, item.status == Status::Outdated, need.as_ref())
-            .ok_or("Mục này không có lệnh cài.")?;
         if item.status == Status::Ok {
             return Err("Mục này đã đủ, không cần cài.".to_string());
         }
+        let spec = spec.ok_or("Mục này không có lệnh cài.")?;
         let argv =
             match (&spec.argv, spec.admin) {
                 (Some(argv), false) => argv.clone(),
@@ -587,6 +775,13 @@ pub async fn run_install(id: String, folder: Option<String>) -> Result<InstallRe
         }
         let out = run_with_timeout(cmd, INSTALL_TIMEOUT)
             .ok_or("Không chạy được lệnh hoặc lệnh chạy quá 15 phút.")?;
+        if item.id == "setup-sh" && out.code == Some(0) {
+            if let Some(d) = dir.as_deref() {
+                if let Ok(script) = std::fs::read_to_string(d.join(SETUP_SCRIPT)) {
+                    mark_setup_ran(d, &script);
+                }
+            }
+        }
         let mut output = String::from_utf8_lossy(&out.stdout).into_owned();
         output.push_str(&String::from_utf8_lossy(&out.stderr));
         let tail = output
@@ -745,5 +940,84 @@ mod tests {
             assert!(run_with_timeout(cmd, Duration::from_millis(200)).is_none());
             assert!(started.elapsed() < Duration::from_secs(2));
         }
+    }
+
+    #[test]
+    fn setup_script_tools_and_run_state() {
+        let dir = std::env::temp_dir().join(format!("hive-doctor-setup-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".hive")).unwrap();
+        let script =
+            "#!/bin/sh\ncommand -v sh >/dev/null\ncommand -v hive-khong-co-cong-cu-nay || exit 1\n";
+        std::fs::write(dir.join(SETUP_SCRIPT), script).unwrap();
+        let entries = setup_entries(&dir, script, &setup_tools(script));
+        let by = |id: &str| {
+            entries
+                .iter()
+                .find(|e| e.item.id == id)
+                .map(|e| &e.item)
+                .unwrap()
+        };
+        assert_eq!(by("setup:sh").status, Status::Ok);
+        let missing = by("setup:hive-khong-co-cong-cu-nay");
+        assert_eq!(
+            (missing.status, missing.source.as_str()),
+            (Status::Missing, SETUP_SCRIPT)
+        );
+        assert_eq!(missing.install.as_ref().map(|i| i.runnable), Some(false));
+        assert_eq!(by("setup-sh").status, Status::Missing);
+        mark_setup_ran(&dir, script);
+        let again = setup_entries(&dir, script, &setup_tools(script));
+        assert_eq!(
+            again
+                .iter()
+                .find(|e| e.item.id == "setup-sh")
+                .unwrap()
+                .item
+                .status,
+            Status::Ok
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn hub_entries_show_token_and_allowed_mcp() {
+        let none = hub_entries(None, &HubFacts::default());
+        assert!(
+            none.is_empty(),
+            "chưa đăng ký với hub thì không có mục nào của hub"
+        );
+        let facts = HubFacts {
+            linked: Some(false),
+            servers: vec![crate::setup_extra::McpNeed {
+                name: "hive-test-chua-cai".into(),
+                transport: "http".into(),
+                command: None,
+                args: vec![],
+                url: Some("https://mcp.example/mcp".into()),
+            }],
+        };
+        let entries = hub_entries(None, &facts);
+        let token = &entries[0].item;
+        assert_eq!(
+            (token.id.as_str(), token.status),
+            ("hive-token", Status::Missing)
+        );
+        let mcp = &entries[1];
+        assert_eq!(
+            (mcp.item.kind, mcp.item.status, mcp.item.required),
+            (Kind::Mcp, Status::Optional, false)
+        );
+        let cmd = mcp.item.install.as_ref().unwrap();
+        assert!(
+            cmd.runnable
+                && cmd
+                    .command
+                    .ends_with("--transport http hive-test-chua-cai https://mcp.example/mcp")
+                || cmd
+                    .command
+                    .ends_with("hive-test-chua-cai --url https://mcp.example/mcp"),
+            "{}",
+            cmd.command
+        );
     }
 }
