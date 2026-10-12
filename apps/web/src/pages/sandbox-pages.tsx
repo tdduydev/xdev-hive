@@ -9,17 +9,138 @@ import { Card } from "../components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "../components/ui/field.tsx";
 import { Input } from "../components/ui/input.tsx";
 import { LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
+import { Switch } from "../components/ui/switch.tsx";
 import { apiErrorMessage } from "../lib/api-errors.ts";
+import { type Dict, useT } from "../lib/i18n.ts";
 import { teamRoleLookup } from "../lib/projects.ts";
 import { isOrgAdmin } from "../lib/roles.ts";
 import { useMe } from "../shell/me-context.ts";
 import { useOrg } from "../shell/org-context.ts";
 import { PageBody, PageHeader } from "../shell/page-header.tsx";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+const orgText: Dict<{
+  title: string;
+  lead: string;
+  readOnlyBanner: string;
+  policyTitle: string;
+  suggestedLabel: string;
+  suggestedHint: string;
+  lockLabel: string;
+  lockHint: string;
+  rulesTitle: string;
+  rulesHint: string;
+}> = {
+  vi: {
+    title: "Sandbox",
+    lead: "Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.",
+    readOnlyBanner: "Bạn đang xem ở chế độ chỉ đọc. Chỉ quản trị tổ chức sửa được chính sách sandbox.",
+    policyTitle: "Chính sách của tổ chức",
+    suggestedLabel: "Dùng danh sách đề xuất",
+    suggestedHint: "Cho run ra các địa chỉ hay cần:",
+    lockLabel: "Khoá allowlist",
+    lockHint: "Dự án không thêm được mục riêng; chỉ dùng mục của tổ chức.",
+    rulesTitle: "Mục mạng của tổ chức",
+    rulesHint: "Mọi dự án đều dùng các mục này.",
+  },
+  en: {
+    title: "Sandbox",
+    lead: "Applies to sandbox runs of every project in the organization. Everything is blocked by default.",
+    readOnlyBanner: "You are viewing in read-only mode. Only organization admins can edit sandbox policies.",
+    policyTitle: "Organization policy",
+    suggestedLabel: "Use the suggested list",
+    suggestedHint: "Let runs reach commonly needed hosts:",
+    lockLabel: "Lock the allowlist",
+    lockHint: "Projects cannot add their own rules; only organization rules apply.",
+    rulesTitle: "Organization network rules",
+    rulesHint: "Every project uses these rules.",
+  },
+};
+
+const projectText: Dict<{
+  title: string;
+  projectsCrumb: string;
+  loading: string;
+  notFound: (k: string) => string;
+  offBanner: string;
+  openSettings: string;
+  effectiveTitle: string;
+  effectiveHint: string;
+  noRules: string;
+  effectiveAria: string;
+  projectRulesTitle: string;
+  projectRulesHint: string;
+  lockedNote: string;
+  imageTitle: string;
+  imageHint: string;
+  baseImageLabel: string;
+  baseImageHint: string;
+  hashLabel: string;
+  hashHint: string;
+  saveImage: string;
+  savingImage: string;
+  savedImage: string;
+}> = {
+  vi: {
+    title: "Sandbox",
+    projectsCrumb: "Dự án",
+    loading: "Đang tải…",
+    notFound: (k) => `Không tìm thấy dự án ${k}, hoặc bạn không ở trong đội sở hữu dự án.`,
+    offBanner: "Dự án chưa bật sandbox nên run vẫn chạy trên máy dev. Bật ở cấu hình dự án.",
+    openSettings: "Mở cấu hình",
+    effectiveTitle: "Allowlist hiệu lực",
+    effectiveHint: "Gộp từ danh sách đề xuất (nếu tổ chức bật), mục của tổ chức và mục của dự án.",
+    noRules: "Run sandbox của dự án không ra được địa chỉ nào.",
+    effectiveAria: "Allowlist hiệu lực",
+    projectRulesTitle: "Mục mạng của dự án",
+    projectRulesHint: "Chỉ áp dụng cho run sandbox của dự án này.",
+    lockedNote: "Tổ chức đã khoá allowlist: dự án không thêm được mục riêng.",
+    imageTitle: "Image môi trường",
+    imageHint: "Runner host dựng image một lần và cache theo hash của script setup.",
+    baseImageLabel: "Image gốc",
+    baseImageHint: "Image có sẵn CLI agent cần dùng; runner host dựng và cache theo hash script setup.",
+    hashLabel: "SHA-256 của .hive/setup.sh",
+    hashHint: "Lấy bằng sha256sum .hive/setup.sh trong repo của dự án.",
+    saveImage: "Lưu image",
+    savingImage: "Đang lưu…",
+    savedImage: "Đã lưu image môi trường.",
+  },
+  en: {
+    title: "Sandbox",
+    projectsCrumb: "Projects",
+    loading: "Loading…",
+    notFound: (k) => `Project ${k} not found, or you are not in the owning team.`,
+    offBanner:
+      "Sandbox is off for this project, so runs still execute on dev machines. Turn it on in project settings.",
+    openSettings: "Open settings",
+    effectiveTitle: "Effective allowlist",
+    effectiveHint: "Merged from the suggested list (if enabled), organization rules and project rules.",
+    noRules: "Project sandbox runs cannot reach any external address.",
+    effectiveAria: "Effective allowlist",
+    projectRulesTitle: "Project network rules",
+    projectRulesHint: "Applies only to sandbox runs in this project.",
+    lockedNote: "Organization has locked the allowlist: projects cannot add their own rules.",
+    imageTitle: "Environment image",
+    imageHint: "The runner host builds the image once and caches it by the setup script hash.",
+    baseImageLabel: "Base image",
+    baseImageHint: "An image that already has the agent CLIs it needs.",
+    hashLabel: "SHA-256 of .hive/setup.sh",
+    hashHint: "Get it with sha256sum .hive/setup.sh in the project repo.",
+    saveImage: "Save image",
+    savingImage: "Saving…",
+    savedImage: "Environment image saved.",
+  },
+};
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  const id = useId();
   return (
-    <Card className="grid gap-3 p-5">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
+    <Card className="grid gap-3 p-5" role="group" aria-labelledby={id}>
+      <div className="grid gap-0.5">
+        <h2 id={id} className="text-base font-semibold text-foreground">
+          {title}
+        </h2>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
       {children}
     </Card>
   );
@@ -28,14 +149,13 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /** Chính sách sandbox của tổ chức: khoá allowlist, danh sách đề xuất và mục mạng dùng chung cho mọi dự án. */
 export function SandboxAdminPage() {
   const { api, org } = useOrg();
+  const t = useT(orgText);
   const queryClient = useQueryClient();
   const settings = useQuery(api.sandbox.getOrgSettings.queryOptions({ input: {} }));
   const admin = isOrgAdmin(org.role);
-  // Bản nháp cập nhật ngay khi bấm: ô chọn điều khiển bằng dữ liệu hub sẽ bật ngược lại tới khi hub trả lời.
   const [draft, setDraft] = useState<{ locked: boolean; useSuggestedDefaults: boolean } | null>(null);
   const save = useMutation({
     mutationFn: (next: { locked: boolean; useSuggestedDefaults: boolean }) => api.sandbox.updateOrgSettings.call(next),
-    // Ghi kết quả hub trả vào cache để ô chọn giữ trạng thái mới; allowlist hiệu lực của dự án thì đổi theo.
     onError: () => setDraft(null),
     onSuccess: async (next) => {
       queryClient.setQueryData(api.sandbox.getOrgSettings.queryKey({ input: {} }), next);
@@ -54,35 +174,43 @@ export function SandboxAdminPage() {
       save.mutate(next);
     };
     policy = (
-      <div className="grid gap-3">
-        <label className="flex items-start gap-2 text-xs">
-          <input
-            type="checkbox"
+      <div className="grid gap-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid gap-1">
+            <span className="text-sm font-medium text-foreground">{t.suggestedLabel}</span>
+            <span className="text-xs text-muted-foreground">
+              {t.suggestedHint}{" "}
+              <span className="inline-flex flex-wrap gap-1 pt-1">
+                {SUGGESTED_EGRESS_RULES.map((rule) => (
+                  <code key={rule} className="rounded bg-muted px-1.5 py-0.5 font-mono text-2xs text-foreground">
+                    {rule}
+                  </code>
+                ))}
+              </span>
+            </span>
+          </div>
+          <Switch
             checked={s.useSuggestedDefaults}
             disabled={!admin || save.isPending}
-            onChange={(e) => change({ ...s, useSuggestedDefaults: e.target.checked })}
+            onCheckedChange={(checked) => change({ ...s, useSuggestedDefaults: checked })}
+            aria-label={t.suggestedLabel}
           />
-          <span>
-            <b className="font-medium text-foreground">Dùng danh sách đề xuất</b>
-            <span className="block text-muted-foreground">
-              Cho run ra các địa chỉ hay cần: <code className="font-mono">{SUGGESTED_EGRESS_RULES.join(", ")}</code>
-            </span>
-          </span>
-        </label>
-        <label className="flex items-start gap-2 text-xs">
-          <input
-            type="checkbox"
+        </div>
+
+        <div className="h-px bg-border" />
+
+        <div className="flex items-start justify-between gap-4">
+          <div className="grid gap-0.5">
+            <span className="text-sm font-medium text-foreground">{t.lockLabel}</span>
+            <span className="text-xs text-muted-foreground">{t.lockHint}</span>
+          </div>
+          <Switch
             checked={s.locked}
             disabled={!admin || save.isPending}
-            onChange={(e) => change({ ...s, locked: e.target.checked })}
+            onCheckedChange={(checked) => change({ ...s, locked: checked })}
+            aria-label={t.lockLabel}
           />
-          <span>
-            <b className="font-medium text-foreground">Khoá allowlist</b>
-            <span className="block text-muted-foreground">
-              Dự án không thêm được mục riêng; chỉ dùng mục của tổ chức.
-            </span>
-          </span>
-        </label>
+        </div>
         {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
       </div>
     );
@@ -90,18 +218,16 @@ export function SandboxAdminPage() {
 
   return (
     <>
-      <PageHeader title="Sandbox" />
+      <PageHeader title={t.title} />
       <PageBody>
+        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
         {!admin && (
           <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
-            Bạn đang xem ở chế độ chỉ đọc. Chỉ quản trị tổ chức sửa được chính sách sandbox.
+            {t.readOnlyBanner}
           </p>
         )}
-        <Section title="Chính sách của tổ chức">{policy}</Section>
-        <Section title="Mục mạng của tổ chức">
-          <p className="text-xs text-muted-foreground">
-            Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.
-          </p>
+        <Section title={t.policyTitle}>{policy}</Section>
+        <Section title={t.rulesTitle} hint={t.rulesHint}>
           <AllowlistEditor canEdit={admin} />
         </Section>
       </PageBody>
@@ -113,6 +239,7 @@ export function SandboxAdminPage() {
 export function ProjectSandboxPage() {
   const { key } = useParams({ from: "/session/app/in-org/projects/$key/sandbox" });
   const { api, org } = useOrg();
+  const t = useT(projectText);
   const me = useMe();
   const projects = useQuery(api.projects.list.queryOptions({ input: {} }));
   const members = useQuery(api.orgMembers.list.queryOptions({ input: {} }));
@@ -120,7 +247,7 @@ export function ProjectSandboxPage() {
   const crumb = (
     <>
       <Link to="/projects" className="text-primary hover:text-primary/90">
-        Dự án
+        {t.projectsCrumb}
       </Link>
       {" / "}
       <span className="font-mono">{key}</span>
@@ -131,17 +258,14 @@ export function ProjectSandboxPage() {
   let body: ReactNode;
   if (projects.isPending || members.isPending) body = <LoadingState />;
   else if (projects.isError) body = <LoadFailure error={projects.error} retry={projects.refetch} />;
-  else if (!project)
-    body = (
-      <Alert variant="destructive">{`Không tìm thấy dự án ${key}, hoặc bạn không ở trong đội sở hữu dự án.`}</Alert>
-    );
+  else if (!project) body = <Alert variant="destructive">{t.notFound(key)}</Alert>;
   else {
     const canEdit = teamRoleLookup(org.role, members.data, me.id)(project.teamId) === "admin";
     body = <ProjectSandbox project={project} canEdit={canEdit} />;
   }
   return (
     <>
-      <PageHeader crumb={crumb} title="Sandbox" />
+      <PageHeader crumb={crumb} title={t.title} />
       <PageBody>{body}</PageBody>
     </>
   );
@@ -149,31 +273,34 @@ export function ProjectSandboxPage() {
 
 function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boolean }) {
   const { api } = useOrg();
+  const t = useT(projectText);
   const effective = useQuery(api.sandbox.effectiveAllowlist.queryOptions({ input: { projectId: project.id } }));
   return (
     <>
       {!project.settings.features.sandbox && (
-        <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
-          Dự án chưa bật sandbox nên run vẫn chạy trên máy dev. Bật ở{" "}
+        <div
+          role="note"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-warning-soft px-3.5 py-2.5 text-xs text-warning"
+        >
+          <span>{t.offBanner}</span>
           <Link
             to="/projects/$key/settings"
             params={{ key: project.key }}
-            className="text-primary hover:text-primary/90"
+            className="rounded-md border border-warning/40 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
-            cấu hình dự án
+            {t.openSettings}
           </Link>
-          .
-        </p>
+        </div>
       )}
-      <Section title="Allowlist hiệu lực">
+      <Section title={t.effectiveTitle} hint={t.effectiveHint}>
         {effective.isPending ? (
           <LoadingState />
         ) : effective.isError ? (
           <LoadFailure error={effective.error} retry={effective.refetch} />
         ) : effective.data.rules.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Run sandbox của dự án không ra được địa chỉ nào.</p>
+          <p className="text-xs text-muted-foreground">{t.noRules}</p>
         ) : (
-          <ul aria-label="Allowlist hiệu lực" className="flex flex-wrap gap-1.5">
+          <ul aria-label={t.effectiveAria} className="flex flex-wrap gap-1.5">
             {effective.data.rules.map((rule) => (
               <li key={rule}>
                 <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-foreground">{rule}</code>
@@ -181,20 +308,15 @@ function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boole
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground">
-          Gộp từ danh sách đề xuất (nếu tổ chức bật), mục của tổ chức và mục của dự án.
-        </p>
       </Section>
-      <Section title="Mục mạng của dự án">
+      <Section title={t.projectRulesTitle} hint={t.projectRulesHint}>
         <AllowlistEditor
           projectId={project.id}
           canEdit={canEdit}
-          {...(effective.data?.locked
-            ? { lockedNote: "Tổ chức đã khoá allowlist: dự án không thêm được mục riêng." }
-            : {})}
+          {...(effective.data?.locked ? { lockedNote: t.lockedNote } : {})}
         />
       </Section>
-      <Section title="Image môi trường">
+      <Section title={t.imageTitle} hint={t.imageHint}>
         <EnvImageForm project={project} canEdit={canEdit} />
       </Section>
     </>
@@ -203,6 +325,7 @@ function ProjectSandbox({ project, canEdit }: { project: Project; canEdit: boole
 
 function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean }) {
   const { api } = useOrg();
+  const t = useT(projectText);
   const queryClient = useQueryClient();
   const ids = { image: useId(), hash: useId() };
   const image = useQuery(api.sandbox.getImage.queryOptions({ input: { projectId: project.id } }));
@@ -246,48 +369,42 @@ function EnvImageForm({ project, canEdit }: { project: Project; canEdit: boolean
   return (
     <form noValidate onSubmit={onSubmit} className="grid gap-3">
       <Field invalid={errors.baseImage !== undefined}>
-        <FieldLabel htmlFor={ids.image}>Image gốc</FieldLabel>
+        <FieldLabel htmlFor={ids.image}>{t.baseImageLabel}</FieldLabel>
         <Input
           id={ids.image}
           name="baseImage"
           defaultValue={image.data?.baseImage ?? ""}
           placeholder="node:24-bookworm-slim"
-          className="font-mono"
+          className="font-mono text-xs"
           disabled={!canEdit}
         />
-        {errors.baseImage ? (
-          <FieldError>{errors.baseImage}</FieldError>
-        ) : (
-          <FieldHint>Image có sẵn CLI agent cần dùng; runner host dựng và cache theo hash script setup.</FieldHint>
-        )}
+        {errors.baseImage ? <FieldError>{errors.baseImage}</FieldError> : <FieldHint>{t.baseImageHint}</FieldHint>}
       </Field>
       <Field invalid={errors.setupScriptHash !== undefined}>
-        <FieldLabel htmlFor={ids.hash}>SHA-256 của .hive/setup.sh</FieldLabel>
+        <FieldLabel htmlFor={ids.hash}>{t.hashLabel}</FieldLabel>
         <Input
           id={ids.hash}
           name="setupScriptHash"
           defaultValue={image.data?.setupScriptHash ?? ""}
-          className="font-mono"
+          className="font-mono text-xs"
           disabled={!canEdit}
         />
         {errors.setupScriptHash ? (
           <FieldError>{errors.setupScriptHash}</FieldError>
         ) : (
-          <FieldHint>
-            Lấy bằng <code className="font-mono">sha256sum .hive/setup.sh</code> trong repo của dự án.
-          </FieldHint>
+          <FieldHint>{t.hashHint}</FieldHint>
         )}
       </Field>
       {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
       {done && (
         <p role="status" className="text-xs text-success">
-          Đã lưu image môi trường.
+          {t.savedImage}
         </p>
       )}
       {canEdit && (
         <div className="flex justify-end">
           <Button type="submit" variant="default" disabled={save.isPending}>
-            {save.isPending ? "Đang lưu…" : "Lưu image"}
+            {save.isPending ? t.savingImage : t.saveImage}
           </Button>
         </div>
       )}
