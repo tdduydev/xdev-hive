@@ -30,6 +30,8 @@ Bản viết lại của xDev Hive. Đọc [docs/architecture.md](docs/architect
 - Module của hub chỉ import module khác qua `index.ts`. `pnpm deps` chặn import vượt ranh giới.
 - Mọi truy vấn dữ liệu của tổ chức đi qua `withTenant()` bằng role `hive_app`. Bảng mới phải bật và ép RLS; test `rls.db.test.ts` sẽ hỏng nếu quên.
 - Import file TypeScript ghi rõ đuôi `.ts`. Hub chạy trực tiếp bằng Node, không qua bước build.
+- Web và desktop import bằng alias, không viết `../`: `@/…` là `src`, `@design/…` (desktop) là `docs/design-system`.
+  Hub giữ import tương đối vì Node chạy thẳng file `.ts`.
 - Comment giải thích vì sao, không giải thích cái gì.
 - Chữ trên giao diện và thông báo lỗi viết tiếng Việt.
 - Không commit secret, token, mật khẩu.

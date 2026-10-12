@@ -1,13 +1,13 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { LoadFailure, LoadingState } from "../components/ui/query-state.tsx";
-import { type Dict, useT } from "../lib/i18n.ts";
-import { boardRows } from "../lib/task-board.ts";
-import { useMe } from "../shell/me-context.ts";
-import { type CurrentOrg, useOrgs } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
+import { type Dict, useT } from "@/lib/i18n.ts";
+import { boardRows } from "@/lib/task-board.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { type CurrentOrg, useOrgs } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   home: string;

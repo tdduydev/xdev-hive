@@ -1,16 +1,16 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Machine, newerVersion, type WorkerRelease } from "@xdev-hive/contracts";
 import { useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { NativeSelect } from "../components/ui/native-select.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { Table, Td, Th } from "../components/ui/table.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { Table, Td, Th } from "@/components/ui/table.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 function Loading() {
   return (

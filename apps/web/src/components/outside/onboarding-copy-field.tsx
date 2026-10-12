@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { type Dict, useT } from "../../lib/i18n.ts";
-import { Button } from "../ui/button.tsx";
-import { Input } from "../ui/input.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ copied: string; copy: string; failure: string }> = {
   vi: {

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ScopeView } from "@xdev-hive/contracts";
-import { useMe } from "../shell/me-context.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { isOrgAdmin } from "./roles.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { useMe } from "@/shell/me-context.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 export function useKnowledgeAccess() {
   const { api, org } = useOrg();

@@ -27,7 +27,7 @@ import {
   UsersIcon,
   WorkflowIcon,
 } from "lucide-react";
-import type { Dict } from "./i18n.ts";
+import type { Dict } from "@/lib/i18n.ts";
 
 type To = NonNullable<LinkProps["to"]>;
 /* Màn chưa có trong routeTree khi khai báo lần đầu (vd. do task khác thêm) ép kiểu ở đây. */

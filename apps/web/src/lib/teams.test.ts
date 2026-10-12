@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextTeamColor, TEAM_COLORS, teamColor, teamInitials } from "./teams.ts";
+import { nextTeamColor, TEAM_COLORS, teamColor, teamInitials } from "@/lib/teams.ts";
 
 describe("màu đội", () => {
   it("đội mới xoay vòng theo số đội đã có", () => {

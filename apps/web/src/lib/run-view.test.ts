@@ -1,7 +1,7 @@
 import type { RunEventView, RunState } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { budgetPercent, canCancel, canSteer, checkRows, describeEvent, prLabel, runPhases } from "./run-view.ts";
-import { makeRun } from "./test-fixtures.ts";
+import { budgetPercent, canCancel, canSteer, checkRows, describeEvent, prLabel, runPhases } from "@/lib/run-view.ts";
+import { makeRun } from "@/lib/test-fixtures.ts";
 
 const now = Date.parse("2026-10-11T11:10:00.000Z");
 let nextId = 1;

@@ -1,17 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Proposal, ProposalStatus } from "@xdev-hive/contracts";
 import { useId, useState } from "react";
-import { type Column, DataTable } from "../../components/data-table/data-table.tsx";
-import { Alert } from "../../components/ui/alert.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { NativeSelect } from "../../components/ui/native-select.tsx";
-import { Textarea } from "../../components/ui/textarea.tsx";
-import { apiErrorMessage } from "../../lib/api-errors.ts";
-import { useT } from "../../lib/i18n.ts";
-import { contentDiff, useKnowledgeAccess } from "../../lib/knowledge.ts";
-import { useOrg } from "../../shell/org-context.ts";
-import { authorLabel, DataPages, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "./common.tsx";
-import { knowledgeText } from "./text.ts";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { useT } from "@/lib/i18n.ts";
+import { contentDiff, useKnowledgeAccess } from "@/lib/knowledge.ts";
+import {
+  authorLabel,
+  DataPages,
+  DetailCard,
+  KnowledgeLayout,
+  QueryState,
+  ScopeBadge,
+} from "@/pages/knowledge/common.tsx";
+import { knowledgeText } from "@/pages/knowledge/text.ts";
+import { useOrg } from "@/shell/org-context.ts";
 
 const text = knowledgeText;
 const statuses: ProposalStatus[] = ["pending", "approved", "rejected"];

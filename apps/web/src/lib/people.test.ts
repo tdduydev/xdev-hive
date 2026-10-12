@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emailDomain, initials, matchesPerson } from "./people.ts";
+import { emailDomain, initials, matchesPerson } from "@/lib/people.ts";
 
 describe("initials", () => {
   it.each([

@@ -1,4 +1,4 @@
-import { cx } from "../../lib/cx.ts";
+import { cx } from "@/lib/cx.ts";
 
 export type StepStatus = "done" | "current" | "stopped" | "next";
 

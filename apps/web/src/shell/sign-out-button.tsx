@@ -1,8 +1,8 @@
 import { useMutation } from "@tanstack/react-query";
-import { Icon } from "../components/icons.tsx";
-import { Button } from "../components/ui/button.tsx";
-import { authClient } from "../lib/auth-client.ts";
-import { LOGIN_PATH } from "../lib/redirect.ts";
+import { Icon } from "@/components/icons.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { authClient } from "@/lib/auth-client.ts";
+import { LOGIN_PATH } from "@/lib/redirect.ts";
 
 export function SignOutButton() {
   const signOut = useMutation({

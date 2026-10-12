@@ -1,5 +1,5 @@
 import type { SsoJoin } from "@xdev-hive/contracts";
-import { type Dict, getLang } from "./i18n.ts";
+import { type Dict, getLang } from "@/lib/i18n.ts";
 
 const text: Dict<Record<keyof SsoFormValues, string>> = {
   vi: {

@@ -3,20 +3,20 @@ import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 import type { Project } from "@xdev-hive/contracts";
 import { KanbanSquareIcon, SearchIcon } from "lucide-react";
 import { type ReactNode, useId } from "react";
-import { CreateTaskButton } from "../components/create-task-dialog.tsx";
-import { Icon } from "../components/icons.tsx";
-import { Alert } from "../components/ui/alert.tsx";
-import { buttonVariants } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
-import { FilterChips } from "../components/ui/filter-chips.tsx";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "../components/ui/input-group.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { StatTile } from "../components/ui/stat-tile.tsx";
-import { Table, Td, Th } from "../components/ui/table.tsx";
-import { apiErrorMessage } from "../lib/api-errors.ts";
-import { formatUsd } from "../lib/format.ts";
-import { cliLabel, prLabel } from "../lib/run-view.ts";
+import { CreateTaskButton } from "@/components/create-task-dialog.tsx";
+import { Icon } from "@/components/icons.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { buttonVariants } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { FilterChips } from "@/components/ui/filter-chips.tsx";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { StatTile } from "@/components/ui/stat-tile.tsx";
+import { Table, Td, Th } from "@/components/ui/table.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { formatUsd } from "@/lib/format.ts";
+import { cliLabel, prLabel } from "@/lib/run-view.ts";
 import {
   BOARD_FILTERS,
   type BoardFilter,
@@ -27,10 +27,10 @@ import {
   filterRows,
   isBoardFilter,
   runActivity,
-} from "../lib/task-board.ts";
-import { useNow } from "../lib/use-now.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/task-board.ts";
+import { useNow } from "@/lib/use-now.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 export interface TasksSearch {
   /** Nhóm lọc; không có là "Tất cả". */

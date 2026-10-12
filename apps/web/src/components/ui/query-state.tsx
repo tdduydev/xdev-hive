@@ -1,8 +1,8 @@
 import { Loader2Icon } from "lucide-react";
-import { apiErrorMessage } from "../../lib/api-errors.ts";
-import { Alert } from "./alert.tsx";
-import { Button } from "./button.tsx";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./empty.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
 
 export function LoadingState({ label = "Đang tải…" }: { label?: string }) {
   return (

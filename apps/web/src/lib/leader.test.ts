@@ -1,6 +1,6 @@
 import type { ChatMessage, Project } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { awaitingLeader, describeAction } from "./leader.ts";
+import { awaitingLeader, describeAction } from "@/lib/leader.ts";
 
 const project = { id: "9a9a9a9a-0000-4000-8000-000000000001", key: "PAY" } as Project;
 const msg = (role: ChatMessage["role"]): ChatMessage => ({

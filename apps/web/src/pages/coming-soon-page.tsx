@@ -1,8 +1,8 @@
 import { ConstructionIcon } from "lucide-react";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../components/ui/empty.tsx";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import type { NavItem } from "../lib/nav.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import type { NavItem } from "@/lib/nav.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{ title: string; body: (design: string) => string }> = {
   vi: {

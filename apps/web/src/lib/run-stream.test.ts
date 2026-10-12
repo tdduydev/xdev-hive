@@ -1,6 +1,6 @@
 import type { RunLogChunk } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { LOG_LIMIT, LogBuffer, mergeEvents, runStreamUrl, stripAnsi } from "./run-stream.ts";
+import { LOG_LIMIT, LogBuffer, mergeEvents, runStreamUrl, stripAnsi } from "@/lib/run-stream.ts";
 
 // Buffer của Node: chuỗi dài vượt giới hạn tham số của String.fromCharCode(...).
 const b64 = (bytes: Uint8Array | string) => Buffer.from(bytes).toString("base64");
