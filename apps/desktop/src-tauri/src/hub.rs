@@ -63,7 +63,7 @@ pub fn tool_result(rpc: &Value) -> Result<Value, HubError> {
 pub async fn call_tool(hub: &str, token: &str, tool: &str, args: Value) -> Result<Value, HubError> {
     let url = format!("{}/mcp", hub.trim_end_matches('/'));
     let body = json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": { "name": tool, "arguments": args } });
-    let response = reqwest::Client::new()
+    let response = crate::tls::client()
         .post(&url)
         .timeout(TIMEOUT)
         .header("authorization", format!("Bearer {token}"))

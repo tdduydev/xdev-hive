@@ -216,7 +216,7 @@ pub async fn exchange(hub: &str, code: &str, verifier: &str) -> Result<Exchange,
         hub.trim_end_matches('/')
     );
     let body = serde_json::json!({ "code": code, "verifier": verifier });
-    let response = reqwest::Client::new()
+    let response = crate::tls::client()
         .post(&url)
         .timeout(Duration::from_secs(30))
         .header("content-type", "application/json")
