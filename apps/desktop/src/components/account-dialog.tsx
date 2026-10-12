@@ -1,5 +1,4 @@
-import { type FormEvent, useId, useState } from "react";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -7,9 +6,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
-import { Label } from "@/components/ui/label.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Label } from "@xdev-hive/ui/label";
+import { type FormEvent, useId, useState } from "react";
 import { type AccountStatus, linkAccount, unlinkAccount } from "@/lib/account.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";

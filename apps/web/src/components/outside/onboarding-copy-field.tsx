@@ -1,6 +1,6 @@
+import { Button } from "@xdev-hive/ui/button";
+import { Input } from "@xdev-hive/ui/input";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ copied: string; copy: string; failure: string }> = {

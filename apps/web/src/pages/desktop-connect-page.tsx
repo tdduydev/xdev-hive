@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { connectState, loopbackPort, pkceChallenge } from "@xdev-hive/contracts";
 import { machineId } from "@xdev-hive/contracts/worker-protocol";
+import { Button } from "@xdev-hive/ui/button";
 import { useId, useState } from "react";
 import { Brand } from "@/components/icons.tsx";
 import { OutsideLayout } from "@/components/outside/outside-layout.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";

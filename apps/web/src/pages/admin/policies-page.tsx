@@ -7,11 +7,7 @@ import type {
   PolicyHook,
   TemplatePreview,
 } from "@xdev-hive/contracts";
-import { PlusIcon, XIcon } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -19,13 +15,17 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
+import { PlusIcon, XIcon } from "lucide-react";
+import { type FormEvent, type ReactNode, useEffect, useId, useState } from "react";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";

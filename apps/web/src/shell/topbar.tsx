@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { BellIcon, MonitorIcon, MoonIcon, SearchIcon, SunIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { LangToggle } from "@/components/lang-toggle.tsx";
@@ -10,7 +11,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb.tsx";
-import { Button, buttonVariants } from "@/components/ui/button.tsx";
 import {
   Command,
   CommandDialog,

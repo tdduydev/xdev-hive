@@ -1,11 +1,7 @@
 import { ORPCError } from "@orpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DryRunResult, ReviewGate, ReviewWorkflow, WorkflowPreset } from "@xdev-hive/contracts";
-import { PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { type FormEvent, useId, useMemo, useState } from "react";
-import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -13,8 +9,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { PlusIcon, Trash2Icon, XIcon } from "lucide-react";
+import { type FormEvent, useId, useMemo, useState } from "react";
+import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";

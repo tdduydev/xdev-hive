@@ -1,10 +1,9 @@
+import { Button } from "@xdev-hive/ui/button";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
 import type * as React from "react";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (

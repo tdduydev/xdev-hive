@@ -1,5 +1,5 @@
+import { Button } from "@xdev-hive/ui/button";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { folderName, useFolder } from "@/lib/folder.ts";

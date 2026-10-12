@@ -1,7 +1,4 @@
-import { CopyIcon, LoaderCircleIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { FolderForm } from "@/components/folder-form.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -10,9 +7,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
+import { CopyIcon, LoaderCircleIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { FolderForm } from "@/components/folder-form.tsx";
 import { Pill, type PillProps } from "@/components/ui/pill.tsx";
-import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@/components/ui/table.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { useFolder } from "@/lib/folder.ts";
 import { projectKeyOf } from "@/lib/hub.ts";

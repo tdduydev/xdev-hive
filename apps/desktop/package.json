@@ -21,6 +21,7 @@
     "@orpc/client": "^1.15.5",
     "@orpc/contract": "^1.15.5",
     "@xdev-hive/contracts": "workspace:*",
+    "@xdev-hive/ui": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "lucide-react": "^1.55.0",
