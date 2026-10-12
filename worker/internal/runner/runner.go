@@ -52,8 +52,10 @@ type Job struct {
 	EnvironmentImage string
 	// MCPServers là MCP server ngoài hub cho phép (MCP-06); xem externalMCPServers.
 	MCPServers []MCPServer
-	workspace  string
-	repoCache  string
+	// Policy là hook bắt buộc của tổ chức; rỗng là không có.
+	Policy    JobPolicy
+	workspace string
+	repoCache string
 }
 
 type Event struct {
@@ -308,8 +310,15 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			_ = stopMeter()
 		}
 	}()
-	process.Stdout = io.MultiWriter(&logWriter{sink: sink, job: job, name: "stdout"}, usage)
-	process.Stderr = &logWriter{sink: sink, job: job, name: "stderr"}
+	// Giữ hai writer để log của hook Stop nối tiếp offset của log CLI.
+	stdoutLog := &logWriter{sink: sink, job: job, name: "stdout"}
+	stderrLog := &logWriter{sink: sink, job: job, name: "stderr"}
+	process.Stdout = io.MultiWriter(stdoutLog, usage)
+	process.Stderr = stderrLog
+	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
+		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
+		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] %s không chạy được %d hook PreToolUse/PostToolUse của tổ chức; hook Stop vẫn chạy.\n", job.CLI, len(tool))
+	}
 	steer := newSteering(job.CLI, func(res SteerResult) {
 		if res.SteerID != "" {
 			_ = emit(sink, Event{Type: "steer_result", RunID: job.RunID, Attempt: job.Attempt, Steer: &res})
@@ -361,6 +370,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		}
 		result = &Result{Status: status, Error: e.Error()}
 		return e
+	}
+	if !readOnlyKind(job.Kind) {
+		if err := r.runStopHooks(ctx, job, work, stdoutLog, stderrLog); err != nil {
+			result = &Result{Status: "failed", Error: err.Error()}
+			return err
+		}
 	}
 	if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "verifying"}); err != nil {
 		return err
@@ -519,7 +534,19 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 				return nil, err
 			}
 			// Prompt đi qua stdin (stream-json) để còn gửi thêm chỉ dẫn khi agent đang chạy; xem steering.
-			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "project", "--strict-mcp-config", "--mcp-config", mcpFile}
+			// Chỉ hook của tổ chức: không nạp .claude/settings.json của repo (hook, quyền, biến môi trường trong đó).
+			sources := "project"
+			if j.Policy.ManagedHooksOnly {
+				sources = ""
+			}
+			args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", sources, "--strict-mcp-config", "--mcp-config", mcpFile}
+			hookSettings, err := claudeHookSettings(j.Policy.Hooks)
+			if err != nil {
+				return nil, err
+			}
+			if hookSettings != "" {
+				args = append(args, "--settings", hookSettings)
+			}
 			if j.Budget.MaxCostUSD != nil {
 				args = append(args, "--max-budget-usd", strconv.FormatFloat(*j.Budget.MaxCostUSD, 'f', -1, 64))
 			}

@@ -1,6 +1,8 @@
+import type { InstructionTemplates } from "@xdev-hive/contracts";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
+import { loadPolicy } from "../governance/index.ts";
 import { notify } from "../notify/index.ts";
 import { decryptSecret, type Jobs, type MasterKey, type Tx, withTenant } from "../platform/index.ts";
 import {
@@ -85,6 +87,8 @@ interface StepContext {
   provider: GitProvider;
   authMode: ScmAuthMode;
   systemName: string;
+  /** Mẫu file hướng dẫn agent của tổ chức (Chính sách agent); null là mẫu chuẩn. */
+  templates: InstructionTemplates;
   deps: ProvisionDeps;
 }
 
@@ -139,13 +143,16 @@ async function execute(step: StepRow, c: StepContext): Promise<StepOutput> {
     }
     case "commit-template": {
       const base = needBranch(project);
-      const files = renderTemplate({
-        projectKey: project.key,
-        projectName: project.name,
-        publicUrl: c.deps.publicUrl,
-        defaultBranch: base,
-        systemName: c.systemName,
-      });
+      const files = renderTemplate(
+        {
+          projectKey: project.key,
+          projectName: project.name,
+          publicUrl: c.deps.publicUrl,
+          defaultBranch: base,
+          systemName: c.systemName,
+        },
+        c.templates,
+      );
       const message = `chore: thêm file mẫu xDev Hive cho ${project.key}`;
       if (project.repoMode === "new") {
         const { sha } = await provider.commitFiles(ref, { branch: base, message, files });
@@ -196,7 +203,13 @@ export async function runProvision(
     if (project?.state !== "provisioning") return null;
     const conn = await loadConnection(tx, deps.masterKey, project.scmConnectionId);
     const system = await findSystem(tx, project.systemId);
-    return { project, conn, systemName: system?.name ?? "", steps: await loadSteps(tx, project.id) };
+    return {
+      project,
+      conn,
+      systemName: system?.name ?? "",
+      templates: (await loadPolicy(tx)).templates,
+      steps: await loadSteps(tx, project.id),
+    };
   });
   // Dự án đã xong, đã lỗi chờ người xử lý, hoặc đã bị xoá: job cũ chạy lại không làm gì.
   if (!loaded) return "skipped";
@@ -236,6 +249,7 @@ export async function runProvision(
         provider,
         authMode: loaded.conn.authMode,
         systemName: loaded.systemName,
+        templates: loaded.templates,
         deps,
       });
     } catch (e) {

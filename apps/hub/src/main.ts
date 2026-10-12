@@ -2,7 +2,14 @@ import type { Server } from "node:http";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { auditRetentionQueue, registerAuditRetentionWorker } from "./modules/audit/index.ts";
-import { mergeQueue, provisionQueue, registerMergeWorker, registerProvisionWorker } from "./modules/catalog/index.ts";
+import {
+  mergeQueue,
+  provisionQueue,
+  registerMergeWorker,
+  registerProvisionWorker,
+  registerTemplateSyncWorker,
+  templateSyncQueue,
+} from "./modules/catalog/index.ts";
 import {
   attachWorkerGateway,
   fleetOfflineQueue,
@@ -26,7 +33,12 @@ import {
   registerNotifyWorker,
 } from "./modules/notify/index.ts";
 import { createJobs, createPool, loadConfig } from "./modules/platform/index.ts";
-import { createRunsEngine, runsTimerQueue } from "./modules/runs/index.ts";
+import {
+  createRunsEngine,
+  registerRunLogRetentionWorker,
+  runLogRetentionQueue,
+  runsTimerQueue,
+} from "./modules/runs/index.ts";
 import {
   auditScmEvent,
   defaultProviderFactory,
@@ -94,8 +106,10 @@ jobs = config.jobsDatabaseUrl
         inboxCleanupQueue,
         fleetOfflineQueue,
         orphanUsersQueue,
+        runLogRetentionQueue,
         skillGitQueue,
         auditRetentionQueue,
+        templateSyncQueue,
       ],
       // Giám sát và lịch nền của pg-boss chỉ cần chạy ở tiến trình xử lý job.
       maintenance: roles.includes("jobs"),
@@ -136,6 +150,7 @@ if (roles.includes("jobs") && jobs) {
     };
     await registerProvisionWorker(jobs, catalogDeps);
     await registerMergeWorker(jobs, catalogDeps);
+    await registerTemplateSyncWorker(jobs, catalogDeps);
     await registerSkillGitWorker(jobs, {
       pool,
       masterKey: config.masterKey,
@@ -157,6 +172,7 @@ if (roles.includes("jobs") && jobs) {
     // Thiếu khoá chủ thì job vẫn chạy để đánh dấu thông báo failed kèm lý do, không để nằm queued mãi.
     await registerNotifyWorker(jobs, { pool, masterKey: config.masterKey, allowPrivate: config.notifyAllowPrivate });
     await registerOrphanUsersWorker(jobs, { pool, keepEmails: config.orgCreators });
+    await registerRunLogRetentionWorker(jobs, pool);
     await registerInboxCleanupWorker(jobs, pool);
     await registerAuditRetentionWorker(jobs, { pool });
   }

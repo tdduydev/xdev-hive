@@ -143,6 +143,25 @@ func TestDecodeJobPassesExternalMCPServers(t *testing.T) {
 	}
 }
 
+// Chính sách agent của tổ chức đi kèm spec; hub cũ không gửi thì job không có hook.
+func TestDecodeJobReadsOrganizationPolicy(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"claude","prompt":"p","policy":{"hooks":[{"event":"Stop","name":"test","command":"pnpm test"},{"event":"PreToolUse","name":"g","command":"guard","matcher":"Bash"}],"managedHooksOnly":true}}`)}
+	job, err := decodeJob(offer, Lease{}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !job.Policy.ManagedHooksOnly || len(job.Policy.Hooks) != 2 || job.Policy.Hooks[1].Matcher != "Bash" || job.Policy.Hooks[0].Command != "pnpm test" {
+		t.Fatalf("policy = %+v", job.Policy)
+	}
+	old, err := decodeJob(&JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repo":"org/repo","cli":"claude","prompt":"p"}`)}, Lease{}, "", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if old.Policy.ManagedHooksOnly || len(old.Policy.Hooks) != 0 {
+		t.Fatalf("policy = %+v", old.Policy)
+	}
+}
+
 func TestDecodeJobKeepsReviewAndPlanKind(t *testing.T) {
 	for _, kind := range []string{runner.KindReview, runner.KindPlan} {
 		offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"` + kind + `","repoUrl":"https://git.example/a.git","cli":"claude","branch":"ai/HD-1"}`)}
