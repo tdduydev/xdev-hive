@@ -195,6 +195,14 @@ type Drain struct {
 	ID   string `json:"id"`
 }
 
+// Update là lệnh tự cập nhật admin bấm trên web. Version rỗng là bản mới nhất.
+type Update struct {
+	Type    string `json:"type"`
+	V       int    `json:"v"`
+	ID      string `json:"id"`
+	Version string `json:"version,omitempty"`
+}
+
 // newMessage trả con trỏ tới struct đúng loại gói, nil nếu loại lạ. Dùng khi giải mã gói theo `type`.
 func newMessage(msgType string) any {
 	switch msgType {
@@ -232,6 +240,8 @@ func newMessage(msgType string) any {
 		return &Cancel{}
 	case "drain":
 		return &Drain{}
+	case "update":
+		return &Update{}
 	}
 	return nil
 }

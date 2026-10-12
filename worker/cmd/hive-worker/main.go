@@ -1,5 +1,6 @@
 // hive-worker chạy trên máy dev (và ở chế độ host trên runner server), gọi ra hub để nhận run.
-// Lệnh: version, check, register (đổi mã đăng ký lấy machine token), run (nối WSS tới hub), config (xem cấu hình).
+// Lệnh: version, check, register (đổi mã đăng ký lấy machine token), run (nối WSS tới hub), config (xem cấu hình),
+// update (tải bản phát hành mới, kiểm chữ ký rồi thay binary).
 // Cờ --json/--status-json cho app desktop đọc kết quả và trạng thái thay vì đọc chữ cho người.
 package main
 
@@ -29,6 +30,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 	"github.com/tdduydev/xdev-hive/worker/internal/service"
+	"github.com/tdduydev/xdev-hive/worker/internal/update"
 	"github.com/tdduydev/xdev-hive/worker/internal/version"
 )
 
@@ -56,6 +58,8 @@ func main() {
 		os.Exit(showConfig(os.Args[2:], os.Stdout, os.Stderr))
 	case "service":
 		os.Exit(serviceCommand(os.Args[2:], os.Stdout, os.Stderr))
+	case "update":
+		os.Exit(updateCommand(os.Args[2:], os.Stdout, os.Stderr))
 	default:
 		usage()
 		os.Exit(2)
@@ -63,12 +67,12 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | service install|uninstall|status | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status")
+		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status|restart")
 		return 2
 	}
 	action := args[0]
@@ -145,8 +149,19 @@ func serviceCommand(args []string, stdout, stderr io.Writer) int {
 		if !manager.Status(plan, stdout) {
 			return 1
 		}
+	case "restart":
+		restarted, err := manager.Restart(plan)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if restarted {
+			fmt.Fprintln(stdout, "Đã khởi động lại dịch vụ worker.")
+		} else {
+			fmt.Fprintln(stdout, "Dịch vụ worker chưa chạy; không cần khởi động lại.")
+		}
 	default:
-		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status")
+		fmt.Fprintln(stderr, "Cách dùng: hive-worker service install|uninstall|status|restart")
 		return 2
 	}
 	return 0
@@ -334,7 +349,8 @@ func run(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	return startWorker(ctx, cfg, *capacity, dataDir, "", nil, *statusJSON, cfg.HubURL)
+	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
+	return startWorker(ctx, cfg, *capacity, dataDir, "", nil, *statusJSON, !*stdinControl, cfg.HubURL)
 }
 
 func host(args []string) int {
@@ -397,7 +413,7 @@ func host(args []string) int {
 		}
 	}
 	sandbox := &runner.SandboxConfig{Image: *image, HostID: cfg.MachineID, AllowRunc: *allowRunc, CPUs: *cpus, Memory: *memory, PIDs: *pids, EgressSocket: *egressSocket, WorkerBinary: executable}
-	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, false, cfg.HubURL)
+	return startWorker(ctx, cfg, *capacity, dataDir, "host", sandbox, false, true, cfg.HubURL)
 }
 
 func sandboxInit(args []string) int {
@@ -506,16 +522,26 @@ func runscAllowsHostUDS(raw json.RawMessage) bool {
 	return false
 }
 
-func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, statusJSON bool, hubURL string) int {
+func startWorker(ctx context.Context, cfg config.Config, capacity int, dataDir, mode string, sandbox *runner.SandboxConfig, statusJSON, selfUpdate bool, hubURL string) int {
 	clis := detectCLIs()
 	if mode == "host" {
 		clis = knownCLIs
 	}
-	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default()}
+	cc := channel.Config{HubURL: hubURL, Machine: cfg.MachineID, Token: cfg.MachineToken, Version: version.Version, CLIs: clis, Capacity: capacity, RunnerMode: mode, Sandbox: sandbox, DataDir: filepath.Join(dataDir, "xdev-hive", "worker"), Logger: slog.Default(), SelfUpdate: selfUpdate}
 	if statusJSON {
 		cc.OnStatus = statusPrinter(os.Stdout)
 	}
 	err := cc.Run(ctx)
+	var requested *channel.UpdateRequest
+	var upgrade *channel.UpgradeError
+	if errors.As(err, &requested) {
+		return updateAndRestart(ctx, requested.Version)
+	}
+	if selfUpdate && errors.As(err, &upgrade) {
+		// Hub không còn nói chuyện được với bản này: lên bản mới nhất thay vì để dịch vụ khởi động lại mãi với bản cũ.
+		fmt.Fprintln(os.Stderr, err)
+		return updateAndRestart(ctx, "")
+	}
 	// Mã thoát riêng khi hub từ chối máy, để trình quản lý dịch vụ không khởi động lại liên tục với token đã hỏng.
 	var rejected *channel.RejectedError
 	if errors.As(err, &rejected) {
@@ -553,6 +579,140 @@ func check(args []string) int {
 		return 1
 	}
 	fmt.Printf("Hub %s đang chạy (worker %s)\n", h.Version, version.Version)
+	return 0
+}
+
+// Test thay nguồn bản phát hành và file bị ghi đè.
+var (
+	updateSource     = update.Default
+	updateExecutable = update.Executable
+)
+
+func updateCommand(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	check := fs.Bool("check", false, "chỉ xem có bản mới không, không cài")
+	target := fs.String("version", "", "cài đúng phiên bản này, kể cả cũ hơn bản đang chạy (mặc định bản mới nhất)")
+	asJSON := fs.Bool("json", false, "in kết quả dạng JSON")
+	noRestart := fs.Bool("no-restart", false, "không khởi động lại dịch vụ worker sau khi cập nhật")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	*target = strings.TrimPrefix(*target, "v")
+	if *target != "" && !update.ValidVersion(*target) {
+		fmt.Fprintf(stderr, "Phiên bản không hợp lệ: %s\n", *target)
+		return 2
+	}
+	src, err := updateSource()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	ctx, cancelTimeout := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancelTimeout()
+	if *check {
+		latest, err := src.Latest(ctx)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		outdated := update.Newer(latest, version.Version)
+		if *asJSON {
+			_ = json.NewEncoder(stdout).Encode(map[string]any{"current": version.Version, "latest": latest, "outdated": outdated})
+			return 0
+		}
+		fmt.Fprintf(stdout, "Đang chạy %s; bản mới nhất %s.\n", version.Version, latest)
+		if outdated {
+			fmt.Fprintln(stdout, "Chạy `hive-worker update` để cập nhật.")
+		}
+		return 0
+	}
+	exe, err := updateExecutable()
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	installed, err := applyUpdate(ctx, src, exe, version.Version, *target)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	restarted := false
+	if installed != "" && !*noRestart {
+		restarted, err = service.Manager{}.Restart(service.Plan{OS: runtime.GOOS})
+		if err != nil {
+			fmt.Fprintf(stderr, "Đã cài bản %s nhưng chưa khởi động lại được dịch vụ worker: %v\n", installed, err)
+			return 1
+		}
+	}
+	if *asJSON {
+		_ = json.NewEncoder(stdout).Encode(map[string]any{"previous": version.Version, "installed": installed, "restarted": restarted})
+		return 0
+	}
+	switch {
+	case installed == "":
+		fmt.Fprintf(stdout, "Đã là bản mới nhất (%s).\n", version.Version)
+	case restarted:
+		fmt.Fprintf(stdout, "Đã cập nhật hive-worker %s → %s và khởi động lại dịch vụ worker.\n", version.Version, installed)
+	default:
+		fmt.Fprintf(stdout, "Đã cập nhật hive-worker %s → %s. Worker đang chạy bằng tay thì khởi động lại để dùng bản mới.\n", version.Version, installed)
+	}
+	return 0
+}
+
+// applyUpdate cài bản target (rỗng là bản mới nhất, chỉ khi mới hơn current) và trả phiên bản đã cài, rỗng khi không
+// cần cài. Target ghi rõ thì cài kể cả cũ hơn, để quay về bản trước khi bản mới lỗi.
+func applyUpdate(ctx context.Context, src update.Source, exe, current, target string) (string, error) {
+	if target == "" {
+		latest, err := src.Latest(ctx)
+		if err != nil {
+			return "", err
+		}
+		if !update.Newer(latest, current) {
+			return "", nil
+		}
+		target = latest
+	} else if target == current {
+		return "", nil
+	}
+	binary, err := src.Download(ctx, target)
+	if err != nil {
+		return "", err
+	}
+	if err := update.Install(exe, binary, target); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+// updateAndRestart chạy khi hub yêu cầu cập nhật và worker đã chờ run đang chạy xong: cài bản mới rồi chạy lại đúng lệnh
+// này bằng binary mới. Cập nhật lỗi thì vẫn chạy lại bản cũ, để máy không rời hub chỉ vì lỗi mạng lúc tải.
+func updateAndRestart(ctx context.Context, target string) int {
+	exe, err := update.Executable()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	src, err := update.Default()
+	if err == nil {
+		var installed string
+		installed, err = applyUpdate(ctx, src, exe, version.Version, target)
+		if installed != "" {
+			slog.Info("Đã cập nhật worker, khởi động lại bằng bản mới", "from", version.Version, "to", installed)
+		}
+	}
+	if err != nil {
+		slog.Error("Cập nhật worker không thành công, chạy tiếp bản hiện tại", "error", err)
+	}
+	if ctx.Err() != nil {
+		return 0
+	}
+	if err := restartSelf(exe); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	return 0
 }
 

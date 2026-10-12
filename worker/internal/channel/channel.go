@@ -68,6 +68,8 @@ type Config struct {
 	StopTimeout time.Duration
 	// OnStatus nhận trạng thái kết nối, để app desktop hiện trên khay hệ thống (hive-worker run --status-json).
 	OnStatus func(Status)
+	// SelfUpdate: nhận lệnh `update` của hub. Tắt với worker đi kèm app desktop, vì app tự cập nhật cả gói.
+	SelfUpdate bool
 }
 
 // Status là trạng thái kết nối tới hub. Error chỉ có khi State là "disconnected" hoặc "stopped" vì lỗi.
@@ -159,6 +161,17 @@ func (s jobSpec) validateExecution() error {
 
 type UpgradeError struct{ Message UpgradeRequired }
 
+// UpdateRequest: hub yêu cầu cập nhật và worker đã chờ run đang chạy xong. Run trả lỗi này để lệnh gọi tự cập nhật rồi
+// khởi động lại. Version rỗng là bản mới nhất.
+type UpdateRequest struct{ Version string }
+
+func (e *UpdateRequest) Error() string {
+	if e.Version == "" {
+		return "hub yêu cầu cập nhật worker lên bản mới nhất"
+	}
+	return "hub yêu cầu cập nhật worker lên bản " + e.Version
+}
+
 func (e *UpgradeError) Error() string {
 	return fmt.Sprintf("hub yêu cầu nâng cấp worker: %s", e.Message.URL)
 }
@@ -223,8 +236,11 @@ func (c Config) Run(ctx context.Context) error {
 	defer jobs.wait(c.StopTimeout)
 	backoff := c.MinBackoff
 	for {
-		if ctx.Err() != nil || jobs.finished() {
+		if ctx.Err() != nil {
 			return nil
+		}
+		if jobs.finished() {
+			return jobs.exitReason()
 		}
 		c.status("connecting", nil)
 		err := c.connect(ctx, jobs)
@@ -234,9 +250,13 @@ func (c Config) Run(ctx context.Context) error {
 			c.status("stopped", err)
 			return err
 		}
-		if ctx.Err() != nil || jobs.finished() {
+		if ctx.Err() != nil {
 			c.status("stopped", nil)
 			return nil
+		}
+		if jobs.finished() {
+			c.status("stopped", nil)
+			return jobs.exitReason()
 		}
 		c.status("disconnected", err)
 		c.Logger.Warn("Kênh worker mất kết nối, sẽ thử lại", "error", err)
@@ -248,7 +268,7 @@ func (c Config) Run(ctx context.Context) error {
 			return nil
 		case <-jobs.done:
 			timer.Stop()
-			return nil
+			return jobs.exitReason()
 		case <-timer.C:
 		}
 		backoff *= 2
@@ -382,6 +402,13 @@ func (c Config) session(ctx context.Context, conn *websocket.Conn, welcome Welco
 		case *Drain:
 			c.Logger.Info("Hub yêu cầu thoát: không nhận job mới, chờ run đang chạy xong")
 			jobs.drain()
+		case *Update:
+			if c.SelfUpdate {
+				c.Logger.Info("Hub yêu cầu cập nhật: không nhận job mới, chờ run đang chạy xong rồi cập nhật", "version", m.Version)
+				jobs.requestUpdate(m.Version)
+			} else {
+				c.Logger.Info("Bỏ lệnh cập nhật của hub: worker đi kèm app desktop, cập nhật bằng app")
+			}
 		case *Steer:
 			jobs.steer(m)
 		default:
