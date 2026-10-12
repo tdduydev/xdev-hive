@@ -1,7 +1,7 @@
 import { invoke } from "@/lib/tauri.ts";
 
 /** Kiểu khớp với src-tauri/src/doctor.rs (serde camelCase). */
-export type CheckKind = "cli" | "runtime" | "tool" | "dependency";
+export type CheckKind = "cli" | "runtime" | "tool" | "dependency" | "mcp";
 export type CheckStatus = "ok" | "outdated" | "mismatch" | "missing" | "optional";
 
 export interface CheckItem {
@@ -25,12 +25,16 @@ export interface InstallResult {
 
 const folderArg = (folder: string) => (folder.trim() ? folder.trim() : null);
 
-export const scanEnvironment = (folder: string) =>
-  invoke<CheckItem[]>("scan_environment", { folder: folderArg(folder) });
+/**
+ * `project` là project key trên hub của thư mục (nếu khớp): Rust tự hỏi hub MCP server tổ chức cho phép với dự án đó,
+ * giao diện không gửi danh sách hay lệnh nào.
+ */
+export const scanEnvironment = (folder: string, project: string | null = null) =>
+  invoke<CheckItem[]>("scan_environment", { folder: folderArg(folder), project });
 
 /** Chỉ gửi id: Rust tự sinh lại lệnh của mục, không nhận chuỗi lệnh từ giao diện. */
-export const runInstall = (id: string, folder: string) =>
-  invoke<InstallResult>("run_install", { id, folder: folderArg(folder) });
+export const runInstall = (id: string, folder: string, project: string | null = null) =>
+  invoke<InstallResult>("run_install", { id, folder: folderArg(folder), project });
 
 /** Mục cần xử lý trước: thiếu, cũ, rồi không bắt buộc, cuối cùng là đủ. */
 const ORDER: Record<CheckStatus, number> = { missing: 0, outdated: 1, mismatch: 2, optional: 3, ok: 4 };
