@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Nhận lời mời</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:36px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:14px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:2px;background:var(--muted);border-radius:8px}
+dl.dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13.5px}
+dl.dl dt{color:var(--muted-foreground)}dl.dl dd{margin:0}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column; background: var(--background); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 20px 20px; color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="padding: 16px 24px; display: flex; justify-content: flex-end;">
+    <div class="seg" role="group" aria-label="{{t.langAria}}"><button type="button" onClick="{{toVi}}" aria-pressed="{{viP}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{enP}}" style="{{enS}}">EN</button></div>
+  </div>
+  <main style="flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 24px 16px 56px;">
+    <div class="card" style="width: 100%; max-width: 440px; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow-lg);">
+      <dc-import name="Logo" height="52" hint-size="119px,52px"></dc-import>
+
+      <sc-if value="{{expired}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">{{t.expTitle}}</h1>
+          <p class="muted" style="margin: 0;">{{t.expBody}}</p>
+        </div>
+        <a href="#" class="btn btn-outline">{{t.signIn}}</a>
+      </sc-if>
+
+      <sc-if value="{{valid}}" hint-placeholder-val="{{true}}">
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        <dl class="dl" style="padding: 14px 16px; background: var(--muted); border-radius: 10px;">
+          <dt>{{t.org}}</dt><dd style="font-weight: 500;">Acme Software</dd>
+          <dt>{{t.email}}</dt><dd class="mono" style="font-size: 13px;">an.do@acme.vn</dd>
+          <dt>{{t.expires}}</dt><dd>{{t.expiresVal}}</dd>
+        </dl>
+
+        <sc-if value="{{signedMatch}}" hint-placeholder-val="{{false}}">
+          <p style="margin: 0;">{{t.matchBody}}</p>
+          <button type="button" class="btn btn-default" style="width: 100%;">{{t.accept}}</button>
+        </sc-if>
+
+        <sc-if value="{{signedOther}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="padding: 10px 12px; border-radius: 8px; background: var(--warning-soft); color: var(--warning); font-size: 13.5px;">{{t.otherBody}}</div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;"><a href="Home.dc.html" class="btn btn-ghost">{{t.home}}</a><button type="button" class="btn btn-default">{{t.signOut}}</button></div>
+        </sc-if>
+
+        <sc-if value="{{signedOut}}" hint-placeholder-val="{{true}}">
+          <form style="display: flex; flex-direction: column; gap: 14px;">
+            <h2 style="margin: 0; font-size: 15px; font-weight: 600;">{{t.createTitle}}</h2>
+            <label class="field">{{t.name}}<input class="input" autocomplete="name"></label>
+            <label class="field">Email<input class="input mono" readonly value="an.do@acme.vn" style="background: var(--muted); font-size: 13px;"></label>
+            <label class="field">{{t.password}}<input class="input" type="password" autocomplete="new-password"><span class="hint">{{t.pwHint}}</span></label>
+            <button type="button" class="btn btn-default" style="width: 100%;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-10 6L2 7"></path></svg>{{t.create}}</button>
+          </form>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;" class="muted"><span style="flex: 1; height: 1px; background: var(--border);"></span>{{t.or}}<span style="flex: 1; height: 1px; background: var(--border);"></span></div>
+          <button type="button" class="btn btn-outline" style="width: 100%;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"></path></svg>{{t.existing}}</button>
+          <p class="hint" style="margin: 0; text-align: center;">{{t.existingHint}}</p>
+        </sc-if>
+      </sc-if>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["signedOut","signedMatch","signedOther","expired"],"default":"signedOut"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const s = this.props.state ?? 'signedOut';
+    const T = {
+      langAria: ['Ngôn ngữ', 'Language'], title: ['Lời mời vào Acme Software', 'Invitation to Acme Software'], org: ['Tổ chức', 'Organization'], email: ['Email được mời', 'Invited email'],
+      expires: ['Hạn', 'Valid until'], expiresVal: ['Dùng trước ngày 19/10, một lần', 'Use once before Oct 19'],
+      matchBody: ['Bạn đang đăng nhập bằng an.do@acme.vn. Nhận lời mời để vào Acme Software.', 'You are signed in as an.do@acme.vn. Accept to join Acme Software.'], accept: ['Nhận lời mời và vào tổ chức', 'Accept and join'],
+      otherBody: ['Lời mời này dành cho an.do@acme.vn, nhưng bạn đang đăng nhập bằng an@gmail.com. Đăng xuất rồi mở lại link này.', 'This invitation is for an.do@acme.vn, but you are signed in as an@gmail.com. Sign out and open the link again.'],
+      home: ['Về trang chủ', 'Go home'], signOut: ['Đăng xuất', 'Sign out'], createTitle: ['Tạo tài khoản bằng email', 'Create an account with email'], name: ['Họ và tên', 'Full name'],
+      password: ['Mật khẩu', 'Password'], pwHint: ['Ít nhất 10 ký tự.', 'At least 10 characters.'], create: ['Tạo tài khoản và vào tổ chức', 'Create account and join'], or: ['hoặc', 'or'],
+      existing: ['Đăng nhập bằng GitHub, GitLab hoặc tài khoản đã có', 'Sign in with GitHub, GitLab or an existing account'],
+      existingHint: ['Dùng tài khoản có email an.do@acme.vn (đã xác minh với GitHub/GitLab).', 'Use an account with the email an.do@acme.vn (verified with GitHub/GitLab).'],
+      expTitle: ['Lời mời đã hết hạn', 'This invitation has expired'], expBody: ['Lời mời này đã hết hạn ngày 19/10. Nhờ quản trị tổ chức gửi lời mời mới.', 'This invitation expired on Oct 19. Ask an organization admin for a new one.'], signIn: ['Đăng nhập', 'Sign in'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const seg = (on) => 'height: 26px; min-width: 34px; padding: 0 8px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', t,
+      expired: s === 'expired', valid: s !== 'expired', signedMatch: s === 'signedMatch', signedOther: s === 'signedOther', signedOut: s === 'signedOut',
+      viP: en ? 'false' : 'true', enP: en ? 'true' : 'false', viS: seg(!en), enS: seg(en),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

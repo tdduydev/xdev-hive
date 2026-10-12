@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · Tài liệu từ thư mục</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:30px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 7px;border-radius:9999px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.tree{display:flex;align-items:center;gap:6px;height:24px;padding:0 6px;border-radius:5px;font-family:var(--font-mono);font-size:12px;color:var(--foreground);white-space:nowrap}
+.tree:hover{background:var(--muted)}
+.cite{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;background:var(--secondary);color:var(--secondary-foreground);font-family:var(--font-mono);font-size:11.5px}
+.doc{font-size:14.5px;line-height:1.75}
+.doc h1{margin:0 0 8px;font-family:var(--font-heading);font-size:24px;letter-spacing:-.03em}
+.doc h2{margin:22px 0 6px;font-size:17px}
+.doc p{margin:0 0 10px}
+.doc code{font-family:var(--font-mono);font-size:12.5px;padding:1px 4px;border-radius:4px;background:var(--muted)}
+.ins{background:var(--success-soft);border-left:3px solid var(--success);padding:6px 10px;border-radius:0 6px 6px 0;margin:0 0 10px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);">
+    <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 10px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">{{winTitle}}</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+    </div>
+
+    <sc-if value="{{picking}}" hint-placeholder-val="{{false}}">
+      <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;">
+        <div style="width: 560px; display: flex; flex-direction: column; gap: 18px;">
+          <dc-import name="Logo" height="48" hint-size="110px,48px"></dc-import>
+          <div style="display: flex; flex-direction: column; gap: 4px;"><h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; letter-spacing: -0.03em;">{{t.pickTitle}}</h1><p class="muted" style="margin: 0;">{{t.pickLead}}</p></div>
+          <button type="button" class="btn btn-default" onClick="{{openFolder}}" style="height: 40px; font-size: 14px; align-self: flex-start;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>{{t.openFolder}}</button>
+          <div class="card" style="overflow: hidden;">
+            <div class="muted" style="padding: 8px 12px; font-size: 12px; border-bottom: 1px solid var(--border);">{{t.recent}}</div>
+            <sc-for list="{{recent}}" as="r" hint-placeholder-count="3">
+              <button type="button" onClick="{{openFolder}}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; font: inherit; color: var(--foreground); text-align: left; cursor: pointer;">
+                <span style="flex: 1; display: flex; flex-direction: column; line-height: 1.35;"><span class="mono" style="font-weight: 500; font-size: 13px;">{{r.path}}</span><span class="muted" style="font-size: 12px;">{{r.meta}}</span></span>
+                <span class="badge" style="{{r.chip}}">{{r.link}}</span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{working}}" hint-placeholder-val="{{true}}">
+      <div style="flex: 1; min-height: 0; display: flex;">
+        <dc-import name="AppNav" active="docs" role="{{role}}" compact="{{yes}}" lang="{{lang}}" hint-size="60px,800px"></dc-import>
+        <aside aria-label="{{t.explorer}}" style="width: 230px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--border); background: var(--sidebar);">
+          <div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border);">
+            <button type="button" onClick="{{backToPick}}" style="display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); font: inherit; color: var(--foreground); cursor: pointer; text-align: left;">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+              <span style="flex: 1; display: flex; flex-direction: column; line-height: 1.25;"><span class="mono" style="font-size: 12.5px; font-weight: 600;">hive-worker</span><span class="mono muted" style="font-size: 11px;">~/Work/acme/hive-worker</span></span>
+              <span class="muted" style="font-size: 11px;">⇅</span>
+            </button>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">⎇ feat/proxy</span><span class="badge" style="background: var(--accent); color: var(--accent-foreground);">↔ hive-worker</span></div>
+            <div style="display: flex; flex-direction: column; gap: 3px; font-size: 11.5px;"><span class="muted" style="display: flex; justify-content: space-between;"><span>{{t.coverage}}</span><span class="mono">5 / 7</span></span><div style="height: 5px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><div style="width: 71%; height: 100%; background: var(--primary);"></div></div></div>
+          </div>
+          <div style="flex: 1; overflow-y: auto; padding: 8px 6px;">
+            <div class="mono muted" style="padding: 4px 6px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;">docs</div>
+            <sc-for list="{{docFiles}}" as="f" hint-placeholder-count="4"><a href="#" class="tree" style="{{f.style}}"><span style="width: 12px;"></span>{{f.icon}} {{f.name}}<sc-if value="{{f.badge}}" hint-placeholder-val="{{false}}"><span class="badge" style="{{f.badgeStyle}}; margin-left: auto; height: 16px; font-size: 10.5px;">{{f.badge}}</span></sc-if></a></sc-for>
+            <div class="mono muted" style="padding: 10px 6px 4px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase;">{{t.code}}</div>
+            <sc-for list="{{codeFiles}}" as="f" hint-placeholder-count="10"><a href="#" class="tree" style="{{f.style}}">{{f.icon}} {{f.name}}<sc-if value="{{f.read}}" hint-placeholder-val="{{false}}"><span title="{{t.readByAi}}" style="margin-left: auto; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary);"></span></sc-if></a></sc-for>
+          </div>
+          <div class="muted" style="padding: 8px 12px; border-top: 1px solid var(--border); font-size: 11.5px; display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: var(--primary);"></span>{{t.readLegend}}</div>
+        </aside>
+
+        <section style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+          <div style="padding: 8px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);">
+            <span class="mono" style="font-size: 13px; font-weight: 500;">docs/architecture.md</span>
+            <span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{t.unsaved}}</span>
+            <span style="flex: 1;"></span>
+            <span class="muted" style="font-size: 12px;">{{t.savedIn}}</span>
+            <button type="button" class="btn btn-default">{{t.push}}</button>
+          </div>
+          <article class="doc" style="flex: 1; overflow-y: auto; padding: 24px 36px;">
+            <h1>{{t.docTitle}}</h1>
+            <p class="muted" style="font-size: 13px;">{{t.docMeta}}</p>
+            <h2>1. {{t.s1}}</h2>
+            <p>{{t.p1a}} <code>cmd/hive-worker</code> {{t.p1b}}</p>
+            <div class="ins">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12px;"><span class="badge" style="background: var(--card); color: var(--success);">{{t.aiAdded}}</span><span class="cite">internal/channel/ws.go:42</span><span class="cite">internal/runner/pool.go</span></div>
+              <strong>{{t.s2}}.</strong> {{t.p2}}
+            </div>
+            <div class="ins">
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 12px;"><span class="badge" style="background: var(--card); color: var(--success);">{{t.aiAdded}}</span><span class="cite">internal/cli/download.go</span></div>
+              <strong>{{t.s3}}.</strong> {{t.p3}}
+            </div>
+            <div style="margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; background: var(--warning-soft); color: var(--warning); font-size: 13.5px;">
+              <strong>{{t.gapTitle}}</strong> {{t.gapText}}
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 6px;"><button type="button" class="btn btn-outline">{{t.rejectAll}}</button><button type="button" class="btn btn-default">{{t.acceptAll}}</button></div>
+          </article>
+        </section>
+
+        <aside aria-label="{{t.chat}}" style="width: 420px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border); background: var(--background);">
+          <div style="padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border);">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div role="tablist" aria-label="{{t.engine}}" style="display: inline-flex; padding: 2px; background: var(--muted); border-radius: 8px;">
+                <sc-for list="{{engines}}" as="e" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{e.sel}}" onClick="{{e.pick}}" style="{{e.style}}"><span style="{{e.dot}}"></span>{{e.label}}</button></sc-for>
+              </div>
+              <span style="flex: 1;"></span>
+              <button type="button" class="btn btn-ghost" onClick="{{openAcc}}" aria-label="{{t.manageAcc}}" style="width: 28px; height: 28px; padding: 0;"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path></svg></button>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px;">
+              <select aria-label="{{t.session}}" style="height: 26px; max-width: 210px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 12px;"><option>{{eng.session}}</option><option>{{t.newSession}}</option></select>
+              <span class="muted">{{t.modeLabel}}</span>
+              <div role="radiogroup" aria-label="{{t.modeLabel}}" style="display: inline-flex; flex-wrap: wrap; padding: 2px; background: var(--muted); border-radius: 7px; gap: 2px;">
+                <sc-for list="{{eng.modes}}" as="m" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{m.on}}" onClick="{{m.pick}}" disabled="{{m.locked}}" title="{{m.title}}" style="{{m.style}}">{{m.label}}</button></sc-for>
+              </div>
+              <sc-if value="{{isCodex}}" hint-placeholder-val="{{false}}">
+                <span title="{{t.afmTip}}" style="display: inline-flex; align-items: center; gap: 6px; margin-left: 2px;">
+                  <button type="button" role="switch" aria-checked="{{afmAria}}" aria-label="Approve for me" onClick="{{flipAfm}}" style="{{afmTrack}}"><span style="{{afmKnob}}"></span></button>
+                  <span style="font-size: 12px; font-weight: 500;">Approve for me</span>
+                </span>
+              </sc-if>
+            </div>
+          </div>
+
+          <div class="mono" style="flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; line-height: 1.55;">
+            <div style="font-family: var(--font-sans); font-size: 13.5px; align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 12px 12px 4px 12px; background: var(--primary); color: var(--primary-foreground);">{{t.u1}}</div>
+
+            <sc-if value="{{isClaude}}" hint-placeholder-val="{{true}}">
+              <div style="display: flex; flex-direction: column; gap: 2px;"><span><span style="color: var(--success);">●</span> Update Todos</span>
+                <sc-for list="{{todos}}" as="td" hint-placeholder-count="4"><span style="{{td.style}}">&#160;&#160;⎿ {{td.box}} {{td.text}}</span></sc-for>
+              </div>
+              <sc-for list="{{claudeTools}}" as="c" hint-placeholder-count="4"><div style="display: flex; flex-direction: column;"><span><span style="color: var(--success);">●</span> <strong style="font-weight: 600;">{{c.tool}}</strong>({{c.arg}})</span><span class="muted">&#160;&#160;⎿ {{c.out}}</span></div></sc-for>
+              <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-left: 2px solid var(--primary); background: var(--muted); border-radius: 0 6px 6px 0;"><span><span style="color: var(--primary);">●</span> <strong style="font-weight: 600;">Task</strong>({{t.subagent}})</span><span class="muted">&#160;&#160;⎿ {{t.subOut}}</span></div>
+              <div class="card" role="alertdialog" aria-label="{{t.permAria}}" style="padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-color: var(--warning); font-family: var(--font-mono);">
+                <span><strong style="font-weight: 600;">Write</strong>(docs/architecture.md)</span>
+                <span class="muted" style="font-family: var(--font-sans); font-size: 12.5px;">{{t.permQ}}</span>
+                <sc-for list="{{claudeChoices}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="{{o.style}}">{{o.n}}. {{o.label}}</button></sc-for>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{isCodex}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; flex-direction: column; gap: 2px;"><span><span style="color: var(--primary);">•</span> Updated Plan</span>
+                <sc-for list="{{todos}}" as="td" hint-placeholder-count="4"><span style="{{td.style}}">&#160;&#160;└ {{td.box}} {{td.text}}</span></sc-for>
+              </div>
+              <sc-for list="{{codexRuns}}" as="c" hint-placeholder-count="4"><div style="display: flex; flex-direction: column;"><span><span style="color: var(--primary);">•</span> {{c.verb}} <span style="color: var(--foreground);">{{c.cmd}}</span></span><span class="muted">&#160;&#160;└ {{c.out}}</span></div></sc-for>
+              <sc-if value="{{afmOn}}" hint-placeholder-val="{{false}}">
+                <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-left: 2px solid var(--success); background: var(--success-soft); border-radius: 0 6px 6px 0;">
+                  <span><span style="color: var(--success);">✔</span> apply_patch <span class="muted">docs/architecture.md</span> · <span style="color: var(--success);">{{t.afmApproved}}</span></span>
+                  <span style="font-family: var(--font-sans); font-size: 12px;" class="muted">{{t.afmWhy}}</span>
+                  <div style="padding: 4px 8px; border-radius: 6px; background: var(--card); display: flex; flex-direction: column;"><span style="color: var(--success);">+ ## {{t.s2}}</span><span style="color: var(--success);">+ {{t.patchLine}}</span><span style="color: var(--destructive);">- TODO</span></div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-left: 2px solid var(--warning); background: var(--warning-soft); border-radius: 0 6px 6px 0;">
+                  <span><span style="color: var(--warning);">!</span> {{t.afmEscal}} <span class="muted">curl https://sandbox.vnpay.vn/…</span></span>
+                  <span style="font-family: var(--font-sans); font-size: 12px;" class="muted">{{t.afmEscalWhy}}</span>
+                  <div style="display: flex; gap: 6px;"><sc-for list="{{codexChoices}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{afmOff}}" hint-placeholder-val="{{true}}">
+              <div class="card" role="alertdialog" aria-label="{{t.permAria}}" style="padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border-color: var(--warning);">
+                <span><span style="color: var(--primary);">•</span> apply_patch <span class="muted">docs/architecture.md</span></span>
+                <div style="padding: 6px 8px; border-radius: 6px; background: var(--muted); display: flex; flex-direction: column;"><span style="color: var(--success);">+ ## {{t.s2}}</span><span style="color: var(--success);">+ {{t.patchLine}}</span><span style="color: var(--destructive);">- TODO</span></div>
+                <span class="muted" style="font-family: var(--font-sans); font-size: 12.5px;">{{t.codexQ}}</span>
+                <sc-for list="{{codexChoices}}" as="o" hint-placeholder-count="3"><button type="button" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button></sc-for>
+              </div>
+              </sc-if>
+            </sc-if>
+            <sc-if value="{{answered}}" hint-placeholder-val="{{false}}"><span style="font-family: var(--font-sans); font-size: 13px; color: var(--success);">✓ {{t.applied}}</span></sc-if>
+          </div>
+
+          <div style="padding: 10px 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px;">
+            <sc-if value="{{slashOpen}}" hint-placeholder-val="{{false}}">
+              <div class="card" style="padding: 4px; box-shadow: var(--shadow-lg);">
+                <sc-for list="{{eng.slash}}" as="sl" hint-placeholder-count="6"><div style="display: flex; gap: 10px; padding: 5px 8px; border-radius: 6px; font-size: 12.5px;"><span class="mono" style="width: 92px; color: var(--primary);">{{sl.cmd}}</span><span class="muted">{{sl.desc}}</span></div></sc-for>
+              </div>
+            </sc-if>
+            <div style="border: 1px solid var(--input); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <div style="display: flex; flex-wrap: wrap; gap: 4px;"><span class="cite">@hive-worker/</span><span class="cite">@docs/architecture.md</span></div>
+              <textarea aria-label="{{t.ask}}" placeholder="{{eng.placeholder}}" onFocus="{{noop}}" style="height: 44px; border: 0; outline: none; resize: none; background: transparent; color: var(--foreground); font-family: var(--font-mono); font-size: 12.5px;"></textarea>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" class="btn btn-ghost" onClick="{{flipSlash}}" style="height: 24px; padding: 0 6px; font-family: var(--font-mono); font-size: 12px;">/</button>
+                <span class="muted mono" style="flex: 1; font-size: 11px;">{{eng.hint}}</span>
+                <button type="button" class="btn btn-default" style="height: 26px;">{{t.send}}</button>
+              </div>
+            </div>
+            <div class="mono muted" style="display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px;"><span>{{eng.status}}</span><span style="margin-left: auto;">{{eng.ctx}}</span></div>
+          </div>
+        </aside>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{accOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: absolute; inset: 0; background: rgb(15 23 42 / .45); display: flex; align-items: center; justify-content: center; z-index: 20;">
+      <div role="dialog" aria-modal="true" aria-labelledby="acc-t" data-theme="{{theme}}" class="card" style="width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 24px 48px -12px rgb(0 0 0 / .45); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+        <div style="display: flex; align-items: center; justify-content: space-between;"><h2 id="acc-t" style="margin: 0; font-size: 17px; font-weight: 600;">{{t.accTitle}}</h2><button type="button" onClick="{{closeAcc}}" aria-label="{{t.close}}" class="btn btn-ghost" style="width: 28px; padding: 0; font-size: 18px;">×</button></div>
+        <p class="muted" style="margin: 0; font-size: 13px;">{{t.accLead}}</p>
+        <sc-for list="{{accounts}}" as="a" hint-placeholder-count="3">
+          <div style="{{a.box}}">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="mono" style="{{a.logo}}">{{a.mark}}</span>
+              <span style="flex: 1; display: flex; flex-direction: column; line-height: 1.3;"><span style="display: flex; align-items: center; gap: 6px;"><strong style="font-weight: 600;">{{a.name}}</strong><sc-if value="{{a.isDefault}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--accent); color: var(--accent-foreground);">{{t.default}}</span></sc-if></span><span class="muted" style="font-size: 12px;">{{a.meta}}</span></span>
+              <span class="badge" style="{{a.chip}}"><span class="dot"></span>{{a.state}}</span>
+            </div>
+            <sc-if value="{{a.connected}}" hint-placeholder-val="{{true}}">
+              <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; font-size: 12px;">
+                <div style="display: flex; flex-direction: column; gap: 4px;"><span class="muted" style="display: flex; justify-content: space-between;"><span>{{t.window}}</span><span class="mono">{{a.q1}}%</span></span><div style="height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><div style="{{a.bar1}}"></div></div><span class="muted" style="font-size: 11px;">{{a.reset}}</span></div>
+                <div style="display: flex; flex-direction: column; gap: 4px;"><span class="muted" style="display: flex; justify-content: space-between;"><span>{{t.week}}</span><span class="mono">{{a.q2}}%</span></span><div style="height: 6px; border-radius: 9999px; background: var(--muted); overflow: hidden;"><div style="{{a.bar2}}"></div></div><span class="muted" style="font-size: 11px;">{{a.models}}</span></div>
+              </div>
+              <div style="display: flex; gap: 6px; justify-content: flex-end;"><sc-if value="{{a.notDefault}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline" onClick="{{a.makeDefault}}">{{t.useDefault}}</button></sc-if><button type="button" class="btn btn-outline" onClick="{{a.logout}}">{{t.logout}}</button></div>
+            </sc-if>
+            <sc-if value="{{a.signingIn}}" hint-placeholder-val="{{false}}">
+              <div style="padding: 10px 12px; border-radius: 8px; background: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;">
+                <span style="display: flex; align-items: center; gap: 8px;"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg><strong style="font-weight: 600;">{{t.waiting}}</strong></span>
+                <span class="muted">{{a.how}}</span>
+                <span class="mono" style="font-size: 11.5px; padding: 4px 8px; border-radius: 6px; background: var(--card); border: 1px solid var(--border);">{{a.cmd}}</span>
+              </div>
+              <div style="display: flex; gap: 6px; justify-content: flex-end;"><button type="button" class="btn btn-ghost" onClick="{{a.cancel}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{a.finish}}">{{t.done}}</button></div>
+            </sc-if>
+            <sc-if value="{{a.idle}}" hint-placeholder-val="{{false}}">
+              <div style="display: flex; align-items: center; gap: 6px; justify-content: flex-end;"><span class="muted" style="flex: 1; font-size: 12px;">{{a.hint}}</span><button type="button" class="btn btn-default" onClick="{{a.login}}">{{t.login}}</button></div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="padding: 10px 12px; border-radius: 8px; background: var(--muted); font-size: 12.5px; display: flex; flex-direction: column; gap: 4px;">
+          <strong style="font-weight: 600;">{{t.whenOut}}</strong>
+          <label style="display: flex; align-items: center; gap: 8px;"><input type="radio" name="fallback" checked style="accent-color: var(--primary);">{{t.fb1}}</label>
+          <label style="display: flex; align-items: center; gap: 8px;"><input type="radio" name="fallback" style="accent-color: var(--primary);">{{t.fb2}}</label>
+        </div>
+        <p class="muted" style="margin: 0; font-size: 12px;">{{t.accNote}}</p>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"stage":{"editor":"enum","options":["work","pick"],"default":"work"},"role":{"editor":"enum","options":["writer","dev","lead"],"default":"writer"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { stage: null, tools: true, lang: null, accOpen: false, acc: null, def: null, engine: null, mode: null, choice: null, slash: true }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const stage = this.state.stage ?? this.props.stage ?? 'work';
+    const T = {
+      pickTitle: ['Chọn thư mục để viết tài liệu', 'Pick a folder to write docs in'],
+      pickLead: ['Thư mục dự án trên máy, có thể mới có một phần code. AI đọc code ở đó để viết và cập nhật tài liệu trong docs/.', 'A project folder on this machine, even if the code is only partly written. The AI reads the code there to write and update docs in docs/.'],
+      openFolder: ['Mở thư mục…', 'Open folder…'], recent: ['Gần đây', 'Recent'], explorer: ['Thư mục', 'Explorer'], coverage: ['Thành phần đã có code', 'Components with code'],
+      code: ['Code', 'Code'], readByAi: ['AI đã đọc', 'Read by AI'], readLegend: ['Chấm xanh: file AI đã đọc trong phiên này', 'Blue dot: files the AI read this session'],
+      unsaved: ['Có đề xuất chưa nhận', 'Pending suggestions'], savedIn: ['Lưu vào thư mục · chưa đẩy lên hub', 'Saved to the folder · not on the hub'], push: ['Đẩy lên hub và gửi duyệt', 'Push and submit for review'],
+      docTitle: ['Kiến trúc hive-worker', 'hive-worker architecture'], docMeta: ['ADR và sơ đồ đi kèm nằm trong docs/adr/. Viết từ code nhánh feat/proxy.', 'ADRs and diagrams live in docs/adr/. Written from the feat/proxy branch.'],
+      s1: ['Tổng quan', 'Overview'], p1a: ['Worker là một binary Go', 'The worker is a Go binary'], p1b: ['chạy trên máy dev, nhận việc từ hub và gọi agent CLI.', 'that runs on dev machines, takes tasks from the hub and drives agent CLIs.'],
+      aiAdded: ['AI thêm', 'Added by AI'], s2: ['Kênh tới hub', 'Hub channel'],
+      p2: ['Worker giữ một WebSocket tới hub; mất kết nối thì thử lại với thời gian chờ tăng dần. Mỗi run chạy trong một worktree riêng do pool quản lý.', 'The worker holds a WebSocket to the hub and retries with backoff on disconnect. Each run gets its own worktree from the pool.'],
+      s3: ['Tải CLI agent', 'Agent CLI downloads'], p3: ['CLI được tải theo phiên bản ghim trong cấu hình và kiểm SHA-256 trước khi chạy.', 'CLIs are downloaded at the version pinned in config and SHA-256 checked before use.'],
+      gapTitle: ['Chưa có trong code:', 'Not in the code yet:'], gapText: ['đi qua proxy công ty (đang ở TASK-44) và giới hạn số run song song theo CPU. Mục này để trống, gắn nhãn "dự kiến".', 'corporate proxy support (TASK-44) and CPU-based run limits. Left as "planned".'],
+      rejectAll: ['Bỏ tất cả', 'Reject all'], acceptAll: ['Nhận tất cả', 'Accept all'],
+      chat: ['Hỏi về thư mục này', 'Ask about this folder'], readOnly: ['Chỉ đọc code', 'Read-only'], model: ['Model', 'Model'],
+      u1: ['Viết tài liệu kiến trúc từ code hiện có. Phần nào chưa code thì đánh dấu "dự kiến".', 'Write the architecture doc from the current code. Mark anything not coded yet as "planned".'],
+      toolsSummary: ['Đã đọc 38 file, tìm 6 lần · 41 giây', 'Read 38 files, searched 6 times · 41 s'],
+      a1: ['Tôi đã viết 3 mục vào docs/architecture.md dưới dạng đề xuất:', 'I added 3 sections to docs/architecture.md as suggestions:'],
+      a1l1: ['Kênh tới hub, dựa trên', 'Hub channel, based on'], a1l2: ['Worktree cho mỗi run,', 'One worktree per run,'],
+      a1l3: ['Proxy và giới hạn CPU chưa có code; tôi để mục "dự kiến" và không tự đoán chi tiết.', 'Proxy and CPU limits have no code yet; I left them as "planned" without guessing details.'],
+      openDiff: ['Xem thay đổi', 'View changes'], makeTasks: ['Tạo việc cho phần còn thiếu', 'Create tasks for the gaps'],
+      usage: ['Dùng gói Max · khoảng 2% hạn mức phiên này', 'Used your Max plan · about 2% of this window'],
+      ask: ['Hỏi hoặc yêu cầu viết tài liệu từ code…', 'Ask, or request docs from the code…'], target: ['Ghi vào: docs/architecture.md', 'Writes to: docs/architecture.md'], send: ['Gửi', 'Send'], afmTip: ['Yêu cầu duyệt được Codex tự review trong sandbox workspace-write; chỉ việc rủi ro mới hỏi bạn.', 'Approval requests go through automatic review in the workspace-write sandbox; only risky ones ask you.'],
+      afmApproved: ['tự duyệt', 'auto-approved'], afmWhy: ['Approve for me: chỉ ghi file trong thư mục làm việc, không chạy lệnh mạng.', 'Approve for me: writes inside the workspace only, no network commands.'],
+      afmEscal: ['Cần bạn duyệt:', 'Needs your approval:'], afmEscalWhy: ['Lệnh gọi mạng ra ngoài sandbox, bước tự review không tự cho qua.', 'The command reaches the network outside the sandbox, so auto-review escalates it.'], engine: ['Agent CLI', 'Agent CLI'], session: ['Phiên', 'Session'], newSession: ['+ Phiên mới', '+ New session'], modeLabel: ['Chế độ', 'Mode'],
+      subagent: ['Explore: tìm phần đã có và chưa có code', 'Explore: what is coded and what is not'], subOut: ['Xong · 5 thành phần có code, 2 chưa có (proxy, giới hạn CPU)', 'Done · 5 components coded, 2 missing (proxy, CPU limits)'],
+      permAria: ['Xin quyền', 'Permission request'], permQ: ['Cho phép Claude ghi vào file này?', 'Let Claude write to this file?'], codexQ: ['Cho phép Codex áp bản vá này?', 'Allow Codex to apply this patch?'],
+      patchLine: ['Worker giữ một WebSocket tới hub, thử lại với thời gian chờ tăng dần.', 'The worker keeps a WebSocket to the hub and retries with backoff.'], applied: ['Đã ghi vào docs/architecture.md, hiện thành đề xuất trong trình soạn.', 'Written to docs/architecture.md and shown as suggestions in the editor.'], manageAcc: ['Quản lý tài khoản AI…', 'Manage AI accounts…'],
+      accTitle: ['Tài khoản AI trên máy này', 'AI accounts on this machine'],
+      accLead: ['App dùng CLI đã đăng nhập bằng gói thuê bao của bạn để đọc code và viết tài liệu. Lượt dùng tính vào gói của bạn, không vào ngân sách tổ chức.', 'The app uses CLIs signed in with your own subscription to read code and write docs. Usage counts against your plan, not the organization budget.'],
+      close: ['Đóng', 'Close'], default: ['Mặc định', 'Default'], window: ['Phiên hiện tại còn', 'Session left'], week: ['Tuần này còn', 'Week left'],
+      useDefault: ['Đặt mặc định', 'Make default'], logout: ['Đăng xuất', 'Sign out'], login: ['Đăng nhập', 'Sign in'], cancel: ['Huỷ', 'Cancel'], done: ['Tôi đã đăng nhập', 'I have signed in'],
+      waiting: ['Đang chờ bạn đăng nhập trong trình duyệt…', 'Waiting for you to sign in in the browser…'],
+      whenOut: ['Khi gói mặc định hết hạn mức', 'When the default plan runs out'], fb1: ['Chuyển sang gói kế tiếp đã kết nối', 'Switch to the next connected plan'], fb2: ['Dừng và báo tôi', 'Stop and tell me'],
+      accNote: ['Đăng nhập theo luồng của từng CLI trên máy này. App không đọc hay lưu mật khẩu, token của gói; tài liệu và code không rời máy trừ khi bạn đẩy lên hub.', 'Sign-in uses each CLI’s own flow on this machine. The app never reads or stores plan passwords or tokens; docs and code stay on this machine until you push to the hub.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const S = this.state;
+    const accDefs = [
+      { id: 'claude', name: 'Claude', mark: 'C', bg: '#F5E6DD', fg: '#B4532A', meta: ['Gói claude.ai · lan@acme.vn · Claude Code 2.1.296', 'claude.ai plan · lan@acme.vn · Claude Code 2.1.296'], q1: 69, q2: 42, reset: ['phiên: đã dùng 31% · làm mới sau 2 giờ', 'session: 31% used · resets in 2 h'], models: ['tuần (mọi model): đã dùng 58% · làm mới thứ 5', 'week (all models): 58% used · resets Thu'], how: ['App đã mở trình duyệt tới trang đăng nhập Anthropic. Đăng nhập bằng tài khoản có gói Pro hoặc Max.', 'The app opened the Anthropic sign-in page. Sign in with a Pro or Max account.'], cmd: 'claude auth login' },
+      { id: 'codex', name: 'ChatGPT (Codex)', mark: 'O', bg: '#E5E7EB', fg: '#111827', meta: ['Đăng nhập bằng ChatGPT · codex-cli 0.162.1', 'Logged in using ChatGPT · codex-cli 0.162.1'], q1: 85, q2: 40, reset: ['còn 85% (làm mới 19:00)', '85% left (resets 7pm)'], models: ['tuần: còn 40%', 'week: 40% left'], how: ['App đã mở trình duyệt tới trang đăng nhập ChatGPT. Đăng nhập bằng tài khoản có gói Plus, Pro hoặc Team.', 'The app opened the ChatGPT sign-in page. Sign in with a Plus, Pro or Team account.'], cmd: 'codex login   # codex login status' },
+      { id: 'gemini', name: 'Gemini', mark: 'G', bg: '#DBEAFE', fg: '#1D4ED8', meta: ['Chưa đăng nhập · gemini 0.63.0', 'Not signed in · gemini 0.63.0'], q1: 0, q2: 0, reset: ['', ''], models: ['', ''], hint: ['Dùng tài khoản Google hoặc gói Google AI', 'Use a Google account or Google AI plan'], how: ['App đã mở trình duyệt tới trang đăng nhập Google.', 'The app opened the Google sign-in page.'], cmd: 'gemini   # ' + x(['chọn đăng nhập Google ở lần mở đầu', 'pick Google sign-in on first run']) },
+    ];
+    const acc = S.acc || { claude: 'on', codex: 'on', gemini: 'off' };
+    const def = S.def || 'claude';
+    const setAcc = (id, v) => this.setState({ acc: { ...acc, [id]: v } });
+    const okC = 'background: var(--success-soft); color: var(--success);'; const offC = 'background: var(--muted); color: var(--muted-foreground);'; const waitC = 'background: var(--warning-soft); color: var(--warning);';
+    const barS = (q) => 'height: 100%; width: ' + q + '%; background: ' + (q < 30 ? 'var(--warning)' : 'var(--primary)') + ';';
+    const accounts = accDefs.map((a) => {
+      const st = acc[a.id];
+      return {
+        name: a.name, mark: a.mark, meta: st === 'on' ? x(a.meta) : x(['Chưa đăng nhập · ' + a.id + ' CLI', 'Not signed in · ' + a.id + ' CLI']),
+        logo: 'width: 34px; height: 34px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 14px; font-weight: 600; background: ' + a.bg + '; color: ' + a.fg + ';',
+        box: 'padding: 12px; border: 1px solid ' + (def === a.id && st === 'on' ? 'var(--primary)' : 'var(--border)') + '; border-radius: 10px; display: flex; flex-direction: column; gap: 10px;',
+        connected: st === 'on', signingIn: st === 'wait', idle: st === 'off', isDefault: def === a.id && st === 'on', notDefault: def !== a.id,
+        state: st === 'on' ? x(['Đã kết nối', 'Connected']) : st === 'wait' ? x(['Đang đăng nhập', 'Signing in']) : x(['Chưa kết nối', 'Not connected']), chip: st === 'on' ? okC : st === 'wait' ? waitC : offC,
+        q1: a.q1, q2: a.q2, bar1: barS(a.q1), bar2: barS(a.q2), reset: x(a.reset), models: x(a.models), how: x(a.how), cmd: a.cmd, hint: a.hint ? x(a.hint) : '',
+        makeDefault: () => this.setState({ def: a.id }), logout: () => setAcc(a.id, 'off'), login: () => setAcc(a.id, 'wait'), cancel: () => setAcc(a.id, 'off'), finish: () => setAcc(a.id, 'on'),
+      };
+    });
+    const eng0 = S.engine || 'claude';
+    const segE = (on) => 'height: 26px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const engines = [['claude', 'Claude Code', '#D97757'], ['codex', 'Codex', 'var(--foreground)']].map(([k, l, c]) => ({ label: l, sel: eng0 === k ? 'true' : 'false', style: segE(eng0 === k), dot: 'width: 7px; height: 7px; border-radius: 9999px; background: ' + c + ';', pick: () => this.setState({ engine: k, choice: null, mode: null }) }));
+    const modeDefs = eng0 === 'claude'
+      ? [['manual', ['Hỏi trước', 'Manual'], 'manual'], ['acceptEdits', 'Accept edits', 'acceptEdits'], ['plan', 'Plan', 'plan'], ['auto', 'Auto', 'auto'], ['bypass', 'Bypass', 'bypassPermissions', true]]
+      : [['ro', 'Read Only', 'read-only'], ['ws', 'Workspace', 'workspace-write'], ['full', 'Full Access', 'danger-full-access', true]];
+    const mode = S.mode || (eng0 === 'claude' ? 'acceptEdits' : 'ws');
+    const modes = modeDefs.map(([k, l, title, locked]) => ({
+      label: typeof l === 'string' ? l : x(l), on: mode === k ? 'true' : 'false', locked: !!locked, title: locked ? x(['Bị chính sách tổ chức khoá', 'Locked by organization policy']) + ' · ' + title : title,
+      style: 'height: 22px; padding: 0 8px; border: 0; border-radius: 5px; font: inherit; font-size: 11.5px; cursor: ' + (locked ? 'not-allowed; opacity: .45;' : 'pointer;') + ' ' + (mode === k ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
+      pick: () => { if (!locked) this.setState({ mode: k }); },
+    }));
+    const slashC = [['/init', ['Tạo CLAUDE.md cho thư mục', 'Create CLAUDE.md for the folder']], ['/context', ['Ngữ cảnh đang dùng, theo nhóm', 'Context usage by category']], ['/usage', ['Hạn mức gói và thứ đang tiêu nhiều', 'Plan usage and what drives it']], ['/compact', ['Tóm tắt hội thoại để giải phóng ngữ cảnh', 'Summarize to free up context']], ['/resume', ['Mở lại phiên cũ', 'Resume a conversation']], ['/model', ['Đổi model', 'Set the model']], ['/permissions', ['Luật cho phép, chặn tool', 'Allow and deny tool rules']], ['/skills', ['Liệt kê skill', 'List skills']]];
+    const slashX = [['/init', ['Tạo AGENTS.md cho Codex', 'Create AGENTS.md for Codex']], ['/permissions', ['Chọn Codex được làm gì', 'Choose what Codex may do']], ['/model', ['Model và mức suy nghĩ', 'Model and reasoning effort']], ['/status', ['Cấu hình phiên, hạn mức', 'Session config and limits']], ['/diff', ['git diff, kể cả file mới', 'git diff incl. untracked']], ['/review', ['Review thay đổi, tìm lỗi', 'Review changes, find issues']], ['/compact', ['Tóm tắt hội thoại', 'Summarize the conversation']], ['/mention', ['Nhắc tới một file', 'Mention a file']]];
+    const eng = eng0 === 'claude'
+      ? { session: x(['Phiên: Kiến trúc · 14:02', 'Session: Architecture · 14:02']), modes, slash: slashC.map(([c, d]) => ({ cmd: c, desc: x(d) })), placeholder: x(['Hỏi Claude về thư mục này…', 'Ask Claude about this folder…']), hint: x(['/ lệnh · @ file · # ghi vào CLAUDE.md', '/ commands · @ files · # save to CLAUDE.md']), status: 'claude-opus-5-5 · Claude Max · 2.1.296', ctx: x(['ngữ cảnh 23,4k / 1M (2%)', 'context 23.4k / 1M (2%)']) }
+      : { session: x(['Phiên: Kiến trúc · 14:02', 'Session: Architecture · 14:02']), modes, slash: slashX.map(([c, d]) => ({ cmd: c, desc: x(d) })), placeholder: x(['Hỏi Codex về thư mục này…', 'Ask Codex about this folder…']), hint: x(['/ lệnh · @ file', '/ commands · @ files']), status: 'codex-cli 0.162.1 · ChatGPT · Workspace', ctx: x(['còn 77% ngữ cảnh', '77% context left']) };
+    const todoDefs = [[['Đọc cấu trúc thư mục và go.mod', 'Read the layout and go.mod'], 'done'], [['Tìm các thành phần chính trong internal/', 'Find main components in internal/'], 'done'], [['Viết mục Kênh tới hub, Tải CLI', 'Write Hub channel and CLI downloads'], 'doing'], [['Đánh dấu phần chưa có code', 'Mark what has no code yet'], 'todo']];
+    const todos = todoDefs.map(([tx, st]) => ({ text: x(tx), box: eng0 === 'claude' ? (st === 'done' ? '☒' : '☐') : (st === 'done' ? '✔' : st === 'doing' ? '□' : '□'), style: st === 'done' ? 'color: var(--muted-foreground); text-decoration: line-through;' : st === 'doing' ? 'font-weight: 600;' : '' }));
+    const claudeTools = [['Read', 'go.mod', x(['Đọc 24 dòng', 'Read 24 lines'])], ['Glob', '**/*.go', x(['Thấy 214 file', 'Found 214 files'])], ['Grep', '"websocket"', x(['6 kết quả trong 3 file', '6 matches in 3 files'])], ['Read', 'internal/channel/ws.go', x(['Đọc 188 dòng', 'Read 188 lines'])]].map(([tool, arg, out]) => ({ tool, arg, out }));
+    const codexRuns = [['Explored', 'ls, go.mod', x(['14 mục, Go 1.27', '14 entries, Go 1.27'])], ['Ran', 'rg -n "websocket" internal', x(['6 dòng', '6 lines'])], ['Ran', 'sed -n 1,120p internal/channel/ws.go', x(['120 dòng', '120 lines'])], ['Ran', 'rg -n "proxy"', x(['không có kết quả', 'no matches'])]].map(([verb, cmd, out]) => ({ verb, cmd, out }));
+    const ch = S.choice;
+    const optStyle = (i) => 'text-align: left; padding: 4px 8px; border-radius: 6px; border: 1px solid ' + (ch === i ? 'var(--primary)' : 'var(--border)') + '; background: ' + (ch === i ? 'var(--accent)' : 'var(--background)') + '; color: var(--foreground); font: inherit; font-size: 12px; cursor: pointer;';
+    const claudeChoices = [['Yes', 'Yes'], ['Có, và không hỏi lại cho docs/**', "Yes, and don't ask again for docs/**"], ['Không, và bảo Claude làm khác đi', 'No, and tell Claude what to do differently']].map((l, i) => ({ n: i + 1, label: x(l), style: optStyle(i), pick: () => this.setState({ choice: i }) }));
+    const codexChoices = [['Có', 'Yes'], ['Luôn cho phép trong phiên này', 'Always allow for this session'], ['Không, góp ý cho Codex', 'No, give Codex feedback']].map((l, i) => ({ label: x(l), style: optStyle(i), pick: () => this.setState({ choice: i }) }));
+    const linked = 'background: var(--accent); color: var(--accent-foreground)'; const free = 'background: var(--muted); color: var(--muted-foreground)';
+    const recent = [
+      { path: '~/Work/acme/hive-worker', meta: x(['Go · 214 file · nhánh feat/proxy · 5 tài liệu', 'Go · 214 files · feat/proxy · 5 docs']), link: '↔ hive-worker', chip: linked },
+      { path: '~/Work/acme/payment-api', meta: x(['Go, SQL · 512 file · main · 12 tài liệu', 'Go, SQL · 512 files · main · 12 docs']), link: '↔ payment-api', chip: linked },
+      { path: '~/Desktop/wallet-poc', meta: x(['TypeScript · 37 file · chưa có git · chưa có tài liệu', 'TypeScript · 37 files · no git · no docs']), link: x(['Chưa nối dự án', 'Not linked']), chip: free },
+    ];
+    const sel = 'background: var(--accent); color: var(--accent-foreground); font-weight: 600;';
+    const docFiles = [['README.md', null], ['architecture.md', ['AI', 'AI'], true], ['adr/012-skills-git.md', null], ['runbook.md', ['lệch code', 'stale']]].map(([n, b, on]) => ({ name: n, icon: '▤', badge: b ? x(b) : '', badgeStyle: b && b[0] === 'AI' ? 'background: var(--success-soft); color: var(--success)' : 'background: var(--warning-soft); color: var(--warning)', style: on ? sel : '' }));
+    const codeFiles = [['▾ cmd/', false, 0], ['hive-worker/main.go', true, 1], ['▾ internal/', false, 0], ['▸ channel/', true, 1], ['▸ runner/', true, 1], ['▸ cli/', true, 1], ['▸ netx/', false, 1], ['go.mod', true, 0], ['Makefile', false, 0], ['.hive/setup.sh', false, 0]].map(([n, r, d]) => ({ name: n, icon: '', read: r, style: 'padding-left: ' + (6 + d * 14) + 'px;' }));
+    const tools = [['Read', 'go.mod'], ['Glob', '**/*.go (214)'], ['Read', 'cmd/hive-worker/main.go'], ['Grep', '"websocket" → 6'], ['Read', 'internal/channel/ws.go'], ['Read', 'internal/runner/pool.go'], ['Grep', '"proxy" → 0'], ['Read', 'docs/architecture.md']].map(([op, arg]) => ({ op, arg }));
+    const quick = [['README từ code', 'README from code'], ['Tài liệu kiến trúc', 'Architecture doc'], ['Tài liệu API', 'API reference'], ['ADR từ lịch sử git', 'ADR from git history'], ['Tìm chỗ tài liệu lệch code', 'Find stale docs']].map(x);
+    const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      yes: true, role: this.props.role ?? 'writer', lang,
+      afmOn: !!S.afm, afmOff: !S.afm, afmAria: S.afm ? 'true' : 'false', flipAfm: () => this.setState({ afm: !S.afm, choice: null }),
+      afmTrack: 'flex: none; width: 30px; height: 17px; border-radius: 9999px; border: 0; padding: 2px; cursor: pointer; display: inline-flex; background: ' + (S.afm ? 'var(--success)' : 'var(--input)') + ';',
+      afmKnob: 'width: 13px; height: 13px; border-radius: 9999px; background: var(--background); transition: transform .2s; ' + (S.afm ? 'transform: translateX(13px);' : ''),
+      engines, eng, todos, claudeTools, codexRuns, claudeChoices, codexChoices, isClaude: eng0 === 'claude', isCodex: eng0 === 'codex', answered: ch === 0 || ch === 1,
+      slashOpen: !!S.slash, flipSlash: () => this.setState({ slash: !S.slash }), noop: () => {},
+      accounts, accOpen: !!S.accOpen, openAcc: () => this.setState({ accOpen: true }), closeAcc: () => this.setState({ accOpen: false }),
+      onModel: (e) => { if (e.target.selectedIndex === e.target.options.length - 1) this.setState({ accOpen: true }); },
+      theme: this.props.dark ? 'dark' : 'light', t, recent, docFiles, codeFiles, tools, quick,
+      winTitle: stage === 'pick' ? 'xDev Hive' : 'xDev Hive · hive-worker · ~/Work/acme/hive-worker',
+      picking: stage === 'pick', working: stage === 'work', openFolder: () => this.setState({ stage: 'work' }), backToPick: () => this.setState({ stage: 'pick' }),
+      toolsOpen: this.state.tools, flipTools: () => this.setState({ tools: !this.state.tools }), chev: 'display: inline-block; transition: transform .15s; ' + (this.state.tools ? 'transform: rotate(90deg);' : ''),
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

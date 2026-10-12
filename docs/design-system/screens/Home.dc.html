@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Trang chủ</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:14px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="home" lang="{{lang}}" hint-size="240px,900px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.homeCrumb}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="flex: 1; box-sizing: border-box; padding: 64px 24px; display: flex; justify-content: center; align-items: flex-start;">
+      <div class="card" style="width: 100%; max-width: 560px; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+        <div class="mono muted" style="font-size: 13px;">{{t.hello}}</div>
+        <sc-if value="{{inOrg}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <span class="mono" style="width: 48px; height: 48px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--brand-navy); color: #B8F1FF; font-size: 20px; font-weight: 600;">A</span>
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; font-weight: 600; letter-spacing: -0.03em;">Acme Software</h1>
+          </div>
+          <p class="muted" style="margin: 0;">{{t.inOrgBody}}</p>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+            <sc-for list="{{tiles}}" as="tl" hint-placeholder-count="3">
+              <div style="padding: 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 2px;"><span class="mono" style="font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">{{tl.v}}</span><span class="muted" style="font-size: 12.5px;">{{tl.l}}</span></div>
+            </sc-for>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <a href="#" class="btn btn-default">{{t.board}}</a>
+            <a href="Teams.dc.html" class="btn btn-outline">{{t.teams}}</a>
+            <a href="Members.dc.html" class="btn btn-outline">{{t.members}}</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{noOrg}}" hint-placeholder-val="{{false}}">
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; font-weight: 600; letter-spacing: -0.03em;">{{t.noOrgTitle}}</h1>
+          <p class="muted" style="margin: 0;">{{t.noOrgBody1}} <strong class="mono" style="color: var(--foreground); font-weight: 500;">an.do@acme.vn</strong>{{t.noOrgBody2}}</p>
+        </sc-if>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"inOrg":{"editor":"boolean","default":true},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const inOrg = this.props.inOrg ?? true;
+    const T = {
+      homeCrumb: ['Trang chủ', 'Home'], hello: ['Chào Trần Lan', 'Hi, Trần Lan'],
+      inOrgBody: ['Bạn là quản trị của tổ chức này. Việc của các dự án nằm ở bảng việc.', 'You are an admin of this organization. Project tasks live on the board.'],
+      board: ['Bảng việc', 'Board'], teams: ['Đội và hệ thống', 'Teams & systems'], members: ['Thành viên', 'Members'],
+      noOrgTitle: ['Chưa thuộc tổ chức nào', 'Not in an organization yet'], noOrgBody1: ['Nhờ quản trị tổ chức gửi lời mời tới', 'Ask an organization admin to send an invitation to'],
+      noOrgBody2: ['. Khi đã vào tổ chức, dự án và việc của đội sẽ hiện ở đây.', '. Once you join, your team’s projects and tasks show up here.'], createOrg: ['Tạo tổ chức mới', 'Create an organization'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const tiles = [{ v: '3', l: x(['run đang chạy', 'runs in progress']) }, { v: '2', l: x(['việc chờ bạn', 'tasks waiting on you']) }, { v: '5', l: x(['máy trực tuyến', 'machines online']) }];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, tiles, inOrg, noOrg: !inOrg,
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

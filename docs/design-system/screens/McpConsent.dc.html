@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Cho phép MCP</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:36px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:14px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:2px;background:var(--muted);border-radius:8px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-direction: column; background: var(--background); background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 20px 20px; color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="padding: 16px 24px; display: flex; justify-content: flex-end;">
+    <div class="seg" role="group" aria-label="{{t.langAria}}"><button type="button" onClick="{{toVi}}" aria-pressed="{{viP}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{enP}}" style="{{enS}}">EN</button></div>
+  </div>
+  <main style="flex: 1; display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px;">
+    <div class="card" style="width: 100%; max-width: 420px; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow-lg);">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--border);"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6M12 19h8"></path></svg></span>
+        <svg aria-hidden="true" width="40" height="12" viewBox="0 0 40 12" fill="none" stroke="var(--muted-foreground)" stroke-width="1.5" stroke-dasharray="3 3"><path d="M0 6h40"></path></svg>
+        <dc-import name="Logo" height="44" hint-size="100px,44px"></dc-import>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        <p class="muted" style="margin: 0;"><strong style="color: var(--foreground);">claude-code</strong> {{t.body}}</p>
+      </div>
+      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px;">
+        <sc-for list="{{scopes}}" as="s" hint-placeholder-count="4">
+          <li style="display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border);"><span style="width: 20px; height: 20px; flex: none; border-radius: 9999px; background: var(--success-soft); color: var(--success); display: inline-flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>{{s}}</li>
+        </sc-for>
+      </ul>
+      <p class="muted mono" style="margin: 0; font-size: 12px;">{{t.client}} hmc_8c2f…41d0</p>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+        <button type="button" class="btn btn-outline">{{t.deny}}</button>
+        <button type="button" class="btn btn-default">{{t.allow}}</button>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      langAria: ['Ngôn ngữ', 'Language'], title: ['Cho phép công cụ dùng hub?', 'Allow this tool to use the hub?'],
+      body: ['muốn gọi các tool MCP của hub thay bạn, với đúng quyền của bạn trong từng tổ chức.', 'wants to call the hub MCP tools on your behalf, with exactly your rights in each organization.'],
+      client: ['Mã client:', 'Client ID:'], deny: ['Từ chối', 'Deny'], allow: ['Cho phép', 'Allow'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const scopes = [
+      ['Biết bạn là ai trên hub', 'Know who you are on the hub'], ['Xem tên và ảnh đại diện', 'See your name and avatar'],
+      ['Xem địa chỉ email', 'See your email address'], ['Giữ đăng nhập khi bạn không mở trình duyệt (làm mới token)', 'Stay signed in when your browser is closed (refresh token)'],
+    ].map(x);
+    const seg = (on) => 'height: 26px; min-width: 34px; padding: 0 8px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', t, scopes,
+      viP: en ? 'false' : 'true', enP: en ? 'true' : 'false', viS: seg(!en), enS: seg(en),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

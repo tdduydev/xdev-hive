@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Quy trình duyệt</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:9999px;border:1px solid var(--border);font-size:12px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="workflows" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0; max-width: 760px;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; gap: 8px;"><button type="button" class="btn btn-outline">{{t.test}}</button><button type="button" class="btn btn-default">{{t.publish}}</button></div>
+      </header>
+
+      <section class="card" style="padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+        <label class="field" style="flex-direction: row; align-items: center; gap: 8px;">{{t.workflow}}<select class="input" style="width: 260px;"><option>{{t.wfPrd}}</option><option>{{t.wfDesign}}</option><option>{{t.wfAdr}}</option><option>{{t.wfRunbook}}</option></select></label>
+        <span class="muted" style="font-size: 13px;">{{t.preset}}</span>
+        <div class="seg" role="group" aria-label="{{t.preset}}"><sc-for list="{{presets}}" as="p" hint-placeholder-count="4"><button type="button" onClick="{{p.pick}}" aria-pressed="{{p.on}}" style="{{p.style}}">{{p.label}}</button></sc-for></div>
+        <span style="flex: 1;"></span>
+        <span class="muted" style="font-size: 12.5px;">{{t.appliesTo}}</span>
+        <span class="chip mono">PRD</span><span class="chip">payment-api</span><span class="chip">+3</span>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <section aria-label="{{t.pipeline}}" style="flex: 999 1 640px; min-width: 0; display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;">
+          <sc-for list="{{phases}}" as="ph" hint-placeholder-count="3">
+            <div style="flex: 1 0 230px; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; background: var(--muted);">
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8px;"><strong style="font-family: var(--font-heading); font-size: 14px; letter-spacing: -0.02em;">{{ph.name}}</strong><span class="mono muted" style="font-size: 11px;">{{ph.code}}</span></div>
+              <span class="muted" style="font-size: 12px; margin-top: -6px;">{{ph.desc}}</span>
+              <sc-for list="{{ph.gates}}" as="g" hint-placeholder-count="3">
+                <div style="display: flex; flex-direction: column; align-items: stretch; gap: 6px;">
+                  <button type="button" onClick="{{g.pick}}" aria-pressed="{{g.on}}" style="{{g.style}}">
+                    <span style="display: flex; align-items: center; gap: 6px;"><span class="badge" style="{{g.kindStyle}}; height: 20px; font-size: 11px;">{{g.kind}}</span><span class="mono muted" style="font-size: 11px; margin-left: auto;">{{g.sla}}</span></span>
+                    <span style="font-weight: 600; font-size: 13.5px;">{{g.name}}</span>
+                    <span class="muted" style="font-size: 12px;">{{g.who}}</span>
+                    <sc-if value="{{g.cond}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--warning);">⤷ {{g.cond}}</span></sc-if>
+                  </button>
+                  <sc-if value="{{g.arrow}}" hint-placeholder-val="{{true}}"><span aria-hidden="true" class="muted" style="text-align: center; font-size: 12px; line-height: 1;">↓</span></sc-if>
+                </div>
+              </sc-for>
+              <button type="button" style="height: 34px; border: 1px dashed var(--input); border-radius: 8px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer;">+ {{t.addGate}}</button>
+              <div style="margin-top: 2px; padding-top: 8px; border-top: 1px dashed var(--input); display: flex; flex-direction: column; gap: 4px; font-size: 12px;"><span class="muted">{{t.outputs}}</span><span style="display: flex; flex-wrap: wrap; gap: 4px;"><sc-for list="{{ph.out}}" as="o" hint-placeholder-count="2"><span class="chip mono" style="background: var(--card);">{{o}}</span></sc-for></span></div>
+            </div>
+          </sc-for>
+        </section>
+
+        <aside class="card" aria-label="{{t.config}}" style="flex: 1 1 340px; max-width: 400px; min-width: 300px; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;">
+            <span class="muted" style="font-size: 12px;">{{t.config}}</span>
+            <input class="input" aria-label="{{t.gateName}}" value="{{cur.name}}" style="font-weight: 600; font-size: 15px;">
+          </div>
+          <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto;">
+            <div class="field">{{t.type}}<div class="seg" role="radiogroup" aria-label="{{t.type}}"><sc-for list="{{types}}" as="k" hint-placeholder-count="4"><button type="button" role="radio" aria-checked="{{k.on}}" onClick="{{k.pick}}" style="{{k.style}}">{{k.label}}</button></sc-for></div></div>
+            <sc-if value="{{isHuman}}" hint-placeholder-val="{{true}}">
+              <label class="field">{{t.approvers}}<span style="display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--input); border-radius: 8px;"><span class="chip" style="background: var(--accent); color: var(--accent-foreground); border-color: transparent;">{{t.roleOwner}} ×</span><span class="chip">Nguyễn Minh ×</span><span class="muted" style="font-size: 12.5px; padding: 2px 4px;">+ {{t.addApprover}}</span></span></label>
+              <label class="field">{{t.rule}}<select class="input"><option>{{t.ruleAny}}</option><option>{{t.ruleAll}}</option><option>{{t.ruleN}}</option></select></label>
+            </sc-if>
+            <sc-if value="{{isAi}}" hint-placeholder-val="{{false}}">
+              <label class="field">{{t.aiModel}}<select class="input"><option>Claude Sonnet · {{t.orgBudget}}</option><option>Codex · {{t.orgBudget}}</option></select></label>
+              <label class="field">{{t.aiChecks}}<textarea class="input" style="height: 92px; padding: 8px 10px; resize: vertical;">{{t.aiChecksVal}}</textarea></label>
+              <label class="field">{{t.passScore}}<input class="input mono" value="7 / 10"></label>
+            </sc-if>
+            <sc-if value="{{isRule}}" hint-placeholder-val="{{false}}">
+              <label class="field">{{t.ruleExpr}}<textarea class="input mono" style="height: 92px; padding: 8px 10px; font-size: 12.5px; resize: vertical;">every R-n has an acceptance criterion
+no TODO left in sections 1–4
+links resolve to approved docs</textarea></label>
+            </sc-if>
+            <sc-if value="{{isExt}}" hint-placeholder-val="{{false}}">
+              <label class="field">{{t.extCheck}}<input class="input mono" value="github: ci / docs-lint"></label>
+            </sc-if>
+            <fieldset style="margin: 0; padding: 10px 12px; border: 1px dashed var(--input); border-radius: 10px; display: flex; flex-direction: column; gap: 10px;">
+              <legend style="padding: 0 6px; font-size: 13px; font-weight: 500;">{{t.when}}</legend>
+              <span style="display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px;"><span class="chip">{{t.condType}}</span><span class="chip">{{t.condKw}}</span><span class="chip mono">{{t.condSize}}</span><button type="button" class="btn btn-ghost btn-sm" style="height: 24px;">+ {{t.addCond}}</button></span>
+              <label style="display: flex; gap: 8px; align-items: flex-start; font-size: 13px;"><input type="checkbox" checked style="margin-top: 3px; accent-color: var(--primary);"><span>{{t.skipSmall}}<div class="hint">{{t.skipSmallHint}}</div></span></label>
+            </fieldset>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;">
+              <label class="field">{{t.onReject}}<select class="input"><option>{{t.backAuthor}}</option><option>{{t.backAgent}}</option><option>{{t.backPrev}}</option></select></label>
+              <label class="field">SLA<select class="input"><option>24 {{t.hours}}</option><option>48 {{t.hours}}</option><option>{{t.noSla}}</option></select></label>
+            </div>
+            <label class="field">{{t.after}}<select class="input"><option>{{t.afterNext}}</option><option>{{t.afterTask}}</option><option>{{t.afterBaseline}}</option></select><span class="hint">{{t.afterHint}}</span></label>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { preset: 'aidlc', cur: 'po', kind: {}, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], title: ['Quy trình duyệt', 'Review workflows'],
+      lead: ['Mỗi loại tài liệu đi qua các checkpoint theo giai đoạn của AI SDLC. Checkpoint có thể là AI tự kiểm, người duyệt, quy tắc tự động hoặc cổng CI; điều kiện quyết định checkpoint nào chạy.', 'Each doc type passes checkpoints along the AI SDLC phases. A checkpoint is an AI check, a human approval, an automatic rule or a CI gate; conditions decide which ones run.'],
+      test: ['Chạy thử trên 1 tài liệu', 'Dry-run on a doc'], publish: ['Áp dụng quy trình', 'Publish workflow'], workflow: ['Quy trình', 'Workflow'],
+      wfPrd: ['PRD chuẩn', 'Standard PRD'], wfDesign: ['Thiết kế kỹ thuật', 'Technical design'], wfAdr: ['ADR', 'ADR'], wfRunbook: ['Runbook vận hành', 'Ops runbook'],
+      preset: ['Khung mẫu', 'Preset'], appliesTo: ['Áp cho', 'Applies to'], pipeline: ['Các checkpoint', 'Checkpoints'], addGate: ['Thêm checkpoint', 'Add checkpoint'], outputs: ['Tài liệu đầu ra', 'Output artifacts'],
+      config: ['Cấu hình checkpoint', 'Checkpoint settings'], gateName: ['Tên checkpoint', 'Checkpoint name'], type: ['Loại', 'Type'],
+      approvers: ['Người duyệt', 'Approvers'], roleOwner: ['Vai trò: Product owner', 'Role: Product owner'], addApprover: ['vai trò, đội, người', 'role, team, person'],
+      rule: ['Cách duyệt', 'Approval rule'], ruleAny: ['Một người bất kỳ', 'Any one'], ruleAll: ['Tất cả phải duyệt', 'Everyone'], ruleN: ['N trên M người', 'N of M'],
+      aiModel: ['Model kiểm', 'Checking model'], orgBudget: ['ngân sách tổ chức', 'org budget'], aiChecks: ['AI kiểm gì', 'What the AI checks'],
+      aiChecksVal: ['Đủ mục theo mẫu PRD\nMỗi yêu cầu có mã R-n và tiêu chí chấp nhận\nKhông mâu thuẫn với tài liệu đã chốt\nKhông có dữ liệu nhạy cảm', 'All PRD template sections present\nEvery requirement has an R-n id and acceptance criteria\nNo conflict with baselined docs\nNo sensitive data'],
+      passScore: ['Điểm đạt', 'Pass score'], ruleExpr: ['Quy tắc', 'Rules'], extCheck: ['Kiểm tra bên ngoài', 'External check'],
+      when: ['Chạy khi', 'Runs when'], condType: ['Loại = PRD', 'Type = PRD'], condKw: ['Có từ khoá: phí, hoàn tiền', 'Mentions: fee, refund'], condSize: ['Δ > 20 dòng', 'Δ > 20 lines'], addCond: ['Điều kiện', 'Condition'],
+      skipSmall: ['Bỏ qua khi chỉ sửa chính tả, định dạng', 'Skip for typo or formatting-only edits'], skipSmallHint: ['AI phân loại thay đổi trước; thay đổi nhỏ đi thẳng tới checkpoint sau.', 'AI classifies the change first; small ones go straight on.'],
+      onReject: ['Khi bị trả lại', 'On reject'], backAuthor: ['Về người viết', 'Back to author'], backAgent: ['Agent sửa theo góp ý', 'Agent revises'], backPrev: ['Về checkpoint trước', 'Previous checkpoint'], hours: ['giờ', 'hours'], noSla: ['Không hạn', 'No SLA'],
+      after: ['Khi đạt', 'On pass'], afterNext: ['Sang checkpoint tiếp', 'Go to next checkpoint'], afterTask: ['Tạo việc cho agent bước sau', 'Create the next-phase agent task'], afterBaseline: ['Chốt phiên bản (baseline)', 'Baseline the version'],
+      afterHint: ['Ví dụ: PRD đạt thì leader tạo việc viết thiết kế kỹ thuật, trỏ về PRD đã chốt.', 'e.g. once the PRD passes, the leader opens a design task linked to the baselined PRD.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const K = { ai: [['AI tự kiểm', 'AI check'], 'background: var(--accent); color: var(--accent-foreground)'], human: [['Người duyệt', 'Human'], 'background: var(--warning-soft); color: var(--warning)'], rule: [['Quy tắc', 'Rule'], 'background: var(--secondary); color: var(--secondary-foreground)'], ext: [['Cổng CI', 'CI gate'], 'background: var(--success-soft); color: var(--success)'] };
+    const P = {
+      aidlc: [
+        { name: 'Inception', code: 'AI-DLC 1', desc: ['Ý định → yêu cầu, story', 'Intent → requirements, stories'], out: ['PRD', 'stories.md'], gates: [
+          { id: 'clarify', k: 'ai', n: ['AI hỏi làm rõ', 'AI clarifying questions'], w: ['Leader agent', 'Leader agent'], sla: '—' },
+          { id: 'ai1', k: 'ai', n: ['AI kiểm đủ mục PRD', 'AI PRD completeness'], w: ['Claude Sonnet', 'Claude Sonnet'], sla: '5m' },
+          { id: 'po', k: 'human', n: ['Product owner duyệt', 'Product owner sign-off'], w: ['Nguyễn Minh · 1/1', 'Nguyễn Minh · 1/1'], sla: '24h' },
+          { id: 'legal', k: 'human', n: ['Pháp chế', 'Legal'], w: ['Nhóm Pháp chế · 1/2', 'Legal group · 1/2'], sla: '48h', c: ['khi có phí, hoàn tiền', 'when fees or refunds appear'] }] },
+        { name: 'Construction', code: 'AI-DLC 2', desc: ['Thiết kế, ADR, kế hoạch task, code', 'Design, ADR, task plan, code'], out: ['design.md', 'ADR', 'tasks.md'], gates: [
+          { id: 'design', k: 'human', n: ['Kiến trúc sư duyệt thiết kế', 'Architect reviews design'], w: ['Vai trò: Architect · tất cả', 'Role: Architect · all'], sla: '24h' },
+          { id: 'trace', k: 'rule', n: ['Truy vết R-n → task', 'Trace R-n → tasks'], w: ['Tự động', 'Automatic'], sla: '—' },
+          { id: 'plan', k: 'human', n: ['Duyệt kế hoạch task', 'Approve task plan'], w: ['Quản trị đội · 1', 'Team admin · 1'], sla: '8h', c: ['bỏ qua khi < 3 task', 'skipped when < 3 tasks'] }] },
+        { name: 'Operations', code: 'AI-DLC 3', desc: ['Phát hành, runbook, vận hành', 'Release, runbook, operations'], out: ['runbook.md', 'release-notes'], gates: [
+          { id: 'ci', k: 'ext', n: ['CI docs-lint xanh', 'CI docs-lint green'], w: ['github: ci', 'github: ci'], sla: '—' },
+          { id: 'ops', k: 'human', n: ['Trực vận hành duyệt runbook', 'On-call approves runbook'], w: ['Đội Nền tảng · 1', 'Platform team · 1'], sla: '24h' }] },
+      ],
+      speckit: [
+        { name: 'Specify', code: 'spec.md', desc: ['Mô tả tính năng, user story', 'Feature and user stories'], out: ['spec.md'], gates: [{ id: 'po', k: 'human', n: ['Duyệt spec', 'Approve spec'], w: ['Product owner', 'Product owner'], sla: '24h' }] },
+        { name: 'Plan', code: 'plan.md', desc: ['Kỹ thuật, ràng buộc constitution', 'Tech plan, constitution checks'], out: ['plan.md'], gates: [{ id: 'ai1', k: 'ai', n: ['AI đối chiếu constitution', 'AI constitution check'], w: ['Claude', 'Claude'], sla: '5m' }, { id: 'design', k: 'human', n: ['Duyệt plan', 'Approve plan'], w: ['Architect', 'Architect'], sla: '24h' }] },
+        { name: 'Tasks', code: 'tasks.md', desc: ['Task có mã T001…', 'Tasks with T001 ids'], out: ['tasks.md'], gates: [{ id: 'trace', k: 'rule', n: ['Mọi story có task', 'Every story has tasks'], w: ['Tự động', 'Automatic'], sla: '—' }] },
+      ],
+      bmad: [
+        { name: 'Analysis · PM', code: 'BMAD', desc: ['Brief → PRD', 'Brief → PRD'], out: ['brief.md', 'prd.md'], gates: [{ id: 'po', k: 'human', n: ['Review gate #1: PRD', 'Review gate #1: PRD'], w: ['Product owner', 'Product owner'], sla: '24h' }] },
+        { name: 'Architect · UX', code: 'BMAD', desc: ['Kiến trúc, UX', 'Architecture, UX'], out: ['architecture.md'], gates: [{ id: 'design', k: 'human', n: ['Review gate #2: kiến trúc', 'Review gate #2: architecture'], w: ['Architect', 'Architect'], sla: '24h' }, { id: 'ai1', k: 'ai', n: ['AI so PRD ↔ kiến trúc', 'AI PRD ↔ architecture'], w: ['Claude', 'Claude'], sla: '5m' }] },
+        { name: 'Scrum master · Dev', code: 'BMAD', desc: ['Story sẵn sàng → code', 'Ready stories → code'], out: ['stories/*.md'], gates: [{ id: 'plan', k: 'human', n: ['Story sẵn sàng', 'Story ready'], w: ['Scrum master', 'Scrum master'], sla: '8h' }] },
+      ],
+    };
+    P.custom = P.aidlc.slice(0, 2);
+    const ph = P[this.state.preset];
+    const kindOf = (g) => this.state.kind[g.id] || g.k;
+    const all = []; ph.forEach((p) => p.gates.forEach((g) => all.push(g)));
+    const cur = all.find((g) => g.id === this.state.cur) || all[0];
+    const phases = ph.map((p) => ({
+      name: p.name, code: p.code, desc: x(p.desc), out: p.out,
+      gates: p.gates.map((g, i) => {
+        const on = g.id === cur.id; const k = kindOf(g);
+        return {
+          name: x(g.n), who: x(g.w), sla: g.sla, cond: g.c ? x(g.c) : '', kind: x(K[k][0]), kindStyle: K[k][1], arrow: i < p.gates.length - 1, on: on ? 'true' : 'false',
+          pick: () => this.setState({ cur: g.id }),
+          style: 'display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 10px; text-align: left; font: inherit; color: var(--card-foreground); cursor: pointer; background: var(--card); ' + (on ? 'border: 1px solid var(--primary); box-shadow: 0 0 0 2px var(--accent);' : 'border: 1px solid var(--border);'),
+        };
+      }),
+    }));
+    const segS = (on) => 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 12.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const presets = [['aidlc', 'AI-DLC (AWS)'], ['speckit', 'Spec Kit'], ['bmad', 'BMAD'], ['custom', x(['Tự tạo', 'Custom'])]].map(([k, l]) => ({ label: l, on: this.state.preset === k ? 'true' : 'false', style: segS(this.state.preset === k), pick: () => this.setState({ preset: k, cur: P[k][0].gates[0].id }) }));
+    const ck = kindOf(cur);
+    const types = Object.keys(K).map((k) => ({ label: x(K[k][0]), on: ck === k ? 'true' : 'false', style: segS(ck === k), pick: () => this.setState({ kind: { ...this.state.kind, [cur.id]: k } }) }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, presets, phases, types, cur: { name: x(cur.n) },
+      isHuman: ck === 'human', isAi: ck === 'ai', isRule: ck === 'rule', isExt: ck === 'ext',
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · điều hướng theo quyền</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.nv{display:flex;align-items:center;gap:9px;height:32px;padding:0 10px;border-radius:6px;font-size:13.5px;color:var(--foreground);text-decoration:none}
+.nv:hover{background:var(--muted)}
+</style>
+</helmet>
+<nav aria-label="{{t.aria}}" style="{{navStyle}}">
+  <sc-if value="{{full}}" hint-placeholder-val="{{true}}">
+    <div style="padding: 0 6px 8px;"><dc-import name="Logo" height="34" hint-size="78px,34px"></dc-import></div>
+    <button type="button" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); font: inherit; text-align: left; cursor: pointer;">
+      <span style="flex: 1; display: flex; flex-direction: column; line-height: 1.25;"><span style="font-family: var(--font-mono); font-size: 12.5px; font-weight: 600;">{{folder}}</span><span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground);">{{folderPath}}</span></span>
+      <span style="font-size: 11px; color: var(--muted-foreground);">⇅</span>
+    </button>
+  </sc-if>
+  <sc-if value="{{compact}}" hint-placeholder-val="{{false}}">
+    <img src="/_blob/00df5cc6b2c7e45808bff2ed403600d4" alt="xDev Hive" style="width: 32px; height: 32px; margin: 0 auto 10px;">
+  </sc-if>
+  <sc-for list="{{items}}" as="it" hint-placeholder-count="6">
+    <a href="{{it.href}}" class="nv" style="{{it.style}}" aria-current="{{it.cur}}" title="{{it.label}}" aria-label="{{it.label}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="{{it.icon}}"></path></svg><sc-if value="{{full}}" hint-placeholder-val="{{true}}"><span style="flex: 1;">{{it.label}}</span><sc-if value="{{it.ro}}" hint-placeholder-val="{{false}}"><span style="font-size: 10.5px; color: var(--muted-foreground);">{{t.ro}}</span></sc-if><sc-if value="{{it.badge}}" hint-placeholder-val="{{false}}"><span style="{{it.badgeStyle}}">{{it.badge}}</span></sc-if></sc-if></a>
+  </sc-for>
+  <div style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+    <sc-if value="{{full}}" hint-placeholder-val="{{true}}">
+      <div style="padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 12px; color: var(--muted-foreground);"><div style="display: flex; align-items: center; gap: 6px;"><span style="width: 6px; height: 6px; border-radius: 9999px; background: var(--success);"></span>{{t.worker}}</div><div style="font-family: var(--font-mono);">mac-mini-lan · hive.acme.vn</div></div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 8px 4px 0; border-top: 1px solid var(--border);">
+        <span style="width: 28px; height: 28px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent); color: var(--accent-foreground); font-size: 11px; font-weight: 600;">{{who.ini}}</span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3;"><span style="font-size: 13px; font-weight: 500;">{{who.name}}</span><span style="font-size: 11.5px; color: var(--muted-foreground);">{{who.role}}</span></span>
+        <a href="Roles.dc.html" title="{{t.perms}}" aria-label="{{t.perms}}" style="font-size: 11.5px; color: var(--primary); text-decoration: none;">{{t.permsShort}}</a>
+      </div>
+    </sc-if>
+    <sc-if value="{{compact}}" hint-placeholder-val="{{false}}">
+      <span title="{{who.name}} · {{who.role}}" style="width: 30px; height: 30px; margin: 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; background: var(--accent); color: var(--accent-foreground); font-size: 11px; font-weight: 600;">{{who.ini}}</span>
+    </sc-if>
+  </div>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["home","docs","skills","tokens","setup","runs"],"default":"home"},"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"compact":{"editor":"boolean","default":false},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"$preview":{"width":220,"height":800}}'>
+// One app for everyone: items show or hide by permission, never by a separate app mode.
+class Component extends DCLogic {
+  renderVals() {
+    const en = (this.props.lang ?? 'vi') === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const active = this.props.active ?? 'home';
+    const role = this.props.role ?? 'dev';
+    const compact = !!this.props.compact;
+    const P = {
+      dev: ['docs.read', 'skills.read', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local'],
+      writer: ['docs.read', 'docs.write', 'skills.read', 'tokens.read'],
+      lead: ['docs.read', 'docs.write', 'skills.read', 'skills.write', 'skills.sync', 'tokens.read', 'env.manage', 'runs.local'],
+    }[role];
+    const can = (p) => P.includes(p);
+    const defs = [
+      ['home', ['Tổng quan', 'Overview'], 'AppHome.dc.html', 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', 'docs.read'],
+      ['docs', ['Tài liệu', 'Docs'], 'AppDocs.dc.html', 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h8', 'docs.read', 'docs.write'],
+      ['skills', ['Skills', 'Skills'], 'AppSkills.dc.html', 'M13 2 4 14h7l-1 8 9-12h-7z', 'skills.read', 'skills.sync', '2', 'warn'],
+      ['tokens', ['Token và ngữ cảnh', 'Tokens & context'], 'AppTokens.dc.html', 'M3 3v18h18M7 15l4-4 3 3 5-6', 'tokens.read'],
+      ['setup', ['Môi trường', 'Environment'], 'AppSetup.dc.html', 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z', 'env.manage', null, '3', 'bad'],
+      ['runs', ['Lượt chạy trên máy', 'Runs on this machine'], '#', 'M6 3v18l15-9z', 'runs.local'],
+    ];
+    const tone = { warn: 'background: var(--warning-soft); color: var(--warning);', bad: 'background: var(--destructive-soft); color: var(--destructive);' };
+    const items = defs.filter((d) => can(d[4])).map(([k, l, href, icon, , full, badge, tn]) => ({
+      label: x(l), href, icon, badge: badge || '', cur: k === active ? 'page' : 'false', ro: !!full && !can(full) && k === 'docs',
+      badgeStyle: 'font-family: var(--font-mono); font-size: 11px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 9999px; ' + (tone[tn] || ''),
+      style: (compact ? 'justify-content: center; padding: 0; width: 36px; margin: 0 auto; ' : '') + (k === active ? 'background: var(--accent); color: var(--accent-foreground); font-weight: 600;' : ''),
+    }));
+    const who = { dev: { name: 'Phạm Hà', ini: 'PH', role: x(['Dev · Thanh toán', 'Dev · Payments']) }, writer: { name: 'Trần Lan', ini: 'TL', role: x(['BA / PM · Thanh toán', 'BA / PM · Payments']) }, lead: { name: 'Nguyễn Minh', ini: 'NM', role: x(['Tech lead · Nền tảng', 'Tech lead · Platform']) } }[role];
+    return {
+      items, who, compact, full: !compact, folder: 'payment-api', folderPath: '~/Work/acme/payment-api',
+      navStyle: 'width: ' + (compact ? '60px' : '220px') + '; height: 100%; min-height: 760px; box-sizing: border-box; padding: 12px ' + (compact ? '8px' : '10px') + '; display: flex; flex-direction: column; gap: 4px; background: var(--sidebar); color: var(--sidebar-foreground); border-right: 1px solid var(--border); font-family: var(--font-sans);',
+      t: { aria: x(['Điều hướng app', 'App navigation']), worker: x(['Worker đang nhận việc', 'Worker taking tasks']), ro: x(['chỉ đọc', 'read-only']), perms: x(['Xem quyền của tôi', 'View my permissions']), permsShort: x(['Quyền', 'Access']) },
+    };
+  }
+}
+</script>
+</body>
+</html>

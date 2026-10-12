@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Sandbox tổ chức</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}a:hover{color:var(--accent-foreground)}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:16px 20px 0;display:flex;flex-direction:column;gap:2px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.card-b{padding:16px 20px 20px;display:flex;flex-direction:column;gap:14px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.row-t{display:flex;flex-direction:column;gap:4px}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+.code{display:inline-flex;align-items:center;height:22px;padding:0 7px;border-radius:6px;background:var(--muted);font-family:var(--font-mono);font-size:12px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="sandbox" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="Sandbox" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1040px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+      <header style="display: flex; flex-direction: column; gap: 6px;">
+        <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">Sandbox</h1>
+        <p class="muted" style="margin: 0;">{{t.lead}}</p>
+      </header>
+
+      <section class="card">
+        <div class="card-h"><h2 class="card-t">{{t.policy}}</h2></div>
+        <div class="card-b">
+          <div class="row">
+            <span class="row-t"><strong style="font-weight: 500;">{{t.suggested}}</strong><span class="hint" style="font-size: 13px;">{{t.suggestedHint}}</span><span style="display: flex; flex-wrap: wrap; gap: 4px;"><sc-for list="{{suggested}}" as="s" hint-placeholder-count="5"><span class="code">{{s}}</span></sc-for></span></span>
+            <button type="button" role="switch" aria-checked="{{a.aria}}" aria-label="{{t.suggested}}" class="sw" onClick="{{a.flip}}" style="{{a.track}}"><span style="{{a.knob}}"></span></button>
+          </div>
+          <div style="height: 1px; background: var(--border);"></div>
+          <div class="row">
+            <span class="row-t"><strong style="font-weight: 500;">{{t.lock}}</strong><span class="hint" style="font-size: 13px;">{{t.lockHint}}</span></span>
+            <button type="button" role="switch" aria-checked="{{b.aria}}" aria-label="{{t.lock}}" class="sw" onClick="{{b.flip}}" style="{{b.track}}"><span style="{{b.knob}}"></span></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2 class="card-t">{{t.rules}}</h2><span class="hint" style="font-size: 13px;">{{t.rulesHint}}</span></div>
+        <div class="card-b">
+          <dc-import name="DataTable" columns="{{ruleCols}}" rows="{{ruleRows}}" facets="{{ruleFacets}}" bulk="{{ruleBulk}}" lang="{{lang}}" page-size="{{rsize}}" min-width="{{rminW}}" hint-size="100%,520px"></dc-import>
+          <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; align-items: end;">
+            <label class="field">{{t.rule}}<input class="input mono" placeholder="*.acme.vn"></label>
+            <label class="field">{{t.note}}<input class="input" placeholder="{{t.notePh}}"></label>
+            <button type="button" class="btn btn-default">{{t.add}}</button>
+          </div>
+          <span class="hint">{{t.ruleHint}}</span>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sug: true, lock: false, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      lead: ['Áp dụng cho run sandbox của mọi dự án trong tổ chức. Mặc định chặn hết.', 'Applies to sandbox runs of every project in the organization. Everything is blocked by default.'],
+      policy: ['Chính sách của tổ chức', 'Organization policy'], suggested: ['Dùng danh sách đề xuất', 'Use the suggested list'], suggestedHint: ['Cho run ra các địa chỉ hay cần:', 'Let runs reach commonly needed hosts:'],
+      lock: ['Khoá allowlist', 'Lock the allowlist'], lockHint: ['Dự án không thêm được mục riêng; chỉ dùng mục của tổ chức.', 'Projects cannot add their own rules; only organization rules apply.'],
+      rules: ['Mục mạng của tổ chức', 'Organization network rules'], rulesHint: ['Mọi dự án đều dùng các mục này.', 'Every project uses these rules.'],
+      remove: ['Gỡ mục', 'Remove rule'], rule: ['Mục mạng', 'Network rule'], note: ['Ghi chú', 'Note'], notePh: ['Vì sao cần mở', 'Why it needs to be open'], add: ['Thêm', 'Add'],
+      ruleHint: ['Tên miền, *.tên-miền, IP hoặc CIDR; thêm :cổng nếu cần.', 'Domain, *.domain, IP or CIDR; add :port if needed.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const sw = (key) => { const on = !!this.state[key]; return { aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ [key]: !on }) }; };
+    const rules = [
+      { rule: '*.acme.vn', note: x(['Registry và API nội bộ', 'Internal registry and APIs']) },
+      { rule: '10.0.0.0/16', note: x(['Mạng LAN văn phòng', 'Office LAN']) },
+      { rule: 'artifactory.acme.vn:443', note: x(['Gói Maven nội bộ', 'Internal Maven packages']) },
+    ];
+    const hosts = ['*.acme.vn', '10.0.0.0/16', 'artifactory.acme.vn:443', 'api.stripe.com:443', 'sandbox.vnpay.vn', 'registry.npmjs.org', 'proxy.golang.org', 'pypi.org', 'crates.io', 'github.com:443', 'objects.githubusercontent.com', 'dl.google.com', 'repo.maven.apache.org', 'api.openai.com', 'api.anthropic.com', 'sentry.io', 'hooks.slack.com', '172.16.10.0/24', 'nexus.acme.vn', 'docker.io', 'ghcr.io', 'quay.io', 'cdn.jsdelivr.net', 'fonts.googleapis.com'];
+    const who = ['Trần Lan', 'Nguyễn Minh', 'Phạm Hà', 'Lê Quang'];
+    const kindOf = (h) => (/\/\d+$/.test(h) ? 'CIDR' : /^\d/.test(h) ? 'IP' : h.startsWith('*.') ? x(['Tên miền con', 'Wildcard']) : x(['Tên miền', 'Domain']));
+    const ruleRows = hosts.map((h, i) => ({ id: 'n' + i, rule: h, kind: kindOf(h), port: h.includes(':') ? h.split(':').pop() : x(['mọi cổng', 'any']), note: x(['Mở cho run cần gọi ra ngoài', 'Needed by runs that call out']), by: who[i % 4], hits: (i * 37 % 400), _sort_hits: i * 37 % 400, src: i < 5 ? x(['Đề xuất', 'Suggested']) : i % 3 ? x(['Tổ chức', 'Organization']) : x(['Dự án', 'Project']) }));
+    const ruleCols = [{ key: 'rule', label: x(['Mục mạng', 'Rule']), type: 'mono', sortable: true }, { key: 'kind', label: x(['Loại', 'Type']) }, { key: 'port', label: x(['Cổng', 'Port']), type: 'mono' }, { key: 'src', label: x(['Nguồn', 'Source']) }, { key: 'hits', label: x(['Lượt dùng 7 ngày', 'Hits, 7d']), type: 'num', sortable: true }, { key: 'by', label: x(['Người thêm', 'Added by']), type: 'muted' }];
+    const ruleFacets = [{ key: 'kind', label: x(['Loại', 'Type']) }, { key: 'src', label: x(['Nguồn', 'Source']) }, { key: 'by', label: x(['Người thêm', 'Added by']) }];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, ruleCols, ruleRows, ruleFacets, rsize: 10, rminW: 760, ruleBulk: [x(['Gỡ', 'Remove'])], rules, a: sw('sug'), b: sw('lock'),
+      suggested: ['registry.npmjs.org', 'proxy.golang.org', 'pypi.org', 'crates.io', 'github.com:443'],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

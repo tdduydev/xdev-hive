@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Khay hệ thống</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.mi{display:flex;align-items:center;gap:8px;height:28px;padding:0 10px;margin:0 5px;border-radius:5px;border:0;background:transparent;font:inherit;font-size:13.5px;text-align:left;cursor:pointer;color:var(--popover-foreground)}
+.mi:hover{background:var(--primary);color:var(--primary-foreground)}
+.sep{height:1px;margin:5px 10px;background:var(--border)}
+.mono{font-family:var(--font-mono)}
+.seg{display:inline-flex;padding:2px;background:rgb(255 255 255 / .12);border-radius:8px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="position: relative; width: 1280px; height: 820px; overflow: hidden; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div aria-hidden="true" style="height: 28px; padding: 0 14px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; background: rgb(15 23 42 / .55); backdrop-filter: blur(12px); color: #F8FAFC; font-size: 13px;">
+    <span style="opacity: .8;">{{t.clock}}</span>
+  </div>
+  <button type="button" aria-label="xDev Hive" aria-expanded="true" style="position: absolute; top: 2px; right: 112px; width: 32px; height: 24px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: rgb(255 255 255 / .2); cursor: pointer;">
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F8FAFC" stroke-width="2.4" stroke-linecap="round"><path d="M6 4l12 16M18 4 6 20"></path></svg>
+    <span style="{{trayDot}}"></span>
+  </button>
+
+  <div role="menu" aria-label="xDev Hive" style="position: absolute; top: 30px; right: 60px; width: 260px; padding: 5px 0; border-radius: 10px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); box-shadow: 0 20px 40px -10px rgb(0 0 0 / .5);">
+    <div role="menuitem" aria-disabled="true" class="mi" style="cursor: default; color: var(--muted-foreground);"><span style="{{statusDot}}"></span>{{statusLabel}}</div>
+    <div class="sep"></div>
+    <button type="button" role="menuitem" class="mi">{{t.open}}</button>
+    <button type="button" role="menuitem" class="mi" onClick="{{toggle}}">{{toggleLabel}}</button>
+    <div class="sep"></div>
+    <button type="button" role="menuitem" class="mi">{{t.quit}}</button>
+  </div>
+
+  <sc-if value="{{showNotice}}" hint-placeholder-val="{{true}}">
+    <div role="alert" style="position: absolute; top: 44px; right: 340px; width: 340px; padding: 12px 14px; display: flex; gap: 12px; border-radius: 14px; background: rgb(248 250 252 / .92); backdrop-filter: blur(16px); color: #0F172A; box-shadow: 0 16px 32px -10px rgb(0 0 0 / .4);">
+      <img src="/_blob/00df5cc6b2c7e45808bff2ed403600d4" alt="" style="width: 36px; height: 36px; flex: none;">
+      <div style="display: flex; flex-direction: column; gap: 2px; font-size: 13px;"><strong style="font-weight: 600;">xDev Hive</strong><span>{{noticeText}}</span></div>
+    </div>
+  </sc-if>
+
+  <div style="position: absolute; left: 48px; bottom: 48px; width: 560px; display: flex; flex-direction: column; gap: 12px; color: #DBEAFE;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span class="mono" style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .7;">{{t.stateLabel}}</span>
+      <div class="seg" role="group" aria-label="{{t.langAria}}"><button type="button" onClick="{{toVi}}" aria-pressed="{{viP}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{enP}}" style="{{enS}}">EN</button></div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <sc-for list="{{states}}" as="s" hint-placeholder-count="7">
+        <button type="button" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button>
+      </sc-for>
+    </div>
+    <p style="margin: 0; font-size: 13px; opacity: .75;">{{t.note}}</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":true},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { st: 'disconnected', lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      clock: ['Th 2 12 thg 10  10:42', 'Mon Oct 12  10:42'], open: ['Mở xDev Hive', 'Open xDev Hive'], quit: ['Thoát', 'Quit'],
+      stateLabel: ['Trạng thái worker', 'Worker state'], langAria: ['Ngôn ngữ', 'Language'],
+      note: ['Đóng cửa sổ chỉ ẩn vào khay; worker vẫn chạy. Chấm trên biểu tượng khay theo trạng thái worker.', 'Closing the window only hides it in the tray; the worker keeps running. The dot on the tray icon follows the worker state.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const S = {
+      stopped: [['Worker: đã tắt', 'Worker: off'], 'var(--muted-foreground)'],
+      starting: [['Worker: đang khởi động', 'Worker: starting'], 'var(--warning)'],
+      connecting: [['Worker: đang kết nối', 'Worker: connecting'], 'var(--warning)'],
+      online: [['Worker: đang nhận việc', 'Worker: taking tasks'], 'var(--success)'],
+      disconnected: [['Worker: mất kết nối, đang thử lại', 'Worker: disconnected, retrying'], 'var(--destructive)'],
+      stopping: [['Worker: đang dừng', 'Worker: stopping'], 'var(--warning)'],
+      failed: [['Worker: lỗi', 'Worker: error'], 'var(--destructive)'],
+    };
+    const st = this.state.st;
+    const s = S[st];
+    const running = st !== 'stopped' && st !== 'failed';
+    const dot = (c) => `width: 8px; height: 8px; flex: none; border-radius: 9999px; background: ${c};`;
+    const notices = {
+      disconnected: ['Worker mất kết nối với hub hơn 1 phút. Máy này tạm không nhận việc.', 'The worker lost the hub connection for over a minute. This machine is not taking tasks.'],
+      failed: ['Worker thoát (1), chạy lại sau 20 giây.', 'The worker exited (1), restarting in 20 seconds.'],
+    };
+    const states = Object.keys(S).map((k) => ({
+      label: x(S[k][0]).replace(/^Worker: /, ''), pick: () => this.setState({ st: k }),
+      style: 'height: 30px; padding: 0 10px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; ' + (st === k ? 'background: #DBEAFE; color: #0F172A; border: 1px solid #DBEAFE; font-weight: 600;' : 'background: transparent; color: #DBEAFE; border: 1px solid rgb(219 234 254 / .3);'),
+    }));
+    const seg = (on) => 'height: 24px; min-width: 32px; padding: 0 8px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; ' + (on ? 'background: #DBEAFE; color: #0F172A; font-weight: 600;' : 'background: transparent; color: #DBEAFE;');
+    return {
+      theme: (this.props.dark ?? true) ? 'dark' : 'light', t, states,
+      statusLabel: x(s[0]), statusDot: dot(s[1]), trayDot: 'position: absolute; right: 4px; bottom: 3px; width: 6px; height: 6px; border-radius: 9999px; background: ' + s[1] + ';',
+      toggleLabel: running ? x(['Tắt worker', 'Stop worker']) : x(['Bật worker', 'Start worker']),
+      toggle: () => this.setState({ st: running ? 'stopped' : 'online' }),
+      showNotice: !!notices[st], noticeText: notices[st] ? x(notices[st]) : '',
+      viP: en ? 'false' : 'true', enP: en ? 'true' : 'false', viS: seg(!en), enS: seg(en),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

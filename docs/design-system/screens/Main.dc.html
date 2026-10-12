@@ -2,81 +2,114 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<title>Đăng nhập</title>
+<title>Lượt chạy</title>
 <script src="./support.js"></script>
 <link rel="stylesheet" href="ds/xdev-hive/tokens.css">
 </head>
 <body>
 <x-dc>
 <helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400&amp;display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
 <style>
 body{margin:0}
-a{color:var(--accent)}a:hover{color:var(--accent-hover)}
-input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 900px; display: flex; flex-wrap: wrap; background: var(--canvas); color: var(--body); font-family: var(--font-sans); font-size: 14px; line-height: 1.55;">
-  <div style="flex: 1 1 420px; min-width: 0; box-sizing: border-box; padding: 48px; display: flex; flex-direction: column; justify-content: space-between; gap: 48px; background: var(--brand-navy);">
-    <img src="/_blob/af64924d5349d8d61315d344a0c84937" alt="xDev Hive — Dev Hub" style="width: 178px; height: 78px;">
-    <div style="display: flex; flex-direction: column; gap: 16px; max-width: 460px;">
-      <h1 style="margin: 0; font-family: var(--font-display); font-size: 34px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; color: #F2F5FC; text-wrap: balance;">Giao việc cho agent, theo dõi run, review và merge ở một nơi.</h1>
-      <p style="margin: 0; color: #B8C4DC; font-size: 15px;">Claude Code, Codex và Gemini chạy trên máy của đội. Hub giữ bảng việc, memory, tài liệu và hàng merge.</p>
-    </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--font-mono); font-size: 12.5px; color: #B8F1FF;">
-      <span style="padding: 4px 10px; border: 1px solid #2F63B8; border-radius: 7px;">ai/TASK-42</span>
-      <span style="padding: 4px 10px; border: 1px solid #2F63B8; border-radius: 7px;">run succeeded · PR #128</span>
-      <span style="padding: 4px 10px; border: 1px solid #2F63B8; border-radius: 7px;">merge queue · 2 PR</span>
-    </div>
-  </div>
-  <div style="flex: 1 1 420px; min-width: 0; box-sizing: border-box; padding: 48px 24px; display: flex; align-items: center; justify-content: center;">
-    <form style="width: 100%; max-width: 400px; box-sizing: border-box; padding: 32px; display: flex; flex-direction: column; gap: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-app);">
-      <div style="display: flex; flex-direction: column; gap: 4px;">
-        <h2 style="margin: 0; font-family: var(--font-display); font-size: 22px; line-height: 1.3; font-weight: 600; color: var(--ink);">Đăng nhập vào xDev Hive</h2>
-        <p style="margin: 0; font-size: 13px; color: var(--muted);">Hub chỉ nhận người được mời. Chưa có lời mời thì nhờ quản trị tổ chức gửi link mời.</p>
-      </div>
-      <sc-if value="{{showError}}" hint-placeholder-val="{{ false }}">
-        <div role="alert" style="display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; background: var(--bad-bg); color: var(--bad); border-radius: 10px; font-size: 13px;">
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="flex: none; margin-top: 2px;"><circle cx="8" cy="8" r="6.25"></circle><path d="M8 4.75v3.75M8 11h.01"></path></svg>
-          <span>Email lan@acme.vn chưa được mời vào hub. Mở link mời trong email, hoặc nhờ quản trị tổ chức gửi lời mời mới.</span>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="runs" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 18px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
         </div>
-      </sc-if>
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <label for="email" style="font-size: 13px; font-weight: 500; color: var(--ink);">Email</label>
-        <input id="email" type="email" value="lan@acme.vn" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit;">
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 6px;">
-        <div style="display: flex; justify-content: space-between; align-items: baseline;">
-          <label for="password" style="font-size: 13px; font-weight: 500; color: var(--ink);">Mật khẩu</label>
-          <a href="#" style="font-size: 12px;">Quên mật khẩu</a>
+        <div style="display: flex; flex-wrap: wrap; gap: 18px; font-size: 13px;" class="muted">
+          <sc-for list="{{stats}}" as="s" hint-placeholder-count="4"><span><strong class="mono" style="color: var(--foreground); font-size: 15px;">{{s.v}}</strong> {{s.l}}</span></sc-for>
         </div>
-        <input id="password" type="password" value="matkhau-du-dai" style="height: 36px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit;">
-      </div>
-      <a href="Tasks.dc.html" style="height: 40px; display: flex; align-items: center; justify-content: center; background: var(--accent); color: var(--on-accent); border-radius: 8px; font-weight: 600; text-decoration: none;">Đăng nhập</a>
-      <div style="display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px;"><span style="flex: 1; height: 1px; background: var(--line);"></span>hoặc<span style="flex: 1; height: 1px; background: var(--line);"></span></div>
-      <div style="display: flex; flex-direction: column; gap: 8px;">
-        <button type="button" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M6 13.5c-3 .9-3-1.5-4.2-1.8M10 15.3v-2.4c0-.7.1-1.2-.4-1.6 1.9-.2 3.9-1 3.9-4.3 0-.9-.3-1.7-.9-2.4.1-.3.4-1.2-.1-2.4 0 0-.7-.2-2.4.9a8.2 8.2 0 0 0-4.3 0C4.1 1 3.4 1.2 3.4 1.2c-.5 1.2-.2 2.1-.1 2.4-.6.7-.9 1.5-.9 2.4 0 3.3 2 4.1 3.9 4.3-.4.3-.5.8-.5 1.3v2.7"></path></svg>
-          Đăng nhập bằng GitHub
-        </button>
-        <button type="button" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M8 14.5 2 9.7l1.6-6.2L5.3 8h5.4l1.7-4.5L14 9.7z"></path></svg>
-          Đăng nhập bằng GitLab
-        </button>
-        <button type="button" style="height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line-strong); border-radius: 8px; font: inherit; font-weight: 500; cursor: pointer;">
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>
-          Đăng nhập bằng SSO của tổ chức
-        </button>
-      </div>
-      <p style="margin: 0; font-size: 12px; color: var(--muted);">GitHub, GitLab và SSO cũng chỉ mở cho email đã được mời hoặc thuộc tên miền tổ chức đã cấu hình SSO.</p>
-    </form>
+      </header>
+      <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,700px"></dc-import>
+    </main>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"showError":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
 class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { lang: null, dark: null };
+    const titles = [
+      ['Sửa làm tròn tiền trong hoá đơn VAT', 'Fix VAT invoice rounding'], ['Thêm phân trang cho API giao dịch', 'Paginate the transactions API'],
+      ['Hỗ trợ proxy công ty khi tải CLI', 'Support corporate proxy for CLI downloads'], ['Nâng Go lên 1.27 trong worker', 'Upgrade worker to Go 1.27'],
+      ['Đổi route web sang tiếng Anh', 'Rename web routes to English'], ['Ghi log khi runner mất kết nối', 'Log runner disconnects'],
+      ['Viết test cho webhook GitLab', 'Test the GitLab webhook'], ['Dọn worktree cũ sau 7 ngày', 'Clean worktrees older than 7 days'],
+      ['Hoàn tiền một phần', 'Partial refunds'], ['Đối soát cuối ngày với ngân hàng', 'End-of-day bank reconciliation'],
+      ['Màn chi tiết giao dịch trên di động', 'Transaction detail on mobile'], ['Giới hạn tốc độ API công khai', 'Rate-limit the public API'],
+    ];
+    const st = ['running', 'running', 'waiting', 'plan', 'ok', 'ok', 'ok', 'ok', 'failed', 'cancelled', 'nochange', 'ok', 'lost'];
+    let seed = 7; const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    this.data = Array.from({ length: 1286 }, (_, i) => {
+      const s = st[Math.floor(rnd() * st.length)]; const ti = Math.floor(rnd() * titles.length);
+      return {
+        id: (0x7f3a91c2 - i * 104729 >>> 0).toString(16).slice(-8), key: 'TASK-' + (900 - Math.floor(i / 2)), project: ['payment-api', 'hive-worker', 'mobile-app', 'partner-portal'][ti % 4],
+        title: titles[ti], status: s, cli: ['Claude', 'Claude', 'Codex', 'Gemini'][Math.floor(rnd() * 4)], machine: ['mac-mini-lan', 'linux-build-01', 'win-dev-03', 'hc-linux-52'][Math.floor(rnd() * 4)],
+        mins: i * 11 + Math.floor(rnd() * 10), dur: s === 'running' ? null : 2 + Math.floor(rnd() * 40), cost: s === 'cancelled' ? 0.04 : Math.round(rnd() * 300) / 100,
+        pr: s === 'ok' && rnd() > 0.3 ? '#' + (500 - Math.floor(i / 3)) : '—', review: rnd() > 0.85,
+      };
+    });
+  }
   renderVals() {
-    return { theme: this.props.dark ? 'dark' : 'light', showError: this.props.showError ?? false };
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const t = {
+      title: x(['Lượt chạy', 'Runs']), lead: x(['Mọi lần agent nhận việc, trên mọi máy của tổ chức.', 'Every time an agent picks up a task, on every machine in the organization.']),
+      search: x(['Tìm theo mã run, việc, tiêu đề…', 'Search run, task or title…']),
+    };
+    const SL = {
+      running: [['Đang chạy', 'Running'], 'accent'], waiting: [['Cần người xem', 'Needs review'], 'warn'], plan: [['Chờ duyệt kế hoạch', 'Plan awaiting review'], 'warn'],
+      ok: [['Thành công', 'Succeeded'], 'ok'], failed: [['Lỗi', 'Failed'], 'bad'], lost: [['Mất máy', 'Machine lost'], 'bad'], cancelled: [['Đã huỷ', 'Cancelled'], 'off'], nochange: [['Không có thay đổi', 'No changes'], 'off'],
+    };
+    const ago = (m) => (m < 60 ? x([m + ' phút trước', m + ' min ago']) : m < 1440 ? x([Math.floor(m / 60) + ' giờ trước', Math.floor(m / 60) + ' h ago']) : x([Math.floor(m / 1440) + ' ngày trước', Math.floor(m / 1440) + ' d ago']));
+    const money = (v) => (en ? '$' + v.toFixed(2) : v.toFixed(2).replace('.', ',') + ' USD');
+    if (!this.cache || this.cache.lang !== lang) {
+      this.cache = { lang, rows: this.data.map((r) => ({
+        id: r.id, run: r.id, title: x(r.title), taskSub: r.key + ' · ' + r.project + (r.review ? x([' · review chéo', ' · cross-review']) : ''),
+        status: { text: x(SL[r.status][0]), tone: SL[r.status][1] }, cli: r.cli, machine: r.machine, project: r.project,
+        started: ago(r.mins), _sort_started: -r.mins, dur: r.dur == null ? '—' : r.dur + 'm', _sort_dur: r.dur ?? 1e9, cost: money(r.cost), _sort_cost: r.cost, pr: r.pr,
+        _f_type: r.review ? x(['Review chéo', 'Cross-review']) : x(['Viết code', 'Coding']),
+      })) };
+    }
+    const columns = [
+      { key: 'run', label: 'Run', type: 'mono', sortable: true, link: true },
+      { key: 'title', label: x(['Việc', 'Task']), type: 'title', sub: 'taskSub', subMono: true, sortable: true },
+      { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' },
+      { key: 'cli', label: 'Agent', sortable: true },
+      { key: 'machine', label: x(['Máy', 'Machine']), type: 'mono' },
+      { key: 'started', label: x(['Bắt đầu', 'Started']), type: 'muted', sortable: true },
+      { key: 'dur', label: x(['Thời lượng', 'Duration']), type: 'num', sortable: true },
+      { key: 'cost', label: x(['Chi phí', 'Cost']), type: 'num', sortable: true },
+      { key: 'pr', label: 'PR', type: 'mono', hidden: false },
+    ];
+    const facets = [
+      { key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'project', label: x(['Dự án', 'Project']) }, { key: 'cli', label: 'Agent' },
+      { key: 'machine', label: x(['Máy', 'Machine']) }, { key: 'type', label: x(['Loại run', 'Run type']) },
+    ];
+    const n = (v) => v.toLocaleString(en ? 'en' : 'vi');
+    const stats = [
+      { v: n(this.data.filter((r) => r.status === 'running').length), l: x(['đang chạy', 'running']) },
+      { v: n(this.data.filter((r) => r.status === 'waiting' || r.status === 'plan').length), l: x(['chờ người', 'need you']) },
+      { v: '86%', l: x(['thành công 7 ngày', 'success, 7d']) },
+      { v: n(this.data.length), l: x(['run tất cả', 'runs total']) },
+    ];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, stats, columns, facets, rows: this.cache.rows, size: 10, minW: 1060,
+      bulk: [x(['Chạy lại', 'Retry']), x(['Huỷ run', 'Cancel runs']), x(['Xuất log', 'Export logs'])],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
   }
 }
 </script>

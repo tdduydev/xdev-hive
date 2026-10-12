@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>MCP và công cụ</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="mcp" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <span class="card mono" style="padding: 6px 10px; font-size: 13px;">https://hive.acme.vn/mcp</span>
+          <button type="button" class="btn btn-default">{{primary}}</button>
+        </div>
+      </header>
+      <div role="tablist" style="display: flex; gap: 4px; border-bottom: 1px solid var(--border);">
+        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3"><button type="button" role="tab" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}<span class="mono" style="font-size: 11px; padding: 0 6px; border-radius: 9999px; background: var(--muted); color: var(--muted-foreground);">{{tb.n}}</span></button></sc-for>
+      </div>
+      <sc-if value="{{tabTools}}" hint-placeholder-val="{{true}}">
+        <dc-import name="DataTable" columns="{{c1}}" rows="{{r1}}" facets="{{f1}}" bulk="{{b1}}" lang="{{lang}}" placeholder="{{t.s1}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,640px"></dc-import>
+      </sc-if>
+      <sc-if value="{{tabServers}}" hint-placeholder-val="{{false}}">
+        <p class="muted" style="margin: 0; font-size: 13.5px;">{{t.serversLead}}</p>
+        <dc-import name="DataTable" columns="{{c2}}" rows="{{r2}}" facets="{{f2}}" bulk="{{b2}}" lang="{{lang}}" placeholder="{{t.s2}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,640px"></dc-import>
+      </sc-if>
+      <sc-if value="{{tabTokens}}" hint-placeholder-val="{{false}}">
+        <dc-import name="DataTable" columns="{{c3}}" rows="{{r3}}" facets="{{f3}}" bulk="{{b3}}" lang="{{lang}}" placeholder="{{t.s3}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,640px"></dc-import>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'tools', lang: null, dark: null };
+    let s = 29; this.rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    const first = ['Trần Lan', 'Phạm Hà', 'Lê Quang', 'Nguyễn Minh', 'Võ Thảo', 'Đỗ An', 'Kiều Trang', 'Bùi Huy'];
+    const clients = ['claude-code', 'codex', 'cursor', 'gemini-cli', 'hermes', 'vscode'];
+    this.tokens = Array.from({ length: 96 }, (_, i) => ({ id: 'k' + i, owner: first[i % first.length], client: clients[Math.floor(this.rnd() * clients.length)], left: Math.floor(this.rnd() * 95) - 5, last: Math.floor(this.rnd() * 40), prefix: 'hmt_' + (0x8c2f41d0 + i * 7777 >>> 0).toString(16).slice(0, 4) + '…', len: this.rnd() > 0.5 ? 90 : 30 }));
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const t = {
+      crumb: x(['Quản trị agent', 'Agent governance']), title: x(['MCP và công cụ', 'MCP & tools']),
+      lead: x(['Tool agent gọi được qua cổng MCP của hub, MCP server ngoài được phép dùng, và token của người dùng.', 'Tools agents call through the hub MCP gateway, allowed external MCP servers, and user tokens.']),
+      serversLead: x(['Hub ghi vào managed settings của CLI trên máy chạy run. Mục chặn thắng mục cho phép.', 'Written to the CLI managed settings on run machines. Deny wins over allow.']),
+      s1: x(['Tìm tool…', 'Search tools…']), s2: x(['Tìm server…', 'Search servers…']), s3: x(['Tìm token, người, client…', 'Search token, owner, client…']),
+    };
+    const G = { know: ['Kiến thức', 'Knowledge'], task: ['Việc', 'Tasks'], run: ['Run', 'Runs'] };
+    const toolDefs = [
+      ['doc_list', 'know', ['Liệt kê tài liệu theo phạm vi', 'List docs in scope'], 412], ['doc_get', 'know', ['Đọc một tài liệu', 'Read a doc'], 1830], ['doc_propose', 'know', ['Đề xuất sửa tài liệu', 'Propose a doc edit'], 37],
+      ['skill_list', 'know', ['Liệt kê skill', 'List skills'], 655], ['skill_get', 'know', ['Đọc SKILL.md', 'Read a SKILL.md'], 1204], ['memory_search', 'know', ['Tìm memory', 'Search memory'], 2961],
+      ['memory_write', 'know', ['Ghi memory (chờ duyệt)', 'Write a memory (pending)'], 148], ['task_get', 'task', ['Đọc việc đang làm', 'Read the current task'], 980], ['task_update', 'task', ['Cập nhật tiến độ', 'Update progress'], 744],
+      ['plan_submit', 'run', ['Nộp kế hoạch', 'Submit a plan'], 63], ['review_submit', 'run', ['Nộp review chéo', 'Submit a cross-review'], 121],
+    ];
+    const on = { text: x(['Bật', 'On']), tone: 'ok' }; const off = { text: x(['Tắt', 'Off']), tone: 'off' };
+    const r1 = toolDefs.map(([n, g, d, c]) => ({ id: n, name: n, desc: x(d), group: x(G[g]), who: g === 'run' ? x(['Token của run', 'Run token']) : x(['Run và người dùng', 'Runs and users']), calls: c.toLocaleString(en ? 'en' : 'vi'), _sort_calls: c, err: Math.round(c * 0.004), _sort_err: Math.round(c * 0.004), state: n === 'doc_propose' ? off : on }));
+    const c1 = [{ key: 'name', label: 'Tool', type: 'title', sub: 'desc', mono: true, sortable: true }, { key: 'group', label: x(['Nhóm', 'Group']) }, { key: 'who', label: x(['Ai gọi được', 'Who can call']), type: 'muted' }, { key: 'calls', label: x(['Lượt gọi 7 ngày', 'Calls, 7d']), type: 'num', sortable: true }, { key: 'err', label: x(['Lỗi', 'Errors']), type: 'num', sortable: true }, { key: 'state', label: x(['Trạng thái', 'State']), type: 'badge' }];
+    const f1 = [{ key: 'group', label: x(['Nhóm', 'Group']) }, { key: 'state', label: x(['Trạng thái', 'State']) }, { key: 'who', label: x(['Ai gọi', 'Caller']) }];
+    const allow = { text: x(['Cho phép', 'Allow']), tone: 'ok' }; const deny = { text: x(['Chặn', 'Deny']), tone: 'bad' };
+    const sv = [['xDev Hive', 'url: https://hive.acme.vn/mcp', allow, 'org'], ['GitHub', 'name: github', allow, 'org'], ['GitLab', 'name: gitlab', allow, 'org'], ['Playwright', 'command: npx @playwright/mcp', allow, 'mobile-app'], ['Context7', 'name: context7', allow, 'org'], ['Sentry', 'name: sentry', allow, 'payment-api'], ['Figma', 'name: figma', allow, 'mobile-app'], ['Postgres', 'name: postgres', deny, 'org'], ['Filesystem', 'command: npx @modelcontextprotocol/server-filesystem', deny, 'org'], ['Shell', 'name: shell', deny, 'org'], [x(['Mọi server khác', 'Everything else']), '*', deny, 'org']];
+    const r2 = sv.map((v, i) => ({ id: 'sv' + i, name: v[0], match: v[1], rule: v[2], scope: v[3] === 'org' ? x(['Tổ chức', 'Organization']) : v[3], _f_kind: v[1].split(':')[0] }));
+    const c2 = [{ key: 'name', label: 'Server', sortable: true }, { key: 'match', label: x(['Khớp theo', 'Match']), type: 'mono' }, { key: 'rule', label: x(['Quy tắc', 'Rule']), type: 'badge' }, { key: 'scope', label: x(['Phạm vi', 'Scope']), type: 'mono' }];
+    const f2 = [{ key: 'rule', label: x(['Quy tắc', 'Rule']) }, { key: 'scope', label: x(['Phạm vi', 'Scope']) }, { key: 'kind', label: x(['Khớp theo', 'Match by']) }];
+    const r3 = this.tokens.map((k) => ({
+      id: k.id, name: k.client + ' · ' + k.owner.split(' ').pop(), prefix: k.prefix, owner: { text: k.owner, sub: k.client, ini: k.owner.split(' ').map((w) => w[0]).slice(-2).join('') },
+      client: k.client, len: k.len + x([' ngày', ' days']),
+      exp: k.left < 0 ? { text: x(['Đã hết hạn', 'Expired']), tone: 'off' } : k.left < 7 ? { text: x(['còn ' + k.left + ' ngày', 'in ' + k.left + ' days']), tone: 'warn' } : { text: x(['còn ' + k.left + ' ngày', 'in ' + k.left + ' days']), tone: 'ok', dot: false },
+      _sort_exp: k.left, _f_exp: k.left < 0 ? x(['Đã hết hạn', 'Expired']) : k.left < 7 ? x(['Sắp hết hạn', 'Expiring soon']) : x(['Còn hạn', 'Valid']),
+      last: k.last === 0 ? x(['hôm nay', 'today']) : x([k.last + ' ngày trước', k.last + ' d ago']), _sort_last: -k.last,
+    }));
+    const c3 = [{ key: 'name', label: x(['Token', 'Token']), type: 'title', sub: 'prefix', subMono: true, sortable: true }, { key: 'owner', label: x(['Chủ', 'Owner']), type: 'avatar' }, { key: 'len', label: x(['Thời hạn', 'Lifetime']), type: 'mono' }, { key: 'exp', label: x(['Hết hạn', 'Expires']), type: 'badge' }, { key: 'last', label: x(['Dùng lần cuối', 'Last used']), type: 'muted', sortable: true }];
+    const f3 = [{ key: 'exp', label: x(['Hạn', 'Expiry']) }, { key: 'client', label: 'Client' }, { key: 'len', label: x(['Thời hạn', 'Lifetime']) }];
+    const tb = this.state.tab;
+    const tabs = [['tools', ['Tool của hub', 'Hub tools'], r1.length], ['servers', ['MCP server ngoài', 'External MCP servers'], r2.length], ['tokens', ['Token MCP', 'MCP tokens'], r3.length]].map(([k, l, n]) => ({
+      label: x(l), n, sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }),
+      style: 'height: 40px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13.5px; cursor: pointer; ' + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); font-weight: 500; border-bottom: 2px solid transparent;'),
+    }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, tabs, size: 10, minW: 900,
+      tabTools: tb === 'tools', tabServers: tb === 'servers', tabTokens: tb === 'tokens',
+      primary: tb === 'tokens' ? x(['Tạo token', 'New token']) : tb === 'servers' ? x(['Thêm server', 'Add server']) : x(['Chép địa chỉ', 'Copy endpoint']),
+      c1, r1, f1, b1: [x(['Bật', 'Enable']), x(['Tắt', 'Disable'])], c2, r2, f2, b2: [x(['Đổi quy tắc', 'Change rule']), x(['Xoá', 'Delete'])], c3, r3, f3, b3: [x(['Gia hạn', 'Extend']), x(['Thu hồi', 'Revoke'])],
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

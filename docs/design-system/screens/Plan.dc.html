@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Kế hoạch</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}a:hover{color:var(--accent-foreground)}
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn-destructive-solid{background:var(--destructive);color:var(--background)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+dl.dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13.5px}
+dl.dl dt{color:var(--muted-foreground)}dl.dl dd{margin:0}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1240px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="tasks" lang="{{lang}}" hint-size="240px,1240px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.crumb}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1280px; padding: 28px 32px 40px; display: flex; flex-direction: column; gap: 20px;">
+
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+          <div style="font-size: 13px;" class="muted"><a href="#" style="text-decoration: none;">{{t.board}}</a> / <span class="mono">TASK-44</span> / {{t.plan}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px;" class="muted">
+            <span class="badge" style="{{statusStyle}}"><span class="dot"></span>{{statusLabel}}</span>
+            <span>{{t.version}}</span><span>·</span><span>{{t.submitted}}</span><span>·</span><a href="Main.dc.html" class="mono" style="text-decoration: none;">{{t.planRun}} b04e7a19</a>
+          </div>
+        </div>
+        <sc-if value="{{pending}}" hint-placeholder-val="{{true}}">
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-destructive" onClick="{{openReject}}">{{t.reject}}</button>
+            <button type="button" class="btn btn-outline">{{t.edit}}</button>
+            <button type="button" class="btn btn-default" onClick="{{openApprove}}">{{t.approve}}</button>
+          </div>
+        </sc-if>
+      </header>
+
+      <div style="padding: 12px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-foreground); display: flex; gap: 10px; align-items: flex-start;">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top: 3px; flex: none;"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4M12 8h.01"></path></svg>
+        <span>{{stageText}}</span>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+        <div style="flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{t.summary}}</h2></div>
+            <p style="margin: 0; padding: 14px 18px;">{{t.summaryText}}</p>
+          </section>
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{t.steps}}</h2><span class="muted" style="font-size: 13px;">{{t.stepsCount}}</span></div>
+            <ol style="margin: 0; padding: 6px 18px 14px; list-style: none; display: flex; flex-direction: column;">
+              <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+                <li style="display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--border);">
+                  <span class="mono" style="flex: none; width: 24px; height: 24px; border-radius: 9999px; background: var(--foreground); color: var(--background); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600;">{{s.n}}</span>
+                  <div style="display: flex; flex-direction: column; gap: 2px;"><span style="font-weight: 600;">{{s.title}}</span><span class="muted">{{s.detail}}</span></div>
+                </li>
+              </sc-for>
+            </ol>
+          </section>
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{t.files}}</h2><span class="muted" style="font-size: 13px;">{{t.filesCount}}</span></div>
+            <ul style="margin: 0; padding: 0; list-style: none;">
+              <sc-for list="{{files}}" as="f" hint-placeholder-count="4">
+                <li style="display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 12px; padding: 10px 18px; border-bottom: 1px solid var(--border);">
+                  <span class="badge" style="{{f.style}}; justify-content: center;">{{f.kind}}</span>
+                  <span class="mono" style="font-size: 13px;">{{f.path}}</span>
+                  <span></span><span class="muted" style="font-size: 13px;">{{f.why}}</span>
+                </li>
+              </sc-for>
+            </ul>
+          </section>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+            <section class="card">
+              <div class="card-h"><h2 class="card-t">{{t.risks}}</h2></div>
+              <ul style="margin: 0; padding: 12px 18px 14px 34px; display: flex; flex-direction: column; gap: 6px;"><li>{{t.r1}}</li><li>{{t.r2}}</li></ul>
+            </section>
+            <section class="card" style="border-color: var(--warning);">
+              <div class="card-h"><h2 class="card-t">{{t.questions}}</h2><span class="badge" style="background: var(--warning-soft); color: var(--warning);">2</span></div>
+              <ol style="margin: 0; padding: 12px 18px 6px 34px; display: flex; flex-direction: column; gap: 6px;"><li>{{t.q1}}</li><li>{{t.q2}}</li></ol>
+              <p class="muted" style="margin: 0; padding: 0 18px 14px; font-size: 12.5px;">{{t.qHint}}</p>
+            </section>
+          </div>
+        </div>
+
+        <aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{t.info}}</h2></div>
+            <dl class="dl" style="padding: 14px 18px;">
+              <dt>{{t.dVersion}}</dt><dd>2</dd>
+              <dt>{{t.dStatus}}</dt><dd>{{statusLabel}}</dd>
+              <dt>{{t.dPlanRun}}</dt><dd><a href="#" class="mono" style="text-decoration: none;">b04e7a19</a></dd>
+              <dt>{{t.dCodeRun}}</dt><dd class="muted">{{t.dCodeRunVal}}</dd>
+              <dt>{{t.dAgent}}</dt><dd>Claude · <span class="mono" style="font-size: 13px;">mac-mini-lan</span></dd>
+            </dl>
+          </section>
+          <section class="card">
+            <div class="card-h"><h2 class="card-t">{{t.history}}</h2><span class="muted" style="font-size: 13px;">{{t.historyCount}}</span></div>
+            <ol style="margin: 0; padding: 14px 18px; list-style: none; display: flex; flex-direction: column; gap: 14px; position: relative;">
+              <li style="display: flex; flex-direction: column; gap: 4px; padding-left: 16px; border-left: 2px solid var(--primary);">
+                <div style="display: flex; align-items: center; gap: 8px;"><strong>{{t.v2}}</strong><span class="badge" style="{{statusStyle}}">{{statusLabel}}</span><span class="muted" style="font-size: 12px;">{{t.viewing}}</span></div>
+                <span class="muted" style="font-size: 13px;">{{t.v2meta}}</span>
+              </li>
+              <li style="display: flex; flex-direction: column; gap: 4px; padding-left: 16px; border-left: 2px solid var(--border);">
+                <div style="display: flex; align-items: center; gap: 8px;"><strong>{{t.v1}}</strong><span class="badge" style="background: var(--destructive-soft); color: var(--destructive);">{{t.rejected}}</span></div>
+                <span class="muted" style="font-size: 13px;">{{t.v1meta}}</span>
+                <span style="font-size: 13px;"><span class="muted">{{t.reasonLbl}}</span> {{t.v1reason}}</span>
+                <a href="#" style="font-size: 13px; text-decoration: none;">{{t.viewV1}}</a>
+              </li>
+            </ol>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <sc-if value="{{approveOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;">
+      <div role="dialog" aria-modal="true" aria-labelledby="ap-t" class="card" style="width: 100%; max-width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+        <h2 id="ap-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.apTitle}}</h2>
+        <p class="muted" style="margin: 0;">{{t.apDesc}}</p>
+        <div style="padding: 10px 12px; border-radius: 8px; background: var(--warning-soft); color: var(--warning); font-size: 13px;">{{t.apWarn}}</div>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.apNote}}<textarea class="input" style="height: 84px; resize: vertical;" placeholder="{{t.apNotePh}}"></textarea></label>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeAll}}">{{t.back}}</button><button type="button" class="btn btn-default" onClick="{{doApprove}}">{{t.apGo}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{rejectOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10;">
+      <div role="dialog" aria-modal="true" aria-labelledby="rj-t" class="card" style="width: 100%; max-width: 480px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+        <h2 id="rj-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.rjTitle}}</h2>
+        <p class="muted" style="margin: 0;">{{t.rjDesc}}</p>
+        <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.rjReason}}<textarea class="input" style="height: 84px; resize: vertical;" placeholder="{{t.rjPh}}"></textarea></label>
+        <label style="display: flex; gap: 10px; align-items: flex-start; font-size: 14px;"><input type="checkbox" checked style="margin-top: 4px; accent-color: var(--primary);"><span style="display: flex; flex-direction: column;"><strong style="font-weight: 500;">{{t.rjReplan}}</strong><span class="muted" style="font-size: 13px;">{{t.rjReplanHint}}</span></span></label>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeAll}}">{{t.back}}</button><button type="button" class="btn btn-destructive-solid" onClick="{{doReject}}">{{t.rjGo}}</button></div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1240}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { st: 'pending', dlg: null, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      crumb: ['Kế hoạch TASK-44', 'TASK-44 plan'], board: ['Bảng việc', 'Board'], plan: ['Kế hoạch', 'Plan'],
+      title: ['Hỗ trợ proxy công ty khi tải CLI', 'Support corporate proxy for CLI downloads'],
+      version: ['Lần lập 2', 'Version 2'], submitted: ['nộp lúc 10:14', 'submitted 10:14'], planRun: ['Log run lập kế hoạch', 'Planning run log'],
+      reject: ['Từ chối', 'Reject'], edit: ['Sửa kế hoạch', 'Edit plan'], approve: ['Duyệt kế hoạch', 'Approve plan'],
+      summary: ['Tóm tắt', 'Summary'],
+      summaryText: ['Worker đọc HTTPS_PROXY và NO_PROXY từ môi trường hoặc cấu hình máy, dùng chung cho mọi lần tải CLI agent và cho kênh tới hub. Thêm kiểm tra kết nối qua proxy khi đăng ký máy.', 'The worker reads HTTPS_PROXY and NO_PROXY from the environment or machine config and uses them for every agent CLI download and for the hub channel. Registration also checks connectivity through the proxy.'],
+      steps: ['Các bước', 'Steps'], stepsCount: ['4 bước', '4 steps'], files: ['File dự kiến đụng', 'Files it expects to touch'], filesCount: ['4 file', '4 files'],
+      risks: ['Rủi ro', 'Risks'], r1: ['Proxy chặn WebSocket thì kênh tới hub rơi về long-poll, chậm hơn.', 'Proxies that block WebSocket push the hub channel to long-polling, which is slower.'], r2: ['Máy Windows có proxy hệ thống nhưng không có biến môi trường.', 'Windows machines may have a system proxy but no environment variables.'],
+      questions: ['Câu hỏi cho người duyệt', 'Questions for the reviewer'], q1: ['Có cần đọc proxy hệ thống của Windows không?', 'Should we read the Windows system proxy?'], q2: ['Chứng chỉ CA riêng của công ty để ở đâu?', 'Where should a company CA certificate live?'],
+      qHint: ['Trả lời trong ô ghi chú khi duyệt; agent đọc ghi chú trước khi viết code.', 'Answer in the note when you approve; the agent reads it before writing code.'],
+      info: ['Thông tin', 'Details'], dVersion: ['Lần lập', 'Version'], dStatus: ['Trạng thái', 'Status'], dPlanRun: ['Run lập', 'Planning run'], dCodeRun: ['Run code', 'Code run'], dCodeRunVal: ['chờ kế hoạch được duyệt', 'waits for approval'], dAgent: ['Agent', 'Agent'],
+      history: ['Các lần lập', 'Versions'], historyCount: ['2 lần', '2 versions'], v2: ['Lần 2', 'Version 2'], v1: ['Lần 1', 'Version 1'], viewing: ['đang xem', 'viewing'],
+      v2meta: ['nộp 10:14', 'submitted 10:14'], v1meta: ['nộp 09:40 · từ chối bởi Trần Lan', 'submitted 09:40 · rejected by Trần Lan'], rejected: ['Bị từ chối', 'Rejected'],
+      reasonLbl: ['Lý do:', 'Reason:'], v1reason: ['Thiếu bước cho kênh WebSocket tới hub.', 'Missed the WebSocket channel to the hub.'], viewV1: ['Xem kế hoạch lần 1', 'View version 1'],
+      back: ['Quay lại', 'Back'],
+      apTitle: ['Duyệt kế hoạch lần 2?', 'Approve version 2?'], apDesc: ['Run code của TASK-44 vào hàng ngay và agent làm theo kế hoạch agent nộp.', 'The TASK-44 code run is queued now and the agent follows the submitted plan.'],
+      apWarn: ['Agent có 2 câu hỏi; trả lời trong ghi chú.', 'The agent asked 2 questions; answer them in the note.'], apNote: ['Ghi chú cho agent (không bắt buộc)', 'Note for the agent (optional)'],
+      apNotePh: ['Ví dụ: Đọc cả proxy hệ thống trên Windows.', 'e.g. Also read the Windows system proxy.'], apGo: ['Duyệt và chạy', 'Approve and run'],
+      rjTitle: ['Từ chối kế hoạch lần 2?', 'Reject version 2?'], rjDesc: ['Run code đang chờ kế hoạch của TASK-44 sẽ bị huỷ.', 'The TASK-44 code run waiting on this plan will be cancelled.'],
+      rjReason: ['Lý do từ chối', 'Reason for rejecting'], rjPh: ['Ví dụ: Thiếu bước migration cho bảng hoá đơn cũ.', 'e.g. Missing a migration for the old invoices table.'],
+      rjReplan: ['Lập lại kế hoạch', 'Plan again'], rjReplanHint: ['Agent lập kế hoạch mới, có đọc bản này và lý do của bạn.', 'The agent writes a new plan using this one and your reason.'], rjGo: ['Từ chối kế hoạch', 'Reject plan'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const ST = {
+      pending: [['Chờ duyệt', 'Awaiting review'], 'background: var(--warning-soft); color: var(--warning);', ['Kế hoạch đang chờ người duyệt. Run code chỉ chạy sau khi được duyệt.', 'The plan is waiting for review. The code run starts only after approval.']],
+      approved: [['Đã duyệt', 'Approved'], 'background: var(--success-soft); color: var(--success);', ['Đã duyệt kế hoạch. Run code đã vào hàng và sẽ làm theo kế hoạch.', 'Plan approved. The code run is queued and will follow it.']],
+      rejected: [['Bị từ chối', 'Rejected'], 'background: var(--destructive-soft); color: var(--destructive);', ['Đã từ chối kế hoạch. Agent đang lập lại kế hoạch có tính tới lý do của bạn.', 'Plan rejected. The agent is planning again with your reason in mind.']],
+    };
+    const s = ST[this.state.st];
+    const steps = [
+      [['Đọc cấu hình proxy', 'Read proxy settings'], ['Thêm proxy vào worker.json, ưu tiên biến môi trường.', 'Add proxy to worker.json; environment variables win.']],
+      [['Tải CLI qua proxy', 'Download CLIs through the proxy'], ['Dùng chung http.Transport cho mọi lần tải.', 'Share one http.Transport for every download.']],
+      [['Kênh tới hub qua proxy', 'Hub channel through the proxy'], ['WebSocket dùng CONNECT; lỗi thì rơi về long-poll.', 'WebSocket uses CONNECT; falls back to long-polling.']],
+      [['Kiểm tra khi đăng ký', 'Check at registration'], ['register báo rõ lỗi proxy, kèm cách sửa.', 'register reports proxy errors with a fix.']],
+    ].map((p, i) => ({ n: i + 1, title: x(p[0]), detail: x(p[1]) }));
+    const add = 'background: var(--success-soft); color: var(--success)';
+    const mod = 'background: var(--accent); color: var(--accent-foreground)';
+    const files = [
+      [['Thêm', 'Add'], add, 'worker/internal/netx/proxy.go', ['Đọc và áp dụng proxy.', 'Reads and applies the proxy.']],
+      [['Sửa', 'Edit'], mod, 'worker/internal/cli/download.go', ['Dùng transport chung.', 'Uses the shared transport.']],
+      [['Sửa', 'Edit'], mod, 'worker/internal/channel/ws.go', ['CONNECT qua proxy.', 'CONNECT through the proxy.']],
+      [['Sửa', 'Edit'], mod, 'worker/cmd/hive-worker/register.go', ['Kiểm tra kết nối.', 'Connectivity check.']],
+    ].map((f) => ({ kind: x(f[0]), style: f[1], path: f[2], why: x(f[3]) }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, steps, files,
+      statusLabel: x(s[0]), statusStyle: s[1], stageText: x(s[2]), pending: this.state.st === 'pending',
+      approveOpen: this.state.dlg === 'approve', rejectOpen: this.state.dlg === 'reject',
+      openApprove: () => this.setState({ dlg: 'approve' }), openReject: () => this.setState({ dlg: 'reject' }), closeAll: () => this.setState({ dlg: null }),
+      doApprove: () => this.setState({ dlg: null, st: 'approved' }), doReject: () => this.setState({ dlg: null, st: 'rejected' }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>
