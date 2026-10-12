@@ -1,8 +1,26 @@
 import { slug as slugSchema } from "@xdev-hive/contracts";
 import { useState } from "react";
+import { type Dict, getLang, useT } from "../lib/i18n.ts";
 import { slugify } from "../lib/slug.ts";
 import { Field, FieldError, FieldHint, FieldLabel } from "./ui/field.tsx";
 import { Input } from "./ui/input.tsx";
+
+const text: Dict<{
+  slug: string;
+  required: string;
+  invalidSlug: string;
+}> = {
+  vi: {
+    slug: "Định danh",
+    required: "Nhập tên.",
+    invalidSlug: "Chỉ dùng chữ thường, số và dấu gạch ngang.",
+  },
+  en: {
+    slug: "Slug",
+    required: "Enter a name.",
+    invalidSlug: "Use lowercase letters, digits and hyphens only.",
+  },
+};
 
 export interface NameSlugErrors {
   name?: string | undefined;
@@ -14,8 +32,8 @@ export function checkNameSlug(form: FormData): NameSlugErrors {
   const name = String(form.get("name") ?? "").trim();
   const slug = slugSchema.safeParse(String(form.get("slug") ?? ""));
   return {
-    name: name ? undefined : "Nhập tên.",
-    slug: slug.success ? undefined : slug.error.issues[0]?.message,
+    name: name ? undefined : text[getLang()].required,
+    slug: slug.success ? undefined : getLang() === "en" ? text.en.invalidSlug : slug.error.issues[0]?.message,
   };
 }
 
@@ -36,6 +54,7 @@ export interface NameSlugFieldsProps {
  * muốn bản không dấu của tên. Giá trị đọc bằng FormData qua `name="name"` và `name="slug"`.
  */
 export function NameSlugFields(props: NameSlugFieldsProps) {
+  const t = useT(text);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState<string | null>(null);
   const { errors } = props;
@@ -55,7 +74,7 @@ export function NameSlugFields(props: NameSlugFieldsProps) {
         {errors.name && <FieldError>{errors.name}</FieldError>}
       </Field>
       <Field invalid={errors.slug !== undefined}>
-        <FieldLabel>Định danh</FieldLabel>
+        <FieldLabel>{t.slug}</FieldLabel>
         <div className="flex">
           {props.slugPrefix && (
             <span className="flex items-center rounded-l-md border border-r-0 border-input bg-muted px-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
