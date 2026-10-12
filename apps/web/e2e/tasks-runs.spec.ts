@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { fail, fakeHub, ok, type RpcHandler } from "./fake-hub.ts";
+import { fail, fakeHub, ok, type RpcHandler, USER } from "./fake-hub.ts";
 
 // Giờ cố định để chữ "chạy được …", "xong … trước" và ô "Lỗi trong 24 giờ" không đổi theo ngày chạy test.
 const NOW = "2026-10-11T07:10:00.000Z";
@@ -439,3 +439,19 @@ for (const scheme of ["light", "dark"] as const) {
     }
   });
 }
+
+test("trang chủ: số liệu của tổ chức, việc chờ review có link tới run, đi nhanh", async ({ page }, testInfo) => {
+  await open(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: `Chào ${USER.name}` })).toBeVisible();
+  const stats = page.getByRole("region", { name: "Số liệu" });
+  await expect(stats).toContainText("Đang chạy1trên 1 máy");
+  const attention = page.getByRole("heading", { name: "Cần bạn xử lý" }).locator("../..");
+  await expect(attention).toContainText("PAY-3");
+  await expect(attention).not.toContainText("PAY-1");
+  await expect(attention.getByRole("link", { name: "Xem run" })).toHaveAttribute("href", /\/runs\//);
+  await expect(
+    page.getByRole("navigation", { name: "Đi nhanh" }).getByRole("link", { name: "Leader" }),
+  ).toHaveAttribute("href", "/leader");
+  await page.screenshot({ path: testInfo.outputPath("home.png"), fullPage: true });
+});
