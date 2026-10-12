@@ -41,7 +41,12 @@ export const MCP_LIMITS = {
  */
 async function knowledgePrincipal(tx: Tx, p: McpPrincipal): Promise<Principal> {
   if (p.kind === "user") return { kind: "user", userId: p.userId };
-  if (!p.runId || !p.taskId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu run hoặc task.");
+  if (!p.runId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu run.");
+  if (!p.taskId) {
+    // Run không có task (leader, doccheck): dự án lấy từ chính run lúc kiểm token.
+    if (!p.projectId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu task hoặc dự án.");
+    return { kind: "run", runId: p.runId, projectId: p.projectId };
+  }
   const task = await loadTask(tx, p.taskId);
   if (!task) throw new ForbiddenError("RUN_PROJECT_MISSING", "Run không còn thuộc dự án nào trong tổ chức.");
   return { kind: "run", runId: p.runId, projectId: task.projectId };

@@ -32,6 +32,7 @@ export function createMcpRunTokens(opts: {
             state: runs.state,
             attempt: runs.attempt,
             taskId: runs.taskId,
+            projectId: runs.projectId,
             createdBy: runs.createdBy,
           })
           .from(runs)
@@ -39,7 +40,8 @@ export function createMcpRunTokens(opts: {
         return row;
       });
       if (!run || run.attempt !== claims.attempt) return null;
-      if (run.kind !== "leader" && run.taskId !== claims.task_id) return null;
+      // Run không có task (leader, doccheck) được ký task_id bằng chính id của run.
+      if ((run.taskId ?? claims.run_id) !== claims.task_id) return null;
       if (!ON_MACHINE.includes(run.state)) return null;
       return {
         kind: "run",
@@ -49,6 +51,7 @@ export function createMcpRunTokens(opts: {
         runId: claims.run_id,
         runKind: run.kind,
         taskId: run.taskId ?? undefined,
+        projectId: run.projectId,
         attempt: claims.attempt,
         clientId: `run:${claims.run_id}`,
         scopes: [],
