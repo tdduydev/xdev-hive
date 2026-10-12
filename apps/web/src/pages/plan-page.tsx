@@ -4,12 +4,12 @@ import type { OrgMember, Plan, PlanContent, PlanDecision, Run, Task } from "@xde
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { PlanEditor } from "@/components/plan-editor.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { DescriptionList } from "@/components/ui/description-list.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { formatDayTime } from "@/lib/format.ts";

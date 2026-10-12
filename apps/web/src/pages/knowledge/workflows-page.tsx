@@ -13,10 +13,10 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { PlusIcon, Trash2Icon, XIcon } from "lucide-react";
 import { type FormEvent, useId, useMemo, useState } from "react";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { EmptyState, LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";

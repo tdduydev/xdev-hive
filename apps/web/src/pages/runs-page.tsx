@@ -4,10 +4,10 @@ import { type Project, RUN_STATUS_GROUPS, type RunListItem, type RunState } from
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Pill } from "@xdev-hive/ui/pill";
 import { useState } from "react";
 import { type ActiveFilter, type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import type { Facet } from "@/components/data-table/model.ts";
-import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatDayTime, formatUsd } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";

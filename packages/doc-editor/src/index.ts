@@ -2,4 +2,12 @@
 export * from "./blocks.ts";
 export { DocEditor } from "./doc-editor.tsx";
 export { type DocEditorEnv, type DocEditorLink, DocEditorProvider, type Lang } from "./env.tsx";
+export {
+  REVIEWER_ROLE_LABEL,
+  ReviewPane,
+  ReviewStatusPill,
+  reviewText,
+  SlaBadge,
+  useReviewFormat,
+} from "./review-pane.tsx";
 export { docEditorText } from "./text.ts";

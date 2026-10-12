@@ -1,5 +1,6 @@
 import {
   ChartLineIcon,
+  ClipboardCheckIcon,
   FilePenLineIcon,
   FileTextIcon,
   HouseIcon,
@@ -63,7 +64,7 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
   ],
 };
 
-export type ScreenId = "home" | "work" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
+export type ScreenId = "home" | "work" | "reviews" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
 
 export interface NavItem {
   id: ScreenId;
@@ -92,6 +93,15 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: ListTodoIcon,
     design: "AppNav.dc.html",
     needs: "work.mine",
+  },
+  {
+    // Phiên duyệt tài liệu đang chờ mình ở checkpoint hiện tại (spec 008 US11). Ai đọc được tài liệu cũng có thể được
+    // chỉ định duyệt; hub quyết ai được quyết.
+    id: "reviews",
+    label: { vi: "Chờ tôi duyệt", en: "Awaiting my review" },
+    icon: ClipboardCheckIcon,
+    design: "DocReview.dc.html",
+    needs: "docs.read",
   },
   {
     id: "docs",
