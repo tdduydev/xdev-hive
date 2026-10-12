@@ -19,3 +19,5 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0011](0011-signed-worker-releases-and-own-updater.md) | Signed worker releases and our own updater | Accepted |
 | [0012](0012-spec-driven-development.md) | Spec Kit and a definition of done for features | Accepted |
 | [0013](0013-ui-shadcn-base-ui.md) | shadcn/ui on Base UI, designed with UI UX Pro Max | Accepted |
+| [0014](0014-store-skills-in-git.md) | Store skills in Git with a PostgreSQL read cache | Proposed |
+| [0015](0015-doc-editor-collaborative-engine.md) | Block-based document editor using Tiptap and patch proposals | Proposed |
