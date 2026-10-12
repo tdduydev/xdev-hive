@@ -34,6 +34,7 @@ export * from "./policies.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
 export * from "./roles.ts";
+export * from "./run-log.ts";
 export * from "./runs.ts";
 export * from "./sandbox.ts";
 export * from "./scm.ts";

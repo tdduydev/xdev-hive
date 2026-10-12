@@ -1,3 +1,4 @@
+import type { RunState } from "@xdev-hive/contracts";
 import { Button } from "@xdev-hive/ui/button";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@xdev-hive/ui/table";
 import { RefreshCwIcon } from "lucide-react";
@@ -6,6 +7,7 @@ import { Pill } from "@/components/ui/pill.tsx";
 import { useLinkedAccount } from "@/lib/account.ts";
 import { hubTool } from "@/lib/hub.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { ACTIVE, RUN_STATE_TEXT, stateTone } from "@/lib/run-state.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
 import { formatTokens } from "@/lib/usage.ts";
 import { cn } from "@/lib/utils.ts";
@@ -30,27 +32,6 @@ export interface MachineRun {
   startedAt: string | null;
   finishedAt: string | null;
 }
-
-type Tone = "neutral" | "ok" | "warn" | "bad" | "sel";
-const ACTIVE = new Set([
-  "queued",
-  "leased",
-  "preparing",
-  "running",
-  "awaiting_input",
-  "verifying",
-  "cancelling",
-  "planning",
-  "awaiting_plan",
-]);
-const TONE: Record<string, Tone> = {
-  succeeded: "ok",
-  no_changes: "neutral",
-  needs_review: "warn",
-  failed: "bad",
-  cancelled: "neutral",
-};
-export const stateTone = (state: string): Tone => (ACTIVE.has(state) ? "sel" : (TONE[state] ?? "neutral"));
 
 /** Thời lượng của run: đang chạy thì tính tới giờ. */
 export function duration(run: Pick<MachineRun, "startedAt" | "finishedAt">, now = Date.now()): number | null {
@@ -78,7 +59,6 @@ const text: Dict<{
   colCost: string;
   open: (key: string) => string;
   kinds: Record<MachineRun["kind"], string>;
-  states: Record<string, string>;
   ago: (min: number) => string;
   secs: (s: number) => string;
 }> = {
@@ -101,22 +81,6 @@ const text: Dict<{
     colCost: "Chi phí",
     open: (key) => `Mở ${key} trên web`,
     kinds: { code: "Viết code", review: "Review chéo", plan: "Kế hoạch", leader: "Leader", doccheck: "Kiểm tài liệu" },
-    states: {
-      queued: "Chờ máy",
-      leased: "Đã nhận",
-      preparing: "Chuẩn bị",
-      running: "Đang chạy",
-      awaiting_input: "Chờ trả lời",
-      verifying: "Đang kiểm",
-      cancelling: "Đang huỷ",
-      planning: "Lập kế hoạch",
-      awaiting_plan: "Chờ duyệt kế hoạch",
-      succeeded: "Xong",
-      no_changes: "Không đổi gì",
-      needs_review: "Cần xem",
-      failed: "Lỗi",
-      cancelled: "Đã huỷ",
-    },
     ago: (min) =>
       min < 1
         ? "vừa xong"
@@ -147,22 +111,6 @@ const text: Dict<{
     colCost: "Cost",
     open: (key) => `Open ${key} on the web`,
     kinds: { code: "Coding", review: "Cross-review", plan: "Plan", leader: "Leader", doccheck: "Doc check" },
-    states: {
-      queued: "Waiting for a machine",
-      leased: "Accepted",
-      preparing: "Preparing",
-      running: "Running",
-      awaiting_input: "Waiting for input",
-      verifying: "Verifying",
-      cancelling: "Cancelling",
-      planning: "Planning",
-      awaiting_plan: "Plan awaiting approval",
-      succeeded: "Done",
-      no_changes: "No changes",
-      needs_review: "Needs review",
-      failed: "Failed",
-      cancelled: "Cancelled",
-    },
     ago: (min) =>
       min < 1
         ? "just now"
@@ -306,7 +254,7 @@ export function RunsScreen() {
                     <Td className="font-mono text-xs whitespace-nowrap">{r.cli ?? "—"}</Td>
                     <Td>
                       <Pill tone={stateTone(r.state)} dot={ACTIVE.has(r.state)}>
-                        {t.states[r.state] ?? r.state}
+                        {RUN_STATE_TEXT[lang][r.state as RunState] ?? r.state}
                       </Pill>
                     </Td>
                     <Td className="text-xs whitespace-nowrap text-muted-foreground">

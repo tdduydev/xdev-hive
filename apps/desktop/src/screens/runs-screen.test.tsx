@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Account, AccountContext } from "@/lib/account.ts";
 import { setLang } from "@/lib/i18n.ts";
-import { duration, type MachineRun, RunsScreen, stateTone } from "@/screens/runs-screen.tsx";
+import { stateTone } from "@/lib/run-state.ts";
+import { duration, type MachineRun, RunsScreen } from "@/screens/runs-screen.tsx";
 
 const ACCOUNT: Account = {
   name: "Phạm Hà",
