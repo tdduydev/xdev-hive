@@ -55,7 +55,7 @@ func TestWelcome(t *testing.T) {
 	go func() { done <- testConfig(t, srv.URL).Run(ctx) }()
 	select {
 	case <-got:
-	case <-time.After(time.Second):
+	case <-time.After(waitFor):
 		t.Fatal("không nhận hello")
 	}
 	cancel()
@@ -64,7 +64,7 @@ func TestWelcome(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(waitFor):
 		t.Fatal("worker không thoát sau khi huỷ context")
 	}
 }
@@ -110,7 +110,7 @@ func TestReconnectAfterServerCloses(t *testing.T) {
 	go func() { done <- testConfig(t, srv.URL).Run(ctx) }()
 	select {
 	case <-reconnected:
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitFor):
 		t.Fatalf("worker không nối lại; số lần thử %d", attempts.Load())
 	}
 	cancel()
@@ -119,7 +119,7 @@ func TestReconnectAfterServerCloses(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(waitFor):
 		t.Fatal("worker không dừng")
 	}
 }
@@ -174,7 +174,7 @@ func TestTokenAndHeartbeat(t *testing.T) {
 		if hb.Type != "heartbeat" || hb.V != 1 || hb.ID == "" || hb.Runs == nil {
 			t.Fatalf("heartbeat sai: %+v", hb)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitFor):
 		t.Fatal("không nhận heartbeat")
 	}
 }
@@ -211,7 +211,7 @@ func TestRevokedCloseStops(t *testing.T) {
 		if !errors.As(err, &rejected) || rejected.Code != 4401 {
 			t.Fatalf("error = %v, cần RejectedError 4401", err)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(waitFor):
 		t.Fatal("worker không dừng khi máy bị thu hồi")
 	}
 }
