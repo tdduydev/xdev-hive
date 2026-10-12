@@ -462,8 +462,8 @@ async fn register_worker(
 }
 
 /// Bản cập nhật lấy từ hub của máy. Chưa có khoá ký trong tauri.conf.json thì bỏ qua: updater chỉ nhận bản ký đúng
-/// khoá đó (hướng dẫn trong apps/desktop/README.md).
-async fn check_updates(app: &AppHandle, hub: &str) {
+/// khoá đó (hướng dẫn trong apps/desktop/README.md). Trả true khi đã cài một bản, chờ người dùng mở lại app.
+async fn check_updates(app: &AppHandle, hub: &str) -> bool {
     use tauri_plugin_updater::UpdaterExt;
     let has_key = app
         .config()
@@ -474,7 +474,7 @@ async fn check_updates(app: &AppHandle, hub: &str) {
         .and_then(|k| k.as_str())
         .is_some_and(|k| !k.is_empty());
     if !has_key {
-        return;
+        return false;
     }
     let endpoint = format!(
         "{hub}/api/v1/desktop/updates/{}/{}/{}",
@@ -483,7 +483,7 @@ async fn check_updates(app: &AppHandle, hub: &str) {
         app.package_info().version
     );
     let Ok(url) = url::Url::parse(&endpoint) else {
-        return;
+        return false;
     };
     let updater = match app
         .updater_builder()
@@ -491,7 +491,10 @@ async fn check_updates(app: &AppHandle, hub: &str) {
         .and_then(|b| b.build())
     {
         Ok(u) => u,
-        Err(e) => return eprintln!("Không dựng được updater: {e}"),
+        Err(e) => {
+            eprintln!("Không dựng được updater: {e}");
+            return false;
+        }
     };
     match updater.check().await {
         Ok(Some(update)) => {
@@ -500,18 +503,27 @@ async fn check_updates(app: &AppHandle, hub: &str) {
                 &format!("Có bản mới {}. Đang tải và cài.", update.version),
             );
             match update.download_and_install(|_, _| {}, || {}).await {
-                Ok(()) => notify(
-                    app,
-                    &format!(
-                        "Đã cài bản {}. Thoát rồi mở lại app để dùng.",
-                        update.version
-                    ),
-                ),
-                Err(e) => eprintln!("Không cài được bản cập nhật: {e}"),
+                Ok(()) => {
+                    notify(
+                        app,
+                        &format!(
+                            "Đã cài bản {}. Thoát rồi mở lại app để dùng.",
+                            update.version
+                        ),
+                    );
+                    true
+                }
+                Err(e) => {
+                    eprintln!("Không cài được bản cập nhật: {e}");
+                    false
+                }
             }
         }
-        Ok(None) => {}
-        Err(e) => eprintln!("Không kiểm được bản cập nhật: {e}"),
+        Ok(None) => false,
+        Err(e) => {
+            eprintln!("Không kiểm được bản cập nhật: {e}");
+            false
+        }
     }
 }
 
@@ -625,7 +637,11 @@ pub fn run() {
                         if let Err(e) = show_main(&handle, &hub) {
                             eprintln!("{e}");
                         }
-                        check_updates(&handle, &hub).await;
+                        // App mở nhiều ngày liền vẫn nhận bản mới: kiểm lại sáu giờ một lần.
+                        // Đã cài một bản thì thôi: kiểm tiếp sẽ tải lại đúng bản đó vì app chưa mở lại.
+                        while !check_updates(&handle, &hub).await {
+                            tokio::time::sleep(std::time::Duration::from_secs(6 * 3600)).await;
+                        }
                     }
                     Ok(_) => show_register(&handle),
                     Err(e) => {
