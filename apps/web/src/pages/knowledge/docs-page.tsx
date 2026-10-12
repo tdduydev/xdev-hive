@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import type { DocSummary } from "@xdev-hive/contracts";
-import { useId, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { type DocSummary, docKey } from "@xdev-hive/contracts";
+import { type FormEvent, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import { docEditorText } from "@/pages/knowledge/doc-editor-text.ts";
 import { Markdown } from "@/pages/knowledge/markdown.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -45,7 +48,7 @@ function DocsScreen() {
     { key: "updated", label: t.updated, value: (row) => row.updatedAt, sortable: true },
   ];
   return (
-    <KnowledgeLayout title={t.docsTitle} lead={t.docsLead}>
+    <KnowledgeLayout title={t.docsTitle} lead={t.docsLead} actions={<NewDoc />}>
       <QueryState query={list} />
       {list.data && (
         <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[3fr_2fr]">
@@ -66,7 +69,51 @@ function DocsScreen() {
     </KnowledgeLayout>
   );
 }
+/** Tài liệu mới bắt đầu ở trình soạn; chỉ có dòng trong danh sách khi bản đầu tiên được duyệt. */
+function NewDoc() {
+  const t = useT(docEditorText);
+  const navigate = useNavigate();
+  const fieldId = useId();
+  const [open, setOpen] = useState(false);
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const parsed = docKey.safeParse(key.trim());
+    if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? t.newDocHint);
+    void navigate({ to: "/knowledge/docs/$key/edit", params: { key: parsed.data } });
+  }
+  if (!open) return <Button onClick={() => setOpen(true)}>{t.newDoc}</Button>;
+  return (
+    <form onSubmit={onSubmit} className="flex flex-wrap items-end gap-2">
+      <label htmlFor={fieldId} className="flex flex-col gap-1 text-sm">
+        <span>{t.newDocKey}</span>
+        <Input
+          id={fieldId}
+          className="w-80 font-mono"
+          placeholder="project/payment-api/prd-refund"
+          value={key}
+          aria-invalid={!!error}
+          aria-describedby={`${fieldId}-hint`}
+          onChange={(e) => {
+            setKey(e.currentTarget.value);
+            setError(null);
+          }}
+        />
+        <span id={`${fieldId}-hint`} className={error ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+          {error ?? t.newDocHint}
+        </span>
+      </label>
+      <Button type="submit">{t.open}</Button>
+      <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+        {t.cancel}
+      </Button>
+    </form>
+  );
+}
+
 function DocDetail({ doc }: { doc: DocSummary }) {
+  const te = useT(docEditorText);
   const fieldId = useId();
   const t = useT(text);
   const { api } = useOrg();
@@ -88,6 +135,9 @@ function DocDetail({ doc }: { doc: DocSummary }) {
         v{version} · {authorLabel(detail.data?.updatedBy ?? doc.updatedBy)}
       </p>
       <div className="flex flex-wrap gap-2">
+        <Link to="/knowledge/docs/$key/edit" params={{ key: doc.key }} className={buttonVariants({ size: "sm" })}>
+          {te.edit}
+        </Link>
         <Button variant="outline" size="sm" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen}>
           {t.history}
         </Button>

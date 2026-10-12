@@ -1,10 +1,26 @@
 import { implement } from "@orpc/server";
-import { contract } from "@xdev-hive/contracts";
-import { type RequestContext, withTenant } from "../platform/index.ts";
+import { type AssistStartInput, type AssistTarget, contract, type DocAssist } from "@xdev-hive/contracts";
+import { ConflictError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { defaultProviderFactory } from "../scm/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
 import type { Principal } from "./access.ts";
 import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
+import {
+  addComment,
+  createSnapshot,
+  createSuggestion,
+  decideSuggestion,
+  editorState,
+  getSnapshot,
+  listSnapshots,
+  listSuggestions,
+  listThreads,
+  previewSubmit,
+  rebaseDraft,
+  resolveThread,
+  saveDraft,
+  submitDraft,
+} from "./editor.ts";
 import { embedQuery, type KnowledgeDeps, listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
 import { approveProposal, listProposals, rejectProposal } from "./proposals.ts";
 import {
@@ -29,8 +45,19 @@ import { getSkill, listSkills, saveSkill } from "./skills.ts";
 
 const asUser = (user: { id: string }): Principal => ({ kind: "user", userId: user.id });
 
+/** Trợ lý AI của trình soạn tài liệu, do module runs cài vào (knowledge không import runs). */
+export interface DocAssistPort {
+  targets(tx: Tx, userId: string): Promise<AssistTarget[]>;
+  list(tx: Tx, userId: string, key: string): Promise<DocAssist[]>;
+  start(tx: Tx, userId: string, input: AssistStartInput): Promise<{ assist: DocAssist; afterCommit: () => void }>;
+}
+
 export function knowledgeRouter(
-  deps: KnowledgeDeps & OrgDeps & Partial<Pick<SkillRepoDeps, "masterKey" | "providerFactory" | "publicUrl">>,
+  deps: KnowledgeDeps &
+    OrgDeps &
+    Partial<Pick<SkillRepoDeps, "masterKey" | "providerFactory" | "publicUrl">> & {
+      docAssist?: DocAssistPort | undefined;
+    },
 ) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
   const skillRepo = implement(contract.skillRepo).$context<RequestContext>().use(authed);
@@ -47,7 +74,76 @@ export function knowledgeRouter(
   const workflows = implement(contract.reviewWorkflows).$context<RequestContext>().use(authed).use(inOrg);
   const reviews = implement(contract.reviews).$context<RequestContext>().use(authed).use(inOrg);
   const reviewDeps = { jobs: deps.jobs, publicUrl: deps.publicUrl };
+  const editor = implement(contract.docEditor).$context<RequestContext>().use(authed);
+  const assist = () => {
+    if (!deps.docAssist)
+      throw new ConflictError("RUNS_DISABLED", "Hub chưa cấu hình HIVE_AUTH_SECRET nên chưa chạy được trợ lý AI.");
+    return deps.docAssist;
+  };
   return {
+    docEditor: {
+      state: editor.state
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => editorState(tx, asUser(user), input)),
+      save: editor.save.use(inOrg).handler(({ context: { tx, user }, input }) => saveDraft(tx, asUser(user), input)),
+      rebase: editor.rebase
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => rebaseDraft(tx, asUser(user), input)),
+      submitPreview: editor.submitPreview
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => previewSubmit(tx, asUser(user), input)),
+      submit: editor.submit
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => submitDraft(tx, asUser(user), input, reviewDeps)),
+      suggestions: {
+        list: editor.suggestions.list
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => listSuggestions(tx, asUser(user), input)),
+        create: editor.suggestions.create
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => createSuggestion(tx, asUser(user), input)),
+        decide: editor.suggestions.decide
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => decideSuggestion(tx, asUser(user), input)),
+      },
+      comments: {
+        list: editor.comments.list
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => listThreads(tx, asUser(user), input)),
+        add: editor.comments.add
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => addComment(tx, asUser(user), input)),
+        resolve: editor.comments.resolve
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => resolveThread(tx, asUser(user), input)),
+      },
+      snapshots: {
+        list: editor.snapshots.list
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => listSnapshots(tx, asUser(user), input)),
+        get: editor.snapshots.get
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => getSnapshot(tx, asUser(user), input)),
+        create: editor.snapshots.create
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => createSnapshot(tx, asUser(user), input)),
+      },
+      assist: {
+        targets: editor.assist.targets.use(inOrg).handler(({ context: { tx, user } }) => assist().targets(tx, user.id)),
+        list: editor.assist.list
+          .use(inOrg)
+          .handler(({ context: { tx, user }, input }) => assist().list(tx, user.id, input.key)),
+        // Tự mở transaction để giao run tới máy sau khi commit, như runs.start.
+        start: editor.assist.start.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+          const port = assist();
+          const { assist: out, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
+            port.start(tx, user.id, input),
+          );
+          afterCommit();
+          return out;
+        }),
+      },
+    },
     memory: {
       write: memory.write
         .use(inOrg)

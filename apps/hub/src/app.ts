@@ -173,6 +173,7 @@ export function createApp({
       masterKey: config.masterKey,
       providerFactory: providerFactory ?? defaultProviderFactory,
       publicUrl,
+      docAssist: runs?.docAssist,
     }),
     tasks: tasksRouter({ auth, pool, cancelRuns: runs?.cancelRunsOfTask, plans: runs?.planActions }),
     runs: runsRouter({ auth, pool, engine: runs }),

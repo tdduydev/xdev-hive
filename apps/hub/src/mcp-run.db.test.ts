@@ -238,6 +238,47 @@ describe("run token ở /mcp", () => {
     expect((await rawList(tokenFor({ ...check, taskId: a.taskId }))).status).toBe(401);
   });
 
+  it("run trợ lý tài liệu đọc bản nháp, đề xuất, bình luận rồi nộp tóm tắt", async () => {
+    const a = seeded.a as Seeded;
+    const { rows } = await admin.query(
+      `insert into hive.runs (org_id, team_id, task_id, project_id, kind, state, branch, policy_snapshot, created_by)
+       select org_id, team_id, null, project_id, 'docassist', 'running', $2, '[]'::jsonb, created_by
+       from hive.runs where id = $1 returning id, project_id`,
+      [a.runId, `docassist/${tag}`],
+    );
+    const runId = rows[0].id as string;
+    // Key dự án ở fixture có chữ hoa, không hợp lệ trong key tài liệu: dùng id dự án.
+    const docKey = `project/${rows[0].project_id}/prd-assist`;
+    await admin.query(
+      `insert into hive.doc_drafts (org_id, team_id, project_id, key, title, content, base_version, updated_by_user_id)
+       select org_id, team_id, id, $2, 'PRD', $3, 0, $4 from hive.projects where id = $1`,
+      [rows[0].project_id, docKey, "# PRD\n\nPhí 2%.\n", org.user("admin")],
+    );
+    const client = await connect(tokenFor({ taskId: runId, key: "", runId }));
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).toEqual(expect.arrayContaining(["doc_draft_get", "doc_suggest", "doc_comment", "doc_assist_submit"]));
+    expect(names).not.toContain("doc_check_submit");
+    const draft = json(await client.callTool({ name: "doc_draft_get", arguments: { key: docKey } }));
+    expect(draft).toMatchObject({ key: docKey, content: "# PRD\n\nPhí 2%.\n" });
+    const sug = json(
+      await client.callTool({ name: "doc_suggest", arguments: { key: docKey, before: "Phí 2%.", after: "Phí 1%." } }),
+    );
+    expect(sug).toMatchObject({ status: "pending" });
+    const bad = text(
+      await client.callTool({ name: "doc_suggest", arguments: { key: docKey, before: "x", after: "y" } }),
+    );
+    expect(bad.isError).toBe(true);
+    json(await client.callTool({ name: "doc_comment", arguments: { key: docKey, quote: "Phí", body: "Theo ai?" } }));
+    json(await client.callTool({ name: "doc_assist_submit", arguments: { summary: "Đã góp ý phí." } }));
+    const authors = await admin.query(
+      `select (select count(*)::int from hive.doc_suggestions where author_run_id = $1) as s,
+              (select count(*)::int from hive.doc_comments where author_run_id = $1) as c,
+              (select count(*)::int from hive.run_events where run_id = $1 and type = 'docassist_result') as e`,
+      [runId],
+    );
+    expect(authors.rows[0]).toEqual({ s: 1, c: 1, e: 1 });
+  });
+
   it("task_update ghi run_event agent_report cho lần thử hiện tại và audit kèm runId", async () => {
     const a = seeded.a as Seeded;
     const client = await connect(tokenFor(a));

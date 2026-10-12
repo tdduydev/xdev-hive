@@ -135,6 +135,7 @@ function RunMeta({ run, task }: { run: Run; task: Task | undefined }) {
       {run.kind === "review" && <span>Review chéo</span>}
       {run.kind === "plan" && <span>Lập kế hoạch (chỉ đọc)</span>}
       {run.kind === "doccheck" && <span>Kiểm tài liệu cho quy trình duyệt (chỉ đọc)</span>}
+      {run.kind === "docassist" && <span>Trợ lý của trình soạn tài liệu (chỉ đọc, góp ý thành đề xuất)</span>}
       {run.kind === "plan" && task && (
         <Link to="/tasks/$key/plan" params={{ key: task.key }} className="text-primary hover:text-primary/90">
           Xem kế hoạch

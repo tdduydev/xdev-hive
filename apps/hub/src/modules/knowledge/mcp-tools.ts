@@ -7,6 +7,7 @@ import {
   projectRef,
   SKILL_MAX_CHARS,
   type SkillSummary,
+  SUGGESTION_MAX_CHARS,
   skillName,
 } from "@xdev-hive/contracts";
 import { z } from "zod";
@@ -16,6 +17,7 @@ import { BadRequestError, ForbiddenError, NotFoundError, type Tx } from "../plat
 import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
 import { getDoc, listDocs } from "./docs.ts";
+import { addComment, createSuggestion, draftForAgent } from "./editor.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
 import { createProposal } from "./proposals.ts";
 import { proposeWithReview } from "./reviews.ts";
@@ -252,6 +254,86 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
         { jobs: deps.jobs, publicUrl: deps.publicUrl },
       );
       return { proposalId: p.id, status: p.status, key: p.target, baseVersion: p.baseVersion };
+    },
+  });
+
+  // Trình soạn tài liệu (DOC-02, DOC-03, DOC-05). Ba tool chỉ ghi đề xuất và bình luận lên bản nháp, người viết nhận
+  // hay bỏ; đánh readOnly như plan_submit vì chế độ plan của Claude Code chỉ cho gọi tool MCP có readOnlyHint.
+  registry.register({
+    name: "doc_draft_get",
+    title: "Đọc bản nháp tài liệu",
+    description:
+      "Đọc bản nháp đang soạn của tài liệu (có thể khác bản đã duyệt mà doc_get trả), kèm đề xuất sửa còn chờ và " +
+      "luồng bình luận còn mở.",
+    input: z.object({
+      key: docKey.describe("Key tài liệu."),
+      offset: OFFSET,
+      section: z.string().min(1).max(500).optional().describe("Tiêu đề mục cần đọc."),
+      maxChars: z.number().int().min(1).max(40_000).optional().describe("Giới hạn ký tự; mặc định 8000."),
+    }),
+    // Run khác chỉ có bộ tool tri thức chung; người dùng (token MCP) luôn gọi được.
+    runKinds: ["docassist"],
+    readOnly: true,
+    handler: async ({ key, offset, section, maxChars }, { tx, principal }) => {
+      const d = await draftForAgent(tx, await knowledgePrincipal(tx, principal), key);
+      return {
+        key: d.key,
+        title: d.title,
+        baseVersion: d.baseVersion,
+        ...docPage(d.content, section, offset ?? 0, maxChars ?? MCP_LIMITS.pageChars),
+        pendingSuggestions: capped(d.pendingSuggestions).items.map((s) => ({
+          id: s.id,
+          before: s.before,
+          after: s.after,
+          reason: s.reason,
+          author: s.author.name,
+          stale: s.stale,
+        })),
+        openThreads: capped(d.openThreads).items.map((t) => ({
+          id: t.id,
+          quote: t.quote,
+          comments: t.comments.map((c) => ({ author: c.author.name, body: c.body })),
+        })),
+      };
+    },
+  });
+
+  registry.register({
+    name: "doc_suggest",
+    title: "Đề xuất sửa một đoạn",
+    description:
+      "Đề xuất thay một đoạn của bản nháp tài liệu; người viết nhận hoặc bỏ. `before` chép nguyên văn đoạn gốc (phải " +
+      "có đúng một chỗ trong bản nháp), rỗng là thêm khối mới ở cuối.",
+    input: z.object({
+      key: docKey.describe("Key tài liệu."),
+      before: z.string().max(SUGGESTION_MAX_CHARS).describe("Đoạn gốc, nguyên văn từ doc_draft_get."),
+      after: z.string().max(SUGGESTION_MAX_CHARS).describe("Đoạn thay vào (Markdown)."),
+      reason: z.string().trim().max(500).optional().describe("Một câu: vì sao sửa."),
+    }),
+    runKinds: ["docassist"],
+    readOnly: true,
+    handler: async (input, { tx, principal }) => {
+      const s = await createSuggestion(tx, await knowledgePrincipal(tx, principal), input);
+      return { suggestionId: s.id, status: s.status };
+    },
+  });
+
+  registry.register({
+    name: "doc_comment",
+    title: "Bình luận tài liệu",
+    description:
+      "Bình luận trên bản nháp tài liệu: mở luồng mới neo vào đoạn trích `quote`, hoặc trả lời luồng `threadId`.",
+    input: z.object({
+      key: docKey.describe("Key tài liệu."),
+      body: z.string().trim().min(1).max(4000).describe("Nội dung bình luận."),
+      quote: z.string().trim().min(1).max(500).optional().describe("Đoạn trích được nói tới."),
+      threadId: z.uuid().optional().describe("Luồng cần trả lời, lấy từ doc_draft_get."),
+    }),
+    runKinds: ["docassist"],
+    readOnly: true,
+    handler: async (input, { tx, principal }) => {
+      const t = await addComment(tx, await knowledgePrincipal(tx, principal), input);
+      return { threadId: t.id, comments: t.comments.length };
     },
   });
 
