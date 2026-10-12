@@ -7,6 +7,7 @@ declare global {
     __TAURI__?: {
       core: { invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> };
       window?: { getCurrentWindow(): { label: string } };
+      event?: { listen<T>(event: string, handler: (e: { payload: T }) => void): Promise<() => void> };
     };
   }
 }
@@ -53,6 +54,39 @@ export async function askNotificationPermission(): Promise<void> {
 /** Lỗi Rust trả về là chuỗi tiếng Việt; lỗi khác thì lấy message. */
 export function errorText(error: unknown): string {
   return typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
+}
+
+/** Trạng thái worker do Rust phát (WorkerView trong src-tauri/src/lib.rs). */
+export type WorkerKind = "stopped" | "starting" | "connecting" | "online" | "disconnected" | "stopping" | "failed";
+export interface WorkerView {
+  kind: WorkerKind;
+  label: string;
+  detail: string | null;
+  wanted: boolean;
+  hub: string | null;
+}
+
+export const workerState = () => invoke<WorkerView | null>("worker_state");
+
+/** Nghe sự kiện "worker-state"; ngoài Tauri thì không làm gì. Trả hàm huỷ nghe. */
+export function onWorkerState(handler: (view: WorkerView) => void): () => void {
+  const listen = window.__TAURI__?.event?.listen;
+  if (!listen) return () => {};
+  let unlisten: (() => void) | undefined;
+  let cancelled = false;
+  void listen<WorkerView>("worker-state", (e) => handler(e.payload)).then((fn) => {
+    if (cancelled) fn();
+    else unlisten = fn;
+  });
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+}
+
+/** Báo Rust ngôn ngữ của giao diện để chữ trên khay đổi theo. Lỗi (ngoài Tauri) thì bỏ qua. */
+export function syncTrayLang(lang: string): void {
+  void invoke("set_lang", { lang }).catch(() => {});
 }
 
 export interface WorkspaceMeta {

@@ -89,6 +89,36 @@ impl Worker {
         self.wanted
     }
 
+    /// Mã trạng thái cho giao diện và màu chấm trên biểu tượng khay.
+    pub fn kind(&self) -> &'static str {
+        match &self.status {
+            Status::Stopped => "stopped",
+            Status::Starting => "starting",
+            Status::Connecting { .. } => "connecting",
+            Status::Online => "online",
+            Status::Disconnected { .. } => "disconnected",
+            Status::Stopping => "stopping",
+            Status::Failed(_) => "failed",
+        }
+    }
+
+    /// Nhãn trạng thái theo ngôn ngữ của app (AppTray.dc.html); `label()` là bản tiếng Việt.
+    pub fn label_in(&self, lang: &str) -> String {
+        if lang != "en" {
+            return self.label();
+        }
+        match &self.status {
+            Status::Stopped => "Worker: off",
+            Status::Starting => "Worker: starting",
+            Status::Connecting { .. } => "Worker: connecting",
+            Status::Online => "Worker: taking tasks",
+            Status::Disconnected { .. } => "Worker: disconnected, retrying",
+            Status::Stopping => "Worker: stopping",
+            Status::Failed(_) => "Worker: error",
+        }
+        .into()
+    }
+
     /// Nhãn trạng thái trên khay hệ thống.
     pub fn label(&self) -> String {
         match &self.status {
@@ -246,6 +276,9 @@ mod tests {
         w.handle(line(r#"{"status":"online"}"#), 2);
         assert_eq!(w.status(), &Status::Online);
         assert_eq!(w.label(), "Worker: đang nhận việc");
+        assert_eq!(w.kind(), "online");
+        assert_eq!(w.label_in("en"), "Worker: taking tasks");
+        assert_eq!(w.label_in("vi"), "Worker: đang nhận việc");
         assert_eq!(w.handle(Event::Stop, 3), vec![Action::Stop]);
         assert_eq!(w.status(), &Status::Stopping);
         // Dòng đến muộn lúc đang dừng không đổi trạng thái.
