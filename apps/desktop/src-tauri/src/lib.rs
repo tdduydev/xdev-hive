@@ -1,5 +1,6 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
 
+mod doctor;
 mod register;
 mod worker;
 
@@ -469,7 +470,9 @@ pub fn run() {
         .manage(State::default())
         .invoke_handler(tauri::generate_handler![
             parse_registration,
-            register_worker
+            register_worker,
+            doctor::scan_environment,
+            doctor::run_install
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
