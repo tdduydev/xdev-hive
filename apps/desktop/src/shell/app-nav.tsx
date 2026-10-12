@@ -2,7 +2,9 @@ import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
+import type { WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
+import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
 
 const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: string; notLinked: string }> = {
   vi: {
@@ -27,7 +29,15 @@ const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: str
  * Thư mục làm việc, trạng thái worker và người dùng chưa có nguồn dữ liệu (specs/008-desktop-v2 T004, T008, T023):
  * hiện trạng thái trống thay vì số liệu mẫu.
  */
-export function AppNav({ profile, active }: { profile: Profile; active: ScreenId }) {
+export function AppNav({
+  profile,
+  active,
+  worker,
+}: {
+  profile: Profile;
+  active: ScreenId;
+  worker?: WorkerView | null;
+}) {
   const t = useT(text);
   const lang = useLang();
   return (
@@ -73,7 +83,26 @@ export function AppNav({ profile, active }: { profile: Profile; active: ScreenId
           </a>
         );
       })}
-      <div className="mt-auto flex items-center gap-2 border-t px-1 pt-2 max-[760px]:justify-center max-[760px]:px-0">
+      {worker && (
+        <div
+          role="status"
+          title={worker.detail ?? undefined}
+          className="mt-auto flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground max-[760px]:mx-auto max-[760px]:border-0 max-[760px]:p-0"
+        >
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
+            <span className="max-[760px]:sr-only">{workerSentence(worker.label)}</span>
+          </span>
+          {worker.hub && <span className="truncate font-mono max-[760px]:hidden">{new URL(worker.hub).host}</span>}
+        </div>
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-2 border-t px-1 pt-2 max-[760px]:justify-center max-[760px]:px-0",
+          // Thẻ worker đã đẩy khối cuối xuống đáy; hai mt-auto sẽ chia đôi khoảng trống.
+          worker ? "mt-2" : "mt-auto",
+        )}
+      >
         <span
           title={t.notLinked}
           className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"

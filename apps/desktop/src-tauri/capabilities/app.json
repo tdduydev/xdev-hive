@@ -8,6 +8,8 @@
     "allow-scan-environment", "allow-run-install",
     "allow-claude-context",
     "allow-claude-usage",
-    "allow-session-stats"
+    "allow-session-stats",
+    "allow-worker-state",
+    "allow-set-lang"
   ]
 }
