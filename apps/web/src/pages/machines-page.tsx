@@ -1,4 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type Machine, newerVersion, type WorkerRelease } from "@xdev-hive/contracts";
 import { useState } from "react";
 import { Alert } from "../components/ui/alert.tsx";
 import { Button } from "../components/ui/button.tsx";
@@ -43,18 +44,22 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
   });
   const [copied, setCopied] = useState(false);
   const [os, setOs] = useState<"macOS" | "Linux" | "Windows">("macOS");
-  const command = registration.data?.command;
-  // Chưa có bản build sẵn: cài từ mã nguồn công khai bằng Go. Service cài cho user hiện tại nên không dùng sudo.
-  const install = "go install github.com/tdduydev/xdev-hive/worker/cmd/hive-worker@main";
-  const steps = command
-    ? kind === "host"
-      ? [install, command, "hive-worker host --image <image môi trường của dự án>"]
-      : [install, command, "hive-worker service install"]
-    : [];
-  const stepTitles =
-    kind === "host"
-      ? ["Cài worker (cần Go 1.27)", "Đăng ký runner host với hub", "Chạy runner host"]
-      : ["Cài worker (cần Go 1.27)", "Đăng ký máy với hub", "Chạy worker như dịch vụ hệ thống"];
+  const data = registration.data;
+  const command = data?.command;
+  // Script cài tải bản dựng sẵn, kiểm chữ ký và sha256 rồi đăng ký máy; dịch vụ cài cho user hiện tại nên không cần sudo.
+  const steps: { title: string; value: string }[] = !data
+    ? []
+    : kind === "host"
+      ? [
+          { title: "Cài worker và đăng ký runner host với hub", value: data.installCommand },
+          { title: "Chạy runner host", value: "hive-worker host --image <image môi trường của dự án>" },
+        ]
+      : [
+          os === "Windows"
+            ? { title: "Chạy trong PowerShell: cài worker, đăng ký máy, chạy nền", value: data.installCommandWindows }
+            : { title: "Chạy trong terminal: cài worker, đăng ký máy, chạy nền", value: data.installCommand },
+          { title: "Hoặc đã có hive-worker (app desktop): chỉ đăng ký máy", value: data.command },
+        ];
 
   async function copy(value: string) {
     try {
@@ -142,14 +147,14 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                 ))}
               </fieldset>
             )}
-            {steps.map((value, index) => (
-              <div key={stepTitles[index]} className="grid gap-1">
+            {steps.map((step, index) => (
+              <div key={step.title} className="grid gap-1">
                 <b className="text-sm">
-                  {index + 1}. {stepTitles[index]}
+                  {index + 1}. {step.title}
                 </b>
                 <div className="flex min-w-0 gap-2">
-                  <code className="min-w-0 flex-1 break-all rounded-md bg-subtle p-2 text-xs">{value}</code>
-                  <Button size="sm" aria-label={`Chép lệnh bước ${index + 1}`} onClick={() => copy(value)}>
+                  <code className="min-w-0 flex-1 break-all rounded-md bg-subtle p-2 text-xs">{step.value}</code>
+                  <Button size="sm" aria-label={`Chép lệnh bước ${index + 1}`} onClick={() => copy(step.value)}>
                     Chép
                   </Button>
                 </div>
@@ -157,7 +162,8 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
             ))}
           </div>
           <p className="text-xs text-muted">
-            Máy sẽ hiện trong danh sách khi worker kết nối tới hub. Worker chỉ chạy CLI đã đăng nhập sẵn trên máy.
+            Máy sẽ hiện trong danh sách khi worker kết nối tới hub. Worker chỉ chạy CLI đã đăng nhập sẵn trên máy. Chạy
+            lại lệnh cài không kèm mã (hoặc hive-worker update) để nâng cấp.
           </p>
           <p aria-live="polite" className="text-sm text-muted">
             {copied
@@ -213,6 +219,16 @@ export function MachinesPage() {
       input: { teamId: selectedTeam?.id ?? "00000000-0000-4000-8000-000000000000" },
     }),
     enabled: Boolean(selectedTeam),
+    // Máy cập nhật xong thì nối lại với phiên bản mới; hỏi lại định kỳ để cột Worker tự đổi.
+    refetchInterval: 15_000,
+  });
+  // Lỗi tra bản mới nhất (hub không ra được GitHub) chỉ làm mất nhãn bản cũ, không chặn trang.
+  const latest = useQuery({ ...api.machines.workerRelease.queryOptions(), retry: false });
+  const [updateSent, setUpdateSent] = useState<string | null>(null);
+  const updateMachine = useMutation({
+    mutationFn: (machine: Machine) => api.machines.update.call({ machineId: machine.id }),
+    onMutate: () => setUpdateSent(null),
+    onSuccess: (machine) => setUpdateSent(machine.name),
   });
   const revoke = useMutation({
     mutationFn: (machineId: string) => api.machines.revoke.call({ machineId }),
@@ -295,6 +311,12 @@ export function MachinesPage() {
                 <Card className="p-3 sm:p-4">
                   <h2 className="mb-2 text-lg font-semibold text-ink">Danh sách máy</h2>
                   {runInfoError && <Alert>Không tải được danh sách run đang chạy của một số máy.</Alert>}
+                  {updateMachine.isError && <Alert>{apiErrorMessage(updateMachine.error)}</Alert>}
+                  {updateSent && (
+                    <p role="status" className="mb-2 text-sm text-muted">
+                      Đã gửi lệnh cập nhật tới {updateSent}. Máy chờ run đang chạy xong, tự cập nhật rồi nối lại.
+                    </p>
+                  )}
                   {machines.data.length === 0 ? (
                     <p className="py-5 text-center text-muted">Đội chưa đăng ký máy nào.</p>
                   ) : (
@@ -360,7 +382,9 @@ export function MachinesPage() {
                                     .filter(Boolean)
                                     .join(", ") || "—"}
                             </Td>
-                            <Td>{machine.version || "—"}</Td>
+                            <Td>
+                              <WorkerVersion machine={machine} latest={latest.data ?? null} />
+                            </Td>
                             <Td>
                               {machine.status === "paused" ? (
                                 <Button
@@ -386,6 +410,19 @@ export function MachinesPage() {
                                 <Button size="sm" onClick={() => setRevokeId(machine.id)}>
                                   Thu hồi
                                 </Button>
+                              )}
+                              {canUpdate(machine, latest.data ?? null) && (
+                                <>
+                                  {" "}
+                                  <Button
+                                    size="sm"
+                                    disabled={updateMachine.isPending}
+                                    aria-label={`Cập nhật worker trên ${machine.name}`}
+                                    onClick={() => updateMachine.mutate(machine)}
+                                  >
+                                    Cập nhật
+                                  </Button>
+                                </>
                               )}
                             </Td>
                           </tr>
@@ -430,6 +467,29 @@ export function MachinesPage() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function outdated(machine: Machine, latest: WorkerRelease | null): boolean {
+  return latest !== null && newerVersion(latest.version, machine.version);
+}
+
+/** Máy còn kết nối (kể cả đang tạm dừng) và chạy bản cũ hơn bản phát hành mới nhất. */
+function canUpdate(machine: Machine, latest: WorkerRelease | null): boolean {
+  return (machine.status === "online" || machine.status === "paused") && outdated(machine, latest);
+}
+
+function WorkerVersion({ machine, latest }: { machine: Machine; latest: WorkerRelease | null }) {
+  if (!machine.version) return <>—</>;
+  return (
+    <div className="grid justify-items-start gap-1">
+      <span className="font-mono text-sm">{machine.version}</span>
+      {latest && outdated(machine, latest) && (
+        <Pill tone="warn" small>
+          Có bản {latest.version}
+        </Pill>
+      )}
+    </div>
   );
 }
 

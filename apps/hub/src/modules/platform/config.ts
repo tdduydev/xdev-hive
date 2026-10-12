@@ -34,6 +34,8 @@ export interface HubConfig {
   /** API tương thích OpenAI embeddings cho tìm memory theo nghĩa. Không đặt thì chỉ tìm theo từ. */
   embeddings?: EmbeddingsConfig | undefined;
   desktopReleases?: string | undefined;
+  /** API release trả bản worker mới nhất (mặc định của repo trên GitHub); không đặt thì web không báo máy chạy bản cũ. */
+  workerReleases?: string | undefined;
 }
 
 export interface EmbeddingsConfig {
@@ -130,5 +132,10 @@ export function loadConfig(env: Env = process.env): HubConfig {
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),
     desktopReleases: env.HIVE_DESKTOP_RELEASES || undefined,
+    // "off" cho hub trong mạng không ra được GitHub.
+    workerReleases:
+      env.HIVE_WORKER_RELEASES === "off"
+        ? undefined
+        : env.HIVE_WORKER_RELEASES || "https://api.github.com/repos/tdduydev/xdev-hive/releases/latest",
   };
 }

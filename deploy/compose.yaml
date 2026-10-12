@@ -55,6 +55,8 @@ services:
       HIVE_GITLAB_CLIENT_ID: ${HIVE_GITLAB_CLIENT_ID:-}
       HIVE_GITLAB_CLIENT_SECRET: ${HIVE_GITLAB_CLIENT_SECRET:-}
       HIVE_GITLAB_ISSUER: ${HIVE_GITLAB_ISSUER:-}
+      # Trống: hỏi GitHub bản worker mới nhất để trang Máy báo máy chạy bản cũ. "off" khi hub không ra được Internet.
+      HIVE_WORKER_RELEASES: ${HIVE_WORKER_RELEASES:-}
     ports:
       # Mặc định chỉ máy chủ gọi được (đứng sau Caddy). Máy chủ LAN không dùng HTTPS: HIVE_BIND=0.0.0.0.
       - "${HIVE_BIND:-127.0.0.1}:${HIVE_PORT:-3000}:3000"
