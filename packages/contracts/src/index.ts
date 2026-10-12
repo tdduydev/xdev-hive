@@ -7,6 +7,7 @@ import { docsContract, memoryContract, proposalsContract, skillsContract } from 
 import { leaderContract } from "./leader.ts";
 import { mcpAdminContract } from "./mcp-admin.ts";
 import { inboxContract, notificationChannelsContract } from "./notify.ts";
+import { policiesContract } from "./policies.ts";
 import { projectsContract } from "./projects.ts";
 import { rolesContract } from "./roles.ts";
 import { runsContract } from "./runs.ts";
@@ -22,6 +23,7 @@ export * from "./egress.ts";
 export * from "./knowledge.ts";
 export * from "./mcp-admin.ts";
 export * from "./notify.ts";
+export * from "./policies.ts";
 export * from "./projects.ts";
 export * from "./repo-url.ts";
 export * from "./roles.ts";
@@ -107,6 +109,7 @@ export const contract = {
   mcpAdmin: mcpAdminContract,
   roles: rolesContract,
   skillRepo: skillRepoContract,
+  policies: policiesContract,
 };
 
 export type Contract = typeof contract;

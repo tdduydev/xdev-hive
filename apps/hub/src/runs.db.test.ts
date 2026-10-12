@@ -4,7 +4,9 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import {
+  type AgentPolicyInput,
   type CostSummary,
+  DEFAULT_AGENT_POLICY,
   defaultProjectSettings,
   type ProjectSettings,
   type Run,
@@ -17,7 +19,7 @@ import {
   PROTOCOL_VERSION,
 } from "@xdev-hive/contracts/worker-protocol";
 import pg from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import WebSocket from "ws";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
@@ -1098,5 +1100,148 @@ describe("chi phí và ngân sách", () => {
         userId,
       ]);
     }
+  });
+});
+
+describe("chính sách agent của tổ chức", () => {
+  const setPolicy = (patch: Partial<AgentPolicyInput>) =>
+    admin.query(
+      `insert into hive.agent_policies (org_id, policy) values ($1, $2)
+       on conflict (org_id) do update set policy = excluded.policy`,
+      [org.orgId, JSON.stringify({ ...DEFAULT_AGENT_POLICY, ...patch })],
+    );
+  const limits = (patch: Partial<AgentPolicyInput["limits"]>) => ({ ...DEFAULT_AGENT_POLICY.limits, ...patch });
+  const policyEvents = async (runId: string) =>
+    (
+      await admin.query(
+        "select type, data from hive.run_events where run_id = $1 and type like 'policy%' order by id",
+        [runId],
+      )
+    ).rows as Array<{ type: string; data: { message: string } }>;
+
+  // Run còn chờ từ kịch bản trước sẽ chiếm slot của máy mới (giao cũ trước); huỷ để mỗi kịch bản chỉ có run của nó.
+  beforeEach(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+  });
+
+  afterEach(async () => {
+    await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
+  });
+
+  it("model ngoài danh sách về model đầu, toàn quyền về worktree, trần mỗi run, hook vào spec, ghi bản chụp", async () => {
+    await setPolicy({
+      allowedModels: { claude: ["claude-sonnet-5-5", "claude-haiku-5-5"], codex: [], gemini: [] },
+      allowFullPermission: false,
+      hooks: [{ event: "Stop", name: "Test nhanh", command: "pnpm test" }],
+      managedHooksOnly: true,
+      limits: limits({ perRunUsd: 2 }),
+    });
+    await admin.query(
+      `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"},"budget":{"perRunUsd":10}}'::jsonb
+       where id = $1`,
+      [projectId],
+    );
+    const m = await seedMachine(`policy-${tag}`);
+    const w = await FakeWorker.connect(m);
+    try {
+      const run = await startRun((await newTask("Theo chính sách")).id);
+      const offer = await w.next("job_offer", (o) => o.runId === run.id);
+      expect(offer.spec).toMatchObject({
+        model: "claude-sonnet-5-5",
+        runPermissions: "workspace",
+        budget: { maxCostUsd: 2 },
+        policy: { hooks: [{ event: "Stop", name: "Test nhanh", command: "pnpm test" }], managedHooksOnly: true },
+      });
+      const messages = (await policyEvents(run.id)).map((e) => e.data.message);
+      expect(messages).toEqual([
+        expect.stringContaining("không cho dùng claude-project-model"),
+        expect.stringContaining("không cho toàn quyền CLI"),
+      ]);
+      expect((await runRow(run.id)).agent_policy_snapshot).toMatchObject({
+        model: "claude-sonnet-5-5",
+        requestedModel: "claude-project-model",
+        runPermissions: "workspace",
+        sandbox: false,
+        budget: { maxCostUsd: 2 },
+        managedHooksOnly: true,
+      });
+    } finally {
+      await w.close();
+      await admin.query("update hive.projects set settings = settings - 'runPermissions' - 'budget' where id = $1", [
+        projectId,
+      ]);
+    }
+  });
+
+  it("run không chỉ định model: CLI tự chọn, trừ khi cấm tự lên model đắt nhất", async () => {
+    const m = await seedMachine(`policy-codex-${tag}`, ["codex"]);
+    const w = await FakeWorker.connect(m);
+    try {
+      const models = { claude: [], codex: ["gpt-5-codex", "gpt-5"], gemini: [] };
+      await setPolicy({ allowedModels: models });
+      const free = await startRun((await newTask("Codex tự chọn")).id, { cli: "codex" });
+      expect((await w.next("job_offer", (o) => o.runId === free.id)).spec).toMatchObject({ model: null });
+      w.send({ type: "job_reject", runId: free.id, attempt: 1, reason: "test" });
+      await setPolicy({ allowedModels: models, neverAutoUpgrade: true });
+      const pinned = await startRun((await newTask("Codex theo chính sách")).id, { cli: "codex" });
+      expect((await w.next("job_offer", (o) => o.runId === pinned.id)).spec).toMatchObject({ model: "gpt-5-codex" });
+    } finally {
+      await w.close();
+    }
+  });
+
+  it("tổ chức chạm trần ngày: run chờ, báo một lần; nâng trần thì giao", async () => {
+    const task = await newTask("Đã tiêu nhiều");
+    await admin.query(
+      `insert into hive.runs (org_id, team_id, project_id, task_id, branch, policy_snapshot, created_by, state, cost_usd,
+         finished_at)
+       values ($1, $2, $3, $4, 'ai/x', '[]', $5, 'succeeded', 100, now())`,
+      [org.orgId, org.teamId, projectId, task.id, org.user("admin")],
+    );
+    await setPolicy({ limits: limits({ dailyUsd: 50 }) });
+    const m = await seedMachine(`policy-cap-${tag}`);
+    const w = await FakeWorker.connect(m);
+    try {
+      const run = await startRun((await newTask("Chờ ngày sau")).id);
+      await new Promise((r) => setTimeout(r, 800));
+      expect(w.has("job_offer")).toBe(false);
+      w.send({ type: "heartbeat", load: 0, runs: [] });
+      await w.next("heartbeat_ack");
+      const capped = await policyEvents(run.id);
+      expect(capped.map((e) => e.type)).toEqual(["policy_daily_cap"]);
+      expect(capped[0]?.data.message).toContain("50 USD");
+      await setPolicy({ limits: limits({ dailyUsd: 1000 }) });
+      w.send({ type: "heartbeat", load: 0, runs: [] });
+      await w.next("job_offer", (o) => o.runId === run.id);
+    } finally {
+      await w.close();
+      await admin.query("delete from hive.runs where task_id = $1", [task.id]);
+    }
+  });
+
+  it("số run cùng lúc mỗi máy thấp hơn sức chứa máy", async () => {
+    await setPolicy({ limits: limits({ maxParallelPerMachine: 1 }) });
+    const m = await seedMachine(`policy-slots-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect(m);
+    try {
+      const first = await startRun((await newTask("Run một")).id);
+      await w.next("job_offer", (o) => o.runId === first.id);
+      const second = await startRun((await newTask("Run hai")).id);
+      await new Promise((r) => setTimeout(r, 800));
+      expect(w.has("job_offer")).toBe(false);
+      await setPolicy({});
+      w.send({ type: "heartbeat", load: 0, runs: [] });
+      await w.next("job_offer", (o) => o.runId === second.id);
+    } finally {
+      await w.close();
+    }
+  });
+
+  it("bắt buộc sandbox: dự án chưa có image thì báo ngay khi giao", async () => {
+    await setPolicy({ requireSandbox: true });
+    const task = await newTask("Cần sandbox");
+    const { status, data } = await api<{ data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id });
+    expect(status).toBe(409);
+    expect(data.data?.code).toBe("SANDBOX_IMAGE_REQUIRED");
   });
 });

@@ -11,6 +11,7 @@ import {
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
+import { loadPolicy } from "../governance/index.ts";
 import {
   ConflictError,
   encryptSecret,
@@ -380,6 +381,14 @@ async function existingByIdempotencyKey(
   };
 }
 
+/** Settings của dự án mới: quyền CLI mặc định theo Chính sách agent của tổ chức. */
+async function initialSettings(tx: Tx, requiredApprovals: number) {
+  const settings = defaultProjectSettings(requiredApprovals);
+  const policy = await loadPolicy(tx);
+  if (policy.defaultPermissionMode === "full" && policy.allowFullPermission) settings.runPermissions = { mode: "full" };
+  return settings;
+}
+
 /**
  * Tạo dự án thật: một transaction gồm dự án (provisioning), các bước, job khởi tạo và audit. Job gửi trong cùng
  * transaction nên không có dự án mắc kẹt ở provisioning vì job bị mất, cũng không có job chạy cho dự án đã rollback.
@@ -422,7 +431,7 @@ export async function createProject(
           repoName: p.repo.name,
           repoVisibility: input.repo.mode === "new" ? input.repo.visibility : null,
           defaultBranch: input.repo.mode === "new" ? input.repo.defaultBranch : null,
-          settings: defaultProjectSettings(input.protection.protectDefault ? input.protection.requiredApprovals : 0),
+          settings: await initialSettings(tx, input.protection.protectDefault ? input.protection.requiredApprovals : 0),
           idempotencyKey: input.idempotencyKey,
           webhookSecretEnc: input.webhook
             ? encryptSecret(key, randomBytes(32).toString("hex"), webhookSecretContext(id))

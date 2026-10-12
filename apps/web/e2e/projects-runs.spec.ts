@@ -150,6 +150,14 @@ test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền 
     });
 });
 
+test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {
+  await open(page, "admin", { "policies/get": () => ok({ allowFullPermission: false }) });
+  await page.goto("/projects/PAY/settings");
+  await expect(page.getByText("Chính sách agent của tổ chức không cho dự án bật toàn quyền")).toBeVisible();
+  await expect(page.getByLabel(/Toàn quyền/)).toBeDisabled();
+  await expect(page.getByLabel(/Trong worktree/)).toBeEnabled();
+});
+
 test("cấu hình dự án: thành viên thường chỉ xem", async ({ page }) => {
   await open(page, "member");
   await page.goto("/projects/PAY/settings");
