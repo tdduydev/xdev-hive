@@ -14,6 +14,8 @@ fn main() {
         "account_status",
         "account_link",
         "account_unlink",
+        "workspace_meta",
+        "hub_tool",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

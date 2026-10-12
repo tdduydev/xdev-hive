@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog.tsx";
 import { Pill, type PillProps } from "@/components/ui/pill.tsx";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@/components/ui/table.tsx";
-import { readFolder } from "@/lib/folder.ts";
+import { useFolder } from "@/lib/folder.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   type CheckItem,
@@ -170,7 +170,8 @@ function ScoreRing({ ready, required, label }: { ready: number; required: number
 /** Màn Môi trường (AppSetup.dc.html): dò công cụ và yêu cầu của thư mục dự án, chép hoặc chạy lệnh cài. */
 export function SetupScreen() {
   const t = useT(text);
-  const [folder, setFolder] = useState(readFolder);
+  const [folder, setFolder] = useFolder();
+  const [draft, setDraft] = useState(folder);
   const [items, setItems] = useState<CheckItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -191,11 +192,11 @@ export function SetupScreen() {
     }
   }, []);
 
-  // Quét một lần khi mở màn, theo thư mục đã nhớ.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chỉ quét lúc mở; đổi thư mục thì người dùng bấm Kiểm tra.
+  // Quét khi mở màn và mỗi khi thư mục làm việc đổi (chọn ở AppNav hoặc gửi ô nhập dưới đây).
   useEffect(() => {
+    setDraft(folder);
     void scan(folder);
-  }, [scan]);
+  }, [scan, folder]);
 
   const { ready, required } = readiness(items ?? []);
   const todo = (items ?? []).filter(needsAction);
@@ -214,9 +215,9 @@ export function SetupScreen() {
       </header>
 
       <FolderForm
-        value={folder}
-        onChange={setFolder}
-        onSubmit={(dir) => void scan(dir)}
+        value={draft}
+        onChange={setDraft}
+        onSubmit={(dir) => (dir.trim() === folder ? void scan(folder) : setFolder(dir))}
         submitLabel={t.check}
         hint={t.folderHint}
         busy={scanning}

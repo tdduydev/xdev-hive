@@ -4,7 +4,7 @@ import { FolderForm } from "@/components/folder-form.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@/components/ui/table.tsx";
-import { readFolder } from "@/lib/folder.ts";
+import { useFolder } from "@/lib/folder.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 import {
@@ -280,8 +280,9 @@ export function TokensScreen() {
   const t = useT(text);
   const lang = useLang();
   const [engine, setEngine] = useState<Engine>("claude");
-  const [folder, setFolder] = useState(readFolder);
-  const [applied, setApplied] = useState(folder);
+  const [applied, setApplied] = useFolder();
+  const [folder, setFolder] = useState(applied);
+  useEffect(() => setFolder(applied), [applied]);
   const [nonce, setNonce] = useState(0);
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 

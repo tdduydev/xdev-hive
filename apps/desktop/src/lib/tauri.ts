@@ -88,3 +88,12 @@ export function onWorkerState(handler: (view: WorkerView) => void): () => void {
 export function syncTrayLang(lang: string): void {
   void invoke("set_lang", { lang }).catch(() => {});
 }
+
+export interface WorkspaceMeta {
+  folder: string;
+  name: string;
+  isGit: boolean;
+  branch: string | null;
+  remote: string | null;
+}
+export const workspaceMeta = (folder: string) => invoke<WorkspaceMeta>("workspace_meta", { folder });

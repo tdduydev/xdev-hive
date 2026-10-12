@@ -77,6 +77,8 @@ describe("AppShell", () => {
 
   it("tiếng Anh", () => {
     setLang("en");
+    // Màn chưa làm (Tài liệu) hiện "Coming soon"; Tổng quan đã là màn thật.
+    location.hash = "#/docs";
     render(<AppShell />);
     expect(screen.getByRole("navigation", { name: "App navigation" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Tokens & context" })).toBeTruthy();
