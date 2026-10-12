@@ -13,18 +13,268 @@ import { Textarea } from "../components/ui/textarea.tsx";
 import { apiErrorMessage, formError } from "../lib/api-errors.ts";
 import { cx } from "../lib/cx.ts";
 import { formatDayTime } from "../lib/format.ts";
+import { type Dict, useLang, useT } from "../lib/i18n.ts";
 import {
   canDecidePlan,
   effectiveContent,
-  FILE_CHANGE_LABEL,
-  PLAN_STATUS_LABEL,
+  fileChangeLabel,
   PLAN_STATUS_TONE,
   planStage,
+  planStatusLabel,
   sameContent,
 } from "../lib/plan-view.ts";
-import { shortId } from "../lib/run-view.ts";
+import { cliLabel, shortId } from "../lib/run-view.ts";
 import { useOrg } from "../shell/org-context.ts";
 import { PageBody, PageHeader } from "../shell/page-header.tsx";
+
+const text: Dict<
+  Record<
+    | "member"
+    | "submittedAt"
+    | "planLog"
+    | "stepsCount"
+    | "versionsCount"
+    | "version"
+    | "submitted"
+    | "approvedBy"
+    | "rejectedBy"
+    | "viewVersion"
+    | "approveVersion"
+    | "codeRunOf"
+    | "queuedWith"
+    | "yourDraft"
+    | "editedVersion"
+    | "submittedVersion"
+    | "agentHas"
+    | "answerQuestions"
+    | "rejectVersion"
+    | "waitingCodeRun"
+    | "willCancel"
+    | "notFound"
+    | "notInTeam"
+    | "openRun"
+    | "approved"
+    | "rejected"
+    | "replanned"
+    | "board"
+    | "planCrumb"
+    | "backToBoard"
+    | "plan"
+    | "loading"
+    | "reject"
+    | "edit"
+    | "approve"
+    | "emptyTitle"
+    | "emptyDescription"
+    | "viewOnly"
+    | "details"
+    | "draft"
+    | "edited"
+    | "versionLabel"
+    | "submittedPlan"
+    | "draftHint"
+    | "discard"
+    | "summary"
+    | "steps"
+    | "files"
+    | "emptyFiles"
+    | "risks"
+    | "emptyRisks"
+    | "questions"
+    | "emptyQuestions"
+    | "questionHint"
+    | "info"
+    | "revision"
+    | "status"
+    | "planRun"
+    | "codeRun"
+    | "reviewer"
+    | "rejecter"
+    | "at"
+    | "reason"
+    | "note"
+    | "history"
+    | "viewing"
+    | "approvalNote"
+    | "approvalPlaceholder"
+    | "back"
+    | "approving"
+    | "approveRun"
+    | "reasonRequired"
+    | "rejectReason"
+    | "rejectPlaceholder"
+    | "replan"
+    | "replanHint"
+    | "rejecting"
+    | "rejectPlan",
+    string
+  >
+> = {
+  vi: {
+    member: "một thành viên",
+    submittedAt: "nộp lúc",
+    planLog: "Log run lập kế hoạch",
+    stepsCount: "bước",
+    versionsCount: "lần",
+    version: "Lần",
+    submitted: "nộp",
+    approvedBy: "duyệt bởi",
+    rejectedBy: "từ chối bởi",
+    viewVersion: "Xem kế hoạch lần",
+    approveVersion: "Duyệt kế hoạch lần",
+    codeRunOf: "Run code của",
+    queuedWith: "vào hàng ngay và agent làm theo",
+    yourDraft: "bản bạn vừa sửa",
+    editedVersion: "bản đã sửa",
+    submittedVersion: "kế hoạch agent nộp",
+    agentHas: "Agent có",
+    answerQuestions: "câu hỏi; trả lời trong ghi chú:",
+    rejectVersion: "Từ chối kế hoạch lần",
+    waitingCodeRun: "Run code đang chờ kế hoạch của",
+    willCancel: "sẽ bị huỷ.",
+    notFound: "Không tìm thấy việc",
+    notInTeam: ", hoặc bạn không ở trong đội sở hữu việc này.",
+    openRun: "Mở run",
+    approved: "Đã duyệt kế hoạch. Run code đã vào hàng và sẽ làm theo kế hoạch.",
+    rejected: "Đã từ chối kế hoạch. Việc quay về chưa giao.",
+    replanned: "Đã từ chối kế hoạch. Agent đang lập lại kế hoạch có tính tới lý do của bạn.",
+    board: "Bảng việc",
+    planCrumb: " / Kế hoạch",
+    backToBoard: "Về bảng việc",
+    plan: "Kế hoạch",
+    loading: "Đang tải…",
+    reject: "Từ chối",
+    edit: "Sửa kế hoạch",
+    approve: "Duyệt kế hoạch",
+    emptyTitle: "Chưa có kế hoạch",
+    emptyDescription:
+      "Việc này chưa có kế hoạch nào. Khi dự án bật plan mode, agent đọc code, lập kế hoạch rồi chờ người duyệt trước khi viết code.",
+    viewOnly:
+      "Bạn chỉ có quyền xem việc của đội này. Thành viên hoặc quản trị đội mới duyệt hay từ chối được kế hoạch.",
+    details: "Thông tin kế hoạch",
+    draft: "Bản bạn vừa sửa (chưa gửi)",
+    edited: "Bản người duyệt đã sửa",
+    versionLabel: "Bản kế hoạch đang xem",
+    submittedPlan: "Bản agent nộp",
+    draftHint: "Bản sửa được gửi khi bạn duyệt.",
+    discard: "Bỏ bản sửa",
+    summary: "Tóm tắt",
+    steps: "Các bước",
+    files: "File dự kiến đụng",
+    emptyFiles: "Agent không liệt kê file nào.",
+    risks: "Rủi ro",
+    emptyRisks: "Agent không nêu rủi ro nào.",
+    questions: "Câu hỏi cho người duyệt",
+    emptyQuestions: "Agent không có câu hỏi nào.",
+    questionHint: "Trả lời trong ô ghi chú khi duyệt; agent đọc ghi chú trước khi viết code.",
+    info: "Thông tin",
+    revision: "Lần lập",
+    status: "Trạng thái",
+    planRun: "Run lập",
+    codeRun: "Run code",
+    reviewer: "Người duyệt",
+    rejecter: "Người từ chối",
+    at: "Lúc",
+    reason: "Lý do",
+    note: "Ghi chú",
+    history: "Các lần lập",
+    viewing: "đang xem",
+    approvalNote: "Ghi chú cho agent (không bắt buộc)",
+    approvalPlaceholder: "Ví dụ: Làm tròn theo từng dòng hoá đơn; giữ nguyên API cũ.",
+    back: "Quay lại",
+    approving: "Đang duyệt…",
+    approveRun: "Duyệt và chạy",
+    reasonRequired: "Cần ghi lý do từ chối để agent biết phải lập lại thế nào.",
+    rejectReason: "Lý do từ chối",
+    rejectPlaceholder: "Ví dụ: Thiếu bước migration cho bảng hoá đơn cũ.",
+    replan: "Lập lại kế hoạch",
+    replanHint: "Agent lập kế hoạch mới, có đọc bản này và lý do của bạn. Không chọn thì việc quay về chưa giao.",
+    rejecting: "Đang từ chối…",
+    rejectPlan: "Từ chối kế hoạch",
+  },
+  en: {
+    member: "a member",
+    submittedAt: "submitted",
+    planLog: "Planning run log",
+    stepsCount: "steps",
+    versionsCount: "versions",
+    version: "Version",
+    submitted: "submitted",
+    approvedBy: "approved by",
+    rejectedBy: "rejected by",
+    viewVersion: "View version",
+    approveVersion: "Approve version",
+    codeRunOf: "The code run for",
+    queuedWith: "is queued now and the agent follows",
+    yourDraft: "your edited draft",
+    editedVersion: "the edited version",
+    submittedVersion: "the submitted plan",
+    agentHas: "The agent asked",
+    answerQuestions: "questions; answer them in the note:",
+    rejectVersion: "Reject version",
+    waitingCodeRun: "The code run waiting on the plan for",
+    willCancel: "will be cancelled.",
+    notFound: "Cannot find task",
+    notInTeam: ", or you are not in the team that owns it.",
+    openRun: "Open run",
+    approved: "Plan approved. The code run is queued and will follow it.",
+    rejected: "Plan rejected. The task is unassigned again.",
+    replanned: "Plan rejected. The agent is planning again with your reason in mind.",
+    board: "Board",
+    planCrumb: " / Plan",
+    backToBoard: "Back to board",
+    plan: "Plan",
+    loading: "Loading…",
+    reject: "Reject",
+    edit: "Edit plan",
+    approve: "Approve plan",
+    emptyTitle: "No plan yet",
+    emptyDescription:
+      "This task has no plan yet. With plan mode enabled, the agent reads the code and waits for approval before writing code.",
+    viewOnly: "You can only view this team’s tasks. A team member or admin can approve or reject the plan.",
+    details: "Plan details",
+    draft: "Your edited draft (not submitted)",
+    edited: "Reviewer’s edited version",
+    versionLabel: "Plan version shown",
+    submittedPlan: "Submitted version",
+    draftHint: "Your edits are submitted on approval.",
+    discard: "Discard edits",
+    summary: "Summary",
+    steps: "Steps",
+    files: "Files it expects to touch",
+    emptyFiles: "The agent listed no files.",
+    risks: "Risks",
+    emptyRisks: "The agent listed no risks.",
+    questions: "Questions for the reviewer",
+    emptyQuestions: "The agent has no questions.",
+    questionHint: "Answer in the note when you approve; the agent reads it before writing code.",
+    info: "Details",
+    revision: "Version",
+    status: "Status",
+    planRun: "Planning run",
+    codeRun: "Code run",
+    reviewer: "Approved by",
+    rejecter: "Rejected by",
+    at: "At",
+    reason: "Reason",
+    note: "Note",
+    history: "Versions",
+    viewing: "viewing",
+    approvalNote: "Note for the agent (optional)",
+    approvalPlaceholder: "e.g. Round each invoice line; keep the existing API.",
+    back: "Back",
+    approving: "Approving…",
+    approveRun: "Approve and run",
+    reasonRequired: "Give a reason so the agent knows how to plan again.",
+    rejectReason: "Reason for rejecting",
+    rejectPlaceholder: "e.g. Missing a migration for the old invoices table.",
+    replan: "Plan again",
+    replanHint:
+      "The agent writes a new plan using this one and your reason. Otherwise, the task returns to unassigned.",
+    rejecting: "Rejecting…",
+    rejectPlan: "Reject plan",
+  },
+};
 
 /** Đang chờ người hay chờ agent thì tự làm mới, để người duyệt thấy kế hoạch mới mà không phải tải lại trang. */
 const REFRESH_MS = 15_000;
@@ -36,6 +286,7 @@ function taskByKey(tasks: Task[] | undefined, key: string): Task | undefined {
 
 /** /tasks/$key/plan: kế hoạch agent lập cho task, lịch sử các lần lập, duyệt hay từ chối. */
 export function PlanPage() {
+  const t = useT(text);
   const { key } = useParams({ from: "/session/app/in-org/tasks/$key/plan" });
   const { api } = useOrg();
   // Cùng khoá cache với bảng việc chung, nên mở từ bảng việc không tải lại danh sách task.
@@ -45,11 +296,11 @@ export function PlanPage() {
   const crumb = (
     <>
       <Link to="/tasks" className="text-primary hover:text-primary/90">
-        Bảng việc
+        {t.board}
       </Link>
       {" / "}
       <span className="font-mono">{key}</span>
-      {" / Kế hoạch"}
+      {t.planCrumb}
     </>
   );
 
@@ -61,12 +312,10 @@ export function PlanPage() {
         body={
           <>
             <Alert variant="destructive">
-              {tasks.isError
-                ? apiErrorMessage(tasks.error)
-                : `Không tìm thấy việc ${key}, hoặc bạn không ở trong đội sở hữu việc này.`}
+              {tasks.isError ? apiErrorMessage(tasks.error) : `${t.notFound} ${key}${t.notInTeam}`}
             </Alert>
             <Link to="/tasks" className="text-primary hover:text-primary/90">
-              Về bảng việc
+              {t.backToBoard}
             </Link>
           </>
         }
@@ -76,19 +325,21 @@ export function PlanPage() {
   return <TaskPlan task={task} crumb={crumb} />;
 }
 
-function Shell({ crumb, title = "Kế hoạch", body }: { crumb: ReactNode; title?: string; body: ReactNode }) {
+function Shell({ crumb, title, body }: { crumb: ReactNode; title?: string; body: ReactNode }) {
+  const t = useT(text);
   return (
     <>
-      <PageHeader crumb={crumb} title={title} />
+      <PageHeader crumb={crumb} title={title ?? t.plan} />
       <PageBody>{body}</PageBody>
     </>
   );
 }
 
 function Loading() {
+  const t = useT(text);
   return (
     <div aria-busy="true" className="grid gap-3">
-      <span className="sr-only">Đang tải…</span>
+      <span className="sr-only">{t.loading}</span>
       <div className="h-6 w-1/3 rounded bg-muted" />
       <div className="h-40 rounded-xl bg-muted" />
       <div className="h-24 rounded-xl bg-muted" />
@@ -98,13 +349,9 @@ function Loading() {
 
 type Outcome = { kind: "approved" | "rejected" | "replanned"; run: Run };
 
-const OUTCOME_TEXT: Record<Outcome["kind"], string> = {
-  approved: "Đã duyệt kế hoạch. Run code đã vào hàng và sẽ làm theo kế hoạch.",
-  rejected: "Đã từ chối kế hoạch. Việc quay về chưa giao.",
-  replanned: "Đã từ chối kế hoạch. Agent đang lập lại kế hoạch có tính tới lý do của bạn.",
-};
-
 function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
+  const t = useT(text);
+  const lang = useLang();
   const { api } = useOrg();
   const runs = useQuery(
     api.runs.latest.queryOptions({ input: { projectId: task.projectId }, refetchInterval: REFRESH_MS }),
@@ -118,6 +365,12 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
         run?.state === "planning" || q.state.data?.plans[0]?.status === "awaiting" ? REFRESH_MS : false,
     }),
   );
+  const planRunId = history.data?.plans[0]?.planRunId;
+  const planningRun = useQuery({
+    ...api.runs.get.queryOptions({ input: { id: planRunId ?? "00000000-0000-4000-8000-000000000000" } }),
+    enabled: Boolean(planRunId),
+    retry: false,
+  });
   // Chỉ để hiện tên người quyết; không đọc được (lỗi mạng, quyền) thì hiện chung chung, không chặn màn.
   const members = useQuery(api.orgMembers.list.queryOptions({ retry: false }));
   const [draft, setDraft] = useState<PlanContent | null>(null);
@@ -139,22 +392,22 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
 
   const { plans, canDecide } = history.data;
   const latest = plans[0];
-  const stage = planStage(task, latest, run);
+  const stage = planStage(task, latest, run, lang);
   const decidable = canDecidePlan(latest, canDecide);
-  const nameOf = (userId: string | null) => personName(members.data, userId);
+  const nameOf = (userId: string | null) => personName(members.data, userId, t.member);
 
   const header = (
     <PageHeader crumb={crumb} title={task.title}>
       {decidable && !editing && (
         <>
           <Button variant="destructive" onClick={() => setDialog("reject")} aria-haspopup="dialog">
-            Từ chối
+            {t.reject}
           </Button>
           <Button variant="outline" onClick={() => setEditing(true)}>
-            Sửa kế hoạch
+            {t.edit}
           </Button>
           <Button variant="default" onClick={() => setDialog("approve")} aria-haspopup="dialog">
-            Duyệt kế hoạch
+            {t.approve}
           </Button>
         </>
       )}
@@ -167,11 +420,8 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
         {header}
         <PageBody>
           <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-            <h2 className="text-base font-semibold text-foreground">Chưa có kế hoạch</h2>
-            <p className="max-w-md text-muted-foreground">
-              {stage ??
-                "Việc này chưa có kế hoạch nào. Khi dự án bật plan mode, agent đọc code, lập kế hoạch rồi chờ người duyệt trước khi viết code."}
-            </p>
+            <h2 className="text-base font-semibold text-foreground">{t.emptyTitle}</h2>
+            <p className="max-w-md text-muted-foreground">{stage ?? t.emptyDescription}</p>
           </Card>
         </PageBody>
       </>
@@ -192,20 +442,26 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
       <PageBody>
         {outcome && (
           <p role="status" className="rounded-lg bg-success-soft px-3.5 py-2.5 text-sm text-success">
-            {OUTCOME_TEXT[outcome.kind]}{" "}
+            {t[outcome.kind]}{" "}
             <Link to="/runs/$id" params={{ id: outcome.run.id }} className="font-medium underline">
-              Mở run {shortId(outcome.run.id)}
+              {t.openRun} {shortId(outcome.run.id)}
             </Link>
           </p>
         )}
         <PlanMeta plan={latest} />
-        {stage && <p className="text-muted-foreground">{stage}</p>}
-        {latest.status === "awaiting" && !canDecide && (
-          <p className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">
-            Bạn chỉ có quyền xem việc của đội này. Thành viên hoặc quản trị đội mới duyệt hay từ chối được kế hoạch.
-          </p>
+        {stage && (
+          <Alert
+            role="status"
+            className={latest.status === "awaiting" ? "border-transparent bg-accent text-accent-foreground" : undefined}
+            variant={latest.status === "rejected" ? "destructive" : "default"}
+          >
+            {stage}
+          </Alert>
         )}
-        <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+        {latest.status === "awaiting" && !canDecide && (
+          <p className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-sm text-foreground">{t.viewOnly}</p>
+        )}
+        <div className="grid items-start gap-5 app:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="grid min-w-0 gap-4">
             {editing ? (
               <PlanEditor
@@ -231,8 +487,8 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
               </>
             )}
           </div>
-          <aside aria-label="Thông tin kế hoạch" className="grid min-w-0 gap-4">
-            <DecisionCard plan={latest} nameOf={nameOf} />
+          <aside aria-label={t.details} className="grid min-w-0 gap-4">
+            <DecisionCard plan={latest} planningRun={planningRun.data} nameOf={nameOf} />
             <HistoryCard plans={plans} nameOf={nameOf} />
           </aside>
         </div>
@@ -262,23 +518,27 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
   );
 }
 
-function personName(members: OrgMember[] | undefined, userId: string | null): string {
+function personName(members: OrgMember[] | undefined, userId: string | null, fallback: string): string {
   if (!userId) return "—";
-  return members?.find((m) => m.userId === userId)?.name ?? "một thành viên";
+  return members?.find((m) => m.userId === userId)?.name ?? fallback;
 }
 
 function PlanMeta({ plan }: { plan: Plan }) {
+  const t = useT(text);
+  const lang = useLang();
   return (
     <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
       <Pill tone={PLAN_STATUS_TONE[plan.status]} dot>
-        {PLAN_STATUS_LABEL[plan.status]}
+        {planStatusLabel(plan.status, lang)}
       </Pill>
-      <span>Lần lập {plan.revision}</span>
       <span>
-        nộp lúc <time dateTime={plan.createdAt}>{formatDayTime(plan.createdAt)}</time>
+        {t.revision} {plan.revision}
+      </span>
+      <span>
+        {t.submittedAt} <time dateTime={plan.createdAt}>{formatDayTime(plan.createdAt)}</time>
       </span>
       <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-primary hover:text-primary/90">
-        Log run lập kế hoạch <span className="font-mono">{shortId(plan.planRunId)}</span>
+        {t.planLog} <span className="font-mono">{shortId(plan.planRunId)}</span>
       </Link>
     </div>
   );
@@ -298,12 +558,13 @@ function VersionSwitch({
   onShowOriginal: (v: boolean) => void;
   onDiscardDraft: () => void;
 }) {
+  const t = useT(text);
   if (!draft && !plan.editedContent) return null;
-  const current = draft ? "Bản bạn vừa sửa (chưa gửi)" : "Bản người duyệt đã sửa";
+  const current = draft ? t.draft : t.edited;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <fieldset className="contents">
-        <legend className="sr-only">Bản kế hoạch đang xem</legend>
+        <legend className="sr-only">{t.versionLabel}</legend>
         <Button
           size="sm"
           variant={showOriginal ? "ghost" : "outline"}
@@ -318,14 +579,14 @@ function VersionSwitch({
           aria-pressed={showOriginal}
           onClick={() => onShowOriginal(true)}
         >
-          Bản agent nộp
+          {t.submittedPlan}
         </Button>
       </fieldset>
       {draft && (
         <>
-          <span className="text-xs text-muted-foreground">Bản sửa được gửi khi bạn duyệt.</span>
+          <span className="text-xs text-muted-foreground">{t.draftHint}</span>
           <Button size="sm" variant="ghost" className="ml-auto" onClick={onDiscardDraft}>
-            Bỏ bản sửa
+            {t.discard}
           </Button>
         </>
       )}
@@ -333,12 +594,22 @@ function VersionSwitch({
   );
 }
 
-function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+function Section({
+  title,
+  aside,
+  children,
+  warning = false,
+}: {
+  title: string;
+  aside?: ReactNode;
+  children: ReactNode;
+  warning?: boolean;
+}) {
   const headingId = useId();
   return (
-    <Card>
-      <section aria-labelledby={headingId} className="grid gap-2.5 px-5 py-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+    <Card className={cx("py-0", warning && "ring-warning")}>
+      <section aria-labelledby={headingId} className="grid gap-3 px-4 py-4 sm:px-5">
+        <div className="-mx-4 -mt-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3 sm:-mx-5 sm:px-5">
           <h2 id={headingId} className="text-base font-semibold text-foreground">
             {title}
           </h2>
@@ -353,20 +624,29 @@ function Section({ title, aside, children }: { title: string; aside?: ReactNode;
 const Empty = ({ children }: { children: ReactNode }) => <p className="text-muted-foreground">{children}</p>;
 
 export function PlanContentView({ content }: { content: PlanContent }) {
+  const t = useT(text);
+  const lang = useLang();
   return (
     <>
-      <Section title="Tóm tắt">
+      <Section title={t.summary}>
         <p className="whitespace-pre-wrap break-words text-foreground">{content.summary}</p>
       </Section>
       <Section
-        title="Các bước"
-        aside={<span className="text-xs text-muted-foreground">{content.steps.length} bước</span>}
+        title={t.steps}
+        aside={
+          <span className="text-xs text-muted-foreground">
+            {content.steps.length} {t.stepsCount}
+          </span>
+        }
       >
         <ol className="grid gap-2.5">
           {content.steps.map((s, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: thứ tự bước là một phần nội dung, không đổi khi đang xem.
-            <li key={i} className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-2">
-              <span className="grid size-6 place-items-center rounded-full bg-accent text-xs font-semibold text-accent-foreground tabular-nums">
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: thứ tự bước là một phần nội dung, không đổi khi đang xem.
+              key={i}
+              className="grid grid-cols-[1.75rem_minmax(0,1fr)] gap-3 border-b border-dashed border-border py-2 last:border-0"
+            >
+              <span className="grid size-6 place-items-center rounded-full bg-foreground text-xs font-semibold text-background tabular-nums">
                 {i + 1}
               </span>
               <span className="grid gap-0.5">
@@ -380,19 +660,21 @@ export function PlanContentView({ content }: { content: PlanContent }) {
         </ol>
       </Section>
       <Section
-        title="File dự kiến đụng"
+        title={t.files}
         aside={<span className="text-xs text-muted-foreground">{content.files.length} file</span>}
       >
         {content.files.length === 0 ? (
-          <Empty>Agent không liệt kê file nào.</Empty>
+          <Empty>{t.emptyFiles}</Empty>
         ) : (
           <ul className="grid gap-2">
             {content.files.map((f, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc, có thể trùng đường dẫn.
-              <li key={i} className="grid gap-0.5">
+              <li key={i} className="grid gap-0.5 border-b border-border py-2 last:border-0">
                 <span className="flex flex-wrap items-center gap-2">
                   {f.change && (
-                    <Pill tone={f.change === "delete" ? "bad" : "neutral"}>{FILE_CHANGE_LABEL[f.change]}</Pill>
+                    <Pill tone={f.change === "delete" ? "bad" : f.change === "add" ? "ok" : "sel"}>
+                      {fileChangeLabel(f.change, lang)}
+                    </Pill>
                   )}
                   <span className="font-mono text-xs break-all text-foreground">{f.path}</span>
                 </span>
@@ -402,52 +684,66 @@ export function PlanContentView({ content }: { content: PlanContent }) {
           </ul>
         )}
       </Section>
-      <Section title="Rủi ro">
-        {content.risks.length === 0 ? (
-          <Empty>Agent không nêu rủi ro nào.</Empty>
-        ) : (
-          <ul className="grid list-disc gap-1.5 pl-5">
-            {content.risks.map((r, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
-              <li key={i} className="whitespace-pre-wrap break-words text-foreground">
-                {r}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-      <Section title="Câu hỏi cho người duyệt">
-        {content.questions.length === 0 ? (
-          <Empty>Agent không có câu hỏi nào.</Empty>
-        ) : (
-          <>
-            <ol className="grid list-decimal gap-1.5 pl-5">
-              {content.questions.map((q, i) => (
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Section title={t.risks}>
+          {content.risks.length === 0 ? (
+            <Empty>{t.emptyRisks}</Empty>
+          ) : (
+            <ul className="grid list-disc gap-1.5 pl-5">
+              {content.risks.map((r, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
                 <li key={i} className="whitespace-pre-wrap break-words text-foreground">
-                  {q}
+                  {r}
                 </li>
               ))}
-            </ol>
-            <p className="text-xs text-muted-foreground">
-              Trả lời trong ô ghi chú khi duyệt; agent đọc ghi chú trước khi viết code.
-            </p>
-          </>
-        )}
-      </Section>
+            </ul>
+          )}
+        </Section>
+        <Section
+          title={t.questions}
+          warning={content.questions.length > 0}
+          aside={content.questions.length > 0 ? <Pill tone="warn">{content.questions.length}</Pill> : undefined}
+        >
+          {content.questions.length === 0 ? (
+            <Empty>{t.emptyQuestions}</Empty>
+          ) : (
+            <>
+              <ol className="grid list-decimal gap-1.5 pl-5">
+                {content.questions.map((q, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
+                  <li key={i} className="whitespace-pre-wrap break-words text-foreground">
+                    {q}
+                  </li>
+                ))}
+              </ol>
+              <p className="text-xs text-muted-foreground">{t.questionHint}</p>
+            </>
+          )}
+        </Section>
+      </div>
     </>
   );
 }
 
-function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null) => string }) {
+function DecisionCard({
+  plan,
+  planningRun,
+  nameOf,
+}: {
+  plan: Plan;
+  planningRun: Run | undefined;
+  nameOf: (id: string | null) => string;
+}) {
+  const t = useT(text);
+  const lang = useLang();
   return (
-    <Section title="Thông tin">
+    <Section title={t.info}>
       <DescriptionList
         items={[
-          { term: "Lần lập", detail: String(plan.revision) },
-          { term: "Trạng thái", detail: PLAN_STATUS_LABEL[plan.status] },
+          { term: t.revision, detail: String(plan.revision) },
+          { term: t.status, detail: planStatusLabel(plan.status, lang) },
           {
-            term: "Run lập",
+            term: t.planRun,
             detail: (
               <Link to="/runs/$id" params={{ id: plan.planRunId }} className="text-primary hover:text-primary/90">
                 {shortId(plan.planRunId)}
@@ -456,7 +752,7 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
             mono: true,
           },
           {
-            term: "Run code",
+            term: t.codeRun,
             detail: (
               <Link to="/runs/$id" params={{ id: plan.runId }} className="text-primary hover:text-primary/90">
                 {shortId(plan.runId)}
@@ -464,13 +760,21 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
             ),
             mono: true,
           },
-          ...(plan.decidedAt
+          ...(planningRun
             ? [
-                { term: plan.status === "approved" ? "Người duyệt" : "Người từ chối", detail: nameOf(plan.decidedBy) },
-                { term: "Lúc", detail: formatDayTime(plan.decidedAt) },
+                {
+                  term: "Agent",
+                  detail: `${cliLabel(planningRun.cli)}${planningRun.machineName ? ` · ${planningRun.machineName}` : ""}`,
+                },
               ]
             : []),
-          ...(plan.note ? [{ term: plan.status === "rejected" ? "Lý do" : "Ghi chú", detail: plan.note }] : []),
+          ...(plan.decidedAt
+            ? [
+                { term: plan.status === "approved" ? t.reviewer : t.rejecter, detail: nameOf(plan.decidedBy) },
+                { term: t.at, detail: formatDayTime(plan.decidedAt) },
+              ]
+            : []),
+          ...(plan.note ? [{ term: plan.status === "rejected" ? t.reason : t.note, detail: plan.note }] : []),
         ]}
       />
     </Section>
@@ -478,22 +782,33 @@ function DecisionCard({ plan, nameOf }: { plan: Plan; nameOf: (id: string | null
 }
 
 function HistoryCard({ plans, nameOf }: { plans: Plan[]; nameOf: (id: string | null) => string }) {
+  const t = useT(text);
+  const lang = useLang();
   return (
-    <Section title="Các lần lập" aside={<span className="text-xs text-muted-foreground">{plans.length} lần</span>}>
+    <Section
+      title={t.history}
+      aside={
+        <span className="text-xs text-muted-foreground">
+          {plans.length} {t.versionsCount}
+        </span>
+      }
+    >
       <ol className="grid gap-3">
         {plans.map((p, i) => (
-          <li key={p.id} className={cx("grid gap-1", i > 0 && "border-t border-border pt-3")}>
+          <li key={p.id} className={cx("grid gap-1 border-l-2 pl-3", i === 0 ? "border-primary" : "border-border")}>
             <span className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-foreground">Lần {p.revision}</span>
-              <Pill tone={PLAN_STATUS_TONE[p.status]}>{PLAN_STATUS_LABEL[p.status]}</Pill>
-              {i === 0 && <span className="text-xs text-muted-foreground">đang xem</span>}
+              <span className="font-medium text-foreground">
+                {t.version} {p.revision}
+              </span>
+              <Pill tone={PLAN_STATUS_TONE[p.status]}>{planStatusLabel(p.status, lang)}</Pill>
+              {i === 0 && <span className="text-xs text-muted-foreground">{t.viewing}</span>}
             </span>
             <span className="text-xs text-muted-foreground">
-              nộp <time dateTime={p.createdAt}>{formatDayTime(p.createdAt)}</time>
+              {t.submitted} <time dateTime={p.createdAt}>{formatDayTime(p.createdAt)}</time>
               {p.decidedAt && (
                 <>
                   {" · "}
-                  {p.status === "approved" ? "duyệt" : "từ chối"} bởi {nameOf(p.decidedBy)}
+                  {p.status === "approved" ? t.approvedBy : t.rejectedBy} {nameOf(p.decidedBy)}
                 </>
               )}
             </span>
@@ -501,17 +816,17 @@ function HistoryCard({ plans, nameOf }: { plans: Plan[]; nameOf: (id: string | n
               <span
                 className={cx("break-words text-sm", p.status === "rejected" ? "text-destructive" : "text-foreground")}
               >
-                {p.status === "rejected" ? "Lý do: " : "Ghi chú: "}
+                {p.status === "rejected" ? `${t.reason}: ` : `${t.note}: `}
                 {p.note}
               </span>
             )}
             <Link to="/runs/$id" params={{ id: p.planRunId }} className="text-sm text-primary hover:text-primary/90">
-              Log run lập kế hoạch
+              {t.planLog}
             </Link>
             {i > 0 && (
               <details className="text-sm">
                 <summary className="cursor-pointer text-primary hover:text-primary/90">
-                  Xem kế hoạch lần {p.revision}
+                  {t.viewVersion} {p.revision}
                 </summary>
                 <div className="mt-1.5 grid gap-1.5 rounded-lg bg-muted px-3 py-2">
                   <p className="whitespace-pre-wrap break-words text-foreground">{effectiveContent(p).summary}</p>
@@ -546,6 +861,7 @@ function ApproveConfirm({
   onCancel: () => void;
   onDone: (d: PlanDecision) => void;
 }) {
+  const t = useT(text);
   const { api } = useOrg();
   const queryClient = useQueryClient();
   const noteId = useId();
@@ -574,14 +890,18 @@ function ApproveConfirm({
 
   return (
     <form noValidate onSubmit={onSubmit} className="grid gap-3.5">
-      <DialogTitle>Duyệt kế hoạch lần {plan.revision}?</DialogTitle>
+      <DialogTitle>
+        {t.approveVersion} {plan.revision}?
+      </DialogTitle>
       <DialogDescription>
-        Run code của <span className="font-mono">{task.key}</span> vào hàng ngay và agent làm theo{" "}
-        {draft ? "bản bạn vừa sửa" : plan.editedContent ? "bản đã sửa" : "kế hoạch agent nộp"}.
+        {t.codeRunOf} <span className="font-mono">{task.key}</span> {t.queuedWith}{" "}
+        {draft ? t.yourDraft : plan.editedContent ? t.editedVersion : t.submittedVersion}.
       </DialogDescription>
       {questions.length > 0 && (
         <div className="grid gap-1 rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
-          <span className="font-medium">Agent có {questions.length} câu hỏi; trả lời trong ghi chú:</span>
+          <span className="font-medium">
+            {t.agentHas} {questions.length} {t.answerQuestions}
+          </span>
           <ol className="grid list-decimal gap-0.5 pl-5">
             {questions.map((q, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: danh sách chỉ đọc.
@@ -594,7 +914,7 @@ function ApproveConfirm({
       )}
       <div className="grid gap-1.5">
         <label htmlFor={noteId} className="text-sm font-medium text-foreground">
-          Ghi chú cho agent (không bắt buộc)
+          {t.approvalNote}
         </label>
         <Textarea
           id={noteId}
@@ -602,16 +922,16 @@ function ApproveConfirm({
           rows={4}
           maxLength={10_000}
           disabled={approve.isPending}
-          placeholder="Ví dụ: Làm tròn theo từng dòng hoá đơn; giữ nguyên API cũ."
+          placeholder={t.approvalPlaceholder}
         />
       </div>
       {error && <Alert variant="destructive">{error}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel}>
-          Quay lại
+          {t.back}
         </Button>
         <Button type="submit" variant="default" disabled={approve.isPending}>
-          {approve.isPending ? "Đang duyệt…" : "Duyệt và chạy"}
+          {approve.isPending ? t.approving : t.approveRun}
         </Button>
       </DialogActions>
     </form>
@@ -629,6 +949,7 @@ function RejectConfirm({
   onCancel: () => void;
   onDone: (d: PlanDecision, replan: boolean) => void;
 }) {
+  const t = useT(text);
   const { api } = useOrg();
   const queryClient = useQueryClient();
   const reasonId = useId();
@@ -654,7 +975,7 @@ function RejectConfirm({
     const reason = String(form.get("reason") ?? "").trim();
     setError(null);
     if (!reason) {
-      setReasonError("Cần ghi lý do từ chối để agent biết phải lập lại thế nào.");
+      setReasonError(t.reasonRequired);
       return;
     }
     setReasonError(null);
@@ -663,13 +984,15 @@ function RejectConfirm({
 
   return (
     <form noValidate onSubmit={onSubmit} className="grid gap-3.5">
-      <DialogTitle>Từ chối kế hoạch lần {plan.revision}?</DialogTitle>
+      <DialogTitle>
+        {t.rejectVersion} {plan.revision}?
+      </DialogTitle>
       <DialogDescription>
-        Run code đang chờ kế hoạch của <span className="font-mono">{task.key}</span> sẽ bị huỷ.
+        {t.waitingCodeRun} <span className="font-mono">{task.key}</span> {t.willCancel}
       </DialogDescription>
       <div className="grid gap-1.5">
         <label htmlFor={reasonId} className="text-sm font-medium text-foreground">
-          Lý do từ chối
+          {t.rejectReason}
         </label>
         <Textarea
           id={reasonId}
@@ -679,7 +1002,7 @@ function RejectConfirm({
           disabled={reject.isPending}
           aria-invalid={reasonError ? true : undefined}
           aria-describedby={reasonError ? reasonErrorId : undefined}
-          placeholder="Ví dụ: Thiếu bước migration cho bảng hoá đơn cũ."
+          placeholder={t.rejectPlaceholder}
           autoFocus
         />
         {reasonError && (
@@ -697,19 +1020,17 @@ function RejectConfirm({
           className="mt-0.5 size-4 accent-accent"
         />
         <span className="grid gap-0.5">
-          <span>Lập lại kế hoạch</span>
-          <span className="text-xs text-muted-foreground">
-            Agent lập kế hoạch mới, có đọc bản này và lý do của bạn. Không chọn thì việc quay về chưa giao.
-          </span>
+          <span>{t.replan}</span>
+          <span className="text-xs text-muted-foreground">{t.replanHint}</span>
         </span>
       </label>
       {error && <Alert variant="destructive">{error}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel}>
-          Quay lại
+          {t.back}
         </Button>
         <Button type="submit" variant="destructive-solid" disabled={reject.isPending}>
-          {reject.isPending ? "Đang từ chối…" : "Từ chối kế hoạch"}
+          {reject.isPending ? t.rejecting : t.rejectPlan}
         </Button>
       </DialogActions>
     </form>

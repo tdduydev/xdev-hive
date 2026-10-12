@@ -194,7 +194,9 @@ export function createApp({
           /* Đường dẫn SPA không phải file; trả entry point để client router xử lý. */
         }
       }
-      if (["/api/", "/rpc/", "/mcp", "/.well-known/"].some((p) => c.req.path.startsWith(p))) return c.notFound();
+      // Endpoint MCP chỉ là đúng /mcp; /mcp/consent là trang web (trang đồng ý OAuth của Better Auth) nên phải ra SPA.
+      const path = c.req.path;
+      if (path === "/mcp" || ["/api/", "/rpc/", "/.well-known/"].some((p) => path.startsWith(p))) return c.notFound();
       try {
         return c.html(await readFile(resolve(root, "index.html"), "utf8"));
       } catch {
