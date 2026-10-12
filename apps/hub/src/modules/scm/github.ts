@@ -597,5 +597,47 @@ export function createGitHubProvider(opts: GitHubProviderOptions): GitProvider {
         }),
       );
     },
+
+    branchHead: (ref: RepoRef, branch: string) => headSha(ref, branch),
+
+    async listFiles(ref: RepoRef, sha: string) {
+      const tree = await request<{ tree: { path: string; type: string }[]; truncated: boolean }>(
+        "GET /repos/{owner}/{repo}/git/trees/{tree_sha}",
+        { owner: ref.owner, repo: ref.name, tree_sha: sha, recursive: "1" },
+      );
+      // Cây quá lớn thì GitHub cắt bớt: báo lỗi thay vì đồng bộ thiếu rồi xoá nhầm skill.
+      if (tree.truncated) throw new GitProviderError("invalid", "GitHub: cây repo quá lớn, không đọc hết một lần được");
+      return tree.tree.filter((e) => e.type === "blob").map((e) => e.path);
+    },
+
+    async readFile(ref: RepoRef, path: string, sha: string) {
+      const file = await orNull(() =>
+        request<{ content?: string; encoding?: string }>("GET /repos/{owner}/{repo}/contents/{+path}", {
+          owner: ref.owner,
+          repo: ref.name,
+          path: segments(path),
+          ref: sha,
+        }),
+      );
+      if (!file?.content) return file ? "" : null;
+      return file.encoding === "base64" ? Buffer.from(file.content, "base64").toString("utf8") : file.content;
+    },
+
+    async closePR(ref: RepoRef, number: number) {
+      const pr = await orNull(() =>
+        request<GhPullFull>("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+          owner: ref.owner,
+          repo: ref.name,
+          pull_number: number,
+        }),
+      );
+      if (pr?.state !== "open") return;
+      await request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+        owner: ref.owner,
+        repo: ref.name,
+        pull_number: number,
+        state: "closed",
+      });
+    },
   };
 }

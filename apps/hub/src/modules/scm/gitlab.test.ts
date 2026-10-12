@@ -585,3 +585,50 @@ describe("GitLab lỗi HTTP", () => {
     expect(e.retryable).toBe(true);
   });
 });
+
+describe("GitLab đọc cây và file (kho skill)", () => {
+  const P = "/api/v4/projects/grp%2Fsub%2Fweb";
+
+  it("đọc cây qua mọi trang, bỏ thư mục", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/repository/tree?recursive=true&ref=abc&per_page=100&page=1`, method: "GET" }).reply(
+      200,
+      [
+        { path: "org/a/SKILL.md", type: "blob" },
+        { path: "org", type: "tree" },
+      ],
+      {
+        headers: { "content-type": "application/json", "x-next-page": "2" },
+      },
+    );
+    pool
+      .intercept({ path: `${P}/repository/tree?recursive=true&ref=abc&per_page=100&page=2`, method: "GET" })
+      .reply(200, [{ path: "teams/pay/b/SKILL.md", type: "blob" }], {
+        headers: { "content-type": "application/json", "x-next-page": "" },
+      });
+    expect(await gl.listFiles(ref, "abc")).toEqual(["org/a/SKILL.md", "teams/pay/b/SKILL.md"]);
+  });
+
+  it("đọc file thô và head của nhánh; không có thì null", async () => {
+    const { gl, pool } = setup();
+    pool
+      .intercept({ path: `${P}/repository/files/org%2Fa%2FSKILL.md/raw?ref=abc`, method: "GET" })
+      .reply(200, "# A\n", { headers: { "content-type": "text/plain" } });
+    expect(await gl.readFile(ref, "org/a/SKILL.md", "abc")).toBe("# A\n");
+    pool
+      .intercept({ path: `${P}/repository/branches/main`, method: "GET" })
+      .reply(200, { commit: { id: "c0ffee" } }, JSON_HEADERS);
+    expect(await gl.branchHead(ref, "main")).toBe("c0ffee");
+    pool
+      .intercept({ path: `${P}/repository/branches/none`, method: "GET" })
+      .reply(404, { message: "404" }, JSON_HEADERS);
+    expect(await gl.branchHead(ref, "none")).toBeNull();
+  });
+
+  it("đóng merge request đang mở", async () => {
+    const { gl, pool } = setup();
+    pool.intercept({ path: `${P}/merge_requests/3`, method: "GET" }).reply(200, { state: "opened" }, JSON_HEADERS);
+    pool.intercept({ path: `${P}/merge_requests/3`, method: "PUT" }).reply(200, { state: "closed" }, JSON_HEADERS);
+    await gl.closePR(ref, 3);
+  });
+});

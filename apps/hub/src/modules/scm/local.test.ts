@@ -75,6 +75,19 @@ describe("createLocalProvider", () => {
     expect(readFileSync(join(clone, "README.md"), "utf8")).toBe("# web\n");
   });
 
+  it("đọc head, cây và file theo commit (kho skill)", async () => {
+    const { sha } = await scm.commitFiles(ref, {
+      branch: "main",
+      message: "skill",
+      files: [{ path: "org/review/SKILL.md", content: "---\nname: review\n---\nĐọc kỹ.\n" }],
+    });
+    expect(await scm.branchHead(ref, "main")).toBe(sha);
+    expect(await scm.branchHead(ref, "khong-co")).toBeNull();
+    expect(await scm.listFiles(ref, sha)).toEqual(expect.arrayContaining(["README.md", "org/review/SKILL.md"]));
+    expect(await scm.readFile(ref, "org/review/SKILL.md", sha)).toContain("Đọc kỹ.");
+    expect(await scm.readFile(ref, "org/none/SKILL.md", sha)).toBeNull();
+  });
+
   it("tạo lại cùng marker trả repo cũ, khác marker báo conflict", async () => {
     const again = await scm.createRepo({ ...ref, visibility: "private", defaultBranch: "main", marker });
     expect(again.name).toBe("web");

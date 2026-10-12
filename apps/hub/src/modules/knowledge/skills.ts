@@ -41,6 +41,7 @@ function summary(s: SkillRow): SkillSummary {
     version: s.currentVersion,
     updatedAt: iso(s.updatedAt),
     updatedBy: { userId: s.updatedByUserId, runId: s.updatedByRunId },
+    repoPath: s.repoPath,
   };
 }
 

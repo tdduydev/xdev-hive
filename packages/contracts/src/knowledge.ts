@@ -200,6 +200,8 @@ export const skillSummary = z.object({
   version: z.number().int(),
   updatedAt: z.iso.datetime(),
   updatedBy: knowledgeAuthor,
+  /** Đường dẫn SKILL.md trong kho skill Git; null khi skill mới chỉ có trên hub (SKILL-01). */
+  repoPath: z.string().nullable().optional(),
 });
 export type SkillSummary = z.output<typeof skillSummary>;
 

@@ -150,6 +150,10 @@ export const skills = hive
       name: text("name").notNull(),
       description: text("description").notNull(),
       currentVersion: integer("current_version").notNull(),
+      /** Đường dẫn SKILL.md trong kho skill Git (ADR 0014); null khi skill mới chỉ có trên hub. */
+      repoPath: text("repo_path"),
+      /** Phiên bản đang khớp với Git; khác current_version là skill đã sửa trên hub, chờ đẩy lên Git. */
+      repoVersion: integer("repo_version"),
       ...updatedByColumns(),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
       updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -215,6 +219,9 @@ export const proposals = hive
       decidedAt: timestamp("decided_at", { withTimezone: true }),
       decisionNote: text("decision_note"),
       resultVersion: integer("result_version"),
+      /** PR mở trong kho skill Git cho đề xuất skill (SKILL-04); duyệt hoặc từ chối trên hub thì đóng PR. */
+      gitPrNumber: integer("git_pr_number"),
+      gitPrUrl: text("git_pr_url"),
     },
     (t) => [
       scopeCheck("proposals"),
@@ -275,6 +282,48 @@ export const legacyDocAssets = hive
       check("legacy_doc_assets_size", sql`size >= 0`),
       index("legacy_doc_assets_document").on(t.documentImportId, t.orgId),
       orgScoped("legacy_doc_assets"),
+    ],
+  )
+  .enableRLS();
+
+export const skillRepoStatus = hive.enum("skill_repo_status", ["idle", "syncing", "ok", "failed"]);
+
+/**
+ * Kho skill Git của tổ chức (specs/006-skills-repo-sync). Mỗi tổ chức một kho; `id` nằm trong đường dẫn webhook
+ * /hooks/skills/{id}. Webhook đến không có phiên nên chưa biết tổ chức: hub đặt id vào app.webhook_skill_repo_id và
+ * policy cho thấy đúng dòng đó (như ctx_webhook_project của dự án).
+ */
+export const skillRepos = hive
+  .table(
+    "skill_repos",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      /** Kết nối Git trong module scm; không khoá ngoại sang module khác, kiểm khi cấu hình. */
+      connectionId: uuid("connection_id").notNull(),
+      owner: text("owner").notNull(),
+      name: text("name").notNull(),
+      branch: text("branch").notNull(),
+      webhookSecretEnc: text("webhook_secret_enc").notNull(),
+      webhookId: text("webhook_id"),
+      webhookUrl: text("webhook_url"),
+      status: skillRepoStatus("status").notNull().default("idle"),
+      lastSha: text("last_sha"),
+      lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+      error: text("error"),
+      /** Người cấu hình kho: là tác giả của phiên bản skill đồng bộ từ Git (bảng phiên bản đòi một tác giả). */
+      configuredBy: text("configured_by").notNull(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      unique("skill_repos_org").on(t.orgId),
+      pgPolicy("skill_repos_rw", { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg }),
+      pgPolicy("skill_repos_webhook", {
+        for: "select",
+        to: hiveApp,
+        using: sql`id = hive.ctx_webhook_skill_repo()`,
+      }),
     ],
   )
   .enableRLS();

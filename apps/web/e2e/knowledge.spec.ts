@@ -184,14 +184,99 @@ test("docs: read markdown safely and select historical version using the keyboar
   await expect(page.getByRole("button", { name: "Sửa", exact: true })).toHaveCount(0);
 });
 
-test("skills: read SKILL.md and show unavailable repo sync", async ({ page }) => {
-  const hub = await setup(page);
+test("skills: read SKILL.md; no Git repository yet offers to connect one", async ({ page }) => {
+  const hub = await setup(page, { overrides: { "skillRepo/get": () => ok(null) } });
   await page.goto("/knowledge/skills");
-  await expect(page.getByRole("button", { name: "Đồng bộ ngay" })).toBeDisabled();
+  await expect(page.getByText("Chưa kết nối kho Git")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Kết nối repo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Đồng bộ ngay" })).toHaveCount(0);
   await page.getByRole("button", { name: "Mở dòng code-review" }).click();
   await expect(page.getByRole("heading", { name: "Review", exact: true })).toBeVisible();
   await expect(page.locator("article pre")).toContainText("const safe = true;");
   expect(hub.rpcCalls.filter((call) => call.path.includes("sync"))).toHaveLength(0);
+});
+
+test("skills: connected Git repository shows status, sync now and which skills are in Git", async ({ page }) => {
+  const repo = {
+    id: "0a0a0a0a-0000-4000-8000-000000000099",
+    connectionId: "0a0a0a0a-0000-4000-8000-000000000098",
+    owner: "acme",
+    name: "xdev-skills",
+    branch: "main",
+    status: "ok",
+    lastSha: "abcdef1234567",
+    lastSyncedAt: at,
+    error: "teams/khong-co/x/SKILL.md: không có đội khong-co trong tổ chức, bỏ qua.",
+    webhookUrl: null,
+    hubOnly: 1,
+  };
+  const hub = await setup(page, {
+    overrides: {
+      "skillRepo/get": () => ok(repo),
+      "skillRepo/sync": () => ok({ queued: true }),
+      "skills/list": () =>
+        ok([
+          { ...skill, repoPath: "org/code-review/SKILL.md" },
+          { ...skill, id: "0a0a0a0a-0000-4000-8000-000000000097", name: "deploy", repoPath: null },
+        ]),
+    },
+  });
+  await page.goto("/knowledge/skills");
+  await expect(page.getByText("acme/xdev-skills@main")).toBeVisible();
+  await expect(page.getByText("Đã đồng bộ")).toBeVisible();
+  await expect(page.getByText(/1 skill chưa vào Git/)).toBeVisible();
+  await expect(page.getByText(/Chưa có webhook/)).toBeVisible();
+  await expect(page.getByText(/không có đội khong-co/)).toBeVisible();
+  await expect(page.getByRole("row", { name: /code-review/ }).getByText("Trong Git")).toBeVisible();
+  await expect(page.getByRole("row", { name: /deploy/ }).getByText("Chỉ trên hub")).toBeVisible();
+  await page.getByRole("button", { name: "Đồng bộ ngay" }).click();
+  await expect.poll(() => hub.rpcCalls.some((c) => c.path === "skillRepo/sync")).toBe(true);
+});
+
+test("skills: connect a repository with an existing Git connection", async ({ page }) => {
+  const hub = await setup(page, {
+    overrides: {
+      "skillRepo/get": () => ok(null),
+      "scmConnections/list": () =>
+        ok([
+          {
+            id: "0a0a0a0a-0000-4000-8000-000000000098",
+            kind: "github",
+            name: "GitHub Acme",
+            baseUrl: null,
+            defaultOwner: "acme",
+            authMode: "app",
+            appId: "1",
+            installationId: 2,
+            createdAt: at,
+          },
+        ]),
+      "skillRepo/set": (input) =>
+        ok({
+          id: "0a0a0a0a-0000-4000-8000-000000000099",
+          ...(input as object),
+          status: "idle",
+          lastSha: null,
+          lastSyncedAt: null,
+          error: null,
+          webhookUrl: "https://hive.example/hooks/skills/x",
+          hubOnly: 3,
+        }),
+    },
+  });
+  await page.goto("/knowledge/skills");
+  await page.getByRole("button", { name: "Kết nối repo" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Owner").fill("acme");
+  await dialog.getByLabel("Repo").fill("team-skills");
+  await dialog.getByRole("button", { name: "Kết nối" }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  expect(hub.rpcCalls.find((c) => c.path === "skillRepo/set")?.input).toEqual({
+    connectionId: "0a0a0a0a-0000-4000-8000-000000000098",
+    owner: "acme",
+    name: "team-skills",
+    branch: "main",
+  });
 });
 
 test("memory: hybrid search, kind filter, write and supersede", async ({ page }) => {
@@ -366,7 +451,7 @@ for (const route of ["docs", "skills", "memory", "proposals"]) {
         route === "docs"
           ? "Versioned markdown docs"
           : route === "skills"
-            ? "Not synced"
+            ? "No Git repository connected"
             : route === "memory"
               ? "Short notes"
               : "team admins decide",

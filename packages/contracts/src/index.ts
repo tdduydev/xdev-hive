@@ -12,6 +12,7 @@ import { rolesContract } from "./roles.ts";
 import { runsContract } from "./runs.ts";
 import { sandboxContract } from "./sandbox.ts";
 import { scmContract } from "./scm.ts";
+import { skillRepoContract } from "./skills-sync.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 
@@ -27,6 +28,7 @@ export * from "./roles.ts";
 export * from "./runs.ts";
 export * from "./sandbox.ts";
 export * from "./scm.ts";
+export * from "./skills-sync.ts";
 export * from "./tasks.ts";
 export * from "./tenancy.ts";
 export * from "./version.ts";
@@ -104,6 +106,7 @@ export const contract = {
   leader: leaderContract,
   mcpAdmin: mcpAdminContract,
   roles: rolesContract,
+  skillRepo: skillRepoContract,
 };
 
 export type Contract = typeof contract;

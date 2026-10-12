@@ -138,6 +138,14 @@ export interface GitProvider {
   addWebhook(ref: RepoRef, input: WebhookInput): Promise<{ id: string }>;
   /** Webhook không còn thì coi như đã xoá. */
   removeWebhook(ref: RepoRef, id: string): Promise<void>;
+  /** Commit mới nhất của nhánh; null khi chưa có nhánh. */
+  branchHead(ref: RepoRef, branch: string): Promise<string | null>;
+  /** Đường dẫn mọi file trong cây của commit `sha` (đệ quy). Kho skill dùng để tìm SKILL.md. */
+  listFiles(ref: RepoRef, sha: string): Promise<string[]>;
+  /** Nội dung UTF-8 của file ở commit `sha`; null khi không có file. */
+  readFile(ref: RepoRef, path: string, sha: string): Promise<string | null>;
+  /** Đóng PR không merge (đề xuất skill bị từ chối). PR đã đóng hoặc đã merge thì bỏ qua. */
+  closePR(ref: RepoRef, number: number): Promise<void>;
 }
 
 /** Cho phép test và proxy thay `fetch`, không phụ thuộc dispatcher toàn cục. */

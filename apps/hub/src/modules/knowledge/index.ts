@@ -24,4 +24,13 @@ export {
 } from "./memory.ts";
 export { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
 export { knowledgeRouter } from "./router.ts";
+export {
+  handleSkillWebhook,
+  registerSkillGitWorker,
+  SKILL_GIT_QUEUE,
+  type SkillGitJob,
+  type SkillRepoDeps,
+  skillGitQueue,
+  syncSkillRepo,
+} from "./skill-repo.ts";
 export { getSkill, listSkills, saveSkill } from "./skills.ts";
