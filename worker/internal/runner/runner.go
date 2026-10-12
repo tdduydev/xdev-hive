@@ -50,8 +50,10 @@ type Job struct {
 	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
 	Steers           <-chan Steer
 	EnvironmentImage string
-	workspace        string
-	repoCache        string
+	// MCPServers là MCP server ngoài hub cho phép (MCP-06); xem externalMCPServers.
+	MCPServers []MCPServer
+	workspace  string
+	repoCache  string
 }
 
 type Event struct {
@@ -508,9 +510,9 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 		}
 		switch j.CLI {
 		case "claude":
-			mcpFile, err := claudeMCPConfig(j.Env)
+			mcpFile, err := claudeMCPConfigAt("", j.Env, claudeMCPEntries(j))
 			if r.Sandbox != nil {
-				mcpFile, err = claudeMCPConfigAt(j.workspace, j.Env)
+				mcpFile, err = claudeMCPConfigAt(j.workspace, j.Env, claudeMCPEntries(j))
 				mcpFile = "/workspace/" + filepath.Base(mcpFile)
 			}
 			if err != nil {
@@ -543,6 +545,7 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 			url := mcpURL(j.Env)
 			// CLI ghép bảng MCP với cấu hình cá nhân; tránh trùng server stdio tên xdev-hive.
 			args := []string{"exec", "--json", "-c", "mcp_servers={}", "-c", fmt.Sprintf("mcp_servers.xdev-hive-run={url=%q,bearer_token_env_var=\"HIVE_RUN_TOKEN\"}", url)}
+			args = append(args, codexMCPArgs(j)...)
 			if readOnlyKind(j.Kind) {
 				// Sandbox read-only chặn ghi file và lệnh ghi; tool MCP vẫn gọi được (đã thử trên codex-cli 0.162.1).
 				args = append(args, "--sandbox", "read-only")
@@ -616,10 +619,11 @@ func (r Runner) cliCommand(j Job) (*cliExecCmd, error) {
 }
 
 func claudeMCPConfig(env map[string]string) (string, error) {
-	return claudeMCPConfigAt("", env)
+	return claudeMCPConfigAt("", env, nil)
 }
 
-func claudeMCPConfigAt(dir string, env map[string]string) (string, error) {
+// claudeMCPConfigAt ghi file --mcp-config: cổng MCP của hub cộng server ngoài được phép (external, có thể rỗng).
+func claudeMCPConfigAt(dir string, env map[string]string, external map[string]any) (string, error) {
 	file, err := os.CreateTemp(dir, ".hive-worker-mcp-*.json")
 	if err != nil {
 		return "", fmt.Errorf("tạo cấu hình MCP tạm: %w", err)
@@ -629,7 +633,13 @@ func claudeMCPConfigAt(dir string, env map[string]string) (string, error) {
 		_ = os.Remove(file.Name())
 		return "", err
 	}
-	config := map[string]any{"mcpServers": map[string]any{"xdev-hive": map[string]any{"type": "http", "url": mcpURL(env), "headers": map[string]string{"Authorization": "Bearer " + env["HIVE_RUN_TOKEN"]}}}}
+	servers := map[string]any{}
+	for name, server := range external {
+		servers[name] = server
+	}
+	// Ghi cổng của hub sau cùng để không server ngoài nào đè được, kể cả khi lọt qua kiểm tên.
+	servers["xdev-hive"] = map[string]any{"type": "http", "url": mcpURL(env), "headers": map[string]string{"Authorization": "Bearer " + env["HIVE_RUN_TOKEN"]}}
+	config := map[string]any{"mcpServers": servers}
 	if err := json.NewEncoder(file).Encode(config); err != nil {
 		_ = file.Close()
 		_ = os.Remove(file.Name())

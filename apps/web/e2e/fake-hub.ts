@@ -109,12 +109,66 @@ export function mcpAdminFixture(role: "owner" | "admin" | "member" = "admin") {
     lastUsedAt: null as string | null,
     revokedAt: null as string | null,
   });
+  const project = { id: "0a0a0a0a-0000-4000-8000-0000000000b1", key: "mobile-app", name: "Mobile app" };
+  type Launch = { transport: "stdio"; command: string; args: string[] } | { transport: "http"; url: string };
+  type ServerRule = {
+    id: string;
+    name: string;
+    key: string;
+    rule: "allow" | "deny";
+    matchType: "name" | "url" | "command" | "wildcard";
+    pattern: string;
+    projectId: string | null;
+    projectKey: string | null;
+    launch: Launch | null;
+    updatedBy: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  const serverRule = (n: number, fields: Partial<ServerRule> & Pick<ServerRule, "name" | "rule" | "pattern">) => ({
+    id: `0a0a0a0a-0000-4000-8000-${String(100 + n).padStart(12, "0")}`,
+    key: fields.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+    matchType: "name" as const,
+    projectId: null,
+    projectKey: null,
+    launch: null,
+    updatedBy: USER.id,
+    createdAt,
+    updatedAt: createdAt,
+    ...fields,
+  });
   const state = {
     tools: [tool],
     tokens: [token(1), token(2, "u2")],
     rawToken: "hive_pat_test_only_never_a_real_token",
     nextId: 3,
+    servers: [
+      serverRule(1, {
+        name: "GitHub",
+        rule: "allow",
+        pattern: "github",
+        launch: { transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+      }),
+      serverRule(2, {
+        name: "Filesystem",
+        rule: "deny",
+        matchType: "command",
+        pattern: "npx @modelcontextprotocol/server-filesystem",
+      }),
+      serverRule(3, { name: "Mọi server khác", rule: "deny", matchType: "wildcard", pattern: "*" }),
+    ] as ServerRule[],
+    nextServer: 4,
   };
+  const serverInput = (input: unknown) => {
+    const data = input as Omit<ServerRule, "id" | "key" | "projectKey" | "updatedBy" | "createdAt" | "updatedAt">;
+    return {
+      ...data,
+      key: data.name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-"),
+      pattern: data.matchType === "wildcard" ? "*" : data.pattern || data.name.toLowerCase(),
+      projectKey: data.projectId === project.id ? project.key : null,
+    };
+  };
+  const forbidServers = () => fail("FORBIDDEN", 403, "Cần vai trò quản trị của tổ chức trở lên.");
   const rpc: Record<string, RpcHandler> = {
     "mcpAdmin/listTools": () => ok({ tools: state.tools }),
     "mcpAdmin/setTool": (input) => {
@@ -144,6 +198,52 @@ export function mcpAdminFixture(role: "owner" | "admin" | "member" = "admin") {
         return fail("FORBIDDEN", 403, "Bạn chỉ được thu hồi token của mình.");
       found.revokedAt = new Date().toISOString();
       return ok({ revoked: true });
+    },
+    "roles/mine": () => ok({ permissions: [...SYSTEM_ROLE_PERMISSIONS[role]] }),
+    "projects/list": () => ok([project]),
+    "mcpAdmin/listServers": () => (role === "member" ? forbidServers() : ok({ rules: state.servers })),
+    "mcpAdmin/createServer": (input) => {
+      if (role === "member") return forbidServers();
+      const created = serverRule(state.nextServer++, serverInput(input));
+      state.servers.push(created);
+      return ok(created);
+    },
+    "mcpAdmin/updateServer": (input) => {
+      if (role === "member") return forbidServers();
+      const found = state.servers.find((r) => r.id === (input as { id: string }).id);
+      if (!found) return fail("NOT_FOUND", 404, "Không tìm thấy quy tắc MCP server.");
+      Object.assign(found, serverInput(input), { updatedAt: new Date().toISOString() });
+      return ok(found);
+    },
+    "mcpAdmin/deleteServer": (input) => {
+      if (role === "member") return forbidServers();
+      const before = state.servers.length;
+      state.servers = state.servers.filter((r) => r.id !== (input as { id: string }).id);
+      if (state.servers.length === before) return fail("NOT_FOUND", 404, "Không tìm thấy quy tắc MCP server.");
+      return ok({ deleted: true });
+    },
+    "mcpAdmin/previewServers": (input) => {
+      if (role === "member") return forbidServers();
+      const projectId = (input as { projectId?: string } | undefined)?.projectId ?? null;
+      const scoped = state.servers.filter((r) => r.projectId === null || r.projectId === projectId);
+      // Bản rút gọn của bộ quyết định ở hub: quy tắc chặn theo tên thắng định nghĩa cho phép.
+      const servers = scoped.flatMap((r) => {
+        if (!r.launch) return [];
+        const deny = scoped.find((d) => d.rule === "deny" && d.matchType === "name" && d.pattern === r.key);
+        const by = deny ?? r;
+        return [
+          {
+            ruleId: r.id,
+            name: r.name,
+            key: r.key,
+            projectId: r.projectId,
+            launch: r.launch,
+            allowed: by.rule === "allow",
+            decidedBy: { id: by.id, name: by.name, rule: by.rule, projectId: by.projectId },
+          },
+        ];
+      });
+      return ok({ servers });
     },
     "mcpAdmin/extendToken": (input) => {
       if (role === "member") return fail("FORBIDDEN", 403, "Chỉ quản trị được gia hạn.");

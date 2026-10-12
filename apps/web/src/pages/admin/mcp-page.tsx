@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { McpAdminTool, McpUserToken } from "@xdev-hive/contracts";
-import { Copy, KeyRound } from "lucide-react";
+import type { McpAdminTool, McpServerRule, McpUserToken } from "@xdev-hive/contracts";
+import { Copy, KeyRound, Plus } from "lucide-react";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
@@ -19,6 +19,8 @@ import { Pill } from "@/components/ui/pill.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { usePermissions } from "@/lib/permissions.ts";
+import { McpServersTab } from "@/pages/admin/mcp-servers-tab.tsx";
 import { useOrg } from "@/shell/org-context.ts";
 
 const text: Dict<{
@@ -32,6 +34,7 @@ const text: Dict<{
   searchTokens: string;
   copyEndpoint: string;
   newToken: string;
+  addServer: string;
   group: string;
   caller: string;
   calls: string;
@@ -54,8 +57,6 @@ const text: Dict<{
   copied: string;
   once: string;
   days: string;
-  comingSoon: string;
-  comingSoonLead: string;
   loading: string;
   noTokens: string;
   noTools: string;
@@ -85,6 +86,7 @@ const text: Dict<{
     searchTokens: "Tìm token, người, client…",
     copyEndpoint: "Chép địa chỉ",
     newToken: "Tạo token",
+    addServer: "Thêm server",
     group: "Nhóm",
     caller: "Ai gọi được",
     calls: "Lượt gọi 7 ngày",
@@ -107,8 +109,6 @@ const text: Dict<{
     copied: "Đã chép",
     once: "Token chỉ hiện một lần. Hãy chép và lưu ở nơi an toàn; bạn không thể xem lại token sau khi đóng hộp thoại.",
     days: "ngày",
-    comingSoon: "Sắp có",
-    comingSoonLead: "Quy tắc MCP server ngoài và phát xuống máy chạy sẽ có ở phiên bản sau.",
     loading: "Đang tải…",
     noTokens: "Chưa có token MCP. Tạo token để kết nối client của bạn.",
     noTools: "Chưa có tool MCP.",
@@ -139,6 +139,7 @@ const text: Dict<{
     searchTokens: "Search token, owner, client…",
     copyEndpoint: "Copy endpoint",
     newToken: "New token",
+    addServer: "Add server",
     group: "Group",
     caller: "Who can call",
     calls: "Calls, 7d",
@@ -161,8 +162,6 @@ const text: Dict<{
     copied: "Copied",
     once: "This token is shown only once. Copy and store it safely; you cannot view it again after closing this dialog.",
     days: "days",
-    comingSoon: "Coming soon",
-    comingSoonLead: "External MCP server rules and distribution to run machines will be available in a later version.",
     loading: "Loading…",
     noTokens: "No MCP tokens yet. Create a token to connect your client.",
     noTools: "No MCP tools yet.",
@@ -213,10 +212,14 @@ function McpOrgPage() {
   const lang = useLang();
   const { org, api } = useOrg();
   const canManage = org.role === "owner" || org.role === "admin";
+  // Quy tắc server ngoài: quản trị tổ chức hoặc vai trò tự tạo có mcp.servers (hub kiểm lại).
+  const canManageServers = usePermissions()("mcp.servers");
   const queryClient = useQueryClient();
   const tools = useQuery(api.mcpAdmin.listTools.queryOptions({ refetchInterval: 30_000 }));
   const tokens = useQuery(api.mcpAdmin.listTokens.queryOptions({ refetchInterval: 30_000 }));
+  const servers = useQuery({ ...api.mcpAdmin.listServers.queryOptions(), enabled: canManageServers });
   const [tab, setTab] = useState("tools");
+  const [editingServer, setEditingServer] = useState<McpServerRule | "new" | null>(null);
   const [creating, setCreating] = useState(false);
   const [secret, setSecret] = useState<string | null>(null);
   const [clientId, setClientId] = useState("cursor");
@@ -422,6 +425,11 @@ function McpOrgPage() {
               <KeyRound aria-hidden="true" />
               {t.newToken}
             </Button>
+          ) : tab === "servers" && canManageServers ? (
+            <Button onClick={() => setEditingServer("new")}>
+              <Plus aria-hidden="true" />
+              {t.addServer}
+            </Button>
           ) : (
             <Button onClick={() => void copy(endpoint)}>
               <Copy aria-hidden="true" />
@@ -455,6 +463,7 @@ function McpOrgPage() {
           </TabsTrigger>
           <TabsTrigger className="min-h-10 whitespace-normal" value="servers">
             {t.servers}
+            {canManageServers && <Pill small>{servers.data?.rules.length ?? "—"}</Pill>}
           </TabsTrigger>
           <TabsTrigger className="min-h-10 whitespace-normal" value="tokens">
             {t.tokens}
@@ -488,10 +497,7 @@ function McpOrgPage() {
           )}
         </TabsContent>
         <TabsContent value="servers">
-          <div className="grid justify-items-center gap-2 rounded-xl border border-dashed border-border bg-card px-4 py-12 text-center">
-            <Pill>{t.comingSoon}</Pill>
-            <p className="text-muted-foreground">{t.comingSoonLead}</p>
-          </div>
+          <McpServersTab canManage={canManageServers} editing={editingServer} onEdit={setEditingServer} />
         </TabsContent>
         <TabsContent value="tokens">
           {tokens.isPending ? (
