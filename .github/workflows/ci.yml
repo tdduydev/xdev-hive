@@ -185,9 +185,13 @@ jobs:
             echo "::error::Runner thiếu gói:$missing. Cài một lần trên máy runner: sudo apt-get install -y$missing"
             exit 1
           fi
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+          cache: pnpm
+      # Giao diện app dựng bằng Vite (ADR 0016) nên cần node_modules của apps/desktop.
+      - run: pnpm install --frozen-lockfile --filter @xdev-hive/desktop...
       - uses: actions/setup-go@v7
         with:
           go-version-file: worker/go.mod
@@ -197,7 +201,7 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       # tauri-build đòi có sẵn sidecar (externalBin) và thư mục frontend lúc biên dịch.
-      - name: Dựng giao diện đăng ký và sidecar hive-worker
+      - name: Dựng giao diện app và sidecar hive-worker
         run: node apps/desktop/scripts/build-frontend.ts && node apps/desktop/scripts/build-sidecar.ts
       - run: cargo check --locked
         working-directory: apps/desktop/src-tauri
