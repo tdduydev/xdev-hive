@@ -49,12 +49,7 @@ function SkillsScreen() {
         <section aria-label={t.skillsRepoAria} className="flex min-w-0 flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <p className="text-xs text-muted-foreground">{t.skillsRepoLabel}</p>
-            <a
-              href="https://github.com/tdduydev/xdev-skills"
-              className="break-all font-mono text-primary underline focus-visible:outline-2 focus-visible:outline-ring"
-            >
-              tdduydev/xdev-skills
-            </a>
+            <p className="font-medium">{t.repoNone}</p>
             <p className="mt-1 text-sm text-warning">{t.repoUnavailable}</p>
           </div>
           <Button disabled size="sm">

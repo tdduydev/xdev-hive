@@ -184,8 +184,8 @@ test("chuông có chấm khi còn thông báo chưa đọc và mở màn Thông 
 
 test("màn chưa làm của thiết kế v2 có trang Sắp có thay vì trang lỗi", async ({ page }) => {
   await inOrg(page);
-  await page.goto("/knowledge/docs");
-  await expect(page.getByRole("heading", { name: "Tài liệu", level: 1 })).toBeVisible();
+  await page.goto("/knowledge/workflows");
+  await expect(page.getByRole("heading", { name: "Quy trình duyệt", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sắp có" })).toBeVisible();
-  await expect(page.getByText("Docs.dc.html", { exact: false })).toBeVisible();
+  await expect(page.getByText("Workflows.dc.html", { exact: false })).toBeVisible();
 });
