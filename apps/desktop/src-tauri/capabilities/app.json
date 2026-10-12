@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "app",
-  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats). Cửa sổ web của hub không có quyền nào.",
+  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats), tài khoản (account_status, account_link, account_unlink). Cửa sổ web của hub không có quyền nào.",
   "windows": ["app"],
   "permissions": [
     "core:default",
@@ -10,6 +10,9 @@
     "allow-claude-usage",
     "allow-session-stats",
     "allow-worker-state",
-    "allow-set-lang"
+    "allow-set-lang",
+    "allow-account-status",
+    "allow-account-link",
+    "allow-account-unlink"
   ]
 }

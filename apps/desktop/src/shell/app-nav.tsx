@@ -1,18 +1,27 @@
 import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
 import { LogoIcon, Wordmark } from "@/components/logo.tsx";
+import { type Account, initials } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
 import type { WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
 
-const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: string; notLinked: string }> = {
+const text: Dict<{
+  aria: string;
+  readOnly: string;
+  folder: string;
+  noFolder: string;
+  notLinked: string;
+  profiles: Record<Profile, string>;
+}> = {
   vi: {
     aria: "Điều hướng app",
     readOnly: "chỉ đọc",
     folder: "Thư mục làm việc",
     noFolder: "Chưa chọn thư mục",
     notLinked: "Chưa liên kết tài khoản",
+    profiles: { dev: "Dev", writer: "Viết tài liệu", lead: "Trưởng nhóm" },
   },
   en: {
     aria: "App navigation",
@@ -20,6 +29,7 @@ const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: str
     folder: "Working folder",
     noFolder: "No folder chosen",
     notLinked: "Account not linked",
+    profiles: { dev: "Dev", writer: "Writer", lead: "Lead" },
   },
 };
 
@@ -32,14 +42,19 @@ const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: str
 export function AppNav({
   profile,
   active,
+  account,
+  onAccount,
   worker,
 }: {
   profile: Profile;
   active: ScreenId;
+  account?: Account | null;
+  onAccount?: () => void;
   worker?: WorkerView | null;
 }) {
   const t = useT(text);
   const lang = useLang();
+  const roleLine = account ? `${t.profiles[profile]} · ${account.teams[0]?.name ?? account.orgName}` : "";
   return (
     <nav
       aria-label={t.aria}
@@ -96,21 +111,32 @@ export function AppNav({
           {worker.hub && <span className="truncate font-mono max-[760px]:hidden">{new URL(worker.hub).host}</span>}
         </div>
       )}
-      <div
+      <button
+        type="button"
+        onClick={onAccount}
+        title={account ? `${account.name} · ${roleLine}` : t.notLinked}
         className={cn(
-          "flex items-center gap-2 border-t px-1 pt-2 max-[760px]:justify-center max-[760px]:px-0",
+          "flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left max-[760px]:justify-center max-[760px]:px-0",
           // Thẻ worker đã đẩy khối cuối xuống đáy; hai mt-auto sẽ chia đôi khoảng trống.
           worker ? "mt-2" : "mt-auto",
         )}
       >
-        <span
-          title={t.notLinked}
-          className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"
-        >
-          <UserRoundIcon aria-hidden="true" className="size-4" />
+        {account ? (
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
+            {initials(account.name || account.email)}
+          </span>
+        ) : (
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <UserRoundIcon aria-hidden="true" className="size-4" />
+          </span>
+        )}
+        <span className="flex min-w-0 flex-1 flex-col leading-tight max-[760px]:sr-only">
+          <span className={cn("truncate text-[13px]", account ? "font-medium" : "text-muted-foreground")}>
+            {account ? account.name || account.email : t.notLinked}
+          </span>
+          {account && <span className="truncate text-[11.5px] text-muted-foreground">{roleLine}</span>}
         </span>
-        <span className="text-xs text-muted-foreground max-[760px]:sr-only">{t.notLinked}</span>
-      </div>
+      </button>
     </nav>
   );
 }
