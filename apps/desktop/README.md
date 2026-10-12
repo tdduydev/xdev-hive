@@ -39,7 +39,10 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   tách lệnh, kể cả lệnh nhiều dòng của bash, PowerShell, cmd. Token truyền cho sidecar qua biến môi trường
   `HIVE_REGISTRATION_TOKEN`, không qua tham số dòng lệnh.
 - **Khay hệ thống:** dòng trạng thái của worker, Mở xDev Hive (web của hub), Mở app trên máy (cửa sổ `app` cục bộ
-  với AppNav), Bật/Tắt worker, Thoát. Đóng cửa sổ chỉ ẩn vào khay; worker vẫn chạy.
+  với AppNav), Bật/Tắt worker, Thoát; chữ theo VI/EN của app (lệnh `set_lang`). Biểu tượng khay có chấm màu theo
+  trạng thái (`src-tauri/src/tray_icon.rs`): xám khi tắt, vàng khi đang chuyển, xanh khi nhận việc, đỏ khi mất kết
+  nối hoặc lỗi; vì chấm cần màu nên macOS cũng dùng biểu tượng màu thay cho ảnh template. Cửa sổ app nhận trạng thái
+  qua sự kiện `worker-state` (thẻ worker ở AppNav). Đóng cửa sổ chỉ ẩn vào khay; worker vẫn chạy.
 - **Trạng thái:** worker in mỗi trạng thái kết nối thành một dòng JSON trên stdout (`connecting`, `online`,
   `disconnected`, `stopped`). Máy trạng thái ở `src-tauri/src/worker.rs`:
   - Mất kết nối quá 1 phút thì có thông báo hệ thống, mỗi lần mất chỉ báo một lần.

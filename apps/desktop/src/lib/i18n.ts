@@ -45,6 +45,14 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
+/** Nghe đổi ngôn ngữ ngoài React (vd. báo khay hệ thống). */
+export const subscribeLang = (listener: () => void): (() => void) => {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+};
+
 export function useLang(): Lang {
   return useSyncExternalStore(subscribe, getLang, () => "vi");
 }

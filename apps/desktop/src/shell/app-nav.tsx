@@ -3,7 +3,9 @@ import { LogoIcon, Wordmark } from "@/components/logo.tsx";
 import { type Account, initials } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
+import type { WorkerView } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
+import { WORKER_DOT, workerSentence } from "@/lib/worker.ts";
 
 const text: Dict<{
   aria: string;
@@ -42,11 +44,13 @@ export function AppNav({
   active,
   account,
   onAccount,
+  worker,
 }: {
   profile: Profile;
   active: ScreenId;
   account?: Account | null;
   onAccount?: () => void;
+  worker?: WorkerView | null;
 }) {
   const t = useT(text);
   const lang = useLang();
@@ -94,11 +98,28 @@ export function AppNav({
           </a>
         );
       })}
+      {worker && (
+        <div
+          role="status"
+          title={worker.detail ?? undefined}
+          className="mt-auto flex flex-col gap-0.5 rounded-lg border border-dashed px-2.5 py-2 text-xs text-muted-foreground max-[760px]:mx-auto max-[760px]:border-0 max-[760px]:p-0"
+        >
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", WORKER_DOT[worker.kind])} />
+            <span className="max-[760px]:sr-only">{workerSentence(worker.label)}</span>
+          </span>
+          {worker.hub && <span className="truncate font-mono max-[760px]:hidden">{new URL(worker.hub).host}</span>}
+        </div>
+      )}
       <button
         type="button"
         onClick={onAccount}
         title={account ? `${account.name} · ${roleLine}` : t.notLinked}
-        className="mt-auto flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left max-[760px]:justify-center max-[760px]:px-0"
+        className={cn(
+          "flex cursor-pointer items-center gap-2 border-t px-1 pt-2 text-left max-[760px]:justify-center max-[760px]:px-0",
+          // Thẻ worker đã đẩy khối cuối xuống đáy; hai mt-auto sẽ chia đôi khoảng trống.
+          worker ? "mt-2" : "mt-auto",
+        )}
       >
         {account ? (
           <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
