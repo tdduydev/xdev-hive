@@ -379,6 +379,13 @@
       "when": 1791817406858,
       "tag": "0053_desktop_connect",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1791824250381,
+      "tag": "0054_machine_owner",
+      "breakpoints": true
     }
   ]
 }
