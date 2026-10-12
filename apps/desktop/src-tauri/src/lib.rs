@@ -460,13 +460,18 @@ async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<Strin
         .filter(|_| reg.registered)
         .ok_or("Worker không trả địa chỉ hub sau khi đăng ký.")?;
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
-        *slot = Some(hub.clone());
+        *slot = Some(hub);
+    }
+    if let Ok(mut slot) = app.state::<State>().machine.lock() {
+        *slot = reg.machine_id.clone();
     }
     dispatch(app, Event::Start);
     if let Some(window) = app.get_webview_window(REGISTER) {
         let _ = window.hide();
     }
-    show_main(app, &hub)?;
+    // Spec 008 US1: đăng ký xong vào AppNav của app (cửa sổ cục bộ), không mở web của hub. Web chỉ mở khi người dùng
+    // chọn (khay: Mở xDev Hive, hoặc liên kết tới một trang của hub).
+    show_app(app);
     Ok(reg.machine_id.unwrap_or_default())
 }
 
@@ -716,9 +721,7 @@ pub fn run() {
                             *slot = machine_id;
                         }
                         dispatch(&handle, Event::Start);
-                        if let Err(e) = show_main(&handle, &hub) {
-                            eprintln!("{e}");
-                        }
+                        show_app(&handle);
                         // App mở nhiều ngày liền vẫn nhận bản mới: kiểm lại sáu giờ một lần.
                         // Đã cài một bản thì thôi: kiểm tiếp sẽ tải lại đúng bản đó vì app chưa mở lại.
                         while !check_updates(&handle, &hub).await {
