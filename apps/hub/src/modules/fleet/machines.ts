@@ -1,5 +1,5 @@
 import type { Machine, MachineKind } from "@xdev-hive/contracts";
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import { notify } from "../notify/index.ts";
@@ -349,4 +349,22 @@ export async function findMachine(
     .from(machines)
     .where(eq(machines.id, id));
   return row ? { id: row.id, teamId: row.teamId, kind: row.kind, revoked: row.revokedAt !== null } : null;
+}
+
+/**
+ * Máy theo id hoặc theo tên (worker gửi tên trong hello; app desktop chỉ biết cái nó đã đăng ký). Máy đã thu hồi vẫn
+ * trả về để còn xem các run cũ của nó.
+ */
+export async function findMachineByRef(
+  tx: Tx,
+  ref: string,
+): Promise<{ id: string; teamId: string; name: string } | null> {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ref);
+  const [row] = await tx
+    .select({ id: machines.id, teamId: machines.teamId, name: machines.name })
+    .from(machines)
+    .where(uuid ? eq(machines.id, ref) : eq(machines.name, ref))
+    .orderBy(desc(machines.lastSeenAt))
+    .limit(1);
+  return row ?? null;
 }

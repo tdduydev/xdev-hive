@@ -44,6 +44,8 @@ struct State {
     worker: Mutex<Worker>,
     child: Mutex<Option<CommandChild>>,
     hub: Mutex<Option<String>>,
+    /// Tên (hoặc id) máy đã đăng ký với hub: màn Lượt chạy lọc run theo máy này.
+    machine: Mutex<Option<String>>,
     quitting: AtomicBool,
     /// Ngôn ngữ của app (vi/en) cho chữ trên khay; giao diện báo qua lệnh set_lang.
     lang: Mutex<String>,
@@ -454,12 +456,52 @@ async fn register_worker(
     if let Ok(mut slot) = app.state::<State>().hub.lock() {
         *slot = Some(hub.clone());
     }
+    if let Ok(mut slot) = app.state::<State>().machine.lock() {
+        *slot = reg.machine_id.clone();
+    }
     dispatch(&app, Event::Start);
     if let Some(window) = app.get_webview_window(REGISTER) {
         let _ = window.hide();
     }
     show_main(&app, &hub)?;
     Ok(reg.machine_id.unwrap_or_default())
+}
+
+/// Mở một trang của hub (vd. `/runs/<id>`) trong cửa sổ web của hub. Chỉ nhận đường dẫn tương đối gồm ký tự an toàn,
+/// để giao diện không dẫn cửa sổ đó sang trang ngoài hub.
+#[tauri::command]
+fn open_hub_page(app: AppHandle, path: String) -> Result<(), String> {
+    let hub = hub_of(&app).ok_or("Máy chưa đăng ký với hub nào.")?;
+    if !safe_hub_path(&path) {
+        return Err("Đường dẫn không hợp lệ.".into());
+    }
+    let url = url::Url::parse(&hub)
+        .and_then(|u| u.join(&path))
+        .map_err(|e| e.to_string())?;
+    show_main(&app, &hub)?;
+    if let Some(window) = app.get_webview_window(MAIN) {
+        window.navigate(url).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn safe_hub_path(path: &str) -> bool {
+    path.starts_with('/')
+        && !path.starts_with("//")
+        && path.len() <= 300
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/-_?=&.".contains(c))
+}
+
+/// Máy này trên hub (tên hay id đã đăng ký); None khi chưa đăng ký.
+#[tauri::command]
+fn this_machine(app: AppHandle) -> Option<String> {
+    app.state::<State>()
+        .machine
+        .lock()
+        .ok()
+        .and_then(|m| m.clone())
 }
 
 /// Bản cập nhật lấy từ hub của máy. Chưa có khoá ký trong tauri.conf.json thì bỏ qua: updater chỉ nhận bản ký đúng
@@ -603,6 +645,8 @@ pub fn run() {
             workspace::workspace_meta,
             workspace::hub_tool,
             usage::skill_uses,
+            this_machine,
+            open_hub_page,
             skills::installed_skills,
             skills::install_skills,
             skills::remove_skills,
@@ -629,10 +673,13 @@ pub fn run() {
                     Ok(WorkerConfig {
                         registered: true,
                         hub_url: Some(hub),
-                        ..
+                        machine_id,
                     }) => {
                         if let Ok(mut slot) = handle.state::<State>().hub.lock() {
                             *slot = Some(hub.clone());
+                        }
+                        if let Ok(mut slot) = handle.state::<State>().machine.lock() {
+                            *slot = machine_id;
                         }
                         dispatch(&handle, Event::Start);
                         if let Err(e) = show_main(&handle, &hub) {
@@ -673,4 +720,19 @@ pub fn run() {
                 quit(app);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_hub_path;
+
+    #[test]
+    fn hub_pages_stay_on_the_hub() {
+        assert!(safe_hub_path("/runs/3f0c-1"));
+        assert!(safe_hub_path("/knowledge/reviews?id=ab"));
+        assert!(!safe_hub_path("//evil.example/x"));
+        assert!(!safe_hub_path("https://evil.example"));
+        assert!(!safe_hub_path("/a b"));
+        assert!(!safe_hub_path("/x#<script>"));
+    }
 }
