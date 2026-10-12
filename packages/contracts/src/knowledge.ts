@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, orgRoute } from "./common.ts";
+import { id, orgRoute, queryFlag } from "./common.ts";
 
 // Tri thức dùng chung cho agent (docs/architecture.md mục 2, module knowledge): memory, tài liệu, skill, đề xuất sửa.
 
@@ -27,7 +27,6 @@ export const projectRef = z.string().trim().min(1).max(64);
 
 // GET đọc tham số từ query string nên số và cờ đến dưới dạng chuỗi; RPC thì gửi đúng kiểu.
 const queryInt = (min: number, max: number) => z.coerce.number().int().min(min).max(max);
-const queryFlag = z.union([z.boolean(), z.enum(["true", "false"]).transform((v) => v === "true")]);
 const version = z.number().int().min(0, "Phiên bản không hợp lệ.");
 
 // ---------------------------------------------------------------------------------------------------------------

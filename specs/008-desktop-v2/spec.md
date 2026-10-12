@@ -234,15 +234,16 @@ suggestion, add a comment and submit; the hub records the same draft, suggestion
 
 ### User Story 10 - My Tasks and My Runs (Priority: P1)
 
-A developer or analyst sees only the tasks assigned to them and the runs they started, hands a task to an agent CLI on
+A developer or analyst sees only their own tasks (created by them, or with a run they own; the hub has no separate
+assignee) and the runs they own, hands a task to an agent CLI on
 their own machine, and follows the run live. The full team board stays on the admin web.
 
-**Independent Test**: Assign a task to the user on the web; it appears in the app's My tasks; starting it creates a run
-owned by the user that is offered only to the user's machines or shared machines.
+**Independent Test**: Create a task as the user (or start a run on a colleague's task); it appears in the app's My tasks;
+starting it creates a run owned by the user that is offered only to the user's machines or shared machines.
 
 **Acceptance Scenarios**:
-1. **Given** tasks assigned to several people, **When** the user opens My tasks, **Then** only tasks assigned to them
-   (or created by them and unassigned) are listed.
+1. **Given** tasks of several people, **When** the user opens My tasks, **Then** only tasks they created or have a run
+   they own are listed (`tasks.list` with `mine`); My runs uses `runs.search` with `mine`.
 2. **Given** a task, **When** the user starts it, **Then** the run's owner is the user and its log streams in the app.
 3. **Given** a run waiting for a machine, **When** the user opens it, **Then** the app shows why it waits.
 
@@ -318,7 +319,7 @@ shows the approved version; no edit control is offered.
 - **FR-020 (ADR 0017)**: After registration and on every start of a registered machine, the app MUST open `AppNav`, never the hub web as its main window; the hub web opens only on explicit user action (tray, link to one hub page).
 - **FR-021 (ADR 0017)**: The app MUST offer only client features for BA and DEV: machine, environment, skills, tokens, docs from code, document editor, my tasks and runs, awaiting my review, knowledge lookup. Administration (members, roles, policies, sign-in, machines, sandbox, audit, costs, workflow setup) stays on the admin web.
 - **FR-022 (US9)**: The app MUST provide the document editor with the same contracts as the web (`docEditor.*`); AI actions MUST run as `docassist` runs pinned to this machine.
-- **FR-023 (US10)**: The app MUST list tasks assigned to the user and runs the user owns, start a task as a run owned by the user, and stream its events and logs.
+- **FR-023 (US10)**: The app MUST list the user's tasks (created by them or with a run they own) and runs the user owns, start a task as a run owned by the user, and stream its events and logs.
 - **FR-024 (US11)**: The app MUST list reviews the user may decide at the current gate and support approve and return with note and route, using the `reviews.*` contracts.
 - **FR-025 (US12)**: The app MUST search approved docs, memory and skills the user can read, read-only.
 - **FR-026**: The hub MUST accept the user's personal token (`hive_pat_…`) as `Authorization: Bearer` on the user-scoped REST API (`/api/v1/…`) with exactly the user's rights, so the app reuses the web contracts; machine and run tokens MUST NOT be accepted there.
