@@ -1,7 +1,9 @@
 # xDev Hive desktop
 
-App Tauri 2 nhẹ: biểu tượng trên khay hệ thống, worker Go (`hive-worker`) chạy nền làm sidecar, cửa sổ web trỏ tới
-hub mà máy đã đăng ký. App không chứa giao diện web của hub; nó chỉ có cửa sổ đăng ký máy (`src/`).
+App Tauri 2: biểu tượng trên khay hệ thống, worker Go (`hive-worker`) chạy nền làm sidecar, cửa sổ web trỏ tới hub
+mà máy đã đăng ký, và giao diện cục bộ của app (`src/`, React theo
+[ADR 0016](../../docs/adr/0016-desktop-local-ui.md) và [specs/008-desktop-v2](../../specs/008-desktop-v2/)). App không
+chứa giao diện web của hub.
 
 ## Chạy tại máy
 
@@ -11,11 +13,16 @@ Cần Node 24+, pnpm, Go và Rust.
 pnpm --filter @xdev-hive/desktop app:dev
 ```
 
-`tauri dev` và `tauri build` tự chạy `pnpm prepare:app`. Lệnh này dựng giao diện đăng ký vào `dist/` và dựng
+`tauri dev` và `tauri build` tự chạy `pnpm prepare:app`. Lệnh này dựng giao diện vào `dist/` bằng Vite và dựng
 `hive-worker` vào `src-tauri/binaries/hive-worker-<target triple>`. Cả hai thư mục không commit.
 
-Giao diện đăng ký lấy logo từ `docs/design-system/assets/logos/xdev-hive-icon.svg` và sinh `dist/tokens.css`
-từ `docs/design-system/tokens.json` khi build, dùng cùng nguồn nhận diện với web.
+Giao diện là React 19 + Vite + Tailwind 4 với component shadcn/ui (base-nova) chép vào `src/components/ui`, như web.
+Màu và bo góc sinh vào `src/generated/tokens.css` từ `docs/design-system/tokens.json` khi build; logo lấy thẳng từ
+`docs/design-system/assets/logos`. Chữ song ngữ VI/EN theo `src/lib/i18n.ts`, sáng/tối theo `src/lib/theme.ts`.
+
+Xem giao diện trong trình duyệt, không cần Rust: `pnpm --filter @xdev-hive/desktop dev:ui`, rồi mở địa chỉ Vite in ra
+(thêm `?window=app` để xem cửa sổ app). Lệnh gọi Rust sẽ báo lỗi vì không có Tauri. Test giao diện chạy bằng Vitest
+và jsdom (`pnpm --filter @xdev-hive/desktop test`), giả `window.__TAURI__`.
 
 Thử với cấu hình worker riêng, không đụng cấu hình thật của máy:
 
@@ -31,8 +38,8 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 - **Đăng ký:** nhập địa chỉ hub và token, hoặc dán lệnh `hive-worker register --hub … --token …` lấy từ web. App tự
   tách lệnh, kể cả lệnh nhiều dòng của bash, PowerShell, cmd. Token truyền cho sidecar qua biến môi trường
   `HIVE_REGISTRATION_TOKEN`, không qua tham số dòng lệnh.
-- **Khay hệ thống:** dòng trạng thái của worker, Mở xDev Hive, Bật/Tắt worker, Thoát. Đóng cửa sổ chỉ ẩn vào khay;
-  worker vẫn chạy.
+- **Khay hệ thống:** dòng trạng thái của worker, Mở xDev Hive (web của hub), Mở app trên máy (cửa sổ `app` cục bộ
+  với AppNav), Bật/Tắt worker, Thoát. Đóng cửa sổ chỉ ẩn vào khay; worker vẫn chạy.
 - **Trạng thái:** worker in mỗi trạng thái kết nối thành một dòng JSON trên stdout (`connecting`, `online`,
   `disconnected`, `stopped`). Máy trạng thái ở `src-tauri/src/worker.rs`:
   - Mất kết nối quá 1 phút thì có thông báo hệ thống, mỗi lần mất chỉ báo một lần.
@@ -42,8 +49,10 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   run đang chạy ghi xong kết quả, tối đa 30 giây; quá 35 giây thì app giết tiến trình. App chết đột ngột thì stdin
   đóng và worker cũng tự dừng, không chạy mồ côi.
 - **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`) khai báo trong `build.rs`. Capability chỉ cấp
-  các lệnh này cho cửa sổ `register`. Cửa sổ web của hub là trang từ xa, không có capability nào, nên không gọi được
-  lệnh của app.
+  các lệnh này cho cửa sổ `register` (`capabilities/default.json`). Cửa sổ `app` có capability riêng
+  (`capabilities/app.json`), hiện chỉ `core:default`; màn nào cần lệnh Rust thì thêm đúng lệnh đó. Cửa sổ web của hub
+  là trang từ xa, không có capability nào, nên không gọi được lệnh của app. CSP không cho script inline, nên sáng/tối
+  đặt trong `src/main.tsx` trước lần vẽ đầu.
 
 ## Cập nhật tự động
 
