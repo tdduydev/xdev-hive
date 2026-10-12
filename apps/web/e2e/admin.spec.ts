@@ -178,7 +178,7 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
           command: "hive-worker register --hub https://hive.test --token reg-once-token",
           installCommand: `curl -fsSL https://dl.test/install.sh | sh -s -- --hub https://hive.test --token reg-once-token${(input as { kind: string }).kind === "host" ? " --no-service" : ""}`,
           installCommandWindows:
-            "& ([scriptblock]::Create((irm https://dl.test/install.ps1))) -Hub https://hive.test -Token reg-once-token",
+            'irm https://dl.test/install.ps1 -OutFile "$env:TEMP\\hive-install.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\\hive-install.ps1" -Hub https://hive.test -Token reg-once-token',
         }),
       "machines/workerRelease": () =>
         ok({ version: "1.3.0", url: "https://github.com/tdduydev/xdev-hive/releases/tag/v1.3.0", publishedAt: at }),
@@ -267,7 +267,7 @@ test("màn Máy: thêm máy bằng mã dùng một lần, chép lệnh nền và
     dialog.getByText("hive-worker register --hub https://hive.test --token reg-once-token", { exact: true }),
   ).toBeVisible();
   await dialog.getByRole("button", { name: "Windows" }).click();
-  await expect(dialog.getByText(/irm https:\/\/dl\.test\/install\.ps1/)).toBeVisible();
+  await expect(dialog.getByText(/irm https:\/\/dl\.test\/install\.ps1 -OutFile/)).toBeVisible();
   await dialog.getByRole("button", { name: "Linux" }).click();
   await expect(dialog.getByText(/loginctl enable-linger/)).toBeVisible();
   await dialog.getByRole("button", { name: "Đóng" }).click();
