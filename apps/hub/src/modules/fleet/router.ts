@@ -12,7 +12,14 @@ import {
 } from "./desktop-connect.ts";
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
-import { listMachines, pauseMachine, requestMachineUpdate, resumeMachine, revokeMachine } from "./machines.ts";
+import {
+  listMachines,
+  pauseMachine,
+  requestMachineUpdate,
+  resumeMachine,
+  revokeMachine,
+  setMachineShared,
+} from "./machines.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
 import { installCommands, type WorkerReleaseCache } from "./releases.ts";
 
@@ -90,6 +97,9 @@ export function fleetRouter(deps: FleetDeps) {
       }),
       pause: machinesOs.pause.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => pauseMachine(tx, userId, input.machineId)),
+      ),
+      setShared: machinesOs.setShared.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => setMachineShared(tx, userId, input.machineId, input.shared)),
       ),
       resume: machinesOs.resume.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => resumeMachine(tx, userId, input.machineId)),

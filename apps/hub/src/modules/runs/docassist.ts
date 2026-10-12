@@ -187,6 +187,7 @@ export async function createAssistRun(
       pinnedMachineId: machine.id,
       policySnapshot: [],
       createdBy: userId,
+      ownerUserId: userId,
     })
     .returning();
   if (!row) throw new Error("Không tạo được run trợ lý tài liệu.");

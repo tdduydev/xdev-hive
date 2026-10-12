@@ -24,7 +24,8 @@ import WebSocket from "ws";
 import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
-import { attachWorkerGateway, pauseMachine, registerRunHandlers } from "./modules/fleet/index.ts";
+import { loadProject } from "./modules/catalog/index.ts";
+import { attachWorkerGateway, pauseMachine, registerRunHandlers, setMachineShared } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { saveDoc } from "./modules/knowledge/docs.ts";
 import { proposeWithReview } from "./modules/knowledge/reviews.ts";
@@ -38,6 +39,7 @@ import {
   type RunsEngine,
 } from "./modules/runs/index.ts";
 import { createMemoryProvider, type MemoryProvider, type ProviderFactory } from "./modules/scm/index.ts";
+import { loadTask } from "./modules/tasks/index.ts";
 
 const { adminUrl, appUrl, authUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -178,11 +180,15 @@ async function until(check: () => Promise<boolean>, ms = 5000) {
 }
 
 /** Seed máy và machine token bằng superuser: luồng đăng ký đã có test riêng ở fleet. */
-async function seedMachine(name: string, clis: string[] = ["claude"], capacity = 1) {
+/**
+ * Máy thử mặc định là máy dùng chung của đội (như máy chủ CI), để các kịch bản không nói về chủ máy nhận run của bất
+ * kỳ ai; `owner` cho máy cá nhân của một người (ADR 0017).
+ */
+async function seedMachine(name: string, clis: string[] = ["claude"], capacity = 1, owner?: string) {
   const token = `hwm_${randomBytes(32).toString("base64url")}`;
   const { rows } = await admin.query(
-    "insert into hive.machines (org_id, team_id, name, os, version, clis, capacity) values ($1, $2, $3, 'linux', '1', $4, $5) returning id",
-    [org.orgId, org.teamId, name, clis, capacity],
+    "insert into hive.machines (org_id, team_id, name, os, version, clis, capacity, shared, registered_by) values ($1, $2, $3, 'linux', '1', $4, $5, $6, $7) returning id",
+    [org.orgId, org.teamId, name, clis, capacity, owner === undefined, owner ?? null],
   );
   await admin.query(
     "insert into hive.machine_tokens (org_id, team_id, machine_id, token_hash) values ($1, $2, $3, $4)",
@@ -1427,5 +1433,72 @@ describe("run trợ lý tài liệu (DOC-05)", () => {
         comments: 0,
       }),
     ]);
+  });
+});
+
+describe("máy cá nhân và máy dùng chung (ADR 0017)", () => {
+  it("run của một người chỉ chạy trên máy của chính họ, không chạy trên máy cá nhân của người khác", async () => {
+    const others = await seedMachine(`own-other-${tag}`, ["claude"], 1, org.user("tmember"));
+    const mine = await seedMachine(`own-mine-${tag}`, ["claude"], 1, devUserId);
+    const wOther = await FakeWorker.connect(others);
+    const task = await newTask("Việc của dev");
+    const run = await startRun(task.id);
+    await new Promise((r) => setTimeout(r, 800));
+    expect(wOther.has("job_offer")).toBe(false);
+    expect((await runRow(run.id)).owner_user_id).toBe(devUserId);
+    const wMine = await FakeWorker.connect(mine);
+    const offer = await wMine.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.runId).toBe(run.id);
+    expect(wOther.has("job_offer")).toBe(false);
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+  });
+
+  it("run của đội (không có chủ) chờ máy dùng chung và nói rõ vì sao", async () => {
+    const personal = await seedMachine(`team-personal-${tag}`, ["claude"], 1, devUserId);
+    const wPersonal = await FakeWorker.connect(personal);
+    const task = await newTask("Việc từ webhook");
+    const project = await withTenant(pool, { orgId: org.orgId }, (tx) => loadProject(tx, projectId));
+    const queued = await withTenant(pool, { orgId: org.orgId }, async (tx) => {
+      const t = await loadTask(tx, task.id);
+      if (!t || !project) throw new Error("thiếu task hoặc dự án");
+      return engine.queueRun(tx, t, project, { cli: null, createdBy: "github:octocat", actorUserId: null });
+    });
+    queued.afterCommit();
+    const runId = queued.row.id;
+    await until(async () => {
+      const { rows } = await admin.query(
+        "select 1 from hive.run_events where run_id = $1 and type = 'waiting_machine'",
+        [runId],
+      );
+      return rows.length > 0;
+    });
+    expect(wPersonal.has("job_offer")).toBe(false);
+    const { rows } = await admin.query(
+      "select data from hive.run_events where run_id = $1 and type = 'waiting_machine'",
+      [runId],
+    );
+    expect(String(rows[0].data.message)).toContain("máy dùng chung");
+    const shared = await seedMachine(`team-shared-${tag}`);
+    const wShared = await FakeWorker.connect(shared);
+    expect((await wShared.next("job_offer", (o) => o.runId === runId)).runId).toBe(runId);
+    await api("POST", `/v1/runs/${runId}/cancel`);
+  });
+
+  it("chọn máy cá nhân của người khác bị từ chối; chỉ quản trị đội bật được dùng chung", async () => {
+    const others = await seedMachine(`pick-other-${tag}`, ["claude"], 1, org.user("tmember"));
+    const task = await newTask("Chọn máy");
+    const res = await api<{ data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id, machineId: others.id });
+    expect(res.status).toBe(403);
+    expect(res.data.data?.code).toBe("MACHINE_NOT_YOURS");
+    // Dev là thành viên, không phải quản trị đội.
+    const denied = await api("POST", `/v1/machines/${others.id}/shared`, { shared: true });
+    expect(denied.status).toBe(403);
+    const shared = await withTenant(pool, { userId: org.user("tadmin"), orgId: org.orgId }, (tx) =>
+      setMachineShared(tx, org.user("tadmin"), others.id, true),
+    );
+    expect(shared).toMatchObject({ shared: true, registeredBy: org.user("tmember") });
+    const again = await api<{ id: string }>("POST", "/v1/runs", { taskId: task.id, machineId: others.id });
+    expect(again.status, JSON.stringify(again.data)).toBe(200);
+    await api("POST", `/v1/runs/${again.data.id}/cancel`);
   });
 });

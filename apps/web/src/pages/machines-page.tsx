@@ -246,6 +246,13 @@ export function MachinesPage() {
       setRevokeId(null);
     },
   });
+  const members = useQuery(api.orgMembers.list.queryOptions());
+  const memberName = new Map((members.data ?? []).map((member) => [member.userId, member.name]));
+  const share = useMutation({
+    mutationFn: ({ machineId, shared }: { machineId: string; shared: boolean }) =>
+      api.machines.setShared.call({ machineId, shared }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: api.machines.list.key() }),
+  });
   const machineAction = useMutation({
     mutationFn: ({ machineId, paused }: { machineId: string; paused: boolean }) =>
       paused ? api.machines.pause.call({ machineId }) : api.machines.resume.call({ machineId }),
@@ -335,6 +342,7 @@ export function MachinesPage() {
                       <thead>
                         <tr>
                           <Th>Máy</Th>
+                          <Th>Loại</Th>
                           <Th>Hệ điều hành</Th>
                           <Th>Trạng thái</Th>
                           <Th>CLI</Th>
@@ -349,6 +357,21 @@ export function MachinesPage() {
                           <tr key={machine.id}>
                             <Td>
                               <b className="font-mono text-xs">{machine.name}</b>
+                            </Td>
+                            <Td>
+                              {/* Máy cá nhân chỉ chạy run của chủ máy; run của đội chỉ chạy trên máy dùng chung (ADR 0017). */}
+                              {machine.shared ? (
+                                <Pill tone="sel">Dùng chung</Pill>
+                              ) : (
+                                <span title="Chỉ chạy run của chủ máy, bằng CLI chủ máy đã đăng nhập">
+                                  <Pill>
+                                    Cá nhân ·{" "}
+                                    {machine.registeredBy
+                                      ? (memberName.get(machine.registeredBy) ?? machine.registeredBy)
+                                      : "không rõ"}
+                                  </Pill>
+                                </span>
+                              )}
                             </Td>
                             <Td>{machine.os}</Td>
                             <Td>
@@ -419,6 +442,20 @@ export function MachinesPage() {
                               {machineAction.isError && (
                                 <span role="alert">{apiErrorMessage(machineAction.error)}</span>
                               )}{" "}
+                              {machine.status !== "revoked" && machine.kind === "worker" && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={share.isPending}
+                                    aria-label={`${machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"} ${machine.name}`}
+                                    onClick={() => share.mutate({ machineId: machine.id, shared: !machine.shared })}
+                                  >
+                                    {machine.shared ? "Thôi dùng chung" : "Cho đội dùng chung"}
+                                  </Button>{" "}
+                                </>
+                              )}
+                              {share.isError && <span role="alert">{apiErrorMessage(share.error)}</span>}
                               {machine.status !== "revoked" && (
                                 <Button variant="outline" size="sm" onClick={() => setRevokeId(machine.id)}>
                                   Thu hồi
