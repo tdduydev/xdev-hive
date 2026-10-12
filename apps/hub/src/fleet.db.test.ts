@@ -211,6 +211,8 @@ describe("WSS /ws/worker", () => {
 
     expect(sendToMachine(m.id, { type: "drain" })).toBe(true);
     expect(await w.next()).toMatchObject({ type: "drain", v: 1 });
+    expect(sendToMachine(m.id, { type: "update", version: "0.3.0" })).toBe(true);
+    expect(await w.next()).toMatchObject({ type: "update", v: 1, version: "0.3.0" });
 
     w.ws.close();
     await w.closed;
