@@ -192,9 +192,9 @@ missing linters, or expired MCP tokens. An automated local environment checker e
 
 ### User Story 8 - Human User Authentication & Security Isolation (Priority: P1)
 
-A user authenticates their personal identity in the desktop app using a personal MCP/API token (`hmt_...`) or web loopback.
+A user authenticates their personal identity in the desktop app using a personal MCP/API token (`hive_pat_…`) or web loopback.
 The human user token is securely stored in the native operating system keychain (macOS Keychain, Windows Credential Manager,
-Linux Secret Service via `keyring-rs`), separate from the worker machine token (`hwr_...`). The app queries the hub to determine
+Linux Secret Service via `keyring-rs`), separate from the worker machine token (`hwm_…`; `hwr_…` is the one-time registration token). The app queries the hub to determine
 the user's identity (`name`, `role`, `teams`, `permissions`) and dynamically configures the `AppNav` menu and view rights
 (`lead`, `dev`, `writer`). The remote hub web window remains completely isolated in an external webview with zero Tauri IPC capabilities.
 
@@ -202,14 +202,14 @@ the user's identity (`name`, `role`, `teams`, `permissions`) and dynamically con
 securely and enforcing least-privilege window capabilities protects organizational secrets and corporate machines.
 
 **Independent Test**:
-1. Save personal user token `hmt_abc123` in app settings.
+1. Save personal user token `hive_pat_…` in app settings.
 2. Verify the token is written to the OS keychain and never committed to disk in plain text.
 3. Verify subsequent API calls to Hub endpoints include `Authorization: Bearer <user_token>`.
 4. Open the remote hub window (`main`); verify scripts running inside cannot invoke any Tauri Rust command.
 
 **Acceptance Scenarios**:
-1. **Given** user authentication, **When** saving credentials, **Then** user tokens are persisted in the native OS keychain using `tauri-plugin-keyring` / `keyring-rs`.
-2. **Given** the user profile fetched from the hub, **When** evaluating permissions, **Then** Hub roles (`owner`, `admin`, `member`, `viewer`) map deterministically to desktop permission profiles (`lead`, `dev`, `writer`).
+1. **Given** user authentication, **When** saving credentials, **Then** user tokens are persisted in the native OS keychain using the Rust `keyring` crate.
+2. **Given** the user profile fetched from the hub, **When** evaluating permissions, **Then** hub roles map deterministically to desktop profiles: `lead` = organization `owner`/`admin` or team `admin`; `dev` = team `member`; `writer` = team `viewer`. The profile only shapes the menu; every write is still authorized by the hub.
 3. **Given** the remote web window (`main`), **When** inspecting Tauri capabilities in `capabilities/default.json`, **Then** the `main` window is granted zero permissions, completely preventing remote code execution via Tauri IPC.
 
 ---
@@ -246,8 +246,8 @@ securely and enforcing least-privilege window capabilities protects organization
 - **FR-011 (DESK-07)**: The desktop app MUST provide actionable context reduction recommendations (e.g., toggling unused MCP tools, trimming memory files, configuring autocompact thresholds).
 - **FR-012 (DESK-08)**: The desktop app MUST diagnose local development environments across agent CLIs, runtimes, linters/tools, MCP servers, and project dependencies using native Rust process execution.
 - **FR-013 (DESK-08)**: The desktop app MUST require explicit user confirmation before executing non-admin remediation commands, and MUST restrict administrative commands (`sudo`) to clipboard copying.
-- **FR-014 (DESK-09)**: The desktop app MUST authenticate human users via personal user tokens (`hmt_...`) stored securely in the native OS keychain, strictly separate from the worker machine token.
-- **FR-015 (DESK-09)**: The desktop app MUST map hub roles (`owner`, `admin`, `member`, `viewer`) into app navigation permission profiles (`lead`, `dev`, `writer`).
+- **FR-014 (DESK-09)**: The desktop app MUST authenticate human users via personal user tokens (`hive_pat_…`) stored securely in the native OS keychain, strictly separate from the worker machine token.
+- **FR-015 (DESK-09)**: The desktop app MUST map hub roles (organization `owner`/`admin`/`member`, team `admin`/`member`/`viewer`) into app navigation profiles (`lead`, `dev`, `writer`); the hub remains the only authority for writes.
 - **FR-016 (DESK-10)**: The desktop app MUST install package updates via `tauri-plugin-updater` from the hub endpoint `/api/v1/desktop/updates/{os}/{arch}/{version}`, with worker sidecar self-update disabled to preserve bundle coherence.
 - **FR-017**: All user-facing copy MUST support bilingual display (Vietnamese and English) using the `useT` dictionary pattern, defaulting to Vietnamese.
 - **FR-018**: All screens MUST support both light and dark themes, deriving styles strictly from design tokens in `tokens.css`.
@@ -257,7 +257,7 @@ securely and enforcing least-privilege window capabilities protects organization
 
 - **Worker State**: The runtime lifecycle state of the background sidecar (`stopped`, `starting`, `connecting`, `online`, `disconnected`, `stopping`, `failed`).
 - **Machine Registration**: The link between the local hardware and the Hub, authenticated via `HIVE_MACHINE_TOKEN` and stored in `worker.json`.
-- **User Identity**: The personal authentication profile of the developer (`name`, `role`, `email`, personal token `hmt_...`), persisted in the OS keychain.
+- **User Identity**: The personal authentication profile of the developer (`name`, `role`, `email`, personal token `hive_pat_…`), persisted in the OS keychain.
 - **Skill Manifest**: Metadata tracking installed skills in a project (`name`, `scope`, `version`, `source_hash`, `installed_at`).
 - **Doc Proposal**: An AI-generated documentation modification consisting of file paths, patch hunks, citations, and review status.
 - **Environment Diagnostic**: A status record for a required local tool (`name`, `kind`, `need_version`, `have_version`, `status`, `remediation_cmd`).
@@ -291,14 +291,14 @@ securely and enforcing least-privilege window capabilities protects organization
 ### 1. User Identity & Role Mapping
 
 - **How does the app obtain human identity?**
-  The worker machine token (`hwr_...`) is strictly an infrastructure credential belonging to the host device; it has no human identity and MUST NOT be used for user actions. The app authenticates the human user via a **personal MCP token** (`hmt_...`), generated from `/admin/mcp` (as specified in `specs/003-mcp-tools-admin`) and pasted into the app settings. Alternatively, future versions may implement a local OAuth loopback on `http://127.0.0.1:<port>/callback`.
+  The worker machine token (`hwm_…`; `hwr_…` is the one-time registration token) is strictly an infrastructure credential belonging to the host device; it has no human identity and MUST NOT be used for user actions. The app authenticates the human user via a **personal MCP token** (`hive_pat_…`), generated from `/admin/mcp` (as specified in `specs/003-mcp-tools-admin`) and pasted into the app settings. Alternatively, future versions may implement a local OAuth loopback on `http://127.0.0.1:<port>/callback`.
 - **Where is the personal token stored?**
-  Stored in the native operating system keychain using `tauri-plugin-keyring` (wrapping the Rust `keyring` crate: macOS Keychain via Security Framework, Linux via Secret Service / libsecret, Windows via Credential Manager).
+  Stored in the native operating system keychain using the Rust `keyring` crate (macOS Keychain via Security Framework, Linux via Secret Service / libsecret, Windows via Credential Manager).
 - **Role mapping to Hub permissions:**
   In `AppNav`, the navigation profiles map to hub tenancy roles as follows:
   - `lead`: Organization `owner`/`admin`, or Team `admin`. Full permissions: `docs.read`, `docs.write`, `skills.read`, `skills.write`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`.
   - `dev`: Team `member`. Permissions: `docs.read`, `skills.read`, `skills.sync`, `tokens.read`, `env.manage`, `runs.local`.
-  - `writer`: Team `viewer` (or dedicated documentation editor). Permissions: `docs.read`, `docs.write`, `skills.read`, `tokens.read`. Environment management and local fleet execution are hidden.
+  - `writer`: Team `viewer`. Today a viewer is read-only in the hub (TEAM_RANK viewer < member), so `writer` gets `docs.read`, `skills.read`, `tokens.read` only. **[NEEDS CLARIFICATION]** The design lets writers edit documents; that needs a doc-writer permission from custom roles (specs/001-custom-roles) rather than widening `viewer`.
 
 ### 2. AppTray Worker States: 7 States vs 4 Worker Statuses
 

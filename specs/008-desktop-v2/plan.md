@@ -26,7 +26,7 @@ sidecars, synchronizing skill packages, and optimizing token context allocations
 **Primary Dependencies**:
 - Desktop Frontend: `@tauri-apps/api` 2.12, `@base-ui/react` 1.9, `lucide-react`, `clsx`, `tailwind-merge`
 - Desktop Rust Backend: `tauri` 2.12 (with `tray-icon`), `tauri-plugin-shell` 2.5, `tauri-plugin-notification` 2.6,
-  `tauri-plugin-updater` 2.13, `tauri-plugin-keyring` / `keyring-rs`, `tokio` 1, `serde`, `serde_json`, `url` 2
+  `tauri-plugin-updater` 2.13, the Rust `keyring` crate, `tokio` 1, `serde`, `serde_json`, `url` 2
 - Sidecar: Go `hive-worker` (`coder/websocket`, `kardianos/service`)
 
 **Storage**:
@@ -67,7 +67,7 @@ sidecars, synchronizing skill packages, and optimizing token context allocations
 | Principle | Check | Status |
 |---|---|---|
 | **I. Contract first** | Hub APIs used by desktop (`/rpc`, `/api/v1/desktop/updates/...`) conform to contracts in `packages/contracts`. | PASS |
-| **II. Tenant isolation** | User personal tokens (`hmt_...`) enforce organization/team RLS on all hub requests; machine tokens do not leak user permissions. | PASS |
+| **II. Tenant isolation** | User personal tokens (`hive_pat_…`) enforce organization/team RLS on all hub requests; machine tokens do not leak user permissions. | PASS |
 | **III. Module boundaries** | `apps/desktop` does not perform forbidden deep imports across monorepo boundaries. | PASS |
 | **IV. Tested before merged** | Unit tests cover Rust command parsing, worker state machine transitions, and UI component behavior. `pnpm check` passes. | PASS |
 | **V. Secure by default** | Personal tokens stored strictly in OS keychain; machine tokens stored in dedicated config; remote webview has zero IPC capability; CLI runs sandboxed to workspace. | PASS |
