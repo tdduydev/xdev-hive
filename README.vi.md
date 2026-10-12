@@ -73,7 +73,7 @@ flowchart LR
   RH --- EP
   W -->|"run token"| MCP
   Jobs <--> SCM
-  W -->|"git push, PR"| SCM
+  W -->|"git push"| SCM
 ```
 
 1. Một việc được giao cho một agent CLI. Hub đưa run cho một máy đang trực tuyến có CLI đó và còn chỗ chạy.
@@ -82,6 +82,52 @@ flowchart LR
 3. Agent xong thì hub chạy chính sách kết quả của dự án, mở PR, chạy review chéo nếu cần, rồi đưa PR vào hàng merge.
 
 Máy kết nối ra hub, nên máy dev nằm sau NAT hay tường lửa vẫn dùng được mà không cần mở cổng vào.
+
+## Triển khai
+
+```mermaid
+flowchart LR
+  subgraph People["Người dùng"]
+    B["Trình duyệt hoặc app desktop"]
+    M["Client MCP"]
+  end
+  subgraph Server["Máy chủ hub: Linux, Docker Compose"]
+    C["Caddy (tuỳ chọn, profile https)<br/>:80, :443"]
+    H["container hub (Node 24)<br/>web, /rpc, /api, /mcp, /hooks<br/>/ws/worker, job pg-boss"]
+    P[("container postgres<br/>PostgreSQL 18 + pgvector")]
+  end
+  subgraph Dev["Máy dev: macOS, Linux, Windows"]
+    W["hive-worker run<br/>(dịch vụ của user)"]
+    A["Claude Code, Codex, Gemini CLI<br/>trong git worktree tạm"]
+  end
+  subgraph RH["Runner host: Linux (tuỳ chọn)"]
+    HW["hive-worker host"]
+    G["Docker + gVisor runsc<br/>mỗi run một container, không có mạng"]
+    E["egress proxy riêng mỗi run<br/>(allowlist, Unix socket)"]
+  end
+  SCM["GitHub / GitLab"]
+  REL["GitHub Releases<br/>bản hive-worker đã ký"]
+
+  B -->|HTTPS| C --> H
+  M -->|"HTTPS /mcp"| C
+  H --- P
+  W -->|"WSS /ws/worker gọi ra"| C
+  HW -->|"WSS /ws/worker gọi ra"| C
+  W --> A
+  HW --> G -->|"đường ra duy nhất"| E
+  A -->|"git push"| SCM
+  H <-->|"REST API, webhook"| SCM
+  W -.->|"cài, cập nhật"| REL
+```
+
+| Máy | Chạy gì | Mở cổng | Gọi tới |
+|---|---|---|---|
+| Máy chủ hub | `postgres`, `hub`, thêm `caddy` nếu cần, từ `deploy/compose.yaml` | `HIVE_BIND:3000` (mặc định chỉ loopback), hoặc 80/443 qua Caddy | GitHub/GitLab, API release của GitHub, API embeddings và kênh thông báo nếu cấu hình |
+| Máy dev | `hive-worker run` dạng dịch vụ systemd của user, LaunchAgent hoặc tác vụ Task Scheduler, hoặc trong app desktop | không | hub qua HTTPS và WSS, Git host |
+| Runner host | `hive-worker host`, Docker có runtime gVisor `runsc` | không | hub qua WSS, Git host; mỗi run chỉ ra được allowlist qua egress proxy riêng |
+
+Máy chỉ gọi ra, nên chạy được sau NAT hay tường lửa. Có thể tách tiến trình hub theo vai trò (`HIVE_ROLES=api` hoặc
+`jobs`) khi một container không đủ. Chi tiết thiết kế ở [Architecture Design Document](docs/add.md) (tiếng Anh).
 
 ## Chạy thử tại máy (phát triển)
 
@@ -145,8 +191,10 @@ HTTP trong mạng tin cậy, sao lưu và khôi phục, worker chạy nền và 
 
 ## Tài liệu
 
-- [Hướng dẫn tự host](docs/self-hosting.md) (tiếng Anh)
-- [Kiến trúc](docs/architecture.md): thành phần, module, mô hình dữ liệu, giao thức worker, bảo mật và vận hành.
+- [Architecture Design Document](docs/add.md) (tiếng Anh): mục tiêu, bối cảnh, khối thành phần, luồng chạy, mô hình
+  triển khai, bảo mật, quyết định, rủi ro. Mô tả đúng code đang có.
+- [Hướng dẫn tự host](docs/self-hosting.md) (tiếng Anh) và [phát hành worker](docs/releasing.md).
+- [Ghi chú kiến trúc](docs/architecture.md): bản thiết kế ban đầu, có đánh dấu phần chưa làm.
 - [Quyết định](docs/decisions.md): phạm vi, stack và các phiên bản đã chốt.
 - [Design system](docs/design-system/README.md) và [thiết kế màn hình](docs/design-system/screens/README.md).
 - [Quy ước cho người đóng góp và agent](AGENTS.md).

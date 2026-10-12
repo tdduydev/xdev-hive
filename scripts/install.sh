@@ -100,7 +100,8 @@ else
 fi
 [ "$got" = "$want" ] || die "sha256 của $asset không khớp checksums.txt"
 
-tar -xzf "$tmp/$asset" -C "$tmp" hive-worker
+# -m: không đặt lại giờ sửa file, để máy chủ lệch đồng hồ không in cảnh báo "time stamp in the future".
+tar -xzmf "$tmp/$asset" -C "$tmp" hive-worker
 mkdir -p "$dir"
 bin="$dir/hive-worker"
 # Chép ra file tạm cùng thư mục rồi đổi tên đè: worker cũ đang chạy vẫn giữ file cũ, không bị ghi đè giữa chừng.
