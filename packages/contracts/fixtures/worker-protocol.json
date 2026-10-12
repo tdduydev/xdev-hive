@@ -10,6 +10,7 @@
       "os": "linux",
       "clis": ["claude", "codex"],
       "capacity": 2,
+      "capabilities": ["doccheck"],
       "resumeRuns": ["run-1"]
     },
     {
