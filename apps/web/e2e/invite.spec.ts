@@ -209,3 +209,20 @@ test("GitHub lần đầu mà email chưa được mời: quay về trang đăng
   expect(new URL(page.url()).searchParams.get("redirect")).toBe(back);
   await expect(page.getByRole("alert")).toHaveText(/^Hub chỉ nhận người được mời\. Email của tài khoản bạn vừa dùng/);
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`lời mời: VI/EN và ${theme} ở 360px`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 360, height: 850 });
+    await fakeHub(page, { rpc: { "invitations/preview": () => preview() } });
+    await page.goto(`/invite/${TOKEN}`);
+    await page.getByRole("button", { name: "EN", exact: true }).click();
+    await expect(page.getByRole("heading", { name: `Invitation to ${ORG.name}` })).toBeVisible();
+    await expect(page.getByLabel("Full name")).toBeVisible();
+    await expect(page.getByLabel("Password")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`invitation-${theme}.png`), fullPage: true });
+    await page.reload();
+    await expect(page.getByRole("heading", { name: `Invitation to ${ORG.name}` })).toBeVisible();
+  });
+}

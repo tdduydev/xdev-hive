@@ -1,51 +1,101 @@
 import { type ErrorComponentProps, Link, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Brand } from "../components/icons.tsx";
+import { OutsideLayout } from "../components/outside/outside-layout.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
+import { type Dict, useT } from "../lib/i18n.ts";
 
-function Centered({ title, children }: { title: string; children: ReactNode }) {
+const text: Dict<{
+  loading: string;
+  retry: string;
+  home: string;
+  errorTitle: string;
+  errorBody: string;
+  missingTitle: string;
+  missingBody: string;
+}> = {
+  vi: {
+    loading: "Đang tải…",
+    retry: "Thử lại",
+    home: "Về trang chủ",
+    errorTitle: "Không kết nối được hub",
+    errorBody: "Hub không trả lời hoặc đang gặp lỗi. Kiểm tra mạng, đợi một lát rồi thử lại.",
+    missingTitle: "Không tìm thấy trang",
+    missingBody: "Đường dẫn này không có trên hub, hoặc màn hình chưa được làm.",
+  },
+  en: {
+    loading: "Loading…",
+    retry: "Try again",
+    home: "Go home",
+    errorTitle: "Cannot reach the hub",
+    errorBody: "The hub is not responding or has an error. Check your network, wait a moment, then try again.",
+    missingTitle: "Page not found",
+    missingBody: "This address does not exist on the hub, or the screen is not built yet.",
+  },
+};
+
+function Centered({ code, title, body, children }: { code: string; title: string; body: string; children: ReactNode }) {
   return (
-    <main className="grid min-h-dvh place-items-center px-4 py-6">
-      <Card className="grid w-full max-w-105 gap-4 p-7">
-        <Brand />
-        <h1 className="font-heading text-xl font-semibold text-foreground">{title}</h1>
+    <OutsideLayout centered>
+      <div className="flex w-full max-w-110 flex-col items-center gap-4 text-center">
+        <span className="font-mono text-7xl font-semibold tracking-tighter text-border">{code}</span>
+        <Brand className="h-12" />
+        <h1 className="font-heading text-[22px] font-semibold tracking-tight">{title}</h1>
+        <p className="text-muted-foreground">{body}</p>
         {children}
-      </Card>
-    </main>
+      </div>
+    </OutsideLayout>
   );
 }
 
-/** Không hỏi được hub người đang đăng nhập là ai (mất mạng, hub tắt hoặc lỗi). */
 export function LoadErrorPage(_: ErrorComponentProps) {
   const router = useRouter();
+  const t = useT(text);
   return (
-    <Centered title="Không kết nối được hub">
-      <p className="text-muted-foreground">
-        Hub không trả lời hoặc đang gặp lỗi. Kiểm tra mạng, đợi một lát rồi thử lại.
-      </p>
-      <Button variant="default" onClick={() => router.invalidate()}>
-        Thử lại
+    <Centered code="503" title={t.errorTitle} body={t.errorBody}>
+      <Button onClick={() => router.invalidate()}>
+        <Spinner />
+        {t.retry}
       </Button>
     </Centered>
   );
 }
 
 export function NotFoundPage() {
+  const t = useT(text);
   return (
-    <Centered title="Không tìm thấy trang">
-      <p className="text-muted-foreground">Đường dẫn này không có trên hub, hoặc màn hình chưa được làm.</p>
+    <Centered code="404" title={t.missingTitle} body={t.missingBody}>
       <Link to="/" className={buttonVariants({ variant: "default" })}>
-        Về trang chủ
+        {t.home}
       </Link>
     </Centered>
   );
 }
 
-export function PendingPage() {
+function Spinner({ spinning = false }: { spinning?: boolean }) {
   return (
-    <main className="grid min-h-dvh place-items-center text-muted-foreground" aria-busy="true">
-      Đang tải…
-    </main>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      className={spinning ? "size-7 text-primary motion-safe:animate-spin" : "size-4"}
+    >
+      <path d="M21 12a9 9 0 1 1-6.22-8.56" />
+    </svg>
+  );
+}
+
+export function PendingPage() {
+  const t = useT(text);
+  return (
+    <OutsideLayout centered>
+      <div role="status" aria-busy="true" className="flex flex-col items-center gap-3.5 text-muted-foreground">
+        <Spinner spinning />
+        {t.loading}
+      </div>
+    </OutsideLayout>
   );
 }
