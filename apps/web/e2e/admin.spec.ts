@@ -831,3 +831,71 @@ test("tạo tổ chức: lỗi kiểm tra của hub hiện ngay dưới ô bị 
     emailDomain: "khong-hop-le",
   });
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`tạo tổ chức: ba bước, tải lại, VI/EN, ${theme} ở 360px`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 360, height: 850 });
+    let created = false;
+    const hub = await fakeHub(page, {
+      signedIn: true,
+      rpc: {
+        ...withInvites(),
+        "orgs/mine": () => ok({ orgs: created ? [myOrg(ORG_A)] : [], canCreateOrg: !created }),
+        "orgs/create": () => {
+          created = true;
+          return ok(myOrg(ORG_A));
+        },
+        "teams/create": () => ok(TEAM),
+      },
+    });
+    await page.goto("/orgs/new");
+    await expect(page.getByRole("heading", { name: "Tạo tổ chức" })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`org-${theme}.png`), fullPage: true });
+    await page.getByRole("button", { name: "EN", exact: true }).click();
+    await page.getByLabel("Organization name").fill(ORG_A.name);
+    await page.getByRole("button", { name: "Next: create team" }).click();
+    await expect(page.getByRole("heading", { name: "Create the first team" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Create the first team" })).toBeVisible();
+    await expect(page.getByRole("listitem").filter({ hasText: "First team" })).toHaveAttribute("aria-current", "step");
+    await page.getByLabel("Team name").fill(TEAM.name);
+    await page.screenshot({ path: testInfo.outputPath(`team-${theme}.png`), fullPage: true });
+    await page.getByRole("button", { name: "Next: invite people" }).click();
+    await expect(page.getByRole("heading", { name: "Invite people" })).toBeVisible();
+    await expect(page.getByLabel("Add to team")).toHaveValue(TEAM.id);
+    await page.getByRole("button", { name: "VI", exact: true }).click();
+    await page.getByLabel("Email", { exact: true }).fill("new@example.com");
+    await page.screenshot({ path: testInfo.outputPath(`invite-step-${theme}.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByRole("button", { name: "Tạo lời mời", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Link chỉ hiện một lần");
+    expect(hub.rpcCalls.find((call) => call.path === "teams/create")?.input).toMatchObject({
+      name: TEAM.name,
+      slug: TEAM.slug,
+      adminUserId: USER.id,
+    });
+    expect(hub.rpcCalls.find((call) => call.path === "invitations/create")?.input).toMatchObject({
+      emails: ["new@example.com"],
+      teamId: TEAM.id,
+      teamRole: "member",
+    });
+    await page.getByRole("button", { name: "Xong: vào Đội và hệ thống" }).click();
+    await expect(page).toHaveURL(`/admin/teams?doi=${TEAM.id}`);
+  });
+}
+
+test("tạo tổ chức: bỏ qua đội và lỗi hub ở bước đội giữ đầu vào", async ({ page }) => {
+  const hub = await fakeHub(page, {
+    signedIn: true,
+    rpc: { ...twoOrgs(), "teams/create": () => fail("CONFLICT", 409, "Định danh đội đã được dùng.") },
+  });
+  await page.goto("/orgs/new?buoc=doi");
+  await page.getByLabel("Tên đội").fill("Đội mới");
+  await page.getByRole("button", { name: "Tiếp: mời người" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Định danh đội đã được dùng.");
+  await expect(page.getByLabel("Tên đội")).toHaveValue("Đội mới");
+  await page.getByRole("link", { name: "Để sau" }).click();
+  await expect(page).toHaveURL("/admin/teams");
+  expect(hub.rpcCalls.some((call) => call.path === "invitations/create")).toBe(false);
+});
