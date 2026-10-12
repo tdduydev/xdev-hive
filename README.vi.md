@@ -111,13 +111,22 @@ quyền SSH vào máy chủ:
 HIVE_PUBLIC_URL=https://hive.example.com HIVE_ORG_CREATORS=admin@example.com deploy/remote.sh user@server
 ```
 
-Secret được sinh ngay trên máy chủ và không bao giờ in ra. Sau đó đăng ký máy trên web (Máy → Thêm máy) và cài worker
-trên từng máy:
+Secret được sinh ngay trên máy chủ và không bao giờ in ra. Sau đó tạo mã dùng một lần trên web (Máy → Thêm máy) và cài
+worker trên từng máy. Script tải binary dựng sẵn, kiểm chữ ký và checksum của bản phát hành, đăng ký máy rồi cài dịch vụ
+chạy nền:
 
 ```sh
-hive-worker register --hub https://hive.example.com --token <mã dùng một lần>
-hive-worker service install
+# Linux, macOS
+curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/install.sh | sh -s -- --hub https://hive.example.com --token <mã dùng một lần>
 ```
+
+```powershell
+# Windows
+irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub https://hive.example.com -Token <mã dùng một lần>
+```
+
+`hive-worker update` nâng máy lên bản phát hành mới nhất.
 
 Xem [docs/self-hosting.md](docs/self-hosting.md) (tiếng Anh) về cấu hình, tài khoản quản trị đầu tiên, HTTPS, MCP qua
 HTTP trong mạng tin cậy, sao lưu và khôi phục, worker chạy nền và run trong sandbox.

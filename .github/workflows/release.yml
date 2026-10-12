@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  # Chứng thực nguồn gốc bản dựng (kiểm bằng `gh attestation verify`).
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Worker (goreleaser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: worker/go.mod
+          cache-dependency-path: worker/go.sum
+      - name: Test worker
+        working-directory: worker
+        run: go test ./...
+      - name: Khoá ký checksums.txt
+        env:
+          WORKER_SIGNING_KEY: ${{ secrets.WORKER_SIGNING_KEY }}
+        run: |
+          test -n "$WORKER_SIGNING_KEY" || { echo "::error::Thiếu secret WORKER_SIGNING_KEY"; exit 1; }
+          umask 077
+          printf '%s\n' "$WORKER_SIGNING_KEY" > "$RUNNER_TEMP/worker-signing.key"
+          # Secret lệch với khoá công khai trong repo thì mọi worker sẽ từ chối bản này: dừng trước khi dựng.
+          openssl ec -in "$RUNNER_TEMP/worker-signing.key" -pubout 2>/dev/null | diff -q - worker/internal/update/release-signing.pem \
+            || { echo "::error::WORKER_SIGNING_KEY không khớp worker/internal/update/release-signing.pem"; exit 1; }
+          echo "WORKER_SIGNING_KEY_FILE=$RUNNER_TEMP/worker-signing.key" >> "$GITHUB_ENV"
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2.18"
+          workdir: worker
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Kiểm bản nháp trước khi công bố
+        run: |
+          openssl dgst -sha256 -verify worker/internal/update/release-signing.pem \
+            -signature worker/dist/checksums.txt.sig worker/dist/checksums.txt
+          tag="${GITHUB_REF_NAME#v}"
+          got="$(worker/dist/hive-worker_linux_amd64_v1/hive-worker version)"
+          test "$got" = "$tag" || { echo "::error::Binary báo phiên bản $got, tag là $tag"; exit 1; }
+      - name: Xoá khoá ký
+        if: always()
+        run: rm -f "$RUNNER_TEMP/worker-signing.key"
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            worker/dist/*.tar.gz
+            worker/dist/*.zip
+            worker/dist/checksums.txt
+      - name: Công bố bản phát hành
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest

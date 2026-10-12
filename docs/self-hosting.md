@@ -85,12 +85,32 @@ accounts whose invitation was revoked.
 
 ## Connecting machines
 
-Create a one-time registration token in the web app (Machines → Add machine), then on each machine:
+Create a one-time registration token in the web app (Machines → Add machine), then on each machine run the install
+script. It needs no Go toolchain:
+
+```sh
+# Linux, macOS: installs to ~/.local/bin
+curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/install.sh | sh -s -- --hub https://hive.example.com --token <token>
+```
+
+```powershell
+# Windows (PowerShell 5.1 or later): installs to %LOCALAPPDATA%\xdev-hive\bin and adds it to the user PATH
+irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub https://hive.example.com -Token <token>
+```
+
+The script picks the build for the OS and CPU, verifies the ECDSA signature of `checksums.txt` and the archive's
+SHA-256, then runs `hive-worker register` and `hive-worker service install`. Options: `--machine NAME`,
+`--capacity N`, `--version X.Y.Z`, `--dir DIR`, `--no-service` (PowerShell: `-Machine`, `-Capacity`, `-Version`, `-Dir`,
+`-NoService`). `HIVE_RELEASES_URL` points the script at an internal mirror with the same layout as GitHub Releases.
+
+The same steps by hand:
 
 ```sh
 hive-worker register --hub https://hive.example.com --token <token>
 hive-worker service install [--config PATH] [--capacity N]
 hive-worker service status
+hive-worker service restart
 hive-worker service uninstall
 ```
 
@@ -106,6 +126,31 @@ are already logged in on that machine; the hub never receives CLI credentials.
 
 Machines can be paused from the web app: a paused machine takes no new runs while its current runs finish.
 
+### Updating workers
+
+```sh
+hive-worker update --check     # running and latest version
+hive-worker update             # install the latest release and restart the background service
+hive-worker update --version 0.1.0   # install exactly this version, also to roll back
+```
+
+The update downloads the release for the machine's OS and CPU, checks the signature of `checksums.txt` against the
+public key built into the worker (`worker/internal/update/release-signing.pem`) and the archive's SHA-256, runs the new
+binary once to confirm its version, and only then replaces the running file. Restarting the service interrupts runs in
+progress; they are reported as interrupted when the worker comes back. Running the install script again without
+`--token` also upgrades. The worker bundled with the desktop app is updated with the app and ignores update requests.
+
+A worker that receives an `update` message from the hub stops taking new runs, waits for its current runs to finish,
+updates itself and restarts with the same arguments.
+
+To check a release by hand:
+
+```sh
+openssl dgst -sha256 -verify worker/internal/update/release-signing.pem -signature checksums.txt.sig checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+gh attestation verify hive-worker_linux_amd64.tar.gz --repo tdduydev/xdev-hive
+```
+
 ## Sandboxed runs (optional)
 
 Projects with the `sandbox` feature run on a **runner host** instead of developer machines. Each run gets a single-use
@@ -120,9 +165,8 @@ On the runner host (Linux):
    default, and the runner host refuses to start without this):
    `sudo runsc install -- --host-uds=open && sudo systemctl reload docker`. Check with
    `docker run --rm --runtime=runsc --network=none busybox dmesg | head -1`, which should print `Starting gVisor...`.
-2. Create a **host** registration token (the web app does not offer this yet; call
-   `POST /api/v1/teams/{teamId}/machines/registrations` with `{"kind":"host"}` as a team administrator), register the
-   machine with `hive-worker register`, then start `hive-worker host`. The host refuses to start without `runsc` unless
+2. Create a **runner host** registration token (Machines → Add machine → Runner host), install the worker with
+   `--no-service`, then start `hive-worker host`. The host refuses to start without `runsc` unless
    you pass `--allow-runc` for development.
 
 `pnpm e2e:sandbox` exercises the full sandbox path and exits with code 77 (skipped) when Docker or `runsc` is missing.
