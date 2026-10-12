@@ -12,6 +12,7 @@ describe("menu theo hồ sơ", () => {
       "home",
       "work",
       "reviews",
+      "knowledge",
       "docs",
       "write",
       "skills",
@@ -24,13 +25,13 @@ describe("menu theo hồ sơ", () => {
 
   it("writer: không thấy Việc của tôi, Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "reviews", "docs", "write", "skills", "tokens"]);
+    expect(items.map((i) => i.id)).toEqual(["home", "reviews", "knowledge", "docs", "write", "skills", "tokens"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
   it("lead: thấy hết, Tài liệu sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(9);
+    expect(items).toHaveLength(10);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
