@@ -1,5 +1,5 @@
 import { ChartLineIcon, FileTextIcon, HouseIcon, type LucideIcon, PlayIcon, WrenchIcon, ZapIcon } from "lucide-react";
-import type { Dict } from "./i18n.ts";
+import type { Dict } from "@/lib/i18n.ts";
 
 /**
  * Hồ sơ menu của app (AppNav.dc.html). Một app cho mọi người: mục hiện hay ẩn theo quyền, không tách app.

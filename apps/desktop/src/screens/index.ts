@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { ScreenId } from "../lib/nav.ts";
+import type { ScreenId } from "@/lib/nav.ts";
 
 /**
  * Màn đã làm của cửa sổ app, theo mục AppNav. Mục chưa có ở đây hiện trang "Sắp có". Mỗi task trong

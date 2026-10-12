@@ -1,10 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { windowKind } from "./lib/tauri.ts";
-import { applyTheme, readTheme, watchSystemTheme } from "./lib/theme.ts";
-import { RegisterScreen } from "./screens/register-screen.tsx";
-import { AppShell } from "./shell/app-shell.tsx";
-import "./styles.css";
+import { windowKind } from "@/lib/tauri.ts";
+import { applyTheme, readTheme, watchSystemTheme } from "@/lib/theme.ts";
+import { RegisterScreen } from "@/screens/register-screen.tsx";
+import { AppShell } from "@/shell/app-shell.tsx";
+import "@/styles.css";
 
 // CSP của app (tauri.conf.json) không cho script inline, nên đặt sáng/tối ở đây, trước lần vẽ đầu.
 applyTheme(readTheme());

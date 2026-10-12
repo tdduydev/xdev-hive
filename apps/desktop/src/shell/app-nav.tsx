@@ -1,8 +1,8 @@
 import { ChevronsUpDownIcon, UserRoundIcon } from "lucide-react";
-import { LogoIcon, Wordmark } from "../components/logo.tsx";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { navItems, type Profile, type ScreenId } from "../lib/nav.ts";
-import { cn } from "../lib/utils.ts";
+import { LogoIcon, Wordmark } from "@/components/logo.tsx";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { navItems, type Profile, type ScreenId } from "@/lib/nav.ts";
+import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{ aria: string; readOnly: string; folder: string; noFolder: string; notLinked: string }> = {
   vi: {
