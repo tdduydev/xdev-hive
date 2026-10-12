@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { envImageInput, type Project, SUGGESTED_EGRESS_RULES } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
+import { Input } from "@xdev-hive/ui/input";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { AllowlistEditor } from "@/components/allowlist-editor.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { Switch } from "@/components/ui/switch.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";

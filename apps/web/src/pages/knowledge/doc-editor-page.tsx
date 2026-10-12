@@ -14,13 +14,13 @@ import {
   TERMINAL_RUN_STATES,
   wordDiff,
 } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import {
   type BlockTemplate,

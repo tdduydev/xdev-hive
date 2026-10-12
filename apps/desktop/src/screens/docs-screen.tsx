@@ -1,10 +1,4 @@
-import { ArrowUpDownIcon, FolderOpenIcon, LoaderCircleIcon, PlusIcon, UserRoundIcon } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
-import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
-import { FolderForm } from "@/components/folder-form.tsx";
-import { Wordmark } from "@/components/logo.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -12,9 +6,15 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
-import { Textarea } from "@/components/ui/textarea.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Textarea } from "@xdev-hive/ui/textarea";
+import { ArrowUpDownIcon, FolderOpenIcon, LoaderCircleIcon, PlusIcon, UserRoundIcon } from "lucide-react";
+import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AiAccountsDialog } from "@/components/ai-accounts-dialog.tsx";
+import { Markdown, SuggestionView } from "@/components/doc-view.tsx";
+import { FolderForm } from "@/components/folder-form.tsx";
+import { Wordmark } from "@/components/logo.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import {
   buildPrompt,

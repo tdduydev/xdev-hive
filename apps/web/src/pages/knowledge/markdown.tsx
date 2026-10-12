@@ -1,5 +1,5 @@
+import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@xdev-hive/ui/table";
 import { Fragment, type ReactNode } from "react";
-import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@/components/ui/table.tsx";
 
 /** Render untrusted knowledge as React text, never HTML; only allow web and mail links. */
 function inline(source: string): ReactNode[] {
