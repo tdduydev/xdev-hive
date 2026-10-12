@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đăng ký máy</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:36px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-secondary{background:var(--secondary);color:var(--secondary-foreground)}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.seg{display:inline-flex;padding:2px;background:var(--muted);border-radius:8px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1280px; height: 820px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; gap: 48px; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+
+  <div role="dialog" aria-labelledby="rg-t" style="width: 480px; border-radius: 12px; overflow: hidden; background: var(--card); color: var(--card-foreground); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5); border: 1px solid var(--border);">
+    <div style="height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px; margin-right: 46px;">{{t.winTitle}}</span>
+    </div>
+    <div style="padding: 28px; display: flex; flex-direction: column; gap: 18px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <dc-import name="Logo" height="44" hint-size="100px,44px"></dc-import>
+        <div class="seg" role="group" aria-label="{{t.langAria}}"><button type="button" onClick="{{toVi}}" aria-pressed="{{viP}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{enP}}" style="{{enS}}">EN</button></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 id="rg-t" style="margin: 0; font-family: var(--font-heading); font-size: 22px; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        <p class="muted" style="margin: 0;">{{t.lead}}</p>
+      </div>
+
+      <sc-if value="{{done}}" hint-placeholder-val="{{false}}">
+        <div role="status" style="padding: 16px; border-radius: 10px; background: var(--success-soft); color: var(--success); display: flex; gap: 12px; align-items: flex-start;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px;"><circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path></svg>
+          <span style="display: flex; flex-direction: column; gap: 2px;"><strong>{{t.doneTitle}}</strong><span class="mono" style="font-size: 12.5px;">hive.acme.vn · mac-mini-lan</span></span>
+        </div>
+        <button type="button" class="btn btn-default">{{t.openHive}}</button>
+      </sc-if>
+
+      <sc-if value="{{notDone}}" hint-placeholder-val="{{true}}">
+        <form style="display: flex; flex-direction: column; gap: 14px;">
+          <label class="field">{{t.hub}}<input class="input mono" type="url" placeholder="https://hive.cong-ty.vn" value="{{hubVal}}" style="font-size: 13px;"></label>
+          <label class="field">{{t.token}}<input class="input mono" type="password" value="{{tokenVal}}"></label>
+          <details open="{{pasteOpen}}" style="border: 1px dashed var(--border); border-radius: 10px; padding: 10px 12px;">
+            <summary style="cursor: pointer; font-size: 13px; font-weight: 500;">{{t.paste}}</summary>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+              <label class="field">{{t.cmdLabel}}<textarea class="input mono" rows="3" style="height: 76px; padding: 8px 10px; font-size: 12px; resize: none;" placeholder="hive-worker register --hub … --token …">{{cmdVal}}</textarea></label>
+              <button type="button" class="btn btn-secondary" style="align-self: flex-start; height: 30px; font-size: 13px;">{{t.fill}}</button>
+            </div>
+          </details>
+          <p class="muted" style="margin: 0; font-size: 12.5px;">{{t.tokenHint}}</p>
+          <button type="button" class="btn btn-default" disabled="{{busy}}" style="{{submitStyle}}"><sc-if value="{{busy}}" hint-placeholder-val="{{false}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.22-8.56"></path></svg></sc-if>{{t.submit}}</button>
+          <sc-if value="{{hasMsg}}" hint-placeholder-val="{{false}}"><p role="status" aria-live="polite" style="{{msgStyle}}">{{msg}}</p></sc-if>
+        </form>
+      </sc-if>
+      <p class="muted" style="margin: 0; font-size: 12px; text-align: center; padding-top: 4px; border-top: 1px solid var(--border);">{{t.foot}}</p>
+    </div>
+  </div>
+
+  <div style="width: 300px; display: flex; flex-direction: column; gap: 10px; color: #DBEAFE;">
+    <span class="mono" style="font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .7;">{{t.stateLabel}}</span>
+    <sc-for list="{{states}}" as="s" hint-placeholder-count="5">
+      <button type="button" onClick="{{s.pick}}" style="{{s.style}}">{{s.label}}</button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { st: 'empty', lang: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const st = this.state.st;
+    const T = {
+      winTitle: ['Đăng ký máy • xDev Hive', 'Register machine • xDev Hive'], langAria: ['Ngôn ngữ', 'Language'],
+      title: ['Kết nối máy của bạn', 'Connect your machine'], lead: ['Đăng ký một lần để worker nhận việc từ đội của bạn.', 'Register once so the worker can take tasks from your team.'],
+      hub: ['Địa chỉ hub công khai', 'Public hub address'], token: ['Token đăng ký', 'Registration token'], paste: ['Hoặc dán lệnh đăng ký', 'Or paste the registration command'],
+      cmdLabel: ['Lệnh do admin đội cung cấp', 'Command from your team admin'], fill: ['Điền từ lệnh', 'Fill from command'],
+      tokenHint: ['Token dùng một lần và hết hạn sau 1 giờ. Xin token từ admin đội trên web.', 'Tokens work once and expire after 1 hour. Ask your team admin on the web.'],
+      submit: ['Đăng ký và bật worker', 'Register and start worker'], foot: ['Đóng cửa sổ để ẩn vào khay. Worker vẫn chạy nền.', 'Close the window to hide it in the tray. The worker keeps running.'],
+      doneTitle: ['Đã đăng ký. Worker đang kết nối với hub.', 'Registered. The worker is connecting to the hub.'], openHive: ['Mở xDev Hive', 'Open xDev Hive'], stateLabel: ['Trạng thái mẫu', 'Sample state'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const filled = st !== 'empty';
+    const msgs = {
+      parsed: [['Đã điền địa chỉ hub và token.', 'Filled in the hub address and token.'], 'var(--success)'],
+      busy: [['Đang đăng ký máy…', 'Registering this machine…'], 'var(--muted-foreground)'],
+      error: [['Token đã hết hạn hoặc đã dùng. Xin token mới từ admin đội.', 'The token has expired or was already used. Ask your team admin for a new one.'], 'var(--destructive)'],
+    };
+    const m = msgs[st];
+    const defs = [['empty', ['Mới mở', 'Fresh']], ['parsed', ['Đã dán lệnh', 'Command pasted']], ['busy', ['Đang đăng ký', 'Registering']], ['error', ['Lỗi token', 'Token error']], ['done', ['Đã đăng ký', 'Registered']]];
+    const states = defs.map(([k, l]) => ({
+      label: x(l), pick: () => this.setState({ st: k }),
+      style: 'height: 36px; padding: 0 12px; text-align: left; border-radius: 8px; font: inherit; font-size: 13.5px; cursor: pointer; ' + (st === k ? 'background: #DBEAFE; color: #0F172A; border: 1px solid #DBEAFE; font-weight: 600;' : 'background: transparent; color: #DBEAFE; border: 1px solid rgb(219 234 254 / .3);'),
+    }));
+    const seg = (on) => 'height: 26px; min-width: 34px; padding: 0 8px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 12px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', t, states,
+      done: st === 'done', notDone: st !== 'done', busy: st === 'busy', pasteOpen: st === 'parsed',
+      hubVal: filled ? 'https://hive.acme.vn' : '', tokenVal: filled ? 'hwr_xxxxxxxxxxxx' : '',
+      cmdVal: st === 'parsed' ? 'hive-worker register --hub https://hive.acme.vn --token hwr_…' : '',
+      submitStyle: st === 'busy' ? 'opacity: .6; cursor: not-allowed;' : '',
+      hasMsg: !!m, msg: m ? x(m[0]) : '', msgStyle: 'margin: 0; font-size: 13px; color: ' + (m ? m[1] : 'inherit') + ';',
+      viP: en ? 'false' : 'true', enP: en ? 'true' : 'false', viS: seg(!en), enS: seg(en),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

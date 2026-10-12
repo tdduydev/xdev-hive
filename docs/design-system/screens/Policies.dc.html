@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chính sách agent</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:16px 20px 0;display:flex;flex-direction:column;gap:2px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.card-b{padding:14px 20px 18px;display:flex;flex-direction:column;gap:14px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 6px 0 10px;border-radius:9999px;border:1px solid var(--border);font-family:var(--font-mono);font-size:12.5px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12.5px;color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.row-t{display:flex;flex-direction:column;gap:2px}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+pre.code{margin:0;padding:10px 12px;border-radius:8px;background:var(--muted);font-family:var(--font-mono);font-size:12px;line-height:1.6;white-space:pre-wrap}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="policies" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1280px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; gap: 8px;"><button type="button" class="btn btn-outline">{{t.preview}}</button><button type="button" class="btn btn-default">{{t.save}}</button></div>
+      </header>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start;">
+        <section class="card">
+          <div class="card-h"><h2 class="card-t">Model</h2><span class="hint">{{t.modelHint}}</span></div>
+          <div class="card-b">
+            <sc-for list="{{models}}" as="m" hint-placeholder-count="3">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <span style="font-size: 13px; font-weight: 500;">{{m.cli}}</span>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{m.allowed}}" as="a" hint-placeholder-count="2"><span class="chip">{{a}}<button type="button" aria-label="{{t.remove}}" style="width: 18px; height: 18px; padding: 0; border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer;">×</button></span></sc-for><button type="button" class="btn btn-ghost btn-sm">+ {{t.add}}</button></div>
+              </div>
+            </sc-for>
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.neverAuto}}</strong><span class="hint">{{t.neverAutoHint}}</span></span><button type="button" role="switch" aria-checked="true" aria-label="{{t.neverAuto}}" class="sw" style="background: var(--primary);"><span style="transform: translateX(16px);"></span></button></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h2 class="card-t">{{t.perm}}</h2><span class="hint">{{t.permHint}}</span></div>
+          <div class="card-b">
+            <label class="field">{{t.defaultPerm}}<select class="input"><option>{{t.wt}}</option><option>{{t.full}}</option></select></label>
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.allowFull}}</strong><span class="hint">{{t.allowFullHint}}</span></span><button type="button" role="switch" aria-checked="{{fullSw.aria}}" aria-label="{{t.allowFull}}" class="sw" onClick="{{fullSw.flip}}" style="{{fullSw.track}}"><span style="{{fullSw.knob}}"></span></button></div>
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.sandboxReq}}</strong><span class="hint">{{t.sandboxReqHint}}</span></span><button type="button" role="switch" aria-checked="false" aria-label="{{t.sandboxReq}}" class="sw" style="background: var(--input);"><span></span></button></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h2 class="card-t">Hooks</h2><span class="hint">{{t.hooksHint}}</span></div>
+          <div class="card-b">
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.managedOnly}}</strong><span class="hint">{{t.managedOnlyHint}}</span></span><button type="button" role="switch" aria-checked="true" aria-label="{{t.managedOnly}}" class="sw" style="background: var(--primary);"><span style="transform: translateX(16px);"></span></button></div>
+            <ul style="margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+              <sc-for list="{{hooks}}" as="h" hint-placeholder-count="3">
+                <li style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border);"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">{{h.event}}</span><span style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35;"><span style="font-size: 13.5px;">{{h.name}}</span><span class="mono muted" style="font-size: 12px;">{{h.cmd}}</span></span><button type="button" class="btn btn-ghost btn-sm">{{t.edit}}</button></li>
+              </sc-for>
+            </ul>
+            <button type="button" class="btn btn-outline btn-sm" style="align-self: flex-start;">+ {{t.addHook}}</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card-h"><h2 class="card-t">{{t.instr}}</h2><span class="hint">{{t.instrHint}}</span></div>
+          <div class="card-b">
+            <div style="display: flex; gap: 6px;"><span class="chip" style="padding-right: 10px; background: var(--accent); color: var(--accent-foreground); border-color: transparent;">AGENTS.md</span><span class="chip" style="padding-right: 10px;">CLAUDE.md</span><span class="chip" style="padding-right: 10px;">.mcp.json</span></div>
+            <pre class="code">{{tplText}}</pre>
+            <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.keepSync}}</strong><span class="hint">{{t.keepSyncHint}}</span></span><button type="button" role="switch" aria-checked="false" aria-label="{{t.keepSync}}" class="sw" style="background: var(--input);"><span></span></button></div>
+          </div>
+        </section>
+
+        <section class="card" style="grid-column: 1 / -1;">
+          <div class="card-h"><h2 class="card-t">{{t.limits}}</h2><span class="hint">{{t.limitsHint}}</span></div>
+          <div class="card-b" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px;">
+            <label class="field">{{t.runBudget}}<input class="input mono" value="5"><span class="hint">USD</span></label>
+            <label class="field">{{t.dayBudget}}<input class="input mono" value="80"><span class="hint">USD</span></label>
+            <label class="field">{{t.parallel}}<input class="input mono" value="3"></label>
+            <label class="field">{{t.retention}}<select class="input"><option>90 {{t.days}}</option><option>30 {{t.days}}</option><option>365 {{t.days}}</option></select></label>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { full: false, lang: null, dark: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      crumb: ['Quản trị agent', 'Agent governance'], title: ['Chính sách agent', 'Agent policies'],
+      lead: ['Áp cho mọi run trong tổ chức. Hub ghi vào managed settings của CLI trên máy nhận việc; dự án không vượt được.', 'Applies to every run in the organization. The hub writes it to the CLI managed settings on run machines; projects cannot override it.'],
+      preview: ['Xem file sinh ra', 'Preview generated files'], save: ['Lưu chính sách', 'Save policy'],
+      modelHint: ['Model mà dự án được chọn. Dự án chọn model ngoài danh sách thì run dùng model đầu tiên.', 'Models projects may pick. Anything else falls back to the first model.'],
+      remove: ['Gỡ', 'Remove'], add: ['Thêm', 'Add'], neverAuto: ['Không tự lên model đắt nhất', 'Never auto-upgrade to the priciest model'], neverAutoHint: ['Bộ chọn model không tự chọn fast, max hay Fable.', 'The model router never picks fast, max or Fable on its own.'],
+      perm: ['Quyền CLI', 'CLI permissions'], permHint: ['Mặc định cho dự án mới và giới hạn trên cho mọi dự án.', 'Default for new projects and the upper bound for all.'],
+      defaultPerm: ['Mặc định cho dự án mới', 'Default for new projects'], wt: ['Trong worktree (khuyên dùng)', 'Inside the worktree (recommended)'], full: ['Toàn quyền', 'Full access'],
+      allowFull: ['Cho dự án bật toàn quyền', 'Let projects enable full access'], allowFullHint: ['Tắt thì nút Toàn quyền trong cấu hình dự án bị khoá.', 'When off, the Full access option in project settings is locked.'],
+      sandboxReq: ['Bắt buộc sandbox', 'Require sandbox'], sandboxReqHint: ['Mọi run code phải chạy trong container gVisor.', 'Every code run must run in a gVisor container.'],
+      hooksHint: ['Lệnh chạy chắc chắn ở các mốc của CLI: trước khi gọi tool, sau khi sửa file, khi kết thúc.', 'Commands that always run at CLI events: before a tool call, after edits, at the end.'],
+      managedOnly: ['Chỉ chạy hook của tổ chức', 'Only run organization hooks'], managedOnlyHint: ['Bỏ qua hook trong repo và máy cá nhân.', 'Ignore hooks from repos and personal machines.'],
+      edit: ['Sửa', 'Edit'], addHook: ['Thêm hook', 'Add hook'],
+      instr: ['File hướng dẫn agent', 'Agent instruction files'], instrHint: ['Mẫu hub commit vào repo khi tạo dự án.', 'Templates the hub commits to the repo when a project is created.'],
+      tpl: ['Đọc tài liệu và skill qua MCP trước khi sửa code.', 'Read docs and skills over MCP before changing code.'],
+      keepSync: ['Mở PR khi mẫu đổi', 'Open a PR when the template changes'], keepSyncHint: ['Hub mở PR cập nhật AGENTS.md cho mọi dự án.', 'The hub opens a PR updating AGENTS.md in every project.'],
+      limits: ['Giới hạn chung', 'Global limits'], limitsHint: ['Trần cho mọi dự án; dự án đặt thấp hơn được, cao hơn thì không.', 'Ceilings for every project; projects can go lower, not higher.'],
+      runBudget: ['Trần mỗi run', 'Per-run cap'], dayBudget: ['Trần mỗi ngày của tổ chức', 'Organization daily cap'], parallel: ['Run song song mỗi máy', 'Parallel runs per machine'], retention: ['Giữ log run', 'Keep run logs'], days: ['ngày', 'days'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const models = [
+      { cli: 'Claude Code', allowed: ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'] },
+      { cli: 'Codex', allowed: ['gpt-5-codex'] },
+      { cli: 'Gemini CLI', allowed: ['gemini-2.5-pro'] },
+    ];
+    const hooks = [
+      { event: 'PreToolUse', name: x(['Chặn lệnh xoá ngoài worktree', 'Block deletes outside the worktree']), cmd: 'hive-guard --deny "rm -rf /"' },
+      { event: 'PostToolUse', name: x(['Định dạng file vừa sửa', 'Format edited files']), cmd: 'pnpm exec prettier --write $FILE' },
+      { event: 'Stop', name: x(['Chạy test nhanh trước khi kết thúc', 'Quick tests before finishing']), cmd: 'pnpm check --affected' },
+    ];
+    const on = this.state.full;
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, models, hooks,
+      tplText: '# ' + '{' + '{project.name}' + '}\n\n' + t.tpl + '\n- Project key: ' + '{' + '{project.key}' + '}\n- MCP: https://hive.acme.vn/mcp',
+      fullSw: { aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--destructive)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ full: !on }) },
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

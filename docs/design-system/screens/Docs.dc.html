@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Tài liệu</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:30px;font-size:13px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.md h2{margin:16px 0 6px;font-size:16px;font-weight:600}
+.md code{font-family:var(--font-mono);font-size:12.5px;padding:1px 5px;border-radius:4px;background:var(--muted)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="docs" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; gap: 8px;"><button type="button" class="btn btn-outline">{{t.import}}</button><button type="button" class="btn btn-default">{{t.newDoc}}</button></div>
+      </header>
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <div style="flex: 3 1 640px; min-width: 0;">
+          <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,700px"></dc-import>
+        </div>
+        <aside class="card" style="flex: 2 1 380px; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;"><span class="mono muted" style="font-size: 12px;">{{cur.key}}</span><span class="badge" style="{{cur.scopeStyle}}">{{cur.scope}}</span></div>
+            <h2 style="margin: 0; font-size: 18px; font-weight: 600;">{{cur.title}}</h2>
+            <span class="muted" style="font-size: 12.5px;">v{{cur.ver}} · {{cur.by}} · {{cur.when}}</span>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;"><button type="button" class="btn btn-default btn-sm">{{t.edit}}</button><button type="button" class="btn btn-outline btn-sm">{{t.history}}</button><button type="button" class="btn btn-ghost btn-sm">{{t.copyMcp}}</button></div>
+          </div>
+          <div class="md" style="padding: 4px 18px 18px; line-height: 1.65;">
+            <h2>{{cur.title}}</h2>
+            <p>{{t.mdP1}}</p>
+            <ul style="padding-left: 20px;"><li>{{t.mdL1}}</li><li>{{t.mdL2}} <code>decimal.Decimal</code>.</li><li>{{t.mdL3}}</li></ul>
+            <h2>{{t.mdH2}}</h2>
+            <p>{{t.mdP2}} <code>go test ./... -race</code></p>
+          </div>
+          <div class="muted" style="margin-top: auto; padding: 12px 18px; border-top: 1px solid var(--border); background: var(--muted); font-size: 12.5px;">{{t.mcpNote}} <code class="mono" style="color: var(--foreground);">doc_get("{{cur.key}}")</code></div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cur: 'd0', lang: null, dark: null };
+    const base = [
+      ['money', ['Quy ước tiền tệ', 'Money conventions']], ['coding-style', ['Phong cách code', 'Coding style']], ['release-process', ['Quy trình phát hành', 'Release process']],
+      ['runbook', ['Runbook sự cố', 'Incident runbook']], ['api-guidelines', ['Hướng dẫn thiết kế API', 'API design guidelines']], ['architecture', ['Kiến trúc', 'Architecture']],
+      ['oncall', ['Lịch trực và leo thang', 'On-call and escalation']], ['security-checklist', ['Danh sách kiểm tra bảo mật', 'Security checklist']], ['glossary', ['Thuật ngữ nghiệp vụ', 'Business glossary']],
+      ['onboarding', ['Hướng dẫn người mới', 'Onboarding guide']], ['testing', ['Chiến lược test', 'Testing strategy']], ['data-model', ['Mô hình dữ liệu', 'Data model']],
+    ];
+    const scopes = [['org', null], ['team', 'thanh-toan'], ['team', 'nen-tang'], ['team', 'di-dong'], ['project', 'payment-api'], ['project', 'hive-worker'], ['project', 'mobile-app'], ['project', 'partner-portal']];
+    const people = ['Trần Lan', 'Nguyễn Minh', 'Phạm Hà', 'Lê Quang', 'agent · 7f3a91c2', 'agent · b04e7a19'];
+    let s = 5; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 146 }, (_, i) => {
+      const b = base[i % base.length]; const sc = scopes[i < base.length ? 0 : Math.floor(rnd() * scopes.length)];
+      return { id: 'd' + i, key: (sc[1] ? sc[1] + '/' : '') + b[0] + (i >= base.length * 8 ? '-' + i : ''), title: b[1], scope: sc[0], owner: sc[1], ver: 1 + Math.floor(rnd() * 14), by: people[Math.floor(rnd() * people.length)], days: Math.floor(rnd() * 120), pending: rnd() > 0.88, words: 200 + Math.floor(rnd() * 3000) };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], title: ['Tài liệu', 'Docs'], lead: ['Tài liệu markdown có phiên bản. Agent đọc qua MCP; người và agent đề xuất sửa.', 'Versioned markdown docs. Agents read them over MCP; people and agents propose edits.'],
+      import: ['Nhập từ repo', 'Import from repo'], newDoc: ['Tài liệu mới', 'New doc'], search: ['Tìm tiêu đề, key, người sửa…', 'Search title, key, editor…'],
+      edit: ['Sửa', 'Edit'], history: ['Lịch sử', 'History'], copyMcp: ['Chép lệnh MCP', 'Copy MCP call'], mcpNote: ['Agent đọc tài liệu này bằng', 'Agents read this doc with'],
+      mdP1: ['Các quy tắc dưới đây áp cho mọi thay đổi trong phạm vi này.', 'The rules below apply to every change in this scope.'], mdL1: ['Lưu tiền theo đơn vị nhỏ nhất.', 'Store money in the smallest unit.'],
+      mdL2: ['Không dùng float; dùng', 'Never use floats; use'], mdL3: ['Làm tròn theo từng dòng hoá đơn.', 'Round per invoice line.'], mdH2: ['Kiểm tra', 'Checks'], mdP2: ['Trước khi mở PR, chạy', 'Before opening a PR, run'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const SC = { org: [['Tổ chức', 'Organization'], 'accent'], team: [['Đội', 'Team'], 'ok'], project: [['Dự án', 'Project'], 'sec'] };
+    const tone = { accent: 'background: var(--accent); color: var(--accent-foreground);', ok: 'background: var(--success-soft); color: var(--success);', sec: 'background: var(--secondary); color: var(--secondary-foreground);' };
+    const ago = (d) => (d === 0 ? x(['hôm nay', 'today']) : x([d + ' ngày trước', d + ' d ago']));
+    const rows = this.data.map((d) => ({
+      id: d.id, title: x(d.title), key: d.key, scope: { text: x(SC[d.scope][0]), tone: SC[d.scope][1], dot: false }, owner: d.owner || '—',
+      ver: 'v' + d.ver, _sort_ver: d.ver, by: d.by, _f_author: d.by.startsWith('agent') ? 'Agent' : x(['Người', 'Person']),
+      prop: d.pending ? { text: x(['1 đề xuất', '1 proposal']), tone: 'warn' } : { text: '—', tone: 'off', dot: false }, _f_prop: d.pending ? x(['Có đề xuất chờ', 'Has proposal']) : x(['Không', 'None']),
+      words: d.words.toLocaleString(en ? 'en' : 'vi'), _sort_words: d.words, updated: ago(d.days), _sort_updated: -d.days,
+    }));
+    const columns = [
+      { key: 'title', label: x(['Tài liệu', 'Doc']), type: 'title', sub: 'key', subMono: true, sortable: true },
+      { key: 'scope', label: x(['Phạm vi', 'Scope']), type: 'badge' },
+      { key: 'owner', label: x(['Đội / dự án', 'Team / project']), type: 'mono' },
+      { key: 'ver', label: x(['Bản', 'Version']), type: 'num', sortable: true },
+      { key: 'words', label: x(['Số từ', 'Words']), type: 'num', sortable: true, hidden: true },
+      { key: 'prop', label: x(['Đề xuất', 'Proposals']), type: 'badge' },
+      { key: 'by', label: x(['Sửa lần cuối', 'Last editor']) },
+      { key: 'updated', label: x(['Cập nhật', 'Updated']), type: 'muted', sortable: true },
+    ];
+    const facets = [{ key: 'scope', label: x(['Phạm vi', 'Scope']) }, { key: 'owner', label: x(['Đội / dự án', 'Team / project']) }, { key: 'author', label: x(['Người sửa', 'Editor']) }, { key: 'prop', label: x(['Đề xuất', 'Proposals']) }];
+    const d = this.data.find((r) => r.id === this.state.cur) || this.data[0];
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 10, minW: 820, curId: d.id,
+      bulk: [x(['Chuyển phạm vi', 'Move scope']), x(['Xuất markdown', 'Export markdown']), x(['Xoá', 'Delete'])], pick: (r) => this.setState({ cur: r.id }),
+      cur: { key: d.key, title: x(d.title), ver: d.ver, by: d.by, when: ago(d.days), scope: x(SC[d.scope][0]) + (d.owner ? ' · ' + d.owner : ''), scopeStyle: tone[SC[d.scope][1]] },
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

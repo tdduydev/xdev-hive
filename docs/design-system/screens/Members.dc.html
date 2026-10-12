@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Thành viên</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:14px;width:100%}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="members" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; max-width: 1360px; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+        </div>
+        <button type="button" class="btn btn-default" onClick="{{openInvite}}">{{t.invite}}</button>
+      </header>
+      <div role="tablist" style="display: flex; gap: 4px; border-bottom: 1px solid var(--border);">
+        <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3"><button type="button" role="tab" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}<span class="mono" style="{{tb.countStyle}}">{{tb.count}}</span></button></sc-for>
+      </div>
+      <sc-if value="{{tabActive}}" hint-placeholder-val="{{true}}">
+        <dc-import name="DataTable" columns="{{colsActive}}" rows="{{rowsActive}}" facets="{{facetsActive}}" bulk="{{bulkActive}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,700px"></dc-import>
+      </sc-if>
+      <sc-if value="{{tabInvites}}" hint-placeholder-val="{{false}}">
+        <dc-import name="DataTable" columns="{{colsInv}}" rows="{{rowsInv}}" facets="{{facetsInv}}" bulk="{{bulkInv}}" lang="{{lang}}" placeholder="{{t.searchInv}}" page-size="{{size}}" min-width="{{minW}}" hint-size="100%,700px"></dc-import>
+      </sc-if>
+      <sc-if value="{{tabPending}}" hint-placeholder-val="{{false}}">
+        <p class="muted" style="margin: 0; font-size: 13.5px;">{{t.pendingIntro}}</p>
+        <dc-import name="DataTable" columns="{{colsPen}}" rows="{{rowsPen}}" facets="{{facetsPen}}" bulk="{{bulkPen}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minWp}}" hint-size="100%,600px"></dc-import>
+      </sc-if>
+    </main>
+  </div>
+
+  <sc-if value="{{inviteOpen}}" hint-placeholder-val="{{false}}">
+    <div style="position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 30;">
+      <div role="dialog" aria-modal="true" aria-labelledby="iv-t" class="card" style="width: 100%; max-width: 520px; box-shadow: var(--shadow-lg); overflow: hidden;">
+        <div style="padding: 18px 20px 0;"><h2 id="iv-t" style="margin: 0; font-size: 18px; font-weight: 600;">{{t.ivTitle}}</h2></div>
+        <form style="padding: 16px 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+          <label class="field" style="grid-column: 1 / -1;">Email<textarea class="input" style="height: 72px; padding: 8px 10px; resize: vertical;" placeholder="ten@congty.vn, ten2@congty.vn"></textarea><span class="hint">{{t.ivEmailHint}}</span></label>
+          <label class="field">{{t.cRole}}<select class="input"><option>{{t.rMember}}</option><option>{{t.rAdmin}}</option></select></label>
+          <label class="field">{{t.ivTeam}}<select class="input"><option>{{t.tPay}}</option><option>{{t.ivNoTeam}}</option></select></label>
+        </form>
+        <div style="padding: 12px 20px; display: flex; justify-content: flex-end; gap: 8px; background: var(--muted); border-top: 1px solid var(--border);">
+          <button type="button" class="btn btn-outline" onClick="{{closeInvite}}">{{t.cancel}}</button><button type="button" class="btn btn-default" onClick="{{closeInvite}}">{{t.ivCreate}}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'active', inv: false, lang: null, dark: null };
+    const first = ['Lan', 'Minh', 'Hà', 'Quang', 'Thảo', 'An', 'Bình', 'Tú', 'Khoa', 'Trang', 'Huy', 'Linh', 'Nam', 'Vy', 'Phúc', 'Ngọc'];
+    const last = ['Trần', 'Nguyễn', 'Phạm', 'Lê', 'Võ', 'Đỗ', 'Đặng', 'Hoàng', 'Bùi', 'Kiều'];
+    const plain = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+    let s = 17; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    const teams = ['thanh-toan', 'nen-tang', 'di-dong', 'du-lieu'];
+    this.people = Array.from({ length: 128 }, (_, i) => {
+      const f = first[i % first.length]; const l = last[Math.floor(rnd() * last.length)];
+      const role = i === 1 ? 'owner' : i < 4 ? 'admin' : 'member';
+      const ts = teams.filter(() => rnd() > 0.6);
+      return { id: 'u' + i, name: l + ' ' + f, email: plain(f) + (i > 15 ? i : '') + '@acme.vn', role, teams: ts.length ? ts : [], teamAdmin: ts.length && rnd() > 0.8, locked: rnd() > 0.95, login: rnd() > 0.7 ? 'SSO' : rnd() > 0.5 ? 'GitHub' : 'Email', days: Math.floor(rnd() * 400), seen: Math.floor(rnd() * 30) };
+    });
+    this.invites = Array.from({ length: 23 }, (_, i) => ({ id: 'i' + i, email: plain(first[(i + 3) % first.length]) + '.' + (100 + i) + '@acme.vn', role: i % 6 === 0 ? 'admin' : 'member', team: i % 3 ? teams[i % 4] : null, status: i < 9 ? 'pending' : i < 18 ? 'accepted' : 'expired', days: i }));
+    this.pending = Array.from({ length: 7 }, (_, i) => ({ id: 'q' + i, name: last[i] + ' ' + first[(i + 5) % first.length], email: plain(first[(i + 5) % first.length]) + '.' + plain(last[i]) + '@acme.vn', mins: i * 190 + 12 }));
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      crumb: ['Người và quyền', 'People & access'], title: ['Thành viên', 'Members'], invite: ['Mời người', 'Invite people'],
+      search: ['Tìm tên, email…', 'Search name or email…'], searchInv: ['Tìm email…', 'Search email…'],
+      pendingIntro: ['Người đăng nhập SSO lần đầu vào hàng này khi tổ chức chọn "Vào hàng chờ duyệt".', 'First-time SSO sign-ins land here when the organization chooses "Queue for approval".'],
+      ivTitle: ['Mời người vào tổ chức', 'Invite people to the organization'], ivEmailHint: ['Nhiều email cách nhau bằng dấu phẩy hoặc xuống dòng.', 'Separate emails with commas or new lines.'],
+      cRole: ['Vai trò tổ chức', 'Organization role'], rMember: ['Thành viên', 'Member'], rAdmin: ['Quản trị', 'Admin'], ivTeam: ['Thêm vào đội', 'Add to team'], tPay: ['Thanh toán', 'Payments'], ivNoTeam: ['Không thêm', 'No team'],
+      cancel: ['Huỷ', 'Cancel'], ivCreate: ['Tạo lời mời', 'Create invitations'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const R = { owner: [['Chủ sở hữu', 'Owner'], 'accent'], admin: [['Quản trị', 'Admin'], 'sec'], member: [['Thành viên', 'Member'], 'off'] };
+    const ini = (n) => n.split(' ').map((w) => w[0]).slice(-2).join('');
+    const ago = (d) => (d === 0 ? x(['hôm nay', 'today']) : x([d + ' ngày trước', d + ' d ago']));
+    const none = x(['Chưa thuộc đội', 'No team']);
+    const rowsActive = this.people.map((p) => ({
+      id: p.id, person: { text: p.name + (p.id === 'u0' ? x([' (bạn)', ' (you)']) : ''), sub: p.email, ini: ini(p.name) }, role: { text: x(R[p.role][0]), tone: R[p.role][1], dot: false },
+      teams: p.teams.length ? p.teams : [], _f_teams: p.teams.length ? p.teams : [none], teamAdmin: p.teamAdmin ? { text: x(['Quản trị đội', 'Team admin']), tone: 'accent', dot: false } : { text: '—', tone: 'off', dot: false },
+      status: p.locked ? { text: x(['Đã khoá', 'Locked']), tone: 'bad' } : { text: x(['Hoạt động', 'Active']), tone: 'ok' }, login: p.login,
+      joined: ago(p.days), _sort_joined: -p.days, seen: ago(p.seen), _sort_seen: -p.seen,
+    }));
+    const colsActive = [
+      { key: 'person', label: x(['Người', 'Person']), type: 'avatar', sortable: true },
+      { key: 'role', label: x(['Vai trò tổ chức', 'Organization role']), type: 'badge' },
+      { key: 'teams', label: x(['Đội', 'Teams']), type: 'tags' },
+      { key: 'teamAdmin', label: x(['Trong đội', 'In team']), type: 'badge', hidden: true },
+      { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' },
+      { key: 'login', label: x(['Đăng nhập bằng', 'Signs in with']) },
+      { key: 'seen', label: x(['Hoạt động gần nhất', 'Last active']), type: 'muted', sortable: true },
+      { key: 'joined', label: x(['Tham gia', 'Joined']), type: 'muted', sortable: true },
+    ];
+    const facetsActive = [{ key: 'role', label: x(['Vai trò', 'Role']) }, { key: 'teams', label: x(['Đội', 'Team']) }, { key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'login', label: x(['Đăng nhập', 'Sign-in']) }];
+    const IS = { pending: [['Chờ nhận', 'Pending'], 'warn'], accepted: [['Đã nhận', 'Accepted'], 'ok'], expired: [['Hết hạn', 'Expired'], 'off'] };
+    const rowsInv = this.invites.map((v) => ({ id: v.id, email: v.email, role: { text: x(R[v.role][0]), tone: R[v.role][1], dot: false }, team: v.team || '—', status: { text: x(IS[v.status][0]), tone: IS[v.status][1] }, sent: ago(v.days), _sort_sent: -v.days }));
+    const colsInv = [{ key: 'email', label: 'Email', type: 'mono', sortable: true }, { key: 'role', label: x(['Vai trò', 'Role']), type: 'badge' }, { key: 'team', label: x(['Đội', 'Team']), type: 'mono' }, { key: 'status', label: x(['Trạng thái', 'Status']), type: 'badge' }, { key: 'sent', label: x(['Gửi', 'Sent']), type: 'muted', sortable: true }];
+    const facetsInv = [{ key: 'status', label: x(['Trạng thái', 'Status']) }, { key: 'role', label: x(['Vai trò', 'Role']) }, { key: 'team', label: x(['Đội', 'Team']) }];
+    const rowsPen = this.pending.map((q) => ({ id: q.id, person: { text: q.name, sub: q.email, ini: ini(q.name) }, first: x([Math.floor(q.mins / 60) + ' giờ trước', Math.floor(q.mins / 60) + ' h ago']), _sort_first: -q.mins, via: 'SSO · acme.vn' }));
+    const colsPen = [{ key: 'person', label: x(['Người', 'Person']), type: 'avatar', sortable: true }, { key: 'via', label: x(['Qua', 'Via']), type: 'mono' }, { key: 'first', label: x(['Đăng nhập lần đầu', 'First sign-in']), type: 'muted', sortable: true }];
+    const tb = this.state.tab;
+    const tabs = [['active', ['Đang hoạt động', 'Active'], this.people.length, 'off'], ['invites', ['Lời mời', 'Invitations'], this.invites.length, 'off'], ['pending', ['Chờ duyệt', 'Pending approval'], this.pending.length, 'warn']].map(([k, l, n, c]) => ({
+      label: x(l), count: n, sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }),
+      style: 'height: 40px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13.5px; cursor: pointer; ' + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); font-weight: 500; border-bottom: 2px solid transparent;'),
+      countStyle: 'font-size: 11px; padding: 0 6px; border-radius: 9999px; ' + (c === 'warn' ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--muted); color: var(--muted-foreground);'),
+    }));
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, tabs, size: 10, minW: 1000, minWp: 640,
+      tabActive: tb === 'active', tabInvites: tb === 'invites', tabPending: tb === 'pending',
+      colsActive, rowsActive, facetsActive, bulkActive: [x(['Đổi vai trò', 'Change role']), x(['Thêm vào đội', 'Add to team']), x(['Khoá', 'Lock'])],
+      colsInv, rowsInv, facetsInv, bulkInv: [x(['Gửi lại', 'Resend']), x(['Thu hồi', 'Revoke'])],
+      colsPen, rowsPen, facetsPen: [], bulkPen: [x(['Duyệt', 'Approve']), x(['Từ chối', 'Deny'])],
+      inviteOpen: this.state.inv, openInvite: () => this.setState({ inv: true }), closeInvite: () => this.setState({ inv: false }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

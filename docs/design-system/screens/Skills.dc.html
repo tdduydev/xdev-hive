@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Skills</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:30px;font-size:13px}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+pre.code{margin:0;padding:12px 14px;border-radius:8px;background:var(--muted);font-family:var(--font-mono);font-size:12.5px;line-height:1.6;white-space:pre-wrap}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="skills" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="Skills" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 32px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">Skills</h1>
+          <p class="muted" style="margin: 0;">{{t.lead}}</p>
+        </div>
+        <button type="button" class="btn btn-default"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"></path></svg>{{t.newSkill}}</button>
+      </header>
+
+      <section class="card" aria-label="{{t.repoAria}}" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px;">
+        <span style="width: 40px; height: 40px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--foreground); color: var(--background);"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.4 5.4 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4M9 18c-4.51 2-5-2-7-2"></path></svg></span>
+        <div style="flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 2px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="muted" style="font-size: 13px;">{{t.repoLabel}}</span><a href="https://github.com/tdduydev/xdev-skills" class="mono" style="font-weight: 600; text-decoration: none;">tdduydev/xdev-skills</a><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">main</span><span class="badge" style="{{syncStyle}}"><span class="dot"></span>{{syncLabel}}</span></div>
+          <span class="muted" style="font-size: 13px;">{{syncMeta}}</span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <button type="button" class="btn btn-outline btn-sm" onClick="{{toggleTree}}">{{t.structure}}</button>
+          <button type="button" class="btn btn-outline btn-sm">{{t.repoSettings}}</button>
+          <button type="button" class="btn btn-default btn-sm" onClick="{{sync}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M3 21v-5h5"></path></svg>{{t.syncNow}}</button>
+        </div>
+        <sc-if value="{{showTree}}" hint-placeholder-val="{{false}}">
+          <div style="flex-basis: 100%; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px;">
+            <pre class="code">xdev-skills/
+├─ org/
+│  ├─ code-review/SKILL.md
+│  └─ db-migration/SKILL.md
+├─ teams/
+│  └─ thanh-toan/
+│     └─ vn-invoice/SKILL.md
+├─ projects/
+│  └─ payment-api/
+│     └─ db-migration/SKILL.md
+└─ hive.json</pre>
+            <ul style="margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px;">
+              <li>{{t.r1}}</li><li>{{t.r2}}</li><li>{{t.r3}}</li><li>{{t.r4}}</li>
+            </ul>
+          </div>
+        </sc-if>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <div style="flex: 3 1 640px; min-width: 0;">
+          <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,700px"></dc-import>
+        </div>
+        <aside class="card" style="flex: 2 1 360px; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+          <div style="padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;"><span class="badge" style="{{cur.scopeStyle}}">{{cur.scopeText}}</span><span class="badge" style="{{cur.syncStyle}}">{{cur.syncText}}</span></div>
+            <h2 class="mono" style="margin: 0; font-size: 17px; font-weight: 600;">{{cur.name}}</h2>
+            <p class="muted" style="margin: 0; font-size: 13.5px;">{{cur.desc}}</p>
+            <a href="https://github.com/tdduydev/xdev-skills" class="mono" style="font-size: 12.5px; text-decoration: none;">{{cur.path}}</a>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;"><button type="button" class="btn btn-default btn-sm">{{t.edit}}</button><button type="button" class="btn btn-outline btn-sm">{{t.history}}</button><button type="button" class="btn btn-ghost btn-sm">{{t.openGh}}</button></div>
+          </div>
+          <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 8px;">
+            <span class="mono muted" style="font-size: 11px; text-transform: uppercase; letter-spacing: .05em;">SKILL.md · v{{cur.ver}}</span>
+            <pre class="code">{{cur.md}}</pre>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cur: 's0', tree: true, synced: false, lang: null, dark: null };
+    const names = [
+      ['db-migration', ['Tạo migration an toàn, bật RLS cho bảng mới', 'Safe migrations with RLS on new tables']], ['code-review', ['Tiêu chí review chéo và thang điểm 0–10', 'Cross-review criteria and 0–10 scale']],
+      ['write-tests', ['Viết test bảng cho Go', 'Table-driven Go tests']], ['vn-invoice', ['Hoá đơn điện tử và VAT Việt Nam', 'Vietnam e-invoice and VAT']],
+      ['release-notes', ['Ghi chú phát hành từ PR đã merge', 'Release notes from merged PRs']], ['ui-copy-vi', ['Viết chữ giao diện tiếng Việt', 'Vietnamese UI copy']],
+      ['incident-triage', ['Đọc log, tìm nguyên nhân, đề xuất vá', 'Read logs, find the cause, propose a fix']], ['flutter-widgets', ['Quy ước widget và state di động', 'Mobile widget and state conventions']],
+      ['api-design', ['Thiết kế REST và mã lỗi', 'REST design and error codes']], ['security-review', ['Rà OWASP trước khi mở PR', 'OWASP pass before a PR']],
+      ['perf-profiling', ['Đo và tối ưu hiệu năng Go', 'Profile and tune Go performance']], ['docker-image', ['Dựng image nhỏ, cache tốt', 'Small, cache-friendly images']],
+      ['react-query', ['Mẫu TanStack Query cho web', 'TanStack Query patterns for web']], ['tailwind-shadcn', ['Dựng UI bằng shadcn/ui', 'Build UI with shadcn/ui']],
+      ['sql-tuning', ['Đọc EXPLAIN và thêm index', 'Read EXPLAIN and add indexes']],
+    ];
+    const scopes = [['org', null], ['team', 'thanh-toan'], ['team', 'nen-tang'], ['project', 'payment-api'], ['project', 'hive-worker'], ['project', 'mobile-app']];
+    const sync = ['synced', 'synced', 'synced', 'synced', 'hubOnly', 'diverged'];
+    let s = 11; const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    this.data = Array.from({ length: 64 }, (_, i) => {
+      const nm = names[i % names.length]; const sc = i < names.length ? scopes[0] : scopes[1 + Math.floor(rnd() * 5)];
+      return { id: 's' + i, name: nm[0] + (i >= names.length * 3 ? '-v2' : ''), desc: nm[1], scope: sc[0], owner: sc[1], used: Math.floor(rnd() * 140), ver: 1 + Math.floor(rnd() * 9), sync: i === 0 ? 'synced' : sync[Math.floor(rnd() * sync.length)], days: Math.floor(rnd() * 60), shadows: i === 3 * names.length - 15 };
+    });
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      knowledge: ['Kiến thức', 'Knowledge'], lead: ['Skill (SKILL.md) nạp cho agent khi chạy. Hub lưu skill trong repo Git, nên mọi thay đổi có lịch sử và review.', 'Skills (SKILL.md) loaded into agent runs. The hub stores them in a Git repo, so every change has history and review.'],
+      newSkill: ['Skill mới', 'New skill'], repoAria: ['Kho skill', 'Skill repository'], repoLabel: ['Kho skill', 'Skill repo'], structure: ['Cấu trúc repo', 'Repo layout'], repoSettings: ['Đổi repo', 'Change repo'], syncNow: ['Đồng bộ ngay', 'Sync now'],
+      r1: ['Mỗi skill là một thư mục có SKILL.md; thư mục cha là phạm vi: org, teams/<đội>, projects/<key>.', 'Each skill is a folder with SKILL.md; its parent folder is the scope: org, teams/<team>, projects/<key>.'],
+      r2: ['Sửa trên hub tạo commit vào main, người viết là bạn.', 'Editing on the hub commits to main as you.'],
+      r3: ['Đề xuất sửa skill thành pull request; duyệt ở hub là merge PR.', 'Skill proposals become pull requests; approving on the hub merges the PR.'],
+      r4: ['Push thẳng vào repo thì hub đọc lại qua webhook trong vài giây.', 'Pushing to the repo directly is picked up by webhook within seconds.'],
+      search: ['Tìm skill, mô tả, đường dẫn…', 'Search skill, description, path…'], edit: ['Sửa', 'Edit'], history: ['Lịch sử commit', 'Commit history'], openGh: ['Mở trên GitHub', 'Open on GitHub'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+    const SC = { org: [['Tổ chức', 'Organization'], 'accent'], team: [['Đội', 'Team'], 'ok'], project: [['Dự án', 'Project'], 'sec'] };
+    const SY = { synced: [['Đã đồng bộ', 'Synced'], 'ok'], hubOnly: [['Chưa đẩy lên repo', 'Not pushed'], 'warn'], diverged: [['Khác repo', 'Diverged'], 'bad'] };
+    const tone = { accent: 'background: var(--accent); color: var(--accent-foreground);', ok: 'background: var(--success-soft); color: var(--success);', sec: 'background: var(--secondary); color: var(--secondary-foreground);', warn: 'background: var(--warning-soft); color: var(--warning);', bad: 'background: var(--destructive-soft); color: var(--destructive);' };
+    const pathOf = (d) => (d.scope === 'org' ? 'org/' : d.scope === 'team' ? 'teams/' + d.owner + '/' : 'projects/' + d.owner + '/') + d.name + '/SKILL.md';
+    const ago = (dd) => (dd === 0 ? x(['hôm nay', 'today']) : x([dd + ' ngày trước', dd + ' d ago']));
+    const rows = this.data.map((d) => ({
+      id: d.id, name: d.name, desc: x(d.desc) + (d.shadows ? x([' · che bản Tổ chức', ' · hides org version']) : ''),
+      scope: { text: x(SC[d.scope][0]), tone: SC[d.scope][1], dot: false }, owner: d.owner || '—', path: pathOf(d),
+      used: d.used, _sort_used: d.used, ver: 'v' + d.ver, _sort_ver: d.ver, sync: { text: x(SY[d.sync][0]), tone: SY[d.sync][1] }, updated: ago(d.days), _sort_updated: -d.days,
+    }));
+    const columns = [
+      { key: 'name', label: 'Skill', type: 'title', sub: 'desc', mono: true, sortable: true },
+      { key: 'scope', label: x(['Phạm vi', 'Scope']), type: 'badge' },
+      { key: 'owner', label: x(['Đội / dự án', 'Team / project']), type: 'mono' },
+      { key: 'path', label: x(['Đường dẫn trong repo', 'Repo path']), type: 'mono', hidden: true },
+      { key: 'used', label: x(['Run 30 ngày', 'Runs, 30d']), type: 'num', sortable: true },
+      { key: 'ver', label: x(['Bản', 'Version']), type: 'num', sortable: true },
+      { key: 'sync', label: x(['Repo', 'Repo']), type: 'badge' },
+      { key: 'updated', label: x(['Cập nhật', 'Updated']), type: 'muted', sortable: true },
+    ];
+    const facets = [{ key: 'scope', label: x(['Phạm vi', 'Scope']) }, { key: 'owner', label: x(['Đội / dự án', 'Team / project']) }, { key: 'sync', label: x(['Trạng thái repo', 'Repo status']) }];
+    const d = this.data.find((r) => r.id === this.state.cur) || this.data[0];
+    const md = '---\nname: ' + d.name + '\ndescription: ' + x(d.desc) + '\n---\n\n' + x(['## Khi nào dùng\nKhi việc đụng tới phần này của hệ thống.\n\n## Các bước\n1. Đọc tài liệu liên quan qua doc_get.\n2. Làm theo quy ước của đội.\n3. Chạy pnpm check trước khi kết thúc.', '## When to use\nWhen a task touches this part of the system.\n\n## Steps\n1. Read related docs with doc_get.\n2. Follow the team conventions.\n3. Run pnpm check before finishing.']);
+    const synced = this.state.synced;
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 10, minW: 820, curId: d.id,
+      bulk: [x(['Đẩy lên repo', 'Push to repo']), x(['Chuyển phạm vi', 'Move scope']), x(['Xoá', 'Delete'])],
+      pick: (r) => this.setState({ cur: r.id }), showTree: this.state.tree, toggleTree: () => this.setState({ tree: !this.state.tree }),
+      sync: () => this.setState({ synced: true }),
+      syncLabel: synced ? x(['Đã đồng bộ', 'Synced']) : x(['63 skill chưa đẩy', '63 skills not pushed']), syncStyle: synced ? tone.ok : tone.warn,
+      syncMeta: synced ? x(['Đồng bộ vừa xong · 64 skill · commit 3f9c2ab bởi xDev Hive', 'Synced just now · 64 skills · commit 3f9c2ab by xDev Hive']) : x(['Repo có 1 skill (org/code-review) ở commit 8b2029a. Bấm Đồng bộ ngay để hub đẩy 63 skill còn lại, mỗi phạm vi một thư mục.', 'The repo has 1 skill (org/code-review) at commit 8b2029a. Sync now pushes the other 63, one folder per scope.']),
+      cur: { name: d.name, desc: x(d.desc), ver: d.ver, path: 'tdduydev/xdev-skills/' + pathOf(d), md, scopeText: x(SC[d.scope][0]) + (d.owner ? ' · ' + d.owner : ''), scopeStyle: tone[SC[d.scope][1]], syncText: x(SY[d.sync][0]), syncStyle: tone[SY[d.sync][1]] },
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>
