@@ -15,11 +15,9 @@ import {
   type Engine,
   formatTokens,
   latestContext,
-  type SessionStats,
   sessionStats,
   type TipId,
   tips,
-  type UsageReport,
   usedCategories,
 } from "@/lib/usage.ts";
 import { cn } from "@/lib/utils.ts";
