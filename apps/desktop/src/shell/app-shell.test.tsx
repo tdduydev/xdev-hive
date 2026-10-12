@@ -1,26 +1,26 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { setLang } from "@/lib/i18n.ts";
-import { navItems, screenFromHash } from "@/lib/nav.ts";
+import { navItems, screenFromHash, screenParam } from "@/lib/nav.ts";
 import { windowKind } from "@/lib/tauri.ts";
 import { AppShell } from "@/shell/app-shell.tsx";
 
 describe("menu theo hồ sơ", () => {
   it("dev: không có quyền viết tài liệu nên Tài liệu chỉ đọc", () => {
     const items = navItems("dev");
-    expect(items.map((i) => i.id)).toEqual(["home", "docs", "skills", "tokens", "setup", "runs"]);
+    expect(items.map((i) => i.id)).toEqual(["home", "docs", "write", "skills", "tokens", "setup", "runs"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
   it("writer: không thấy Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
     const items = navItems("writer");
-    expect(items.map((i) => i.id)).toEqual(["home", "docs", "skills", "tokens"]);
+    expect(items.map((i) => i.id)).toEqual(["home", "docs", "write", "skills", "tokens"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
   it("lead: thấy hết, Tài liệu sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(7);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 
@@ -28,6 +28,13 @@ describe("menu theo hồ sơ", () => {
     expect(screenFromHash("#/skills")).toBe("skills");
     expect(screenFromHash("#/khong-co")).toBe("home");
     expect(screenFromHash("")).toBe("home");
+  });
+
+  it("màn Soạn tài liệu mang key tài liệu trong đường dẫn", () => {
+    expect(screenFromHash("#/write/project%2Fpay%2Fprd")).toBe("write");
+    expect(screenParam("#/write/project%2Fpay%2Fprd")).toBe("project/pay/prd");
+    expect(screenParam("#/write")).toBe("");
+    expect(screenParam("#/write/%E0%A4%A")).toBe("");
   });
 });
 

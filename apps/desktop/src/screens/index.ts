@@ -6,6 +6,7 @@ import { RunsScreen } from "@/screens/runs-screen.tsx";
 import { SetupScreen } from "@/screens/setup-screen.tsx";
 import { SkillsScreen } from "@/screens/skills-screen.tsx";
 import { TokensScreen } from "@/screens/tokens-screen.tsx";
+import { WriteScreen } from "@/screens/write-screen.tsx";
 
 /** Màn của cửa sổ app theo mục AppNav; đủ mọi mục nên không còn trang "Sắp có". */
 export const SCREENS: Record<ScreenId, ComponentType> = {
@@ -15,10 +16,11 @@ export const SCREENS: Record<ScreenId, ComponentType> = {
   setup: SetupScreen,
   skills: SkillsScreen,
   tokens: TokensScreen,
+  write: WriteScreen,
 };
 
 /**
  * Màn tự chia cả vùng nội dung thành cột (Tài liệu: thư mục, trình soạn, chat): khung không thêm lề, không cuộn chung,
  * và AppNav thu về cột icon như bản `compact` của thiết kế để còn chỗ cho trình soạn.
  */
-export const FULL_BLEED: ReadonlySet<ScreenId> = new Set<ScreenId>(["docs"]);
+export const FULL_BLEED: ReadonlySet<ScreenId> = new Set<ScreenId>(["docs", "write"]);
