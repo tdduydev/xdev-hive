@@ -302,6 +302,13 @@
       "when": 1791742144969,
       "tag": "0042_runs_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791789627044,
+      "tag": "0043_audit_log_indexes",
+      "breakpoints": true
     }
   ]
 }
