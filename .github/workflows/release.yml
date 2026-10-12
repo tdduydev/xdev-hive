@@ -85,6 +85,36 @@ jobs:
     needs: [worker, desktop]
     runs-on: ubuntu-latest
     steps:
+      - name: Manifest cập nhật cho app desktop (latest.json)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Định dạng của tauri-plugin-updater; hub đọc qua HIVE_DESKTOP_RELEASES rồi trả từng nền tảng cho app. Không có
+        # chữ ký (repo chưa có khoá) thì bỏ qua: app sẽ không thấy bản mới thay vì nhận bản không ký.
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/sig"
+          mkdir -p "$dir"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern '*.sig' --dir "$dir" || true
+          if ! ls "$dir"/*.sig >/dev/null 2>&1; then echo "::notice::Không có chữ ký cập nhật: bỏ qua latest.json."; exit 0; fi
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          python3 - "$dir" "$base" "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/latest.json" <<'PY'
+          import json, os, sys, datetime
+          d, base, version = sys.argv[1:4]
+          files = {
+              "darwin-aarch64": "xdev-hive-desktop_macos_arm64.app.tar.gz",
+              "linux-x86_64": "xdev-hive-desktop_linux_amd64.AppImage",
+              "windows-x86_64": "xdev-hive-desktop_windows_x64-setup.exe",
+          }
+          platforms = {}
+          for key, name in files.items():
+              sig = os.path.join(d, name + ".sig")
+              if os.path.exists(sig):
+                  platforms[key] = {"signature": open(sig).read().strip(), "url": f"{base}/{name}"}
+          now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          print(json.dumps({"version": version, "notes": "", "pub_date": now, "platforms": platforms}, indent=2))
+          PY
+          cat "$RUNNER_TEMP/latest.json"
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/latest.json" --repo "$GITHUB_REPOSITORY" --clobber
       - name: Công bố bản phát hành
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

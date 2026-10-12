@@ -131,7 +131,11 @@ export function loadConfig(env: Env = process.env): HubConfig {
     github: oauthApp(env, "HIVE_GITHUB"),
     gitlab: gitlab && { ...gitlab, issuer: env.HIVE_GITLAB_ISSUER },
     embeddings: embeddings(env),
-    desktopReleases: env.HIVE_DESKTOP_RELEASES || undefined,
+    // Như worker: mặc định đọc latest.json của bản phát hành mới nhất trên GitHub; "off" khi hub không ra được Internet.
+    desktopReleases:
+      env.HIVE_DESKTOP_RELEASES === "off"
+        ? undefined
+        : env.HIVE_DESKTOP_RELEASES || "https://github.com/tdduydev/xdev-hive/releases/latest/download/latest.json",
     // "off" cho hub trong mạng không ra được GitHub.
     workerReleases:
       env.HIVE_WORKER_RELEASES === "off"
