@@ -2,6 +2,7 @@ import { createMcpHandler, getOAuthProtectedResourceMetadataUrl } from "@modelco
 import { verifyJwsAccessToken } from "better-auth/oauth2";
 import type pg from "pg";
 import { type Auth, mcpResource } from "../identity/index.ts";
+import { verifyPersonalToken } from "./admin-service.ts";
 import { type McpPrincipal, noRunTokens, type RunTokenVerifier } from "./principal.ts";
 import type { McpToolRegistry } from "./registry.ts";
 import { buildMcpServer } from "./server.ts";
@@ -14,7 +15,7 @@ export interface McpEndpointDeps {
   version: string;
   runTokens?: RunTokenVerifier | undefined;
   /**
-   * Chỉ nhận run token (hub chạy http trong mạng tin cậy): không kiểm token OAuth và không quảng bá metadata OAuth vì
+   * Nhận run token và token cá nhân (hub chạy http trong mạng tin cậy): không kiểm OAuth và không quảng bá metadata vì
    * /.well-known không có ở chế độ này.
    */
   runTokensOnly?: boolean | undefined;
@@ -41,7 +42,7 @@ function unauthorized(metadataUrl: string, invalidToken: boolean): Response {
 }
 
 function runTokenRequired(): Response {
-  const message = "Cổng MCP qua http chỉ nhận run token của agent trong run; đăng nhập OAuth cần hub chạy https.";
+  const message = "Cổng MCP qua http chỉ nhận run token hoặc token MCP cá nhân; đăng nhập OAuth cần hub chạy https.";
   return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message }, id: null }), {
     status: 401,
     headers: { "Content-Type": "application/json", "WWW-Authenticate": 'Bearer error="invalid_token"' },
@@ -113,6 +114,11 @@ export function createMcpEndpoint(deps: McpEndpointDeps): (request: Request) => 
 
   return async (request) => {
     const token = bearerToken(request);
+    if (token?.startsWith("hive_pat_")) {
+      const principal = await verifyPersonalToken(deps.pool, deps.registry, token);
+      if (!principal) return runTokensOnly ? runTokenRequired() : unauthorized(metadataUrl, true);
+      return serve(request, token, principal);
+    }
     if (runTokensOnly) {
       const runPrincipal = token ? await runTokens.verify(token) : null;
       return token && runPrincipal ? serve(request, token, runPrincipal) : runTokenRequired();

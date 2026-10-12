@@ -10,7 +10,7 @@ import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
-import { createMcpEndpoint, McpToolRegistry, type RunTokenVerifier } from "./modules/mcp/index.ts";
+import { createMcpEndpoint, McpToolRegistry, mcpAdminRouter, type RunTokenVerifier } from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
 import type { HubConfig, Jobs } from "./modules/platform/index.ts";
 import {
@@ -24,7 +24,7 @@ import { sandboxRouter } from "./modules/sandbox/index.ts";
 import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRouter } from "./modules/scm/index.ts";
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
-import { registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
+import { requireOrgRole, registerMcpTools as tenancyMcpTools, tenancyRouter } from "./modules/tenancy/index.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
@@ -72,6 +72,12 @@ export function createApp({
   };
   // Một cache cho cả route Hono (Tauri) và handler oRPC: manifest chỉ đọc một lần mỗi 5 phút.
   const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
+  const registry = new McpToolRegistry();
+  tenancyMcpTools(registry);
+  registry.provideAuthorization(requireOrgRole);
+  runsMcpTools(registry);
+  knowledgeMcpTools(registry, { embedder, jobs });
+  leaderMcpTools(registry);
   const router = {
     system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
@@ -87,6 +93,7 @@ export function createApp({
     costs: costsRouter({ auth, pool }),
     sandbox: sandboxRouter({ auth, pool }),
     leader: leaderRouter({ auth, pool, runs }),
+    mcpAdmin: mcpAdminRouter({ auth, pool, registry }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
@@ -127,11 +134,6 @@ export function createApp({
         return res.status === 404 ? c.notFound() : res;
       });
     }
-    const registry = new McpToolRegistry();
-    tenancyMcpTools(registry);
-    runsMcpTools(registry);
-    knowledgeMcpTools(registry, { embedder, jobs });
-    leaderMcpTools(registry);
     const mcp = createMcpEndpoint({
       auth,
       pool,
