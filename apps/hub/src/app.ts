@@ -59,6 +59,7 @@ import {
   registerMcpTools as tenancyMcpTools,
   tenancyRouter,
 } from "./modules/tenancy/index.ts";
+import { withPersonalTokens } from "./personal-token-auth.ts";
 import { mapDomainErrors } from "./rpc-errors.ts";
 
 export interface AppDeps {
@@ -86,7 +87,7 @@ export interface AppDeps {
 
 export function createApp({
   config,
-  auth,
+  auth: baseAuth,
   pool,
   runTokens,
   jobs,
@@ -98,12 +99,6 @@ export function createApp({
   webDist = process.env.HIVE_WEB_DIST,
 }: AppDeps) {
   const publicUrl = config.publicUrl ?? `http://localhost:${config.port}`;
-  const shared = {
-    auth,
-    pool,
-    masterKey: config.masterKey,
-    providerFactory: providerFactory ?? defaultProviderFactory,
-  };
   // Một cache cho cả route Hono (Tauri) và handler oRPC: manifest chỉ đọc một lần mỗi 5 phút.
   const desktopReleases = new DesktopReleaseCache(config.desktopReleases);
   const registry = new McpToolRegistry();
@@ -119,6 +114,15 @@ export function createApp({
   knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry);
+  // REST API của người dùng nhận cả token cá nhân (app desktop, spec 008 FR-026). Better Auth, cổng MCP và quản trị
+  // token MCP giữ baseAuth: token cá nhân không được tự tạo, gia hạn hay thu hồi token.
+  const auth = baseAuth && pool ? withPersonalTokens(baseAuth, pool, registry) : baseAuth;
+  const shared = {
+    auth,
+    pool,
+    masterKey: config.masterKey,
+    providerFactory: providerFactory ?? defaultProviderFactory,
+  };
   const auditMiddleware = orgMiddlewares({ auth, pool });
   const auditBase = implement(contract.audit)
     .$context<RequestContext>()
@@ -192,7 +196,7 @@ export function createApp({
     costs: costsRouter({ auth, pool }),
     sandbox: sandboxRouter({ auth, pool }),
     leader: leaderRouter({ auth, pool, runs }),
-    mcpAdmin: mcpAdminRouter({ auth, pool, registry }),
+    mcpAdmin: mcpAdminRouter({ auth: baseAuth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
     policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
   };
@@ -201,7 +205,7 @@ export function createApp({
   const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
   const app = new Hono();
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
-  if (auth) app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+  if (baseAuth) app.on(["GET", "POST"], "/api/auth/*", (c) => baseAuth.handler(c.req.raw));
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
   const notifier = runNotifier ?? (pool ? new RunNotifier(pool) : undefined);
   app.get("/api/v1/runs/:id/stream", runStreamHandler({ auth, pool, notifier }));
@@ -234,18 +238,18 @@ export function createApp({
     if (result.kind === "none") return c.body(null, 204);
     return c.json(result.update, 200);
   });
-  const mode = auth && pool ? mcpMode(String(auth.options.baseURL), config.mcpAllowHttp ?? false) : "off";
-  if (auth && pool && mode !== "off") {
+  const mode = baseAuth && pool ? mcpMode(String(baseAuth.options.baseURL), config.mcpAllowHttp ?? false) : "off";
+  if (baseAuth && pool && mode !== "off") {
     // Metadata OAuth (RFC 9728, RFC 8414) nằm ở /.well-known theo chuẩn, ngoài basePath của Better Auth; plugin mcp
     // tự trả các đường này khi request đi qua handler của Better Auth. Chế độ chỉ-run-token không có plugin mcp.
     if (mode === "full") {
       app.on(["GET", "HEAD"], "/.well-known/*", async (c) => {
-        const res = await auth.handler(c.req.raw);
+        const res = await baseAuth.handler(c.req.raw);
         return res.status === 404 ? c.notFound() : res;
       });
     }
     const mcp = createMcpEndpoint({
-      auth,
+      auth: baseAuth,
       pool,
       registry,
       version: config.version,
