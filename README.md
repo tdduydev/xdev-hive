@@ -124,7 +124,8 @@ curl -fsSL https://github.com/tdduydev/xdev-hive/releases/latest/download/instal
 
 ```powershell
 # Windows
-& ([scriptblock]::Create((irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1))) -Hub https://hive.example.com -Token <one-time token>
+irm https://github.com/tdduydev/xdev-hive/releases/latest/download/install.ps1 -OutFile "$env:TEMP\hive-install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\hive-install.ps1" -Hub https://hive.example.com -Token <one-time token>
 ```
 
 `hive-worker update` upgrades a machine to the latest release.
