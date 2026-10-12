@@ -156,7 +156,7 @@ message types are ignored by older peers.
 |---|---|
 | tenancy | `hive_whoami`, `orgs_list`, `teams_list`, `systems_list` |
 | catalog | `project_list`, `mcp_server_list` (allowed external MCP servers of a project, for the desktop Environment screen) |
-| runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs) |
+| runs | `task_get`, `task_update`, `plan_submit` (plan runs), `review_submit` (review runs), `run_list` (users: recent runs, filter by machine) |
 | knowledge | `memory_search`, `memory_write`, `doc_list`, `doc_get`, `doc_propose`, `skill_list`, `skill_get`, `skill_propose` |
 | leader | `leader_reply`, `leader_propose` (leader runs) |
 

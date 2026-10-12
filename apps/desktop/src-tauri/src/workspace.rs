@@ -66,6 +66,7 @@ pub const READ_TOOLS: &[&str] = &[
     "skill_list",
     "skill_get",
     "memory_search",
+    "run_list",
 ];
 
 #[tauri::command]

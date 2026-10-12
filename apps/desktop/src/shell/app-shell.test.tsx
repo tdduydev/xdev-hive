@@ -64,8 +64,8 @@ describe("AppShell", () => {
     });
     expect(screen.getByRole("heading", { level: 1, name: "Lượt chạy trên máy" })).toBeTruthy();
     expect(within(nav).getByRole("link", { name: "Lượt chạy trên máy" }).getAttribute("aria-current")).toBe("page");
-    // Lượt chạy là màn còn lại chưa làm: trang "Sắp có" ghi file thiết kế.
-    expect(screen.getByText(/AppNav\.dc\.html/)).toBeTruthy();
+    // Mọi mục của AppNav đã có màn thật: không còn trang "Sắp có".
+    expect(screen.queryByText("Sắp có")).toBeNull();
   });
 
   it("không hiện người dùng hay thư mục mẫu khi chưa có dữ liệu", () => {
@@ -79,12 +79,11 @@ describe("AppShell", () => {
 
   it("tiếng Anh", () => {
     setLang("en");
-    // Màn chưa làm (Lượt chạy trên máy) hiện "Coming soon".
     location.hash = "#/runs";
     render(<AppShell />);
     expect(screen.getByRole("navigation", { name: "App navigation" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Tokens & context" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Coming soon" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Runs on this machine" })).toBeTruthy();
   });
 });
 
