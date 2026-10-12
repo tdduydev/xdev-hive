@@ -28,7 +28,7 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
   const current = orgs.find((o) => o.id === currentId) ?? orgs[0];
   return (
     <Menu.Root>
-      <Menu.Trigger className="mb-2.5 flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-border p-2 text-left hover:bg-muted data-popup-open:bg-muted">
+      <Menu.Trigger className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-sidebar-border p-2 text-left hover:bg-sidebar-accent data-popup-open:bg-sidebar-accent group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0.5">
         <span
           className={cx(
             "grid size-7 shrink-0 place-items-center rounded-md text-sm font-semibold text-primary-foreground",
@@ -37,7 +37,7 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
         >
           {current ? orgInitial(current.name) : "?"}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 group-data-[collapsible=icon]:hidden">
           <b className="block truncate text-sm leading-tight font-semibold text-foreground">
             {current?.name ?? "Chưa có tổ chức"}
           </b>
@@ -48,8 +48,8 @@ export function OrgSwitcher({ orgs, currentId, onSelect, canCreate = false }: Or
         </span>
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner sideOffset={4} align="start" className="z-10">
-          <Menu.Popup className="min-w-(--anchor-width) rounded-lg border border-input bg-card p-1 shadow-sm outline-none">
+        <Menu.Positioner sideOffset={4} align="start" className="z-50">
+          <Menu.Popup className="min-w-(--anchor-width) rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none">
             {orgs.length === 0 ? (
               <p className="px-2.5 py-1.75 text-sm text-muted-foreground">Chưa thuộc tổ chức nào</p>
             ) : (
