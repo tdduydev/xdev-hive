@@ -1,7 +1,9 @@
 import { ConstructionIcon } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { AccountDialog } from "@/components/account-dialog.tsx";
 import { LangToggle } from "@/components/lang-toggle.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
+import { profileOf, useAccount } from "@/lib/account.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
 import { useWorkerState } from "@/lib/worker.ts";
@@ -25,11 +27,15 @@ function subscribe(listener: () => void) {
 }
 
 /**
- * Cửa sổ app cục bộ: AppNav bên trái, màn theo `#/<id>` bên phải. Chưa có danh tính người dùng (token cá nhân,
- * specs/008-desktop-v2 T023) nên hồ sơ mặc định là dev; hồ sơ chỉ quyết định menu.
+ * Cửa sổ app cục bộ: AppNav bên trái, màn theo `#/<id>` bên phải. Hồ sơ menu tính từ vai trò của tài khoản đã liên kết
+ * (token cá nhân trong keychain); chưa liên kết thì dev. Hồ sơ chỉ quyết định menu, hub kiểm từng thao tác.
  */
-export function AppShell({ profile = "dev" }: { profile?: Profile }) {
+export function AppShell({ profile: forced }: { profile?: Profile }) {
   const t = useT(text);
+  const { status, setStatus } = useAccount();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const account = status?.account ?? null;
+  const profile = forced ?? profileOf(account);
   const lang = useLang();
   const worker = useWorkerState();
   const active = useSyncExternalStore(
@@ -41,7 +47,14 @@ export function AppShell({ profile = "dev" }: { profile?: Profile }) {
   const Screen = SCREENS[active];
   return (
     <div className="flex h-svh">
-      <AppNav profile={profile} active={active} worker={worker} />
+      <AppNav
+        profile={profile}
+        active={active}
+        account={account}
+        onAccount={() => setAccountOpen(true)}
+        worker={worker}
+      />
+      <AccountDialog open={accountOpen} status={status} onOpenChange={setAccountOpen} onChanged={setStatus} />
       <main className="flex min-w-0 flex-1 flex-col overflow-auto">
         <header className="flex h-13 items-center gap-3 border-b px-5">
           <h1 className="flex-1 truncate font-heading text-base font-semibold">{item?.label[lang]}</h1>

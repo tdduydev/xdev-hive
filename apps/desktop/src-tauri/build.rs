@@ -11,6 +11,9 @@ fn main() {
         "session_stats",
         "worker_state",
         "set_lang",
+        "account_status",
+        "account_link",
+        "account_unlink",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

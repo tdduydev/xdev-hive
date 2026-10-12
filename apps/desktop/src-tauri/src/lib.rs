@@ -1,6 +1,8 @@
 //! App desktop: khay hệ thống, worker Go chạy làm sidecar, cửa sổ web trỏ tới hub của máy, cửa sổ đăng ký cục bộ.
 
+mod account;
 mod doctor;
+mod hub;
 mod register;
 mod tray_icon;
 mod usage;
@@ -145,7 +147,7 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-fn hub_of(app: &AppHandle) -> Option<String> {
+pub(crate) fn hub_of(app: &AppHandle) -> Option<String> {
     app.state::<State>().hub.lock().ok().and_then(|h| h.clone())
 }
 
@@ -576,7 +578,10 @@ pub fn run() {
             usage::claude_usage,
             usage::session_stats,
             worker_state,
-            set_lang
+            set_lang,
+            account::account_status,
+            account::account_link,
+            account::account_unlink
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
