@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fakeHub, USER } from "./fake-hub.ts";
+import { fakeHub, ok, USER } from "./fake-hub.ts";
 
 test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
@@ -9,8 +9,9 @@ test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup"
   await expect(page.getByText("Chưa thuộc tổ chức nào")).toBeVisible();
 
   const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
-  await expect(nav.getByText("Làm việc hằng ngày", { exact: true })).toBeVisible();
-  await expect(nav.getByText("Dự án và quản trị", { exact: true })).toBeVisible();
+  for (const group of ["Công việc", "Kiến thức", "Dự án và hạ tầng", "Quản trị agent", "Người và quyền", "Theo dõi"]) {
+    await expect(nav.getByRole("button", { name: group })).toBeVisible();
+  }
   // Chưa thuộc tổ chức nào: mọi mục mờ, không bấm được, nói rõ vì sao.
   for (const label of [
     "Bảng việc",
@@ -21,13 +22,15 @@ test("đã đăng nhập: mở /login thì vào /, thấy khung app như mockup"
     "Đội và hệ thống",
     "Thông báo",
     "Chi phí và token",
-    "Cài đặt đăng nhập",
+    "Đăng nhập",
   ]) {
     const entry = nav.locator("[aria-disabled=true]").filter({ hasText: label });
     await expect(entry).toBeVisible();
     await expect(entry).toHaveAttribute("title", "Cần thuộc một tổ chức");
   }
-  await expect(nav.getByRole("link")).toHaveCount(0);
+  // Chỉ Tổng quan mở được: đó là nơi hướng dẫn nhận lời mời.
+  await expect(nav.getByRole("link")).toHaveCount(1);
+  await expect(nav.getByRole("link", { name: "Tổng quan" })).toHaveAttribute("href", "/");
 
   const aside = page.locator("aside");
   await expect(aside.getByText(USER.name)).toBeVisible();
@@ -80,18 +83,19 @@ test("chọn giao diện tối được lưu qua lần tải lại; theo hệ th
   await fakeHub(page, { signedIn: true });
   await page.goto("/");
   const html = page.locator("html");
-  const toggle = page.locator("aside").getByRole("group", { name: "Giao diện" });
+  const pick = async (name: string) => {
+    await page.getByRole("button", { name: "Giao diện" }).click();
+    await page.getByRole("menuitemradio", { name }).click();
+  };
   await expect(html).not.toHaveClass(/\bdark\b/);
-  await toggle.getByRole("button", { name: "Tối" }).click();
+  await pick("Tối");
   await expect(html).toHaveClass(/\bdark\b/);
-  await expect(toggle.getByRole("button", { name: "Tối" })).toHaveAttribute("aria-pressed", "true");
   await page.reload();
   await expect(html).toHaveClass(/\bdark\b/);
-  await page
-    .locator("aside")
-    .getByRole("group", { name: "Giao diện" })
-    .getByRole("button", { name: "Theo hệ thống" })
-    .click();
+  await page.getByRole("button", { name: "Giao diện" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Tối" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+  await pick("Theo hệ thống");
   await expect(html).not.toHaveClass(/\bdark\b/);
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(html).toHaveClass(/\bdark\b/);
@@ -100,13 +104,88 @@ test("chọn giao diện tối được lưu qua lần tải lại; theo hệ th
 test("chọn ngôn ngữ EN được lưu và đặt lang của trang", async ({ page }) => {
   await fakeHub(page, { signedIn: true });
   await page.goto("/");
-  const group = page.locator("aside").getByRole("group", { name: "Ngôn ngữ" });
+  const group = page.getByRole("group", { name: "Ngôn ngữ" });
   await expect(page.locator("html")).toHaveAttribute("lang", "vi");
   await group.getByRole("button", { name: "EN" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.locator("aside").getByRole("group", { name: "Language" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Language" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Work" }),
+  ).toBeVisible();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await page.locator("aside").getByRole("group", { name: "Language" }).getByRole("button", { name: "VI" }).click();
+  await page.getByRole("group", { name: "Language" }).getByRole("button", { name: "VI" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "vi");
+});
+
+const ORG_ID = "0a0a0a0a-0000-4000-8000-00000000000a";
+async function inOrg(page: import("@playwright/test").Page, unread = 0) {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_ID);
+  return fakeHub(page, {
+    signedIn: true,
+    rpc: {
+      "orgs/mine": () =>
+        ok({
+          orgs: [
+            {
+              id: ORG_ID,
+              slug: "acme",
+              name: "Acme",
+              role: "admin",
+              emailDomain: null,
+              createdAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+          canCreateOrg: false,
+        }),
+      "inbox/unreadCount": () => ok({ count: unread }),
+      "tasks/list": () => ok([]),
+      "runs/latest": () => ok([]),
+      "projects/list": () => ok([]),
+    },
+  });
+}
+
+test("sidebar: nhóm của màn đang mở tự mở; mở hay đóng nhóm thì nhớ qua lần tải lại", async ({ page }) => {
+  await inOrg(page);
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Điều hướng chính" });
+  const work = nav.getByRole("button", { name: "Công việc" });
+  await expect(work).toHaveAttribute("aria-expanded", "false");
+  await work.click();
+  await expect(nav.getByRole("link", { name: "Lượt chạy" })).toBeVisible();
+  await page.reload();
+  await expect(nav.getByRole("button", { name: "Công việc" })).toHaveAttribute("aria-expanded", "true");
+  // Mục chỉ quản trị dùng thấy được với quản trị tổ chức.
+  await expect(nav.getByRole("link", { name: "Nhật ký", includeHidden: true })).toHaveAttribute("href", "/admin/audit");
+});
+
+test("⌘K mở bảng lệnh, gõ tên màn rồi Enter thì đi tới màn đó; đường dẫn ở thanh trên đổi theo", async ({ page }) => {
+  await inOrg(page);
+  await page.route("**/rpc/runs/search**", (route) =>
+    route.fulfill({ json: { json: { items: [], nextCursor: null } } }),
+  );
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "Đường dẫn" })).toContainText("Tổng quan");
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Đi tới" });
+  await expect(palette).toBeVisible();
+  await palette.getByRole("combobox").fill("Lượt chạy");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/runs/);
+  await expect(page.getByRole("navigation", { name: "Đường dẫn" })).toContainText("Lượt chạy");
+});
+
+test("chuông có chấm khi còn thông báo chưa đọc và mở màn Thông báo", async ({ page }) => {
+  await inOrg(page, 3);
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Thông báo, 3 chưa đọc" })).toHaveAttribute("href", "/notifications");
+});
+
+test("màn chưa làm của thiết kế v2 có trang Sắp có thay vì trang lỗi", async ({ page }) => {
+  await inOrg(page);
+  await page.goto("/knowledge/docs");
+  await expect(page.getByRole("heading", { name: "Tài liệu", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sắp có" })).toBeVisible();
+  await expect(page.getByText("Docs.dc.html", { exact: false })).toBeVisible();
 });

@@ -1,9 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
 import { meQuery } from "./lib/me.ts";
+import { NAV_GROUPS } from "./lib/nav.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
 import { validateRunsSearch } from "./lib/run-list.ts";
+import { ComingSoonPage } from "./pages/coming-soon-page.tsx";
 import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
 import { InvitePage } from "./pages/invite-page.tsx";
@@ -225,6 +227,32 @@ const notificationsRoute = createRoute({
 const machinesRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/machines", component: MachinesPage });
 const costsRoute = createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/costs", component: CostsPage });
 
+/**
+ * Màn của thiết kế v2 chưa làm (docs/design-system/screens): route có sẵn để sidebar và ⌘K không dẫn tới trang lỗi.
+ * Task làm màn thật thay component của route tương ứng.
+ */
+const comingSoon = (id: string, path: string, design: string) => {
+  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === id);
+  if (!item) throw new Error(`Thiếu mục ${id} trong lib/nav.ts`);
+  return createRoute({
+    getParentRoute: () => inOrgRoute,
+    path,
+    component: () => <ComingSoonPage item={item} design={design} />,
+  });
+};
+const comingSoonRoutes = [
+  comingSoon("docs", "/knowledge/docs", "Docs.dc.html"),
+  comingSoon("skills", "/knowledge/skills", "Skills.dc.html"),
+  comingSoon("memory", "/knowledge/memory", "Memory.dc.html"),
+  comingSoon("proposals", "/knowledge/proposals", "Proposals.dc.html"),
+  comingSoon("workflows", "/knowledge/workflows", "Workflows.dc.html"),
+  comingSoon("reviews", "/knowledge/reviews", "DocReview.dc.html"),
+  comingSoon("roles", "/admin/roles", "Roles.dc.html"),
+  comingSoon("mcp", "/admin/mcp", "McpTools.dc.html"),
+  comingSoon("policies", "/admin/policies", "Policies.dc.html"),
+  comingSoon("audit", "/admin/audit", "Audit.dc.html"),
+];
+
 const routeTree = rootRoute.addChildren([
   loginRoute,
   inviteRoute,
@@ -251,6 +279,7 @@ const routeTree = rootRoute.addChildren([
         notificationsRoute,
         machinesRoute,
         costsRoute,
+        ...comingSoonRoutes,
       ]),
     ]),
   ]),
