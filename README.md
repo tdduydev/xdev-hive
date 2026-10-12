@@ -200,6 +200,8 @@ plain HTTP on trusted networks, backups and restore, background workers and sand
   them.
 - [Software Design Description](docs/sdd.md): data, interfaces, state machines, algorithms and limits.
 - [Architecture decision records](docs/adr/README.md).
+- [Goal: complete design v2](docs/goal-v2.md): what "done" means, the status of every designed screen, and the
+  build order (Vietnamese).
 - New features follow [Spec Kit](https://github.com/github/spec-kit) (`/speckit-specify`, `/speckit-plan`,
   `/speckit-tasks`, `/speckit-implement`; principles in `.specify/memory/constitution.md`) and the
   [feature checklist](docs/feature-checklist.md). Interfaces are designed with the `ui-ux-pro-max` skill and built
