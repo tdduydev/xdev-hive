@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type pg from "pg";
 import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
-import { fleetRouter } from "./modules/fleet/index.ts";
+import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import { type Embedder, registerMcpTools as knowledgeMcpTools, knowledgeRouter } from "./modules/knowledge/index.ts";
 import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
@@ -76,7 +76,7 @@ export function createApp({
     system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
-    ...fleetRouter({ auth, pool, publicUrl }),
+    ...fleetRouter({ auth, pool, publicUrl, workerReleases: new WorkerReleaseCache(config.workerReleases) }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),

@@ -140,8 +140,10 @@ binary once to confirm its version, and only then replaces the running file. Res
 progress; they are reported as interrupted when the worker comes back. Running the install script again without
 `--token` also upgrades. The worker bundled with the desktop app is updated with the app and ignores update requests.
 
-A worker that receives an `update` message from the hub stops taking new runs, waits for its current runs to finish,
-updates itself and restarts with the same arguments.
+The Machines page shows each machine's worker version and marks machines behind the latest release; the hub asks the
+GitHub releases API at most once an hour (set `HIVE_WORKER_RELEASES=off` when the hub cannot reach the Internet). A team
+administrator can press **Update** on an online machine: the worker stops taking new runs, waits for its current runs
+to finish, updates itself and restarts with the same arguments, so nothing is interrupted.
 
 To check a release by hand:
 

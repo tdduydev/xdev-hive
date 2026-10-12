@@ -3,11 +3,12 @@ import { fleetContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
-import { disconnectMachine } from "./connections.ts";
+import { disconnectMachine, sendToMachine } from "./connections.ts";
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
-import { listMachines, pauseMachine, resumeMachine, revokeMachine } from "./machines.ts";
+import { listMachines, pauseMachine, requestMachineUpdate, resumeMachine, revokeMachine } from "./machines.ts";
 import { createRegistration, registerMachine } from "./registration.ts";
+import { installCommands, type WorkerReleaseCache } from "./releases.ts";
 
 export interface FleetDeps {
   auth?: Auth | undefined;
@@ -15,6 +16,8 @@ export interface FleetDeps {
   pool?: pg.Pool | undefined;
   /** Địa chỉ hub mà máy dev gọi tới; đưa vào lệnh cài. */
   publicUrl: string;
+  /** Bản worker mới nhất để web chỉ ra máy chạy bản cũ; không có thì luôn trả null. */
+  workerReleases?: WorkerReleaseCache | undefined;
 }
 
 /** Cùng header chọn tổ chức với API tổ chức, đội (M1c). */
@@ -67,6 +70,7 @@ export function fleetRouter(deps: FleetDeps) {
           token,
           expiresAt: expiresAt.toISOString(),
           command: `hive-worker register --hub ${hubUrl} --token ${token}`,
+          ...installCommands(hubUrl, token, input.kind),
         };
       }),
       revoke: machinesOs.revoke.handler(async ({ context, input }) => {
@@ -81,6 +85,26 @@ export function fleetRouter(deps: FleetDeps) {
       resume: machinesOs.resume.handler(({ context, input }) =>
         inOrg(context.headers, (tx, userId) => resumeMachine(tx, userId, input.machineId)),
       ),
+      update: machinesOs.update.handler(async ({ context, input }) => {
+        const machine = await inOrg(context.headers, (tx, userId) =>
+          requestMachineUpdate(tx, userId, input.machineId, input.version),
+        );
+        const sent = sendToMachine(machine.id, {
+          type: "update",
+          ...(input.version ? { version: input.version } : {}),
+        });
+        if (!sent)
+          throw new ORPCError("CONFLICT", {
+            message: "Máy vừa ngắt kết nối khỏi hub; thử lại khi máy nối lại.",
+            data: { code: "MACHINE_NOT_CONNECTED" },
+          });
+        return machine;
+      }),
+      workerRelease: machinesOs.workerRelease.handler(async ({ context }) => {
+        const session = deps.auth ? await deps.auth.api.getSession({ headers: context.headers }) : null;
+        if (!session) throw new ORPCError("UNAUTHORIZED", { message: "Chưa đăng nhập." });
+        return (await deps.workerReleases?.get()) ?? null;
+      }),
     },
     worker: {
       register: workerOs.register.handler(({ input }) => registerMachine(requirePool(), input).catch(toORPC)),
