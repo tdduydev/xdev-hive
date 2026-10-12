@@ -4,6 +4,7 @@ import { LangToggle } from "@/components/lang-toggle.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty.tsx";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { NAV_ITEMS, type Profile, screenFromHash } from "@/lib/nav.ts";
+import { useWorkerState } from "@/lib/worker.ts";
 import { SCREENS } from "@/screens/index.ts";
 import { AppNav } from "@/shell/app-nav.tsx";
 
@@ -30,6 +31,7 @@ function subscribe(listener: () => void) {
 export function AppShell({ profile = "dev" }: { profile?: Profile }) {
   const t = useT(text);
   const lang = useLang();
+  const worker = useWorkerState();
   const active = useSyncExternalStore(
     subscribe,
     () => screenFromHash(location.hash),
@@ -39,7 +41,7 @@ export function AppShell({ profile = "dev" }: { profile?: Profile }) {
   const Screen = SCREENS[active];
   return (
     <div className="flex h-svh">
-      <AppNav profile={profile} active={active} />
+      <AppNav profile={profile} active={active} worker={worker} />
       <main className="flex min-w-0 flex-1 flex-col overflow-auto">
         <header className="flex h-13 items-center gap-3 border-b px-5">
           <h1 className="flex-1 truncate font-heading text-base font-semibold">{item?.label[lang]}</h1>

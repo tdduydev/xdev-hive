@@ -2,6 +2,7 @@
 
 mod doctor;
 mod register;
+mod tray_icon;
 mod usage;
 mod worker;
 
@@ -12,7 +13,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry};
+use tauri::{
+    AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
+};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -36,11 +39,104 @@ struct State {
     child: Mutex<Option<CommandChild>>,
     hub: Mutex<Option<String>>,
     quitting: AtomicBool,
+    /// Ngôn ngữ của app (vi/en) cho chữ trên khay; giao diện báo qua lệnh set_lang.
+    lang: Mutex<String>,
 }
 
 struct Tray {
     status: MenuItem<Wry>,
     toggle: MenuItem<Wry>,
+    open: MenuItem<Wry>,
+    open_app: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+    /// Ảnh gốc của biểu tượng khay (RGBA) để vẽ chấm trạng thái lên.
+    icon: Option<(Vec<u8>, u32, u32)>,
+    /// Trạng thái đang vẽ, để không dựng lại ảnh khi trạng thái không đổi.
+    drawn: Mutex<String>,
+}
+
+/// Trạng thái worker cho cửa sổ app (thẻ worker ở AppNav), cùng nội dung với dòng trạng thái trên khay.
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WorkerView {
+    kind: &'static str,
+    label: String,
+    detail: Option<String>,
+    wanted: bool,
+    hub: Option<String>,
+}
+
+fn lang_of(app: &AppHandle) -> String {
+    app.state::<State>()
+        .lang
+        .lock()
+        .map(|l| {
+            if l.as_str() == "en" {
+                "en".to_string()
+            } else {
+                "vi".to_string()
+            }
+        })
+        .unwrap_or_else(|_| "vi".into())
+}
+
+fn worker_view(app: &AppHandle) -> Option<WorkerView> {
+    let lang = lang_of(app);
+    let state = app.state::<State>();
+    let w = state.worker.lock().ok()?;
+    Some(WorkerView {
+        kind: w.kind(),
+        label: w.label_in(&lang),
+        detail: w.detail().map(str::to_string),
+        wanted: w.wanted(),
+        hub: hub_of(app),
+    })
+}
+
+/// Cập nhật chữ, tooltip, chấm màu của khay theo trạng thái và ngôn ngữ, rồi báo cửa sổ app.
+fn refresh_tray(app: &AppHandle) {
+    let Some(view) = worker_view(app) else {
+        return;
+    };
+    let en = lang_of(app) == "en";
+    if let Some(tray) = app.try_state::<Tray>() {
+        let _ = tray.status.set_text(&view.label);
+        let _ = tray.toggle.set_text(match (view.wanted, en) {
+            (true, false) => "Tắt worker",
+            (true, true) => "Stop worker",
+            (false, false) => "Bật worker",
+            (false, true) => "Start worker",
+        });
+        let _ = tray.open.set_text(if en {
+            "Open xDev Hive"
+        } else {
+            "Mở xDev Hive"
+        });
+        let _ = tray.open_app.set_text(if en {
+            "Open the desktop app"
+        } else {
+            "Mở app trên máy"
+        });
+        let _ = tray.quit.set_text(if en { "Quit" } else { "Thoát" });
+        if let (Some((rgba, w, h)), Some(icon)) = (&tray.icon, app.tray_by_id(TRAY)) {
+            let mut drawn = tray.drawn.lock().ok();
+            if drawn.as_deref().map(String::as_str) != Some(view.kind) {
+                let dotted = tray_icon::with_dot(rgba, *w, *h, tray_icon::dot_color(view.kind));
+                let _ = icon.set_icon(Some(tauri::image::Image::new_owned(dotted, *w, *h)));
+                if let Some(d) = drawn.as_mut() {
+                    **d = view.kind.to_string();
+                }
+            }
+        }
+    }
+    if let Some(icon) = app.tray_by_id(TRAY) {
+        let tip = match &view.detail {
+            Some(d) => format!("xDev Hive · {}\n{d}", view.label),
+            None => format!("xDev Hive · {}", view.label),
+        };
+        let _ = icon.set_tooltip(Some(tip));
+    }
+    let _ = app.emit("worker-state", view);
 }
 
 fn now() -> u64 {
@@ -56,34 +152,14 @@ fn hub_of(app: &AppHandle) -> Option<String> {
 /// Đưa sự kiện vào máy trạng thái rồi làm việc nó trả về. Không giữ khoá khi cập nhật khay: menu chạy trên main thread,
 /// mà sự kiện của menu cũng gọi vào đây từ main thread.
 fn dispatch(app: &AppHandle, event: Event) {
-    let (actions, label, detail, wanted) = {
+    let actions = {
         let state = app.state::<State>();
         let Ok(mut w) = state.worker.lock() else {
             return;
         };
-        let actions = w.handle(event, now());
-        (
-            actions,
-            w.label(),
-            w.detail().map(str::to_string),
-            w.wanted(),
-        )
+        w.handle(event, now())
     };
-    if let Some(tray) = app.try_state::<Tray>() {
-        let _ = tray.status.set_text(&label);
-        let _ = tray.toggle.set_text(if wanted {
-            "Tắt worker"
-        } else {
-            "Bật worker"
-        });
-    }
-    if let Some(icon) = app.tray_by_id(TRAY) {
-        let tip = match detail {
-            Some(d) => format!("xDev Hive · {label}\n{d}"),
-            None => format!("xDev Hive · {label}"),
-        };
-        let _ = icon.set_tooltip(Some(tip));
-    }
+    refresh_tray(app);
     for action in actions {
         perform(app, action);
     }
@@ -321,6 +397,25 @@ async fn sidecar_json(
         .map_err(|e| format!("Không đọc được kết quả của worker: {e}"))
 }
 
+/// Trạng thái worker hiện tại; sau đó cửa sổ app nghe sự kiện "worker-state".
+#[tauri::command]
+fn worker_state(app: AppHandle) -> Option<WorkerView> {
+    worker_view(&app)
+}
+
+/// Giao diện đổi ngôn ngữ thì khay đổi theo.
+#[tauri::command]
+fn set_lang(app: AppHandle, lang: String) {
+    if let Ok(mut l) = app.state::<State>().lang.lock() {
+        *l = if lang == "en" {
+            "en".into()
+        } else {
+            "vi".into()
+        };
+    }
+    refresh_tray(&app);
+}
+
 #[tauri::command]
 fn parse_registration(input: String) -> Result<RegisterArgs, String> {
     register::parse_register_command(&input)
@@ -437,16 +532,14 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
         .tooltip("xDev Hive")
         .menu(&menu)
         .show_menu_on_left_click(true);
-    // macOS recolours the transparent X for the menu bar; a filled tile would become a solid silhouette.
-    #[cfg(target_os = "macos")]
-    {
-        tray = tray
-            .icon(tauri::include_image!("icons/tray-template.png"))
-            .icon_as_template(true);
-    }
-    #[cfg(not(target_os = "macos"))]
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
+    // Chấm trạng thái cần ảnh màu: ảnh template của macOS bị tô một màu theo thanh menu, chấm sẽ mất màu. Vì vậy mọi hệ
+    // điều hành dùng biểu tượng màu của app (ô navy, nhìn rõ trên thanh menu sáng lẫn tối).
+    let base = app
+        .default_window_icon()
+        .map(|i| (i.rgba().to_vec(), i.width(), i.height()));
+    if let Some((rgba, w, h)) = &base {
+        let dotted = tray_icon::with_dot(rgba, *w, *h, tray_icon::dot_color("stopped"));
+        tray = tray.icon(tauri::image::Image::new_owned(dotted, *w, *h));
     }
     tray.on_menu_event(|app, event| match event.id().as_ref() {
         "open" => open_hub(app),
@@ -459,6 +552,11 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
     Ok(Tray {
         status,
         toggle: toggle_item,
+        open,
+        open_app,
+        quit: quit_item,
+        icon: base,
+        drawn: Mutex::new("stopped".into()),
     })
 }
 
@@ -476,7 +574,9 @@ pub fn run() {
             doctor::run_install,
             usage::claude_context,
             usage::claude_usage,
-            usage::session_stats
+            usage::session_stats,
+            worker_state,
+            set_lang
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.

@@ -83,3 +83,47 @@ describe("AppShell", () => {
     expect(screen.getByRole("heading", { name: "Coming soon" })).toBeTruthy();
   });
 });
+
+describe("thẻ worker", () => {
+  it("hiện trạng thái từ Rust và đổi theo sự kiện worker-state", async () => {
+    let push: (v: unknown) => void = () => {};
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string) =>
+          (command === "worker_state"
+            ? {
+                kind: "connecting",
+                label: "Worker: đang kết nối",
+                detail: null,
+                wanted: true,
+                hub: "https://hive.acme.vn",
+              }
+            : null) as T,
+      },
+      event: {
+        listen: async <T,>(_e: string, handler: (e: { payload: T }) => void) => {
+          push = (v) => handler({ payload: v as T });
+          return () => {};
+        },
+      },
+    };
+    render(<AppShell />);
+    expect(await screen.findByText("Worker đang kết nối")).toBeTruthy();
+    expect(screen.getByText("hive.acme.vn")).toBeTruthy();
+    await act(async () =>
+      push({
+        kind: "online",
+        label: "Worker: đang nhận việc",
+        detail: null,
+        wanted: true,
+        hub: "https://hive.acme.vn",
+      }),
+    );
+    expect(screen.getByText("Worker đang nhận việc")).toBeTruthy();
+  });
+
+  it("ngoài Tauri không hiện thẻ worker", () => {
+    render(<AppShell />);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});
