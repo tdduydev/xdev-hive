@@ -5,6 +5,8 @@ import { NAV_GROUPS } from "./lib/nav.ts";
 import { orgsMineQuery } from "./lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "./lib/redirect.ts";
 import { validateRunsSearch } from "./lib/run-list.ts";
+import { AuditPage } from "./pages/admin/audit-page.tsx";
+import { McpPage } from "./pages/admin/mcp-page.tsx";
 import { ComingSoonPage } from "./pages/coming-soon-page.tsx";
 import { CostsPage } from "./pages/costs-page.tsx";
 import { HomePage } from "./pages/home-page.tsx";
@@ -252,9 +254,9 @@ const comingSoonRoutes = [
   comingSoon("workflows", "/knowledge/workflows", "Workflows.dc.html"),
   comingSoon("reviews", "/knowledge/reviews", "DocReview.dc.html"),
   comingSoon("roles", "/admin/roles", "Roles.dc.html"),
-  comingSoon("mcp", "/admin/mcp", "McpTools.dc.html"),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/mcp", component: McpPage }),
   comingSoon("policies", "/admin/policies", "Policies.dc.html"),
-  comingSoon("audit", "/admin/audit", "Audit.dc.html"),
+  createRoute({ getParentRoute: () => inOrgRoute, path: "/admin/audit", component: AuditPage }),
 ];
 
 const routeTree = rootRoute.addChildren([

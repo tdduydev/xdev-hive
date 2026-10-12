@@ -29,6 +29,9 @@ export const auditLog = hive
     },
     (t) => [
       index("audit_log_org_created").on(t.orgId, t.createdAt.desc()),
+      index("audit_log_org_created_id").on(t.orgId, t.createdAt.desc(), t.id.desc()),
+      index("audit_log_org_action_created").on(t.orgId, t.action, t.createdAt.desc()),
+      index("audit_log_org_actor_created").on(t.orgId, t.actorUserId, t.createdAt.desc()),
       index("audit_log_org_target").on(t.orgId, t.targetType, t.targetId),
       pgPolicy("audit_log_select", { for: "select", to: hiveApp, using: inOrg }),
       pgPolicy("audit_log_insert", { for: "insert", to: hiveApp, withCheck: inOrg }),

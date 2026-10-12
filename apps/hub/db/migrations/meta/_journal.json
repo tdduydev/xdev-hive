@@ -306,8 +306,22 @@
     {
       "idx": 43,
       "version": "7",
-      "when": 1791792619957,
-      "tag": "0043_org_member_activity",
+      "when": 1791789627044,
+      "tag": "0043_audit_log_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791793187227,
+      "tag": "0044_mcp_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791793585649,
+      "tag": "0045_org_member_activity",
       "breakpoints": true
     }
   ]

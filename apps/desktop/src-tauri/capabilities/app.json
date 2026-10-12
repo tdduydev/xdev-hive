@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "app",
+  "description": "Cửa sổ app cục bộ (AppNav). Chưa cần lệnh nào của app; mỗi màn sau thêm đúng lệnh nó dùng. Cửa sổ web của hub không có quyền nào.",
+  "windows": ["app"],
+  "permissions": ["core:default"]
+}
