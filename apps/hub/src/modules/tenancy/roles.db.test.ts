@@ -252,7 +252,7 @@ describe("danh sách và cô lập tổ chức", () => {
       await errorCode(() => call(router(onlyB).assign, { roleId: roleA.id, kind: "member", userId: onlyB }, ctx(orgB))),
     ).toBeDefined();
     const rows = await withTenant(app, { userId: onlyB, orgId: orgB }, (tx) =>
-      tx.execute("select count(*)::int as n from hive.custom_roles where org_id = '" + orgA + "'"),
+      tx.execute(`select count(*)::int as n from hive.custom_roles where org_id = '${orgA}'`),
     );
     expect(rows.rows[0]).toEqual({ n: 0 });
   });
