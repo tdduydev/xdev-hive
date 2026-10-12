@@ -208,6 +208,8 @@ export function describeEvent(e: RunEventView): string | null {
       return "Mở review chéo";
     case "review_report":
       return "Có kết quả review chéo";
+    case "waiting_machine":
+      return text(d.message) ?? "Chờ máy được nhận run";
     case "offer":
       return "Đề nghị job cho máy";
     case "offer_rejected":

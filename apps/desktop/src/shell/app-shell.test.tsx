@@ -8,11 +8,11 @@ import { AppShell } from "@/shell/app-shell.tsx";
 describe("menu theo hồ sơ", () => {
   it("dev: không có quyền viết tài liệu nên Tài liệu chỉ đọc", () => {
     const items = navItems("dev");
-    expect(items.map((i) => i.id)).toEqual(["home", "docs", "write", "skills", "tokens", "setup", "runs"]);
+    expect(items.map((i) => i.id)).toEqual(["home", "work", "docs", "write", "skills", "tokens", "setup", "runs"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
   });
 
-  it("writer: không thấy Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
+  it("writer: không thấy Việc của tôi, Môi trường và Lượt chạy; người xem đội chỉ đọc tài liệu", () => {
     const items = navItems("writer");
     expect(items.map((i) => i.id)).toEqual(["home", "docs", "write", "skills", "tokens"]);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(true);
@@ -20,7 +20,7 @@ describe("menu theo hồ sơ", () => {
 
   it("lead: thấy hết, Tài liệu sửa được", () => {
     const items = navItems("lead");
-    expect(items).toHaveLength(7);
+    expect(items).toHaveLength(8);
     expect(items.find((i) => i.id === "docs")?.readOnly).toBe(false);
   });
 

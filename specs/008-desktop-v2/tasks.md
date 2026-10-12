@@ -299,7 +299,7 @@ description: "Task list for Desktop Application v2 implementation"
   - **Dependencies**: T026.
 - [x] **T028 AppDocEditor (US9, FR-022)**: editor screen in `AppNav` using `docEditor.*`; AI actions pinned to this
   machine. Vitest + Playwright (fake hub). **Dependencies**: T027.
-- [ ] **T029 AppMyWork (US10, FR-023)**: My tasks and my runs, start a task, live log, waiting reason. Hub filter for
+- [x] **T029 AppMyWork (US10, FR-023)**: My tasks and my runs, start a task, live log, waiting reason. Hub filter for
   tasks assigned to the caller if missing. **Dependencies**: T027.
 - [ ] **T030 AppReviews (US11, FR-024)**: Awaiting my review with diff, checklist, approve/return. **Dependencies**: T027.
 - [ ] **T031 AppKnowledge (US12, FR-025)**: read-only search over docs, memory, skills. **Dependencies**: T027.

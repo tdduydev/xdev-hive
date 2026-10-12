@@ -3,6 +3,7 @@ import {
   FilePenLineIcon,
   FileTextIcon,
   HouseIcon,
+  ListTodoIcon,
   type LucideIcon,
   PlayIcon,
   WrenchIcon,
@@ -26,16 +27,27 @@ export type Permission =
   | "skills.sync"
   | "tokens.read"
   | "env.manage"
-  | "runs.local";
+  | "runs.local"
+  | "work.mine";
 
 /*
  * Theo AppNav.dc.html, trừ writer: thiết kế cho writer `docs.write`, nhưng người xem đội chỉ đọc trong hub, nên
  * writer chỉ đọc tài liệu cho tới khi vai trò tự tạo (specs/001-custom-roles) có quyền viết tài liệu.
  * `docs.propose`: gửi đề xuất sửa tài liệu để người duyệt quyết. Hub nhận đề xuất của thành viên đội trở lên
- * (knowledge/access.ts), không nhận của người xem, nên dev có mà writer không.
+ * (knowledge/access.ts), không nhận của người xem, nên dev có mà writer không. `work.mine` (Việc của tôi): giao task
+ * cho agent cũng chỉ thành viên đội trở lên, nên writer không có.
  */
 const PERMISSIONS: Record<Profile, readonly Permission[]> = {
-  dev: ["docs.read", "docs.propose", "skills.read", "skills.sync", "tokens.read", "env.manage", "runs.local"],
+  dev: [
+    "docs.read",
+    "docs.propose",
+    "skills.read",
+    "skills.sync",
+    "tokens.read",
+    "env.manage",
+    "runs.local",
+    "work.mine",
+  ],
   writer: ["docs.read", "skills.read", "tokens.read"],
   lead: [
     "docs.read",
@@ -47,10 +59,11 @@ const PERMISSIONS: Record<Profile, readonly Permission[]> = {
     "tokens.read",
     "env.manage",
     "runs.local",
+    "work.mine",
   ],
 };
 
-export type ScreenId = "home" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
+export type ScreenId = "home" | "work" | "docs" | "write" | "skills" | "tokens" | "setup" | "runs";
 
 export interface NavItem {
   id: ScreenId;
@@ -71,6 +84,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: HouseIcon,
     design: "AppHome.dc.html",
     needs: "docs.read",
+  },
+  {
+    // Task mình tạo hoặc có run mình giao, và run mình giao (spec 008 US10). Bảng việc của cả đội ở web quản trị.
+    id: "work",
+    label: { vi: "Việc của tôi", en: "My work" },
+    icon: ListTodoIcon,
+    design: "AppNav.dc.html",
+    needs: "work.mine",
   },
   {
     id: "docs",
