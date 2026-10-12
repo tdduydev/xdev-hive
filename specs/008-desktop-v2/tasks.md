@@ -288,7 +288,7 @@ description: "Task list for Desktop Application v2 implementation"
 
 ## Phase: Client features for BA and DEV (ADR 0017, US9–US12)
 
-- [ ] **T026 Hub: personal token on the REST API (FR-026)**
+- [x] **T026 Hub: personal token on the REST API (FR-026)**
   - **Description**: Accept `Authorization: Bearer hive_pat_…` on user-scoped `/api/v1/…` routes as the token owner's
     session (expiry, revocation, org from the token); reject `hwm_` and run tokens there. Tests in `hub:*.db.test.ts`.
   - **Dependencies**: none.
