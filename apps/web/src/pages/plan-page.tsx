@@ -60,7 +60,7 @@ export function PlanPage() {
         crumb={crumb}
         body={
           <>
-            <Alert>
+            <Alert variant="destructive">
               {tasks.isError
                 ? apiErrorMessage(tasks.error)
                 : `Không tìm thấy việc ${key}, hoặc bạn không ở trong đội sở hữu việc này.`}
@@ -128,7 +128,13 @@ function TaskPlan({ task, crumb }: { task: Task; crumb: ReactNode }) {
 
   if (history.isPending) return <Shell crumb={crumb} title={task.title} body={<Loading />} />;
   if (history.isError) {
-    return <Shell crumb={crumb} title={task.title} body={<Alert>{apiErrorMessage(history.error)}</Alert>} />;
+    return (
+      <Shell
+        crumb={crumb}
+        title={task.title}
+        body={<Alert variant="destructive">{apiErrorMessage(history.error)}</Alert>}
+      />
+    );
   }
 
   const { plans, canDecide } = history.data;
@@ -599,7 +605,7 @@ function ApproveConfirm({
           placeholder="Ví dụ: Làm tròn theo từng dòng hoá đơn; giữ nguyên API cũ."
         />
       </div>
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert variant="destructive">{error}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel}>
           Quay lại
@@ -697,7 +703,7 @@ function RejectConfirm({
           </span>
         </span>
       </label>
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert variant="destructive">{error}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onCancel}>
           Quay lại

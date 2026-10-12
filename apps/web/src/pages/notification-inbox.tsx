@@ -47,7 +47,7 @@ export function Inbox() {
         Chỉ hiện chưa đọc
       </label>
       {count.isError && <LoadFailure error={count.error} retry={count.refetch} />}
-      {read.isError && <Alert>{apiErrorMessage(read.error)}</Alert>}
+      {read.isError && <Alert variant="destructive">{apiErrorMessage(read.error)}</Alert>}
       {inbox.isPending ? (
         <LoadingState label="Đang tải thông báo…" />
       ) : inbox.isError && !inbox.data ? (

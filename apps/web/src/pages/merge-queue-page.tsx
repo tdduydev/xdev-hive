@@ -194,7 +194,7 @@ function Queue({ project }: { project: Project }) {
               ? "PR vẫn mở trên kho mã nguồn nhưng sẽ không được hàng merge xử lý."
               : "PR sẽ vào cuối hàng và được kiểm tra lại nhánh, CI và điều kiện duyệt."}
           </DialogDescription>
-          {mutation.isError && <Alert>{apiErrorMessage(mutation.error)}</Alert>}
+          {mutation.isError && <Alert variant="destructive">{apiErrorMessage(mutation.error)}</Alert>}
           <DialogActions>
             <Button variant="outline" onClick={() => setAction(null)} disabled={mutation.isPending}>
               Huỷ
@@ -390,8 +390,8 @@ function EnqueueForm({ project, onDone }: { project: Project; onDone: () => Prom
           {enqueue.isPending ? "Đang đưa vào…" : "Đưa vào hàng"}
         </Button>
       </div>
-      {failure && <Alert>{failure}</Alert>}
-      {enqueue.isError && <Alert>{apiErrorMessage(enqueue.error)}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
+      {enqueue.isError && <Alert variant="destructive">{apiErrorMessage(enqueue.error)}</Alert>}
       {enqueue.isSuccess && (
         <p role="status" className="text-success">
           Đã đưa PR vào hàng.

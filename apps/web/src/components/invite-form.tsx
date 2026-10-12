@@ -11,7 +11,7 @@ import { CopyField } from "./copy-field.tsx";
 import { Alert } from "./ui/alert.tsx";
 import { Button } from "./ui/button.tsx";
 import { Field, FieldLabel } from "./ui/field.tsx";
-import { Select } from "./ui/select.tsx";
+import { NativeSelect } from "./ui/native-select.tsx";
 import { Textarea } from "./ui/textarea.tsx";
 
 interface InviteInput {
@@ -150,19 +150,19 @@ function InviteFields({
           <label htmlFor={`${id}-org-role`} className={label}>
             Vai trò tổ chức
           </label>
-          <Select id={`${id}-org-role`} name="orgRole" defaultValue="member" disabled={busy}>
+          <NativeSelect id={`${id}-org-role`} name="orgRole" defaultValue="member" disabled={busy}>
             {roles.map((r) => (
               <option key={r} value={r}>
                 {ORG_ROLE_LABEL[r]}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         </div>
         <div className="grid gap-1.5">
           <label htmlFor={`${id}-team`} className={label}>
             Thêm vào đội
           </label>
-          <Select
+          <NativeSelect
             id={`${id}-team`}
             name="teamId"
             value={teamId}
@@ -177,14 +177,14 @@ function InviteFields({
                 {t.name}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         </div>
         {teamId && (
           <div className="grid gap-1.5">
             <label htmlFor={`${id}-team-role`} className={label}>
               Vai trò trong đội
             </label>
-            <Select
+            <NativeSelect
               id={`${id}-team-role`}
               name="teamRole"
               defaultValue="member"
@@ -197,7 +197,7 @@ function InviteFields({
                   {TEAM_ROLE_LABEL[r]}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
             {errors.teamRole && (
               <small id={`${id}-team-role-error`} className="text-xs text-destructive">
                 {errors.teamRole}
@@ -206,7 +206,7 @@ function InviteFields({
           </div>
         )}
       </div>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={onCancel} disabled={busy}>
           {cancelLabel}

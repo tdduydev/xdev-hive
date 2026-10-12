@@ -83,7 +83,7 @@ export function RunPage() {
       <>
         <PageHeader crumb={crumb} title="Lượt chạy" />
         <PageBody>
-          <Alert>{apiErrorMessage(run.error)}</Alert>
+          <Alert variant="destructive">{apiErrorMessage(run.error)}</Alert>
         </PageBody>
       </>
     );
@@ -231,7 +231,9 @@ function LogCard({ log, status, onRetry }: { log: string; status: StreamStatus; 
         </div>
         {status === "error" && (
           <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-            <Alert className="flex-1">Không nhận được log trực tiếp từ hub. Kiểm tra mạng rồi thử lại.</Alert>
+            <Alert variant="destructive" className="flex-1">
+              Không nhận được log trực tiếp từ hub. Kiểm tra mạng rồi thử lại.
+            </Alert>
             <Button variant="outline" size="sm" onClick={onRetry}>
               Thử lại
             </Button>
@@ -371,7 +373,7 @@ function PolicyCard({ run }: { run: Run }) {
         </ul>
       )}
       {run.result && run.result.reasons.length > 0 && (
-        <Alert>
+        <Alert variant="destructive">
           <ul className="grid gap-1">
             {run.result.reasons.map((reason) => (
               <li key={reason}>{reason}</li>
@@ -481,7 +483,7 @@ function SteerPanel({ id, run, onClose }: { id: string; run: Run; onClose: () =>
             if (e.key === "Escape") onClose();
           }}
         />
-        {error && <Alert>{error}</Alert>}
+        {error && <Alert variant="destructive">{error}</Alert>}
         <p role="status" className={cx("text-sm", result === "closing" ? "text-destructive" : "text-success")}>
           {result ? STEER_RESULT[result] : ""}
         </p>
@@ -523,7 +525,7 @@ function CancelConfirm({ run, onDone }: { run: Run; onDone: () => void }) {
       <DialogDescription>
         Máy đang chạy sẽ dừng agent và gỡ worktree. Việc quay về trạng thái chưa giao; giao lại sẽ tạo run mới.
       </DialogDescription>
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert variant="destructive">{error}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Không huỷ

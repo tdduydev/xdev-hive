@@ -10,8 +10,8 @@ import { Alert } from "../components/ui/alert.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Card } from "../components/ui/card.tsx";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
+import { NativeSelect } from "../components/ui/native-select.tsx";
 import { Pill } from "../components/ui/pill.tsx";
-import { Select } from "../components/ui/select.tsx";
 import { Table, Td, Th } from "../components/ui/table.tsx";
 import { Textarea } from "../components/ui/textarea.tsx";
 import { apiErrorMessage, formError } from "../lib/api-errors.ts";
@@ -81,7 +81,7 @@ export function TeamsPage() {
         {teams.isPending ? (
           <Loading />
         ) : teams.isError ? (
-          <Alert>{apiErrorMessage(teams.error)}</Alert>
+          <Alert variant="destructive">{apiErrorMessage(teams.error)}</Alert>
         ) : !selected ? (
           <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
             <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
@@ -166,7 +166,7 @@ function SystemsCard({ team, canManage }: { team: TeamWithCounts; canManage: boo
       {systems.isPending ? (
         <Loading />
       ) : systems.isError ? (
-        <Alert>{apiErrorMessage(systems.error)}</Alert>
+        <Alert variant="destructive">{apiErrorMessage(systems.error)}</Alert>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5">
           {systems.data.map((system) => (
@@ -273,7 +273,7 @@ function AddSystemForm({ team, onDone }: { team: TeamWithCounts; onDone: () => v
           disabled={create.isPending}
         />
       </div>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Huỷ
@@ -308,7 +308,7 @@ function TeamMembersCard({
   if (access === "loading" || (canView && members.isPending)) body = <Loading />;
   else if (access === "none")
     body = <p className="text-muted-foreground">Bạn không ở trong đội này nên chưa xem được thành viên.</p>;
-  else if (members.isError) body = <Alert>{apiErrorMessage(members.error)}</Alert>;
+  else if (members.isError) body = <Alert variant="destructive">{apiErrorMessage(members.error)}</Alert>;
   else if (!members.data?.length) body = <p className="text-muted-foreground">Đội chưa có ai.</p>;
   else
     body = (
@@ -342,7 +342,7 @@ function TeamMembersCard({
           </Button>
         )}
       </div>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       {body}
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent>
@@ -415,7 +415,7 @@ function TeamMemberRow({
       </Td>
       <Td>
         {manage ? (
-          <Select
+          <NativeSelect
             size="sm"
             className="w-35"
             aria-label={`Vai trò của ${member.name} trong đội`}
@@ -431,7 +431,7 @@ function TeamMemberRow({
                 {TEAM_ROLE_LABEL[r]}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         ) : (
           TEAM_ROLE_LABEL[member.role]
         )}
@@ -525,29 +525,29 @@ function AddTeamMemberForm({
             <label htmlFor={personId} className="text-sm font-medium text-foreground">
               Người
             </label>
-            <Select id={personId} name="userId" disabled={add.isPending}>
+            <NativeSelect id={personId} name="userId" disabled={add.isPending}>
               {candidates.map((m) => (
                 <option key={m.userId} value={m.userId}>
                   {m.name} · {m.email}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </div>
           <div className="grid gap-1.5">
             <label htmlFor={roleId} className="text-sm font-medium text-foreground">
               Vai trò trong đội
             </label>
-            <Select id={roleId} name="role" defaultValue="member" disabled={add.isPending}>
+            <NativeSelect id={roleId} name="role" defaultValue="member" disabled={add.isPending}>
               {TEAM_ROLES.map((r) => (
                 <option key={r} value={r}>
                   {TEAM_ROLE_LABEL[r]}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </div>
         </div>
       )}
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Huỷ
@@ -640,7 +640,7 @@ function CreateTeamForm({
         <label htmlFor={adminId} className="text-sm font-medium text-foreground">
           Quản trị đội
         </label>
-        <Select id={adminId} name="adminUserId" defaultValue={me.id} disabled={create.isPending}>
+        <NativeSelect id={adminId} name="adminUserId" defaultValue={me.id} disabled={create.isPending}>
           {/* Danh sách thành viên có thể chưa tải xong; luôn có chính mình để chọn. */}
           {!active.some((m) => m.userId === me.id) && (
             <option value={me.id}>
@@ -653,9 +653,9 @@ function CreateTeamForm({
             </option>
           ))}
           <option value="">Chưa chọn</option>
-        </Select>
+        </NativeSelect>
       </div>
-      {failure && <Alert>{failure}</Alert>}
+      {failure && <Alert variant="destructive">{failure}</Alert>}
       <DialogActions>
         <Button variant="outline" onClick={onDone}>
           Huỷ
