@@ -36,6 +36,8 @@ export interface KnowledgeDeps {
   embedder?: Embedder | undefined;
   /** Hàng đợi để tạo embedding sau khi ghi, ngoài transaction của request. */
   jobs?: Jobs | undefined;
+  /** Địa chỉ web của hub, để link trong thông báo của quy trình duyệt. */
+  publicUrl?: string | undefined;
 }
 
 export const EMBED_QUEUE = "knowledge-embed";

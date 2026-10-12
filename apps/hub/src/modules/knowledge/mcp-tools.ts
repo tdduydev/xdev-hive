@@ -17,7 +17,8 @@ import { loadTask } from "../tasks/index.ts";
 import type { Principal } from "./access.ts";
 import { getDoc, listDocs } from "./docs.ts";
 import { embedQuery, type KnowledgeDeps, searchMemory, writeMemory } from "./memory.ts";
-import { createProposal, proposeDoc } from "./proposals.ts";
+import { createProposal } from "./proposals.ts";
+import { proposeWithReview } from "./reviews.ts";
 import { parseSkillFile } from "./skill-repo.ts";
 import { getSkill, listSkillsWithHidden } from "./skills.ts";
 
@@ -40,7 +41,12 @@ export const MCP_LIMITS = {
  */
 async function knowledgePrincipal(tx: Tx, p: McpPrincipal): Promise<Principal> {
   if (p.kind === "user") return { kind: "user", userId: p.userId };
-  if (!p.runId || !p.taskId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu run hoặc task.");
+  if (!p.runId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu run.");
+  if (!p.taskId) {
+    // Run không có task (leader, doccheck): dự án lấy từ chính run lúc kiểm token.
+    if (!p.projectId) throw new ForbiddenError("RUN_TOKEN_INVALID", "Run token thiếu task hoặc dự án.");
+    return { kind: "run", runId: p.runId, projectId: p.projectId };
+  }
   const task = await loadTask(tx, p.taskId);
   if (!task) throw new ForbiddenError("RUN_PROJECT_MISSING", "Run không còn thuộc dự án nào trong tổ chức.");
   return { kind: "run", runId: p.runId, projectId: task.projectId };
@@ -239,12 +245,12 @@ export function registerMcpTools(registry: McpToolRegistry, deps: KnowledgeDeps 
       note: z.string().trim().min(1).max(2000).describe("Vì sao cần sửa, cho người duyệt đọc."),
     }),
     handler: async ({ key, baseVersion, content, note }, { tx, principal }) => {
-      const p = await proposeDoc(tx, await knowledgePrincipal(tx, principal), {
-        key,
-        baseVersion,
-        content,
-        reason: note,
-      });
+      const p = await proposeWithReview(
+        tx,
+        await knowledgePrincipal(tx, principal),
+        { kind: "doc", key, baseVersion, content, reason: note },
+        { jobs: deps.jobs, publicUrl: deps.publicUrl },
+      );
       return { proposalId: p.id, status: p.status, key: p.target, baseVersion: p.baseVersion };
     },
   });

@@ -96,3 +96,18 @@ export async function requireTeamRole(tx: Tx, userId: string, teamId: string, mi
     throw new ForbiddenError("TEAM_ROLE_REQUIRED", `Cần vai trò ${TEAM_LABEL[min]} của đội trở lên.`);
   return role;
 }
+
+/**
+ * Thành viên đang hoạt động của một đội có vai trò đội từ `min` trở lên, cộng owner/admin tổ chức (coi là quản trị mọi
+ * đội như teamRoleOf). Dùng để báo cho người duyệt theo vai trò.
+ */
+export async function teamMemberIds(tx: Tx, teamId: string, min: TeamRole): Promise<string[]> {
+  const roles = (Object.keys(TEAM_RANK) as TeamRole[]).filter((r) => TEAM_RANK[r] >= TEAM_RANK[min]);
+  const members = await tx
+    .select({ userId: teamMembers.userId })
+    .from(teamMembers)
+    .innerJoin(orgMembers, and(eq(orgMembers.userId, teamMembers.userId), eq(orgMembers.orgId, sql`hive.ctx_org()`)))
+    .where(and(eq(teamMembers.teamId, teamId), inArray(teamMembers.role, roles), eq(orgMembers.status, "active")));
+  const admins = await notificationRecipients(tx);
+  return [...new Set([...members.map((m) => m.userId), ...admins])];
+}

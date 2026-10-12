@@ -208,6 +208,36 @@ describe("run token ở /mcp", () => {
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(["task_get"]);
   });
 
+  it("run không có task (doccheck) dùng được token: thấy doc_check_submit, đọc tri thức của dự án", async () => {
+    const a = seeded.a as Seeded;
+    const { rows } = await admin.query(
+      `insert into hive.runs (org_id, team_id, task_id, project_id, kind, state, branch, policy_snapshot, created_by)
+       select org_id, team_id, null, project_id, 'doccheck', 'running', $2, '[]'::jsonb, created_by
+       from hive.runs where id = $1 returning id`,
+      [a.runId, `doccheck/${tag}`],
+    );
+    const runId = rows[0].id as string;
+    const check: Seeded = { taskId: runId, key: "", runId };
+    const client = await connect(tokenFor(check));
+    expect((await client.listTools()).tools.map((t) => t.name)).toContain("doc_check_submit");
+    const listed = text(await client.callTool({ name: "doc_list", arguments: {} }));
+    expect(listed.isError).toBe(false);
+    const submitted = text(
+      await client.callTool({
+        name: "doc_check_submit",
+        arguments: { score: 8, checklist: [{ label: "Đủ mục", passed: true }], summary: "Ổn" },
+      }),
+    );
+    expect(submitted.isError).toBe(false);
+    const { rows: events } = await admin.query(
+      "select count(*)::int as n from hive.run_events where run_id = $1 and type = 'doccheck_result'",
+      [runId],
+    );
+    expect(events[0].n).toBe(1);
+    // Token ghép run không có task với task của run khác thì bị từ chối.
+    expect((await rawList(tokenFor({ ...check, taskId: a.taskId }))).status).toBe(401);
+  });
+
   it("task_update ghi run_event agent_report cho lần thử hiện tại và audit kèm runId", async () => {
     const a = seeded.a as Seeded;
     const client = await connect(tokenFor(a));

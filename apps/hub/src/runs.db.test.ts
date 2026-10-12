@@ -26,6 +26,8 @@ import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
 import { attachWorkerGateway, pauseMachine, registerRunHandlers } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
+import { saveDoc } from "./modules/knowledge/docs.ts";
+import { proposeWithReview } from "./modules/knowledge/reviews.ts";
 import { createChannel } from "./modules/notify/index.ts";
 import { createPool, parseMasterKey, withTenant } from "./modules/platform/index.ts";
 import {
@@ -214,7 +216,7 @@ class FakeWorker {
     });
   }
 
-  static async connect(m: { name: string; token: string; clis: string[]; capacity: number }) {
+  static async connect(m: { name: string; token: string; clis: string[]; capacity: number; capabilities?: string[] }) {
     const w = new FakeWorker(m.token);
     openWorkers.add(w);
     await new Promise<void>((resolve, reject) => {
@@ -229,6 +231,7 @@ class FakeWorker {
       os: "linux",
       clis: m.clis,
       capacity: m.capacity,
+      ...(m.capabilities ? { capabilities: m.capabilities } : {}),
     });
     await w.next("welcome");
     return w;
@@ -1243,5 +1246,108 @@ describe("chính sách agent của tổ chức", () => {
     const { status, data } = await api<{ data?: { code: string } }>("POST", "/v1/runs", { taskId: task.id });
     expect(status).toBe(409);
     expect(data.data?.code).toBe("SANDBOX_IMAGE_REQUIRED");
+  });
+});
+
+describe("run kiểm tài liệu (gate AI của quy trình duyệt)", () => {
+  it("chỉ giao cho máy khai doccheck, run chỉ đọc nộp điểm rồi gate AI đi tiếp", async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    const projectKey = (await admin.query("select key from hive.projects where id = $1", [projectId])).rows[0]
+      .key as string;
+    const key = `project/${projectKey}/prd-ai`;
+    await admin.query(
+      `insert into hive.review_workflows (org_id, team_id, name, preset, doc_prefixes, phases, updated_by)
+       values ($1, $2, 'PRD có AI', 'custom', $3, $4, 'seed')`,
+      [
+        org.orgId,
+        org.teamId,
+        [`project/${projectKey}/prd`],
+        JSON.stringify([
+          {
+            name: "Inception",
+            outputs: [],
+            gates: [
+              {
+                id: "ai",
+                name: "AI kiểm đủ mục",
+                kind: "ai",
+                ai: { checks: ["Mỗi yêu cầu có tiêu chí"], passScore: 7 },
+                conditions: { docTypes: [], keywords: [], minChangedLines: null, skipFormattingOnly: false },
+                slaHours: null,
+                onReject: "author",
+                onPass: "next",
+              },
+              {
+                id: "po",
+                name: "PO duyệt",
+                kind: "human",
+                reviewers: { users: [], roles: ["team-admin"], quorum: 1 },
+                conditions: { docTypes: [], keywords: [], minChangedLines: null, skipFormattingOnly: false },
+                slaHours: 24,
+                onReject: "author",
+                onPass: "next",
+              },
+            ],
+          },
+        ]),
+      ],
+    );
+    const instanceId = await withTenant(pool, { userId: org.user("tadmin"), orgId: org.orgId }, async (tx) => {
+      const d = await saveDoc(
+        tx,
+        { kind: "user", userId: org.user("tadmin") },
+        { key, title: "PRD", content: "# PRD\n", baseVersion: 0 },
+      );
+      const p = await proposeWithReview(
+        tx,
+        { kind: "user", userId: org.user("tadmin") },
+        { kind: "doc", key, content: "# PRD\n\n- R-1: Hoàn tiền\n", baseVersion: d.version, reason: "thêm R-1" },
+        {},
+      );
+      const { rows } = await tx.$client.query("select id from hive.review_instances where proposal_id = $1", [p.id]);
+      return rows[0].id as string;
+    });
+    const old = await FakeWorker.connect(await seedMachine(`dc-old-${tag}`));
+    await engine.startDocCheck(org.orgId, instanceId);
+    const { rows } = await admin.query("select * from hive.runs where branch = $1", [`doccheck/${instanceId}`]);
+    const run = rows[0];
+    expect(run).toMatchObject({ kind: "doccheck", task_id: null, state: "queued" });
+    // Worker cũ (không khai doccheck) sẽ chạy run như run code có quyền ghi: không được giao.
+    await new Promise((r) => setTimeout(r, 800));
+    expect(old.has("job_offer")).toBe(false);
+    const m = await seedMachine(`dc-new-${tag}`);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["doccheck"] });
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    expect(offer.spec).toMatchObject({ kind: "doccheck", cli: "claude", taskId: null });
+    expect(String(offer.spec.prompt)).toContain("Mỗi yêu cầu có tiêu chí");
+    expect(String(offer.spec.prompt)).toContain("R-1: Hoàn tiền");
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+    // Agent gọi doc_check_submit (tool MCP đã có test riêng): ghi thẳng sự kiện như tool ghi.
+    await admin.query(
+      `insert into hive.run_events (org_id, run_id, attempt, seq, type, data) values ($1, $2, 1, null, 'doccheck_result', $3)`,
+      [
+        org.orgId,
+        run.id,
+        JSON.stringify({
+          score: 8,
+          checklist: [{ label: "Mỗi yêu cầu có tiêu chí", passed: true, note: null }],
+          summary: "Ổn",
+        }),
+      ],
+    );
+    w.sendRun({ type: "run_result", runId: run.id, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(run.id)).state === "succeeded", 15_000);
+    const inst = (await admin.query("select gate_index, status from hive.review_instances where id = $1", [instanceId]))
+      .rows[0];
+    expect(inst).toMatchObject({ gate_index: 1, status: "in_review" });
+    const gate = (
+      await admin.query(
+        "select status, score, run_id from hive.review_gate_runs where instance_id = $1 and gate_index = 0",
+        [instanceId],
+      )
+    ).rows[0];
+    expect(gate).toMatchObject({ status: "passed", score: 8, run_id: run.id });
+    await Promise.all([old.close(), w.close()]);
   });
 });
