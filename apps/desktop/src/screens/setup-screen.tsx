@@ -1,5 +1,6 @@
 import { CopyIcon, LoaderCircleIcon, PlayIcon, RefreshCwIcon } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { FolderForm } from "@/components/folder-form.tsx";
 import { Button } from "@/components/ui/button.tsx";
 import {
   Dialog,
@@ -10,10 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
-import { Label } from "@/components/ui/label.tsx";
 import { Pill, type PillProps } from "@/components/ui/pill.tsx";
 import { Table, TableBody, TableHeader, TableRow, Td, Th } from "@/components/ui/table.tsx";
+import { readFolder } from "@/lib/folder.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import {
   type CheckItem,
@@ -31,7 +31,6 @@ import { cn } from "@/lib/utils.ts";
 
 const text: Dict<{
   lead: string;
-  folder: string;
   folderHint: string;
   check: string;
   recheck: string;
@@ -66,7 +65,6 @@ const text: Dict<{
 }> = {
   vi: {
     lead: "Những gì máy này cần để làm việc: công cụ chung của worker và yêu cầu của thư mục dự án (go.mod, package.json, .nvmrc).",
-    folder: "Thư mục dự án",
     folderHint: "Để trống thì chỉ kiểm công cụ trên máy.",
     check: "Kiểm tra",
     recheck: "Kiểm tra lại",
@@ -102,7 +100,6 @@ const text: Dict<{
   },
   en: {
     lead: "What this machine needs: the worker's common tools and the project folder's requirements (go.mod, package.json, .nvmrc).",
-    folder: "Project folder",
     folderHint: "Leave empty to check only the tools on this machine.",
     check: "Check",
     recheck: "Re-check",
@@ -151,16 +148,6 @@ const TONE: Record<CheckStatus, NonNullable<PillProps["tone"]>> = {
   missing: "bad",
   optional: "neutral",
 };
-const FOLDER_KEY = "hive.setup.folder";
-
-function readFolder(): string {
-  try {
-    return localStorage.getItem(FOLDER_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /** Vòng điểm sẵn sàng như AppSetup.dc.html; màu theo tỉ lệ, xanh khi đủ hết. */
 function ScoreRing({ ready, required, label }: { ready: number; required: number; label: string }) {
   const pct = required ? Math.round((ready / required) * 100) : 100;
@@ -210,16 +197,6 @@ export function SetupScreen() {
     void scan(folder);
   }, [scan]);
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    try {
-      localStorage.setItem(FOLDER_KEY, folder.trim());
-    } catch {
-      /* Không nhớ được thì vẫn quét cho lần này. */
-    }
-    void scan(folder);
-  }
-
   const { ready, required } = readiness(items ?? []);
   const todo = (items ?? []).filter(needsAction);
   const shown = onlyTodo ? todo : (items ?? []);
@@ -236,23 +213,14 @@ export function SetupScreen() {
         </Button>
       </header>
 
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
-        <div className="flex min-w-64 flex-1 flex-col gap-1.5">
-          <Label htmlFor="setup-folder">{t.folder}</Label>
-          <Input
-            id="setup-folder"
-            className="font-mono text-[13px] md:text-[13px]"
-            placeholder="~/Work/payment-api"
-            spellCheck={false}
-            value={folder}
-            onChange={(e) => setFolder(e.target.value)}
-          />
-        </div>
-        <Button type="submit" variant="secondary" disabled={scanning}>
-          {t.check}
-        </Button>
-        <p className="basis-full text-xs text-muted-foreground">{t.folderHint}</p>
-      </form>
+      <FolderForm
+        value={folder}
+        onChange={setFolder}
+        onSubmit={(dir) => void scan(dir)}
+        submitLabel={t.check}
+        hint={t.folderHint}
+        busy={scanning}
+      />
 
       {error && (
         <p role="alert" className="rounded-lg bg-destructive-soft px-3 py-2 text-[13px] text-destructive">

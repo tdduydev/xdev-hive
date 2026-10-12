@@ -2,6 +2,7 @@
 
 mod doctor;
 mod register;
+mod usage;
 mod worker;
 
 use std::sync::Mutex;
@@ -472,7 +473,10 @@ pub fn run() {
             parse_registration,
             register_worker,
             doctor::scan_environment,
-            doctor::run_install
+            doctor::run_install,
+            usage::claude_context,
+            usage::claude_usage,
+            usage::session_stats
         ])
         .on_window_event(|window, event| {
             // Đóng cửa sổ chỉ ẩn vào khay: worker vẫn chạy nền.
