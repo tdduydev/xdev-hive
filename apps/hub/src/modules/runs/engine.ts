@@ -1,5 +1,6 @@
 import {
   type JobMcpServer,
+  type JobPolicy,
   type OutcomeCheck,
   type PlanApproveInput,
   type PlanDecision,
@@ -25,6 +26,15 @@ import {
   type RunMessage,
   sendToMachine,
 } from "../fleet/index.ts";
+import {
+  clampBudget,
+  jobPolicyOf,
+  loadPolicy,
+  machineSlots,
+  type Policy,
+  resolveModel,
+  resolvePermission,
+} from "../governance/index.ts";
 import { authUser } from "../identity/index.ts";
 import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
@@ -61,7 +71,15 @@ import {
   taskForUser,
   toPlan,
 } from "../tasks/index.ts";
-import { applyCost, assertTaskBudget, type JobBudget, jobBudget, parseCostData, taskSpentUsd } from "./cost.ts";
+import {
+  applyCost,
+  assertTaskBudget,
+  type JobBudget,
+  jobBudget,
+  orgSpentTodayUsd,
+  parseCostData,
+  taskSpentUsd,
+} from "./cost.ts";
 import { createMcpRunTokens } from "./mcp.ts";
 import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
 import {
@@ -219,6 +237,23 @@ async function instructionsOf(tx: Tx, runId: string): Promise<string[]> {
   return rows.map((r) => r.data.input).filter((i): i is string => typeof i === "string");
 }
 
+/** Ghi sự kiện của hub một lần cho lần thử này: dispatch chạy lại mỗi heartbeat, không lặp cùng một thông báo. */
+async function noteOnce(tx: Tx, run: RunRow, type: string, data: { message: string }): Promise<void> {
+  const [seen] = await tx
+    .select({ id: runEvents.id })
+    .from(runEvents)
+    .where(
+      and(
+        eq(runEvents.runId, run.id),
+        eq(runEvents.attempt, run.attempt),
+        eq(runEvents.type, type),
+        sql`${runEvents.data}->>'message' = ${data.message}`,
+      ),
+    )
+    .limit(1);
+  if (!seen) await hubEvent(tx, run, type, data);
+}
+
 /** Trạng thái task theo kết quả run: có PR thì chờ người review, không có gì để nộp hay lỗi thì quay về todo. */
 function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): TaskStatus {
   if (outcome === "succeeded") return prUrl ? "review" : "done";
@@ -229,6 +264,11 @@ function taskStatusFor(outcome: Outcome | "cancelled", prUrl: string | null): Ta
 interface SpecContext {
   instructions: string[];
   budget: JobBudget | undefined;
+  /** Model và quyền CLI sau khi áp Chính sách agent của tổ chức. */
+  model: string | null;
+  runPermissions: "workspace" | "full";
+  /** Hook bắt buộc của tổ chức, worker chạy ở các mốc của CLI. */
+  policy: JobPolicy;
   parentPrUrl: string | null;
   /** Run code: kế hoạch đã duyệt mà run phải làm theo. */
   approvedPlan: PlanRow | null;
@@ -271,6 +311,14 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
   return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
 }
 
+/**
+ * Run chạy trong sandbox: dự án bật sandbox (mọi loại run), hoặc tổ chức bắt buộc sandbox cho run code (Chính sách
+ * agent). Run chỉ đọc (plan, review, leader) không sửa code nên theo cấu hình của dự án.
+ */
+export function sandboxedRun(project: ProjectRow, policy: Policy, kind: RunRow["kind"]): boolean {
+  return project.settings.features.sandbox || (policy.requireSandbox && kind === "code");
+}
+
 function buildSpec(
   run: RunRow,
   task: TaskRow | null,
@@ -295,8 +343,10 @@ function buildSpec(
       : prompt,
     instructions,
     cli,
-    model: run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null,
-    runPermissions: project.settings.runPermissions?.mode ?? "workspace",
+    model: ctx.model,
+    runPermissions: ctx.runPermissions,
+    // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
+    ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly ? { policy: ctx.policy } : {}),
     repoUrl: project.repoHttpUrl,
     baseBranch: project.defaultBranch,
     branch: run.branch,
@@ -379,11 +429,11 @@ export function createRunsEngine(deps: RunsDeps) {
   // ---- Giao job ----------------------------------------------------------------------------------------------
 
   /** Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. */
-  async function pickMachine(tx: Tx, run: RunRow, project: ProjectRow) {
-    const online = await listOnlineMachines(tx, run.teamId, project.settings.features.sandbox ? "host" : "worker");
+  async function pickMachine(tx: Tx, run: RunRow, sandboxed: boolean, policy: Policy) {
+    const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
     const candidates = online.filter(
       (m) =>
-        m.capacity > 0 &&
+        machineSlots(policy, m.capacity) > 0 &&
         connected(m.id) &&
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
@@ -409,7 +459,7 @@ export function createRunsEngine(deps: RunsDeps) {
             and(eq(runs.offerMachineId, m.id), eq(runs.state, "queued"), gt(runs.offerExpiresAt, new Date())),
           ),
         );
-      if ((busy?.n ?? 0) < m.capacity) return m;
+      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return m;
     }
     return null;
   }
@@ -423,15 +473,28 @@ export function createRunsEngine(deps: RunsDeps) {
       const task = run.kind === "leader" ? null : run.taskId ? await loadTask(tx, run.taskId) : null;
       const project = await loadProject(tx, run.projectId);
       if ((!task && run.kind !== "leader") || !project) return null;
-      const machine = await pickMachine(tx, run, project);
+      const policy = await loadPolicy(tx);
+      // Tổ chức chạm trần chi phí ngày: run chờ tới ngày sau (UTC); heartbeat của máy sẽ gọi giao lại.
+      const dailyCap = policy.limits.dailyUsd;
+      if (dailyCap !== null && (await orgSpentTodayUsd(tx)) >= dailyCap) {
+        await noteOnce(tx, run, "policy_daily_cap", {
+          message: `Tổ chức đã dùng hết trần ${dailyCap} USD của hôm nay; run chờ tới ngày sau (UTC).`,
+        });
+        return null;
+      }
+      const sandboxed = sandboxedRun(project, policy, run.kind);
+      const machine = await pickMachine(tx, run, sandboxed, policy);
       if (!machine) return null;
       // Run plan làm cho run code cha: chỉ dẫn đã gửi cho run cha (vd. bình luận nhắc bot) cũng là yêu cầu của kế hoạch.
       const instructions = [
         ...(run.kind === "plan" && run.parentRunId ? await instructionsOf(tx, run.parentRunId) : []),
         ...(await instructionsOf(tx, run.id)),
       ];
-      const sandbox = project.settings.features.sandbox ? await loadSandboxJobConfig(tx, project.id) : undefined;
-      const budget = jobBudget(project.settings.budget, task ? await taskSpentUsd(tx, task.id) : 0);
+      const sandbox = sandboxed ? await loadSandboxJobConfig(tx, project.id) : undefined;
+      const budget = jobBudget(
+        clampBudget(policy, project.settings.budget),
+        task ? await taskSpentUsd(tx, task.id) : 0,
+      );
       // Run review, plan, leader là run chỉ đọc: server ngoài (vd. GitHub) có tool ghi mà chế độ chỉ đọc của CLI không
       // chặn hết, nên chỉ run code nhận.
       const mcpServers = run.kind === "code" ? await mcpServersForProject(tx, project.id) : [];
@@ -462,6 +525,28 @@ export function createRunsEngine(deps: RunsDeps) {
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
+      const requested =
+        run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null;
+      const model = resolveModel(policy, cli, requested);
+      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
+      for (const notice of [model.notice, permission.notice]) {
+        if (notice) await noteOnce(tx, run, "policy", { message: notice });
+      }
+      const jobPolicy = jobPolicyOf(policy);
+      // Bản chụp chính sách đã áp cho lần thử này (FR-006): đổi chính sách sau đó không làm đổi run đã giao.
+      await tx
+        .update(runs)
+        .set({
+          agentPolicySnapshot: {
+            model: model.model,
+            requestedModel: requested,
+            runPermissions: permission.mode,
+            sandbox: sandboxed,
+            budget: budget ?? null,
+            ...jobPolicy,
+          },
+        })
+        .where(eq(runs.id, run.id));
       await notifyRun(tx, run.id);
       await schedule({ kind: "offer", orgId, runId, attempt: run.attempt, machineId: machine.id }, expiresAt, tx);
       return {
@@ -474,6 +559,9 @@ export function createRunsEngine(deps: RunsDeps) {
           spec: buildSpec(run, task, project, cli, {
             instructions,
             budget,
+            model: model.model,
+            runPermissions: permission.mode,
+            policy: jobPolicy,
             parentPrUrl: parent?.prUrl ?? null,
             approvedPlan,
             rejectedPlan: latest?.status === "rejected" ? latest : null,
@@ -1452,7 +1540,7 @@ export function createRunsEngine(deps: RunsDeps) {
         !m ||
         m.teamId !== task.teamId ||
         m.revoked ||
-        m.kind !== (project?.settings.features.sandbox ? "host" : "worker")
+        m.kind !== (project && sandboxedRun(project, await loadPolicy(tx), "code") ? "host" : "worker")
       ) {
         throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy của đội sở hữu dự án.");
       }
@@ -1538,7 +1626,8 @@ export function createRunsEngine(deps: RunsDeps) {
       plan?: boolean;
     },
   ): Promise<{ row: RunRow; afterCommit: () => void }> {
-    if (project?.settings.features.sandbox) await loadSandboxJobConfig(tx, project.id);
+    // Kiểm sớm image sandbox của dự án để người giao thấy lỗi ngay thay vì run nằm chờ mãi.
+    if (project && sandboxedRun(project, await loadPolicy(tx), "code")) await loadSandboxJobConfig(tx, project.id);
     if (task.status === "cancelled" || task.status === "done") {
       throw new ConflictError("TASK_CLOSED", "Task đã xong hoặc đã huỷ, không giao được.");
     }

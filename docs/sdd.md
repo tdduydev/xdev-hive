@@ -86,6 +86,7 @@ Every table in schema `hive` carries `org_id`, has row-level security enabled an
 | sandbox | `sandbox_org_settings` | `locked`, `use_suggested_defaults` |
 | sandbox | `egress_allowlists` | `rule`; `project_id` null means organization-wide |
 | sandbox | `env_images` | One per project: `base_image`, `setup_script_hash` |
+| governance | `agent_policies` | One per organization: `policy` (jsonb, schema `agentPolicyInput` in contracts), `template_sync`; runs keep the applied policy in `runs.agent_policy_snapshot` |
 | notify | `notification_channels`, `notifications`, `inbox_items` | Channels hold `config_enc`; notifications have `status` (`queued`, `sent`, `failed`) and `attempts` |
 | audit | `audit_log` | `actor_user_id`, `action`, `target_type`, `target_id`, `data`; append-only for `hive_app`; expired rows removed only by `hive.purge_expired_audit_log()` |
 | audit | `audit_settings` | One per organization: `retention_days` (90–3650, default 365 when absent); no DELETE for `hive_app` |
@@ -118,6 +119,7 @@ The permission noted in each operation's summary is enforced in the hub module.
 | Sandbox | `GET/POST /sandbox/allowlist`, `DELETE /sandbox/allowlist/{entryId}`, `GET/PUT /sandbox/settings`, `GET /sandbox/projects/{projectId}/allowlist`, `GET/PUT /sandbox/projects/{projectId}/image` |
 | Notifications | `GET/POST /notification-channels`, `PATCH/DELETE /notification-channels/{id}`, `POST /notification-channels/{id}/test`; `GET /inbox`, `GET /inbox/unread-count`, `POST /inbox/read`, `POST /inbox/read-all` |
 | Costs | `GET /costs/summary`, `GET /costs/budget-stopped` |
+| Policies | `GET/POST /policies`, `POST /policies/templates/preview`, `POST /policies/templates/sync` |
 
 Errors carry an oRPC code (`UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `BAD_REQUEST`) and a stable
 `data.code` such as `TEAM_ROLE_REQUIRED` or `MACHINE_OFFLINE`; messages are Vietnamese.
@@ -291,6 +293,7 @@ Decisions are recorded in [docs/adr](adr/README.md). Requirement areas map to mo
 | RUN | `runs`, `catalog` (merge queue), `cost` | worker `channel`, `runner` |
 | FLEET | `fleet` | worker `service`, `update`, install scripts |
 | SBX | `sandbox` | worker `runner`, `egress` |
+| POL | `governance`, `runs` (dispatch), `catalog` (templates) | worker `runner` (hooks) |
 | KNOW | `knowledge` | |
 | LEAD | `leader` | |
 | MCP | `mcp` and the modules that register tools, `runs` (external servers in the job) | worker `runner` (MCP configuration) |
