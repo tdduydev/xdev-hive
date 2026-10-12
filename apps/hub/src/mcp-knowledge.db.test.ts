@@ -376,6 +376,17 @@ describe("tool knowledge với token người dùng", () => {
     expect((await member.listTools()).tools.map((t) => t.name)).toEqual(expect.arrayContaining(KNOWLEDGE_TOOLS));
   });
 
+  it("project_list chỉ có dự án của đội mình, kèm repo; không lẫn đội khác hay tổ chức khác", async () => {
+    const { projects } = (await call(member, "project_list", { org: orgA.slug })).json() as {
+      projects: { key: string; repo: { owner: string; name: string } }[];
+    };
+    const keys = projects.map((p) => p.key);
+    expect(keys).toContain(proj.a.key);
+    expect(keys).not.toContain(proj.a2.key);
+    expect(keys).not.toContain(proj.b.key);
+    expect(projects.find((p) => p.key === proj.a.key)?.repo).toMatchObject({ owner: expect.any(String) });
+  });
+
   it("thuộc hai tổ chức thì phải chọn org", async () => {
     const res = await call(member, "memory_search", { query: "làm tròn" });
     expect(res).toMatchObject({ isError: true, text: expect.stringContaining("nhiều tổ chức") });

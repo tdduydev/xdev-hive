@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-workspace-meta"
+description = "Enables the workspace_meta command without any pre-configured scope."
+commands.allow = ["workspace_meta"]
+
+[[permission]]
+identifier = "deny-workspace-meta"
+description = "Denies the workspace_meta command without any pre-configured scope."
+commands.deny = ["workspace_meta"]

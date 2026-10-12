@@ -1,5 +1,7 @@
 // Dự án, mẫu file cho agent, saga khởi tạo. Module khác chỉ import file này.
 
+export { registerMcpTools } from "./mcp-tools.ts";
+
 export {
   type EnqueueMergeInput,
   enqueueMerge,

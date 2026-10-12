@@ -54,3 +54,12 @@ export async function askNotificationPermission(): Promise<void> {
 export function errorText(error: unknown): string {
   return typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
 }
+
+export interface WorkspaceMeta {
+  folder: string;
+  name: string;
+  isGit: boolean;
+  branch: string | null;
+  remote: string | null;
+}
+export const workspaceMeta = (folder: string) => invoke<WorkspaceMeta>("workspace_meta", { folder });

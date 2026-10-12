@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { Profile } from "@/lib/nav.ts";
 import { errorText, invoke } from "@/lib/tauri.ts";
 
@@ -59,3 +59,7 @@ export function useAccount() {
   }, [refresh]);
   return { status, error, refresh, setStatus };
 }
+
+/** Tài khoản đã liên kết cho các màn trong bảng SCREENS (màn không nhận props). AppShell cấp giá trị. */
+export const AccountContext = createContext<Account | null>(null);
+export const useLinkedAccount = () => useContext(AccountContext);

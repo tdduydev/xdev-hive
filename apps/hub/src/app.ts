@@ -7,7 +7,7 @@ import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
 import type pg from "pg";
 import { exportAudit, queryAudit, withAuditAccess } from "./modules/audit/index.ts";
-import { catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
+import { registerMcpTools as catalogMcpTools, catalogRouter, findWebhookTarget } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
@@ -87,6 +87,7 @@ export function createApp({
   registry.provideAuthorization(requireOrgRole);
   runsMcpTools(registry);
   knowledgeMcpTools(registry, { embedder, jobs });
+  catalogMcpTools(registry);
   leaderMcpTools(registry);
   const auditMiddleware = orgMiddlewares({ auth, pool });
   const auditBase = implement(contract.audit)
