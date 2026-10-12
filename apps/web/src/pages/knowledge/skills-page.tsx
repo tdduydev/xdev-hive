@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import type { SkillSummary } from "@xdev-hive/contracts";
+import { Markdown } from "@xdev-hive/ui/markdown";
 import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
-import { Markdown } from "@/pages/knowledge/markdown.tsx";
 import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";

@@ -9,20 +9,20 @@ import type {
   ReviewSummary,
   SlaState,
 } from "@xdev-hive/contracts";
+import { diffBlocks, lineDiff } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { BotIcon } from "lucide-react";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { GateKindBadge } from "@/components/gate-kind-badge.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { FilterChips } from "@/components/ui/filter-chips.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
-import { diffBlocks, lineDiff } from "@/lib/line-diff.ts";
 import { ROLE_LABEL } from "@/lib/review-workflows.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { cn } from "@/lib/utils.ts";

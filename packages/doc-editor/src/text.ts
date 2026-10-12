@@ -1,10 +1,13 @@
 import type { AssistAction, EditorStage, EditorStepState, GateKind } from "@xdev-hive/contracts";
-import type { BlockTemplate } from "@/lib/doc-editor.ts";
-import type { Dict } from "@/lib/i18n.ts";
+import type { BlockTemplate } from "./blocks.ts";
+
+type Dict<T> = Record<"vi" | "en", T>;
 
 /** Chữ của màn Soạn tài liệu (DocEditor.dc.html). */
 export const docEditorText: Dict<{
   docs: string;
+  loading: string;
+  retry: string;
   stage: Record<EditorStage, string>;
   draftV: (n: number) => string;
   presence: string;
@@ -109,6 +112,8 @@ export const docEditorText: Dict<{
 }> = {
   vi: {
     docs: "Tài liệu",
+    loading: "Đang tải…",
+    retry: "Thử lại",
     stage: {
       drafting: "Đang soạn",
       in_review: "Đang duyệt",
@@ -253,6 +258,8 @@ export const docEditorText: Dict<{
   },
   en: {
     docs: "Docs",
+    loading: "Loading…",
+    retry: "Retry",
     stage: {
       drafting: "Drafting",
       in_review: "In review",

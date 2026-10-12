@@ -1,14 +1,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Project, Task } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { type FormEvent, useId, useState } from "react";
 import { Icon } from "@/components/icons.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { useOrg } from "@/shell/org-context.ts";

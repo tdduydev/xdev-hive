@@ -1,0 +1,29 @@
+{
+  "name": "@xdev-hive/doc-editor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@orpc/client": "^1.15.5",
+    "@orpc/contract": "^1.15.5",
+    "@orpc/tanstack-query": "^1.15.5",
+    "@tanstack/react-query": "^5.104.1",
+    "@xdev-hive/contracts": "workspace:*",
+    "@xdev-hive/ui": "workspace:*",
+    "cn": "^0.4.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0"
+  }
+}

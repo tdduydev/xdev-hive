@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SkillRepo } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -10,9 +11,8 @@ import {
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { type FormEvent, useId, useState } from "react";
-import { Alert } from "@/components/ui/alert.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill, type PillProps } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
