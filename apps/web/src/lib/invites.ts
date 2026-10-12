@@ -1,4 +1,5 @@
 import type { InvitationStatus, OrgRole } from "@xdev-hive/contracts";
+import { type Dict, getLang } from "./i18n.ts";
 import { isOrgAdmin } from "./roles.ts";
 
 /** Khớp giới hạn của invitations.create trong packages/contracts. */
@@ -29,10 +30,24 @@ export function parseEmails(text: string): ParsedEmails {
 }
 
 /** Lỗi nhập của ô email, hoặc undefined nếu gửi được. */
+const text: Dict<{ invalid: (emails: string[]) => string; required: string; limit: (n: number) => string }> = {
+  vi: {
+    invalid: (emails) => `Email không hợp lệ: ${emails.join(", ")}.`,
+    required: "Nhập ít nhất một email.",
+    limit: (n) => `Mời tối đa ${n} email mỗi lần.`,
+  },
+  en: {
+    invalid: (emails) => `Invalid email: ${emails.join(", ")}.`,
+    required: "Enter at least one email.",
+    limit: (n) => `Invite up to ${n} emails at a time.`,
+  },
+};
+
 export function emailsError({ emails, invalid }: ParsedEmails): string | undefined {
-  if (invalid.length > 0) return `Email không hợp lệ: ${invalid.join(", ")}.`;
-  if (emails.length === 0) return "Nhập ít nhất một email.";
-  if (emails.length > MAX_INVITES) return `Mời tối đa ${MAX_INVITES} email mỗi lần.`;
+  const t = text[getLang()];
+  if (invalid.length > 0) return t.invalid(invalid);
+  if (emails.length === 0) return t.required;
+  if (emails.length > MAX_INVITES) return t.limit(MAX_INVITES);
   return undefined;
 }
 
