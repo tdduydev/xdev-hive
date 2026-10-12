@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authErrorLabel } from "./auth-errors.ts";
+import { authErrorLabel } from "@/lib/auth-errors.ts";
 
 describe("authErrorLabel", () => {
   it("sai mật khẩu", () =>

@@ -1,17 +1,17 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AuditFilters, AuditLogItem } from "@xdev-hive/contracts";
 import { useId, useState } from "react";
-import { type Column, DataTable } from "../../components/data-table/data-table.tsx";
-import { Alert } from "../../components/ui/alert.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { Input } from "../../components/ui/input.tsx";
-import { NativeSelect } from "../../components/ui/native-select.tsx";
-import { Pill } from "../../components/ui/pill.tsx";
-import { apiErrorMessage } from "../../lib/api-errors.ts";
-import { type Dict, useLang, useT } from "../../lib/i18n.ts";
-import { isOrgAdmin } from "../../lib/roles.ts";
-import { useOrg } from "../../shell/org-context.ts";
-import { PageBody, PageHeader } from "../../shell/page-header.tsx";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button } from "@/components/ui/button.tsx";
+import { Input } from "@/components/ui/input.tsx";
+import { NativeSelect } from "@/components/ui/native-select.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { apiErrorMessage } from "@/lib/api-errors.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;

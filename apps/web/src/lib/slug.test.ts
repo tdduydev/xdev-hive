@@ -1,6 +1,6 @@
 import { slug } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
-import { SLUG_MAX, slugify } from "./slug.ts";
+import { SLUG_MAX, slugify } from "@/lib/slug.ts";
 
 describe("slugify", () => {
   it.each([

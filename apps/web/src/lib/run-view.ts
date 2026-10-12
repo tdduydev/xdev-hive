@@ -5,7 +5,7 @@ import {
   type RunState,
   TERMINAL_RUN_STATES,
 } from "@xdev-hive/contracts";
-import { formatClock, formatDuration } from "./format.ts";
+import { formatClock, formatDuration } from "@/lib/format.ts";
 
 /** Màu của nhãn trạng thái, khớp `tone` của <Pill>. */
 export type Tone = "neutral" | "ok" | "warn" | "bad" | "sel";

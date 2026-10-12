@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkSsoForm, issuerHost } from "./sso.ts";
+import { checkSsoForm, issuerHost } from "@/lib/sso.ts";
 
 const valid = {
   issuer: "https://login.microsoftonline.com/3f2a/v2.0",

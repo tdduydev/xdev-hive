@@ -2,18 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Run, RunEventView, RunSteerStatus, Task } from "@xdev-hive/contracts";
 import { type FormEvent, type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
-import { Alert } from "../components/ui/alert.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { Card } from "../components/ui/card.tsx";
-import { DescriptionList } from "../components/ui/description-list.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "../components/ui/dialog.tsx";
-import { Meter } from "../components/ui/meter.tsx";
-import { Pill } from "../components/ui/pill.tsx";
-import { Steps } from "../components/ui/steps.tsx";
-import { Textarea } from "../components/ui/textarea.tsx";
-import { apiErrorMessage, formError } from "../lib/api-errors.ts";
-import { cx } from "../lib/cx.ts";
-import { formatClock, formatDayTime, formatDuration, formatInt, formatUsd } from "../lib/format.ts";
+import { Alert } from "@/components/ui/alert.tsx";
+import { Button, buttonVariants } from "@/components/ui/button.tsx";
+import { Card } from "@/components/ui/card.tsx";
+import { DescriptionList } from "@/components/ui/description-list.tsx";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
+import { Meter } from "@/components/ui/meter.tsx";
+import { Pill } from "@/components/ui/pill.tsx";
+import { Steps } from "@/components/ui/steps.tsx";
+import { Textarea } from "@/components/ui/textarea.tsx";
+import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
+import { cx } from "@/lib/cx.ts";
+import { formatClock, formatDayTime, formatDuration, formatInt, formatUsd } from "@/lib/format.ts";
 import {
   budgetPercent,
   canCancel,
@@ -27,11 +27,11 @@ import {
   runPhases,
   runStateTone,
   shortId,
-} from "../lib/run-view.ts";
-import { useNow } from "../lib/use-now.ts";
-import { type StreamStatus, useRunStream } from "../lib/use-run-stream.ts";
-import { useOrg } from "../shell/org-context.ts";
-import { PageBody, PageHeader } from "../shell/page-header.tsx";
+} from "@/lib/run-view.ts";
+import { useNow } from "@/lib/use-now.ts";
+import { type StreamStatus, useRunStream } from "@/lib/use-run-stream.ts";
+import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 /** Màn chi tiết run theo thiết kế RunDetail.dc.html: pha, log trực tiếp, chi tiết, chi phí, chính sách kết quả. */
 export function RunPage() {

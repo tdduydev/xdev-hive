@@ -1,6 +1,6 @@
 import type { InvitationStatus, OrgRole } from "@xdev-hive/contracts";
-import { type Dict, getLang } from "./i18n.ts";
-import { isOrgAdmin } from "./roles.ts";
+import { type Dict, getLang } from "@/lib/i18n.ts";
+import { isOrgAdmin } from "@/lib/roles.ts";
 
 /** Khớp giới hạn của invitations.create trong packages/contracts. */
 export const MAX_INVITES = 50;

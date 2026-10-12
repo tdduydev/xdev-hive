@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/client";
 import { queryOptions } from "@tanstack/react-query";
 import type { Me } from "@xdev-hive/contracts";
-import { client } from "./rpc.ts";
+import { client } from "@/lib/rpc.ts";
 
 /** Người đang đăng nhập, hoặc null khi chưa đăng nhập. Lỗi khác (mất mạng, hub lỗi) vẫn ném ra để hiện màn lỗi. */
 export const meQuery = queryOptions({

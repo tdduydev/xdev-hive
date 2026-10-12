@@ -1,6 +1,6 @@
 import type { Run, Task } from "@xdev-hive/contracts";
-import { formatAgo, formatDuration, formatUsd } from "./format.ts";
-import { isTerminal, RUN_STATE_LABEL, runStateTone, type Tone } from "./run-view.ts";
+import { formatAgo, formatDuration, formatUsd } from "@/lib/format.ts";
+import { isTerminal, RUN_STATE_LABEL, runStateTone, type Tone } from "@/lib/run-view.ts";
 
 /** Nhóm lọc trên bảng việc, theo thiết kế Tasks.dc.html. */
 export type BoardFilter = "all" | "running" | "plan" | "review" | "failed" | "done";

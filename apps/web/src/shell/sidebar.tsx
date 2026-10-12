@@ -1,7 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible.tsx";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible.tsx";
 import {
   Sidebar,
   SidebarContent,
@@ -15,14 +15,14 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarRail,
-} from "../components/ui/sidebar.tsx";
-import { type Dict, useLang, useT } from "../lib/i18n.ts";
-import { activeNavItem, NAV_HOME, type NavGroup, type NavItem, visibleGroups } from "../lib/nav.ts";
-import { orgStore } from "../lib/org-store.ts";
-import { isOrgAdmin, ORG_ROLE_LABEL } from "../lib/roles.ts";
-import { useOrgs } from "./org-context.ts";
-import { OrgSwitcher } from "./org-switcher.tsx";
-import { UserCard } from "./user-card.tsx";
+} from "@/components/ui/sidebar.tsx";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { activeNavItem, NAV_HOME, type NavGroup, type NavItem, visibleGroups } from "@/lib/nav.ts";
+import { orgStore } from "@/lib/org-store.ts";
+import { isOrgAdmin, ORG_ROLE_LABEL } from "@/lib/roles.ts";
+import { useOrgs } from "@/shell/org-context.ts";
+import { OrgSwitcher } from "@/shell/org-switcher.tsx";
+import { UserCard } from "@/shell/user-card.tsx";
 
 const text: Dict<{ nav: string; needsOrg: string }> = {
   vi: { nav: "Điều hướng chính", needsOrg: "Cần thuộc một tổ chức" },

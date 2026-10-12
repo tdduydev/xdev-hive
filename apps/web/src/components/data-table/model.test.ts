@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Facet, facetOptions, filterRows, paginateRows, sortRows } from "./model.ts";
+import { type Facet, facetOptions, filterRows, paginateRows, sortRows } from "@/components/data-table/model.ts";
 
 const rows = [
   { id: "r1", title: "VAT invoice", cli: "claude", tags: ["running", "running"], cost: 10 },

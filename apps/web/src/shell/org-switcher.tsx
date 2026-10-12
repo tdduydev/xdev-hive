@@ -1,7 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { Link } from "@tanstack/react-router";
-import { Icon } from "../components/icons.tsx";
-import { cx } from "../lib/cx.ts";
+import { Icon } from "@/components/icons.tsx";
+import { cx } from "@/lib/cx.ts";
 
 export interface OrgOption {
   id: string;

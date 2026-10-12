@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cx } from "../../lib/cx.ts";
+import { cx } from "@/lib/cx.ts";
 
 const tones = {
   neutral: "border-input bg-muted text-muted-foreground",
