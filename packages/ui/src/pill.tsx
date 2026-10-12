@@ -1,5 +1,5 @@
+import { cn } from "cn";
 import type { ComponentProps } from "react";
-import { cn } from "@/lib/utils.ts";
 
 const tones = {
   neutral: "border-input bg-muted text-muted-foreground",

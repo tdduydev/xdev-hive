@@ -12,11 +12,11 @@ import {
 } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
+import { Pill } from "@xdev-hive/ui/pill";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { Pencil, Trash2 } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Pill } from "@/components/ui/pill.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";

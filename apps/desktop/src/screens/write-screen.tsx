@@ -1,15 +1,14 @@
-import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { docKey as docKeySchema } from "@xdev-hive/contracts";
-import { DocEditor, type DocEditorEnv, DocEditorProvider } from "@xdev-hive/doc-editor";
+import { DocEditor, DocEditorProvider } from "@xdev-hive/doc-editor";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { type FormEvent, useId, useState, useSyncExternalStore } from "react";
-import { hub } from "@/lib/hub-rpc.ts";
-import { type Dict, useLang, useT } from "@/lib/i18n.ts";
+import { api, queryClient, useDesktopDocEnv } from "@/lib/hub-query.tsx";
+import { type Dict, useT } from "@/lib/i18n.ts";
 import { screenParam } from "@/lib/nav.ts";
-import { errorText, invoke } from "@/lib/tauri.ts";
+import { errorText } from "@/lib/tauri.ts";
 
 const text: Dict<{
   lead: string;
@@ -40,10 +39,6 @@ const text: Dict<{
   },
 };
 
-// Một client cho cả màn: dữ liệu hub giữ lại khi chuyển giữa danh sách và trình soạn.
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-const api = createTanstackQueryUtils(hub);
-
 const go = (key?: string) => {
   location.hash = key ? `#/write/${encodeURIComponent(key)}` : "#/write";
 };
@@ -58,30 +53,10 @@ function subscribe(listener: () => void) {
  * hub qua token cá nhân (hub-rpc), câu báo lỗi và cách mở liên kết. `#/write` là danh sách, `#/write/<key>` là trình soạn.
  */
 export function WriteScreen() {
-  const lang = useLang();
   const docKey = useSyncExternalStore(subscribe, () => screenParam(location.hash));
-  const env: DocEditorEnv = {
-    api,
-    lang,
-    errorMessage: errorText,
-    link: ({ to, className, children }) => (
-      <button
-        type="button"
-        className={`cursor-pointer border-0 bg-transparent p-0 text-left ${className ?? ""}`}
-        onClick={() => {
-          if (to.kind === "docs") go();
-          else if (to.kind === "doc") go(to.key);
-          // Run là trang của hub: mở trong cửa sổ web của hub, đúng một trang người dùng bấm.
-          else void invoke("open_hub_page", { path: `/runs/${to.id}` });
-        }}
-      >
-        {children}
-      </button>
-    ),
-  };
   return (
     <QueryClientProvider client={queryClient}>
-      <DocEditorProvider env={env}>
+      <DocEditorProvider env={useDesktopDocEnv()}>
         {docKey ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
             <DocEditor key={docKey} docKey={docKey} />

@@ -11,6 +11,7 @@ export type WorkflowPreset = z.output<typeof workflowPreset>;
 export const gateKind = z.enum(["ai", "human", "rule", "ext"]);
 export type GateKind = z.output<typeof gateKind>;
 export const reviewerRole = z.enum(["org-admin", "team-admin", "team-member"]);
+export type ReviewerRole = z.output<typeof reviewerRole>;
 export const ruleCheck = z.enum(["sections", "requirements", "no-secrets", "max-diff"]);
 export type RuleCheck = z.output<typeof ruleCheck>;
 export const rejectRoute = z.enum(["author", "agent", "previous"]);

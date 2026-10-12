@@ -1,6 +1,6 @@
 import { Button } from "@xdev-hive/ui/button";
+import { Pill } from "@xdev-hive/ui/pill";
 import { useEffect, useState } from "react";
-import { Pill } from "@/components/ui/pill.tsx";
 import { profileOf, useLinkedAccount } from "@/lib/account.ts";
 import { folderName, useFolder } from "@/lib/folder.ts";
 import { type HubDoc, type HubProject, type HubSkill, hubTool, matchProject } from "@/lib/hub.ts";
