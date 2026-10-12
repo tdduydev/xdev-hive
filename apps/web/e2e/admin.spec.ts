@@ -99,7 +99,8 @@ test("đổi tổ chức: nhớ lựa chọn, gửi x-hive-org của tổ chức
   await expect(page.getByRole("button", { name: "Tạo đội" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Hệ thống", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Thêm người" })).toHaveCount(0);
-  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("combobox")).toHaveCount(1);
+  await expect(page.getByLabel("Số dòng")).toBeVisible();
   const orgsOf = (path: string) => hub.rpcCalls.filter((c) => c.path === path).map((c) => c.org);
   expect(new Set(orgsOf("teams/list"))).toEqual(new Set([ORG_B.id]));
   // Danh sách tổ chức của mình không cần chọn tổ chức.
@@ -658,7 +659,7 @@ test("cài đặt đăng nhập: cấu hình SSO lần đầu, chép callback UR
   await nav.getByRole("link", { name: "Đăng nhập" }).click();
   await expect(page).toHaveURL("/admin/sign-in-settings");
 
-  const methods = page.getByRole("list", { name: "Các cách đăng nhập" });
+  const methods = page.getByRole("list", { name: "Cách đăng nhập" });
   await expect(methods.getByRole("listitem").filter({ hasText: "SSO (OIDC)" })).toContainText("Chưa cấu hình");
   await expect(methods.getByRole("listitem").filter({ hasText: "GitHub" })).toContainText("Cấu hình ở hub");
   // Tên miền điền sẵn từ tên miền email của tổ chức.
@@ -732,7 +733,7 @@ test("cài đặt đăng nhập: sửa SSO không gửi secret khi để trống
   await page.goto("/admin/sign-in-settings");
   await expect(page.getByLabel("Issuer URL")).toHaveValue("https://idp.example.com");
   await expect(page.getByText("Đang dùng Client ID kết thúc bằng ab12. Nhập lại khi lưu.")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Các cách đăng nhập" })).toContainText(
+  await expect(page.getByRole("list", { name: "Cách đăng nhập" })).toContainText(
     "idp.example.com · example.com · người mới: chờ duyệt",
   );
   await expect(page.getByText("Người có email tên miền này đăng nhập bằng SSO của tổ chức.")).toBeVisible();
@@ -834,3 +835,281 @@ test("tạo tổ chức: lỗi kiểm tra của hub hiện ngay dưới ô bị 
     emailDomain: "khong-hop-le",
   });
 });
+
+const manyMembers = () =>
+  Array.from({ length: 25 }, (_, i) => ({
+    ...HA,
+    userId: `person-${i}`,
+    name: `Person ${String(i).padStart(2, "0")}`,
+    email: `person-${i}@example.com`,
+    role: i < 5 ? "admin" : "member",
+    status: i === 24 ? "blocked" : "active",
+    joinedAt: at,
+    teams: i % 2 ? [] : [{ teamId: TEAM.id, name: TEAM.name, role: "member" }],
+  }));
+
+async function openPeople(page: Page, rpc: Record<string, RpcHandler> = {}) {
+  await page.addInitScript((id) => localStorage.setItem("hive.org", id), ORG_A.id);
+  return fakeHub(page, { signedIn: true, rpc: { ...withInvites(), ...rpc } });
+}
+
+test("thành viên v2: tìm, đếm facet, phân trang, sắp xếp và ẩn cột", async ({ page }) => {
+  await openPeople(page, { "orgMembers/list": () => ok(manyMembers()) });
+  await page.goto("/admin/members");
+  await expect(page.getByRole("row")).toHaveCount(11);
+  await expect(page.getByText("1–10 trên 25", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Trang sau" }).click();
+  await expect(page.getByText("11–20 trên 25", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Người", exact: true }).click();
+  await expect(page.getByRole("columnheader", { name: "Người" })).toHaveAttribute("aria-sort", "ascending");
+  await page.getByRole("button", { name: "Vai trò", exact: true }).click();
+  const roles = page.getByRole("dialog", { name: "Vai trò", exact: true });
+  await expect(roles.locator("label").filter({ hasText: "Quản trị" })).toContainText("5");
+  await expect(roles.locator("label").filter({ hasText: "Thành viên" })).toContainText("20");
+  await roles.getByRole("checkbox", { name: "Quản trị", exact: true }).check();
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("5 / 25 dòng khớp")).toBeVisible();
+  await page.getByRole("button", { name: "Trạng thái", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Trạng thái", exact: true }).locator("label").filter({ hasText: "Đã khoá" }),
+  ).toContainText("0");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Xoá hết bộ lọc" }).click();
+  await page.getByRole("textbox", { name: "Tìm tên, email…" }).fill("person-24@example.com");
+  await expect(page.getByRole("row")).toHaveCount(2);
+  await expect(page.getByRole("row", { name: /Person 24/ })).toContainText("Đã khoá");
+  await page.getByRole("button", { name: "Cột", exact: true }).click();
+  await page.getByRole("menuitemcheckbox", { name: "Hoạt động gần nhất" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("columnheader", { name: "Hoạt động gần nhất" })).toHaveCount(0);
+});
+
+for (const mode of ["role", "team", "lock"] as const) {
+  test(`thành viên v2: ${mode} hàng loạt có xác nhận và gửi đúng người`, async ({ page }) => {
+    const hub = await openPeople(page, {
+      "orgMembers/list": () => ok(manyMembers()),
+      "orgMembers/setRole": (input) => ok(input),
+      "orgMembers/setStatus": (input) => ok(input),
+      "teamMembers/add": (input) => ok(input),
+    });
+    await page.goto("/admin/members");
+    await page.getByRole("checkbox", { name: "Chọn Person 01", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Chọn Person 03", exact: true }).check();
+    await page
+      .getByRole("toolbar")
+      .getByRole("button", { name: { role: "Đổi vai trò", team: "Thêm vào đội", lock: "Khoá" }[mode], exact: true })
+      .click();
+    const path = { role: "orgMembers/setRole", team: "teamMembers/add", lock: "orgMembers/setStatus" }[mode];
+    expect(hub.rpcCalls.filter((call) => call.path === path)).toHaveLength(0);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("Áp dụng cho 2 người đã chọn.");
+    if (mode === "role") await dialog.getByLabel("Vai trò", { exact: true }).selectOption("member");
+    if (mode === "team") await dialog.getByLabel("Đội", { exact: true }).selectOption(TEAM.id);
+    await dialog.getByRole("button", { name: "Xác nhận" }).click();
+    await expect(dialog).toBeHidden();
+    const calls = hub.rpcCalls.filter((call) => call.path === path);
+    expect(calls.map((call) => (call.input as { userId: string }).userId).sort()).toEqual(["person-1", "person-3"]);
+    expect(calls.every((call) => call.org === ORG_A.id)).toBe(true);
+    if (mode === "team") expect(calls[0]?.input).toMatchObject({ teamId: TEAM.id, role: "member" });
+  });
+}
+
+for (const mode of ["approve", "deny"] as const) {
+  test(`thành viên v2: ${mode} hàng loạt trong hàng chờ`, async ({ page }) => {
+    const hub = await openPeople(page);
+    await page.goto("/admin/members?xem=cho-duyet");
+    await page.getByRole("checkbox", { name: "Chọn Đỗ Khoa", exact: true }).check();
+    await page
+      .getByRole("toolbar")
+      .getByRole("button", { name: mode === "approve" ? "Duyệt" : "Từ chối", exact: true })
+      .click();
+    await page.getByRole("dialog").getByRole("button", { name: "Xác nhận" }).click();
+    await expect(page.getByRole("row", { name: /Đỗ Khoa/ })).toHaveCount(0);
+    expect(hub.rpcCalls.filter((call) => call.path === `orgMembers/${mode}`).map((call) => call.input)).toEqual([
+      { userId: "u3" },
+    ]);
+  });
+}
+
+test("lời mời v2: chặn lời mời đã nhận, lỗi một phần chỉ thử lại mục lỗi", async ({ page }) => {
+  let rejectExpired = true;
+  let invites = [...INVITES];
+  const hub = await openPeople(page, {
+    "invitations/list": () => ok(invites),
+    "invitations/revoke": (input) => {
+      const id = (input as { invitationId: string }).invitationId;
+      if (id === INVITES[2]?.id && rejectExpired) return fail("CONFLICT", 409, "Chưa thu hồi được lời mời này.");
+      invites = invites.filter((inv) => inv.id !== id);
+      return ok({ ok: true });
+    },
+  });
+  await page.goto("/admin/members?xem=loi-moi");
+  await page.getByRole("checkbox", { name: "Chọn cả trang" }).check();
+  await expect(page.getByRole("toolbar").getByRole("button", { name: "Thu hồi", exact: true })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Chọn minh.pham@example.com", exact: true }).uncheck();
+  await page.getByRole("toolbar").getByRole("button", { name: "Thu hồi", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Thu hồi", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Chưa thu hồi được lời mời này.");
+  await expect(dialog).toContainText("Thu hồi 1 lời mời đã chọn?");
+  rejectExpired = false;
+  await dialog.getByRole("button", { name: "Thu hồi", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const calls = hub.rpcCalls.filter((call) => call.path === "invitations/revoke");
+  expect(calls.filter((call) => (call.input as { invitationId: string }).invitationId === INVITES[0]?.id)).toHaveLength(
+    1,
+  );
+  expect(calls.filter((call) => (call.input as { invitationId: string }).invitationId === INVITES[2]?.id)).toHaveLength(
+    2,
+  );
+});
+
+for (const mode of ["role", "remove"] as const) {
+  test(`đội v2: tìm, lọc vai trò và ${mode} hàng loạt`, async ({ page }) => {
+    const hub = await openPeople(page, {
+      "teamMembers/setRole": (input) => ok(input),
+      "teamMembers/remove": () => ok({ ok: true }),
+    });
+    await page.goto("/admin/teams");
+    await page.getByRole("textbox", { name: "Tìm người…" }).fill("ha.le");
+    await expect(page.getByRole("row")).toHaveCount(2);
+    await page.getByRole("button", { name: "Vai trò", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Vai trò", exact: true })
+      .getByRole("checkbox", { name: "Quản trị đội", exact: true })
+      .check();
+    await page.keyboard.press("Escape");
+    await page.getByRole("checkbox", { name: "Chọn Lê Hà", exact: true }).check();
+    await page
+      .getByRole("toolbar")
+      .getByRole("button", { name: mode === "role" ? "Đổi vai trò" : "Gỡ khỏi đội", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    if (mode === "role") await dialog.getByLabel("Vai trò trong đội").selectOption("viewer");
+    await dialog.getByRole("button", { name: "Xác nhận" }).click();
+    await expect(dialog).toBeHidden();
+    const path = mode === "role" ? "teamMembers/setRole" : "teamMembers/remove";
+    expect(hub.rpcCalls.filter((call) => call.path === path).map((call) => call.input)).toEqual([
+      { teamId: TEAM.id, userId: HA.userId, ...(mode === "role" ? { role: "viewer" } : {}) },
+    ]);
+  });
+}
+
+const SSO_CONFIGURED = {
+  ...SSO_NONE,
+  provider: {
+    issuer: "https://idp.example.com",
+    domain: "example.com",
+    domainVerified: false,
+    clientIdLastFour: "ab12",
+  },
+  domainVerification: null,
+};
+const TXT_RECORD = {
+  domain: "example.com",
+  recordName: "_xdev-hive-verification.example.com",
+  recordValue: "hive-domain=test-verification-value",
+  expiresAt: "2026-10-18T03:00:00.000Z",
+  verified: false,
+};
+
+test("cài đặt đăng nhập v2: lấy và chép TXT, lỗi DNS, xác minh rồi gỡ SSO", async ({ page }) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  let settings: unknown = SSO_CONFIGURED;
+  let matches = false;
+  const hub = await openPeople(page, {
+    "ssoProviders/get": () => ok(settings),
+    "ssoProviders/requestDomainVerification": () => {
+      settings = { ...SSO_CONFIGURED, domainVerification: TXT_RECORD };
+      return ok(settings);
+    },
+    "ssoProviders/checkDomainVerification": () => {
+      if (!matches) return fail("BAD_REQUEST", 400, "Chưa tìm thấy bản ghi TXT khớp.");
+      settings = { ...SSO_CONFIGURED, provider: { ...SSO_CONFIGURED.provider, domainVerified: true } };
+      return ok(settings);
+    },
+    "ssoProviders/remove": () => {
+      settings = SSO_NONE;
+      return ok(settings);
+    },
+  });
+  await page.goto("/admin/sign-in-settings");
+  await page.getByRole("button", { name: "Lấy bản ghi TXT cho example.com" }).click();
+  await expect(page.getByLabel("Tên bản ghi (TXT)")).toHaveValue(TXT_RECORD.recordName);
+  await page.getByRole("button", { name: "Chép giá trị bản ghi TXT" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(TXT_RECORD.recordValue);
+  await page.getByRole("button", { name: "Kiểm tra", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Chưa tìm thấy bản ghi TXT khớp.");
+  matches = true;
+  await page.getByRole("button", { name: "Kiểm tra", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Đã xác minh tên miền example.com.");
+  await page.getByRole("button", { name: "Gỡ SSO", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Gỡ SSO", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  expect(hub.rpcCalls.filter((call) => call.path === "ssoProviders/remove")).toHaveLength(1);
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`người và quyền v2: ảnh ${scheme}, song ngữ, bàn phím và 360px`, async ({ page }, testInfo) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await openPeople(page, {
+      "orgMembers/list": () => ok(manyMembers()),
+      "ssoProviders/get": () => ok({ ...SSO_CONFIGURED, domainVerification: TXT_RECORD }),
+    });
+    for (const [screen, route, title] of [
+      ["members", "/admin/members", "Thành viên"],
+      ["teams", "/admin/teams", "Đội và hệ thống"],
+      ["sign-in-settings", "/admin/sign-in-settings", "Cài đặt đăng nhập"],
+    ] as const) {
+      await page.setViewportSize({ width: 1440, height: 1000 });
+      await page.goto(route);
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      if (screen === "members") await expect(page.getByRole("row")).toHaveCount(11);
+      if (screen === "teams") await expect(page.getByRole("row", { name: /Lê Hà/ })).toBeVisible();
+      if (screen === "sign-in-settings")
+        await expect(page.getByLabel("Giá trị", { exact: true })).toHaveValue(TXT_RECORD.recordValue);
+      await page.screenshot({ path: testInfo.outputPath(`${screen}-${scheme}.png`), fullPage: true });
+      await page.setViewportSize({ width: 360, height: 800 });
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`${screen}-360-${scheme}.png`), fullPage: true });
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto("/admin/members");
+    const facet = page.locator('[data-slot="popover-trigger"]').filter({ hasText: /^Vai trò/ });
+    await facet.focus();
+    await page.keyboard.press("Enter");
+    const option = page
+      .getByRole("dialog", { name: "Vai trò", exact: true })
+      .getByRole("checkbox", { name: "Quản trị", exact: true });
+    await option.focus();
+    await page.keyboard.press("Space");
+    await expect(option).toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(facet).toBeFocused();
+    await page.getByRole("button", { name: "EN", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Members", exact: true })).toBeVisible();
+    await expect(page.getByText("5 / 25 rows match")).toBeVisible();
+    await page.getByRole("button", { name: "Invite people", exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Email")).toBeFocused();
+    await expect(page.getByRole("dialog").getByLabel("Organization role")).toHaveValue("member");
+    await page.getByRole("dialog").getByRole("button", { name: "Create invitations" }).click();
+    await expect(page.getByRole("dialog").getByText("Enter at least one email.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.goto("/admin/teams");
+    await expect(page.getByRole("heading", { name: "Teams & systems", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Create team", exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Slug")).toBeVisible();
+    await page.getByRole("dialog").getByRole("button", { name: "Create team", exact: true }).click();
+    await expect(page.getByRole("dialog").getByText("Enter a name.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.goto("/admin/sign-in-settings");
+    await expect(page.getByRole("heading", { name: "Sign-in settings", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Email domain")).toHaveValue("example.com");
+    await expect(page.getByRole("button", { name: "Copy TXT record value" })).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByText("Enter a Client ID.")).toBeVisible();
+    await expect(page.getByLabel("When someone signs in with SSO for the first time")).toContainText(
+      "Queue for approval (recommended)",
+    );
+  });
+}
