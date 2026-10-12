@@ -220,11 +220,11 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
-| WF-01 | Team and organization administrators shall configure document review workflows with phased checkpoints based on standard presets (AI-DLC, Spec Kit, BMAD) or custom pipelines. | Planned | — |
-| WF-02 | Review workflows shall support heterogeneous checkpoint gates including AI automated pre-checks, designated human reviewers (by user, team role, or group), automated rules, and external CI status checks. | Planned | — |
-| WF-03 | Review checkpoints shall support conditional triggers (document type, keywords, diff size thresholds, skipping formatting-only edits) and configurable SLAs with escalation or alerts. | Planned | — |
-| WF-04 | On rejection at a review gate, the workflow shall route the document back to the author, prompt an agent to revise based on feedback, or return to a previous checkpoint. | Planned | — |
-| WF-05 | On approval through all gates, the workflow shall baseline the document version, optionally triggering subsequent agent tasks linked to the approved baseline. | Planned | — |
+| WF-01 | Team and organization administrators shall configure document review workflows with phased checkpoints based on standard presets (AI-DLC, Spec Kit, BMAD) or custom pipelines. | Implemented | `hub:modules/knowledge/reviews.db.test.ts` (quy trình, quyền, chạy thử), `web:e2e/workflows.spec.ts` |
+| WF-02 | Review workflows shall support heterogeneous checkpoint gates including AI automated pre-checks, designated human reviewers (by user, team role, or group), automated rules, and external CI status checks. | Implemented | `hub:modules/knowledge/reviews.db.test.ts` (người duyệt N/M, quy tắc, AI), `hub:runs.db.test.ts` (run doccheck), `hub:modules/knowledge/review-rules.test.ts` |
+| WF-03 | Review checkpoints shall support conditional triggers (document type, keywords, diff size thresholds, skipping formatting-only edits) and configurable SLAs with escalation or alerts. | Implemented | `hub:modules/knowledge/review-rules.test.ts` (điều kiện, hạn), `hub:modules/knowledge/reviews.db.test.ts` (bỏ qua, nhắc quá hạn) |
+| WF-04 | On rejection at a review gate, the workflow shall route the document back to the author, prompt an agent to revise based on feedback, or return to a previous checkpoint. | Implemented | `hub:modules/knowledge/reviews.db.test.ts` (về người viết, agent sửa rồi tiếp tục, về checkpoint trước), `web:e2e/reviews.spec.ts` |
+| WF-05 | On approval through all gates, the workflow shall baseline the document version, optionally triggering subsequent agent tasks linked to the approved baseline. | Implemented | `hub:modules/knowledge/reviews.db.test.ts` (chốt phiên bản, đề xuất duyệt) |
 
 ### 3.15 Collaborative document editor (DOC)
 
