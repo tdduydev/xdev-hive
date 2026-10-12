@@ -7,6 +7,7 @@ export interface McpPrincipal {
   userId: string;
   /** Run token gắn sẵn một tổ chức; người dùng OAuth thì chọn tổ chức theo từng lời gọi. */
   orgId?: string | undefined;
+  personalTokenId?: string | undefined;
   runId?: string | undefined;
   runKind?: string | undefined;
   /** Task của run và lần thử token được cấp cho; tool dựa vào hai trường này để chỉ sửa đúng task của run. */
