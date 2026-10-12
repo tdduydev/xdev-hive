@@ -2,11 +2,11 @@ import type { ComponentProps } from "react";
 import { cx } from "../../lib/cx.ts";
 
 const tones = {
-  neutral: "border-line-strong bg-subtle text-muted",
-  ok: "border-transparent bg-ok-bg text-ok",
-  warn: "border-transparent bg-warn-bg text-warn",
-  bad: "border-transparent bg-bad-bg text-bad",
-  sel: "border-transparent bg-sel text-sel-fg",
+  neutral: "border-input bg-muted text-muted-foreground",
+  ok: "border-transparent bg-success-soft text-success",
+  warn: "border-transparent bg-warning-soft text-warning",
+  bad: "border-transparent bg-destructive-soft text-destructive",
+  sel: "border-transparent bg-accent text-accent-foreground",
 };
 
 export interface PillProps extends ComponentProps<"span"> {

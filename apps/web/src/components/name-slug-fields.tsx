@@ -58,7 +58,7 @@ export function NameSlugFields(props: NameSlugFieldsProps) {
         <FieldLabel>Định danh</FieldLabel>
         <div className="flex">
           {props.slugPrefix && (
-            <span className="flex items-center rounded-l-md border border-r-0 border-line-strong bg-subtle px-2.5 font-mono text-sm whitespace-nowrap text-muted">
+            <span className="flex items-center rounded-l-md border border-r-0 border-input bg-muted px-2.5 font-mono text-xs whitespace-nowrap text-muted-foreground">
               {props.slugPrefix}
             </span>
           )}

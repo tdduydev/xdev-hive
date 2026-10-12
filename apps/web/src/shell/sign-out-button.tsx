@@ -17,12 +17,12 @@ export function SignOutButton() {
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       aria-label={label}
       title={label}
       disabled={signOut.isPending}
       onClick={() => signOut.mutate()}
-      className={signOut.isError ? "text-bad" : "text-muted"}
+      className={signOut.isError ? "text-destructive" : "text-muted-foreground"}
     >
       <Icon name="logout" />
     </Button>

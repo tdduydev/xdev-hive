@@ -14,7 +14,7 @@ import { PageBody, PageHeader } from "../shell/page-header.tsx";
 
 function Loading() {
   return (
-    <p aria-busy="true" className="text-muted">
+    <p aria-busy="true" className="text-muted-foreground">
       Đang tải…
     </p>
   );
@@ -79,28 +79,28 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
       {registration.isIdle && (
         <>
           <fieldset className="grid gap-1.5 border-0 p-0">
-            <legend className="mb-1 text-sm font-medium">Loại máy</legend>
-            <label className="flex items-start gap-2 text-sm">
+            <legend className="mb-1 text-xs font-medium">Loại máy</legend>
+            <label className="flex items-start gap-2 text-xs">
               <input type="radio" name="machine-kind" checked={kind === "worker"} onChange={() => setKind("worker")} />
               <span>
                 <b className="font-medium">Máy dev</b>
-                <span className="block text-muted">
+                <span className="block text-muted-foreground">
                   Chạy agent bằng CLI đã đăng nhập sẵn trên máy (macOS, Linux, Windows).
                 </span>
               </span>
             </label>
-            <label className="flex items-start gap-2 text-sm">
+            <label className="flex items-start gap-2 text-xs">
               <input type="radio" name="machine-kind" checked={kind === "host"} onChange={() => setKind("host")} />
               <span>
                 <b className="font-medium">Runner host (sandbox)</b>
-                <span className="block text-muted">
+                <span className="block text-muted-foreground">
                   Máy chủ Linux chạy mỗi run trong container gVisor cho dự án bật sandbox. Cần Docker và runsc cấu hình
                   --host-uds=open.
                 </span>
               </span>
             </label>
           </fieldset>
-          <Button variant="primary" onClick={() => registration.mutate()}>
+          <Button variant="default" onClick={() => registration.mutate()}>
             Tạo mã đăng ký
           </Button>
         </>
@@ -110,7 +110,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
       {registration.data && command && (
         <div className="grid gap-3">
           <div className="grid gap-1">
-            <label htmlFor="registration-token" className="text-sm font-medium">
+            <label htmlFor="registration-token" className="text-xs font-medium">
               Mã đăng ký dùng một lần
             </label>
             <div className="flex min-w-0 gap-2">
@@ -118,15 +118,15 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                 id="registration-token"
                 role="status"
                 aria-label="Mã đăng ký dùng một lần"
-                className="min-w-0 flex-1 break-all rounded-md bg-subtle p-2 text-sm"
+                className="min-w-0 flex-1 break-all rounded-md bg-muted p-2 text-xs"
               >
                 {registration.data.token}
               </code>
-              <Button size="sm" onClick={() => copy(registration.data.token)}>
+              <Button variant="outline" size="sm" onClick={() => copy(registration.data.token)}>
                 Chép mã
               </Button>
             </div>
-            <p className="text-xs text-muted">
+            <p className="text-xs text-muted-foreground">
               Hết hạn lúc {new Date(registration.data.expiresAt).toLocaleString("vi-VN")}.
             </p>
           </div>
@@ -138,7 +138,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                   <Button
                     key={item}
                     size="sm"
-                    variant={os === item ? "primary" : "default"}
+                    variant={os === item ? "default" : "outline"}
                     aria-pressed={os === item}
                     onClick={() => setOs(item)}
                   >
@@ -149,23 +149,28 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
             )}
             {steps.map((step, index) => (
               <div key={step.title} className="grid gap-1">
-                <b className="text-sm">
+                <b className="text-xs">
                   {index + 1}. {step.title}
                 </b>
                 <div className="flex min-w-0 gap-2">
-                  <code className="min-w-0 flex-1 break-all rounded-md bg-subtle p-2 text-xs">{step.value}</code>
-                  <Button size="sm" aria-label={`Chép lệnh bước ${index + 1}`} onClick={() => copy(step.value)}>
+                  <code className="min-w-0 flex-1 break-all rounded-md bg-muted p-2 text-xs">{step.value}</code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label={`Chép lệnh bước ${index + 1}`}
+                    onClick={() => copy(step.value)}
+                  >
                     Chép
                   </Button>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted">
+          <p className="text-xs text-muted-foreground">
             Máy sẽ hiện trong danh sách khi worker kết nối tới hub. Worker chỉ chạy CLI đã đăng nhập sẵn trên máy. Chạy
             lại lệnh cài không kèm mã (hoặc hive-worker update) để nâng cấp.
           </p>
-          <p aria-live="polite" className="text-sm text-muted">
+          <p aria-live="polite" className="text-xs text-muted-foreground">
             {copied
               ? "Đã chép vào bộ nhớ tạm."
               : kind === "host"
@@ -177,13 +182,17 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
                     : "Windows tạo tác vụ Task Scheduler chạy khi đăng nhập."}
           </p>
           <DialogActions>
-            <Button onClick={onClose}>Đóng</Button>
+            <Button variant="outline" onClick={onClose}>
+              Đóng
+            </Button>
           </DialogActions>
         </div>
       )}
       {!registration.data && (
         <DialogActions>
-          <Button onClick={onClose}>Đóng</Button>
+          <Button variant="outline" onClick={onClose}>
+            Đóng
+          </Button>
         </DialogActions>
       )}
     </DialogContent>
@@ -252,7 +261,7 @@ export function MachinesPage() {
     <>
       <PageHeader crumb="Vận hành" title="Máy">
         {selectedTeam && (
-          <Button variant="primary" onClick={() => setAdding(true)}>
+          <Button variant="default" onClick={() => setAdding(true)}>
             Thêm máy
           </Button>
         )}
@@ -263,10 +272,10 @@ export function MachinesPage() {
         ) : teams.isError ? (
           <Alert>{apiErrorMessage(teams.error)}</Alert>
         ) : teams.data.length === 0 ? (
-          <Card className="p-5 text-muted">Chưa có đội để quản lý máy.</Card>
+          <Card className="p-5 text-muted-foreground">Chưa có đội để quản lý máy.</Card>
         ) : (
           <>
-            <label className="grid max-w-sm gap-1 text-sm font-medium" htmlFor="machine-team">
+            <label className="grid max-w-sm gap-1 text-xs font-medium" htmlFor="machine-team">
               Đội
               <Select
                 id="machine-team"
@@ -309,16 +318,16 @@ export function MachinesPage() {
                   <Metric label="Run đang chạy" value={activeRuns.length} />
                 </div>
                 <Card className="p-3 sm:p-4">
-                  <h2 className="mb-2 text-lg font-semibold text-ink">Danh sách máy</h2>
+                  <h2 className="mb-2 text-base font-semibold text-foreground">Danh sách máy</h2>
                   {runInfoError && <Alert>Không tải được danh sách run đang chạy của một số máy.</Alert>}
                   {updateMachine.isError && <Alert>{apiErrorMessage(updateMachine.error)}</Alert>}
                   {updateSent && (
-                    <p role="status" className="mb-2 text-sm text-muted">
+                    <p role="status" className="mb-2 text-xs text-muted-foreground">
                       Đã gửi lệnh cập nhật tới {updateSent}. Máy chờ run đang chạy xong, tự cập nhật rồi nối lại.
                     </p>
                   )}
                   {machines.data.length === 0 ? (
-                    <p className="py-5 text-center text-muted">Đội chưa đăng ký máy nào.</p>
+                    <p className="py-5 text-center text-muted-foreground">Đội chưa đăng ký máy nào.</p>
                   ) : (
                     <Table>
                       <thead>
@@ -337,7 +346,7 @@ export function MachinesPage() {
                         {machines.data.map((machine) => (
                           <tr key={machine.id}>
                             <Td>
-                              <b className="font-mono text-sm">{machine.name}</b>
+                              <b className="font-mono text-xs">{machine.name}</b>
                             </Td>
                             <Td>{machine.os}</Td>
                             <Td>
@@ -346,7 +355,7 @@ export function MachinesPage() {
                                   status={machine.status}
                                   busy={activeRuns.some((run) => run.machineId === machine.id)}
                                 />
-                                <span className="text-xs text-muted">
+                                <span className="text-xs text-muted-foreground">
                                   {machine.lastSeenAt
                                     ? `Nhịp ${new Date(machine.lastSeenAt).toLocaleString("vi-VN")}`
                                     : "Chưa kết nối"}
@@ -364,9 +373,9 @@ export function MachinesPage() {
                                 machine.capacity,
                               )}{" "}
                               / {machine.capacity}
-                              <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-subtle">
+                              <div className="mt-1 h-1 w-20 overflow-hidden rounded bg-muted">
                                 <div
-                                  className="h-full bg-accent"
+                                  className="h-full bg-primary"
                                   style={{
                                     width: `${machine.capacity ? (Math.min(activeRuns.filter((run) => run.machineId === machine.id).length, machine.capacity) / machine.capacity) * 100 : 0}%`,
                                   }}
@@ -388,6 +397,7 @@ export function MachinesPage() {
                             <Td>
                               {machine.status === "paused" ? (
                                 <Button
+                                  variant="outline"
                                   size="sm"
                                   disabled={machineAction.isPending}
                                   onClick={() => machineAction.mutate({ machineId: machine.id, paused: false })}
@@ -396,6 +406,7 @@ export function MachinesPage() {
                                 </Button>
                               ) : machine.status !== "revoked" ? (
                                 <Button
+                                  variant="outline"
                                   size="sm"
                                   disabled={machineAction.isPending}
                                   onClick={() => machineAction.mutate({ machineId: machine.id, paused: true })}
@@ -407,7 +418,7 @@ export function MachinesPage() {
                                 <span role="alert">{apiErrorMessage(machineAction.error)}</span>
                               )}{" "}
                               {machine.status !== "revoked" && (
-                                <Button size="sm" onClick={() => setRevokeId(machine.id)}>
+                                <Button variant="outline" size="sm" onClick={() => setRevokeId(machine.id)}>
                                   Thu hồi
                                 </Button>
                               )}
@@ -415,6 +426,7 @@ export function MachinesPage() {
                                 <>
                                   {" "}
                                   <Button
+                                    variant="outline"
                                     size="sm"
                                     disabled={updateMachine.isPending}
                                     aria-label={`Cập nhật worker trên ${machine.name}`}
@@ -459,8 +471,10 @@ export function MachinesPage() {
           </DialogDescription>
           {revoke.isError && <Alert>{apiErrorMessage(revoke.error)}</Alert>}
           <DialogActions>
-            <Button onClick={() => setRevokeId(null)}>Huỷ</Button>
-            <Button variant="primary" disabled={revoke.isPending} onClick={() => revokeId && revoke.mutate(revokeId)}>
+            <Button variant="outline" onClick={() => setRevokeId(null)}>
+              Huỷ
+            </Button>
+            <Button variant="default" disabled={revoke.isPending} onClick={() => revokeId && revoke.mutate(revokeId)}>
               {revoke.isPending ? "Đang thu hồi…" : "Thu hồi máy"}
             </Button>
           </DialogActions>
@@ -483,7 +497,7 @@ function WorkerVersion({ machine, latest }: { machine: Machine; latest: WorkerRe
   if (!machine.version) return <>—</>;
   return (
     <div className="grid justify-items-start gap-1">
-      <span className="font-mono text-sm">{machine.version}</span>
+      <span className="font-mono text-xs">{machine.version}</span>
       {latest && outdated(machine, latest) && (
         <Pill tone="warn" small>
           Có bản {latest.version}
@@ -496,8 +510,8 @@ function WorkerVersion({ machine, latest }: { machine: Machine; latest: WorkerRe
 function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <Card className="grid gap-1 p-3">
-      <span className="text-xs text-muted">{label}</span>
-      <b className="text-2xl text-ink">{value}</b>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <b className="text-lg text-foreground">{value}</b>
     </Card>
   );
 }

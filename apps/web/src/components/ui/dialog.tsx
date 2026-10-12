@@ -12,11 +12,11 @@ export const DialogClose = BaseDialog.Close;
 export function DialogContent({ className, ...props }: WithClass<BaseDialog.Popup.Props>) {
   return (
     <BaseDialog.Portal>
-      <BaseDialog.Backdrop className="fixed inset-0 bg-backdrop" />
+      <BaseDialog.Backdrop className="fixed inset-0 bg-black/50" />
       <BaseDialog.Popup
         className={cx(
           "fixed top-1/2 left-1/2 grid w-120 max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-3.5",
-          "rounded-2xl border border-line-strong bg-surface p-5.5 text-body shadow-dialog",
+          "rounded-2xl border border-input bg-card p-5.5 text-foreground shadow-lg",
           className,
         )}
         {...props}
@@ -26,11 +26,11 @@ export function DialogContent({ className, ...props }: WithClass<BaseDialog.Popu
 }
 
 export function DialogTitle({ className, ...props }: WithClass<BaseDialog.Title.Props>) {
-  return <BaseDialog.Title className={cx("text-2xl font-bold text-ink", className)} {...props} />;
+  return <BaseDialog.Title className={cx("text-lg font-bold text-foreground", className)} {...props} />;
 }
 
 export function DialogDescription({ className, ...props }: WithClass<BaseDialog.Description.Props>) {
-  return <BaseDialog.Description className={cx("text-muted", className)} {...props} />;
+  return <BaseDialog.Description className={cx("text-muted-foreground", className)} {...props} />;
 }
 
 export function DialogActions({ className, ...props }: ComponentProps<"div">) {

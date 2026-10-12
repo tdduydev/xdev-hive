@@ -61,7 +61,7 @@ export function InviteForm({ title, defaultTeamId, cancelLabel, doneLabel, onClo
 type FieldErrors = { emails?: string | undefined; teamRole?: string | undefined };
 
 // Nhãn viết tay cho ô gốc (<select>, <textarea>): Field của Base UI chỉ tự nối nhãn và lỗi với ô của chính nó.
-const label = "text-label font-medium text-ink";
+const label = "text-sm font-medium text-foreground";
 
 function InviteFields({
   title,
@@ -138,7 +138,10 @@ function InviteFields({
           aria-describedby={`${id}-emails-note`}
           className="min-h-0"
         />
-        <small id={`${id}-emails-note`} className={cx("text-xs", errors.emails ? "text-bad" : "text-muted")}>
+        <small
+          id={`${id}-emails-note`}
+          className={cx("text-xs", errors.emails ? "text-destructive" : "text-muted-foreground")}
+        >
           {errors.emails ?? "Nhiều email cách nhau bằng dấu phẩy hoặc xuống dòng."}
         </small>
       </div>
@@ -196,7 +199,7 @@ function InviteFields({
               ))}
             </Select>
             {errors.teamRole && (
-              <small id={`${id}-team-role-error`} className="text-xs text-bad">
+              <small id={`${id}-team-role-error`} className="text-xs text-destructive">
                 {errors.teamRole}
               </small>
             )}
@@ -205,10 +208,10 @@ function InviteFields({
       </div>
       {failure && <Alert>{failure}</Alert>}
       <div className="flex justify-end gap-2">
-        <Button onClick={onCancel} disabled={busy}>
+        <Button variant="outline" onClick={onCancel} disabled={busy}>
           {cancelLabel}
         </Button>
-        <Button type="submit" variant="primary" disabled={busy}>
+        <Button type="submit" variant="default" disabled={busy}>
           {busy ? "Đang tạo lời mời…" : "Tạo lời mời"}
         </Button>
       </div>
@@ -233,7 +236,7 @@ function InviteLinks({
   return (
     <div className="grid gap-3.5">
       {title}
-      <p role="status" className="rounded-lg bg-warn-bg px-3.5 py-2.5 text-label text-warn">
+      <p role="status" className="rounded-lg bg-warning-soft px-3.5 py-2.5 text-sm text-warning">
         Link chỉ hiện một lần. Chép và gửi cho từng người ngay bây giờ. Mỗi link dùng được một lần
         {expiresAt ? `, hết hạn ngày ${formatDay(expiresAt)}` : ""}.
       </p>
@@ -248,8 +251,10 @@ function InviteLinks({
         ))}
       </ul>
       <div className="flex justify-end gap-2">
-        <Button onClick={onMore}>Mời thêm</Button>
-        <Button variant="primary" onClick={onClose}>
+        <Button variant="outline" onClick={onMore}>
+          Mời thêm
+        </Button>
+        <Button variant="default" onClick={onClose}>
           {doneLabel}
         </Button>
       </div>

@@ -62,23 +62,23 @@ export function AllowlistEditor({
   return (
     <div className="grid gap-3">
       {lockedNote && (
-        <p role="note" className="rounded-lg border border-line bg-subtle px-3.5 py-2.5 text-sm text-body">
+        <p role="note" className="rounded-lg border border-border bg-muted px-3.5 py-2.5 text-xs text-foreground">
           {lockedNote}
         </p>
       )}
       {entries.data.length === 0 ? (
-        <p className="text-sm text-muted">Chưa có mục nào.</p>
+        <p className="text-xs text-muted-foreground">Chưa có mục nào.</p>
       ) : (
         <ul aria-label="Danh sách mục mạng" className="grid gap-1.5">
           {entries.data.map((entry) => (
-            <li key={entry.id} className="flex flex-wrap items-center gap-2 rounded-md border border-line px-3 py-2">
-              <code className="font-mono text-sm text-ink">{entry.rule}</code>
-              {entry.note && <span className="text-sm text-muted">{entry.note}</span>}
-              <span className="ml-auto text-xs text-muted">{formatDayTime(entry.createdAt)}</span>
+            <li key={entry.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+              <code className="font-mono text-xs text-foreground">{entry.rule}</code>
+              {entry.note && <span className="text-xs text-muted-foreground">{entry.note}</span>}
+              <span className="ml-auto text-xs text-muted-foreground">{formatDayTime(entry.createdAt)}</span>
               {editable && (
                 <Button
                   size="sm"
-                  variant="danger"
+                  variant="destructive"
                   aria-label={`Xoá ${entry.rule}`}
                   disabled={remove.isPending}
                   onClick={() => remove.mutate(entry.id)}
@@ -107,7 +107,7 @@ export function AllowlistEditor({
             <Input id={ids.note} name="note" placeholder="Vì sao cần mở" />
           </Field>
           <div className="flex items-start pt-6">
-            <Button type="submit" variant="primary" disabled={add.isPending}>
+            <Button type="submit" variant="default" disabled={add.isPending}>
               {add.isPending ? "Đang thêm…" : "Thêm"}
             </Button>
           </div>

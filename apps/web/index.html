@@ -4,12 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/xdev-hive-icon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600&display=swap"
-    />
+    <script>
+      // Đặt class .dark trước khi vẽ để không nháy nền sáng. hive.theme: light | dark | system (mặc định theo hệ điều hành).
+      (() => {
+        try {
+          const theme = localStorage.getItem("hive.theme");
+          const dark = theme === "dark" || (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch {}
+      })();
+    </script>
     <title>xDev Hive</title>
   </head>
   <body>

@@ -52,7 +52,7 @@ export function RunsPage() {
   } else if (projects.isError && search.project) body = <Alert>{apiErrorMessage(projects.error)}</Alert>;
   else if (runs.isPending) {
     body = (
-      <p aria-busy="true" className="text-muted">
+      <p aria-busy="true" className="text-muted-foreground">
         Đang tải…
       </p>
     );
@@ -62,9 +62,9 @@ export function RunsPage() {
     body =
       items.length === 0 ? (
         hasFilter(search) ? (
-          <Card className="grid justify-items-center gap-3 px-6 py-8 text-center text-muted">
+          <Card className="grid justify-items-center gap-3 px-6 py-8 text-center text-muted-foreground">
             Không có run nào khớp bộ lọc.
-            <Button size="sm" onClick={() => navigate({ search: {}, replace: true })}>
+            <Button variant="outline" size="sm" onClick={() => navigate({ search: {}, replace: true })}>
               Bỏ lọc
             </Button>
           </Card>
@@ -76,7 +76,7 @@ export function RunsPage() {
           <RunTable items={items} projects={projects.data ?? []} now={now} />
           {runs.hasNextPage && (
             <div className="flex justify-center">
-              <Button onClick={() => runs.fetchNextPage()} disabled={runs.isFetchingNextPage}>
+              <Button variant="outline" onClick={() => runs.fetchNextPage()} disabled={runs.isFetchingNextPage}>
                 {runs.isFetchingNextPage ? "Đang tải…" : "Xem thêm"}
               </Button>
             </div>
@@ -120,7 +120,7 @@ function Filters({
     search.machine && !machines.some((m) => m.id === search.machine)
       ? [...machines, { id: search.machine, name: shortId(search.machine) }]
       : machines;
-  const box = "grid min-w-0 gap-1 text-xs text-muted";
+  const box = "grid min-w-0 gap-1 text-xs text-muted-foreground";
   return (
     <fieldset className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3 app:max-w-200">
       <legend className="sr-only">Lọc theo dự án, agent, máy</legend>
@@ -182,13 +182,13 @@ function Filters({
 function EmptyRuns() {
   return (
     <Card className="grid justify-items-center gap-2 px-6 py-10 text-center">
-      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-sel text-sel-fg">
+      <span className="mb-1 grid size-10 place-items-center rounded-lg bg-accent text-accent-foreground">
         <Icon name="play" className="size-5" />
       </span>
-      <h2 className="text-lg font-semibold text-ink">Chưa có lượt chạy nào</h2>
-      <p className="max-w-md text-muted">
+      <h2 className="text-base font-semibold text-foreground">Chưa có lượt chạy nào</h2>
+      <p className="max-w-md text-muted-foreground">
         Mỗi lần giao việc cho agent là một lượt chạy. Giao việc từ{" "}
-        <Link to="/tasks" className="text-accent hover:text-accent-hover">
+        <Link to="/tasks" className="text-primary hover:text-primary/90">
           Bảng việc
         </Link>
         .
@@ -224,17 +224,17 @@ function RunTable({ items, projects, now }: { items: RunListItem[]; projects: Pr
                     <Link
                       to="/runs/$id"
                       params={{ id: run.id }}
-                      className="font-mono text-sm text-accent hover:text-accent-hover"
+                      className="font-mono text-xs text-primary hover:text-primary/90"
                       aria-label={`Mở run ${shortId(run.id)} của ${run.taskKey}`}
                     >
                       {shortId(run.id)}
                     </Link>
-                    {run.kind === "review" && <span className="text-xs text-muted">review chéo</span>}
+                    {run.kind === "review" && <span className="text-xs text-muted-foreground">review chéo</span>}
                   </span>
                 </Td>
                 <Td className="min-w-70">
                   <span className="grid leading-tight">
-                    <span className="text-sm text-muted">
+                    <span className="text-xs text-muted-foreground">
                       <span className="font-mono">{run.taskKey}</span>
                       {project && (
                         <>
@@ -242,14 +242,14 @@ function RunTable({ items, projects, now }: { items: RunListItem[]; projects: Pr
                           <Link
                             to="/projects/$key"
                             params={{ key: project.key }}
-                            className="text-accent hover:text-accent-hover"
+                            className="text-primary hover:text-primary/90"
                           >
                             {project.name}
                           </Link>
                         </>
                       )}
                     </span>
-                    <span className="font-medium text-ink">{run.taskTitle}</span>
+                    <span className="font-medium text-foreground">{run.taskTitle}</span>
                   </span>
                 </Td>
                 <Td className="whitespace-nowrap">
@@ -257,23 +257,22 @@ function RunTable({ items, projects, now }: { items: RunListItem[]; projects: Pr
                     <Pill tone={runStateTone(run.state)} dot>
                       {RUN_STATE_LABEL[run.state]}
                     </Pill>
-                    <span className="text-xs text-muted">{runActivity(run, now)}</span>
+                    <span className="text-xs text-muted-foreground">{runActivity(run, now)}</span>
                   </span>
                 </Td>
                 <Td className="whitespace-nowrap">
-                  <span className="text-ink">{cliLabel(run.cli)}</span>{" "}
-                  {run.machineName && <span className="font-mono text-sm text-muted">{run.machineName}</span>}
+                  <span className="text-foreground">{cliLabel(run.cli)}</span>{" "}
+                  {run.machineName && (
+                    <span className="font-mono text-xs text-muted-foreground">{run.machineName}</span>
+                  )}
                 </Td>
-                <Td className="whitespace-nowrap text-muted tabular-nums">{formatDayTime(run.createdAt)}</Td>
-                <Td className="text-right whitespace-nowrap text-ink tabular-nums">{formatUsd(run.cost.costUsd)}</Td>
-                <Td className="whitespace-nowrap font-mono text-sm">
+                <Td className="whitespace-nowrap text-muted-foreground tabular-nums">{formatDayTime(run.createdAt)}</Td>
+                <Td className="text-right whitespace-nowrap text-foreground tabular-nums">
+                  {formatUsd(run.cost.costUsd)}
+                </Td>
+                <Td className="whitespace-nowrap font-mono text-xs">
                   {run.prUrl ? (
-                    <a
-                      href={run.prUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent hover:text-accent-hover"
-                    >
+                    <a href={run.prUrl} target="_blank" rel="noreferrer" className="text-primary hover:text-primary/90">
                       {prLabel(run.prUrl)}
                       <span className="sr-only"> (mở PR của {run.taskKey} ở tab mới)</span>
                     </a>

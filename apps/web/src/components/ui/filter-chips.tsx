@@ -34,8 +34,10 @@ export function FilterChips<K extends string>({
             aria-pressed={on}
             onClick={() => onChange(chip.key)}
             className={cx(
-              "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-label",
-              on ? "border-sel-line bg-sel font-semibold text-sel-fg" : "border-line-strong bg-surface hover:bg-subtle",
+              "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm",
+              on
+                ? "border-primary/40 bg-accent font-semibold text-accent-foreground"
+                : "border-input bg-card hover:bg-muted",
             )}
           >
             {chip.label}

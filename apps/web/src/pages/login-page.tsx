@@ -147,16 +147,19 @@ export function LoginPage() {
     <main className="grid min-h-dvh place-items-center px-4 py-6">
       <Card className="grid w-full max-w-105 gap-4 p-7">
         <Brand />
-        <h1 className="mt-1 font-display text-4xl font-semibold tracking-tight text-ink">Đăng nhập</h1>
-        <p className="-mt-2 text-muted">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
+        <h1 className="mt-1 font-heading text-2xl font-semibold tracking-tight text-foreground">Đăng nhập</h1>
+        <p className="-mt-2 text-muted-foreground">Dùng tài khoản công ty, GitHub, GitLab hoặc email.</p>
         {errorAt("redirect") && <Alert>{errorAt("redirect")}</Alert>}
 
         {firstAdmin && (
-          <section aria-labelledby="first-admin" className="grid gap-2.5 rounded-lg border border-sel-line bg-sel p-4">
-            <h2 id="first-admin" className="text-base font-semibold text-sel-fg">
+          <section
+            aria-labelledby="first-admin"
+            className="grid gap-2.5 rounded-lg border border-primary/40 bg-accent p-4"
+          >
+            <h2 id="first-admin" className="text-sm font-semibold text-accent-foreground">
               Tạo tài khoản quản trị đầu tiên
             </h2>
-            <p className="text-sm text-body">
+            <p className="text-xs text-foreground">
               Hub chưa có tổ chức nào. Chỉ người quản trị hub (email khai lúc cài hub) mới tạo được tài khoản ở đây; sau
               khi có tổ chức, mọi người vào bằng lời mời.
             </p>
@@ -175,7 +178,7 @@ export function LoginPage() {
                 <FieldHint>Ít nhất {MIN_PASSWORD} ký tự.</FieldHint>
               </Field>
               {errorAt("signup") && <Alert>{errorAt("signup")}</Alert>}
-              <Button type="submit" variant="primary" block disabled={busy}>
+              <Button type="submit" variant="default" className="w-full" disabled={busy}>
                 <Icon name="key" />
                 {pending === "signup" ? "Đang tạo tài khoản…" : "Tạo tài khoản quản trị"}
               </Button>
@@ -191,18 +194,19 @@ export function LoginPage() {
           ) : (
             <FieldHint>Hub tìm SSO của tổ chức theo tên miền email.</FieldHint>
           )}
-          <Button type="submit" variant="primary" block disabled={busy}>
+          <Button type="submit" variant="default" className="w-full" disabled={busy}>
             <Icon name="key" />
             {pending === "sso" ? "Đang chuyển sang SSO…" : "Tiếp tục với SSO"}
           </Button>
         </Field>
 
-        <div className="flex items-center gap-2.5 text-xs text-muted before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">
+        <div className="flex items-center gap-2.5 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
           hoặc
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <Button
+            variant="outline"
             disabled={busy}
             onClick={() => attempt("github", () => authClient.signIn.social({ provider: "github", ...callbacks }))}
           >
@@ -210,6 +214,7 @@ export function LoginPage() {
             {pending === "github" ? "Đang chuyển…" : "GitHub"}
           </Button>
           <Button
+            variant="outline"
             disabled={busy}
             onClick={() => attempt("gitlab", () => authClient.signIn.social({ provider: "gitlab", ...callbacks }))}
           >
@@ -220,7 +225,7 @@ export function LoginPage() {
         {errorAt("social") && <Alert>{errorAt("social")}</Alert>}
 
         <details>
-          <summary className="cursor-pointer text-label text-muted">Đăng nhập bằng email và mật khẩu</summary>
+          <summary className="cursor-pointer text-sm text-muted-foreground">Đăng nhập bằng email và mật khẩu</summary>
           <form noValidate onSubmit={onEmail} className="mt-3 grid gap-2.5">
             <Field>
               <FieldLabel>Email</FieldLabel>
@@ -231,7 +236,7 @@ export function LoginPage() {
               <Input name="password" type="password" autoComplete="current-password" />
             </Field>
             {errorAt("email") && <Alert>{errorAt("email")}</Alert>}
-            <Button type="submit" block disabled={busy}>
+            <Button variant="outline" type="submit" className="w-full" disabled={busy}>
               <Icon name="mail" />
               {pending === "email" ? "Đang đăng nhập…" : "Đăng nhập"}
             </Button>
@@ -239,7 +244,9 @@ export function LoginPage() {
         </details>
 
         {/* Mockup giữ lề mặc định của <p> (1em) quanh dòng này. */}
-        <p className="my-3 text-center text-xs text-muted">Chưa có tài khoản? Nhờ quản trị tổ chức gửi lời mời.</p>
+        <p className="my-3 text-center text-xs text-muted-foreground">
+          Chưa có tài khoản? Nhờ quản trị tổ chức gửi lời mời.
+        </p>
       </Card>
     </main>
   );
