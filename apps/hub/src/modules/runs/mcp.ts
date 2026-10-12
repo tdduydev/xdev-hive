@@ -1,64 +1,16 @@
 import { planContent, type Task } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
-import type pg from "pg";
 import { z } from "zod";
-import type { McpPrincipal, RunTokenVerifier as McpRunTokenVerifier, McpToolRegistry } from "../mcp/index.ts";
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
+import { loadProject } from "../catalog/index.ts";
+import { findMachineByRef } from "../fleet/index.ts";
+import type { McpPrincipal, McpToolRegistry } from "../mcp/index.ts";
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from "../platform/index.ts";
 import { loadTask, taskByKeyForUser, toTask } from "../tasks/index.ts";
+import { teamRoleOf } from "../tenancy/index.ts";
+import { searchRuns } from "./queries.ts";
 import { reviewReportInput } from "./review.ts";
 import { runs } from "./schema.ts";
 import { hubEvent, lockRun, notifyRun, ON_MACHINE } from "./state.ts";
-import { createRunTokenVerifier } from "./token.ts";
-
-/**
- * Cài run token vào cổng MCP. Ngoài chữ ký và thời hạn, run phải còn ở trên máy và đúng lần thử của token: run đã
- * giao lại (attempt mới) hay đã kết thúc thì token cũ, dù chưa hết hạn, không được ghi vào run nữa.
- */
-export function createMcpRunTokens(opts: {
-  pool: pg.Pool;
-  authSecret: string;
-  publicUrl: string;
-  now?: () => number;
-}): McpRunTokenVerifier {
-  const verifyJwt = createRunTokenVerifier(opts);
-  return {
-    async verify(token) {
-      const claims = verifyJwt(token);
-      if (!claims) return null;
-      const run = await withTenant(opts.pool, { orgId: claims.org_id }, async (tx) => {
-        const [row] = await tx
-          .select({
-            kind: runs.kind,
-            state: runs.state,
-            attempt: runs.attempt,
-            taskId: runs.taskId,
-            projectId: runs.projectId,
-            createdBy: runs.createdBy,
-          })
-          .from(runs)
-          .where(eq(runs.id, claims.run_id));
-        return row;
-      });
-      if (!run || run.attempt !== claims.attempt) return null;
-      // Run không có task (leader, doccheck) được ký task_id bằng chính id của run.
-      if ((run.taskId ?? claims.run_id) !== claims.task_id) return null;
-      if (!ON_MACHINE.includes(run.state)) return null;
-      return {
-        kind: "run",
-        // Agent làm thay người đã giao run: tool đọc dữ liệu theo quyền của người đó.
-        userId: run.createdBy,
-        orgId: claims.org_id,
-        runId: claims.run_id,
-        runKind: run.kind,
-        taskId: run.taskId ?? undefined,
-        projectId: run.projectId,
-        attempt: claims.attempt,
-        clientId: `run:${claims.run_id}`,
-        scopes: [],
-      };
-    },
-  };
-}
 
 function requireRun(principal: McpPrincipal) {
   const { kind, runId, taskId, attempt } = principal;
@@ -228,6 +180,56 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       });
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, recorded: "doccheck_result" };
+    },
+  });
+
+  registry.register({
+    name: "run_list",
+    title: "Danh sách run",
+    description:
+      "Liệt kê run gần nhất trong các đội bạn có vai trò, mới nhất trước. `machine` (id hoặc tên máy) lọc theo máy " +
+      "chạy; app desktop dùng để hiện lượt chạy trên chính máy đó.",
+    input: z.object({
+      machine: z.string().trim().min(1).max(200).optional().describe("Id hoặc tên máy."),
+      limit: z.number().int().min(1).max(50).optional().describe("Số run; mặc định 20."),
+    }),
+    readOnly: true,
+    handler: async ({ machine, limit }, { tx, principal }) => {
+      if (principal.kind !== "user") throw new ForbiddenError("USER_TOKEN_REQUIRED", "Tool này dành cho người dùng.");
+      let machineId: string | undefined;
+      if (machine) {
+        const found = await findMachineByRef(tx, machine);
+        // Máy của đội mình không có vai trò thì coi như không có, để không lộ tên máy của đội khác.
+        if (!found || !(await teamRoleOf(tx, principal.userId, found.teamId)))
+          throw new NotFoundError("MACHINE_NOT_FOUND", "Không tìm thấy máy trong các đội của bạn.");
+        machineId = found.id;
+      }
+      const { items } = await searchRuns(tx, principal.userId, { machineId, limit: limit ?? 20 });
+      const projects = new Map<string, { key: string; name: string } | null>();
+      for (const id of new Set(items.map((r) => r.projectId))) {
+        const p = await loadProject(tx, id);
+        projects.set(id, p ? { key: p.key, name: p.name } : null);
+      }
+      return {
+        runs: items.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          state: r.state,
+          taskKey: r.taskKey,
+          title: r.taskTitle,
+          projectId: r.projectId,
+          project: projects.get(r.projectId) ?? null,
+          cli: r.cli,
+          model: r.model,
+          machine: r.machineName,
+          costUsd: r.cost.costUsd,
+          tokensIn: r.cost.tokensIn,
+          prUrl: r.prUrl,
+          createdAt: r.createdAt,
+          startedAt: r.startedAt,
+          finishedAt: r.finishedAt,
+        })),
+      };
     },
   });
 }

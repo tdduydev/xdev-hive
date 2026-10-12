@@ -17,6 +17,8 @@ fn main() {
         "workspace_meta",
         "hub_tool",
         "skill_uses",
+        "this_machine",
+        "open_hub_page",
         "installed_skills",
         "install_skills",
         "remove_skills",

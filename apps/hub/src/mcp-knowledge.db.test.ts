@@ -422,6 +422,34 @@ describe("tool knowledge với token người dùng", () => {
     expect(other).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy dự án") });
   });
 
+  it("run_list theo máy: run của máy đội mình, máy đội khác thì không thấy", async () => {
+    const machine = async (teamId: string, name: string) =>
+      (
+        await admin.query(
+          "insert into hive.machines (org_id, team_id, name, os, version, clis, capacity) values ($1, $2, $3, 'linux', '1', '{claude}', 1) returning id",
+          [orgA.orgId, teamId, name],
+        )
+      ).rows[0].id as string;
+    const mine = await machine(orgA.teamId, `mac-${tag}`);
+    await machine(orgA.otherTeamId, `crm-${tag}`);
+    const task = await admin.query(
+      "insert into hive.tasks (org_id, team_id, project_id, number, key, title, created_by) values ($1, $2, $3, 991, $4, 'Run trên máy', 'seed') returning id",
+      [orgA.orgId, orgA.teamId, proj.a.id, `RL-${tag}`],
+    );
+    const runRow = await admin.query(
+      `insert into hive.runs (org_id, team_id, project_id, task_id, branch, policy_snapshot, created_by, state, machine_id, cli)
+       values ($1, $2, $3, $4, 'ai/rl', '[]', 'seed', 'succeeded', $5, 'claude') returning id`,
+      [orgA.orgId, orgA.teamId, proj.a.id, task.rows[0].id, mine],
+    );
+    const { runs } = (await call(member, "run_list", { org: orgA.slug, machine: `mac-${tag}` })).json() as {
+      runs: { id: string; taskKey: string; project: { key: string } | null; machine: string }[];
+    };
+    expect(runs.map((r) => r.id)).toEqual([runRow.rows[0].id]);
+    expect(runs[0]).toMatchObject({ taskKey: `RL-${tag}`, project: { key: proj.a.key }, machine: `mac-${tag}` });
+    const other = await call(member, "run_list", { org: orgA.slug, machine: `crm-${tag}` });
+    expect(other).toMatchObject({ isError: true, text: expect.stringContaining("Không tìm thấy máy") });
+  });
+
   it("thuộc hai tổ chức thì phải chọn org", async () => {
     const res = await call(member, "memory_search", { query: "làm tròn" });
     expect(res).toMatchObject({ isError: true, text: expect.stringContaining("nhiều tổ chức") });
