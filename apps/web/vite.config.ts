@@ -15,7 +15,8 @@ export default defineConfig({
     proxy: {
       "/rpc": hub,
       "/api": hub,
-      "/mcp": hub,
+      // Chỉ endpoint /mcp; /mcp/consent là trang của web.
+      "^/mcp(\\?.*)?$": hub,
       "/.well-known": hub,
       "/ws": { target: hub, ws: true },
     },
