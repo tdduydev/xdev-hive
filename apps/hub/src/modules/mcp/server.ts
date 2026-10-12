@@ -1,8 +1,9 @@
-import { type CallToolResult, McpServer } from "@modelcontextprotocol/server";
+import { type CallToolResult, McpServer, type Tool } from "@modelcontextprotocol/server";
 import type pg from "pg";
 import { z } from "zod";
 import { recordAudit } from "../audit/index.ts";
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError, withTenant } from "../platform/index.ts";
+import { disabledTools, requireActivePersonalToken, requireEnabledTool } from "./admin-service.ts";
 import type { McpPrincipal } from "./principal.ts";
 import type { McpOrgMembership, McpTool, McpToolRegistry } from "./registry.ts";
 
@@ -45,9 +46,9 @@ async function runTool(
   const { org, ...args } = raw as { org?: string } & Record<string, unknown>;
   const { pool, registry } = deps;
   let orgId: string;
-  if (principal.kind === "run") {
-    if (!principal.orgId) throw new McpToolError("Run token thiếu tổ chức.");
-    if (org && org !== principal.orgId) throw new McpToolError("Run chỉ được làm việc trong tổ chức của nó.");
+  if (principal.kind === "run" || principal.personalTokenId) {
+    if (!principal.orgId) throw new McpToolError("Token thiếu tổ chức.");
+    if (org && org !== principal.orgId) throw new McpToolError("Token chỉ được làm việc trong tổ chức của nó.");
     orgId = principal.orgId;
   } else {
     // Chưa có tổ chức trong context: RLS chỉ cho thấy tư cách thành viên của chính người gọi.
@@ -56,27 +57,52 @@ async function runTool(
     );
     orgId = pickOrg(orgs, org).id;
   }
-  const prepared = tool.prepare ? await tool.prepare(args) : undefined;
-  return withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
-    // Xét lại trong transaction sẽ chạy tool: RLS chỉ lọc theo tổ chức trong context, không theo tư cách thành viên,
-    // và người dùng có thể vừa bị khoá giữa hai transaction.
-    if (principal.kind === "user" && !(await registry.memberships(tx, principal.userId)).some((o) => o.id === orgId)) {
-      throw new McpToolError("Bạn không còn là thành viên của tổ chức này.");
-    }
-    const result = await tool.handler(args, { tx, orgId, principal }, prepared);
-    await recordAudit(tx, {
-      action: `mcp.${tool.name}`,
-      targetType: "mcp_tool",
-      targetId: tool.name,
-      data: {
-        args,
-        via: principal.kind,
-        clientId: principal.clientId ?? null,
-        ...(principal.runId ? { runId: principal.runId } : {}),
-      },
+  const auditData = {
+    via: principal.kind,
+    clientId: principal.clientId ?? null,
+    ...(principal.runId ? { runId: principal.runId } : {}),
+    ...(principal.personalTokenId ? { tokenId: principal.personalTokenId } : {}),
+  };
+  try {
+    // Kiểm trước prepare để tool bị tắt không gọi dịch vụ ngoài; kiểm lại lúc thực thi để không dùng trạng thái cũ.
+    await withTenant(pool, { userId: principal.userId, orgId }, (tx) => requireEnabledTool(tx, tool.name));
+    const prepared = tool.prepare ? await tool.prepare(args) : undefined;
+    return await withTenant(pool, { userId: principal.userId, orgId }, async (tx) => {
+      // Xét lại trong transaction sẽ chạy tool: RLS chỉ lọc theo tổ chức trong context, không theo tư cách thành viên,
+      // và người dùng có thể vừa bị khoá giữa hai transaction.
+      if (
+        principal.kind === "user" &&
+        !(await registry.memberships(tx, principal.userId)).some((o) => o.id === orgId)
+      ) {
+        throw new McpToolError("Bạn không còn là thành viên của tổ chức này.");
+      }
+      await requireActivePersonalToken(tx, principal);
+      await requireEnabledTool(tx, tool.name);
+      const result = await tool.handler(args, { tx, orgId, principal }, prepared);
+      await recordAudit(tx, {
+        action: `mcp.${tool.name}`,
+        targetType: "mcp_tool",
+        targetId: tool.name,
+        data: {
+          args,
+          ...auditData,
+          outcome: "success",
+        },
+      });
+      return result;
     });
-    return result;
-  });
+  } catch (error) {
+    // Transaction lỗi đã rollback; ghi số lỗi riêng, không lưu thông báo nội bộ hay tham số có thể chứa secret.
+    await withTenant(pool, { userId: principal.userId, orgId }, (tx) =>
+      recordAudit(tx, {
+        action: `mcp.${tool.name}`,
+        targetType: "mcp_tool",
+        targetId: tool.name,
+        data: { ...auditData, outcome: "error" },
+      }),
+    );
+    throw error;
+  }
 }
 
 function toResult(value: unknown): CallToolResult {
@@ -97,15 +123,29 @@ function toError(error: unknown): CallToolResult {
 }
 
 /** Một McpServer cho một request: cổng chạy stateless nên mỗi request dựng server riêng, gắn sẵn principal. */
-export function buildMcpServer(deps: McpServerDeps, principal: McpPrincipal): McpServer {
+export async function buildMcpServer(deps: McpServerDeps, principal: McpPrincipal): Promise<McpServer> {
   const server = new McpServer({ name: "xdev-hive", version: deps.version });
-  for (const tool of deps.registry.list(principal)) {
+  const orgs = principal.orgId
+    ? [{ id: principal.orgId }]
+    : await withTenant(deps.pool, { userId: principal.userId }, (tx) =>
+        deps.registry.memberships(tx, principal.userId),
+      );
+  const disabled = new Set<string>();
+  // tools/list không có tham số org: OAuth nhiều tổ chức chỉ quảng bá tool được bật trong mọi tổ chức của người gọi.
+  for (const org of orgs) {
+    const names = await withTenant(deps.pool, { userId: principal.userId, orgId: org.id }, disabledTools);
+    for (const name of names) disabled.add(name);
+  }
+  const tools = deps.registry.list(principal);
+  const inputFor = (tool: McpTool<z.ZodObject, unknown>) =>
+    principal.kind === "run" ? tool.input : tool.input.extend({ org: ORG_PARAM });
+  for (const tool of tools) {
     server.registerTool(
       tool.name,
       {
         ...(tool.title ? { title: tool.title } : {}),
         description: tool.description,
-        inputSchema: principal.kind === "run" ? tool.input : tool.input.extend({ org: ORG_PARAM }),
+        inputSchema: inputFor(tool),
         annotations: { readOnlyHint: tool.readOnly ?? false },
       },
       async (args) => {
@@ -117,5 +157,20 @@ export function buildMcpServer(deps: McpServerDeps, principal: McpPrincipal): Mc
       },
     );
   }
+  // Giữ handler để lời gọi trực tiếp bị tắt vẫn được kiểm quyền, trả lỗi tiếng Việt và ghi audit.
+  // Chỉ thay danh sách quảng bá qua API công khai của SDK; SDK vẫn kiểm schema đầu vào cho tools/call.
+  server.server.setRequestHandler("tools/list", () => ({
+    tools: tools
+      .filter((tool) => !disabled.has(tool.name))
+      .map(
+        (tool): Tool => ({
+          name: tool.name,
+          ...(tool.title ? { title: tool.title } : {}),
+          description: tool.description,
+          inputSchema: z.toJSONSchema(inputFor(tool), { io: "input" }) as Tool["inputSchema"],
+          annotations: { readOnlyHint: tool.readOnly ?? false },
+        }),
+      ),
+  }));
   return server;
 }

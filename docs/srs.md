@@ -181,10 +181,10 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | MCP-01 | The hub shall expose MCP tools for identity, organization structure, tasks, plans, reviews, memory, documents, skills and leader replies. | Implemented | `hub:mcp.db.test.ts`, `hub:mcp-run.db.test.ts` |
 | MCP-02 | Agents in a run shall authenticate with the run token; other MCP clients with OAuth (client ID metadata documents). | Partial: OAuth requires HTTPS; on plain HTTP only run tokens with `HIVE_MCP_ALLOW_HTTP=1` | `hub:mcp-http.db.test.ts` |
 | MCP-03 | Tools shall be limited by principal and run kind (read-only kinds get no write tools), run inside the tenant context and be audited. | Implemented | `hub:mcp.db.test.ts`, `hub:modules/mcp/registry.test.ts` |
-| MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Planned | — |
+| MCP-04 | Organization administrators shall enable or disable individual hub MCP tools for agent runs and user clients. | Implemented | `hub:modules/mcp/mcp-admin.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
 | MCP-05 | Organization administrators shall configure external MCP server rules (allow or deny by URL, name, command, or wildcard) with deny precedence, scoped to organization or project. | Planned | — |
 | MCP-06 | The hub shall distribute allowed external MCP servers and configuration to CLI managed settings on assigned run machines, blocking unauthorized servers. | Planned | — |
-| MCP-07 | Organization members shall create personal MCP tokens with expiration periods, and administrators shall view, extend lifetime, and revoke MCP tokens. | Planned | — |
+| MCP-07 | Organization members shall create personal MCP tokens with expiration periods, and administrators shall view, extend lifetime, and revoke MCP tokens. | Implemented | `hub:modules/mcp/mcp-admin.db.test.ts`, `hub:modules/mcp/rls.db.test.ts`, `web:mcp-admin.spec.ts` |
 
 ### 3.11 Notifications, costs and audit (OPS)
 
@@ -194,9 +194,9 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
 | OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
-| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Planned | — |
-| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Planned | — |
-| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Planned | — |
+| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Implemented | `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (owner/admin; custom auditor roles await RBAC) |
+| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Implemented | `hub:modules/audit/audit.db.test.ts`, `hub:modules/audit/csv.test.ts`, `web:audit.spec.ts` (owner/admin; 20,000-row limit) |
+| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Partial | `hub:modules/audit/audit.db.test.ts` (append-only enforced; organization retention policy and archival/cleanup not implemented) |
 
 ### 3.12 Roles and custom permissions (ROLE)
 
