@@ -148,8 +148,8 @@ func TestTokenAndHeartbeat(t *testing.T) {
 		if hello.ResumeRuns == nil || hello.CLIs == nil {
 			t.Errorf("hello có mảng null: %+v", hello)
 		}
-		// Hub chỉ giao run kiểm tài liệu cho worker khai doccheck.
-		if len(hello.Capabilities) != 1 || hello.Capabilities[0] != "doccheck" {
+		// Hub chỉ giao run kiểm tài liệu và trợ lý tài liệu cho worker khai doccheck, docassist.
+		if len(hello.Capabilities) != 2 || hello.Capabilities[0] != "doccheck" || hello.Capabilities[1] != "docassist" {
 			t.Errorf("hello.capabilities = %v", hello.Capabilities)
 		}
 		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"type":"welcome","v":1,"id":"w","sessionId":"s","heartbeatSec":30}`))

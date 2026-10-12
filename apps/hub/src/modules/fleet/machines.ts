@@ -339,6 +339,22 @@ export async function machineNames(tx: Tx, ids: string[]): Promise<Map<string, s
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
+/** Máy worker người dùng đã đăng ký (chưa thu hồi), máy thấy gần nhất trước: trợ lý tài liệu chạy trên máy của chính họ. */
+export async function machinesOfUser(tx: Tx, userId: string) {
+  return tx
+    .select({
+      id: machines.id,
+      teamId: machines.teamId,
+      name: machines.name,
+      clis: machines.clis,
+      capabilities: machines.capabilities,
+      online: sql<boolean>`${machines.status} = 'online' and ${machines.pausedAt} is null`,
+    })
+    .from(machines)
+    .where(and(eq(machines.registeredBy, userId), eq(machines.kind, "worker"), isNull(machines.revokedAt)))
+    .orderBy(desc(machines.lastSeenAt));
+}
+
 /** Máy trong tổ chức của context (kể cả offline), để kiểm máy người dùng chỉ định khi giao run. */
 export async function findMachine(
   tx: Tx,

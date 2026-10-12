@@ -1,4 +1,5 @@
 import {
+  type AssistStartInput,
   type ChecklistItem,
   type JobMcpServer,
   type JobPolicy,
@@ -82,6 +83,7 @@ import {
   parseCostData,
   taskSpentUsd,
 } from "./cost.ts";
+import { assistTargets, createAssistRun, listAssists } from "./docassist.ts";
 import { docCheckPrompt } from "./doccheck.ts";
 import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
 import {
@@ -222,10 +224,16 @@ const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
  * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
  */
 const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
-/** Run không có task, lời nhắc lấy từ sự kiện của hub: leader (trò chuyện) và doccheck (gate AI của quy trình duyệt). */
-const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck"];
+/**
+ * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
+ * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
+ */
+const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist"];
 /** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
-const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck"];
+const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist"];
+/** Worker cũ không biết các kind này sẽ chạy chúng như run code (có quyền ghi): chỉ giao cho máy đã khai kind đó. */
+const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist"];
+const promptEvent = (kind: RunRow["kind"]) => (kind === "leader" ? "leader_prompt" : `${kind}_prompt`);
 
 function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
   if (child.state === "succeeded" && report) return { status: "done", score: report.score, by: child.cli };
@@ -314,6 +322,7 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
   }
   if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
   if (run.kind === "doccheck") return ctx.leaderPrompt ?? "Hãy kiểm tài liệu rồi gọi công cụ MCP doc_check_submit.";
+  if (run.kind === "docassist") return ctx.leaderPrompt ?? "Hãy đọc bản nháp bằng doc_draft_get rồi góp ý.";
   const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
   const plan = ctx.approvedPlan;
   return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
@@ -324,6 +333,8 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
  * agent). Run chỉ đọc (plan, review, leader) không sửa code nên theo cấu hình của dự án.
  */
 export function sandboxedRun(project: ProjectRow, policy: Policy, kind: RunRow["kind"]): boolean {
+  // Trợ lý tài liệu chạy trên máy của chính người nhờ (gói thuê bao CLI của họ), không qua runner host.
+  if (kind === "docassist") return false;
   return project.settings.features.sandbox || (policy.requireSandbox && kind === "code");
 }
 
@@ -445,8 +456,7 @@ export function createRunsEngine(deps: RunsDeps) {
         connected(m.id) &&
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
-        // Worker cũ không biết run doccheck sẽ chạy nó như run code (có quyền ghi): chỉ giao cho máy đã khai.
-        (run.kind !== "doccheck" || m.capabilities.includes("doccheck")) &&
+        (!CAPABILITY_KINDS.includes(run.kind) || m.capabilities.includes(run.kind)) &&
         (run.cli
           ? m.clis.includes(run.cli)
           : SUBMIT_KINDS.includes(run.kind)
@@ -517,12 +527,7 @@ export function createRunsEngine(deps: RunsDeps) {
         ? await tx
             .select({ prompt: runEvents.data })
             .from(runEvents)
-            .where(
-              and(
-                eq(runEvents.runId, run.id),
-                eq(runEvents.type, run.kind === "leader" ? "leader_prompt" : "doccheck_prompt"),
-              ),
-            )
+            .where(and(eq(runEvents.runId, run.id), eq(runEvents.type, promptEvent(run.kind))))
             .orderBy(desc(runEvents.id))
             .limit(1)
         : [];
@@ -540,7 +545,7 @@ export function createRunsEngine(deps: RunsDeps) {
       const requested =
         run.model ??
         project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[
-          run.kind === "doccheck" ? "review" : run.kind
+          run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
         ] ??
         null;
       const model = resolveModel(policy, cli, requested);
@@ -905,6 +910,7 @@ export function createRunsEngine(deps: RunsDeps) {
     else if (run.kind === "review") await verifyReview(orgId, runId);
     else if (run.kind === "plan") await verifyPlan(orgId, runId);
     else if (run.kind === "doccheck") await verifyDocCheck(orgId, runId);
+    else if (run.kind === "docassist") await verifyDocAssist(orgId, runId);
     else await verifyLeader(orgId, runId);
   }
 
@@ -982,6 +988,22 @@ export function createRunsEngine(deps: RunsDeps) {
         run,
         ok ? (ev?.data as { score: number; checklist: ChecklistItem[]; summary: string }) : null,
         error,
+      );
+    });
+  }
+
+  /** Run docassist: xong khi CLI thoát êm; đề xuất và bình luận agent để lại đã nằm trên bản nháp. */
+  async function verifyDocAssist(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "docassist" || run.state !== "verifying") return;
+      const ok = exitOf(await resultOf(tx, run)) === 0;
+      await transition(
+        tx,
+        run,
+        ok ? "succeeded" : "failed",
+        { finishedAt: new Date() },
+        { message: ok ? "Trợ lý đã góp ý xong." : "Run trợ lý tài liệu lỗi hoặc hết thời gian." },
       );
     });
   }
@@ -2062,6 +2084,18 @@ export function createRunsEngine(deps: RunsDeps) {
     startRun,
     startLeaderRun,
     startDocCheck,
+    /** Trợ lý của trình soạn tài liệu; router của knowledge gọi qua đây (knowledge không import runs). */
+    docAssist: {
+      targets: assistTargets,
+      list: listAssists,
+      async start(tx: Tx, userId: string, input: AssistStartInput) {
+        const { assist, orgId } = await createAssistRun(tx, userId, input);
+        return {
+          assist,
+          afterCommit: () => background(dispatch(orgId, assist.runId), "Không giao được run trợ lý tài liệu"),
+        };
+      },
+    },
     queueRun,
     steerRun,
     cancelRun,

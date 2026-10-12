@@ -185,6 +185,28 @@ export function registerMcpTools(registry: McpToolRegistry): void {
   });
 
   registry.register({
+    name: "doc_assist_submit",
+    title: "Nộp kết quả trợ lý tài liệu",
+    description:
+      "Chỉ dành cho run trợ lý của trình soạn tài liệu: gọi một lần khi đã góp ý xong (doc_suggest, doc_comment), " +
+      "kèm tóm tắt vài câu cho người viết.",
+    input: z.object({ summary: z.string().trim().min(1).max(4000).describe("Tóm tắt cho người viết.") }),
+    runKinds: ["docassist"],
+    readOnly: true,
+    handler: async ({ summary }, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      if (run.kind !== "docassist") {
+        throw new ForbiddenError("DOCASSIST_RUN_REQUIRED", "Chỉ run trợ lý tài liệu mới gọi được doc_assist_submit.");
+      }
+      await hubEvent(tx, run, "docassist_result", { summary });
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "docassist_result" };
+    },
+  });
+
+  registry.register({
     name: "run_list",
     title: "Danh sách run",
     description:
