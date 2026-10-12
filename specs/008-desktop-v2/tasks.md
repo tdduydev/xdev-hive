@@ -292,7 +292,7 @@ description: "Task list for Desktop Application v2 implementation"
   - **Description**: Accept `Authorization: Bearer hive_pat_…` on user-scoped `/api/v1/…` routes as the token owner's
     session (expiry, revocation, org from the token); reject `hwm_` and run tokens there. Tests in `hub:*.db.test.ts`.
   - **Dependencies**: none.
-- [ ] **T027 Desktop: typed hub client (FR-026, FR-027)**
+- [x] **T027 Desktop: typed hub client (FR-026, FR-027)**
   - **Description**: Client in `apps/desktop/src/lib/` built from `packages/contracts`, calling the hub through a Rust
     command that adds the keychain token (the webview never sees it). Shared data logic moves to `packages/` where the
     web already has it.

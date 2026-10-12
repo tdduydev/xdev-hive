@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hub-rpc"
+description = "Enables the hub_rpc command without any pre-configured scope."
+commands.allow = ["hub_rpc"]
+
+[[permission]]
+identifier = "deny-hub-rpc"
+description = "Denies the hub_rpc command without any pre-configured scope."
+commands.deny = ["hub_rpc"]

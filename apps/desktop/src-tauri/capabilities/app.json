@@ -16,6 +16,7 @@
     "allow-account-unlink",
     "allow-workspace-meta",
     "allow-hub-tool",
+    "allow-hub-rpc",
     "dialog:allow-open",
     "allow-skill-uses",
     "allow-this-machine",
