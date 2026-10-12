@@ -27,6 +27,7 @@ export * from "./doc-editor.ts";
 export * from "./doc-text.ts";
 export * from "./egress.ts";
 export * from "./knowledge.ts";
+export * from "./line-diff.ts";
 export * from "./mcp-admin.ts";
 export * from "./notify.ts";
 export * from "./policies.ts";

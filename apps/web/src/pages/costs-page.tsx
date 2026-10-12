@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { type FormEvent, useRef, useState } from "react";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";

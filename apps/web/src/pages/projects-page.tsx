@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import type { CostSummary, Project, TeamWithCounts } from "@xdev-hive/contracts";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button, buttonVariants } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
 import { Table, Td, Th } from "@xdev-hive/ui/table";
@@ -8,7 +9,6 @@ import { SearchIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { CreateProjectButton } from "@/components/create-project-dialog.tsx";
 import { Icon } from "@/components/icons.tsx";
-import { Alert } from "@/components/ui/alert.tsx";
 import { Card } from "@/components/ui/card.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";

@@ -11,7 +11,7 @@ import {
   textKindOf,
   toggleCheck,
   wrapSelection,
-} from "./doc-editor.ts";
+} from "./blocks.ts";
 
 const DOC = "# PRD\n\n## Yêu cầu\n\n- R-1: Hoàn tiền\n- R-2: Phí\n\nĐoạn cuối. Câu hai.\n";
 

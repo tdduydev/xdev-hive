@@ -1,5 +1,6 @@
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Table, TableBody, TableHead, TableHeader, TableRow, Td } from "@xdev-hive/ui/table";
 import { cn } from "cn";
 import {
@@ -33,7 +34,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu.tsx";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 

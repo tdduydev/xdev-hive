@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
+import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
-import { Alert } from "@/components/ui/alert.tsx";
 import { authClient } from "@/lib/auth-client.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 

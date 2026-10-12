@@ -1,10 +1,10 @@
 import type { OrgMember, RejectRoute, ReviewGate, Team } from "@xdev-hive/contracts";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
+import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon, XIcon } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
-import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { useLang, useT } from "@/lib/i18n.ts";
 import {
   GATE_KINDS,
