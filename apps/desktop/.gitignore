@@ -1,2 +1,4 @@
 src-tauri/binaries/hive-worker-*
 dist/
+# Sinh từ docs/design-system/tokens.json khi build (scripts/build-frontend.ts).
+src/generated/
