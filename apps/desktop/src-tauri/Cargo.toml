@@ -22,3 +22,7 @@ tauri-plugin-notification = "2.6"
 tauri-plugin-updater = "2.13"
 url = "2"
 tokio = { version = "1", features = ["time"] }
+# Gọi MCP của hub bằng token cá nhân. Cùng bản với tauri-plugin-updater nên không dựng thêm; TLS do updater bật.
+reqwest = { version = "0.13", default-features = false }
+# Token cá nhân lưu trong keychain của hệ điều hành (macOS Keychain, Windows Credential Manager, Secret Service).
+keyring = "4.2"

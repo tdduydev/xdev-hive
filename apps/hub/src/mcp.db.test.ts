@@ -105,6 +105,7 @@ beforeAll(async () => {
   ids.orgC = (await api("bob", "POST", "/orgs", { name: "Tổ chức C", slug: SLUG.c }, undefined)).id;
   ids.teamA = (await api("alice", "POST", "/teams", { name: "Thanh toán", slug: "thanh-toan" }, ids.orgA)).id;
   await api("alice", "POST", "/systems", { teamId: ids.teamA, name: "Cổng thanh toán", slug: "cong-tt" }, ids.orgA);
+  await api("alice", "POST", `/teams/${ids.teamA}/members`, { userId: ids.alice, role: "admin" }, ids.orgA);
   const teamC = (await api("bob", "POST", "/teams", { name: "Bí mật", slug: "bi-mat" }, ids.orgC)).id;
   await api("bob", "POST", "/systems", { teamId: teamC, name: "Hệ thống bí mật", slug: "bi-mat" }, ids.orgC);
 });
@@ -334,6 +335,8 @@ describe("luồng OAuth đầy đủ rồi gọi tool", () => {
       clientId: CLIENT_ID,
       org: { id: ids.orgA, slug: SLUG.a, role: "owner" },
     });
+    // Đội lấy theo tổ chức đang chọn (RLS): không lẫn đội của tổ chức khác.
+    expect((me as { teams: unknown }).teams).toEqual([{ id: ids.teamA, name: "Thanh toán", role: "admin" }]);
   });
 
   it("orgs_list chỉ có tổ chức của mình", async () => {

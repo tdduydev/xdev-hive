@@ -9,6 +9,9 @@ fn main() {
         "claude_context",
         "claude_usage",
         "session_stats",
+        "account_status",
+        "account_link",
+        "account_unlink",
     ]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
         .expect("tauri-build lỗi");

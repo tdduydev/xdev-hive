@@ -5,7 +5,7 @@ import type { McpToolRegistry } from "../mcp/index.ts";
 import type { Tx } from "../platform/index.ts";
 import { orgRoleOf } from "./permissions.ts";
 import { iso } from "./procedures.ts";
-import { orgMembers, orgs, systems, teams } from "./schema.ts";
+import { orgMembers, orgs, systems, teamMembers, teams } from "./schema.ts";
 
 /** Tổ chức người dùng đang là thành viên hoạt động. RLS của org_members luôn cho thấy dòng của chính người gọi. */
 async function myOrgs(tx: Tx, userId: string, limit?: number, offset = 0) {
@@ -31,7 +31,8 @@ export function registerMcpTools(registry: McpToolRegistry): void {
   registry.register({
     name: "hive_whoami",
     title: "Tôi là ai",
-    description: "Cho biết người dùng hoặc run đang gọi, tổ chức đang làm việc và vai trò trong tổ chức đó.",
+    description:
+      "Cho biết người dùng hoặc run đang gọi, tổ chức đang làm việc, vai trò trong tổ chức đó và trong từng đội mình thuộc.",
     input: z.object({}),
     readOnly: true,
     handler: async (_args, { tx, orgId, principal }) => {
@@ -50,6 +51,13 @@ export function registerMcpTools(registry: McpToolRegistry): void {
         clientId: principal.clientId ?? null,
         scopes: principal.scopes,
         org: org ? { ...org, role: await orgRoleOf(tx, principal.userId) } : { id: orgId },
+        // App desktop dựng menu theo vai trò trong đội (lead/dev/writer); hub vẫn kiểm từng thao tác.
+        teams: await tx
+          .select({ id: teams.id, name: teams.name, role: teamMembers.role })
+          .from(teamMembers)
+          .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+          .where(eq(teamMembers.userId, principal.userId))
+          .orderBy(asc(teams.name)),
       };
     },
   });
