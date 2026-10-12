@@ -34,6 +34,8 @@ describe("phục vụ web", () => {
       expect(await (await web.request("/route/nested")).text()).toContain("Hive");
       expect((await web.request("/api/v1/missing")).status).toBe(404);
       expect((await web.request("/rpc/missing")).status).toBe(404);
+      // Trang đồng ý MCP là route web, không phải endpoint MCP.
+      expect(await (await web.request("/mcp/consent?client_id=x")).text()).toContain("Hive");
       expect((await web.request("/assets/app.js")).headers.get("cache-control")).toContain("immutable");
       expect((await web.request("/")).headers.get("cache-control") ?? "no-cache").toBe("no-cache");
       expect((await web.request("/%E0%A4%A")).status).toBe(404);
