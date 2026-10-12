@@ -2086,6 +2086,8 @@ export function createRunsEngine(deps: RunsDeps) {
 
   /** Huỷ mọi run chưa kết thúc của task (tasks.cancel). */
   async function cancelRunsOfTask(tx: Tx, taskId: string): Promise<() => void> {
+    // Khoá cả loạt theo thứ tự tạo: run cha (code) trước run con (plan, review), cùng thứ tự với cancelLocked và kết
+    // luận run cha. Khoá lần lượt theo thứ tự trả về bất kỳ từng gây deadlock với vòng kiểm kết quả của run cha.
     const active = await tx
       .select({ id: runs.id })
       .from(runs)
@@ -2094,7 +2096,9 @@ export function createRunsEngine(deps: RunsDeps) {
           eq(runs.taskId, taskId),
           notInArray(runs.state, ["succeeded", "no_changes", "needs_review", "failed", "cancelled"]),
         ),
-      );
+      )
+      .orderBy(asc(runs.createdAt), asc(runs.id))
+      .for("update");
     const afters: Array<() => void> = [];
     for (const { id } of active) {
       const run = await lockRun(tx, id);
