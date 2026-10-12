@@ -9,6 +9,8 @@
     "includes": [
       "**",
       "!.legacy",
+      "!.claude/skills",
+      "!.specify",
       "!**/dist",
       "!**/openapi.json",
       "!apps/desktop/src-tauri",
