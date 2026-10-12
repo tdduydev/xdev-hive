@@ -28,8 +28,10 @@ import { defaultProviderFactory, handleGitWebhook, type ProviderFactory, scmRout
 import { DesktopReleaseCache, findDesktopUpdate, systemRouter } from "./modules/system/index.ts";
 import { tasksRouter } from "./modules/tasks/index.ts";
 import {
+  allowWith,
   orgMiddlewares,
   requireOrgRole,
+  rolesRouter,
   registerMcpTools as tenancyMcpTools,
   tenancyRouter,
 } from "./modules/tenancy/index.ts";
@@ -96,7 +98,8 @@ export function createApp({
       withAuditAccess(
         context.pool,
         { userId: context.user.id, orgId: context.orgId },
-        (tx: Tx) => requireOrgRole(tx, context.user.id, "admin"),
+        // Quản trị tổ chức, hoặc vai trò tự tạo có audit.read (vd. "Kiểm toán").
+        (tx: Tx) => allowWith(tx, context.user.id, "audit.read", () => requireOrgRole(tx, context.user.id, "admin")),
         (tx) => queryAudit(tx, input),
       ),
     ),
@@ -104,7 +107,7 @@ export function createApp({
       withAuditAccess(
         context.pool,
         { userId: context.user.id, orgId: context.orgId },
-        (tx: Tx) => requireOrgRole(tx, context.user.id, "admin"),
+        (tx: Tx) => allowWith(tx, context.user.id, "audit.export", () => requireOrgRole(tx, context.user.id, "admin")),
         (tx) => exportAudit(tx, input),
       ),
     ),
@@ -126,6 +129,7 @@ export function createApp({
     sandbox: sandboxRouter({ auth, pool }),
     leader: leaderRouter({ auth, pool, runs }),
     mcpAdmin: mcpAdminRouter({ auth, pool, registry }),
+    roles: rolesRouter({ auth, pool }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });

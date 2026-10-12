@@ -4,7 +4,7 @@ import { loadProject } from "../catalog/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
 import { runEvents, runs } from "../runs/index.ts";
 import { loadTask } from "../tasks/index.ts";
-import { requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole, teamRoleOf } from "../tenancy/index.ts";
 
 const GROUP_KEY: Record<CostSummaryInput["groupBy"], SQL<string | null>> = {
   // Ngày theo UTC để kết quả không đổi theo múi giờ của tiến trình hub hay của Postgres.
@@ -26,7 +26,7 @@ export async function costSummary(tx: Tx, userId: string, input: CostSummaryInpu
   if (!project || !(await teamRoleOf(tx, userId, project.teamId))) {
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
   }
-  await requireTeamRole(tx, userId, project.teamId, "admin");
+  await allowWith(tx, userId, "costs.read", () => requireTeamRole(tx, userId, project.teamId, "admin"), project.teamId);
   // Khoá nhóm tính trong truy vấn con: khoá CLI là truy vấn con theo từng run, không GROUP BY trực tiếp được.
   const scoped = tx
     .select({
@@ -89,7 +89,7 @@ export async function budgetStoppedRuns(tx: Tx, userId: string, projectId: strin
   if (!project || !(await teamRoleOf(tx, userId, project.teamId))) {
     throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án.");
   }
-  await requireTeamRole(tx, userId, project.teamId, "admin");
+  await allowWith(tx, userId, "costs.read", () => requireTeamRole(tx, userId, project.teamId, "admin"), project.teamId);
   const budget = project.settings.budget;
   if (!budget) return [];
   const rows = await tx

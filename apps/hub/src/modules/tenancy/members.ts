@@ -4,6 +4,7 @@ import { authUser } from "../identity/index.ts";
 import { ConflictError, ForbiddenError, NotFoundError, type Tx } from "../platform/index.ts";
 import { requireOrgRole } from "./permissions.ts";
 import { iso, type Procedures } from "./procedures.ts";
+import { allowWith } from "./roles.ts";
 import { orgMembers, teamMembers, teams } from "./schema.ts";
 
 const inCtxOrg = eq(orgMembers.orgId, sql`hive.ctx_org()`);
@@ -37,7 +38,7 @@ function decidePending({ inOrg }: Procedures, decision: "approve" | "deny") {
   const proc = decision === "approve" ? inOrg.orgMembers.approve : inOrg.orgMembers.deny;
   const status = decision === "approve" ? ("active" as const) : ("blocked" as const);
   return proc.handler(async ({ context: { tx, user }, input }) => {
-    await requireOrgRole(tx, user.id, "admin");
+    await allowWith(tx, user.id, "members.lock", () => requireOrgRole(tx, user.id, "admin"));
     const target = await getMember(tx, input.userId);
     if (target.status !== "pending")
       throw new ConflictError("MEMBER_NOT_PENDING", "Người này không ở trạng thái chờ duyệt.");

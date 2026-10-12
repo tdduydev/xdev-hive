@@ -42,6 +42,8 @@ export interface NavItem {
   match: string;
   /** Chỉ quản trị tổ chức dùng được; ẩn với người khác trong tổ chức. */
   adminOnly?: boolean;
+  /** Quyền của vai trò tự tạo làm mục `adminOnly` hiện ra với người không phải quản trị (vd. audit.read). */
+  permission?: string;
 }
 
 export interface NavGroup {
@@ -147,6 +149,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/sandbox",
         match: "/admin/sandbox",
         adminOnly: true,
+        permission: "sandbox.read",
       },
     ],
   },
@@ -162,6 +165,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: route("/admin/mcp"),
         match: "/admin/mcp",
         adminOnly: true,
+        permission: "mcp.servers",
       },
       {
         id: "policies",
@@ -170,6 +174,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: route("/admin/policies"),
         match: "/admin/policies",
         adminOnly: true,
+        permission: "policies.write",
       },
     ],
   },
@@ -199,6 +204,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: route("/admin/roles"),
         match: "/admin/roles",
         adminOnly: true,
+        permission: "roles.write",
       },
       {
         id: "signin",
@@ -207,6 +213,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/admin/sign-in-settings",
         match: "/admin/sign-in-settings",
         adminOnly: true,
+        permission: "signin.write",
       },
     ],
   },
@@ -236,6 +243,7 @@ export const NAV_GROUPS: NavGroup[] = [
         to: route("/admin/audit"),
         match: "/admin/audit",
         adminOnly: true,
+        permission: "audit.read",
       },
     ],
   },
@@ -250,9 +258,13 @@ export function activeNavItem(pathname: string): NavItem | undefined {
     .sort((a, b) => b.match.length - a.match.length)[0];
 }
 
-/** Lọc mục theo quyền: người không phải quản trị tổ chức không thấy mục `adminOnly`. Nhóm rỗng bị bỏ. */
-export function visibleGroups(isAdmin: boolean): NavGroup[] {
-  return NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.adminOnly || isAdmin) })).filter(
-    (g) => g.items.length > 0,
-  );
+/**
+ * Lọc mục theo quyền: mục `adminOnly` chỉ hiện với quản trị tổ chức, hoặc người có quyền `permission` qua vai trò tự
+ * tạo. Nhóm rỗng bị bỏ.
+ */
+export function visibleGroups(isAdmin: boolean, can: (permission: string) => boolean = () => false): NavGroup[] {
+  return NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !i.adminOnly || isAdmin || (i.permission !== undefined && can(i.permission))),
+  })).filter((g) => g.items.length > 0);
 }

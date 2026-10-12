@@ -3,7 +3,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadProject, type ProjectRow } from "../catalog/index.ts";
 import { ConflictError, NotFoundError, type Tx } from "../platform/index.ts";
-import { requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
+import { allowWith, requireTeamRole, type TeamRole, teamRoleOf } from "../tenancy/index.ts";
 import { tasks } from "./schema.ts";
 
 export type TaskRow = typeof tasks.$inferSelect;
@@ -47,10 +47,19 @@ export async function taskSummaries(tx: Tx, ids: string[]): Promise<Map<string, 
 }
 
 /** Task mà người dùng có ít nhất vai trò `min` trong đội sở hữu; không thấy được thì báo như không tồn tại. */
-export async function taskForUser(tx: Tx, userId: string, id: string, min: TeamRole): Promise<TaskRow> {
+export async function taskForUser(
+  tx: Tx,
+  userId: string,
+  id: string,
+  min: TeamRole,
+  /** Quyền của vai trò tự tạo thay được vai trò `min` (vd. plans.decide cho người xem đội). */
+  permission?: string,
+): Promise<TaskRow> {
   const row = await loadTask(tx, id);
   if (!row || !(await teamRoleOf(tx, userId, row.teamId))) throw notFound();
-  await requireTeamRole(tx, userId, row.teamId, min);
+  if (permission)
+    await allowWith(tx, userId, permission, () => requireTeamRole(tx, userId, row.teamId, min), row.teamId);
+  else await requireTeamRole(tx, userId, row.teamId, min);
   return row;
 }
 
