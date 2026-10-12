@@ -1,9 +1,15 @@
 import { implement, ORPCError } from "@orpc/server";
-import { fleetContract } from "@xdev-hive/contracts";
+import { desktopConnectContract, fleetContract } from "@xdev-hive/contracts";
 import type pg from "pg";
 import type { Auth } from "../identity/index.ts";
 import { ForbiddenError, type RequestContext, type Tx, withTenant } from "../platform/index.ts";
 import { disconnectMachine, sendToMachine } from "./connections.ts";
+import {
+  approveDesktopConnect,
+  desktopConnectOptions,
+  exchangeDesktopConnect,
+  type IssuePersonalToken,
+} from "./desktop-connect.ts";
 import { FleetError } from "./errors.ts";
 import { CLOSE } from "./gateway.ts";
 import { listMachines, pauseMachine, requestMachineUpdate, resumeMachine, revokeMachine } from "./machines.ts";
@@ -18,6 +24,8 @@ export interface FleetDeps {
   publicUrl: string;
   /** Bản worker mới nhất để web chỉ ra máy chạy bản cũ; không có thì luôn trả null. */
   workerReleases?: WorkerReleaseCache | undefined;
+  /** Token cá nhân cho app desktop đăng nhập bằng trình duyệt; không có thì app phải dán token tay. */
+  issuePersonalToken?: IssuePersonalToken | undefined;
 }
 
 /** Cùng header chọn tổ chức với API tổ chức, đội (M1c). */
@@ -55,6 +63,7 @@ export function fleetRouter(deps: FleetDeps) {
 
   const machinesOs = implement(fleetContract.machines).$context<RequestContext>();
   const workerOs = implement(fleetContract.worker).$context<RequestContext>();
+  const desktopOs = implement(desktopConnectContract).$context<RequestContext>();
   const hubUrl = deps.publicUrl.replace(/\/+$/, "");
 
   return {
@@ -108,6 +117,20 @@ export function fleetRouter(deps: FleetDeps) {
     },
     worker: {
       register: workerOs.register.handler(({ input }) => registerMachine(requirePool(), input).catch(toORPC)),
+    },
+    desktopConnect: {
+      options: desktopOs.options.handler(({ context }) =>
+        inOrg(context.headers, (tx, userId) => desktopConnectOptions(tx, userId)),
+      ),
+      approve: desktopOs.approve.handler(({ context, input }) =>
+        inOrg(context.headers, (tx, userId) => approveDesktopConnect(tx, userId, input)),
+      ),
+      exchange: desktopOs.exchange.handler(({ input }) => {
+        const issuePersonalToken = deps.issuePersonalToken;
+        if (!issuePersonalToken)
+          throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Hub chưa bật token MCP cá nhân." });
+        return exchangeDesktopConnect(requirePool(), input, { publicUrl: hubUrl, issuePersonalToken }).catch(toORPC);
+      }),
     },
   };
 }

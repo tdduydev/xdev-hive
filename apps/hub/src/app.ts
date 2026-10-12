@@ -31,7 +31,13 @@ import {
   knowledgeRouter,
 } from "./modules/knowledge/index.ts";
 import { registerMcpTools as leaderMcpTools, leaderRouter } from "./modules/leader/index.ts";
-import { createMcpEndpoint, McpToolRegistry, mcpAdminRouter, type RunTokenVerifier } from "./modules/mcp/index.ts";
+import {
+  createMcpEndpoint,
+  issueDesktopToken,
+  McpToolRegistry,
+  mcpAdminRouter,
+  type RunTokenVerifier,
+} from "./modules/mcp/index.ts";
 import { inboxRouter, notifyRouter } from "./modules/notify/index.ts";
 import type { HubConfig, Jobs, RequestContext, Tx } from "./modules/platform/index.ts";
 import {
@@ -160,7 +166,13 @@ export function createApp({
     system: systemRouter(config, desktopReleases),
     me: meRouter(auth),
     ...tenancyRouter({ auth, pool, orgCreators: config.orgCreators, publicUrl: config.publicUrl, resolveTxt }),
-    ...fleetRouter({ auth, pool, publicUrl, workerReleases: new WorkerReleaseCache(config.workerReleases) }),
+    ...fleetRouter({
+      auth,
+      pool,
+      publicUrl,
+      workerReleases: new WorkerReleaseCache(config.workerReleases),
+      issuePersonalToken: (tx, userId) => issueDesktopToken(tx, userId, registry),
+    }),
     scmConnections: scmRouter(shared),
     notificationChannels: notifyRouter({ ...shared, allowPrivate: config.notifyAllowPrivate }),
     inbox: inboxRouter({ auth, pool, jobs }),

@@ -35,7 +35,14 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
 - **Khởi động:** app gọi `hive-worker config --json`.
   - Máy đã đăng ký: app chạy `hive-worker run --status-json --stdin-control` và mở cửa sổ web của hub.
   - Máy chưa đăng ký: app mở cửa sổ đăng ký.
-- **Đăng ký:** nhập địa chỉ hub và token, hoặc dán lệnh `hive-worker register --hub … --token …` lấy từ web. App tự
+- **Đăng nhập bằng trình duyệt (DESK-11):** nhập địa chỉ hub rồi bấm Đăng nhập bằng trình duyệt. App (lệnh
+  `browser_login`, `src-tauri/src/browser_login.rs`) mở cổng tạm trên `127.0.0.1`, mở trang `/desktop/connect` của
+  hub kèm PKCE (S256) và `state`; người dùng đăng nhập như trên web (email/mật khẩu, GitHub, SSO), chọn đội, bấm Cho
+  phép. Trình duyệt quay về `127.0.0.1` với mã đổi dùng một lần (5 phút); app đổi mã kèm verifier ở
+  `POST /api/v1/desktop/connect/exchange` lấy mã đăng ký máy và token cá nhân (90 ngày), rồi tự đăng ký máy và lưu
+  token vào keychain. Token không nằm trên URL hay trong lịch sử trình duyệt; hub chỉ giữ băm của mã. Người đăng nhập
+  phải được đăng ký máy cho đội (quản trị đội hoặc vai trò có `machines.register`), như khi tạo mã trên web.
+- **Đăng ký bằng token:** nhập địa chỉ hub và token, hoặc dán lệnh `hive-worker register --hub … --token …` lấy từ web. App tự
   tách lệnh, kể cả lệnh nhiều dòng của bash, PowerShell, cmd. Token truyền cho sidecar qua biến môi trường
   `HIVE_REGISTRATION_TOKEN`, không qua tham số dòng lệnh.
 - **Khay hệ thống:** dòng trạng thái của worker, Mở xDev Hive (web của hub), Mở app trên máy (cửa sổ `app` cục bộ
@@ -63,7 +70,7 @@ HIVE_WORKER_CONFIG=/tmp/hive-test/worker.json pnpm --filter @xdev-hive/desktop a
   qua stdin; sự kiện `cli:event` chỉ gửi cho cửa sổ `app`. Môi trường của CLI dựng từ danh sách cho phép (không biến
   `HIVE_*`, token, khoá API hay biến của phiên agent khác). Đề xuất của agent vào bản nháp trong app; bản nháp lên hub
   bằng `propose_doc` (tool `doc_propose`, token cá nhân), người duyệt quyết.
-- **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`) khai báo trong `build.rs`. Capability chỉ cấp
+- **Bảo mật:** lệnh của app (`parse_registration`, `register_worker`, `browser_login`) khai báo trong `build.rs`. Capability chỉ cấp
   các lệnh này cho cửa sổ `register` (`capabilities/default.json`). Cửa sổ `app` có capability riêng
   (`capabilities/app.json`), hiện chỉ `core:default`; màn nào cần lệnh Rust thì thêm đúng lệnh đó. Cửa sổ web của hub
   là trang từ xa, không có capability nào, nên không gọi được lệnh của app. CSP không cho script inline, nên sáng/tối

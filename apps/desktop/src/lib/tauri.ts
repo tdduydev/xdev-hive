@@ -40,6 +40,8 @@ export const parseRegistration = (input: string) => invoke<Registration>("parse_
 
 /** Đăng ký máy bằng sidecar. Thành công thì Rust ẩn cửa sổ đăng ký, bật worker và mở web của hub. */
 export const registerWorker = (hub: string, token: string) => invoke<string>("register_worker", { hub, token });
+/** Mở trình duyệt để đăng nhập trên hub; xong thì máy đã đăng ký và tài khoản đã liên kết. Trả tên máy. */
+export const browserLogin = (hub: string) => invoke<string>("browser_login", { hub });
 
 /** Xin quyền thông báo một lần để báo mất kết nối với hub. Từ chối hay lỗi thì bỏ qua: app vẫn chạy được. */
 export async function askNotificationPermission(): Promise<void> {
