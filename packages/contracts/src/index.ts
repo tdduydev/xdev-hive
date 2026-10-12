@@ -1,5 +1,6 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { auditContract } from "./audit.ts";
 import { costsContract } from "./cost.ts";
 import { fleetContract } from "./fleet.ts";
 import { docsContract, memoryContract, proposalsContract, skillsContract } from "./knowledge.ts";
@@ -12,6 +13,7 @@ import { scmContract } from "./scm.ts";
 import { tasksContract } from "./tasks.ts";
 import { tenancyContract } from "./tenancy.ts";
 
+export * from "./audit.ts";
 export * from "./cost.ts";
 export * from "./egress.ts";
 export * from "./knowledge.ts";
@@ -92,6 +94,7 @@ export const contract = {
   proposals: proposalsContract,
   tasks: tasksContract,
   runs: runsContract,
+  audit: auditContract,
   costs: costsContract,
   sandbox: sandboxContract,
   leader: leaderContract,

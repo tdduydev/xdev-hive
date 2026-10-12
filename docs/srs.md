@@ -194,9 +194,9 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 | OPS-02 | Each user shall have an in-app inbox with unread count and mark-as-read. | Implemented | `hub:inbox.db.test.ts`, `web:queue-notifications.spec.ts` |
 | OPS-03 | Team administrators shall see tokens and cost per project by task, CLI, machine and day, and the runs stopped by budget. | Implemented | `hub:runs.db.test.ts` |
 | OPS-04 | Administrative writes and every MCP call shall be recorded in an append-only audit log. | Implemented | `hub:modules/audit/audit.db.test.ts` |
-| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Planned | — |
-| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Planned | — |
-| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Planned | — |
+| OPS-05 | Organization administrators and auditors shall query the audit log with filters (time range, actor type, actor, area, action, source, result) and cursor-based pagination. | Implemented | `hub:modules/audit/audit.db.test.ts`, `web:audit.spec.ts` (owner/admin; custom auditor roles await RBAC) |
+| OPS-06 | Organization administrators and auditors shall export filtered audit logs in CSV and JSON formats. | Implemented | `hub:modules/audit/audit.db.test.ts`, `hub:modules/audit/csv.test.ts`, `web:audit.spec.ts` (owner/admin; 20,000-row limit) |
+| OPS-07 | The hub shall retain audit log entries according to the organization retention policy (default 365 days) and prevent modification or premature deletion. | Partial | `hub:modules/audit/audit.db.test.ts` (append-only enforced; organization retention policy and archival/cleanup not implemented) |
 
 ### 3.12 Roles and custom permissions (ROLE)
 

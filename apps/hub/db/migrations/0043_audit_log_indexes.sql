@@ -1,0 +1,3 @@
+CREATE INDEX "audit_log_org_created_id" ON "hive"."audit_log" USING btree ("org_id","created_at" DESC NULLS LAST,"id" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "audit_log_org_action_created" ON "hive"."audit_log" USING btree ("org_id","action","created_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE INDEX "audit_log_org_actor_created" ON "hive"."audit_log" USING btree ("org_id","actor_user_id","created_at" DESC NULLS LAST);
