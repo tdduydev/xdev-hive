@@ -124,7 +124,7 @@ flowchart LR
 | `cost` | Token and cost aggregation (cost columns live on `runs`) | — |
 | `notify` | Notification channels (Telegram, e-mail) and the in-app inbox | `notification_channels`, `notifications`, `inbox_items` |
 | `mcp` | MCP endpoint, token authentication, tool registry; tools run inside `withTenant` and are audited | — |
-| `audit` | Append-only audit log; other modules write only through `recordAudit()` | `audit_log` |
+| `audit` | Append-only audit log; other modules write only through `recordAudit()`. Per-organization retention and daily cleanup | `audit_log`, `audit_settings` |
 | `system` | Health, version, desktop update manifests | — |
 
 Tables live in schema `hive` unless prefixed with `auth.`. A module imports another only through that module's
@@ -298,7 +298,10 @@ flowchart TB
 - Token lookups that happen before the tenant is known (machine tokens, invitations) set a hash setting
   (`app.fleet_token_hash`, `app.invite_token_hash`) that policies accept for exactly that row.
 - The `rls.db.test.ts` suites (fleet, leader, notify, runs, sandbox, tasks, tenancy) fail when a table lacks RLS.
-- `audit_log` is append-only for `hive_app` (UPDATE, DELETE and TRUNCATE revoked).
+- `audit_log` is append-only for `hive_app` (UPDATE, DELETE and TRUNCATE revoked). Expired entries are removed only by
+  `hive.purge_expired_audit_log()` (SECURITY DEFINER), run daily by the `audit-retention` queue. Its owner role's policies
+  expose only rows older than the organization retention (`audit_settings.retention_days`, default 365, minimum 90), so
+  rows cannot be deleted early; each cleanup records an `audit.purge` entry. Expired entries are deleted, not archived.
 
 ### 8.2 Authentication and tokens
 
@@ -335,7 +338,7 @@ TypeScript and Go tests round-trip.
 ### 8.5 Background jobs
 
 pg-boss queues: `catalog-provision`, `catalog-merge`, `runs-timer`, `scm.event`, `knowledge-embed`, `notify.deliver`,
-`notify.inbox-cleanup`, `fleet-offline-check`, `tenancy-orphan-users`. Jobs are enqueued inside the business
+`notify.inbox-cleanup`, `fleet-offline-check`, `tenancy-orphan-users`, `audit-retention`. Jobs are enqueued inside the business
 transaction, so a job exists exactly when its change commits.
 
 ### 8.6 Logs and observability
