@@ -114,6 +114,10 @@ const renderSkills = (account: Account | null = ACCOUNT) =>
 const rowOf = async (name: string, nth = 0) =>
   (await screen.findAllByRole("button", { name: new RegExp(`^${name}`) }))[nth]?.closest("tr") as HTMLElement;
 
+// Màn Skills gọi nhiều lệnh Tauri giả trước khi hiện nút đồng bộ; trên máy CI bận, quá 1 giây mặc định của findBy*
+// thì test hỏng ngẫu nhiên.
+const SLOW = { timeout: 4000 };
+
 describe("trạng thái và so bản", () => {
   it("phân loại skill trên máy so với hub", () => {
     const hub = HUB[0] as HubSkillItem;
@@ -167,7 +171,7 @@ describe("SkillsScreen", () => {
   it("ghép skill của hub với skill trên máy: nguồn, trạng thái, bản, lần dùng", async () => {
     const calls = fakeTauri();
     renderSkills();
-    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" });
+    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }, SLOW);
     const db = await rowOf("db-migration");
     expect(within(db).getByText("Dự án · payment-api")).toBeTruthy();
     expect(within(db).getByText("Có bản mới")).toBeTruthy();
@@ -197,7 +201,7 @@ describe("SkillsScreen", () => {
   it("Đồng bộ cài bản mới và skill chưa cài, không đụng skill đã sửa tay", async () => {
     const calls = fakeTauri();
     renderSkills();
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }, SLOW));
     expect(await screen.findByText("Đã cài 2 skill.")).toBeTruthy();
     const install = calls.find((c) => c.command === "install_skills")?.args;
     expect(install?.force).toBe(false);
@@ -216,7 +220,7 @@ describe("SkillsScreen", () => {
   it("chi tiết: thay đổi giữa bản trên máy và bản mới", async () => {
     fakeTauri();
     renderSkills();
-    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" });
+    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }, SLOW);
     await userEvent.setup().click((await screen.findAllByRole("button", { name: /^db-migration/ }))[0] as HTMLElement);
     expect(await screen.findByText("Thay đổi · v4 → v5")).toBeTruthy();
     expect((await screen.findByText(/2\. FORCE ROW LEVEL SECURITY/)).textContent).toBe("+ 2. FORCE ROW LEVEL SECURITY");
@@ -229,7 +233,7 @@ describe("SkillsScreen", () => {
     const calls = fakeTauri();
     const user = userEvent.setup();
     renderSkills();
-    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" });
+    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }, SLOW);
     await user.click(await screen.findByRole("button", { name: /^code-review/ }));
     await user.click(await screen.findByRole("button", { name: "Đề xuất sửa" }));
     await user.type(screen.getByRole("textbox", { name: /Vì sao cần sửa/ }), "Thêm bước VAT.");
@@ -253,7 +257,7 @@ describe("SkillsScreen", () => {
     const calls = fakeTauri();
     const user = userEvent.setup();
     renderSkills();
-    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" });
+    await screen.findByRole("button", { name: "Đồng bộ 2 bản mới" }, SLOW);
     await user.click(await screen.findByRole("checkbox", { name: "Chọn db-migration" }));
     await user.click(screen.getByRole("checkbox", { name: "Chọn incident-triage" }));
     await user.click(

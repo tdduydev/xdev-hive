@@ -26,6 +26,8 @@ url = "2"
 tokio = { version = "1", features = ["time"] }
 # Gọi MCP của hub bằng token cá nhân. Cùng bản với tauri-plugin-updater nên không dựng thêm; TLS do updater bật.
 reqwest = { version = "0.13", default-features = false }
+# reqwest trong cây dùng rustls-no-provider: app tự cài provider ring (src/tls.rs). Cùng bản và tính năng updater dùng.
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 # Token cá nhân lưu trong keychain của hệ điều hành (macOS Keychain, Windows Credential Manager, Secret Service).
 keyring = "4.2"
 # sha256 của SKILL.md đã cài để nhận ra file người dùng sửa tay. Cùng bản đã có trong cây phụ thuộc.

@@ -8,6 +8,7 @@ mod hub;
 mod register;
 mod setup_extra;
 mod skills;
+mod tls;
 mod tray_icon;
 mod usage;
 mod worker;
@@ -653,6 +654,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<Tray> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    tls::ensure();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
