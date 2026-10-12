@@ -28,6 +28,7 @@ export {
   findProject,
   getProject,
   getProvision,
+  latestActiveProject,
   listProjects,
   loadProject,
   PROVISION_QUEUE,

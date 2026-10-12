@@ -1,8 +1,11 @@
+import type { ChecklistItem, ReviewPhase } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   customType,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -19,6 +22,7 @@ import {
 // Khai báo lại schema và role thay vì lấy từ tenancy: module chỉ được import module khác qua index.ts.
 const hive = pgSchema("hive");
 const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 
 // RLS chỉ cắt theo tổ chức như các module khác; quyền theo đội (viewer đọc, member ghi, admin duyệt) kiểm trong
 // code vì cần vai trò của người gọi, thứ RLS không biết.
@@ -324,6 +328,107 @@ export const skillRepos = hive
         to: hiveApp,
         using: sql`id = hive.ctx_webhook_skill_repo()`,
       }),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Quy trình duyệt tài liệu (specs/004-review-workflows). `phases` lưu nguyên khối đã kiểm bằng workflowInput của
+ * contracts: quy trình đọc và ghi cả khối, phiên duyệt chép lại bản của lúc bắt đầu.
+ */
+export const reviewWorkflows = hive
+  .table(
+    "review_workflows",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      /** Đội sở hữu; null là quy trình của tổ chức. */
+      teamId: uuid("team_id"),
+      name: text("name").notNull(),
+      preset: text("preset").notNull(),
+      docPrefixes: text("doc_prefixes").array().notNull(),
+      phases: jsonb("phases").$type<ReviewPhase[]>().notNull(),
+      enabled: boolean("enabled").notNull().default(true),
+      updatedBy: text("updated_by"),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    () => [orgScoped("review_workflows")],
+  )
+  .enableRLS();
+
+/**
+ * Một lần đi qua quy trình của một đề xuất sửa tài liệu. Chép tên và các giai đoạn của quy trình lúc bắt đầu: sửa quy
+ * trình sau đó không đổi phiên đang chạy. `gate_index` là vị trí gate hiện tại khi trải phẳng các giai đoạn.
+ */
+export const reviewInstances = hive
+  .table(
+    "review_instances",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ...scopeColumns(),
+      proposalId: uuid("proposal_id").notNull(),
+      workflowId: uuid("workflow_id"),
+      workflowName: text("workflow_name").notNull(),
+      phases: jsonb("phases").$type<ReviewPhase[]>().notNull(),
+      docKey: text("doc_key").notNull(),
+      docTitle: text("doc_title").notNull(),
+      gateIndex: integer("gate_index").notNull().default(0),
+      status: text("status").notNull().default("in_review"),
+      /** Hướng trả lại lần gần nhất: đề xuất mới của tài liệu tiếp tục ở gate đó khi là `agent`. */
+      route: text("route"),
+      addedLines: integer("added_lines").notNull().default(0),
+      deletedLines: integer("deleted_lines").notNull().default(0),
+      ...authorColumns(),
+      createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [
+      check("review_instances_status", sql`status in ('in_review', 'changes_requested', 'approved', 'cancelled')`),
+      scopeCheck("review_instances"),
+      unique("review_instances_proposal").on(t.proposalId),
+      foreignKey({ columns: [t.proposalId], foreignColumns: [proposals.id] }).onDelete("cascade"),
+      foreignKey({ columns: [t.workflowId], foreignColumns: [reviewWorkflows.id] }).onDelete("set null"),
+      index("review_instances_org_status").on(t.orgId, t.status, t.updatedAt.desc()),
+      index("review_instances_doc").on(t.orgId, t.docKey, t.createdAt.desc()),
+      orgScoped("review_instances"),
+    ],
+  )
+  .enableRLS();
+
+/**
+ * Mỗi lần một gate chạy trong phiên duyệt (gate có thể chạy lại khi bị trả về checkpoint trước). Gate người duyệt gom
+ * từng lượt duyệt trong `approvals`; gate AI giữ run của agent kiểm.
+ */
+export const reviewGateRuns = hive
+  .table(
+    "review_gate_runs",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      orgId: uuid("org_id").notNull(),
+      instanceId: uuid("instance_id").notNull(),
+      gateIndex: integer("gate_index").notNull(),
+      gateId: text("gate_id").notNull(),
+      status: text("status").notNull().default("waiting"),
+      score: doublePrecision("score"),
+      checklist: jsonb("checklist").$type<ChecklistItem[]>().notNull().default([]),
+      approvals: jsonb("approvals").$type<{ userId: string; at: string }[]>().notNull().default([]),
+      note: text("note"),
+      decidedBy: text("decided_by"),
+      runId: uuid("run_id"),
+      dueAt: timestamp("due_at", { withTimezone: true }),
+      overdueNotifiedAt: timestamp("overdue_notified_at", { withTimezone: true }),
+      startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+      finishedAt: timestamp("finished_at", { withTimezone: true }),
+    },
+    (t) => [
+      check("review_gate_runs_status", sql`status in ('waiting', 'passed', 'failed', 'skipped')`),
+      foreignKey({ columns: [t.instanceId], foreignColumns: [reviewInstances.id] }).onDelete("cascade"),
+      index("review_gate_runs_instance").on(t.instanceId, t.startedAt),
+      index("review_gate_runs_due").on(t.status, t.dueAt),
+      orgScoped("review_gate_runs"),
+      // hive.review_overdue_orgs (SECURITY DEFINER, chạy bằng hive_owner) tìm tổ chức có gate quá hạn để job nhắc.
+      pgPolicy("review_gate_runs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

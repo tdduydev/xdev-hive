@@ -26,7 +26,7 @@ import {
   visibleWhere,
 } from "./access.ts";
 import { applyDocSave, currentDocVersion, docScope } from "./docs.ts";
-import { proposals } from "./schema.ts";
+import { proposals, reviewInstances } from "./schema.ts";
 import { applySkillSave, currentSkillVersion } from "./skills.ts";
 
 type ProposalRow = typeof proposals.$inferSelect;
@@ -147,9 +147,23 @@ async function decidable(tx: Tx, principal: Principal, id: string): Promise<Prop
  * Duyệt: lưu nội dung đề xuất thành phiên bản mới với đúng base của đề xuất. Tài liệu đã đổi sau khi đề xuất thì
  * CONFLICT và đề xuất vẫn chờ, để người duyệt từ chối hoặc nhờ tác giả đề xuất lại trên bản mới.
  */
+/** Đề xuất đang đi theo quy trình duyệt thì chỉ quy trình được chốt (trang Duyệt tài liệu), không duyệt tay ở đây. */
+async function inReview(tx: Tx, proposalId: string): Promise<boolean> {
+  const [r] = await tx
+    .select({ id: reviewInstances.id })
+    .from(reviewInstances)
+    .where(and(eq(reviewInstances.proposalId, proposalId), eq(reviewInstances.status, "in_review")));
+  return !!r;
+}
+
 export async function approveProposal(tx: Tx, principal: Principal, input: ProposalDecideInput): Promise<Proposal> {
   const data = proposalDecideInput.parse(input);
   const p = await decidable(tx, principal, data.id);
+  if (await inReview(tx, p.id))
+    throw new ConflictError(
+      "PROPOSAL_IN_REVIEW",
+      "Đề xuất đang đi theo quy trình duyệt; hãy duyệt ở trang Duyệt tài liệu.",
+    );
   const message = data.note ?? p.reason ?? undefined;
   const version =
     p.kind === "doc"
@@ -186,6 +200,11 @@ export async function rejectProposal(tx: Tx, principal: Principal, input: Propos
   const data = proposalDecideInput.parse(input);
   const p = await decidable(tx, principal, data.id);
   const row = await decide(tx, principal, p, "rejected", data.note, null);
+  // Từ chối thẳng đề xuất đang theo quy trình thì huỷ phiên duyệt của nó.
+  await tx
+    .update(reviewInstances)
+    .set({ status: "cancelled", updatedAt: new Date() })
+    .where(and(eq(reviewInstances.proposalId, p.id), eq(reviewInstances.status, "in_review")));
   await audit(tx, principal, "proposal.reject", { type: "proposal", id: p.id }, { kind: p.kind });
   return view(row);
 }

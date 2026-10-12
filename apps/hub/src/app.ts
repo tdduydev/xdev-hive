@@ -110,7 +110,7 @@ export function createApp({
   );
   registry.provideProjects(findProject);
   runsMcpTools(registry);
-  knowledgeMcpTools(registry, { embedder, jobs });
+  knowledgeMcpTools(registry, { embedder, jobs, publicUrl });
   catalogMcpTools(registry);
   leaderMcpTools(registry);
   const auditMiddleware = orgMiddlewares({ auth, pool });

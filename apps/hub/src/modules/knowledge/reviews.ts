@@ -1,0 +1,927 @@
+import {
+  type ChecklistItem,
+  type DryRunResult,
+  dryRunInput,
+  type GateRun,
+  type Proposal,
+  type ProposalCreateInput,
+  type RequirementTrace,
+  type ReviewDecideInput,
+  type ReviewDetail,
+  type ReviewGate,
+  type ReviewSummary,
+  type ReviewWorkflow,
+  reviewDecideInput,
+  reviewListInput,
+  type WorkflowInput,
+  workflowInput,
+} from "@xdev-hive/contracts";
+import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import type { z } from "zod";
+import { authUser } from "../identity/index.ts";
+import { notify } from "../notify/index.ts";
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  type Jobs,
+  NotFoundError,
+  type Tx,
+} from "../platform/index.ts";
+import { createSystemTask, listTasks } from "../tasks/index.ts";
+import { allowWith, notificationRecipients, requireOrgRole, requireTeamRole, teamMemberIds } from "../tenancy/index.ts";
+import { audit, canRead, type Principal, type Reader, readerFor, type Scope, visibleWhere } from "./access.ts";
+import { applyDocSave } from "./docs.ts";
+import { createProposal } from "./proposals.ts";
+import {
+  diffCounts,
+  docTypeOf,
+  type FlatGate,
+  flatGates,
+  gateApplies,
+  requiredApprovals,
+  requirementsOf,
+  ruleChecklist,
+  slaOf,
+} from "./review-rules.ts";
+import { docs, docVersions, proposals, reviewGateRuns, reviewInstances, reviewWorkflows } from "./schema.ts";
+
+export const REVIEW_QUEUE = "knowledge-review";
+export const reviewQueue = {
+  name: REVIEW_QUEUE,
+  // Gate CI hỏi lại nhà cung cấp Git; chạy lại an toàn vì job chỉ xử lý gate còn chờ.
+  retryLimit: 5,
+  retryDelay: 60,
+  retryBackoff: true,
+  expireInSeconds: 10 * 60,
+} as const;
+
+export type ReviewJob =
+  | { kind: "ext"; orgId: string; instanceId: string; attempt?: number }
+  | { kind: "ai"; orgId: string; instanceId: string }
+  | {
+      kind: "ai-result";
+      orgId: string;
+      instanceId: string;
+      runId: string;
+      score: number | null;
+      checklist: ChecklistItem[];
+      summary: string | null;
+      error: string | null;
+    }
+  | { kind: "sla" };
+
+export interface ReviewDeps {
+  jobs?: Jobs | undefined;
+  /** Địa chỉ web để link trong thông báo. */
+  publicUrl?: string | undefined;
+}
+
+type InstanceRow = typeof reviewInstances.$inferSelect;
+type GateRunRow = typeof reviewGateRuns.$inferSelect;
+type ProposalRow = typeof proposals.$inferSelect;
+
+const notFound = () => new NotFoundError("REVIEW_NOT_FOUND", "Không tìm thấy phiên duyệt.");
+const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+// ---- Quy trình -------------------------------------------------------------------------------------------------
+
+async function requireWorkflowWrite(tx: Tx, userId: string, teamId: string | null) {
+  if (teamId)
+    await allowWith(tx, userId, "workflows.write", () => requireTeamRole(tx, userId, teamId, "admin"), teamId);
+  else await allowWith(tx, userId, "workflows.write", () => requireOrgRole(tx, userId, "admin"));
+}
+
+function workflowView(row: typeof reviewWorkflows.$inferSelect, inFlight: number): ReviewWorkflow {
+  return {
+    id: row.id,
+    name: row.name,
+    preset: row.preset as ReviewWorkflow["preset"],
+    teamId: row.teamId,
+    docPrefixes: row.docPrefixes,
+    phases: row.phases,
+    enabled: row.enabled,
+    updatedAt: row.updatedAt.toISOString(),
+    updatedBy: row.updatedBy,
+    inFlight,
+  };
+}
+
+export async function listWorkflows(tx: Tx, principal: Principal): Promise<ReviewWorkflow[]> {
+  const reader = await readerFor(tx, principal);
+  const rows = (await tx.select().from(reviewWorkflows).orderBy(asc(reviewWorkflows.name))).filter((w) =>
+    canRead(reader, { teamId: w.teamId, projectId: null }),
+  );
+  const counts = await tx
+    .select({ id: reviewInstances.workflowId, n: sql<number>`count(*)::int` })
+    .from(reviewInstances)
+    .where(eq(reviewInstances.status, "in_review"))
+    .groupBy(reviewInstances.workflowId);
+  const by = new Map(counts.map((c) => [c.id, c.n]));
+  return rows.map((r) => workflowView(r, by.get(r.id) ?? 0));
+}
+
+export async function saveWorkflow(tx: Tx, userId: string, raw: WorkflowInput): Promise<ReviewWorkflow> {
+  const input = workflowInput.parse(raw);
+  await requireWorkflowWrite(tx, userId, input.teamId);
+  let row: typeof reviewWorkflows.$inferSelect | undefined;
+  if (input.id) {
+    const [old] = await tx.select().from(reviewWorkflows).where(eq(reviewWorkflows.id, input.id)).for("update");
+    if (!old) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Không tìm thấy quy trình.");
+    // Chuyển quy trình sang đội khác cần quyền ở cả hai phía.
+    await requireWorkflowWrite(tx, userId, old.teamId);
+    [row] = await tx
+      .update(reviewWorkflows)
+      .set({
+        name: input.name,
+        preset: input.preset,
+        teamId: input.teamId,
+        docPrefixes: input.docPrefixes,
+        phases: input.phases,
+        enabled: input.enabled,
+        updatedBy: userId,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(reviewWorkflows.id, input.id))
+      .returning();
+  } else {
+    [row] = await tx
+      .insert(reviewWorkflows)
+      .values({
+        orgId: sql`hive.ctx_org()`,
+        teamId: input.teamId,
+        name: input.name,
+        preset: input.preset,
+        docPrefixes: input.docPrefixes,
+        phases: input.phases,
+        enabled: input.enabled,
+        updatedBy: userId,
+      })
+      .returning();
+  }
+  if (!row) throw new Error("Không lưu được quy trình.");
+  await audit(
+    tx,
+    { kind: "user", userId },
+    "review_workflow.save",
+    { type: "review_workflow", id: row.id },
+    {
+      name: row.name,
+      preset: row.preset,
+      enabled: row.enabled,
+      gates: flatGates(row.phases).length,
+    },
+  );
+  return workflowView(row, 0);
+}
+
+export async function removeWorkflow(tx: Tx, userId: string, id: string): Promise<void> {
+  const [row] = await tx.select().from(reviewWorkflows).where(eq(reviewWorkflows.id, id));
+  if (!row) throw new NotFoundError("WORKFLOW_NOT_FOUND", "Không tìm thấy quy trình.");
+  await requireWorkflowWrite(tx, userId, row.teamId);
+  // Phiên đang chạy giữ bản chép của quy trình nên vẫn đi tiếp được.
+  await tx.delete(reviewWorkflows).where(eq(reviewWorkflows.id, id));
+  await audit(
+    tx,
+    { kind: "user", userId },
+    "review_workflow.remove",
+    { type: "review_workflow", id },
+    { name: row.name },
+  );
+}
+
+/** Quy trình áp cho tài liệu: tiền tố dài nhất thắng, cùng độ dài thì quy trình của đội thắng của tổ chức. */
+export async function matchWorkflow(tx: Tx, key: string, scope: Scope) {
+  const rows = await tx.select().from(reviewWorkflows).where(eq(reviewWorkflows.enabled, true));
+  let best: { row: (typeof rows)[number]; len: number } | null = null;
+  for (const row of rows) {
+    if (row.teamId && row.teamId !== scope.teamId) continue;
+    for (const prefix of row.docPrefixes) {
+      if (!key.startsWith(prefix)) continue;
+      const len = prefix.length * 2 + (row.teamId ? 1 : 0);
+      if (!best || len > best.len) best = { row, len };
+    }
+  }
+  return best?.row ?? null;
+}
+
+async function docContentAt(tx: Tx, key: string, version: number): Promise<string> {
+  if (version <= 0) return "";
+  const [row] = await tx
+    .select({ content: docVersions.content })
+    .from(docVersions)
+    .innerJoin(docs, eq(docs.id, docVersions.docId))
+    .where(and(eq(docs.key, key), eq(docVersions.version, version)));
+  return row?.content ?? "";
+}
+
+export async function dryRunWorkflow(
+  tx: Tx,
+  principal: Principal,
+  raw: z.input<typeof dryRunInput>,
+): Promise<DryRunResult> {
+  const { workflow, docKey } = dryRunInput.parse(raw);
+  const reader = await readerFor(tx, principal);
+  const [doc] = await tx.select().from(docs).where(eq(docs.key, docKey));
+  if (!doc || !canRead(reader, doc)) throw new NotFoundError("DOC_NOT_FOUND", "Không tìm thấy tài liệu.");
+  // Coi bản hiện tại như một đề xuất sửa từ bản trước đó.
+  const content = await docContentAt(tx, docKey, doc.currentVersion);
+  const base = await docContentAt(tx, docKey, doc.currentVersion - 1);
+  const docType = docTypeOf(docKey);
+  const ctx = { docType, content, base };
+  return {
+    docKey,
+    docType,
+    matched: workflow.docPrefixes.some((p) => docKey.startsWith(p)),
+    gates: flatGates(workflow.phases).map(({ gate }) => {
+      const applies = gateApplies(gate, ctx);
+      return {
+        gateId: gate.id,
+        name: gate.name,
+        kind: gate.kind,
+        runs: applies.runs,
+        reason: applies.reason,
+        checklist: applies.runs && gate.kind === "rule" ? ruleChecklist(gate, ctx) : [],
+      };
+    }),
+  };
+}
+
+// ---- Phiên duyệt -----------------------------------------------------------------------------------------------
+
+/**
+ * Tạo đề xuất sửa tài liệu và, nếu tài liệu khớp một quy trình đang bật, bắt đầu phiên duyệt trong cùng transaction.
+ * Router và tool MCP doc_propose đều đi qua đây để mọi đề xuất đều theo quy trình.
+ */
+export async function proposeWithReview(
+  tx: Tx,
+  principal: Principal,
+  input: ProposalCreateInput,
+  deps: ReviewDeps,
+): Promise<Proposal> {
+  const proposal = await createProposal(tx, principal, input);
+  if (proposal.kind === "doc") await startReview(tx, proposal.id, deps);
+  return proposal;
+}
+
+export async function startReview(tx: Tx, proposalId: string, deps: ReviewDeps): Promise<InstanceRow | null> {
+  const [p] = await tx.select().from(proposals).where(eq(proposals.id, proposalId));
+  if (p?.kind !== "doc" || p.status !== "pending") return null;
+  const wf = await matchWorkflow(tx, p.target, p);
+  if (!wf) return null;
+  const base = await docContentAt(tx, p.target, p.baseVersion);
+  const { added, deleted } = diffCounts(base, p.content);
+  const [doc] = await tx.select({ title: docs.title }).from(docs).where(eq(docs.key, p.target));
+  // Agent sửa theo góp ý rồi đề xuất lại: tiếp tục ở gate đã trả về, không chạy lại các gate đã qua.
+  const [prev] = await tx
+    .select()
+    .from(reviewInstances)
+    .where(and(eq(reviewInstances.docKey, p.target), eq(reviewInstances.status, "changes_requested")))
+    .orderBy(desc(reviewInstances.updatedAt))
+    .limit(1);
+  const resume = prev && prev.route === "agent" && prev.workflowId === wf.id ? prev.gateIndex : 0;
+  const [inst] = await tx
+    .insert(reviewInstances)
+    .values({
+      orgId: sql`hive.ctx_org()`,
+      teamId: p.teamId,
+      projectId: p.projectId,
+      proposalId: p.id,
+      workflowId: wf.id,
+      workflowName: wf.name,
+      phases: wf.phases,
+      docKey: p.target,
+      docTitle: p.title ?? doc?.title ?? docTypeOf(p.target),
+      gateIndex: resume,
+      addedLines: added,
+      deletedLines: deleted,
+      authorUserId: p.authorUserId,
+      authorRunId: p.authorRunId,
+    })
+    .returning();
+  if (!inst) throw new Error("Không tạo được phiên duyệt.");
+  await audit(
+    tx,
+    authorPrincipal(p),
+    "review.start",
+    { type: "review", id: inst.id },
+    {
+      proposalId: p.id,
+      workflow: wf.name,
+      docKey: p.target,
+      resumeAt: resume,
+    },
+  );
+  await advance(tx, inst, deps, null);
+  return inst;
+}
+
+function authorPrincipal(p: {
+  authorUserId: string | null;
+  authorRunId: string | null;
+  projectId: string | null;
+}): Principal {
+  if (p.authorUserId) return { kind: "user", userId: p.authorUserId };
+  return { kind: "run", runId: p.authorRunId ?? "", projectId: p.projectId ?? "" };
+}
+
+async function loadProposal(tx: Tx, id: string): Promise<ProposalRow> {
+  const [p] = await tx.select().from(proposals).where(eq(proposals.id, id));
+  if (!p) throw notFound();
+  return p;
+}
+
+/**
+ * Chạy các gate từ vị trí hiện tại: gate không đủ điều kiện thì bỏ qua, gate quy tắc chấm ngay, gate người duyệt, AI
+ * và CI thì dừng lại chờ. Qua hết thì chốt phiên bản.
+ */
+async function advance(tx: Tx, inst: InstanceRow, deps: ReviewDeps, decider: string | null): Promise<InstanceRow> {
+  const flat = flatGates(inst.phases);
+  const p = await loadProposal(tx, inst.proposalId);
+  const base = await docContentAt(tx, inst.docKey, p.baseVersion);
+  const ctx = { docType: docTypeOf(inst.docKey), content: p.content, base };
+  let i = inst.gateIndex;
+  while (i < flat.length) {
+    const { gate } = flat[i] as FlatGate;
+    const applies = gateApplies(gate, ctx);
+    if (!applies.runs) {
+      await recordRun(tx, inst, i, gate, { status: "skipped", note: applies.reason, finished: true });
+      i++;
+      continue;
+    }
+    if (gate.kind === "rule") {
+      const checklist = ruleChecklist(gate, ctx);
+      const passed = checklist.every((c) => c.passed);
+      await recordRun(tx, inst, i, gate, { status: passed ? "passed" : "failed", checklist, finished: true });
+      if (!passed) {
+        return requestChanges(
+          tx,
+          { ...inst, gateIndex: i },
+          "author",
+          `Không đạt quy tắc của “${gate.name}”: ${checklist
+            .filter((c) => !c.passed)
+            .map((c) => c.label)
+            .join("; ")}.`,
+          null,
+          deps,
+        );
+      }
+      const next = await afterPass(tx, { ...inst, gateIndex: i }, gate, p, deps, decider);
+      if (next === "done") return finish(tx, inst, p, decider);
+      i++;
+      continue;
+    }
+    // Gate chờ: người duyệt, AI, CI.
+    const due = gate.kind === "human" && gate.slaHours ? new Date(Date.now() + gate.slaHours * 3_600_000) : null;
+    await recordRun(tx, inst, i, gate, { status: "waiting", dueAt: due });
+    const [row] = await tx
+      .update(reviewInstances)
+      .set({ gateIndex: i, status: "in_review", updatedAt: sql`now()` })
+      .where(eq(reviewInstances.id, inst.id))
+      .returning();
+    if (gate.kind === "human") await notifyReviewers(tx, row ?? inst, gate, deps);
+    if (gate.kind === "ext" && deps.jobs)
+      await deps.jobs.enqueue(
+        REVIEW_QUEUE,
+        { kind: "ext", orgId: inst.orgId, instanceId: inst.id } satisfies ReviewJob,
+        { tx },
+      );
+    if (gate.kind === "ai" && deps.jobs)
+      await deps.jobs.enqueue(
+        REVIEW_QUEUE,
+        { kind: "ai", orgId: inst.orgId, instanceId: inst.id } satisfies ReviewJob,
+        { tx },
+      );
+    return row ?? inst;
+  }
+  return finish(tx, inst, p, decider);
+}
+
+async function recordRun(
+  tx: Tx,
+  inst: InstanceRow,
+  index: number,
+  gate: ReviewGate,
+  run: {
+    status: "waiting" | "passed" | "failed" | "skipped";
+    note?: string | null;
+    checklist?: ChecklistItem[];
+    dueAt?: Date | null;
+    finished?: boolean;
+  },
+) {
+  await tx.insert(reviewGateRuns).values({
+    orgId: inst.orgId,
+    instanceId: inst.id,
+    gateIndex: index,
+    gateId: gate.id,
+    status: run.status,
+    note: run.note ?? null,
+    checklist: run.checklist ?? [],
+    dueAt: run.dueAt ?? null,
+    finishedAt: run.finished ? sql`now()` : null,
+  });
+}
+
+/** Việc sau khi gate đạt: tạo việc cho agent của bước sau, hoặc chốt luôn. */
+async function afterPass(
+  tx: Tx,
+  inst: InstanceRow,
+  gate: ReviewGate,
+  p: ProposalRow,
+  _deps: ReviewDeps,
+  decider: string | null,
+): Promise<"next" | "done"> {
+  if (gate.onPass === "baseline") return "done";
+  if (gate.onPass === "task" && inst.projectId) {
+    const title = (gate.nextTaskTitle ?? "Bước tiếp theo cho {title}").replaceAll("{title}", inst.docTitle);
+    await createSystemTask(
+      tx,
+      decider ?? p.authorUserId ?? "system",
+      {
+        projectId: inst.projectId,
+        title: title.slice(0, 200),
+        body: `Tài liệu \`${inst.docKey}\` đã qua checkpoint “${gate.name}” của quy trình ${inst.workflowName}. Đọc bản mới nhất bằng \`doc_get\`.`,
+      },
+      { kind: "review", reviewId: inst.id, gateId: gate.id },
+    );
+  }
+  return "next";
+}
+
+/** Qua hết gate: lưu nội dung đề xuất thành phiên bản mới (baseline) và đánh dấu đề xuất đã duyệt. */
+async function finish(tx: Tx, inst: InstanceRow, p: ProposalRow, decider: string | null): Promise<InstanceRow> {
+  const principal: Principal = decider ? { kind: "user", userId: decider } : authorPrincipal(p);
+  const doc = await applyDocSave(
+    tx,
+    principal,
+    p,
+    {
+      key: p.target,
+      title: p.title ?? undefined,
+      content: p.content,
+      baseVersion: p.baseVersion,
+      message: p.reason ?? undefined,
+    },
+    p.id,
+  );
+  await tx
+    .update(proposals)
+    .set({
+      status: "approved",
+      decidedBy: decider,
+      decidedAt: new Date(),
+      decisionNote: `Qua quy trình ${inst.workflowName}.`,
+      resultVersion: doc.version,
+    })
+    .where(eq(proposals.id, p.id));
+  const [row] = await tx
+    .update(reviewInstances)
+    .set({ status: "approved", gateIndex: flatGates(inst.phases).length, updatedAt: sql`now()` })
+    .where(eq(reviewInstances.id, inst.id))
+    .returning();
+  await audit(
+    tx,
+    principal,
+    "review.baseline",
+    { type: "review", id: inst.id },
+    { docKey: p.target, version: doc.version },
+  );
+  return row ?? inst;
+}
+
+/** Trả lại: về người viết (đề xuất bị từ chối), agent sửa theo góp ý, hoặc về gate người duyệt trước đó. */
+async function requestChanges(
+  tx: Tx,
+  inst: InstanceRow,
+  route: "author" | "agent" | "previous",
+  note: string,
+  decider: string | null,
+  deps: ReviewDeps,
+): Promise<InstanceRow> {
+  const flat = flatGates(inst.phases);
+  if (route === "previous") {
+    const prev = flat
+      .slice(0, inst.gateIndex)
+      .reverse()
+      .find((f) => f.gate.kind === "human");
+    if (!prev)
+      throw new BadRequestError("REVIEW_NO_PREVIOUS", "Không có checkpoint người duyệt nào trước checkpoint này.");
+    const back = { ...inst, gateIndex: prev.index };
+    return advance(tx, back, deps, decider);
+  }
+  if (route === "agent") {
+    if (!inst.projectId)
+      throw new BadRequestError(
+        "REVIEW_AGENT_NEEDS_PROJECT",
+        "Tài liệu không thuộc dự án nào nên không giao agent sửa được; hãy trả về người viết.",
+      );
+    await createSystemTask(
+      tx,
+      decider ?? "system",
+      {
+        projectId: inst.projectId,
+        title: `Sửa tài liệu “${inst.docTitle}” theo góp ý`.slice(0, 200),
+        body: `Người duyệt trả lại đề xuất sửa \`${inst.docKey}\` ở quy trình ${inst.workflowName}.\n\nGóp ý:\n${note}\n\nĐọc bản hiện tại bằng \`doc_get\`, sửa theo góp ý rồi gọi \`doc_propose\`. Phiên duyệt sẽ tiếp tục ở checkpoint đã trả lại.`,
+      },
+      { kind: "review", reviewId: inst.id, route: "agent" },
+    );
+  }
+  await tx
+    .update(proposals)
+    .set({ status: "rejected", decidedBy: decider, decidedAt: new Date(), decisionNote: note })
+    .where(and(eq(proposals.id, inst.proposalId), eq(proposals.status, "pending")));
+  const [row] = await tx
+    .update(reviewInstances)
+    .set({ status: "changes_requested", route, gateIndex: inst.gateIndex, updatedAt: sql`now()` })
+    .where(eq(reviewInstances.id, inst.id))
+    .returning();
+  return row ?? inst;
+}
+
+async function currentRun(tx: Tx, inst: InstanceRow): Promise<GateRunRow | null> {
+  const [run] = await tx
+    .select()
+    .from(reviewGateRuns)
+    .where(and(eq(reviewGateRuns.instanceId, inst.id), eq(reviewGateRuns.gateIndex, inst.gateIndex)))
+    .orderBy(desc(reviewGateRuns.startedAt))
+    .limit(1);
+  return run ?? null;
+}
+
+const isOrgAdmin = (reader: Reader) =>
+  reader.kind === "user" && (reader.orgRole === "owner" || reader.orgRole === "admin");
+
+/** Người dùng được chỉ định duyệt gate người duyệt này (theo tên hoặc theo vai trò trong phạm vi tài liệu). */
+function eligible(reader: Reader, gate: ReviewGate, scope: Scope): boolean {
+  if (reader.kind !== "user") return false;
+  const r = gate.reviewers;
+  if (!r) return false;
+  if (r.users.includes(reader.principal.userId)) return true;
+  const teamRole = scope.teamId ? reader.teams.get(scope.teamId) : undefined;
+  return r.roles.some((role) => {
+    if (role === "org-admin") return isOrgAdmin(reader);
+    if (role === "team-admin") return scope.teamId ? teamRole === "admin" : isOrgAdmin(reader);
+    return scope.teamId ? teamRole === "admin" || teamRole === "member" : true;
+  });
+}
+
+/** Được quyết ở gate hiện tại: người được chỉ định (không phải người viết), hoặc owner/admin tổ chức. */
+function canDecideAt(reader: Reader, gate: ReviewGate, inst: InstanceRow, run: GateRunRow | null): boolean {
+  if (inst.status !== "in_review" || gate.kind !== "human" || run?.status !== "waiting") return false;
+  if (reader.kind !== "user") return false;
+  const me = reader.principal.userId;
+  if (run.approvals.some((a) => a.userId === me)) return false;
+  if (isOrgAdmin(reader)) return true;
+  return me !== inst.authorUserId && eligible(reader, gate, inst);
+}
+
+async function notifyReviewers(tx: Tx, inst: InstanceRow, gate: ReviewGate, deps: ReviewDeps) {
+  const r = gate.reviewers;
+  if (!r) return;
+  const ids = new Set(await notificationRecipients(tx, r.users));
+  for (const role of r.roles) {
+    if (role === "org-admin" || !inst.teamId) for (const id of await notificationRecipients(tx)) ids.add(id);
+    else for (const id of await teamMemberIds(tx, inst.teamId, role === "team-admin" ? "admin" : "member")) ids.add(id);
+  }
+  if (inst.authorUserId) ids.delete(inst.authorUserId);
+  if (!ids.size) return;
+  await notify(
+    tx,
+    {
+      orgId: inst.orgId,
+      event: "review.awaiting",
+      title: `Tài liệu chờ duyệt: ${inst.docTitle}`,
+      body: `Checkpoint “${gate.name}” của quy trình ${inst.workflowName} chờ bạn duyệt (${inst.docKey}).`,
+      eventKey: `review:${inst.id}:${inst.gateIndex}:${Date.now()}`,
+      recipientIds: [...ids],
+      link: deps.publicUrl ? `${deps.publicUrl.replace(/\/+$/, "")}/knowledge/reviews?id=${inst.id}` : null,
+    },
+    { jobs: deps.jobs },
+  );
+}
+
+export async function decideReview(
+  tx: Tx,
+  userId: string,
+  raw: ReviewDecideInput,
+  deps: ReviewDeps,
+): Promise<ReviewDetail> {
+  const input = reviewDecideInput.parse(raw);
+  const principal: Principal = { kind: "user", userId };
+  const reader = await readerFor(tx, principal);
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, input.id)).for("update");
+  if (!inst || !canRead(reader, inst)) throw notFound();
+  const flat = flatGates(inst.phases);
+  const cur = flat[inst.gateIndex];
+  const run = await currentRun(tx, inst);
+  if (!cur || !run || !canDecideAt(reader, cur.gate, inst, run)) {
+    if (inst.status !== "in_review")
+      throw new ConflictError("REVIEW_CLOSED", "Phiên duyệt đã kết thúc hoặc đang chờ checkpoint khác.");
+    throw new ForbiddenError("REVIEW_NOT_REVIEWER", "Bạn không phải người duyệt của checkpoint hiện tại.");
+  }
+  const gate = cur.gate;
+  if (input.decision === "approve") {
+    const approvals = [...run.approvals, { userId, at: new Date().toISOString() }];
+    const done = approvals.length >= requiredApprovals(gate) || isOrgAdmin(reader);
+    await tx
+      .update(reviewGateRuns)
+      .set({
+        approvals,
+        ...(done ? { status: "passed", decidedBy: userId, note: input.note ?? null, finishedAt: sql`now()` } : {}),
+      })
+      .where(eq(reviewGateRuns.id, run.id));
+    await audit(tx, principal, "review.approve", { type: "review", id: inst.id }, { gate: gate.id, done });
+    if (done) {
+      const p = await loadProposal(tx, inst.proposalId);
+      const next = await afterPass(tx, inst, gate, p, deps, userId);
+      if (next === "done") await finish(tx, inst, p, userId);
+      else await advance(tx, { ...inst, gateIndex: inst.gateIndex + 1 }, deps, userId);
+    }
+  } else {
+    const route = input.route ?? gate.onReject;
+    await tx
+      .update(reviewGateRuns)
+      .set({ status: "failed", decidedBy: userId, note: input.note ?? null, finishedAt: sql`now()` })
+      .where(eq(reviewGateRuns.id, run.id));
+    await audit(tx, principal, "review.request_changes", { type: "review", id: inst.id }, { gate: gate.id, route });
+    await requestChanges(tx, inst, route, input.note ?? "", userId, deps);
+  }
+  return getReview(tx, userId, inst.id);
+}
+
+// ---- Gate AI và CI (job) ---------------------------------------------------------------------------------------
+
+/** Kết quả gate chờ việc nền (AI, CI): đạt thì đi tiếp, không đạt thì trả về người viết. */
+export async function completeWaitingGate(
+  tx: Tx,
+  instanceId: string,
+  kind: "ai" | "ext",
+  result: {
+    passed: boolean;
+    score?: number | null;
+    checklist?: ChecklistItem[];
+    note?: string | null;
+    runId?: string | null;
+  },
+  deps: ReviewDeps,
+): Promise<void> {
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, instanceId)).for("update");
+  if (inst?.status !== "in_review") return;
+  const cur = flatGates(inst.phases)[inst.gateIndex];
+  const run = await currentRun(tx, inst);
+  if (!cur || cur.gate.kind !== kind || run?.status !== "waiting") return;
+  await tx
+    .update(reviewGateRuns)
+    .set({
+      status: result.passed ? "passed" : "failed",
+      score: result.score ?? null,
+      checklist: result.checklist ?? [],
+      note: result.note ?? null,
+      runId: result.runId ?? run.runId,
+      finishedAt: sql`now()`,
+    })
+    .where(eq(reviewGateRuns.id, run.id));
+  const p = await loadProposal(tx, inst.proposalId);
+  if (!result.passed) {
+    await requestChanges(tx, inst, "author", result.note ?? `Không đạt checkpoint “${cur.gate.name}”.`, null, deps);
+    return;
+  }
+  const next = await afterPass(tx, inst, cur.gate, p, deps, null);
+  if (next === "done") await finish(tx, inst, p, null);
+  else await advance(tx, { ...inst, gateIndex: inst.gateIndex + 1 }, deps, null);
+}
+
+/** Kết quả run kiểm của gate AI: đạt khi run không lỗi và điểm từ ngưỡng của gate trở lên. */
+export async function applyAiResult(
+  tx: Tx,
+  data: Extract<ReviewJob, { kind: "ai-result" }>,
+  deps: ReviewDeps,
+): Promise<void> {
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, data.instanceId));
+  const passScore = inst ? (flatGates(inst.phases)[inst.gateIndex]?.gate.ai?.passScore ?? null) : null;
+  const passed = data.error === null && data.score !== null && passScore !== null && data.score >= passScore;
+  const note =
+    data.error ?? data.summary ?? (passed ? null : `Điểm ${data.score ?? "—"} dưới ngưỡng ${passScore ?? "—"}.`);
+  await completeWaitingGate(
+    tx,
+    data.instanceId,
+    "ai",
+    { passed, score: data.score, checklist: data.checklist, note, runId: data.runId },
+    deps,
+  );
+}
+
+/** Gate AI đang chờ: ghi run của agent kiểm để hiện ở phiên duyệt. */
+export async function attachGateRun(tx: Tx, instanceId: string, runId: string): Promise<void> {
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, instanceId));
+  if (!inst) return;
+  const run = await currentRun(tx, inst);
+  if (run?.status === "waiting") await tx.update(reviewGateRuns).set({ runId }).where(eq(reviewGateRuns.id, run.id));
+}
+
+/** Dữ liệu để dựng lời nhắc cho agent kiểm của gate AI. */
+export async function aiGateContext(tx: Tx, instanceId: string) {
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, instanceId));
+  if (inst?.status !== "in_review") return null;
+  const cur = flatGates(inst.phases)[inst.gateIndex];
+  if (cur?.gate.kind !== "ai" || !cur.gate.ai) return null;
+  const run = await currentRun(tx, inst);
+  if (run?.status !== "waiting" || run.runId) return null;
+  const p = await loadProposal(tx, inst.proposalId);
+  return {
+    instance: inst,
+    gate: cur.gate,
+    checks: cur.gate.ai.checks,
+    passScore: cur.gate.ai.passScore,
+    content: p.content,
+    base: await docContentAt(tx, inst.docKey, p.baseVersion),
+  };
+}
+
+// ---- Đọc -------------------------------------------------------------------------------------------------------
+
+async function names(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return new Map();
+  const rows = await tx
+    .select({ id: authUser.id, name: authUser.name })
+    .from(authUser)
+    .where(inArray(authUser.id, unique));
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+async function summarize(
+  tx: Tx,
+  reader: Reader,
+  inst: InstanceRow,
+  nameOf: Map<string, string>,
+): Promise<ReviewSummary> {
+  const flat = flatGates(inst.phases);
+  const cur = inst.status === "in_review" ? flat[inst.gateIndex] : undefined;
+  const run = cur ? await currentRun(tx, inst) : null;
+  const [ai] = await tx
+    .select({ score: reviewGateRuns.score })
+    .from(reviewGateRuns)
+    .where(and(eq(reviewGateRuns.instanceId, inst.id), sql`${reviewGateRuns.score} is not null`))
+    .orderBy(desc(reviewGateRuns.startedAt))
+    .limit(1);
+  return {
+    id: inst.id,
+    proposalId: inst.proposalId,
+    docKey: inst.docKey,
+    docTitle: inst.docTitle,
+    docType: docTypeOf(inst.docKey),
+    workflowId: inst.workflowId ?? inst.id,
+    workflowName: inst.workflowName,
+    status: inst.status as ReviewSummary["status"],
+    gate: cur
+      ? {
+          id: cur.gate.id,
+          name: cur.gate.name,
+          kind: cur.gate.kind,
+          phase: cur.phase,
+          index: cur.index,
+          total: flat.length,
+          dueAt: iso(run?.dueAt ?? null),
+          sla: run ? slaOf(run.dueAt, run.startedAt) : "none",
+        }
+      : null,
+    author: {
+      userId: inst.authorUserId,
+      runId: inst.authorRunId,
+      name: inst.authorUserId ? (nameOf.get(inst.authorUserId) ?? inst.authorUserId) : "Agent",
+    },
+    awaitingMe: !!cur && canDecideAt(reader, cur.gate, inst, run),
+    aiScore: ai?.score ?? null,
+    addedLines: inst.addedLines,
+    deletedLines: inst.deletedLines,
+    createdAt: inst.createdAt.toISOString(),
+    updatedAt: inst.updatedAt.toISOString(),
+  };
+}
+
+export async function listReviews(
+  tx: Tx,
+  userId: string,
+  raw: z.input<typeof reviewListInput>,
+): Promise<{ items: ReviewSummary[]; nextCursor: string | null }> {
+  const input = reviewListInput.parse(raw);
+  const reader = await readerFor(tx, { kind: "user", userId });
+  const items: ReviewSummary[] = [];
+  let cursor = input.cursor ?? null;
+  // "Chờ tôi duyệt" lọc theo người duyệt sau khi đọc; đọc thêm vài trang để đủ một trang kết quả.
+  for (let page = 0; page < 10 && items.length < input.limit; page++) {
+    const [at, id] = cursor ? cursor.split("~") : [];
+    const rows = await tx
+      .select()
+      .from(reviewInstances)
+      .where(
+        and(
+          visibleWhere(reader, reviewInstances, undefined),
+          input.status ? eq(reviewInstances.status, input.status) : undefined,
+          input.scope === "mine" ? eq(reviewInstances.status, "in_review") : undefined,
+          at && id
+            ? or(
+                lt(reviewInstances.updatedAt, new Date(at)),
+                and(eq(reviewInstances.updatedAt, new Date(at)), lt(reviewInstances.id, id)),
+              )
+            : undefined,
+        ),
+      )
+      .orderBy(desc(reviewInstances.updatedAt), desc(reviewInstances.id))
+      .limit(input.limit);
+    if (!rows.length) {
+      cursor = null;
+      break;
+    }
+    const nameOf = await names(
+      tx,
+      rows.map((r) => r.authorUserId ?? ""),
+    );
+    for (const r of rows) {
+      const s = await summarize(tx, reader, r, nameOf);
+      if (input.scope === "all" || s.awaitingMe) items.push(s);
+      cursor = `${r.updatedAt.toISOString()}~${r.id}`;
+      if (items.length >= input.limit) break;
+    }
+    if (rows.length < input.limit && items.length < input.limit) {
+      cursor = null;
+      break;
+    }
+  }
+  return { items, nextCursor: items.length >= input.limit ? cursor : null };
+}
+
+async function traceOf(tx: Tx, userId: string, inst: InstanceRow, content: string): Promise<RequirementTrace[]> {
+  const reqs = requirementsOf(content);
+  if (!reqs.length) return [];
+  const tasks = inst.projectId ? await listTasks(tx, userId, inst.projectId).catch(() => []) : [];
+  return reqs.map((r) => ({
+    id: r.id,
+    text: r.text,
+    acceptance: r.acceptance,
+    tasks: tasks
+      .filter((t) => new RegExp(`\\b${r.id}\\b`).test(`${t.title}\n${t.body ?? ""}`))
+      .map((t) => ({ key: t.key, title: t.title, status: t.status })),
+  }));
+}
+
+export async function getReview(tx: Tx, userId: string, id: string): Promise<ReviewDetail> {
+  const reader = await readerFor(tx, { kind: "user", userId });
+  const [inst] = await tx.select().from(reviewInstances).where(eq(reviewInstances.id, id));
+  if (!inst || !canRead(reader, inst)) throw notFound();
+  const p = await loadProposal(tx, inst.proposalId);
+  const runs = await tx
+    .select()
+    .from(reviewGateRuns)
+    .where(eq(reviewGateRuns.instanceId, inst.id))
+    .orderBy(asc(reviewGateRuns.startedAt));
+  const nameOf = await names(tx, [
+    inst.authorUserId ?? "",
+    ...runs.flatMap((r) => [r.decidedBy ?? "", ...r.approvals.map((a) => a.userId)]),
+  ]);
+  const flat = flatGates(inst.phases);
+  const latest = new Map<number, GateRunRow>();
+  for (const r of runs) latest.set(r.gateIndex, r);
+  const gates: GateRun[] = flat.map(({ gate, phase, index }) => {
+    const r = latest.get(index);
+    return {
+      gateId: gate.id,
+      name: gate.name,
+      kind: gate.kind,
+      phase,
+      status: (r?.status as GateRun["status"] | undefined) ?? "waiting",
+      score: r?.score ?? null,
+      checklist: r?.checklist ?? [],
+      approvals: (r?.approvals ?? []).map((a) => ({
+        userId: a.userId,
+        name: nameOf.get(a.userId) ?? a.userId,
+        at: a.at,
+      })),
+      note: r?.note ?? null,
+      decidedBy: r?.decidedBy ? (nameOf.get(r.decidedBy) ?? r.decidedBy) : null,
+      startedAt: iso(r?.startedAt ?? null),
+      finishedAt: iso(r?.finishedAt ?? null),
+      runId: r?.runId ?? null,
+    };
+  });
+  // Gate chưa tới (sau gate hiện tại) chưa có lượt chạy: hiện là chờ nhưng không có thời điểm bắt đầu.
+  const summary = await summarize(tx, reader, inst, nameOf);
+  const cur = flat[inst.gateIndex];
+  const previous = flat
+    .slice(0, inst.gateIndex)
+    .reverse()
+    .find((f) => f.gate.kind === "human");
+  return {
+    ...summary,
+    baseVersion: p.baseVersion,
+    baseContent: await docContentAt(tx, inst.docKey, p.baseVersion),
+    content: p.content,
+    reason: p.reason,
+    gates,
+    trace: await traceOf(tx, userId, inst, p.content),
+    canDecide: !!cur && canDecideAt(reader, cur.gate, inst, await currentRun(tx, inst)),
+    previousGate: previous?.gate.id ?? null,
+  };
+}

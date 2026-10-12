@@ -127,8 +127,8 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         if (lo > PROTOCOL_VERSION || hi < PROTOCOL_VERSION) {
           return ws.close(CLOSE.protocolUnsupported, `Hub dùng giao thức v${PROTOCOL_VERSION}`);
         }
-        const { os, version, clis, capacity } = msg;
-        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity }))) {
+        const { os, version, clis, capacity, capabilities } = msg;
+        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity, capabilities }))) {
           return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
         }
         if (ws.readyState !== ws.OPEN) return;

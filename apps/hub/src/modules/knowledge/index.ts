@@ -23,6 +23,17 @@ export {
   writeMemory,
 } from "./memory.ts";
 export { approveProposal, createProposal, listProposals, proposeDoc, rejectProposal } from "./proposals.ts";
+export { type ReviewJobDeps, registerReviewWorker, remindOverdue } from "./review-jobs.ts";
+export {
+  aiGateContext,
+  applyAiResult,
+  attachGateRun,
+  completeWaitingGate,
+  REVIEW_QUEUE,
+  type ReviewJob,
+  reviewQueue,
+  startReview,
+} from "./reviews.ts";
 export { knowledgeRouter } from "./router.ts";
 export {
   handleSkillWebhook,

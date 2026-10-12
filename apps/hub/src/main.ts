@@ -21,7 +21,9 @@ import {
   createOpenAIEmbedder,
   embedQueue,
   registerEmbedWorker,
+  registerReviewWorker,
   registerSkillGitWorker,
+  reviewQueue,
   skillGitQueue,
 } from "./modules/knowledge/index.ts";
 import { appendLeaderSystemMessage, queuedLeaderPrompt } from "./modules/leader/index.ts";
@@ -108,6 +110,7 @@ jobs = config.jobsDatabaseUrl
         orphanUsersQueue,
         runLogRetentionQueue,
         skillGitQueue,
+        reviewQueue,
         auditRetentionQueue,
         templateSyncQueue,
       ],
@@ -151,6 +154,13 @@ if (roles.includes("jobs") && jobs) {
     await registerProvisionWorker(jobs, catalogDeps);
     await registerMergeWorker(jobs, catalogDeps);
     await registerTemplateSyncWorker(jobs, catalogDeps);
+    await registerReviewWorker(jobs, {
+      pool,
+      masterKey: config.masterKey,
+      providerFactory: defaultProviderFactory,
+      publicUrl: catalogDeps.publicUrl,
+      startDocCheck: runs?.startDocCheck,
+    });
     await registerSkillGitWorker(jobs, {
       pool,
       masterKey: config.masterKey,

@@ -1,4 +1,5 @@
 import {
+  type ChecklistItem,
   type JobMcpServer,
   type JobPolicy,
   type OutcomeCheck,
@@ -14,7 +15,7 @@ import { type DiffStats, diffStats, steerResultData } from "@xdev-hive/contracts
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { enqueueMerge, loadProject, type ProjectRow, projectFor } from "../catalog/index.ts";
+import { enqueueMerge, latestActiveProject, loadProject, type ProjectRow, projectFor } from "../catalog/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -36,6 +37,7 @@ import {
   resolvePermission,
 } from "../governance/index.ts";
 import { authUser } from "../identity/index.ts";
+import { aiGateContext, applyAiResult, attachGateRun, completeWaitingGate } from "../knowledge/index.ts";
 import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
 import {
@@ -80,6 +82,7 @@ import {
   parseCostData,
   taskSpentUsd,
 } from "./cost.ts";
+import { docCheckPrompt } from "./doccheck.ts";
 import { createMcpRunTokens } from "./mcp.ts";
 import { approvedPlanPrompt, parsePlanReport, planPrompt } from "./plan.ts";
 import {
@@ -219,6 +222,10 @@ const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
  * không giao cho CLI khác (Gemini) để khỏi chắc chắn thất bại.
  */
 const SUBMIT_CLIS: readonly string[] = ["claude", "codex"];
+/** Run không có task, lời nhắc lấy từ sự kiện của hub: leader (trò chuyện) và doccheck (gate AI của quy trình duyệt). */
+const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck"];
+/** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
+const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck"];
 
 function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
   if (child.state === "succeeded" && report) return { status: "done", score: report.score, by: child.cli };
@@ -306,6 +313,7 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
     });
   }
   if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
+  if (run.kind === "doccheck") return ctx.leaderPrompt ?? "Hãy kiểm tài liệu rồi gọi công cụ MCP doc_check_submit.";
   const prompt = task.body ? `${task.title}\n\n${task.body}` : task.title;
   const plan = ctx.approvedPlan;
   return plan ? `${prompt}\n\n${approvedPlanPrompt(planMarkdown(planInForce(plan)), plan.note)}` : prompt;
@@ -437,9 +445,11 @@ export function createRunsEngine(deps: RunsDeps) {
         connected(m.id) &&
         !run.rejectedBy.includes(m.id) &&
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
+        // Worker cũ không biết run doccheck sẽ chạy nó như run code (có quyền ghi): chỉ giao cho máy đã khai.
+        (run.kind !== "doccheck" || m.capabilities.includes("doccheck")) &&
         (run.cli
           ? m.clis.includes(run.cli)
-          : run.kind === "plan" || run.kind === "leader"
+          : SUBMIT_KINDS.includes(run.kind)
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
             : m.clis.length > 0),
     );
@@ -470,9 +480,9 @@ export function createRunsEngine(deps: RunsDeps) {
       const run = await lockRun(tx, runId);
       if (run?.state !== "queued") return null;
       if (run.offerMachineId && run.offerExpiresAt && run.offerExpiresAt > new Date()) return null;
-      const task = run.kind === "leader" ? null : run.taskId ? await loadTask(tx, run.taskId) : null;
+      const task = PROMPT_KINDS.includes(run.kind) ? null : run.taskId ? await loadTask(tx, run.taskId) : null;
       const project = await loadProject(tx, run.projectId);
-      if ((!task && run.kind !== "leader") || !project) return null;
+      if ((!task && !PROMPT_KINDS.includes(run.kind)) || !project) return null;
       const policy = await loadPolicy(tx);
       // Tổ chức chạm trần chi phí ngày: run chờ tới ngày sau (UTC); heartbeat của máy sẽ gọi giao lại.
       const dailyCap = policy.limits.dailyUsd;
@@ -503,15 +513,19 @@ export function createRunsEngine(deps: RunsDeps) {
         : [];
       const approvedPlan = run.kind === "code" ? await approvedPlanOf(tx, run.id) : null;
       const latest = run.kind === "plan" && task ? await latestPlanOf(tx, task.id) : null;
-      const [leaderContext] =
-        run.kind === "leader"
-          ? await tx
-              .select({ prompt: runEvents.data })
-              .from(runEvents)
-              .where(and(eq(runEvents.runId, run.id), eq(runEvents.type, "leader_prompt")))
-              .orderBy(desc(runEvents.id))
-              .limit(1)
-          : [];
+      const [leaderContext] = PROMPT_KINDS.includes(run.kind)
+        ? await tx
+            .select({ prompt: runEvents.data })
+            .from(runEvents)
+            .where(
+              and(
+                eq(runEvents.runId, run.id),
+                eq(runEvents.type, run.kind === "leader" ? "leader_prompt" : "doccheck_prompt"),
+              ),
+            )
+            .orderBy(desc(runEvents.id))
+            .limit(1)
+        : [];
       const expiresAt = new Date(Date.now() + offerTtlSec * 1000);
       await tx
         .update(runs)
@@ -519,14 +533,16 @@ export function createRunsEngine(deps: RunsDeps) {
         .where(eq(runs.id, run.id));
       const cli =
         run.cli ??
-        (run.kind === "plan" || run.kind === "leader"
-          ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
-          : machine.clis[0]) ??
+        (SUBMIT_KINDS.includes(run.kind) ? machine.clis.find((c) => SUBMIT_CLIS.includes(c)) : machine.clis[0]) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const requested =
-        run.model ?? project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[run.kind] ?? null;
+        run.model ??
+        project.settings.models?.[cli as "claude" | "codex" | "gemini"]?.[
+          run.kind === "doccheck" ? "review" : run.kind
+        ] ??
+        null;
       const model = resolveModel(policy, cli, requested);
       const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
       for (const notice of [model.notice, permission.notice]) {
@@ -888,7 +904,86 @@ export function createRunsEngine(deps: RunsDeps) {
     if (run.kind === "code") await verifyCode(orgId, runId);
     else if (run.kind === "review") await verifyReview(orgId, runId);
     else if (run.kind === "plan") await verifyPlan(orgId, runId);
+    else if (run.kind === "doccheck") await verifyDocCheck(orgId, runId);
     else await verifyLeader(orgId, runId);
+  }
+
+  /** Phiên duyệt mà run doccheck kiểm, ghi trong sự kiện lời nhắc lúc tạo run. */
+  async function docCheckInstance(tx: Tx, runId: string): Promise<string | null> {
+    const [ev] = await tx
+      .select({ data: runEvents.data })
+      .from(runEvents)
+      .where(and(eq(runEvents.runId, runId), eq(runEvents.type, "doccheck_prompt")))
+      .limit(1);
+    return typeof ev?.data.instanceId === "string" ? ev.data.instanceId : null;
+  }
+
+  /** Chuyển kết quả (hoặc lỗi) của run doccheck cho gate AI của phiên duyệt, trong cùng transaction. */
+  async function docCheckDone(
+    tx: Tx,
+    run: RunRow,
+    result: { score: number; checklist: ChecklistItem[]; summary: string } | null,
+    error: string | null,
+  ): Promise<void> {
+    const instanceId = await docCheckInstance(tx, run.id);
+    if (!instanceId) return;
+    await applyAiResult(
+      tx,
+      {
+        kind: "ai-result",
+        orgId: run.orgId,
+        instanceId,
+        runId: run.id,
+        score: result?.score ?? null,
+        checklist: result?.checklist ?? [],
+        summary: result?.summary ?? null,
+        error,
+      },
+      { jobs: deps.jobs, publicUrl: deps.publicUrl },
+    );
+  }
+
+  /** Run doccheck: succeeded khi agent đã gọi doc_check_submit; kết quả đi tiếp tới gate AI của phiên duyệt. */
+  async function verifyDocCheck(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "doccheck" || run.state !== "verifying") return;
+      const data = await resultOf(tx, run);
+      const [ev] = await tx
+        .select({ data: runEvents.data })
+        .from(runEvents)
+        .where(
+          and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "doccheck_result")),
+        )
+        .orderBy(desc(runEvents.id))
+        .limit(1);
+      const ok = exitOf(data) === 0 && Boolean(ev);
+      const error = ok
+        ? null
+        : exitOf(data) === 0
+          ? "Agent không nộp kết quả kiểm (doc_check_submit)."
+          : "Run kiểm tài liệu lỗi hoặc hết thời gian.";
+      await transition(
+        tx,
+        run,
+        ok ? "succeeded" : "failed",
+        { finishedAt: new Date() },
+        { message: error ?? "Đã kiểm xong tài liệu." },
+      );
+      await recordAudit(tx, {
+        action: "doccheck.run.finish",
+        actorUserId: null,
+        targetType: "run",
+        targetId: run.id,
+        data: { succeeded: ok },
+      });
+      await docCheckDone(
+        tx,
+        run,
+        ok ? (ev?.data as { score: number; checklist: ChecklistItem[]; summary: string }) : null,
+        error,
+      );
+    });
   }
 
   async function verifyLeader(orgId: string, runId: string): Promise<void> {
@@ -1457,6 +1552,7 @@ export function createRunsEngine(deps: RunsDeps) {
             "Leader run mất kết nối sau nhiều lần thử. Hãy thử gửi lại tin nhắn.",
           );
         }
+        if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
         await childFinished(tx, run);
       }
       return null;
@@ -1488,6 +1584,8 @@ export function createRunsEngine(deps: RunsDeps) {
       await supersedePlans(tx, run.id);
     } else if (run.kind === "leader" && run.leaderThreadId) {
       await deps.leaderMessage?.(tx, run.leaderThreadId, "Leader run đã bị huỷ.");
+    } else if (run.kind === "doccheck") {
+      await docCheckDone(tx, run, null, "Run kiểm tài liệu đã bị huỷ.");
     } else await childFinished(tx, run);
     return row;
   }
@@ -1602,6 +1700,72 @@ export function createRunsEngine(deps: RunsDeps) {
     });
     const { orgId, id } = row;
     return { runId: id, afterCommit: () => background(dispatch(orgId, id), "Không giao được leader run") };
+  }
+
+  /**
+   * Gate AI của phiên duyệt (module knowledge gọi qua job): tạo run doccheck chỉ đọc trên dự án của tài liệu, hoặc dự án
+   * hoạt động gần nhất của đội/tổ chức khi tài liệu không thuộc dự án nào, rồi giao cho máy đã khai làm được doccheck.
+   */
+  async function startDocCheck(orgId: string, instanceId: string): Promise<void> {
+    const runId = await tenant(orgId, async (tx) => {
+      const ctx = await aiGateContext(tx, instanceId);
+      if (!ctx) return null;
+      const inst = ctx.instance;
+      const project = inst.projectId
+        ? await loadProject(tx, inst.projectId)
+        : await latestActiveProject(tx, inst.teamId);
+      if (!project || !projectReady(project)) {
+        await completeWaitingGate(
+          tx,
+          instanceId,
+          "ai",
+          { passed: true, note: "Chưa có dự án nào có repo để agent kiểm; bỏ qua checkpoint AI." },
+          { jobs: deps.jobs, publicUrl: deps.publicUrl },
+        );
+        return null;
+      }
+      const [row] = await tx
+        .insert(runs)
+        .values({
+          orgId: sql`hive.ctx_org()`,
+          teamId: project.teamId,
+          taskId: null,
+          projectId: project.id,
+          kind: "doccheck",
+          cli: null,
+          model: null,
+          branch: `doccheck/${instanceId}`,
+          policySnapshot: [],
+          createdBy: inst.authorUserId ?? "system",
+        })
+        .returning();
+      if (!row) throw new Error("Không tạo được run kiểm tài liệu.");
+      await hubEvent(tx, row, "state", { from: null, to: "queued", by: "review" });
+      await hubEvent(tx, row, "doccheck_prompt", {
+        instanceId,
+        prompt: docCheckPrompt({
+          docKey: inst.docKey,
+          title: inst.docTitle,
+          workflow: inst.workflowName,
+          gate: ctx.gate.name,
+          checks: ctx.checks,
+          passScore: ctx.passScore,
+          content: ctx.content,
+          base: ctx.base,
+        }),
+      });
+      await attachGateRun(tx, instanceId, row.id);
+      await notifyRun(tx, row.id);
+      await recordAudit(tx, {
+        action: "doccheck.run.start",
+        actorUserId: null,
+        targetType: "run",
+        targetId: row.id,
+        data: { reviewId: instanceId, gate: ctx.gate.id, projectId: project.id },
+      });
+      return row.id;
+    });
+    if (runId) await dispatch(orgId, runId);
   }
 
   /**
@@ -1897,6 +2061,7 @@ export function createRunsEngine(deps: RunsDeps) {
     fire,
     startRun,
     startLeaderRun,
+    startDocCheck,
     queueRun,
     steerRun,
     cancelRun,

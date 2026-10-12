@@ -27,10 +27,17 @@ const KindPlan = "plan"
 // KindLeader là run hội thoại; CLI được giới hạn chỉ đọc như KindPlan.
 const KindLeader = "leader"
 
+// KindDocCheck là run kiểm tài liệu của quy trình duyệt (gate AI): đọc nhánh chính, chỉ đọc, nộp kết quả qua MCP.
+const KindDocCheck = "doccheck"
+
+// Capabilities là việc ngoài run code mà worker khai với hub trong hello. Hub chỉ giao run doccheck cho worker có nó,
+// vì worker cũ không biết kind này sẽ chạy như run code có quyền ghi.
+var Capabilities = []string{KindDocCheck}
+
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
 // lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
 func readOnlyKind(kind string) bool {
-	return kind == KindReview || kind == KindPlan || kind == KindLeader
+	return kind == KindReview || kind == KindPlan || kind == KindLeader || kind == KindDocCheck
 }
 
 type Job struct {
@@ -223,7 +230,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
 			return err
 		}
-	} else if job.Kind == KindPlan || job.Kind == KindLeader {
+	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
 		if err := gitWrite(ctx, cache, cache, "worktree", "add", "--detach", work, "origin/"+job.BaseBranch); err != nil {

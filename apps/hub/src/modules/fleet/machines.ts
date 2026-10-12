@@ -180,6 +180,7 @@ export interface MachineInfo {
   version: string;
   clis: string[];
   capacity: number;
+  capabilities: string[];
 }
 
 /**
@@ -306,9 +307,15 @@ export async function listOnlineMachines(
   tx: Tx,
   teamId: string,
   kind: MachineKind = "worker",
-): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number }>> {
+): Promise<Array<{ id: string; name: string; clis: string[]; capacity: number; capabilities: string[] }>> {
   return tx
-    .select({ id: machines.id, name: machines.name, clis: machines.clis, capacity: machines.capacity })
+    .select({
+      id: machines.id,
+      name: machines.name,
+      clis: machines.clis,
+      capacity: machines.capacity,
+      capabilities: machines.capabilities,
+    })
     .from(machines)
     .where(
       and(
