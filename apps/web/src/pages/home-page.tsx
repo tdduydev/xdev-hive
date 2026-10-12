@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import { Card } from "@/components/ui/card.tsx";
 import { LoadFailure, LoadingState } from "@/components/ui/query-state.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";

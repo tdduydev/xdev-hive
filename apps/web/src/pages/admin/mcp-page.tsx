@@ -1,10 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { McpAdminTool, McpServerRule, McpUserToken } from "@xdev-hive/contracts";
-import { Copy, KeyRound, Plus } from "lucide-react";
-import { useState } from "react";
-import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
-import { Button } from "@/components/ui/button.tsx";
+import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
   DialogActions,
@@ -12,8 +8,12 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog.tsx";
-import { Input } from "@/components/ui/input.tsx";
+} from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
+import { Copy, KeyRound, Plus } from "lucide-react";
+import { useState } from "react";
+import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { Switch } from "@/components/ui/switch.tsx";

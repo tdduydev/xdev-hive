@@ -1,7 +1,7 @@
 import { slug as slugSchema } from "@xdev-hive/contracts";
+import { Input } from "@xdev-hive/ui/input";
 import { useState } from "react";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { type Dict, getLang, useT } from "@/lib/i18n.ts";
 import { slugify } from "@/lib/slug.ts";
 

@@ -1,7 +1,7 @@
+import { Button } from "@xdev-hive/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@xdev-hive/ui/empty";
 import { Loader2Icon } from "lucide-react";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 
 export function LoadingState({ label = "Đang tải…" }: { label?: string }) {

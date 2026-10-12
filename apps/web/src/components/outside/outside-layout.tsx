@@ -1,6 +1,6 @@
+import { Button } from "@xdev-hive/ui/button";
 import type { ReactNode } from "react";
 import { Brand } from "@/components/icons.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { type Dict, setLang, useLang, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ language: string }> = { vi: { language: "Ngôn ngữ" }, en: { language: "Language" } };

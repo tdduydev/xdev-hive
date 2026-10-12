@@ -3,6 +3,8 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/ibm-plex-sans";
 @import "@fontsource-variable/jetbrains-mono";
+/* Component dùng chung (packages/ui) nằm ngoài src của app: chỉ cho Tailwind quét class trong đó. */
+@source "../../../packages/ui/src";
 
 /*
  * Design system v2: docs/design-system/xdev-hive/MASTER.md (UI UX Pro Max: Minimalism & Swiss, bảng màu công cụ dev,

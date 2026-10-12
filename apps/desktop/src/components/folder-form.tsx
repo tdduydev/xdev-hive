@@ -1,7 +1,7 @@
+import { Button } from "@xdev-hive/ui/button";
+import { Input } from "@xdev-hive/ui/input";
+import { Label } from "@xdev-hive/ui/label";
 import type { FormEvent } from "react";
-import { Button } from "@/components/ui/button.tsx";
-import { Input } from "@/components/ui/input.tsx";
-import { Label } from "@/components/ui/label.tsx";
 import { type Dict, useT } from "@/lib/i18n.ts";
 
 const text: Dict<{ folder: string }> = { vi: { folder: "Thư mục dự án" }, en: { folder: "Project folder" } };

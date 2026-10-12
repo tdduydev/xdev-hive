@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SsoJoin, SsoSettings } from "@xdev-hive/contracts";
+import { Button } from "@xdev-hive/ui/button";
+import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
+import { Input } from "@xdev-hive/ui/input";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { Icon, type IconName } from "@/components/icons.tsx";
 import { PeopleCopyField } from "@/components/person.tsx";
 import { Alert } from "@/components/ui/alert.tsx";
-import { Button } from "@/components/ui/button.tsx";
 import { Card } from "@/components/ui/card.tsx";
-import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog.tsx";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field.tsx";
-import { Input } from "@/components/ui/input.tsx";
 import { NativeSelect } from "@/components/ui/native-select.tsx";
 import { Pill } from "@/components/ui/pill.tsx";
 import { apiErrorCode, apiErrorMessage, formError } from "@/lib/api-errors.ts";
