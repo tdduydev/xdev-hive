@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import type { Project, ProjectSettings } from "@xdev-hive/contracts";
+import { LockIcon } from "lucide-react";
 import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { Alert } from "@/components/ui/alert.tsx";
 import { Button } from "@/components/ui/button.tsx";
@@ -90,6 +91,7 @@ const text: Dict<{
   pFull: string;
   pFullHint: string;
   fullBanner: string;
+  fullLocked: string;
   unsavedChanges: (n: number) => string;
   savedBanner: string;
   discard: string;
@@ -169,6 +171,7 @@ const text: Dict<{
     pFullHint:
       "Tắt sandbox và mọi bước hỏi duyệt của CLI. Chỉ dùng trong container dùng một lần hoặc máy riêng cho agent.",
     fullBanner: "Run của dự án này chạy với toàn quyền của tài khoản trên máy nhận việc.",
+    fullLocked: "Chính sách agent của tổ chức không cho dự án bật toàn quyền; run chạy trong worktree.",
     unsavedChanges: (n) => `Có ${n} thay đổi chưa lưu`,
     savedBanner: "Đã lưu cấu hình. Run giao sau đây dùng cấu hình mới.",
     discard: "Bỏ thay đổi",
@@ -249,6 +252,7 @@ const text: Dict<{
     pFullHint:
       "Turns off the CLI sandbox and every approval prompt. Only for throwaway containers or machines dedicated to agents.",
     fullBanner: "Runs in this project use the full rights of the account on the machine that picks them up.",
+    fullLocked: "The organization's agent policy does not let projects enable full access; runs stay in the worktree.",
     unsavedChanges: (n) => `${n} unsaved changes`,
     savedBanner: "Settings saved. Subsequent runs will use the new settings.",
     discard: "Discard",
@@ -412,6 +416,9 @@ function TextField({
 function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boolean }) {
   const { api } = useOrg();
   const t = useT(text);
+  // Hub cũ chưa có chính sách thì coi như không khoá, như trước.
+  const policy = useQuery({ ...api.policies.get.queryOptions(), retry: false });
+  const fullLocked = policy.data?.allowFullPermission === false;
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState<ProjectSettings>(project.settings);
   const [form, setForm] = useState<SettingsForm>(() => formFromSettings(project.settings));
@@ -796,7 +803,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                   value="full"
                   checked={form.runPermissions === "full"}
                   onChange={() => choosePermission("full")}
-                  disabled={disabled}
+                  disabled={disabled || (fullLocked && form.runPermissions !== "full")}
                   className="mt-0.5 size-4 accent-destructive"
                 />
                 <span className="grid gap-0.5">
@@ -807,10 +814,17 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                 </span>
               </label>
             </div>
-            {form.runPermissions === "full" && (
-              <p role="alert" className="rounded-lg bg-destructive-soft px-3.5 py-2.5 text-xs text-destructive">
-                {t.fullBanner}
+            {fullLocked ? (
+              <p className="flex items-start gap-2 rounded-lg bg-muted px-3.5 py-2.5 text-xs text-muted-foreground">
+                <LockIcon className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                {t.fullLocked}
               </p>
+            ) : (
+              form.runPermissions === "full" && (
+                <p role="alert" className="rounded-lg bg-destructive-soft px-3.5 py-2.5 text-xs text-destructive">
+                  {t.fullBanner}
+                </p>
+              )
             )}
             {errors.runPermissions && <p className="text-xs text-destructive">{errors.runPermissions}</p>}
           </Section>

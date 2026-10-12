@@ -18,9 +18,11 @@ import {
   catalogRouter,
   findProject,
   findWebhookTarget,
+  templateService,
 } from "./modules/catalog/index.ts";
 import { costsRouter } from "./modules/cost/index.ts";
 import { fleetRouter, WorkerReleaseCache } from "./modules/fleet/index.ts";
+import { policiesRouter } from "./modules/governance/index.ts";
 import { type Auth, mcpMode, meRouter, type TxtResolver } from "./modules/identity/index.ts";
 import {
   type Embedder,
@@ -179,6 +181,7 @@ export function createApp({
     leader: leaderRouter({ auth, pool, runs }),
     mcpAdmin: mcpAdminRouter({ auth, pool, registry }),
     roles: rolesRouter({ auth, pool }),
+    policies: policiesRouter({ auth, pool, templates: templateService({ publicUrl, jobs }) }),
   };
   // RPC cho web (cùng kiểu dữ liệu TypeScript), OpenAPI cho worker Go và tích hợp ngoài. Cùng một router.
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });

@@ -12,6 +12,7 @@ export {
 export { createMcpRunTokens, registerMcpTools } from "./mcp.ts";
 export { evaluatePolicy, matchGlob } from "./policy.ts";
 export { eventsAfter, getRun, latestRuns, listRuns, logsAfter } from "./queries.ts";
+export { purgeRunLogs, registerRunLogRetentionWorker, runLogRetentionQueue } from "./retention.ts";
 export { type RunsRouterDeps, runsRouter } from "./router.ts";
 // Bảng runs cho module cost tổng hợp token và chi phí (costs.summary).
 export { runEvents, runs } from "./schema.ts";

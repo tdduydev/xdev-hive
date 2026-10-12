@@ -52,4 +52,11 @@ export {
 } from "./saga.ts";
 export { applySettingsPatch, updateProjectSettings } from "./settings.ts";
 export { renderTemplate, TEMPLATE_ID, TEMPLATE_VERSION, type TemplateFile, type TemplateInput } from "./template.ts";
+export {
+  registerTemplateSyncWorker,
+  syncInstructionTemplates,
+  type TemplateSyncDeps,
+  templateService,
+  templateSyncQueue,
+} from "./template-sync.ts";
 export { findWebhookTarget } from "./webhook-target.ts";

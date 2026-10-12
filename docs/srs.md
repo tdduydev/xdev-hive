@@ -210,11 +210,11 @@ See the context diagram in [add.md section 3](add.md#3-context-and-scope).
 
 | ID | Requirement | Status | Verification |
 |---|---|---|---|
-| POL-01 | Organization administrators shall configure organization-wide agent policies including allowed model lists per CLI (Claude Code, Codex, Gemini CLI) and restrictions on automatic upgrades to expensive models. | Planned | — |
-| POL-02 | Organization administrators shall specify CLI permission levels (worktree restricted vs full access), require gVisor sandbox execution, and control whether individual projects may request full access. | Planned | — |
-| POL-03 | Organization administrators shall configure mandatory lifecycle hooks (PreToolUse, PostToolUse, Stop) executed on worker machines, with the option to enforce managed-only hooks ignoring personal or repository hooks. | Planned | — |
-| POL-04 | The hub shall maintain agent instruction file templates (AGENTS.md, CLAUDE.md, .mcp.json) and automatically propose pull requests to update project repositories when templates change. | Planned | — |
-| POL-05 | The hub shall enforce global limits for runs (per-run cost cap, organization daily budget cap, maximum parallel runs per machine, log retention period) that cannot be exceeded by project settings. | Planned | — |
+| POL-01 | Organization administrators shall configure organization-wide agent policies including allowed model lists per CLI (Claude Code, Codex, Gemini CLI) and restrictions on automatic upgrades to expensive models. | Implemented | `hub:modules/governance/policies.db.test.ts`, `hub:runs.db.test.ts` (chính sách agent), `web:e2e/policies.spec.ts` |
+| POL-02 | Organization administrators shall specify CLI permission levels (worktree restricted vs full access), require gVisor sandbox execution, and control whether individual projects may request full access. | Implemented | `hub:modules/governance/policies.db.test.ts`, `hub:runs.db.test.ts` (toàn quyền, sandbox), `web:e2e/projects-runs.spec.ts` |
+| POL-03 | Organization administrators shall configure mandatory lifecycle hooks (PreToolUse, PostToolUse, Stop) executed on worker machines, with the option to enforce managed-only hooks ignoring personal or repository hooks. | Implemented | `worker:internal/runner/hooks_test.go`, `worker:internal/channel/jobs_test.go`, `hub:runs.db.test.ts` |
+| POL-04 | The hub shall maintain agent instruction file templates (AGENTS.md, CLAUDE.md, .mcp.json) and automatically propose pull requests to update project repositories when templates change. | Implemented | `hub:modules/governance/policies.db.test.ts` (xem trước, mở PR), `hub:modules/catalog/template.test.ts` |
+| POL-05 | The hub shall enforce global limits for runs (per-run cost cap, organization daily budget cap, maximum parallel runs per machine, log retention period) that cannot be exceeded by project settings. | Implemented | `hub:runs.db.test.ts` (trần run, trần ngày, run song song), `hub:modules/governance/policies.db.test.ts` (giữ log) |
 
 ### 3.14 Review workflows (WF)
 

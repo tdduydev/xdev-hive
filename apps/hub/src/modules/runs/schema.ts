@@ -21,6 +21,7 @@ import {
 // Khai báo lại schema và role thay vì lấy từ tenancy: module chỉ được import module khác qua index.ts.
 const hive = pgSchema("hive");
 const hiveApp = pgRole("hive_app").existing();
+const hiveOwner = pgRole("hive_owner").existing();
 
 const inOrg = sql`org_id = hive.ctx_org()`;
 const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiveApp, using: inOrg, withCheck: inOrg });
@@ -80,6 +81,11 @@ export const runs = hive
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),
+      /**
+       * Chính sách agent của tổ chức đã áp cho lần thử đang giao (model, quyền CLI, sandbox, trần, hook). Ghi lúc đề nghị
+       * job; null với run giao trước khi có chính sách.
+       */
+      agentPolicySnapshot: jsonb("agent_policy_snapshot").$type<Record<string, unknown>>(),
       result: jsonb("result").$type<RunResult>(),
       headSha: text("head_sha"),
       prUrl: text("pr_url"),
@@ -185,6 +191,10 @@ export const runLogs = hive
       index("run_logs_run").on(t.runId, t.id),
       index("run_logs_org").on(t.orgId),
       orgScoped("run_logs"),
+      // hive.purge_run_logs (SECURITY DEFINER, chạy bằng hive_owner) xoá log quá hạn giữ của mọi tổ chức; hive_app không
+      // được gì thêm.
+      pgPolicy("run_logs_owner_select", { for: "select", to: hiveOwner, using: sql`true` }),
+      pgPolicy("run_logs_owner_purge", { for: "delete", to: hiveOwner, using: sql`true` }),
     ],
   )
   .enableRLS();

@@ -109,6 +109,7 @@ type jobSpec struct {
 	Image          string                   `json:"image"`
 	SetupEnv       map[string]string        `json:"setupEnv"`
 	MCPServers     []runner.MCPServer       `json:"mcpServers"`
+	Policy         runner.JobPolicy         `json:"policy"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -134,7 +135,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv}
+	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy}
 	j.MCPServers = s.MCPServers
 	if s.Sandbox != nil {
 		j.EnvironmentImage = s.Sandbox.Image.BaseImage

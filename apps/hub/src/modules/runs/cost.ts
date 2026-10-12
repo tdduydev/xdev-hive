@@ -74,6 +74,17 @@ export async function taskSpentUsd(tx: Tx, taskId: string): Promise<number> {
   return Number(row?.spent ?? 0);
 }
 
+/** Chi phí các run của tổ chức kết thúc hoặc còn chạy trong ngày hôm nay (UTC), cho trần ngày của Chính sách agent. */
+export async function orgSpentTodayUsd(tx: Tx): Promise<number> {
+  const [row] = await tx
+    .select({ spent: sql<string>`coalesce(sum(${runs.costUsd}), 0)` })
+    .from(runs)
+    .where(
+      sql`coalesce(${runs.finishedAt}, ${runs.updatedAt}) >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'`,
+    );
+  return Number(row?.spent ?? 0);
+}
+
 export async function taskBudgetExhausted(tx: Tx, taskId: string, budget: ProjectBudget | undefined) {
   return budget?.perTaskUsd !== undefined && (await taskSpentUsd(tx, taskId)) >= budget.perTaskUsd;
 }
