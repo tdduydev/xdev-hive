@@ -34,6 +34,12 @@ if (files.length === 0) {
   process.exit(0);
 }
 
+// Git chạy hook với GIT_DIR, GIT_INDEX_FILE… trỏ vào repo này. Test nào gọi `git init --bare` hay `git config` mà thừa
+// hưởng các biến đó sẽ sửa thẳng repo đang push (từng làm core.bare = true, hỏng mọi worktree). Bỏ hết GIT_* trước khi
+// chạy lệnh con.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith("GIT_")) delete process.env[key];
+}
 const env: NodeJS.ProcessEnv = { ...process.env, TURBO_SCM_BASE: base };
 const colima = join(homedir(), ".colima/default/docker.sock");
 if (!env.DOCKER_HOST && existsSync(colima)) {
