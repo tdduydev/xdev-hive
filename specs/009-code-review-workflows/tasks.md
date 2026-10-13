@@ -158,7 +158,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{queries.ts,decide.ts,router.ts,decide.db.test.ts,queries.db.test.ts}`
   - **Phụ thuộc**: T012, T020, T003 · **Mức**: nặng
 
-- [ ] T031 [P] [US3] Package UI `@xdev-hive/code-review`
+- [x] T031 [P] [US3] Package UI `@xdev-hive/code-review`
   - `CodeReviewPane`, `FileDiff` (patch unified, phát hiện gắn dòng, file lớn → link ra PR), `AiResults`, `GateStepper`,
     `DecisionForm` (hướng trả lại, ghi chú bắt buộc khi trả lại, báo `headSha` cũ); chữ nhận qua props/từ điển để web và
     app dùng chung; test component.
