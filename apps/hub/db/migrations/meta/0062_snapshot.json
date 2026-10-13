@@ -1,5 +1,5 @@
 {
-  "id": "a0af90ba-0442-4e5b-8434-572e6f26a292",
+  "id": "04bf052c-a560-414e-9577-e0be0e2b42bc",
   "prevId": "1c8c0b0c-0294-4938-84af-49a8cf2347a0",
   "version": "7",
   "dialect": "postgresql",
@@ -1821,6 +1821,32 @@
           "notNull": true,
           "default": false
         },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "labels_only": {
+          "name": "labels_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "accounts": {
+          "name": "accounts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "accounts_at": {
+          "name": "accounts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revoked_at": {
           "name": "revoked_at",
           "type": "timestamp with time zone",
@@ -1926,6 +1952,27 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'worker'"
+        },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "shared": {
+          "name": "shared",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "labels_only": {
+          "name": "labels_only",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "expires_at": {
           "name": "expires_at",
@@ -5855,78 +5902,6 @@
           "value": "(subject = 'code') = (code is not null)"
         }
       },
-      "isRLSEnabled": true
-    },
-    "hive.skill_pack_settings": {
-      "name": "skill_pack_settings",
-      "schema": "hive",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by_user_id": {
-          "name": "updated_by_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "skill_pack_settings_scope_name": {
-          "name": "skill_pack_settings_scope_name",
-          "nullsNotDistinct": true,
-          "columns": ["org_id", "project_id", "name"]
-        }
-      },
-      "policies": {
-        "skill_pack_settings_rw": {
-          "name": "skill_pack_settings_rw",
-          "as": "PERMISSIVE",
-          "for": "ALL",
-          "to": ["hive_app"],
-          "using": "org_id = hive.ctx_org()",
-          "withCheck": "org_id = hive.ctx_org()"
-        }
-      },
-      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "hive.skill_repos": {

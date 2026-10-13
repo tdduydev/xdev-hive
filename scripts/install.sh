@@ -141,3 +141,11 @@ if [ -n "$token" ]; then
 elif [ "$service" = 1 ]; then
 	"$bin" service restart
 fi
+
+# Dịch vụ systemd --user dừng khi người dùng đăng xuất; máy không màn hình (AI SDLC, máy dùng chung) cần linger để
+# worker chạy cả khi không ai đăng nhập. Chỉ nhắc, vì bật linger cần quyền quản trị máy.
+if [ "$service" = 1 ] && [ "$os" = linux ] && command -v loginctl >/dev/null 2>&1; then
+	if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" != yes ]; then
+		printf 'Máy không màn hình: chạy "sudo loginctl enable-linger %s" để worker vẫn chạy khi bạn đăng xuất.\n' "$(id -un)"
+	fi
+fi
