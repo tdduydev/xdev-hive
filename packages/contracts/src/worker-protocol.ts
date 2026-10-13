@@ -28,6 +28,16 @@ const envelope = <T extends string>(type: T) => ({
 
 // ---- Worker → hub ----
 
+/**
+ * Dự án máy đã gắn với repo trên máy và dự án máy cho toàn quyền (projects.json, ADR 0020). Hub dùng để chọn máy chạy
+ * được run cần toàn quyền (Antigravity); worker vẫn tự quyết quyền lúc chạy. Worker cũ và runner host không gửi.
+ */
+export const localProjects = z.object({
+  bound: z.array(z.string().min(1).max(64)).max(256),
+  full: z.array(z.string().min(1).max(64)).max(256),
+});
+export type LocalProjects = z.output<typeof localProjects>;
+
 export const hello = z.object({
   ...envelope("hello"),
   machineId,
@@ -43,6 +53,7 @@ export const hello = z.object({
   /** Việc worker làm được ngoài run code (vd. `doccheck`: run chỉ đọc kiểm tài liệu). Worker cũ không gửi. */
   capabilities: z.array(z.string().max(40)).max(20).default([]),
   resumeRuns: z.array(z.string().max(64)).max(64).default([]),
+  localProjects: localProjects.optional(),
 });
 
 export const heartbeat = z.object({
@@ -50,6 +61,8 @@ export const heartbeat = z.object({
   /** Số run đang chạy trên máy, so với capacity khi ghép job. */
   load: z.number().int().min(0).max(64),
   runs: z.array(z.object({ runId, attempt, leaseId })).max(64).default([]),
+  /** Gửi lại mỗi heartbeat để công tắc vừa đổi trong app tới hub; thiếu thì hub giữ giá trị đã biết. */
+  localProjects: localProjects.optional(),
 });
 
 // job_accept/job_reject cần runId và attempt để hub biết đang trả lời đề nghị nào; bảng ở mục 5 không ghi rõ.

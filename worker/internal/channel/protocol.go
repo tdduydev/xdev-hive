@@ -34,6 +34,15 @@ type Hello struct {
 	// Capabilities: việc ngoài run code worker làm được (runner.Capabilities).
 	Capabilities []string `json:"capabilities,omitempty"`
 	ResumeRuns   []string `json:"resumeRuns"`
+	// LocalProjects nil với runner host: hub hiểu là máy chưa gắn dự án nào, như worker cũ.
+	LocalProjects *LocalProjects `json:"localProjects,omitempty"`
+}
+
+// LocalProjects là dự án máy đã gắn repo và dự án máy cho toàn quyền (projects.json, ADR 0020), để hub biết máy nào
+// chạy được run cần toàn quyền (Antigravity).
+type LocalProjects struct {
+	Bound []string `json:"bound"`
+	Full  []string `json:"full"`
 }
 
 type HeartbeatRun struct {
@@ -48,6 +57,8 @@ type Heartbeat struct {
 	ID   string         `json:"id"`
 	Load int            `json:"load"`
 	Runs []HeartbeatRun `json:"runs"`
+	// LocalProjects gửi lại mỗi heartbeat, để công tắc đổi trong app tới hub mà không cần nối lại.
+	LocalProjects *LocalProjects `json:"localProjects,omitempty"`
 }
 
 type JobAccept struct {

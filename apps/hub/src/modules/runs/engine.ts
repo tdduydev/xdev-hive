@@ -22,7 +22,9 @@ import {
   findMachine,
   isConnected,
   listOnlineMachines,
+  type MachineProjects,
   machineIsPaused,
+  machinesGrantingFull,
   type OutgoingMessage,
   type RunHandlers,
   type RunMessage,
@@ -294,7 +296,10 @@ interface SpecContext {
   budget: JobBudget | undefined;
   /** Model và quyền CLI sau khi áp Chính sách agent của tổ chức. */
   model: string | null;
+  /** Quyền theo dự án sau chính sách; máy đã gắn dự án tự tính lại theo công tắc của máy (ADR 0020). */
   runPermissions: "workspace" | "full";
+  /** Chính sách tổ chức cho toàn quyền: worker cần để áp công tắc toàn quyền của máy. */
+  fullAllowed: boolean;
   /** Hook bắt buộc của tổ chức, worker chạy ở các mốc của CLI. */
   policy: JobPolicy;
   parentPrUrl: string | null;
@@ -355,6 +360,21 @@ export function usableBy(
 }
 
 /**
+ * Quyền CLI của run trên một máy (ADR 0020): máy đã gắn dự án với repo trên máy thì toàn quyền khi và chỉ khi máy bật
+ * cho dự án đó và tổ chức cho phép; chưa gắn (máy dùng chung, worker cũ) thì theo quyền của dự án sau chính sách.
+ * Worker tính lại đúng như vậy lúc chạy từ projects.json; hub dùng để chọn máy và CLI.
+ */
+export function machinePermission(
+  m: MachineProjects,
+  projectId: string,
+  projectMode: "workspace" | "full",
+  fullAllowed: boolean,
+): "workspace" | "full" {
+  if (!m.boundProjects.includes(projectId)) return projectMode;
+  return fullAllowed && m.fullProjects.includes(projectId) ? "full" : "workspace";
+}
+
+/**
  * Run chạy trong sandbox: dự án bật sandbox (mọi loại run), hoặc tổ chức bắt buộc sandbox cho run code (Chính sách
  * agent). Run chỉ đọc (plan, review, leader) không sửa code nên theo cấu hình của dự án.
  */
@@ -390,6 +410,7 @@ function buildSpec(
     cli,
     model: ctx.model,
     runPermissions: ctx.runPermissions,
+    fullAllowed: ctx.fullAllowed,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
     ...(ctx.policy.hooks.length || ctx.policy.managedHooksOnly ? { policy: ctx.policy } : {}),
     repoUrl: project.repoHttpUrl,
@@ -477,8 +498,17 @@ export function createRunsEngine(deps: RunsDeps) {
    * Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. `contended`: có máy phù
    * hợp bị bỏ qua chỉ vì giao dịch giao run khác đang giữ khoá của nó, nên chưa biết máy đó còn slot hay không.
    */
-  async function pickMachine(tx: Tx, run: RunRow, sandboxed: boolean, policy: Policy) {
+  async function pickMachine(
+    tx: Tx,
+    run: RunRow,
+    sandboxed: boolean,
+    policy: Policy,
+    permissionOn: (m: MachineProjects) => "workspace" | "full",
+  ) {
     const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
+    // Run code của CLI cần toàn quyền chỉ giao cho máy mà quyền thực dùng là full (dự án, hoặc công tắc của máy).
+    const runsCli = (m: MachineProjects, c: string) =>
+      run.kind !== "code" || !FULL_ONLY_CLIS.includes(c) || permissionOn(m) === "full";
     const candidates = online.filter(
       (m) =>
         usableBy(m, run, sandboxed) &&
@@ -488,10 +518,10 @@ export function createRunsEngine(deps: RunsDeps) {
         (!run.pinnedMachineId || m.id === run.pinnedMachineId) &&
         (!CAPABILITY_KINDS.includes(run.kind) || m.capabilities.includes(run.kind)) &&
         (run.cli
-          ? m.clis.includes(run.cli)
+          ? m.clis.includes(run.cli) && runsCli(m, run.cli)
           : SUBMIT_KINDS.includes(run.kind)
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
-            : m.clis.length > 0),
+            : m.clis.some((c) => runsCli(m, c))),
     );
     let contended = false;
     for (const m of candidates) {
@@ -552,14 +582,20 @@ export function createRunsEngine(deps: RunsDeps) {
         return null;
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
-      const { machine, contended } = await pickMachine(tx, run, sandboxed, policy);
+      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
+      const permissionOn = (m: MachineProjects) =>
+        machinePermission(m, project.id, permission.mode, policy.allowFullPermission);
+      const { machine, contended } = await pickMachine(tx, run, sandboxed, policy, permissionOn);
       if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
           await noteOnce(tx, run, "waiting_machine", {
-            message: run.ownerUserId
-              ? "Chờ máy của người giao việc hoặc máy dùng chung của đội online; máy cá nhân của người khác không chạy run này."
-              : "Run của đội chỉ chạy trên máy dùng chung; đội chưa có máy dùng chung nào sẵn sàng. Quản trị đội bật Dùng chung cho một máy ở trang Máy.",
+            message:
+              run.kind === "code" && run.cli && FULL_ONLY_CLIS.includes(run.cli)
+                ? "Antigravity cần toàn quyền: chờ một máy được dùng cho run này có toàn quyền với dự án (dự án cho toàn quyền, hoặc bật “Cho toàn quyền trên máy này” ở màn Dự án trên máy của app desktop)."
+                : run.ownerUserId
+                  ? "Chờ máy của người giao việc hoặc máy dùng chung của đội online; máy cá nhân của người khác không chạy run này."
+                  : "Run của đội chỉ chạy trên máy dùng chung; đội chưa có máy dùng chung nào sẵn sàng. Quản trị đội bật Dùng chung cho một máy ở trang Máy.",
           });
         }
         return null;
@@ -595,12 +631,13 @@ export function createRunsEngine(deps: RunsDeps) {
         .update(runs)
         .set({ offerMachineId: machine.id, offerExpiresAt: expiresAt, updatedAt: sql`now()` })
         .where(eq(runs.id, run.id));
-      const permission = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace");
+      // Quyền máy này sẽ áp; worker tự tính lại từ projects.json lúc chạy.
+      const effective = sandboxed ? permission.mode : permissionOn(machine);
       const cli =
         run.cli ??
         (SUBMIT_KINDS.includes(run.kind)
           ? machine.clis.find((c) => SUBMIT_CLIS.includes(c))
-          : machine.clis.find((c) => permission.mode === "full" || !FULL_ONLY_CLIS.includes(c))) ??
+          : machine.clis.find((c) => effective === "full" || !FULL_ONLY_CLIS.includes(c))) ??
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
@@ -614,6 +651,14 @@ export function createRunsEngine(deps: RunsDeps) {
       for (const notice of [model.notice, permission.notice]) {
         if (notice) await noteOnce(tx, run, "policy", { message: notice });
       }
+      if (run.kind === "code" && effective !== permission.mode) {
+        await noteOnce(tx, run, "policy", {
+          message:
+            effective === "full"
+              ? `Máy ${machine.name} đã bật toàn quyền cho dự án này: CLI chạy không sandbox, không hỏi duyệt.`
+              : `Máy ${machine.name} đã gắn dự án nhưng chưa bật toàn quyền: run chạy trong worktree.`,
+        });
+      }
       const jobPolicy = jobPolicyOf(policy);
       // Bản chụp chính sách đã áp cho lần thử này (FR-006): đổi chính sách sau đó không làm đổi run đã giao.
       await tx
@@ -622,7 +667,7 @@ export function createRunsEngine(deps: RunsDeps) {
           agentPolicySnapshot: {
             model: model.model,
             requestedModel: requested,
-            runPermissions: permission.mode,
+            runPermissions: effective,
             sandbox: sandboxed,
             budget: budget ?? null,
             ...jobPolicy,
@@ -643,6 +688,7 @@ export function createRunsEngine(deps: RunsDeps) {
             budget,
             model: model.model,
             runPermissions: permission.mode,
+            fullAllowed: policy.allowFullPermission,
             policy: jobPolicy,
             parentPrUrl: parent?.prUrl ?? null,
             approvedPlan,
@@ -1749,11 +1795,18 @@ export function createRunsEngine(deps: RunsDeps) {
     }
     const cli = input.cli ?? task.preferredCli ?? null;
     if (cli && FULL_ONLY_CLIS.includes(cli) && project) {
-      const mode = resolvePermission(await loadPolicy(tx), project.settings.runPermissions?.mode ?? "workspace").mode;
-      if (mode !== "full") {
+      const policy = await loadPolicy(tx);
+      const mode = resolvePermission(policy, project.settings.runPermissions?.mode ?? "workspace").mode;
+      // Dự án không cho toàn quyền vẫn chạy được trên máy người dùng được dùng đã bật toàn quyền cho dự án (ADR 0020).
+      const machineFull =
+        policy.allowFullPermission &&
+        (await machinesGrantingFull(tx, task.teamId, project.id)).some(
+          (m) => usableBy(m, { ownerUserId: userId }, false) && (!input.machineId || m.id === input.machineId),
+        );
+      if (mode !== "full" && !machineFull) {
         throw new ConflictError(
           "CLI_NEEDS_FULL_PERMISSIONS",
-          "Antigravity chỉ chạy run code khi dự án cho toàn quyền: agy không giới hạn được trong thư mục làm việc. Chọn CLI khác hoặc đổi quyền run của dự án.",
+          "Antigravity chỉ chạy run code khi có toàn quyền: agy không giới hạn được trong thư mục làm việc. Chọn CLI khác, đổi quyền run của dự án, hoặc bật “Cho toàn quyền trên máy này” cho dự án ở màn Dự án trên máy của app desktop.",
         );
       }
     }

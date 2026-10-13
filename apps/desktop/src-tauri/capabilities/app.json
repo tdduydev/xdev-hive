@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "app",
-  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats), tài khoản (account_status, account_link, account_unlink), thư mục làm việc (workspace_meta, dialog:allow-open), đọc hub (hub_tool, chỉ tool đọc), máy này (this_machine), mở trang của hub (open_hub_page), skill trên máy (skill_uses, installed_skills, install_skills, remove_skills, propose_skill gửi đề xuất sửa skill), tài liệu từ thư mục (run_cli_stream, cancel_cli_stream chạy Claude Code hoặc Codex chỉ đọc; cli_accounts, folder_tree; propose_doc gửi đề xuất sửa tài liệu). Gói agent của máy (cli_profiles, cli_profile_set, cli_profile_add, cli_profile_update, cli_profile_remove, cli_profile_usage, cli_profile_resume, cli_profile_discover, cli_profile_discover_add qua hive-worker accounts; open_login_terminal mở Terminal chỉ cho lệnh đăng nhập của Claude Code hoặc Codex; open_cli_terminal mở Terminal chạy CLI của gói theo id, chỉ nhận id và thư mục). Cập nhật app (update_status, check_updates_now, relaunch_to_update: kiểm bản mới và mở lại để cài). Cửa sổ web của hub không có quyền nào.",
+  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats), tài khoản (account_status, account_link, account_unlink), thư mục làm việc (workspace_meta, dialog:allow-open), đọc hub (hub_tool, chỉ tool đọc), máy này (this_machine), mở trang của hub (open_hub_page), skill trên máy (skill_uses, installed_skills, install_skills, remove_skills, propose_skill gửi đề xuất sửa skill), tài liệu từ thư mục (run_cli_stream, cancel_cli_stream chạy Claude Code hoặc Codex chỉ đọc; cli_accounts, folder_tree; propose_doc gửi đề xuất sửa tài liệu). Gói agent của máy (cli_profiles, cli_profile_set, cli_profile_add, cli_profile_update, cli_profile_remove, cli_profile_usage, cli_profile_resume, cli_profile_discover, cli_profile_discover_add qua hive-worker accounts; open_login_terminal mở Terminal chỉ cho lệnh đăng nhập của Claude Code hoặc Codex; open_cli_terminal mở Terminal chạy CLI của gói theo id, chỉ nhận id và thư mục). Dự án trên máy (local_projects, local_projects_import, local_project_bind, local_project_unbind, local_project_set_full qua hive-worker projects: gắn dự án với thư mục repo, công tắc toàn quyền theo dự án). Cập nhật app (update_status, check_updates_now, relaunch_to_update: kiểm bản mới và mở lại để cài). Cửa sổ web của hub không có quyền nào.",
   "windows": ["app"],
   "permissions": [
     "core:default",
@@ -39,6 +39,11 @@
     "allow-cli-profile-discover-add",
     "allow-open-login-terminal",
     "allow-open-cli-terminal",
+    "allow-local-projects",
+    "allow-local-projects-import",
+    "allow-local-project-bind",
+    "allow-local-project-unbind",
+    "allow-local-project-set-full",
     "allow-folder-tree",
     "allow-propose-doc",
     "allow-update-status",

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-local-projects"
+description = "Enables the local_projects command without any pre-configured scope."
+commands.allow = ["local_projects"]
+
+[[permission]]
+identifier = "deny-local-projects"
+description = "Denies the local_projects command without any pre-configured scope."
+commands.deny = ["local_projects"]
