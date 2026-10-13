@@ -478,9 +478,8 @@ Tương thích migration: mọi cột mới có mặc định; `ALTER TYPE … A
 | `GET /v1/sdlc/trace` | `{ id, format?: json\|csv }` → ma trận, độ phủ 3 mức | `sdlc.read` |
 | `GET /v1/sdlc/metrics` | `{ projectId?, modeRef?, from, to }` | `sdlc.read` |
 | `POST /v1/sdlc/sync` | `{ id, action: retry\|overwrite-repo }` | quản trị dự án |
-| `GET /v1/sdlc/fleet` | `{ teamId? }` → máy (nhãn, trạng thái, slot, run `sdlc` và run task hạng mục đang chạy, gói) | quản trị đội |
-
-`fleet.ts`: `POST /v1/machines/{id}/labels` `{ labels, labelsOnly }`; `POST /v1/machines/{id}/accounts/{accountId}`
+`fleet.ts`: `GET /v1/machines/sdlc` `{ teamId? }` → máy có nhãn (trạng thái, slot, run `sdlc` và run task hạng mục đang
+chạy, gói; đặt ở `fleet` vì `sdlc` không import `fleet`); `POST /v1/machines/{id}/labels` `{ labels, labelsOnly }`; `POST /v1/machines/{id}/accounts/{accountId}`
 `{ enabled }`; `createRegistration` nhận `labels`, `shared`, `labelsOnly`. `tasks.ts`: `tasks.setDependencies`
 `{ taskId, dependsOn[] }`, `tasks.checklist` trong get/list. `projects.ts`: `settings.sdlc` theo `projectSdlcSettings`.
 
