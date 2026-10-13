@@ -35,6 +35,17 @@
                       "type": "string",
                       "format": "date-time"
                     },
+                    "builtAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "clis": {
                       "type": "array",
                       "items": {

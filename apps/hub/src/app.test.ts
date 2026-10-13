@@ -19,6 +19,14 @@ describe("hub", () => {
     expect(Number.isNaN(Date.parse(body.time))).toBe(false);
   });
 
+  it("health trả giờ dựng image để web hiện ngày build; chạy từ mã nguồn thì null", async () => {
+    const built = createApp({ config: { port: 0, version: "abc1234", builtAt: "2026-10-13T07:05:00Z" } });
+    expect(healthOutput.parse(await (await built.request("/api/v1/health")).json()).builtAt).toBe(
+      "2026-10-13T07:05:00Z",
+    );
+    expect(healthOutput.parse(await (await app.request("/api/v1/health")).json()).builtAt).toBeNull();
+  });
+
   it("đường dẫn lạ trả 404", async () => {
     expect((await app.request("/api/v1/khong-co")).status).toBe(404);
   });

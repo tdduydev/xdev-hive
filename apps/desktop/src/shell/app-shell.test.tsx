@@ -162,6 +162,26 @@ describe("AppShell", () => {
   });
 });
 
+describe("phiên bản và ngày build", () => {
+  beforeEach(() => setLang("vi"));
+
+  it("đáy menu hiện phiên bản app, mã commit và ngày build", async () => {
+    window.__TAURI__ = {
+      core: { invoke: async <T,>(command: string) => (command === "plugin:app|version" ? "0.2.6" : null) as T },
+    };
+    render(<AppShell />);
+    const built = new Date("2026-10-13T07:05:00.000Z");
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const date = `${pad(built.getDate())}/${pad(built.getMonth() + 1)}/${built.getFullYear()} ${pad(built.getHours())}:${pad(built.getMinutes())}`;
+    expect(await screen.findByText(`v0.2.6 · abc1234 · ${date}`)).toBeTruthy();
+  });
+
+  it("ngoài Tauri ghi là bản dựng tại máy", async () => {
+    render(<AppShell />);
+    expect(await screen.findByText(/^bản dựng tại máy · abc1234 · /)).toBeTruthy();
+  });
+});
+
 describe("đóng mở menu và chọn ngôn ngữ", () => {
   beforeEach(() => setLang("vi"));
 

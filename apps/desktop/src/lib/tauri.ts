@@ -3,6 +3,9 @@
  * capability quyết định (src-tauri/capabilities); ở đây chỉ gói lại cho có kiểu và để test thay bằng bản giả.
  */
 declare global {
+  /** Gắn lúc build giao diện (vite.config.ts). */
+  const __BUILD_SHA__: string;
+  const __BUILD_TIME__: string;
   interface Window {
     __TAURI__?: {
       core: { invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> };
