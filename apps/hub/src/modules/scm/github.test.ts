@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { GitProviderError } from "./errors.ts";
 import { createGitHubProvider } from "./github.ts";
@@ -669,5 +670,105 @@ describe("GitHub đọc cây và file (kho skill)", () => {
       .intercept({ path: "/repos/acme/web/pulls/6", method: "GET" })
       .reply(200, { number: 6, html_url: "u", state: "closed", merged: false }, JSON_HEADERS);
     await gh.closePR(ref, 6);
+  });
+
+  describe("prFiles", () => {
+    const ghFile = (i: number) => ({
+      filename: `f${i}.ts`,
+      status: "modified",
+      additions: 1,
+      deletions: 0,
+      patch: "@@ -1 +1 @@",
+    });
+
+    it("đổi lược đồ GitHub: đổi tên, xoá, nhị phân, file bị bỏ patch", async () => {
+      const { gh, pool } = setup();
+      const fixture = JSON.parse(readFileSync(new URL("./fixtures/github/pull_files.json", import.meta.url), "utf8"));
+      pool
+        .intercept({ path: "/repos/acme/web/pulls/5/files?per_page=100&page=1", method: "GET" })
+        .reply(200, fixture, JSON_HEADERS);
+      const files = await gh.prFiles(ref, 5);
+      expect(files?.map((f) => [f.path, f.status, f.truncated])).toEqual([
+        ["file1.txt", "added", false],
+        ["src/new-name.ts", "renamed", false],
+        ["docs/huge.json", "modified", true],
+        ["assets/logo.png", "modified", false],
+        ["old.txt", "removed", false],
+      ]);
+      expect(files?.[1]).toMatchObject({ previousPath: "src/old-name.ts", additions: 1, deletions: 1 });
+      expect(files?.[2]).not.toHaveProperty("patch");
+      expect(files?.[3]).not.toHaveProperty("patch");
+      expect(files?.[4]?.patch).toBe("@@ -1,2 +0,0 @@\n-một\n-hai");
+    });
+
+    it("đọc hết các trang; trang ngắn là trang cuối", async () => {
+      const { gh, pool } = setup();
+      pool.intercept({ path: "/repos/acme/web/pulls/5/files?per_page=100&page=1", method: "GET" }).reply(
+        200,
+        Array.from({ length: 100 }, (_, i) => ghFile(i)),
+        JSON_HEADERS,
+      );
+      pool
+        .intercept({ path: "/repos/acme/web/pulls/5/files?per_page=100&page=2", method: "GET" })
+        .reply(200, [ghFile(100), ghFile(101)], JSON_HEADERS);
+      expect(await gh.prFiles(ref, 5)).toHaveLength(102);
+    });
+
+    it("dừng ở 3 000 file dù GitHub còn trang", async () => {
+      const { gh, pool } = setup();
+      for (let page = 1; page <= 30; page++) {
+        pool.intercept({ path: `/repos/acme/web/pulls/5/files?per_page=100&page=${page}`, method: "GET" }).reply(
+          200,
+          Array.from({ length: 100 }, (_, i) => ghFile(page * 100 + i)),
+          JSON_HEADERS,
+        );
+      }
+      expect(await gh.prFiles(ref, 5)).toHaveLength(3000);
+    });
+
+    it("PR không có thì null", async () => {
+      const { gh, pool } = setup();
+      pool
+        .intercept({ path: "/repos/acme/web/pulls/9/files?per_page=100&page=1", method: "GET" })
+        .reply(404, { message: "Not Found" }, JSON_HEADERS);
+      expect(await gh.prFiles(ref, 9)).toBeNull();
+    });
+  });
+
+  describe("setCommitStatus", () => {
+    it("đặt status lên sha, cắt mô tả ở 140 ký tự", async () => {
+      const { gh, pool } = setup();
+      pool
+        .intercept({ path: "/repos/acme/web/statuses/abc123", method: "POST" })
+        .reply(201, http.json({ id: 1 }), JSON_HEADERS);
+      await gh.setCommitStatus(ref, "abc123", {
+        context: "xdev-hive/review",
+        state: "pending",
+        description: "x".repeat(200),
+        targetUrl: "https://hive.example/reviews/1",
+      });
+      expect(http.calls.at(-1)?.body).toEqual({
+        state: "pending",
+        context: "xdev-hive/review",
+        description: "x".repeat(140),
+        target_url: "https://hive.example/reviews/1",
+      });
+    });
+
+    it("không gửi target_url khi không có; 403 thành forbidden", async () => {
+      const { gh, pool } = setup();
+      pool
+        .intercept({ path: "/repos/acme/web/statuses/abc123", method: "POST" })
+        .reply(201, http.json({ id: 1 }), JSON_HEADERS);
+      await gh.setCommitStatus(ref, "abc123", { context: "xdev-hive/review", state: "success", description: "ok" });
+      expect(http.calls.at(-1)?.body).not.toHaveProperty("target_url");
+      pool
+        .intercept({ path: "/repos/acme/web/statuses/def456", method: "POST" })
+        .reply(403, { message: "Resource not accessible by integration" }, JSON_HEADERS);
+      const err = await rejected(
+        gh.setCommitStatus(ref, "def456", { context: "xdev-hive/review", state: "failure", description: "no" }),
+      );
+      expect(err.code).toBe("forbidden");
+    });
   });
 });

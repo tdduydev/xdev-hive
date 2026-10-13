@@ -50,7 +50,7 @@
     `apps/hub/src/migrations-upgrade.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 [P] `GitProvider.prFiles` và `setCommitStatus`
+- [x] T003 [P] `GitProvider.prFiles` và `setCommitStatus`
   - GitHub `GET /pulls/{n}/files` (phân trang, tối đa 3 000 file, `patch` có thể thiếu → `truncated`), GitLab
     `GET /merge_requests/{iid}/diffs`; `setCommitStatus(ref, sha, { context, state, description, targetUrl })`.
   - Bản `memory` và `local` cho test; fixture HTTP.
