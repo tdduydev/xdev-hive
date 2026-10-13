@@ -82,6 +82,39 @@ export interface PullRequestState {
   mergeable: "clean" | "behind" | "conflict" | "blocked" | "unknown";
 }
 
+/** Số file tối đa `prFiles` trả: GitHub không trả quá mức này, GitLab được cắt theo cho cùng hành vi. */
+export const MAX_PR_FILES = 3000;
+/** Giới hạn mô tả commit status của GitHub; cắt chung cho cả GitLab để hai bên hiện giống nhau. */
+export const COMMIT_STATUS_DESCRIPTION_MAX = 140;
+
+export type PullRequestFileStatus = "added" | "modified" | "removed" | "renamed";
+
+/** Một file đổi trong PR, đủ để màn review vẽ diff mà không lưu diff vào DB. */
+export interface PullRequestFile {
+  path: string;
+  /** Có khi `status` là `renamed`. */
+  previousPath?: string;
+  status: PullRequestFileStatus;
+  additions: number;
+  deletions: number;
+  /** Patch unified không có dòng `---`/`+++`; vắng khi file nhị phân hoặc nhà cung cấp không gửi (xem `truncated`). */
+  patch?: string;
+  /** Nhà cung cấp bỏ patch vì file quá lớn dù có dòng đổi; màn review chỉ có link ra PR cho file này. */
+  truncated: boolean;
+}
+
+/** Trạng thái commit status do Hive đặt lên đầu PR (`xdev-hive/review`). */
+export type CommitStatusState = "pending" | "success" | "failure";
+
+export interface CommitStatusInput {
+  /** Tên kiểm tra hiện trên PR, ví dụ `xdev-hive/review`. */
+  context: string;
+  state: CommitStatusState;
+  /** Quá 140 ký tự thì bị cắt (giới hạn của GitHub). */
+  description: string;
+  targetUrl?: string;
+}
+
 /** Kết quả CI trên một commit, gộp mọi kiểm tra. `none`: không có CI nào báo về commit này. */
 export type ChecksState = "success" | "pending" | "failure" | "none";
 
@@ -144,6 +177,16 @@ export interface GitProvider {
   listFiles(ref: RepoRef, sha: string): Promise<string[]>;
   /** Nội dung UTF-8 của file ở commit `sha`; null khi không có file. */
   readFile(ref: RepoRef, path: string, sha: string): Promise<string | null>;
+  /**
+   * File đổi của PR, theo thứ tự nhà cung cấp trả, tối đa 3 000 file (giới hạn của GitHub; GitLab cắt theo cùng mức).
+   * PR không có thì null.
+   */
+  prFiles(ref: RepoRef, number: number): Promise<PullRequestFile[] | null>;
+  /**
+   * Đặt commit status trên `sha`. Cùng `context` thì ghi đè trạng thái cũ của commit đó. Hive dùng nó làm cổng ngoài
+   * cho bảo vệ nhánh vì bot mở PR không tự approve được.
+   */
+  setCommitStatus(ref: RepoRef, sha: string, input: CommitStatusInput): Promise<void>;
   /** Đóng PR không merge (đề xuất skill bị từ chối). PR đã đóng hoặc đã merge thì bỏ qua. */
   closePR(ref: RepoRef, number: number): Promise<void>;
 }

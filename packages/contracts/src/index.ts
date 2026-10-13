@@ -57,6 +57,8 @@ export const healthOutput = z.object({
   status: z.literal("ok"),
   version: z.string(),
   time: z.iso.datetime(),
+  /** Giờ dựng image của hub và web (cùng một image); null khi chạy từ mã nguồn. Hub cũ không trả. */
+  builtAt: z.iso.datetime().nullable().optional(),
   /** CLI hub giao run được; worker chỉ khai những CLI này trong hello và khi đăng ký. Hub cũ không trả. */
   clis: z.array(z.string()).optional(),
 });
