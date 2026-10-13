@@ -597,19 +597,22 @@ function WorkflowsScreen() {
                         + {t.addGate}
                       </button>
                     )}
-                    <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
-                      <span className="text-muted-foreground">{t.outputs}</span>
-                      <ChipList
-                        values={p.outputs}
-                        onChange={(outputs) =>
-                          update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
-                        }
-                        canWrite={canWrite}
-                        addLabel={t.addOutput(p.name)}
-                        placeholder={t.outputPh}
-                        chipClass="bg-card"
-                      />
-                    </div>
+                    {/* Quy trình Code duyệt PR, không có tài liệu đầu ra theo giai đoạn. */}
+                    {draft.subject !== "code" && (
+                      <div className="mt-0.5 flex flex-col gap-1 border-t border-dashed border-input pt-2 text-xs">
+                        <span className="text-muted-foreground">{t.outputs}</span>
+                        <ChipList
+                          values={p.outputs}
+                          onChange={(outputs) =>
+                            update({ phases: draft.phases.map((x, i) => (i === pi ? { ...x, outputs } : x)) })
+                          }
+                          canWrite={canWrite}
+                          addLabel={t.addOutput(p.name)}
+                          placeholder={t.outputPh}
+                          chipClass="bg-card"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
                 {canWrite && draft.phases.length < 10 && (
