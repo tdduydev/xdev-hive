@@ -213,6 +213,11 @@ function Editor({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const place = () => {
       if (editor.isDestroyed) return;
+      // Đổi decoration giữa lúc bộ gõ (Telex, VNI) đang ghép chữ làm trình duyệt chốt sai chỗ: đợi ghép xong.
+      if (editor.view.composing) {
+        timer = setTimeout(place, 150);
+        return;
+      }
       const byBlock = suggestionsByBlock(
         h.codec.blocks(editor.state.doc),
         (suggestions.data ?? []).filter((x) => x.before),

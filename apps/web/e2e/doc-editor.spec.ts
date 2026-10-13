@@ -254,6 +254,8 @@ test("doc editor: open from Docs, see workflow, edit a block directly and insert
   await expect(page.getByRole("list", { name: "Đang mở tài liệu" })).toContainText("Phạm Hà");
 
   await page.getByRole("button", { name: "+ Thêm khối mới" }).click();
+  // Tiptap đặt focus ở khung hình kế tiếp.
+  await expect(page.getByRole("textbox", { name: "Nội dung tài liệu" })).toBeFocused();
   await page.keyboard.type("/");
   const menu = page.getByRole("listbox", { name: "Chèn khối" });
   await expect(menu).toBeVisible();
@@ -307,6 +309,58 @@ test("doc editor: suggesting mode turns an edit into a suggestion instead of sav
     after: "Tổng hoàn không vượt số tiền gốc.",
   });
   expect(hub.rpcCalls.filter((c) => c.path === "docEditor/save")).toHaveLength(0);
+});
+
+test("doc editor: Vietnamese IME composition, shortcuts and Markdown paste save clean Markdown", async ({ page }) => {
+  const hub = await setup(page);
+  await page.goto(editorUrl);
+  const doc = page.getByRole("textbox", { name: "Nội dung tài liệu" });
+  // Khung quy trình, thẻ đề xuất hiện sau khi tải làm bố cục dịch: bấm lại tới khi con trỏ nằm đúng đoạn.
+  await expect(async () => {
+    await doc.getByText("Tổng hoàn phải nhỏ hơn số tiền gốc.").click();
+    await page.keyboard.press("End");
+    expect(await page.evaluate(() => window.getSelection()?.anchorNode?.textContent)).toBe(
+      "Tổng hoàn phải nhỏ hơn số tiền gốc.",
+    );
+  }).toPass();
+  await page.keyboard.press("Enter");
+
+  // Bộ gõ Telex: chữ đang ghép hiện tạm (composition) rồi mới chốt; trình soạn không được nạp lại hay nhân đôi chữ giữa chừng.
+  const cdp = await page.context().newCDPSession(page);
+  const compose = async (steps: string[]) => {
+    for (const text of steps)
+      await cdp.send("Input.imeSetComposition", { text, selectionStart: text.length, selectionEnd: text.length });
+    await cdp.send("Input.insertText", { text: steps.at(-1) ?? "" });
+  };
+  await compose(["T", "Ti", "Tie", "Tiê", "Tiên", "Tiêng", "Tiếng"]);
+  await page.keyboard.type(" ");
+  await compose(["V", "Vi", "Vie", "Viê", "Viêt", "Việt"]);
+  await page.keyboard.type(" có dấu, ");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.type("đậm");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.type(".");
+  await expect(doc.locator("p strong", { hasText: "đậm" })).toBeVisible();
+
+  const lastSave = () =>
+    (hub.rpcCalls.findLast((c) => c.path === "docEditor/save")?.input as { content?: string } | undefined)?.content;
+  await expect.poll(lastSave, { timeout: 5000 }).toContain("\n\nTiếng Việt có dấu, **đậm**.");
+
+  // Dán chữ thuần dạng Markdown (từ chat, file .md): thành khối thật, lưu ra Markdown sạch.
+  await page.keyboard.press("Enter");
+  await doc.evaluate((el) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "- [ ] Đối soát cuối ngày\n- [x] Báo pháp chế");
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  await expect(doc.getByRole("checkbox")).toHaveCount(2);
+  await expect.poll(lastSave, { timeout: 5000 }).toContain("- [ ] Đối soát cuối ngày\n- [x] Báo pháp chế");
+
+  // Hoàn tác bằng phím tắt bỏ khối vừa dán.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(doc.getByRole("checkbox")).toHaveCount(0);
+  const saved = await lastSave();
+  expect(saved?.startsWith(CONTENT.trimEnd())).toBe(true);
 });
 
 test("doc editor: comment threads, reply composer and resolve", async ({ page }) => {
