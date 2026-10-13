@@ -1,4 +1,4 @@
-import { planContent, type Task } from "@xdev-hive/contracts";
+import { briefSubmitInput, planContent, type Task } from "@xdev-hive/contracts";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { loadProject } from "../catalog/index.ts";
@@ -141,6 +141,29 @@ export function registerMcpTools(registry: McpToolRegistry): void {
       await hubEvent(tx, run, "plan_report", content);
       await notifyRun(tx, run.id);
       return { runId: run.id, attempt: run.attempt, recorded: "plan_report", steps: content.steps.length };
+    },
+  });
+
+  registry.register({
+    name: "brief_submit",
+    title: "Nộp brief của dự án",
+    description:
+      "Chỉ dành cho run viết brief: nộp bản tóm tắt repo (Markdown) và commit của nhánh chính đã đọc. Hub lưu brief " +
+      "khi run kết thúc êm; gọi lại thì lần sau cùng được tính.",
+    input: briefSubmitInput,
+    runKinds: ["brief"],
+    // Như plan_submit: run brief chạy chỉ đọc, Claude ở chế độ plan chỉ gọi được tool có readOnlyHint.
+    readOnly: true,
+    handler: async (input, { tx, principal }) => {
+      const { runId, attempt } = requireRun(principal);
+      const run = await lockRun(tx, runId);
+      if (!run || run.attempt !== attempt || !ON_MACHINE.includes(run.state)) throw runNotActive();
+      if (run.kind !== "brief") {
+        throw new ForbiddenError("BRIEF_RUN_REQUIRED", "Chỉ run viết brief mới gọi được brief_submit.");
+      }
+      await hubEvent(tx, run, "brief_report", input);
+      await notifyRun(tx, run.id);
+      return { runId: run.id, attempt: run.attempt, recorded: "brief_report", chars: input.content.length };
     },
   });
 
