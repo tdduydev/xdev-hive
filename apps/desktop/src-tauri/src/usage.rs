@@ -40,7 +40,7 @@ pub struct ContextReport {
     pub categories: Vec<Category>,
 }
 
-#[derive(Serialize, Debug, PartialEq)]
+#[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Limit {
     pub percent: f64,
@@ -487,11 +487,89 @@ fn claude_stats(folder: Option<&Path>) -> SessionStats {
     let Some(root) = claude_root() else {
         return SessionStats::default();
     };
-    let sessions: Vec<Session> = claude_files(&root, folder, WINDOW)
+    claude_stats_in(&root, folder)
+}
+
+type FileMemo<T> = Mutex<HashMap<PathBuf, (SystemTime, u64, T)>>;
+
+/// Đọc từng file phiên bằng `read`, dùng lại kết quả của file chưa đổi (cùng giờ sửa và cỡ) từ lần trước. Thư mục phiên
+/// một tuần có thể vài trăm MB (máy dev: 311 MB của Claude) mà mỗi lần mở màn chỉ vài file đang chạy thay đổi. File
+/// phải đọc lại thì chia cho nhiều luồng. Giữ thứ tự của `files`.
+fn read_files<T: Clone + Send>(
+    memo: &FileMemo<T>,
+    files: Vec<PathBuf>,
+    read: fn(&Path) -> T,
+) -> Vec<T> {
+    let stamp = |p: &Path| {
+        let m = std::fs::metadata(p).ok()?;
+        Some((m.modified().ok()?, m.len()))
+    };
+    let files: Vec<_> = files
         .into_iter()
-        .filter_map(|p| read_claude_session(open(&p)?, &stem(&p)))
-        .filter(|s| in_folder(&s.cwd, folder))
+        .map(|p| {
+            let s = stamp(&p);
+            (p, s)
+        })
         .collect();
+    let mut out: Vec<Option<T>> = vec![None; files.len()];
+    let mut todo = Vec::new();
+    if let Ok(memo) = memo.lock() {
+        for (i, (path, s)) in files.iter().enumerate() {
+            match (s, memo.get(path)) {
+                (Some(s), Some((at, len, v))) if *s == (*at, *len) => out[i] = Some(v.clone()),
+                _ => todo.push(i),
+            }
+        }
+    } else {
+        todo = (0..files.len()).collect();
+    }
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(8));
+    let chunk = todo.len().div_ceil(threads).max(1);
+    let files = &files;
+    let parsed: Vec<(usize, T)> = std::thread::scope(|s| {
+        let handles: Vec<_> = todo
+            .chunks(chunk)
+            .map(|part| {
+                s.spawn(move || {
+                    part.iter()
+                        .map(|&i| (i, read(&files[i].0)))
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap_or_default())
+            .collect()
+    });
+    if let Ok(mut memo) = memo.lock() {
+        for (i, v) in &parsed {
+            if let (path, Some((at, len))) = &files[*i] {
+                memo.insert(path.clone(), (*at, *len, v.clone()));
+            }
+        }
+        // File ra khỏi cửa sổ một tuần thì không bao giờ được hỏi lại.
+        let now = SystemTime::now();
+        memo.retain(|_, (at, _, _)| now.duration_since(*at).unwrap_or_default() < WINDOW);
+    }
+    for (i, v) in parsed {
+        out[i] = Some(v);
+    }
+    out.into_iter().flatten().collect()
+}
+
+fn claude_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
+    static MEMO: OnceLock<FileMemo<Option<Session>>> = OnceLock::new();
+    let read = |p: &Path| read_claude_session(open(p)?, &stem(p));
+    let sessions: Vec<Session> = read_files(
+        MEMO.get_or_init(Default::default),
+        claude_files(root, folder, WINDOW),
+        read,
+    )
+    .into_iter()
+    .flatten()
+    .filter(|s| in_folder(&s.cwd, folder))
+    .collect();
     let (totals, sessions) = finish(sessions);
     SessionStats {
         totals,
@@ -509,11 +587,18 @@ fn codex_stats(folder: Option<&Path>) -> SessionStats {
     let Some(root) = root else {
         return SessionStats::default();
     };
+    codex_stats_in(&root, folder)
+}
+
+fn codex_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
     let mut stats = SessionStats::default();
     let mut latest = String::new();
-    for path in recent_files(&root, SystemTime::now(), WINDOW) {
-        let Some(reader) = open(&path) else { continue };
-        let (session, limits) = read_codex_session(reader, &stem(&path));
+    type Read = (Option<Session>, Option<(String, Limit, Limit)>);
+    static MEMO: OnceLock<FileMemo<Read>> = OnceLock::new();
+    let read =
+        |p: &Path| -> Read { open(p).map_or((None, None), |r| read_codex_session(r, &stem(p))) };
+    let files = recent_files(root, SystemTime::now(), WINDOW);
+    for (session, limits) in read_files(MEMO.get_or_init(Default::default), files, read) {
         // Hạn mức là của tài khoản, không theo thư mục: lấy sự kiện mới nhất trong mọi phiên.
         if let Some((at, primary, secondary)) = limits {
             if at > latest {
@@ -666,6 +751,54 @@ mod tests {
         assert_eq!(runs.load(Ordering::SeqCst), 3);
     }
 
+    /// Thư mục phiên giả cỡ thật (máy dev: 391 file Claude, 311 MB trong 7 ngày): `files` file, mỗi file `lines` dòng.
+    fn fake_sessions(tag: &str, files: usize, lines: usize) -> PathBuf {
+        use std::io::Write;
+        let root = std::env::temp_dir().join(format!("hive-usage-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let pad = "x".repeat(800);
+        for f in 0..files {
+            let dir = root.join(format!("-w-app{}", f % 4));
+            std::fs::create_dir_all(&dir).unwrap();
+            let mut out = std::io::BufWriter::new(
+                std::fs::File::create(dir.join(format!("s{f}.jsonl"))).unwrap(),
+            );
+            for i in 0..lines {
+                writeln!(out, r#"{{"type":"assistant","timestamp":"2026-10-12T01:{:02}:00Z","cwd":"/w/app{}","message":{{"id":"m{i}","model":"claude-opus-5-5","content":[{{"type":"text","text":"{pad}"}}],"usage":{{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":900,"output_tokens":10}}}}}}"#, i % 60, f % 4).unwrap();
+            }
+        }
+        root
+    }
+
+    #[test]
+    fn session_stats_read_unchanged_files_once() {
+        let root = fake_sessions("claude", 40, 2000);
+        let first = Instant::now();
+        let a = claude_stats_in(&root, None);
+        let first = first.elapsed();
+        let second = Instant::now();
+        let b = claude_stats_in(&root, None);
+        let second = second.elapsed();
+        eprintln!("session_stats trên 40 file (~70 MB): lần đầu {first:?}, lần sau {second:?}");
+        assert_eq!(a.totals, b.totals);
+        assert_eq!(a.totals.sessions, 40);
+        assert_eq!(a.totals.input, 40 * 2000 * 1002);
+
+        // File đang ghi (phiên còn chạy) thì đọc lại: số liệu luôn mới.
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(root.join("-w-app0/s0.jsonl"))
+                .unwrap();
+            writeln!(f, r#"{{"type":"assistant","timestamp":"2026-10-12T02:00:00Z","cwd":"/w/app0","message":{{"id":"new","usage":{{"input_tokens":5,"cache_read_input_tokens":0,"output_tokens":1}}}}}}"#).unwrap();
+        }
+        let c = claude_stats_in(&root, Some(Path::new("/w/app0")));
+        assert_eq!(c.totals.sessions, 10);
+        assert_eq!(c.totals.input, 10 * 2000 * 1002 + 5);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn failed_cli_output_is_not_remembered() {
         let memo = Mutex::new(HashMap::new());
@@ -783,6 +916,35 @@ mod tests {
         assert_eq!(s.cwd, "/w/api");
         let (_, primary, secondary) = limits.unwrap();
         assert_eq!((primary.percent, secondary.percent), (3.0, 32.0));
+    }
+
+    #[test]
+    fn codex_limits_come_from_the_newest_file_also_when_remembered() {
+        let root = std::env::temp_dir().join(format!("hive-codex-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("2026/10/12")).unwrap();
+        let session = |at: &str, cwd: &str, percent: f64| {
+            format!(
+                "{{\"timestamp\":\"{at}\",\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{cwd}\"}}}}\n{{\"timestamp\":\"{at}\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"token_count\",\"info\":{{\"total_token_usage\":{{\"input_tokens\":100,\"cached_input_tokens\":50,\"output_tokens\":5}}}},\"rate_limits\":{{\"primary\":{{\"used_percent\":{percent},\"resets_at\":1}},\"secondary\":{{\"used_percent\":{percent},\"resets_at\":2}}}}}}}}\n"
+            )
+        };
+        let old = root.join("2026/10/12/a.jsonl");
+        std::fs::write(&old, session("2026-10-12T01:00:00Z", "/w/api", 10.0)).unwrap();
+        std::fs::write(
+            root.join("2026/10/12/b.jsonl"),
+            session("2026-10-12T05:00:00Z", "/w/web", 40.0),
+        )
+        .unwrap();
+        for _ in 0..2 {
+            let stats = codex_stats_in(&root, Some(Path::new("/w/api")));
+            assert_eq!(stats.totals.sessions, 1);
+            assert_eq!(stats.primary.as_ref().map(|l| l.percent), Some(40.0));
+        }
+        // Phiên cũ chạy tiếp và ghi sự kiện mới hơn: lần đọc sau thấy ngay.
+        std::fs::write(&old, session("2026-10-12T09:00:00Z", "/w/api", 55.0)).unwrap();
+        let stats = codex_stats_in(&root, None);
+        assert_eq!(stats.totals.sessions, 2);
+        assert_eq!(stats.primary.map(|l| l.percent), Some(55.0));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
