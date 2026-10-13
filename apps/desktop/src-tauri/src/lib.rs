@@ -7,6 +7,7 @@ mod capabilities_audit;
 mod cli;
 mod doctor;
 mod hub;
+mod profiles;
 mod register;
 mod setup_extra;
 mod skills;
@@ -423,35 +424,6 @@ async fn sidecar_json<T: serde::de::DeserializeOwned>(
         .map_err(|e| format!("Không đọc được kết quả của worker: {e}"))
 }
 
-/// Tài khoản CLI của máy (accounts.json của worker, spec 008 US13), kèm trạng thái đăng nhập. Không chứa token.
-#[tauri::command]
-async fn cli_profiles(app: AppHandle) -> Result<serde_json::Value, String> {
-    sidecar_json(&app, vec!["accounts".into(), "--json".into()], vec![]).await
-}
-
-/// Bật hoặc tắt một tài khoản CLI; worker đọc lại file ở run sau, không cần khởi động lại.
-#[tauri::command]
-async fn cli_profile_set(
-    app: AppHandle,
-    id: String,
-    enabled: bool,
-) -> Result<serde_json::Value, String> {
-    sidecar_json(
-        &app,
-        vec![
-            "accounts".into(),
-            "set".into(),
-            "--id".into(),
-            id,
-            "--enabled".into(),
-            enabled.to_string(),
-            "--json".into(),
-        ],
-        vec![],
-    )
-    .await
-}
-
 /// Trạng thái worker hiện tại; sau đó cửa sổ app nghe sự kiện "worker-state".
 #[tauri::command]
 fn worker_state(app: AppHandle) -> Option<WorkerView> {
@@ -730,8 +702,14 @@ pub fn run() {
             cli::run_cli_stream,
             cli::cancel_cli_stream,
             cli::cli_accounts,
-            cli_profiles,
-            cli_profile_set,
+            profiles::cli_profiles,
+            profiles::cli_profile_set,
+            profiles::cli_profile_add,
+            profiles::cli_profile_update,
+            profiles::cli_profile_remove,
+            profiles::cli_profile_usage,
+            profiles::cli_profile_resume,
+            profiles::open_login_terminal,
             cli::folder_tree,
             cli::propose_doc
         ])
