@@ -120,7 +120,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{service.ts,jobs.ts,index.ts,ai.ts,merge.ts,service.db.test.ts}`
   - **Phụ thuộc**: T002, T011 · **Mức**: nặng
 
-- [ ] T021 [US2] Nối `runs` với `codereview`
+- [x] T021 [US2] Nối `runs` với `codereview`
   - `verifyCode`: gọi `matchFor`; có quy trình thì đánh giá chính sách bỏ `review` (ghi `skipped` + lý do), không tạo run
     review chéo, không `enqueueMerge`, gọi `startCodeReview` trong transaction kết luận run; không có thì giữ nguyên.
   - `verifyReview`: run review có phiên (tra `run_ids`) thì gọi `onReviewRunFinished` thay vì `verify(parent)`.
