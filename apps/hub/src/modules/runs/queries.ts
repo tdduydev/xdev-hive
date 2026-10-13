@@ -6,7 +6,7 @@ import {
   type RunSearchInput,
   type RunSearchResult,
 } from "@xdev-hive/contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, type SQL, sql } from "drizzle-orm";
 import { loadProject } from "../catalog/index.ts";
 import { machineNames } from "../fleet/index.ts";
 import { NotFoundError, type Tx } from "../platform/index.ts";
@@ -107,14 +107,15 @@ export async function searchRuns(tx: Tx, userId: string, input: RunSearchInput):
   }));
   let machines: RunSearchResult["machines"] = [];
   if (!input.cursor) {
-    const ids = await tx
-      .selectDistinct({ id: runs.machineId })
-      .from(runs)
-      .where(and(visible, isNotNull(runs.machineId)))
-      .limit(MACHINE_FACET_LIMIT);
+    // Đi từ máy của tổ chức, mỗi máy hỏi index runs_machine xem có run của đội mình thấy không: số máy ít và không tăng
+    // theo số run, còn distinct machine_id trên runs phải đọc mọi run của các đội. Máy đã xoá không có tên nên vốn không
+    // hiện trong ô lọc. Hỏi bảng machines bằng SQL vì runs chỉ import fleet qua index.ts, như tasks hỏi bảng runs.
+    const ids = await tx.execute<{ id: string }>(
+      sql`select m.id from hive.machines m where exists (select 1 from ${runs} where ${runs.machineId} = m.id and ${visible}) limit ${MACHINE_FACET_LIMIT}`,
+    );
     const names = await machineNames(
       tx,
-      ids.flatMap((r) => (r.id ? [r.id] : [])),
+      ids.rows.map((r) => r.id),
     );
     machines = [...names].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, "vi"));
   }
