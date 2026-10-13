@@ -173,9 +173,9 @@ WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), 
 
 | Hướng | Gói | Ý nghĩa |
 |---|---|---|
-| W → H | `hello{machineId, version, protoRange, os, clis[], capacity, resumeRuns[]}` | Mở phiên, báo các run đang dở |
+| W → H | `hello{machineId, version, protoRange, os, clis[], capacity, resumeRuns[], localProjects?}` | Mở phiên, báo các run đang dở. `localProjects{bound[], full[]}`: dự án máy đã gắn repo và dự án máy cho toàn quyền ([ADR 0020](adr/0020-local-project-folders-and-machine-full-permission.md)) |
 | H → W | `welcome{sessionId, heartbeatSec, accessTokenExp}` · `upgrade_required{url, sha256, sig}` | Chấp nhận, hoặc buộc cập nhật. `accessTokenExp` chưa dùng. **[Chưa gửi]** `upgrade_required`: lệch giao thức thì hub đóng kết nối mã 4426 |
-| W → H | `heartbeat{load, runs[{runId, attempt, leaseId}]}` | Gia hạn lease |
+| W → H | `heartbeat{load, runs[{runId, attempt, leaseId}], localProjects?}` | Gia hạn lease, gửi lại `localProjects` khi công tắc đổi |
 | H → W | `heartbeat_ack{renewed[], cancel[]}` | Lệnh huỷ đi kèm heartbeat, nên huỷ vẫn tới khi kênh khác lỗi [13] |
 | H → W | `job_offer{runId, attempt, spec, ttl}` | Đề nghị job |
 | W → H | `job_accept` · `job_reject{reason}` | Nhận hoặc từ chối |
@@ -191,7 +191,7 @@ WSS tới `/ws/worker`. Mỗi gói là JSON có `v` (phiên bản giao thức), 
 
 - **At-least-once:** worker giữ gói chưa ack trên đĩa, gửi lại khi nối lại. Hub loại trùng theo `(run_id, attempt, seq)` với sự kiện và `(run_id, attempt, offset)` với log.
 - **Phiên bản:** hai bên thoả thuận trong `protoRange`; lệch thì hub đóng kết nối mã 4426. Worker tự cập nhật bằng gói `worker/internal/update` (kiểm chữ ký ECDSA của `checksums.txt` và `sha256`) khi admin bấm cập nhật hoặc khi chạy `hive-worker update`. Không dùng `go-selfupdate` vì riêng thư viện đó thêm khoảng 8 MB và hơn 15 module ([add.md](add.md) mục 9).
-- **Worktree:** worker tạo worktree trong thư mục riêng của nó, và luôn gỡ ở bước `finally`. Khi khởi động, worker quét và gỡ worktree không thuộc run đang sống. Hệ cũ để lọt hơn 50 worktree vì thiếu bước này.
+- **Worktree:** worker tạo worktree trong thư mục riêng của nó, và luôn gỡ ở bước `finally`. Dự án đã gắn với repo trên máy (`projects.json`, ADR 0020) thì worktree tạo từ repo đó thay cho repo cache bare, nhánh của run hiện trong repo của người dùng. Khi khởi động, worker quét và gỡ worktree không thuộc run đang sống. Hệ cũ để lọt hơn 50 worktree vì thiếu bước này.
 
 ## 6. Bảo mật và token
 

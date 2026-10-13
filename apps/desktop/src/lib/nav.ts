@@ -3,6 +3,7 @@ import {
   ClipboardCheckIcon,
   FilePenLineIcon,
   FileTextIcon,
+  FolderGitIcon,
   HouseIcon,
   LibraryIcon,
   ListTodoIcon,
@@ -77,6 +78,7 @@ export type ScreenId =
   | "tokens"
   | "setup"
   | "plans"
+  | "projects"
   | "runs";
 
 export interface NavItem {
@@ -174,6 +176,14 @@ export const NAV_GROUPS: readonly NavGroup[] = [
         id: "plans",
         label: { vi: "Gói agent", en: "Agent plans" },
         icon: ServerIcon,
+        design: "AppNav.dc.html",
+        needs: "runs.local",
+      },
+      {
+        // Dự án hub gắn với repo trên máy và toàn quyền theo dự án bật tại máy (ADR 0020).
+        id: "projects",
+        label: { vi: "Dự án trên máy", en: "Projects on this machine" },
+        icon: FolderGitIcon,
         design: "AppNav.dc.html",
         needs: "runs.local",
       },

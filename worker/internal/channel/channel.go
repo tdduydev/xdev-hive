@@ -21,6 +21,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/hubclient"
+	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
 )
 
@@ -68,6 +69,9 @@ type Config struct {
 	CLICommands map[string]runner.Command
 	// Accounts chọn tài khoản CLI cho từng run (accounts.json, spec 008 US13); nil là đăng nhập mặc định của CLI.
 	Accounts *accounts.Pool
+	// Projects là projects.json: dự án đã gắn repo trên máy và công tắc toàn quyền (ADR 0020). Rỗng (runner host) là
+	// không có dự án nào gắn.
+	Projects string
 	// StopTimeout là thời gian chờ run đang chạy dừng hẳn khi worker tắt; 0 là 30 giây.
 	StopTimeout time.Duration
 	// OnStatus nhận trạng thái kết nối, để app desktop hiện trên khay hệ thống (hive-worker run --status-json).
@@ -99,21 +103,24 @@ type jobSpec struct {
 	Kind           string                   `json:"kind"`
 	Budget         runner.Budget            `json:"budget"`
 	RunPermissions string                   `json:"runPermissions"`
-	Repo           string                   `json:"repo"`
-	RepoURL        string                   `json:"repoUrl"`
-	Project        string                   `json:"project"`
-	ProjectKey     string                   `json:"projectKey"`
-	CLI            string                   `json:"cli"`
-	Model          string                   `json:"model"`
-	Prompt         string                   `json:"prompt"`
-	BaseBranch     string                   `json:"baseBranch"`
-	Branch         string                   `json:"branch"`
-	TimeoutSec     int                      `json:"timeoutSec"`
-	SetupScript    string                   `json:"setupScript"`
-	Image          string                   `json:"image"`
-	SetupEnv       map[string]string        `json:"setupEnv"`
-	MCPServers     []runner.MCPServer       `json:"mcpServers"`
-	Policy         runner.JobPolicy         `json:"policy"`
+	// FullAllowed: chính sách tổ chức cho toàn quyền; nil với hub cũ.
+	FullAllowed *bool              `json:"fullAllowed"`
+	ProjectID   string             `json:"projectId"`
+	Repo        string             `json:"repo"`
+	RepoURL     string             `json:"repoUrl"`
+	Project     string             `json:"project"`
+	ProjectKey  string             `json:"projectKey"`
+	CLI         string             `json:"cli"`
+	Model       string             `json:"model"`
+	Prompt      string             `json:"prompt"`
+	BaseBranch  string             `json:"baseBranch"`
+	Branch      string             `json:"branch"`
+	TimeoutSec  int                `json:"timeoutSec"`
+	SetupScript string             `json:"setupScript"`
+	Image       string             `json:"image"`
+	SetupEnv    map[string]string  `json:"setupEnv"`
+	MCPServers  []runner.MCPServer `json:"mcpServers"`
+	Policy      runner.JobPolicy   `json:"policy"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -139,7 +146,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	}
 	// Template .mcp.json của dự án đọc HIVE_MCP_TOKEN; hub và tài liệu gọi là HIVE_RUN_TOKEN. Đặt cả hai.
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
-	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy}
+	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy, ProjectID: strings.ToLower(s.ProjectID)}
 	j.MCPServers = s.MCPServers
 	if s.Sandbox != nil {
 		j.EnvironmentImage = s.Sandbox.Image.BaseImage
@@ -151,6 +158,28 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 		j.Branch = "ai/" + o.RunID
 	}
 	return j, nil
+}
+
+// fullAllowed: hub cũ không gửi fullAllowed, nhưng nó chỉ gửi runPermissions full khi chính sách tổ chức cho phép.
+func (s jobSpec) fullAllowed() bool {
+	if s.FullAllowed != nil {
+		return *s.FullAllowed
+	}
+	return s.RunPermissions == "full"
+}
+
+// localProject áp mục projects.json của dự án cho job (ADR 0020): run tạo worktree từ repo đã gắn, và quyền CLI theo
+// công tắc của máy thay cho quyền hub gửi. Job sandbox (runner host) giữ nguyên.
+func localProject(job runner.Job, s jobSpec, list []projects.Project) runner.Job {
+	if job.Execution == "sandbox" || job.SandboxPolicy != nil {
+		return job
+	}
+	p := projects.Find(list, job.ProjectID)
+	if p != nil {
+		job.LocalRepo = p.Folder
+	}
+	job.RunPermissions = projects.Effective(p, job.RunPermissions, s.fullAllowed())
+	return job
 }
 
 func (s jobSpec) validateExecution() error {
@@ -323,6 +352,7 @@ func (c Config) connect(ctx context.Context, jobs *jobs) error {
 	if memory := hostMemoryMB(); memory > 0 {
 		hello.MemoryMB = memory
 	}
+	hello.LocalProjects = jobs.localProjects()
 	if err := conn.Write(ctx, websocket.MessageText, mustJSON(hello)); err != nil {
 		return fmt.Errorf("gửi hello: %w", err)
 	}
