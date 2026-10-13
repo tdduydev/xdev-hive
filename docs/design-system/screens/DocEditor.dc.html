@@ -12,12 +12,16 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
 <style>
 body{margin:0}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
 .btn-default{background:var(--primary);color:var(--primary-foreground)}
 .btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
 .btn-ghost{background:transparent;color:var(--foreground)}
 .btn-sm{height:28px;font-size:13px}
+.btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.narrow .btn,.narrow .btn-sm{height:36px}
+.narrow .tb{width:36px;height:36px}
 .tb{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--foreground);font:inherit;font-size:13px;cursor:pointer}
 .tb:hover{background:var(--muted)}
 .sep{width:1px;height:18px;background:var(--border);margin:0 4px}
@@ -26,6 +30,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
 .mono{font-family:var(--font-mono)}
 .muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
 .doc{font-size:15.5px;line-height:1.75;color:var(--foreground)}
 .doc h1{font-family:var(--font-heading);font-size:28px;line-height:1.2;letter-spacing:-.03em;margin:0 0 6px}
 .doc h2{font-size:19px;margin:28px 0 8px;font-weight:600}
@@ -37,14 +42,24 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .menu{position:absolute;z-index:5;padding:4px;border-radius:10px;background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);box-shadow:var(--shadow-lg)}
 .mi{display:flex;align-items:center;gap:10px;width:100%;min-height:34px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;font-size:13.5px;text-align:left;cursor:pointer}
 .mi:hover{background:var(--muted)}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.sh{margin:0;font-size:13.5px;font-weight:600}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
 .ico{width:26px;height:26px;flex:none;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11px;background:var(--background)}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="docs" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+<!-- Artboard 1440 px mặc định; prop narrow = true cho 360 px (không thanh bên, khung bên thành ngăn kéo dưới tiêu đề);
+     prop sdlc = true bật biến thể khung bên "Hạng mục · giai đoạn" cho tài liệu có key project/<k>/sdlc/…. Mặc định tắt: màn như cũ. -->
+<div data-theme="{{theme}}" class="{{rootClass}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Sidebar" active="docs" lang="{{lang}}" hint-size="240px,1000px"></dc-import></sc-if>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
-    <header style="min-height: 52px; box-sizing: border-box; padding: 8px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border-bottom: 1px solid var(--border);">
-      <div class="muted" style="font-size: 13px; display: flex; align-items: center; gap: 6px;">{{t.docs}} / <span class="mono">payment-api/prd-partial-refund</span></div>
+    <header style="{{headerStyle}}">
+      <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline btn-sm" aria-label="{{sd.menu}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"></path></svg>{{sd.menu}}</button></sc-if>
+      <div class="muted" style="{{crumbStyle}}">{{t.docs}} / <span class="mono" style="{{keyStyle}}">{{crumbKey}}</span></div>
       <span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{stageBadge}}</span>
       <span style="flex: 1;"></span>
       <span style="display: flex; align-items: center;" aria-label="{{t.presence}}">
@@ -58,16 +73,32 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <button type="button" class="btn btn-default btn-sm" onClick="{{openSubmit}}">{{t.submit}}</button>
     </header>
 
-    <nav aria-label="{{t.flow}}" style="padding: 10px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); background: var(--muted); font-size: 12.5px;">
+    <nav aria-label="{{t.flow}}" style="{{navStyle}}">
       <span class="muted" style="margin-right: 6px;">{{t.flowName}}</span>
       <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
         <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="{{s.style}}"><span style="{{s.dot}}"></span>{{s.label}}</span><sc-if value="{{s.arrow}}" hint-placeholder-val="{{true}}"><span class="muted">→</span></sc-if></span>
       </sc-for>
     </nav>
 
+    <sc-if value="{{sdlc}}" hint-placeholder-val="{{false}}">
+      <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+      <section aria-label="{{sd.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 12px 0; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+        <span class="muted" style="font-size: 12.5px;">{{sd.states}}</span>
+        <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="8"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+      </section>
+    </sc-if>
+    <sc-if value="{{drawerBar}}" hint-placeholder-val="{{false}}">
+      <!-- 360 px: khung bên là khối gập dưới tiêu đề -->
+      <button type="button" aria-expanded="{{drawerOpenAttr}}" aria-controls="sd-aside" onClick="{{toggleDrawer}}" style="display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; box-sizing: border-box; padding: 6px 12px; border: 0; border-bottom: 1px solid var(--border); background: var(--card); color: var(--foreground); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;">
+        <strong style="font-weight: 600; flex: 1; min-width: 0; overflow-wrap: anywhere;">{{sd.title}}</strong>
+        <span class="badge" style="{{statusStyle}}"><span aria-hidden="true">{{statusMark}}</span> {{statusText}}</span>
+        <span aria-hidden="true">{{drawerArrow}}</span>
+      </button>
+    </sc-if>
+
     <div style="flex: 1; display: flex; flex-wrap: wrap; min-height: 0;">
       <section style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
-        <div role="toolbar" aria-label="{{t.toolbar}}" style="position: sticky; top: 0; z-index: 3; padding: 6px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); background: var(--background);">
+        <div role="toolbar" aria-label="{{t.toolbar}}" style="{{toolbarStyle}}">
           <select aria-label="{{t.block}}" style="height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--background); color: var(--foreground); font: inherit; font-size: 13px;"><option>{{t.h2}}</option><option>{{t.para}}</option><option>{{t.h1}}</option></select>
           <span class="sep"></span>
           <button type="button" class="tb" aria-label="Bold" style="font-weight: 700;">B</button><button type="button" class="tb" aria-label="Italic" style="font-style: italic;">I</button><button type="button" class="tb" aria-label="Strike" style="text-decoration: line-through;">S</button><button type="button" class="tb mono" aria-label="Code">&lt;/&gt;</button><button type="button" class="tb" aria-label="Link">↗</button>
@@ -79,7 +110,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <button type="button" class="btn btn-ghost btn-sm" onClick="{{toggleAi}}" style="color: var(--primary);">✦ {{t.askAi}}</button>
         </div>
 
-        <article class="doc" style="position: relative; box-sizing: border-box; width: 100%; max-width: 780px; margin: 0 auto; padding: 36px 32px 80px;">
+        <article class="doc" style="{{articleStyle}}">
           <div class="muted" style="font-size: 12.5px; margin-bottom: 4px;">PRD · {{t.owner}} · v3 {{t.draft}}</div>
           <h1>{{t.title}}</h1>
           <p class="muted" style="font-size: 14px;">{{t.subtitle}}</p>
@@ -128,7 +159,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
           <p style="position: relative;"><span class="muted">/</span><span style="border-left: 2px solid var(--primary); margin-left: 1px;">&#8203;</span></p>
           <sc-if value="{{slashOpen}}" hint-placeholder-val="{{true}}">
-            <div class="menu" role="listbox" aria-label="{{t.slash}}" style="left: 32px; bottom: 6px; width: 290px;">
+            <div class="menu" role="listbox" aria-label="{{t.slash}}" style="{{slashStyle}}">
               <div class="muted" style="padding: 6px 10px; font-size: 12px;">{{t.blocks}}</div>
               <sc-for list="{{slash}}" as="m" hint-placeholder-count="6"><button type="button" class="mi" role="option"><span class="ico">{{m.ico}}</span><span style="display: flex; flex-direction: column; line-height: 1.3;"><span>{{m.label}}</span><span class="muted" style="font-size: 12px;">{{m.hint}}</span></span></button></sc-for>
             </div>
@@ -136,10 +167,101 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         </article>
       </section>
 
-      <aside style="flex: 1 1 320px; max-width: 360px; min-width: 280px; border-left: 1px solid var(--border); display: flex; flex-direction: column;">
-        <div role="tablist" style="display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border);">
+      <aside id="sd-aside" style="{{asideStyle}}">
+        <div role="tablist" style="{{tablistStyle}}">
           <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="3"><button type="button" role="tab" aria-selected="{{tb.sel}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}}</button></sc-for>
         </div>
+        <sc-if value="{{tabItem}}" hint-placeholder-val="{{false}}">
+          <!-- Khung bên "Hạng mục · giai đoạn" (US2, US3). Gọi sdlc.items.step để soạn lại. -->
+          <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;">
+                <h2 style="margin: 0; font-size: 15px; font-weight: 600;">{{sd.title}}</h2>
+                <span class="badge" style="{{statusStyle}}"><span aria-hidden="true">{{statusMark}}</span> {{statusText}}</span>
+                <sc-if value="{{ro}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">○</span> {{sd.readonly}}</span></sc-if>
+              </div>
+              <div class="muted" style="font-size: 12.5px; overflow-wrap: anywhere;">{{sd.itemName}} · <span class="mono">012-hoan-tien-mot-phan</span> · {{sd.size}}</div>
+            </div>
+
+            <sc-if value="{{isRunning}}" hint-placeholder-val="{{false}}">
+              <div role="status" aria-live="polite" class="card" style="padding: 10px 12px; border-color: var(--primary); display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                <div style="display: flex; align-items: center; gap: 8px;"><span class="pulse" aria-hidden="true" style="width: 8px; height: 8px; border-radius: 9999px; background: var(--primary);"></span><strong style="font-weight: 600; flex: 1;">{{sd.runTitle}}</strong><span class="mono muted num" style="font-size: 12px;">r_8f3a · 0:42</span></div>
+                <span class="muted">{{sd.runText}}</span>
+                <div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-destructive btn-sm" disabled="{{roAttr}}">{{sd.cancelRun}}</button></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{isWaiting}}" hint-placeholder-val="{{false}}">
+              <div role="status" class="alert" style="background: var(--warning-soft); color: var(--warning); flex-wrap: wrap;"><span aria-hidden="true">!</span><span style="flex: 1 1 180px; min-width: 0;"><strong style="font-weight: 600;">{{sd.waitTitle}}</strong><br>{{sd.waitText}}</span><button type="button" class="btn btn-outline btn-sm" disabled="{{roAttr}}">{{sd.cancelWait}}</button></div>
+            </sc-if>
+            <sc-if value="{{isStepError}}" hint-placeholder-val="{{false}}">
+              <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); flex-wrap: wrap;"><span aria-hidden="true">!</span><span style="flex: 1 1 180px; min-width: 0;"><strong style="font-weight: 600;">{{sd.errTitle}}</strong><br>{{sd.errText}}</span><button type="button" class="btn btn-default btn-sm" disabled="{{roAttr}}">{{sd.rerun}}</button></div>
+            </sc-if>
+            <sc-if value="{{ro}}" hint-placeholder-val="{{false}}">
+              <div role="status" class="alert" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">i</span><span>{{sd.roText}}</span></div>
+            </sc-if>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;" aria-label="{{sd.projects}}">
+              <h3 class="sh">{{sd.projects}}</h3>
+              <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                <sc-for list="{{projects}}" as="pj" hint-placeholder-count="3"><li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;"><span class="muted" style="min-width: 96px;">{{pj.role}}</span><span class="badge mono" style="{{pj.style}}">{{pj.name}}</span><span class="muted">{{pj.team}}</span></li></sc-for>
+              </ul>
+            </section>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;" aria-label="{{sd.stageTitle}}">
+              <h3 class="sh">{{sd.stageTitle}}</h3>
+              <ol aria-label="{{sd.stagesAria}}" style="margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; font-size: 12px;">
+                <sc-for list="{{stages}}" as="st" hint-placeholder-count="7"><li><span style="{{st.style}}" aria-current="{{st.cur}}"><span aria-hidden="true">{{st.mark}}</span> {{st.label}}<span class="sr"> ({{st.state}})</span></span></li></sc-for>
+              </ol>
+              <h3 class="sh" style="font-weight: 500; font-size: 12.5px;">{{sd.gatesTitle}}</h3>
+              <ol aria-label="{{sd.gatesTitle}}" style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                <sc-for list="{{gates}}" as="gt" hint-placeholder-count="4"><li style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;"><span style="{{gt.icon}}" aria-hidden="true">{{gt.mark}}</span><span class="badge" style="{{gt.kindStyle}}">{{gt.kind}}</span><span style="flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere;">{{gt.label}}</span><span class="muted" style="font-size: 12px;">{{gt.who}}</span></li></sc-for>
+              </ol>
+            </section>
+
+            <sc-if value="{{isContract}}" hint-placeholder-val="{{false}}">
+              <!-- Tài liệu thuộc contract: bên cung cấp và bên dùng -->
+              <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px;" aria-label="{{sd.contractTitle}}">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;"><h3 class="sh">{{sd.contractTitle}}</h3><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">refund-api · openapi</span></div>
+                <div><span class="muted">{{sd.provider}}:</span> <span class="mono">payment-api</span> <span class="muted">(Backend)</span></div>
+                <div><span class="muted">{{sd.consumers}}:</span> <span class="mono">web-shop</span> <span class="muted">(Web)</span>, <span class="mono">mobile-app</span> <span class="muted">(Mobile)</span></div>
+                <div class="muted" style="font-size: 12.5px;">{{sd.contractNote}}</div>
+              </section>
+            </sc-if>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px;" aria-label="{{sd.tplTitle}}">
+              <h3 class="sh">{{sd.tplTitle}}</h3>
+              <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;"><strong style="font-weight: 600;">{{sd.tplName}}</strong><span class="mono muted" style="overflow-wrap: anywhere;">{{sd.tplFile}}</span><a href="#" style="color: var(--primary); margin-left: auto;">{{sd.tplOpen}}</a></div>
+            </section>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;" aria-label="{{sd.reqTitle}}">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px;"><h3 class="sh">{{sd.reqTitle}}</h3><span class="muted num" style="font-size: 12.5px;">{{reqCount}}</span></div>
+              <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                <sc-for list="{{required}}" as="rq" hint-placeholder-count="5"><li style="display: flex; gap: 8px; align-items: flex-start;"><span style="{{rq.icon}}" aria-hidden="true">{{rq.mark}}</span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere;"><span class="sr">{{rq.state}}: </span>{{rq.text}}</span></li></sc-for>
+              </ul>
+            </section>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;" aria-label="{{sd.qaTitle}}">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px;"><h3 class="sh">{{sd.qaTitle}}</h3><span class="muted num" style="font-size: 12.5px;">3</span></div>
+              <span class="muted" style="font-size: 12px;">{{sd.qaNote}}</span>
+              <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                <sc-for list="{{qa}}" as="q" hint-placeholder-count="3"><li style="display: flex; flex-direction: column; gap: 2px;"><strong style="font-weight: 600; overflow-wrap: anywhere;"><span class="mono num muted" style="font-weight: 400;">{{q.id}}</span> {{q.q}}</strong><span style="overflow-wrap: anywhere;">{{q.a}}</span><span class="muted" style="font-size: 12px;">{{q.by}}</span></li></sc-for>
+              </ol>
+            </section>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px;" aria-label="{{sd.syncTitle}}">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px;"><h3 class="sh">{{sd.syncTitle}}</h3><span class="badge" style="{{syncStyle}}"><span aria-hidden="true">{{syncMark}}</span> {{syncText}}</span></div>
+              <span class="mono muted" style="font-size: 12px; overflow-wrap: anywhere;">{{sd.repoPath}}</span>
+              <sc-if value="{{syncNote}}" hint-placeholder-val="{{false}}"><span>{{syncNote}}</span></sc-if>
+              <sc-if value="{{syncAction}}" hint-placeholder-val="{{false}}"><div style="display: flex; justify-content: flex-end;"><button type="button" class="btn btn-outline btn-sm" disabled="{{roAttr}}">{{syncAction}}</button></div></sc-if>
+            </section>
+
+            <section class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px;" aria-label="{{sd.rewriteTitle}}">
+              <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{sd.rewriteTitle}}<textarea class="input" style="height: 72px; resize: vertical;" disabled="{{rewriteOff}}" placeholder="{{sd.rewriteHint}}"></textarea></label>
+              <span class="muted" style="font-size: 12px;">{{sd.rewriteNote}} <span class="mono">sdlc.items.step</span></span>
+              <button type="button" class="{{rewriteClass}}" disabled="{{rewriteOff}}" style="align-self: flex-start;"><span aria-hidden="true">✦</span> {{sd.rewrite}}</button>
+            </section>
+          </div>
+        </sc-if>
         <sc-if value="{{tabComments}}" hint-placeholder-val="{{true}}">
           <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
             <div class="card" style="padding: 12px; display: flex; flex-direction: column; gap: 8px; border-color: var(--warning);">
@@ -187,9 +309,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"sdlc":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+// modes: normal,drafting,waiting,stepError,drift,conflict,contract,readonly
+// Biến thể sdlc (prop sdlc = true): state sdlcMode = trạng thái xem (đọc thêm state.mode cho bộ kiểm); tab mặc định là "Hạng mục".
+// Khi sdlc = false mọi thứ như cũ: tab mặc định "Bình luận", không có khung "Hạng mục".
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { sug: 'pending', tab: 'comments', submit: false, suggest: true, lang: null }; }
+  constructor(props) { super(props); this.state = { sug: 'pending', tab: null, submit: false, suggest: true, lang: null, sdlcMode: null, drawer: true }; }
   renderVals() {
     const lang = this.state.lang ?? this.props.lang ?? 'vi';
     const en = lang === 'en';
@@ -215,20 +340,110 @@ class Component extends DCLogic {
     };
     const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
     const done = 'background: var(--success-soft); color: var(--success);'; const cur = 'background: var(--warning-soft); color: var(--warning); font-weight: 600;'; const todo = 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);';
-    const steps = [[['Soạn', 'Draft'], cur], [['AI tự kiểm', 'AI pre-check'], todo], [['Product owner', 'Product owner'], todo], [['Pháp chế', 'Legal'], todo], [['Chốt v1', 'Baseline v1'], todo]].map(([l, st], i, a) => ({
+    const sdlc = !!this.props.sdlc;
+    const narrow = !!this.props.narrow;
+    const mode = sdlc ? (this.state.sdlcMode ?? this.state.mode ?? 'normal') : 'normal';
+    const isContract = sdlc && mode === 'contract';
+    const TEAMS = [['Backend', 'payment-api', 'Nguyễn Minh'], ['Web', 'web-shop', 'Lê Quang'], ['Mobile', 'mobile-app', 'Đỗ Hải']];
+    const tl = (i) => 'Tech lead · ' + TEAMS[i][0] + ' (' + TEAMS[i][1] + ')';
+    const always = ['luôn cần người', 'always needs a human'];
+    const flowRaw = sdlc
+      ? (isContract
+        ? [[['Soạn', 'Draft'], cur], [['AI tự kiểm', 'AI pre-check'], todo], [[tl(0), tl(0)], todo], [[tl(1), tl(1)], todo], [[tl(2), tl(2)], todo], [['Chốt baseline', 'Baseline'], todo]]
+        : [[['Soạn', 'Draft'], cur], [['AI tự kiểm', 'AI pre-check'], todo], [['Product owner · An', 'Product owner · An'], todo], [['Chốt baseline', 'Baseline'], todo]])
+      : [[['Soạn', 'Draft'], cur], [['AI tự kiểm', 'AI pre-check'], todo], [['Product owner', 'Product owner'], todo], [['Pháp chế', 'Legal'], todo], [['Chốt v1', 'Baseline v1'], todo]];
+    const steps = flowRaw.map(([l, st], i, a) => ({
       label: x(l), arrow: i < a.length - 1, style: 'display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 9999px; ' + st, dot: 'width: 6px; height: 6px; border-radius: 9999px; background: currentColor;',
     }));
     const slash = [['H', ['Tiêu đề', 'Heading'], ['Mục lớn', 'Section']], ['☑', ['Checklist', 'Checklist'], ['Tiêu chí chấp nhận', 'Acceptance criteria']], ['▦', ['Bảng', 'Table'], ['Yêu cầu, ma trận', 'Requirements matrix']], ['R#', ['Yêu cầu có mã', 'Requirement with id'], ['Tự đánh R-4', 'Auto-numbers R-4']], ['{}', ['Khối code', 'Code block'], ['Có tô màu cú pháp', 'Syntax highlighted']], ['◇', ['Sơ đồ Mermaid', 'Mermaid diagram'], ['Luồng, sequence, ER', 'Flow, sequence, ER']], ['↗', ['Nhúng tài liệu', 'Embed doc'], ['Liên kết tới doc khác', 'Link another doc']], ['✦', ['Viết bằng AI', 'Write with AI'], ['Dùng gói thuê bao', 'Uses your subscription']]].map(([i, l, h]) => ({ ico: i, label: x(l), hint: x(h) }));
     const aiActions = [[['Viết tiếp đoạn này', 'Continue writing'], ['Theo giọng của tài liệu', 'Matches the doc voice']], [['Kiểm đủ mục theo mẫu PRD', 'Check against the PRD template'], ['Báo mục còn thiếu', 'Lists missing sections']], [['Sinh tiêu chí chấp nhận từ yêu cầu', 'Draft acceptance criteria'], ['Mỗi R-n một tiêu chí', 'One per R-n']], [['Đối chiếu tài liệu liên quan', 'Cross-check related docs'], ['payment-api/money, runbook', 'payment-api/money, runbook']], [['Dịch sang tiếng Anh', 'Translate to English'], ['Giữ thuật ngữ trong glossary', 'Keeps glossary terms']]].map(([l, h]) => ({ label: x(l), hint: x(h) }));
     const history = [['v3', 'Trần Lan', ['đang sửa', 'editing'], ['3 đề xuất AI chờ nhận', '3 AI suggestions pending']], ['v2', 'Trần Lan', ['hôm qua', 'yesterday'], ['Bị trả lại ở checkpoint Product owner: thiếu tiêu chí chấp nhận', 'Returned at Product owner: missing acceptance criteria']], ['v1', 'Claude (gói Max)', ['2 ngày trước', '2 d ago'], ['Bản nháp đầu, viết từ yêu cầu của leader', 'First draft from the leader brief']]].map(([v, w, wh, n]) => ({ v, who: w, when: x(wh), note: x(n) }));
-    const tb = this.state.tab;
-    const tabs = [['comments', ['Bình luận · 1', 'Comments · 1']], ['ai', ['AI', 'AI']], ['history', ['Phiên bản', 'Versions']]].map(([k, l]) => ({ label: x(l), sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), style: 'height: 40px; padding: 0 10px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13px; cursor: pointer; ' + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
+    const tb = this.state.tab ?? (sdlc ? 'item' : 'comments');
+    const tabs = [...(sdlc ? [['item', ['Hạng mục', 'Item']]] : []), ['comments', ['Bình luận · 1', 'Comments · 1']], ['ai', ['AI', 'AI']], ['history', ['Phiên bản', 'Versions']]].map(([k, l]) => ({ label: x(l), sel: tb === k ? 'true' : 'false', pick: () => this.setState({ tab: k }), style: 'height: ' + (narrow ? '44px' : '40px') + '; padding: 0 10px; background: transparent; border: 0; margin-bottom: -1px; font: inherit; font-size: 13px; cursor: pointer; ' + (narrow ? 'white-space: nowrap; ' : '') + (tb === k ? 'color: var(--foreground); font-weight: 600; border-bottom: 2px solid var(--foreground);' : 'color: var(--muted-foreground); border-bottom: 2px solid transparent;') }));
     const ai = 'background: var(--accent); color: var(--accent-foreground);'; const hu = 'background: var(--warning-soft); color: var(--warning);';
     const nextGates = [[x(['AI', 'AI']), ai, x(['Kiểm đủ mục, mâu thuẫn với tài liệu khác', 'Completeness and conflicts with other docs']), 'Claude'], [x(['Người', 'Human']), hu, 'Product owner', 'Nguyễn Minh'], [x(['Người', 'Human']), hu, x(['Pháp chế (khi có từ khoá phí, hoàn tiền)', 'Legal (when fees or refunds are mentioned)']), x(['Nhóm Pháp chế', 'Legal group'])]].map(([k, s, l, w]) => ({ kind: k, kindStyle: s, label: l, who: w }));
-    const seg = (on) => 'height: 24px; min-width: 30px; padding: 0 6px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    const seg = (on) => 'height: ' + (this.props.narrow ? '36px' : '24px') + '; min-width: 30px; padding: 0 6px; border: 0; border-radius: 6px; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    const ro = sdlc && mode === 'readonly';
+    const running = sdlc && mode === 'drafting'; const waiting = sdlc && mode === 'waiting'; const stepErr = sdlc && mode === 'stepError';
+    const stageName = isContract ? 'Plan' : 'Specify';
+    const SD0 = {
+      menu: ['Menu', 'Menu'], states: ['Trạng thái xem', 'View state'],
+      itemName: ['Hoàn tiền một phần', 'Partial refunds'], size: ['cỡ L · chế độ Spec Kit', 'size L · Spec Kit mode'], readonly: ['Chỉ đọc', 'Read-only'],
+      roText: ['Bạn chỉ có quyền đọc hạng mục này, nên không có nút soạn lại, huỷ hay đồng bộ.', 'You can only read this item, so there is no rewrite, cancel or sync button.'],
+      runTitle: ['Agent đang soạn', 'Agent is drafting'], runText: ['Claude Code đang viết lại mục Yêu cầu theo các câu đã trả lời. Bản mới hiện thành đề xuất, bạn nhận hoặc bỏ từng chỗ.', 'Claude Code is rewriting the Requirements section from the answered questions. The new version shows as suggestions you accept or reject.'], cancelRun: ['Huỷ', 'Cancel'],
+      waitTitle: ['Chờ máy AI SDLC', 'Waiting for an AI SDLC machine'], waitText: ['Chưa có máy dùng chung nào rảnh có CLI claude. Bước tự chạy khi có máy.', 'No shared machine with the claude CLI is free. The step runs as soon as one is.'], cancelWait: ['Huỷ chờ', 'Stop waiting'],
+      errTitle: ['Agent không nộp tài liệu', 'The agent did not submit the document'], errText: ['Run r_8f3a kết thúc mà không ghi spec.md. Bản nháp v3 giữ nguyên.', 'Run r_8f3a ended without writing spec.md. Draft v3 is unchanged.'], rerun: ['Chạy lại', 'Run again'],
+      projects: ['Dự án', 'Projects'], stageTitle: ['Giai đoạn và cổng', 'Stage and gates'], stagesAria: ['Giai đoạn của hạng mục', 'Item stages'], gatesTitle: ['Cổng của giai đoạn này', 'Gates of this stage'],
+      contractTitle: ['Tài liệu thuộc contract', 'Document of a contract'], provider: ['Bên cung cấp', 'Provider'], consumers: ['Bên dùng', 'Consumers'], contractNote: ['Mỗi đội có một checkpoint người. Contract luôn cần người, không tự duyệt.', 'Each team has a human checkpoint. Contracts always need a human, never auto-approved.'],
+      tplTitle: ['Khuôn của chế độ', 'Mode template'], tplOpen: ['Xem khuôn', 'View template'],
+      reqTitle: ['Mục bắt buộc', 'Required sections'], qaTitle: ['Câu hỏi đã trả lời', 'Answered questions'], qaNote: ['Đã ghi vào mục Clarifications của tài liệu.', 'Written to the Clarifications section of the document.'],
+      syncTitle: ['Đồng bộ repo', 'Repo sync'], rewriteTitle: ['Chỉ dẫn cho agent (không bắt buộc)', 'Instructions for the agent (optional)'], rewriteHint: ['Ví dụ: thêm mục ngoài phạm vi, giữ nguyên các câu đã trả lời', 'e.g. add an out-of-scope section, keep the answered questions'],
+      rewriteNote: ['Agent đọc bản nháp và các câu đã trả lời. Chạy bước', 'The agent reads the draft and the answered questions. Runs step'], rewrite: ['Nhờ agent soạn lại', 'Ask the agent to rewrite'],
+    };
+    const sd = {}; Object.keys(SD0).forEach((k) => { sd[k] = x(SD0[k]); });
+    sd.title = x(['Hạng mục 012 · ' + stageName, 'Item 012 · ' + stageName]);
+    sd.tplName = x(isContract ? ['Spec Kit · khuôn contract (OpenAPI)', 'Spec Kit · contract template (OpenAPI)'] : ['Spec Kit · khuôn spec.md', 'Spec Kit · spec.md template']);
+    sd.tplFile = isContract ? 'contract-template.yaml' : 'spec-template.md';
+    sd.repoPath = 'payment-api · specs/012-hoan-tien-mot-phan/' + (isContract ? 'contracts/refund-api.yaml' : 'spec.md') + ' · a91c3d2';
+    const key = 'project/payment-api/sdlc/012-hoan-tien-mot-phan/' + (isContract ? 'contracts/refund-api' : 'spec');
+    const okS = 'background: var(--success-soft); color: var(--success);'; const warnS = 'background: var(--warning-soft); color: var(--warning);'; const badS = 'background: var(--destructive-soft); color: var(--destructive);'; const mutS = 'background: var(--muted); color: var(--muted-foreground);';
+    let st; // [style, mark, pair]
+    if (running) st = [warnS, '●', ['Agent đang soạn', 'Agent drafting']];
+    else if (waiting) st = [warnS, '!', ['Chờ máy AI SDLC', 'Waiting for machine']];
+    else if (stepErr) st = [badS, '!', ['Lỗi bước', 'Step failed']];
+    else if (mode === 'drift') st = [warnS, '!', ['Lệch repo', 'Repo drift']];
+    else if (mode === 'conflict') st = [badS, '!', ['Xung đột', 'Conflict']];
+    else if (ro) st = [mutS, '○', ['Chỉ đọc', 'Read-only']];
+    else st = [okS, '✓', ['Bình thường', 'Normal']];
+    const sync = mode === 'drift' ? [warnS, '!', ['Lệch repo', 'Repo drift'], ['Repo có commit mới (c7e12b4) sửa spec.md sau lần đồng bộ cuối. Đồng bộ lại để lấy bản mới.', 'The repo has a newer commit (c7e12b4) changing spec.md since the last sync. Sync again to pick it up.'], ['Đồng bộ lại', 'Sync again']]
+      : mode === 'conflict' ? [badS, '!', ['Xung đột với bản nháp của Phạm Hà', "Conflicts with Phạm Hà's draft"], ['Hai bản cùng sửa mục Yêu cầu. Xem khác biệt rồi chọn bản giữ lại.', 'Both versions edit the Requirements section. Review the diff and pick the one to keep.'], ['Xem khác biệt', 'View diff']]
+      : [okS, '✓', ['Đã đồng bộ', 'In sync'], null, null];
+    const dn = (c) => 'width: 18px; height: 18px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; ' + c;
+    const stIdx = isContract ? 2 : 1;
+    const stageList = [['Tiếp nhận', 'Intake'], ['Yêu cầu', 'Requirements'], ['Thiết kế', 'Design'], ['Tách task', 'Decomposition'], ['Triển khai', 'Implementation'], ['Kiểm', 'Verification'], ['Phát hành', 'Release']].map((l, i) => {
+      const k = i < stIdx ? 'done' : i === stIdx ? 'now' : 'todo';
+      return { label: x(l), mark: k === 'done' ? '✓' : k === 'now' ? '●' : '○', cur: k === 'now' ? 'step' : 'false', state: x({ done: ['xong', 'done'], now: ['hiện tại', 'current'], todo: ['chưa tới', 'upcoming'] }[k]), style: 'display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 9999px; ' + (k === 'done' ? 'background: var(--success-soft); color: var(--success);' : k === 'now' ? 'background: var(--warning-soft); color: var(--warning); font-weight: 600;' : 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);') };
+    });
+    const kAgent = 'background: var(--secondary); color: var(--secondary-foreground);';
+    const gateRaw = isContract
+      ? [[['Agent', 'Agent'], kAgent, ['Soạn contract', 'Draft the contract'], 'Claude Code', '●'], [['AI', 'AI'], ai, ['AI tự kiểm', 'AI pre-check'], 'Claude', '○'], [['Người', 'Human'], hu, [tl(0), tl(0)], x(['Nguyễn Minh · bên cung cấp', 'Nguyễn Minh · provider']), '○'], [['Người', 'Human'], hu, [tl(1), tl(1)], x(['Lê Quang · bên dùng', 'Lê Quang · consumer']), '○'], [['Người', 'Human'], hu, [tl(2), tl(2)], x(['Đỗ Hải · bên dùng', 'Đỗ Hải · consumer']), '○']]
+      : [[['Agent', 'Agent'], kAgent, ['Soạn spec.md', 'Draft spec.md'], 'Claude Code', '●'], [['AI', 'AI'], ai, ['AI tự kiểm', 'AI pre-check'], 'Claude', '○'], [['Người', 'Human'], hu, ['Product owner', 'Product owner'], x(['An · luôn cần người', 'An · always needs a human']), '○']];
+    const gates = gateRaw.map(([k, ks, l, w, m]) => ({ kind: x(k), kindStyle: ks, label: x(l), who: w, mark: m, icon: dn(m === '●' ? warnS : mutS) }));
+    const req = isContract
+      ? [['ok', ['Bên cung cấp và bên dùng', 'Provider and consumers']], ['ok', ['Lược đồ OpenAPI (route, schema)', 'OpenAPI schema (routes, schemas)']], ['ok', ['Quy ước phiên bản', 'Versioning rules']], ['warn', ['Mã lỗi: thiếu BILL-409', 'Error codes: BILL-409 missing']]]
+      : [['ok', ['Tổng quan', 'Overview']], ['ok', ['Yêu cầu chức năng FR-001…FR-006', 'Functional requirements FR-001…FR-006']], ['ok', ['Tiêu chí thành công', 'Success criteria']], ['ok', ['Làm rõ (Clarifications)', 'Clarifications']], ['warn', ['Ngoài phạm vi: chưa có', 'Out of scope: missing']]];
+    const required = req.map(([k, l]) => ({ icon: dn(k === 'ok' ? okS : warnS), mark: k === 'ok' ? '✓' : '!', state: x(k === 'ok' ? ['Đủ', 'Present'] : ['Thiếu', 'Missing']), text: x(l) }));
+    const reqCount = x([req.filter((r) => r[0] === 'ok').length + '/' + req.length + ' đủ', req.filter((r) => r[0] === 'ok').length + '/' + req.length + ' present']);
+    const qa = [['Q-1', ['Hoàn tiền một phần có hoàn phí đã thu không?', 'Does a partial refund return the fee already charged?'], ['Không. Phí được giữ lại; tổng hoàn tối đa là số tiền gốc trừ phí.', 'No. The fee is kept; the total refunded is at most the original amount minus the fee.'], 'An (PO) · 10:24 12/10'], ['Q-2', ['Một giao dịch được hoàn mấy lần?', 'How many refunds can one transaction have?'], ['Không giới hạn số lần, chỉ giới hạn tổng tiền hoàn.', 'No limit on the count, only on the total refunded.'], 'Trần Lan · 10:31 12/10'], ['Q-3', ['App mobile có hiện lịch sử hoàn không?', 'Does the mobile app show the refund history?'], ['Có, chỉ đọc. Web hiện đủ và cho tạo hoàn tiền.', 'Yes, read-only. Web shows it fully and can create refunds.'], 'Lê Quang · 11:02 12/10']].map(([id, q, a, b]) => ({ id, q: x(q), a: x(a), by: x(['Trả lời bởi ', 'Answered by ']) + b }));
+    const projects = [['Dự án chính', 'Primary project', 'payment-api', 'Backend', 'background: var(--primary); color: var(--primary-foreground);'], ['Dự án tham gia', 'Participant', 'web-shop', 'Web', 'background: var(--secondary); color: var(--secondary-foreground);'], ['', '', 'mobile-app', 'Mobile', 'background: var(--secondary); color: var(--secondary-foreground);']].map(([vi, en, name, team, style], i) => ({ role: x([vi, en]), name, team: x(['Đội ' + team, team + ' team']), style: style + ' font-weight: 400;' }));
+    const M = [['normal', ['Bình thường', 'Normal']], ['drafting', ['Agent đang soạn', 'Agent drafting']], ['waiting', ['Chờ máy', 'Waiting for machine']], ['stepError', ['Lỗi bước', 'Step error']], ['drift', ['Lệch repo', 'Repo drift']], ['conflict', ['Xung đột', 'Conflict']], ['contract', ['Thuộc contract', 'Contract doc']], ['readonly', ['Chỉ đọc', 'Read-only']]];
+    const segS = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: segS(mode === k), pick: () => this.setState({ sdlcMode: k }) }));
+    if (sdlc) { t.flowName = x([isContract ? 'Cổng của giai đoạn Plan · contract (Spec Kit)' : 'Cổng của giai đoạn Specify (Spec Kit)', isContract ? 'Gates of the Plan stage · contract (Spec Kit)' : 'Gates of the Specify stage (Spec Kit)']); t.sbTitle = x([isContract ? 'Gửi contract refund-api vào cổng duyệt?' : 'Gửi spec.md vào cổng của giai đoạn Specify?', isContract ? 'Submit the refund-api contract for review?' : 'Submit spec.md to the Specify stage gate?']); }
+    const drawerOpen = this.state.drawer;
+    const drawerBar = sdlc && narrow;
+    const wide = !narrow;
     return {
       theme: this.props.dark ? 'dark' : 'light', lang, t, steps, slash, aiActions, history, tabs, nextGates,
-      stageBadge: x(['Đang soạn · v3', 'Drafting · v3']), slashOpen: true,
+      sdlc, narrow, wide, sd, rootClass: narrow ? 'narrow' : '',
+      rootStyle: (narrow ? 'width: 360px; ' : 'min-height: 1000px; ') + 'display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      headerStyle: 'min-height: 52px; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; border-bottom: 1px solid var(--border); ' + (narrow ? 'padding: 8px 12px; gap: 8px;' : 'padding: 8px 20px; gap: 12px;'),
+      crumbStyle: 'font-size: 13px; display: flex; align-items: center; gap: 6px;' + (narrow ? ' flex-wrap: wrap; min-width: 0;' : ''),
+      crumbKey: sdlc ? key : 'payment-api/prd-partial-refund', keyStyle: sdlc || narrow ? 'overflow-wrap: anywhere;' : '',
+      navStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); background: var(--muted); font-size: 12.5px; ' + (narrow ? 'padding: 8px 12px;' : 'padding: 10px 20px;'),
+      toolbarStyle: 'position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); background: var(--background); ' + (narrow ? 'padding: 6px 8px;' : 'padding: 6px 20px;'),
+      articleStyle: 'position: relative; box-sizing: border-box; width: 100%; max-width: 780px; margin: 0 auto; ' + (narrow ? 'padding: 20px 16px 56px;' : 'padding: 36px 32px 80px;'),
+      slashStyle: narrow ? 'left: 12px; bottom: 6px; width: 280px;' : 'left: 32px; bottom: 6px; width: 290px;',
+      asideStyle: narrow
+        ? 'flex: 1 1 100%; max-width: none; min-width: 0; border-top: 1px solid var(--border); flex-direction: column; ' + (drawerBar ? 'order: -1; border-top: 0; display: ' + (drawerOpen ? 'flex' : 'none') + ';' : 'display: flex;')
+        : 'flex: 1 1 320px; max-width: 360px; min-width: 280px; border-left: 1px solid var(--border); display: flex; flex-direction: column;',
+      tablistStyle: 'display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border);' + (narrow ? ' overflow-x: auto;' : ''),
+      modes, drawerBar, drawerOpenAttr: drawerOpen ? 'true' : 'false', drawerArrow: drawerOpen ? '▴' : '▾', toggleDrawer: () => this.setState({ drawer: !this.state.drawer }),
+      tabItem: tb === 'item', isContract, ro, roAttr: ro, isRunning: running, isWaiting: waiting, isStepError: stepErr,
+      statusStyle: st[0], statusMark: st[1], statusText: x(st[2]), projects, stages: stageList, gates, required, reqCount, qa,
+      syncStyle: sync[0], syncMark: sync[1], syncText: x(sync[2]), syncNote: sync[3] ? x(sync[3]) : '', syncAction: sync[4] ? x(sync[4]) : '',
+      rewriteOff: ro || running || waiting, rewriteClass: stepErr ? 'btn btn-outline' : 'btn btn-default',
+      stageBadge: sdlc ? x([stageName + ' · ' + (running ? 'Agent đang soạn' : waiting ? 'Chờ máy AI SDLC' : stepErr ? 'Lỗi bước' : ro ? 'Chỉ đọc' : 'Đang soạn v3'), stageName + ' · ' + (running ? 'Agent drafting' : waiting ? 'Waiting for machine' : stepErr ? 'Step failed' : ro ? 'Read-only' : 'Drafting v3')]) : x(['Đang soạn · v3', 'Drafting · v3']), slashOpen: true,
       sugPending: this.state.sug === 'pending', sugAccepted: this.state.sug === 'accepted', sugRejected: this.state.sug === 'rejected',
       accept: () => this.setState({ sug: 'accepted' }), reject: () => this.setState({ sug: 'rejected' }),
       modeLabel: this.state.suggest ? x(['Chế độ: Đề xuất', 'Mode: Suggesting']) : x(['Chế độ: Sửa thẳng', 'Mode: Editing']), flipMode: () => this.setState({ suggest: !this.state.suggest }),

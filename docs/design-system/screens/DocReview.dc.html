@@ -12,11 +12,13 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
 <style>
 body{margin:0}
-button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+button:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
 .btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
 .btn-default{background:var(--primary);color:var(--primary-foreground)}
 .btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
 .btn-destructive{background:var(--destructive-soft);color:var(--destructive)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.narrow .btn{height:36px}
 .card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
 .card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px}
 .card-t{margin:0;font-size:14.5px;font-weight:600}
@@ -24,32 +26,135 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
 .dot{width:6px;height:6px;border-radius:9999px;background:currentColor}
 .mono{font-family:var(--font-mono)}
 .muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
 .input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
 .diff{font-size:14px;line-height:1.7}
 .diff p{margin:0 0 10px}
 .ins{background:var(--success-soft);color:var(--success);text-decoration:none;border-bottom:2px solid var(--success)}
 .del{background:var(--destructive-soft);color:var(--destructive);text-decoration:line-through}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
 </style>
 </helmet>
-<div data-theme="{{theme}}" style="min-height: 1000px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
-  <dc-import name="Sidebar" active="reviews" lang="{{lang}}" hint-size="240px,1000px"></dc-import>
+<!-- Artboard 1440 px mặc định; prop narrow = true cho 360 px (không thanh bên, một cột); prop sdlc = true bật biến thể Hạng mục AI SDLC (thanh "Trạng thái xem" ở dưới bảng). -->
+<div data-theme="{{theme}}" class="{{rootClass}}" style="{{rootStyle}}">
+  <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="Sidebar" active="reviews" lang="{{lang}}" hint-size="240px,1000px"></dc-import></sc-if>
   <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
     <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
-    <main style="box-sizing: border-box; width: 100%; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 16px;">
+    <main style="{{mainStyle}}">
       <header style="display: flex; flex-direction: column; gap: 4px;">
         <div class="muted" style="font-size: 13px;">{{t.knowledge}}</div>
         <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
       </header>
       <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" bulk="{{bulk}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" on-row-click="{{pick}}" active-id="{{curId}}" hint-size="100%,420px"></dc-import>
 
+      <sc-if value="{{sdlc}}" hint-placeholder-val="{{false}}">
+        <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+        <section aria-label="{{sd.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+          <span class="muted" style="font-size: 12.5px;">{{sd.states}}</span>
+          <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="8"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+          <span class="muted" style="font-size: 12.5px;">{{sd.stageSwitch}}</span>
+          <div class="seg"><sc-for list="{{stages}}" as="sg" hint-placeholder-count="3"><button type="button" aria-pressed="{{sg.on}}" onClick="{{sg.pick}}" style="{{sg.style}}">{{sg.label}}</button></sc-for></div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+        <section aria-busy="true" aria-label="{{sd.loading}}" style="display: flex; flex-direction: column; gap: 12px;">
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;"><div style="height: 18px; width: 60%; border-radius: 6px; background: var(--muted);"></div><div style="height: 24px; width: 90%; border-radius: 9999px; background: var(--muted);"></div></div>
+          <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px;"><div style="height: 14px; width: 40%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 95%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 80%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 88%; border-radius: 6px; background: var(--muted);"></div></div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{isEmpty}}" hint-placeholder-val="{{false}}">
+        <section class="card" style="padding: 32px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+          <strong>{{sd.emptyTitle}}</strong>
+          <span class="muted" style="max-width: 460px;">{{sd.emptyText}}</span>
+          <button type="button" class="btn btn-outline">{{sd.emptyAction}}</button>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{isError}}" hint-placeholder-val="{{false}}">
+        <section class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+          <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 0;"><strong style="font-weight: 600;">{{sd.errTitle}}</strong><br>{{sd.errText}} <span class="mono" style="overflow-wrap: anywhere;">{{sd.errCode}}</span></span></div>
+          <button type="button" class="btn btn-outline" style="align-self: flex-start;">{{sd.retry}}</button>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{showDetail}}" hint-placeholder-val="{{true}}">
       <section style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
         <div style="flex: 3 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
           <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
-            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">PRD</span><strong style="font-size: 16px;">{{cur.title}}</strong><span class="mono muted" style="font-size: 12.5px;">v2 → v3</span><span style="flex: 1;"></span><span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{cur.sla}}</span></div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;"><sc-if value="{{sdlc}}" hint-placeholder-val="{{false}}"><span class="badge mono num" style="background: var(--accent); color: var(--accent-foreground);">{{sd.label}}</span></sc-if><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); font-weight: 400;">{{docBadge}}</span><strong style="{{titleStyle}}">{{cur.title}}</strong><span class="mono muted" style="font-size: 12.5px;">v2 → v3</span><span style="flex: 1;"></span><span class="badge" style="background: var(--warning-soft); color: var(--warning);"><span class="dot"></span>{{cur.sla}}</span></div>
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px;">
-              <sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="{{s.style}}">{{s.mark}} {{s.label}}</span><sc-if value="{{s.arrow}}" hint-placeholder-val="{{true}}"><span class="muted">→</span></sc-if></span></sc-for>
+              <sc-for list="{{steps}}" as="s" hint-placeholder-count="5"><span style="display: inline-flex; align-items: center; gap: 6px;"><span style="{{s.style}}" aria-current="{{s.cur}}"><span aria-hidden="true">{{s.mark}}</span> {{s.label}}<sc-if value="{{s.sub}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; opacity: .85;">· {{s.sub}}</span></sc-if></span><sc-if value="{{s.arrow}}" hint-placeholder-val="{{true}}"><span class="muted">→</span></sc-if></span></sc-for>
             </div>
           </div>
+          <sc-if value="{{sdlc}}" hint-placeholder-val="{{false}}">
+            <!-- Cổng người kiểu: luôn cần người / theo đội. Ghi chú dưới stepper. -->
+            <div class="muted" style="font-size: 12.5px;">{{sd.stepNote}}</div>
+
+            <sc-if value="{{isBlocked}}" hint-placeholder-val="{{false}}">
+              <div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span style="flex: 1; min-width: 0;"><strong class="mono" style="font-weight: 600; overflow-wrap: anywhere;">SDLC_GATE_BLOCKED</strong> · {{sd.blockedText}}</span></div>
+            </sc-if>
+
+            <sc-if value="{{hasAuto}}" hint-placeholder-val="{{false}}">
+              <!-- Checkpoint tự duyệt: điểm, ngưỡng, lý do từng điều kiện, hạn thu hồi, nút Thu hồi (lý do bắt buộc) -->
+              <section class="card" style="overflow: hidden;" aria-label="{{sd.autoTitle}}">
+                <div class="card-h"><h2 class="card-t">{{autoTitle}}</h2><span class="badge num" style="{{autoBadgeStyle}}"><span aria-hidden="true">{{autoBadgeMark}}</span> {{autoBadge}}</span></div>
+                <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
+                  <sc-for list="{{autoReasons}}" as="c" hint-placeholder-count="6"><li style="display: flex; gap: 8px; align-items: flex-start;"><span style="{{c.icon}}" aria-hidden="true">{{c.mark}}</span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere;"><span class="sr">{{c.state}}: </span>{{c.text}}</span></li></sc-for>
+                </ul>
+                <div style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+                    <span class="num" style="flex: 1 1 200px; min-width: 0;">{{autoDeadline}}</span>
+                    <!-- Slot nút Thu hồi: chỉ có khi còn hạn và người xem được phép (người duyệt, chủ hạng mục, sdlc.override) -->
+                    <sc-if value="{{canRevoke}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-destructive" aria-expanded="{{revokeOpenAttr}}" onClick="{{toggleRevoke}}">{{sd.revoke}}</button></sc-if>
+                  </div>
+                  <sc-if value="{{revokeBox}}" hint-placeholder-val="{{false}}">
+                    <div role="group" aria-label="{{sd.revokeTitle}}" style="display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted);">
+                      <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{sd.revokeReason}} *<textarea class="input" style="height: 64px; resize: vertical; background: var(--background);" placeholder="{{sd.revokeHint}}"></textarea><span class="muted" style="font-size: 12px; font-weight: 400;">{{sd.revokeNeed}}</span></label>
+                      <div style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{toggleRevoke}}">{{sd.cancel}}</button><button type="button" class="btn btn-destructive">{{sd.revokeGo}}</button></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{noRevoke}}" hint-placeholder-val="{{false}}"><div class="alert" role="status" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">i</span><span>{{sd.expiredText}}</span></div></sc-if>
+                </div>
+              </section>
+            </sc-if>
+
+            <!-- Dòng sự kiện của phiên duyệt -->
+            <section class="card" style="overflow: hidden;" aria-label="{{sd.eventsTitle}}">
+              <div class="card-h"><h2 class="card-t">{{sd.eventsTitle}}</h2></div>
+              <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
+                <sc-for list="{{events}}" as="ev" hint-placeholder-count="3"><li style="display: flex; gap: 8px; align-items: flex-start;"><span style="{{ev.icon}}" aria-hidden="true">{{ev.mark}}</span><span style="flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere;"><span class="sr">{{ev.state}}: </span>{{ev.text}}</span><span class="muted num" style="font-size: 12px;">{{ev.when}}</span></li></sc-for>
+              </ul>
+            </section>
+
+            <!-- Câu hỏi đã trả lời: Q&A đã ghi vào mục Clarifications -->
+            <section class="card" style="overflow: hidden;" aria-label="{{sd.qaTitle}}">
+              <div class="card-h"><h2 class="card-t">{{sd.qaTitle}}</h2><span class="muted num" style="font-size: 12.5px;">{{sd.qaMeta}}</span></div>
+              <ol style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 13.5px;">
+                <sc-for list="{{qa}}" as="q" hint-placeholder-count="3"><li style="display: flex; flex-direction: column; gap: 2px;"><strong style="font-weight: 600; overflow-wrap: anywhere;"><span class="mono num muted" style="font-weight: 400;">{{q.id}}</span> {{q.q}}</strong><span style="overflow-wrap: anywhere;">{{q.a}}</span><span class="muted" style="font-size: 12px;">{{q.by}}</span></li></sc-for>
+              </ol>
+            </section>
+
+            <!-- Bản tách task: tóm tắt, mở AppSdlcBreakdown để duyệt chi tiết -->
+            <sc-if value="{{showBreakdown}}" hint-placeholder-val="{{true}}">
+              <section class="card" style="overflow: hidden;" aria-label="{{sd.bdTitle}}">
+                <div class="card-h"><h2 class="card-t">{{sd.bdTitle}}</h2><span class="badge num" style="background: var(--success-soft); color: var(--success);"><span aria-hidden="true">✓</span> {{sd.bdCover}}</span></div>
+                <div style="padding: 12px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px;">
+                  <sc-for list="{{bdStats}}" as="b" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;"><strong class="num" style="font-size: 20px; line-height: 1.1;">{{b.n}}</strong><span class="muted" style="font-size: 12px;">{{b.label}}</span></div></sc-for>
+                </div>
+                <ul style="margin: 0; padding: 0 16px 10px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
+                  <sc-for list="{{bdLanes}}" as="ln" hint-placeholder-count="3"><li style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px;"><span class="mono" style="font-weight: 500;">{{ln.project}}</span><span class="muted">{{ln.team}}</span><span class="mono num muted" style="overflow-wrap: anywhere;">{{ln.tasks}}</span></li></sc-for>
+                </ul>
+                <div style="padding: 10px 16px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px;"><span class="muted" style="flex: 1 1 200px; min-width: 0;">{{sd.bdEdges}}</span><a href="AppSdlcBreakdown.dc.html" style="color: var(--primary);">{{sd.bdOpen}}</a></div>
+              </section>
+            </sc-if>
+          </sc-if>
+
           <div class="card" style="overflow: hidden;">
             <div class="card-h"><h2 class="card-t">{{t.changes}}</h2><span class="muted" style="font-size: 12.5px;">{{t.changesMeta}}</span></div>
             <div class="diff" style="padding: 14px 18px;">
@@ -63,34 +168,40 @@ button:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px sol
 
         <aside style="flex: 2 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
           <div class="card" style="overflow: hidden;">
-            <div class="card-h"><h2 class="card-t">{{t.aiCheck}}</h2><span class="badge" style="background: var(--success-soft); color: var(--success);">8,5 / 10</span></div>
+            <div class="card-h"><h2 class="card-t">{{t.aiCheck}}</h2><span class="badge num" style="background: var(--success-soft); color: var(--success);">{{aiScore}}</span></div>
             <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;">
               <sc-for list="{{checks}}" as="c" hint-placeholder-count="5"><li style="display: flex; gap: 8px; align-items: flex-start;"><span style="{{c.icon}}">{{c.mark}}</span><span>{{c.text}}</span></li></sc-for>
             </ul>
           </div>
           <div class="card" style="overflow: hidden;">
-            <div class="card-h"><h2 class="card-t">{{t.trace}}</h2><span class="muted" style="font-size: 12.5px;">3 / 3</span></div>
+            <div class="card-h"><h2 class="card-t">{{t.trace}}</h2><span class="muted num" style="font-size: 12.5px;">{{traceCount}}</span></div>
             <ul style="margin: 0; padding: 10px 16px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 13px;">
-              <li><span class="mono">R-1</span> → <span class="mono muted">TASK-45, TASK-47</span></li><li><span class="mono">R-2</span> → <span class="mono muted">TASK-45</span></li><li><span class="mono">R-3</span> → <span class="mono muted">TASK-47</span></li>
+              <sc-for list="{{trace}}" as="r" hint-placeholder-count="3"><li><span class="mono">{{r.id}}</span> → <span class="mono muted">{{r.tasks}}</span></li></sc-for>
             </ul>
           </div>
+          <sc-if value="{{showDecision}}" hint-placeholder-val="{{true}}">
           <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
             <h2 class="card-t">{{t.decision}}</h2>
+            <sc-if value="{{sdlc}}" hint-placeholder-val="{{false}}"><div class="alert" role="status" style="background: var(--accent); color: var(--accent-foreground);"><span aria-hidden="true">i</span><span style="min-width: 0; overflow-wrap: anywhere;">{{sd.mine}}</span></div></sc-if>
             <textarea class="input" style="height: 72px; resize: vertical;" aria-label="{{t.note}}" placeholder="{{t.note}}"></textarea>
             <label style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500;">{{t.ifReturn}}<select class="input" style="height: 32px; padding: 0 10px;"><option>{{t.backAuthor}}</option><option>{{t.backAgent}}</option></select></label>
             <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-destructive">{{t.requestChanges}}</button><button type="button" class="btn btn-default">{{t.approve}}</button></div>
           </div>
+          </sc-if>
         </aside>
       </section>
+      </sc-if>
     </main>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"sdlc":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1000}}'>
+// modes: normal,autoApproved,notAuto,revoked,reapproved,expired,loading,empty,error
+// Biến thể sdlc (prop sdlc = true): state mode = trạng thái xem; stg = giai đoạn (spec | contract | decomposition). Khi sdlc = false mọi thứ như cũ.
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { cur: 'v0', lang: null, dark: null };
+    this.state = { cur: 'v0', lang: null, dark: null, mode: 'normal', stg: 'decomposition', revoke: false };
     const docs = [['PRD', ['Hoàn tiền một phần', 'Partial refunds'], 'payment-api'], ['Design', ['Thiết kế kênh WebSocket qua proxy', 'WebSocket channel through proxies'], 'hive-worker'], ['ADR', ['ADR-012: Lưu skill trong Git', 'ADR-012: Store skills in Git'], 'xdev-hive'], ['Runbook', ['Runbook sự cố VNPAY', 'VNPAY incident runbook'], 'payment-api'], ['PRD', ['Ví điện tử: nạp tiền', 'E-wallet: top-up'], 'wallet'], ['Test plan', ['Kế hoạch test đối soát', 'Reconciliation test plan'], 'reconcile']];
     const gates = [['Product owner', 'Product owner'], ['Kiến trúc sư', 'Architect'], ['Pháp chế', 'Legal'], ['Trực vận hành', 'On-call'], ['Duyệt kế hoạch task', 'Task plan']];
     const by = ['Trần Lan', 'Phạm Hà', 'Claude (gói Max)', 'Lê Quang', 'Codex (gói Plus)'];
@@ -126,14 +237,113 @@ class Component extends DCLogic {
     const facets = [{ key: 'type', label: x(['Loại', 'Type']) }, { key: 'gate', label: 'Checkpoint' }, { key: 'sla', label: 'SLA' }, { key: 'author', label: x(['Người gửi', 'Submitted by']) }];
     const d = this.data.find((r) => r.id === this.state.cur) || this.data[0];
     const done = 'background: var(--success-soft); color: var(--success);'; const now = 'background: var(--warning-soft); color: var(--warning); font-weight: 600;'; const todo = 'background: var(--card); color: var(--muted-foreground); border: 1px solid var(--border);';
-    const steps = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓'], [['Product owner', 'Product owner'], now, '●'], [['Pháp chế', 'Legal'], todo, '○'], [['Chốt v1', 'Baseline'], todo, '○']].map(([l, st, m], i, a) => ({ label: x(l), mark: m, arrow: i < a.length - 1, style: 'display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 9999px; ' + st }));
+    const sdlc = !!this.props.sdlc;
+    const narrow = !!this.props.narrow;
+    const mode = sdlc ? this.state.mode : 'normal';
+    const stg = sdlc ? this.state.stg : 'decomposition';
+    const view = mode === 'loading' || mode === 'empty' || mode === 'error' ? mode : 'ok';
+    // trạng thái checkpoint tự duyệt chỉ có ở giai đoạn Tách task (Spec Kit: Tasks); Specify và contract luôn cần người.
+    const am = view === 'ok' && stg === 'decomposition' ? mode : 'normal';
+    const chipBase = sdlc ? 'display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; min-height: 24px; box-sizing: border-box; max-width: 100%; padding: 2px 10px; border-radius: 12px; ' : 'display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 10px; border-radius: 9999px; ';
+    const plain = (a) => [a, a];
+    const always = ['luôn cần người', 'always needs a human'];
+    const TEAMS = [['Backend', 'payment-api', 'Nguyễn Minh'], ['Web', 'web-shop', 'Lê Quang'], ['Mobile', 'mobile-app', 'Đỗ Hải']];
+    const tl = (i) => 'Tech lead · ' + TEAMS[i][0] + ' (' + TEAMS[i][1] + ')';
+    let stepsRaw = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓'], [['Product owner', 'Product owner'], now, '●'], [['Pháp chế', 'Legal'], todo, '○'], [['Chốt v1', 'Baseline'], todo, '○']];
+    if (sdlc && stg === 'spec') {
+      stepsRaw = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓'], [plain('Product owner · An'), now, '●', always], [['Chốt baseline', 'Baseline'], todo, '○']];
+    } else if (sdlc && stg === 'contract') {
+      stepsRaw = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓'], [plain(tl(0)), done, '✓', ['luôn cần người · Nguyễn Minh đã duyệt', 'always needs a human · Nguyễn Minh approved']], [plain(tl(1)), now, '●', always], [plain(tl(2)), now, '●', always], [['Chốt baseline', 'Baseline'], todo, '○']];
+    } else if (sdlc) {
+      const dn = am === 'autoApproved' || am === 'expired' || am === 'reapproved';
+      const sub = (i) => (am === 'autoApproved' ? ['Tự duyệt bởi AI · 9,3/10', 'Auto-approved by AI · 9.3/10'] : am === 'expired' ? ['Tự duyệt bởi AI · quá hạn thu hồi', 'Auto-approved by AI · revoke window over'] : am === 'reapproved' ? ['Người duyệt sau thu hồi · ' + TEAMS[i][2], 'Human approval after revoke · ' + TEAMS[i][2]] : am === 'revoked' ? ['Duyệt lại sau thu hồi · chờ ' + TEAMS[i][2], 'Re-review after revoke · waiting for ' + TEAMS[i][2]] : ['chờ ' + TEAMS[i][2], 'waiting for ' + TEAMS[i][2]]);
+      stepsRaw = [[['Soạn', 'Draft'], done, '✓'], [['AI tự kiểm', 'AI pre-check'], done, '✓', ['9,3/10', '9.3/10']], ...[0, 1, 2].map((i) => [plain(tl(i)), dn ? done : now, dn ? '✓' : '●', sub(i)]), [['Chốt baseline', 'Baseline'], dn ? done : todo, dn ? '✓' : '○']];
+    }
+    const steps = stepsRaw.map(([l, st, m, sb], i, a) => ({ label: x(l), mark: m, sub: sb ? x(sb) : '', cur: st === now ? 'step' : 'false', arrow: i < a.length - 1, style: chipBase + st }));
     const ok = 'width: 18px; height: 18px; flex: none; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; background: var(--success-soft); color: var(--success);';
     const warn = ok.replace('var(--success-soft)', 'var(--warning-soft)').replace('color: var(--success)', 'color: var(--warning)');
     const checks = [[ok, '✓', ['Đủ 6/6 mục theo mẫu PRD', '6/6 PRD template sections present']], [ok, '✓', ['Mỗi R-n có tiêu chí chấp nhận', 'Every R-n has acceptance criteria']], [ok, '✓', ['Khớp payment-api/money v7 về phí', 'Consistent with payment-api/money v7 on fees']], [warn, '!', ['Chưa nêu giới hạn số lần hoàn trong một ngày', 'No daily cap on refund count']], [warn, '!', ['Bình luận về phí còn mở, chờ Pháp chế', 'Fee comment still open, waiting on Legal']]].map(([i, m, tx]) => ({ icon: i, mark: m, text: x(tx) }));
+    const SD0 = {
+      states: ['Trạng thái xem', 'View state'], stageSwitch: ['Giai đoạn', 'Stage'], loading: ['Đang tải phiên duyệt', 'Loading the review'],
+      emptyTitle: ['Chưa có hạng mục nào chờ bạn duyệt', 'No item is waiting for you'], emptyText: ['Checkpoint của hạng mục AI SDLC hiện ở đây khi tới cổng người mà bạn được chỉ định. Mục đã tự duyệt chỉ hiện khi còn hạn thu hồi.', 'AI SDLC item checkpoints appear here when they reach a human gate assigned to you. Auto-approved gates only show while they can still be revoked.'], emptyAction: ['Xem tất cả hạng mục', 'See all items'],
+      errTitle: ['Không tải được phiên duyệt', 'Could not load the review'], errText: ['Hub không trả lời khi tải phiên duyệt của hạng mục 012. Kiểm kết nối rồi thử lại.', 'The hub did not answer while loading the review of item 012. Check the connection and retry.'], errCode: ['HTTP 503', 'HTTP 503'], retry: ['Thử lại', 'Retry'],
+      autoTitle: ['Tự duyệt bởi AI', 'Auto-approved by AI'], revoke: ['Thu hồi', 'Revoke'], revokeTitle: ['Thu hồi tự duyệt', 'Revoke auto-approval'], revokeReason: ['Lý do thu hồi', 'Reason'], revokeHint: ['Vì sao cần người duyệt lại', 'Why a human must review again'], revokeNeed: ['Bắt buộc, từ 10 ký tự. Ghi vào audit và báo cho chủ hạng mục.', 'Required, at least 10 characters. Written to the audit log; the item owner is notified.'], cancel: ['Huỷ', 'Cancel'], revokeGo: ['Thu hồi tự duyệt', 'Revoke auto-approval'],
+      expiredText: ['Đã quá hạn thu hồi nên không còn nút "Thu hồi". Muốn đổi, tạo đề xuất sửa như thường.', 'The revoke window is over, so the "Revoke" button is gone. To change it, make a normal suggestion.'],
+      eventsTitle: ['Sự kiện của phiên duyệt', 'Review events'], qaTitle: ['Câu hỏi đã trả lời', 'Answered questions'], qaMeta: ['3 · đã ghi vào mục Clarifications', '3 · written to the Clarifications section'],
+      bdTitle: ['Bản tách task', 'Task breakdown'], bdOpen: ['Mở bản tách đầy đủ', 'Open the full breakdown'],
+      blockedText: ['tasks.md đang duyệt lại sau thu hồi. Run code mới của hạng mục bị chặn; run đang chạy không bị dừng.', 'tasks.md is being re-reviewed after a revoke. New code runs for this item are blocked; runs in progress are not stopped.'],
+    };
+    const sd = {}; Object.keys(SD0).forEach((k) => { sd[k] = x(SD0[k]); });
+    const labels = { spec: '012 · Specify', contract: '012 · Plan', decomposition: '012 · Tasks' };
+    sd.label = labels[stg];
+    sd.stepNote = x({
+      spec: ['Giai đoạn Specify của chế độ Spec Kit (cỡ L): luôn cần người, không có tự duyệt.', 'Specify stage of the Spec Kit mode (size L): always needs a human, no auto-approval.'],
+      contract: ['Contract luôn cần người: mỗi đội một checkpoint (bên cung cấp và từng bên dùng), không bao giờ được tự duyệt.', 'Contracts always need a human: one checkpoint per team (provider and each consumer), never auto-approved.'],
+      decomposition: ['Mỗi đội một checkpoint Tech lead. Hai dự án cùng đội chung một checkpoint, ghi cả hai tên: "Tech lead · Đội (dự án 1, dự án 2)".', 'One Tech lead checkpoint per team. Two projects of the same team share one checkpoint and show both names: "Tech lead · Team (project 1, project 2)".'],
+    }[stg]);
+    sd.mine = x({
+      spec: ['Bạn duyệt với vai Product owner (An). Luôn cần người ở giai đoạn này.', 'You review as Product owner (An). Always needs a human at this stage.'],
+      contract: ['Bạn duyệt thay đội Backend (payment-api), bên cung cấp contract. Mỗi bên dùng có checkpoint riêng.', 'You review for the Backend team (payment-api), the contract provider. Each consumer has its own checkpoint.'],
+      decomposition: am === 'revoked' ? ['Bạn duyệt lại sau thu hồi, thay đội Backend (payment-api). Đội Web và Mobile có checkpoint riêng.', 'You re-review after the revoke for the Backend team (payment-api). Web and Mobile have their own checkpoints.'] : ['Bạn duyệt thay đội Backend: Tech lead · Backend (payment-api). Đội Web và Mobile có checkpoint riêng.', 'You review for the Backend team: Tech lead · Backend (payment-api). Web and Mobile have their own checkpoints.'],
+    }[stg]);
+    const stOkS = x(['Đạt', 'Passed']); const stWarnS = x(['Cần xem', 'Needs a look']); const stInfoS = x(['Thông tin', 'Info']);
+    const info = ok.replace('var(--success-soft)', 'var(--muted)').replace('color: var(--success)', 'color: var(--muted-foreground)');
+    const evOk = (tx, w) => ({ icon: ok, mark: '✓', state: stOkS, text: x(tx), when: w });
+    const evWarn = (tx, w) => ({ icon: warn, mark: '!', state: stWarnS, text: x(tx), when: w });
+    const evInfo = (tx, w) => ({ icon: info, mark: 'i', state: stInfoS, text: x(tx), when: w });
+    const ai93 = evOk(['AI tự kiểm đạt 9,3/10 (ngưỡng 9)', 'AI pre-check passed 9.3/10 (threshold 9)'], '15:30 13/10');
+    const autoEv = evOk(['Tự duyệt bởi AI · 9,3/10 (ngưỡng 9) · thu hồi được tới 15:30 14/10', 'Auto-approved by AI · 9.3/10 (threshold 9) · can be revoked until 15:30 14/10'], '15:30 13/10');
+    const notified = evInfo(['Đã báo Nguyễn Minh, Lê Quang, Đỗ Hải và Trần Lan', 'Notified Nguyễn Minh, Lê Quang, Đỗ Hải and Trần Lan'], '15:30 13/10');
+    const revEv = evWarn(['Nguyễn Minh thu hồi tự duyệt: "Thiếu phụ thuộc T-44 → T-41"', 'Nguyễn Minh revoked the auto-approval: "Missing dependency T-44 → T-41"'], '09:12 14/10');
+    const reopen = evInfo(['Mở phiên duyệt mới trên cùng baseline, chỉ gồm 3 cổng người bị bỏ qua', 'Opened a new review on the same baseline with only the 3 skipped human gates'], '09:12 14/10');
+    let events;
+    if (stg === 'spec') events = [evOk(['AI tự kiểm đạt 8,5/10', 'AI pre-check passed 8.5/10'], '15:30 13/10'), evWarn(['Không tự duyệt: giai đoạn requirements của chế độ nặng luôn cần người', 'Not auto-approved: the requirements stage of a heavy mode always needs a human'], '15:30 13/10')];
+    else if (stg === 'contract') events = [evOk(['AI tự kiểm đạt 9,0/10', 'AI pre-check passed 9.0/10'], '15:30 13/10'), evWarn(['Không tự duyệt: contract luôn cần người', 'Not auto-approved: contracts always need a human'], '15:30 13/10')];
+    else if (am === 'notAuto') events = [ai93, evWarn(["Không tự duyệt: từ khoá nhạy cảm 'thanh toán'", "Not auto-approved: sensitive keyword 'thanh toán'"], '15:30 13/10'), evInfo(['Chờ Tech lead của 3 đội', 'Waiting for the Tech leads of 3 teams'], '15:30 13/10')];
+    else if (am === 'autoApproved') events = [ai93, autoEv, notified];
+    else if (am === 'expired') events = [ai93, autoEv, notified, evInfo(['Hết hạn thu hồi', 'Revoke window over'], '15:30 14/10')];
+    else if (am === 'revoked') events = [ai93, autoEv, revEv, reopen];
+    else if (am === 'reapproved') events = [ai93, autoEv, revEv, evOk(['Người duyệt sau thu hồi: Nguyễn Minh, Lê Quang, Đỗ Hải. Baseline giữ nguyên, không thêm phiên bản.', 'Human approval after the revoke: Nguyễn Minh, Lê Quang, Đỗ Hải. Baseline unchanged, no new version.'], '11:40 14/10')];
+    else events = [evWarn(['Không tự duyệt: điểm 8,7/10 thấp hơn ngưỡng 9', 'Not auto-approved: score 8.7/10 is below the threshold 9'], '15:30 13/10'), evInfo(['Chờ Tech lead của 3 đội', 'Waiting for the Tech leads of 3 teams'], '15:30 13/10')];
+    const hasAuto = sdlc && (am === 'autoApproved' || am === 'expired' || am === 'revoked' || am === 'reapproved');
+    const reasonTx = [['Điểm review AI 9,3/10, lấy mức thấp nhất giữa các reviewer, không thấp hơn ngưỡng 9', 'AI review score 9.3/10 (lowest across reviewers), not below the threshold 9'], ['Chính sách tổ chức và cài đặt dự án đều bật tự duyệt', 'Both the organization policy and the project settings enable auto-approval'], ['Chế độ Spec Kit khai tự duyệt cho cổng "Tech lead" của giai đoạn Tasks', 'The Spec Kit mode declares auto-approval for the "Tech lead" gate of the Tasks stage'], ['Không có từ khoá nhạy cảm trong tasks.md', 'No sensitive keyword in tasks.md'], ['Không chạm đường dẫn nhạy cảm (db/migrations/**)', 'No sensitive path touched (db/migrations/**)'], ['Checkpoint AI chạy xong, không lỗi, không hết thời gian', 'The AI checkpoint finished with no error or timeout']];
+    const autoReasons = reasonTx.map((r) => ({ icon: ok, mark: '✓', state: stOkS, text: x(r) }));
+    const autoTitle = x(am === 'revoked' ? ['Đã thu hồi tự duyệt', 'Auto-approval revoked'] : am === 'reapproved' ? ['Người duyệt sau thu hồi', 'Human approval after revoke'] : ['Tự duyệt bởi AI', 'Auto-approved by AI']);
+    const autoBadge = x(am === 'revoked' ? ['Duyệt lại sau thu hồi', 'Re-review after revoke'] : am === 'reapproved' ? ['Người duyệt sau thu hồi', 'Human approval after revoke'] : ['Tự duyệt bởi AI · 9,3/10 (ngưỡng 9)', 'Auto-approved by AI · 9.3/10 (threshold 9)']);
+    const autoBadgeStyle = am === 'revoked' ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--success-soft); color: var(--success);';
+    const autoDeadline = x(am === 'autoApproved' ? ['Thu hồi được tới 15:30 14/10 · còn 14 giờ', 'Can be revoked until 15:30 14/10 · 14 h left'] : am === 'expired' ? ['Hạn thu hồi đã qua: 15:30 14/10', 'Revoke window ended: 15:30 14/10'] : am === 'revoked' ? ['Thu hồi bởi Nguyễn Minh · 09:12 14/10. Chờ duyệt lại.', 'Revoked by Nguyễn Minh · 09:12 14/10. Waiting for re-review.'] : ['Duyệt lại xong 11:40 14/10 · baseline giữ nguyên, không thêm phiên bản', 'Re-review done 11:40 14/10 · baseline unchanged, no new version']);
+    const canRevoke = am === 'autoApproved';
+    const qa = [['Q-1', ['Hoàn tiền một phần có hoàn phí đã thu không?', 'Does a partial refund return the fee already charged?'], ['Không. Phí được giữ lại; tổng hoàn tối đa là số tiền gốc trừ phí.', 'No. The fee is kept; the total refunded is at most the original amount minus the fee.'], ['An (PO) · 10:24 12/10', 'An (PO) · 10:24 12/10']], ['Q-2', ['Một giao dịch được hoàn mấy lần?', 'How many refunds can one transaction have?'], ['Không giới hạn số lần, chỉ giới hạn tổng tiền hoàn.', 'No limit on the count, only on the total refunded.'], ['Trần Lan · 10:31 12/10', 'Trần Lan · 10:31 12/10']], ['Q-3', ['App mobile có hiện lịch sử hoàn không?', 'Does the mobile app show the refund history?'], ['Có, chỉ đọc. Web hiện đủ và cho tạo hoàn tiền.', 'Yes, read-only. Web shows it fully and can create refunds.'], ['Lê Quang · 11:02 12/10', 'Lê Quang · 11:02 12/10']]].map(([id, q, a, b]) => ({ id, q: x(q), a: x(a), by: x(['Trả lời bởi ', 'Answered by ']) + x(b) }));
+    const bdStats = [[3, ['làn dự án', 'project lanes']], [4, ['task', 'tasks']], [2, ['đợt', 'waves']], ['6/6', ['độ phủ yêu cầu', 'requirement coverage']]].map(([n, l]) => ({ n, label: x(l) }));
+    const bdLanes = [['payment-api', 'Backend', 'T-41, T-44'], ['web-shop', 'Web', 'T-42'], ['mobile-app', 'Mobile', 'T-43']].map(([project, team, tasks]) => ({ project, team: '(' + team + ')', tasks }));
+    sd.bdCover = x(['Độ phủ 6/6', 'Coverage 6/6']); sd.bdEdges = x(['2 cạnh liên dự án: T-42 và T-43 phụ thuộc T-41.', '2 cross-project edges: T-42 and T-43 depend on T-41.']);
+    const trace = sdlc ? [['FR-001', 'T-41, T-44'], ['FR-002', 'T-41'], ['FR-003', 'T-42'], ['FR-004', 'T-43'], ['FR-005', 'T-41, T-44'], ['FR-006', 'T-42, T-43']].map(([id, tasks]) => ({ id, tasks })) : [{ id: 'R-1', tasks: 'TASK-45, TASK-47' }, { id: 'R-2', tasks: 'TASK-45' }, { id: 'R-3', tasks: 'TASK-47' }];
+    const checks2 = stg === 'decomposition'
+      ? [[ok, '✓', ['Độ phủ 6/6: mỗi FR có ít nhất một task', 'Coverage 6/6: every FR has at least one task']], [ok, '✓', ['Cạnh liên dự án đủ: T-42 và T-43 phụ thuộc T-41', 'Cross-project edges present: T-42 and T-43 depend on T-41']], [ok, '✓', ['Mỗi dự án tham gia có ít nhất một task', 'Every participating project has at least one task']], [ok, '✓', ['T-44 là task test của payment-api', 'T-44 is the payment-api test task']], [warn, '!', ['T-44 chưa ghi ước lượng', 'T-44 has no estimate']]]
+      : stg === 'contract'
+        ? [[ok, '✓', ['Khớp OpenAPI: mọi route có mã lỗi BILL-409', 'Valid OpenAPI: every route lists BILL-409']], [ok, '✓', ['Bên cung cấp payment-api, bên dùng web-shop và mobile-app', 'Provider payment-api, consumers web-shop and mobile-app']], [warn, '!', ['mobile-app chưa xác nhận trường amountMinor', 'mobile-app has not confirmed the amountMinor field']]]
+        : null;
+    const aiChecks = sdlc && checks2 ? checks2.map(([i, m, tx]) => ({ icon: i, mark: m, text: x(tx) })) : checks;
+    const aiScore = sdlc ? (stg === 'decomposition' ? (am === 'normal' ? '8,7 / 10' : '9,3 / 10') : stg === 'contract' ? '9,0 / 10' : '8,5 / 10') : '8,5 / 10';
+    const sgTitle = { spec: ['Hoàn tiền một phần', 'Partial refunds'], contract: ['Contract refund-api (openapi)', 'Contract refund-api (openapi)'], decomposition: ['Hoàn tiền một phần: bản tách task', 'Partial refunds: task breakdown'] }[stg];
+    const sgBadge = { spec: 'spec.md', contract: 'contract', decomposition: 'tasks.md' }[stg];
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const M = [['normal', ['Bình thường', 'Normal']], ['autoApproved', ['Đã tự duyệt còn hạn', 'Auto-approved, revocable']], ['notAuto', ['Không tự duyệt', 'Not auto-approved']], ['revoked', ['Đã thu hồi', 'Revoked']], ['reapproved', ['Duyệt lại xong', 'Re-approved']], ['expired', ['Quá hạn thu hồi', 'Revoke window over']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi', 'Error']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k }) }));
+    const stages = [['spec', ['Yêu cầu · Specify', 'Requirements · Specify']], ['contract', ['Thiết kế · Contract', 'Design · Contract']], ['decomposition', ['Tách task', 'Decomposition']]].map(([k, l]) => ({ label: x(l), on: stg === k ? 'true' : 'false', style: seg(stg === k), pick: () => this.setState({ stg: k }) }));
+    const showDecision = !sdlc || (view === 'ok' && am !== 'autoApproved' && am !== 'expired' && am !== 'reapproved');
     return {
-      theme: dark ? 'dark' : 'light', lang, dark, t, columns, facets, rows, size: 5, minW: 900, curId: d.id, pick: (r) => this.setState({ cur: r.id }),
-      bulk: [x(['Duyệt', 'Approve']), x(['Chuyển người duyệt', 'Reassign'])], steps, checks,
-      cur: { title: x(d.title), sla: d.left < 0 ? x(['Quá hạn', 'Overdue']) : x(['SLA còn ' + d.left + ' giờ', 'SLA ' + d.left + ' h left']) },
+      theme: dark ? 'dark' : 'light', lang, dark, t, sdlc, sd, wide: !narrow, rootClass: narrow ? 'narrow' : '',
+      rootStyle: (narrow ? 'width: 360px; ' : 'min-height: 1000px; ') + 'display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      mainStyle: 'box-sizing: border-box; width: 100%; display: flex; flex-direction: column; gap: 16px; ' + (narrow ? 'padding: 16px 16px 32px;' : 'padding: 24px 28px 40px;'),
+      modes, stages, isLoading: view === 'loading', isEmpty: view === 'empty', isError: view === 'error', showDetail: view === 'ok',
+      docBadge: sdlc ? sgBadge : 'PRD', titleStyle: sdlc ? 'font-size: 16px; min-width: 0; overflow-wrap: anywhere;' : 'font-size: 16px;',
+      events, hasAuto, autoTitle, autoBadge, autoBadgeMark: am === 'revoked' ? '●' : '✓', autoBadgeStyle, autoReasons, autoDeadline, canRevoke, noRevoke: am === 'expired', isBlocked: am === 'revoked',
+      revokeBox: canRevoke && this.state.revoke, revokeOpenAttr: this.state.revoke ? 'true' : 'false', toggleRevoke: () => this.setState({ revoke: !this.state.revoke }),
+      qa, bdStats, bdLanes, showBreakdown: stg === 'decomposition', trace, traceCount: sdlc ? '6 / 6' : '3 / 3', aiScore, showDecision,
+      columns, facets, rows, size: narrow ? 3 : 5, minW: narrow ? 320 : 900, curId: d.id, pick: (r) => this.setState({ cur: r.id }),
+      bulk: [x(['Duyệt', 'Approve']), x(['Chuyển người duyệt', 'Reassign'])], steps, checks: aiChecks,
+      cur: { title: sdlc ? x(sgTitle) : x(d.title), sla: d.left < 0 ? x(['Quá hạn', 'Overdue']) : x(['SLA còn ' + d.left + ' giờ', 'SLA ' + d.left + ' h left']) },
       setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
     };
   }

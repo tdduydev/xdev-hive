@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · AI SDLC · Hạng mục</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a:focus-visible,button:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap;text-decoration:none;box-sizing:border-box}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:9999px;font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--border);white-space:nowrap;flex:none}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.sel{height:30px;box-sizing:border-box;padding:0 8px;border:1px solid var(--input);border-radius:8px;background:var(--background);color:var(--foreground);font:inherit;font-size:13px;max-width:180px}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.nr .btn,.nr .sel{height:36px}
+.nr .seg button{min-height:32px}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard cửa sổ app 1440x900. Đặt prop narrow = true để xem 360 px (không AppNav, thanh đầu có nút Menu, bảng thành nhóm cuộn dọc). -->
+<div data-theme="{{theme}}" class="{{rootClass}}" style="{{rootStyle}}">
+  <div style="{{winStyle}}">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+      <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+        <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+        <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">{{t.winTitle}}</span>
+        <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" aria-pressed="{{isVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{isEn}}" style="{{enS}}">EN</button></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <div style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--card); border-bottom: 1px solid var(--border);">
+        <button type="button" class="btn btn-outline" aria-label="{{t.menuAria}}" aria-haspopup="menu" aria-expanded="false"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>{{t.menu}}</button>
+        <strong style="flex: 1; min-width: 0; font-family: var(--font-heading); font-size: 16px; letter-spacing: -0.02em;">{{t.title}}</strong>
+        <div style="display: inline-flex; padding: 2px; background: var(--muted); border-radius: 7px;"><button type="button" onClick="{{toVi}}" aria-pressed="{{isVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" aria-pressed="{{isEn}}" style="{{enS}}">EN</button></div>
+      </div>
+    </sc-if>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="AppNav" active="sdlc" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import></sc-if>
+      <main style="{{mainStyle}}">
+        <header style="{{headStyle}}">
+          <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+              <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; letter-spacing: -0.03em;">{{t.title}}</h1>
+              <p class="muted" style="margin: 0; font-size: 13px; max-width: 640px;">{{t.lead}}</p>
+            </div>
+          </sc-if>
+          <div style="{{toolStyle}}">
+            <sc-if value="{{isRo}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">○</span>{{t.roBadge}}</span></sc-if>
+            <div class="seg" role="tablist" aria-label="{{t.view}}">
+              <sc-for list="{{views}}" as="vw" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{vw.on}}" onClick="{{vw.pick}}" style="{{vw.style}}"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="{{vw.icon}}"></path></svg>{{vw.label}}</button></sc-for>
+            </div>
+            <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}"><a class="btn btn-default" href="AppSdlcNewItem.dc.html"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{t.create}}</a></sc-if>
+            <sc-if value="{{isRo}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-default" disabled="{{isRo}}" aria-describedby="sdlc-ro-note"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>{{t.create}}</button></sc-if>
+          </div>
+        </header>
+        <sc-if value="{{isRo}}" hint-placeholder-val="{{false}}"><div id="sdlc-ro-note" role="status" class="alert" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">i</span><span>{{t.roNote}}</span></div></sc-if>
+        <sc-if value="{{isPaused}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning); flex-wrap: wrap;"><span aria-hidden="true">!</span><span style="flex: 1 1 240px; min-width: 0;"><strong>{{t.pausedTitle}}</strong> {{t.pausedText}}</span><a class="btn btn-outline" href="ProjectSettings.dc.html">{{t.pausedAction}}</a></div>
+        </sc-if>
+
+        <sc-if value="{{hasData}}" hint-placeholder-val="{{true}}">
+          <div role="group" aria-label="{{t.filters}}" style="{{filterStyle}}">
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; flex: none;" class="muted">{{t.fProject}}<select class="sel" value="{{fProject}}" onChange="{{onProject}}"><sc-for list="{{projOpts}}" as="po" hint-placeholder-count="4"><option value="{{po.v}}">{{po.label}}</option></sc-for></select></label>
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; flex: none;" class="muted">{{t.fMode}}<select class="sel" value="{{fMode}}" onChange="{{onMode}}"><sc-for list="{{modeOpts}}" as="mo" hint-placeholder-count="5"><option value="{{mo.v}}">{{mo.label}}</option></sc-for></select></label>
+            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; flex: none;" class="muted">{{t.fPerson}}<select class="sel" value="{{fPerson}}" onChange="{{onPerson}}"><sc-for list="{{personOpts}}" as="pe" hint-placeholder-count="6"><option value="{{pe.v}}">{{pe.label}}</option></sc-for></select></label>
+            <sc-if value="{{anyFilter}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline" onClick="{{clearFilters}}" style="flex: none;">{{t.clear}}</button></sc-if>
+            <span class="muted num" role="status" style="font-size: 12.5px; flex: none; margin-left: auto;">{{countText}}</span>
+          </div>
+          <sc-if value="{{showProjHint}}" hint-placeholder-val="{{false}}"><span class="muted" style="font-size: 12px; margin-top: -6px;"><span aria-hidden="true">✓</span> {{t.projHint}}</span></sc-if>
+        </sc-if>
+
+        <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+          <section aria-busy="true" aria-label="{{t.loading}}" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;">
+            <sc-for list="{{skel}}" as="sk" hint-placeholder-count="4">
+              <div class="card pulse" style="padding: 12px; display: flex; flex-direction: column; gap: 10px;"><div style="height: 14px; width: 40%; border-radius: 6px; background: var(--muted);"></div><div style="height: 16px; width: 90%; border-radius: 6px; background: var(--muted);"></div><div style="height: 22px; width: 70%; border-radius: 9999px; background: var(--muted);"></div><div style="height: 12px; width: 55%; border-radius: 6px; background: var(--muted);"></div></div>
+            </sc-for>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isError}}" hint-placeholder-val="{{false}}">
+          <section class="card" role="alert" style="padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <span class="badge" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span>{{t.errTitle}}</span>
+            <span class="muted" style="max-width: 460px;">{{t.errCause}}</span>
+            <button type="button" class="btn btn-outline" onClick="{{retry}}">{{t.retry}}</button>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isOff}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 32px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">○</span>{{t.offBadge}}</span>
+            <strong>{{t.offTitle}}</strong>
+            <span class="muted" style="max-width: 460px;">{{t.offText}}</span>
+            <a class="btn btn-outline" href="ProjectSettings.dc.html">{{t.offAction}}</a>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{isNone}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 32px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <strong>{{t.noneTitle}}</strong>
+            <span class="muted" style="max-width: 460px;">{{t.noneText}}</span>
+            <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}"><a class="btn btn-outline" href="AppSdlcNewItem.dc.html">{{t.noneAction}}</a></sc-if>
+            <sc-if value="{{isRo}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-outline" disabled="{{isRo}}">{{t.noneAction}}</button></sc-if>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{showNoMatch}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 28px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <strong>{{t.noMatchTitle}}</strong>
+            <span class="muted" style="max-width: 460px;">{{t.noMatchText}}</span>
+            <button type="button" class="btn btn-outline" onClick="{{clearFilters}}">{{t.clear}}</button>
+          </section>
+        </sc-if>
+
+        <!-- Bảng: 7 cột theo loại giai đoạn chuẩn. 1440 px cuộn ngang trong vùng riêng; 360 px thành nhóm cuộn dọc, mỗi giai đoạn gập được. -->
+        <sc-if value="{{showBoard}}" hint-placeholder-val="{{true}}">
+          <div role="region" tabindex="0" aria-label="{{t.boardAria}}" style="{{boardStyle}}">
+            <sc-for list="{{cols}}" as="col" hint-placeholder-count="7">
+              <section aria-label="{{col.name}}" style="{{col.style}}">
+                <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+                  <button type="button" onClick="{{col.toggle}}" aria-expanded="{{col.expanded}}" style="width: 100%; min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border: 0; background: transparent; color: var(--foreground); font: inherit; cursor: pointer; text-align: left;"><span aria-hidden="true" class="muted">{{col.chev}}</span><strong style="flex: 1;">{{col.name}}</strong><span class="badge num mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{col.count}}</span></button>
+                </sc-if>
+                <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+                  <div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px;"><strong style="flex: 1;">{{col.name}}</strong><span class="mono muted" style="font-size: 11px;">{{col.type}}</span><span class="badge num mono" style="background: var(--secondary); color: var(--secondary-foreground);">{{col.count}}</span></div>
+                </sc-if>
+                <sc-if value="{{col.open}}" hint-placeholder-val="{{true}}">
+                  <sc-if value="{{col.none}}" hint-placeholder-val="{{false}}"><div class="muted" style="padding: 10px 8px; font-size: 12.5px; border: 1px dashed var(--input); border-radius: 10px; text-align: center;">{{t.colEmpty}}</div></sc-if>
+                  <sc-for list="{{col.cards}}" as="cd" hint-placeholder-count="2">
+                    <article class="card" aria-label="{{cd.num}} {{cd.title}}" style="padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+                      <div style="display: flex; align-items: flex-start; gap: 6px;">
+                        <span class="mono num muted" style="font-size: 12px; padding-top: 2px;">{{cd.num}}</span>
+                        <a href="AppSdlcItem.dc.html" style="flex: 1; min-width: 0; font-weight: 600; font-size: 13.5px; line-height: 1.35; color: var(--foreground); text-decoration: none; overflow-wrap: anywhere;">{{cd.title}}</a>
+                      </div>
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
+                        <span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{cd.mode}}</span>
+                        <span class="badge mono" style="background: var(--muted); color: var(--foreground);" title="{{t.sizeLbl}} {{cd.size}}">{{t.sizeLbl}} {{cd.size}}</span>
+                      </div>
+                      <div role="list" tabindex="0" aria-label="{{t.projects}}" style="{{chipRow}}">
+                        <sc-for list="{{cd.chips}}" as="ch" hint-placeholder-count="3"><span role="listitem" class="chip" style="{{ch.style}}" title="{{ch.title}}">{{ch.mark}}{{ch.name}}<sc-if value="{{ch.primary}}" hint-placeholder-val="{{false}}"><span style="font-family: var(--font-sans); font-size: 10.5px; font-weight: 500;">· {{t.primary}}</span></sc-if></span></sc-for>
+                      </div>
+                      <div style="{{cd.waitStyle}}"><span aria-hidden="true">{{cd.waitMark}}</span><span style="min-width: 0; overflow-wrap: anywhere;">{{cd.wait}}</span></div>
+                      <div class="muted num" style="display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px;"><span>{{cd.docs}}</span><span>{{cd.cov}}</span><span class="mono">{{cd.cost}}</span></div>
+                      <sc-if value="{{cd.auto}}" hint-placeholder-val="{{false}}"><span class="badge num" style="align-self: flex-start; background: var(--success-soft); color: var(--success);"><span aria-hidden="true">✓</span>{{cd.auto}}</span></sc-if>
+                      <sc-if value="{{cd.q}}" hint-placeholder-val="{{false}}"><span class="badge num" style="align-self: flex-start; background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">?</span>{{cd.q}}</span></sc-if>
+                    </article>
+                  </sc-for>
+                </sc-if>
+              </section>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{showList}}" hint-placeholder-val="{{false}}">
+          <dc-import name="DataTable" columns="{{columns}}" rows="{{rows}}" facets="{{facets}}" lang="{{lang}}" placeholder="{{t.search}}" page-size="{{size}}" min-width="{{minW}}" selectable="{{selectable}}" hint-size="100%,420px"></dc-import>
+        </sc-if>
+
+        <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+        <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+          <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+          <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="8"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+        </section>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"role":{"editor":"enum","options":["dev","writer","lead"],"default":"dev"},"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":900}}'>
+// modes: normal,list,loading,emptyOff,emptyNone,error,readonly,paused
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'normal', view: 'board', fProject: '', fMode: '', fPerson: '', collapsed: {}, lang: null };
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const role = this.props.role ?? 'dev';
+    const narrow = !!this.props.narrow;
+    const mode = this.state.mode;
+    const view = mode === 'list' ? 'list' : this.state.view;
+    const S = this.state;
+
+    const T = {
+      winTitle: ['xDev Hive · AI SDLC · Hạng mục', 'xDev Hive · AI SDLC · Items'], title: ['Hạng mục', 'Items'], menu: ['Menu', 'Menu'], menuAria: ['Mở menu app', 'Open app menu'],
+      lead: ['Mỗi hạng mục đi qua 7 giai đoạn chuẩn. Thẻ cho biết đang chờ ai, tài liệu đã duyệt, độ phủ và chi phí agent.', 'Every item moves through 7 standard stages. A card shows who it waits for, approved documents, coverage and agent cost.'],
+      view: ['Kiểu xem', 'View'], create: ['Tạo hạng mục', 'Create item'], roBadge: ['Chỉ đọc', 'Read-only'],
+      roNote: ['Bạn chỉ có quyền đọc AI SDLC. Cần quyền sdlc.write để tạo hạng mục.', 'You have read-only AI SDLC access. Creating an item needs the sdlc.write permission.'],
+      filters: ['Bộ lọc', 'Filters'], fProject: ['Dự án', 'Project'], fMode: ['Chế độ', 'Mode'], fPerson: ['Người', 'Person'], clear: ['Xoá bộ lọc', 'Clear filters'],
+      projHint: ['Lọc dự án khớp cả hạng mục mà dự án chỉ tham gia; chip khớp có dấu ✓.', 'The project filter also matches items where the project only takes part; matching chips carry a ✓.'],
+      states: ['Trạng thái xem', 'View state'], boardAria: ['Bảng hạng mục theo giai đoạn', 'Items board by stage'], projects: ['Dự án của hạng mục', 'Projects of the item'], primary: ['chính', 'primary'], sizeLbl: ['Cỡ', 'Size'],
+      loading: ['Đang tải hạng mục', 'Loading items'], search: ['Tìm hạng mục, dự án…', 'Search items, projects…'], colEmpty: ['Chưa có hạng mục ở giai đoạn này', 'No items in this stage'],
+      errTitle: ['Không tải được hạng mục', 'Could not load items'], errCause: ['Hub không trả lời sau 10 giây (HUB_TIMEOUT). Dữ liệu của bạn không bị mất; thử lại sau ít giây.', 'The hub did not answer within 10 seconds (HUB_TIMEOUT). Your data is safe; try again in a few seconds.'], retry: ['Thử lại', 'Retry'],
+      offBadge: ['Chưa bật', 'Not enabled'], offTitle: ['Chưa dự án nào bật AI SDLC', 'No project has AI SDLC turned on'], offText: ['Quản trị dự án bật AI SDLC trong Cấu hình dự án. Khi đã bật, hạng mục của dự án hiện ở đây.', 'A project admin turns AI SDLC on in Project settings. Once on, the items of that project show up here.'], offAction: ['Mở cấu hình dự án', 'Open project settings'],
+      noneTitle: ['Chưa có hạng mục nào', 'No items yet'], noneText: ['Tạo hạng mục từ một ý tưởng hoặc link issue GitHub/GitLab. Hive gợi ý cỡ việc và chế độ.', 'Create an item from an idea or a GitHub/GitLab issue link. Hive suggests the size and the mode.'], noneAction: ['Tạo hạng mục đầu tiên', 'Create the first item'],
+      noMatchTitle: ['Không có hạng mục nào khớp bộ lọc', 'No item matches these filters'], noMatchText: ['Bỏ bớt bộ lọc, hoặc chọn dự án khác. Dự án chỉ tham gia hạng mục cũng được tính.', 'Remove a filter or pick another project. Projects that only take part in an item also count.'],
+      pausedTitle: ['Dự án payment-api đã tắt AI SDLC.', 'Project payment-api turned AI SDLC off.'], pausedText: ['Hạng mục có dự án chính payment-api (009, 010, 012) tạm dừng; hạng mục của dự án khác chạy tiếp.', 'Items whose primary project is payment-api (009, 010, 012) are paused; items of other projects keep going.'], pausedAction: ['Mở cấu hình dự án', 'Open project settings'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    const TONE = {
+      bad: 'background: var(--destructive-soft); color: var(--destructive);', warn: 'background: var(--warning-soft); color: var(--warning);', ok: 'background: var(--success-soft); color: var(--success);',
+      off: 'background: var(--muted); color: var(--muted-foreground);', accent: 'background: var(--accent); color: var(--accent-foreground);', sec: 'background: var(--secondary); color: var(--secondary-foreground);',
+    };
+    const MODES = { speckit: ['Spec Kit', 'Spec Kit'], aidlc: ['AI-DLC Express', 'AI-DLC Express'], bugfix: ['Sửa lỗi', 'Bugfix'], small: ['Việc nhỏ', 'Small'] };
+    const STAGES = [['intake', ['Tiếp nhận', 'Intake']], ['requirements', ['Yêu cầu', 'Requirements']], ['design', ['Thiết kế', 'Design']], ['decomposition', ['Tách task', 'Task breakdown']], ['implementation', ['Triển khai', 'Implementation']], ['verification', ['Kiểm', 'Verification']], ['release', ['Phát hành', 'Release']]];
+    const PEOPLE = ['Trần Lan', 'An', 'Nguyễn Minh', 'Lê Quang', 'Đỗ Hải', 'Phạm Hà'];
+    const data = [
+      { num: '012', slug: 'hoan-tien-mot-phan', title: ['Hoàn tiền một phần', 'Partial refunds'], mode: 'speckit', size: 'L', stage: 'requirements', projects: ['payment-api', 'web-shop', 'mobile-app'], owner: 'Trần Lan', wait: { kind: 'person', who: 'An', role: 'PO', left: -3 }, docs: [1, 2], cov: null, cost: 1.84, q: 2, auto: '' },
+      { num: '013', slug: 'xuat-bao-cao-thang', title: ['Xuất báo cáo tháng', 'Monthly report export'], mode: 'aidlc', size: 'M', stage: 'design', projects: ['web-shop'], owner: 'Trần Lan', wait: { kind: 'person', who: 'Lê Quang', role: 'Tech lead', left: 20 }, docs: [2, 3], cov: null, cost: 0.96, q: 0, auto: '9,3' },
+      { num: '009', slug: 'sua-loi-lam-tron', title: ['Sửa lỗi làm tròn', 'Fix rounding error'], mode: 'bugfix', size: 'S', stage: 'implementation', projects: ['payment-api'], owner: 'Phạm Hà', wait: { kind: 'machine' }, docs: [1, 1], cov: 50, cost: 0.42, q: 0, auto: '' },
+      { num: '014', slug: 'dong-bo-kho', title: ['Đồng bộ kho', 'Stock sync'], mode: 'small', size: 'S', stage: 'intake', projects: ['mobile-app'], owner: 'Đỗ Hải', wait: { kind: 'agent' }, docs: [0, 1], cov: null, cost: 0.08, q: 1, auto: '' },
+      { num: '010', slug: 'vi-dien-tu-nap-tien', title: ['Ví điện tử nạp tiền', 'E-wallet top-up'], mode: 'speckit', size: 'XL', stage: 'verification', projects: ['payment-api', 'web-shop'], owner: 'Trần Lan', wait: { kind: 'person', who: 'Nguyễn Minh', role: 'Tech lead', left: 2 }, docs: [5, 5], cov: 83, cost: 12.6, q: 0, auto: '' },
+    ];
+
+    const money = (v) => v.toFixed(2).replace('.', en ? '.' : ',');
+    const paused = (d) => mode === 'paused' && d.projects[0] === 'payment-api';
+    const waitOf = (d) => {
+      if (paused(d)) return { text: x(['Tạm dừng: dự án chính đã tắt AI SDLC', 'Paused: the primary project turned AI SDLC off']), tone: 'bad', mark: '‖' };
+      const w = d.wait;
+      if (w.kind === 'machine') return { text: x(['Chờ máy AI SDLC', 'Waiting for an AI SDLC machine']), tone: 'warn', mark: '○' };
+      if (w.kind === 'agent') return { text: x(['Agent đang soạn', 'Agent is drafting']), tone: 'accent', mark: '●' };
+      const over = w.left < 0;
+      const text = x(['Chờ ' + w.who + ' (' + w.role + ') · ' + (over ? 'quá hạn ' + -w.left + ' giờ' : 'còn ' + w.left + ' giờ'), 'Waiting for ' + w.who + ' (' + w.role + ') · ' + (over ? -w.left + ' h overdue' : w.left + ' h left')]);
+      return { text, tone: over ? 'bad' : w.left <= 6 ? 'warn' : 'off', mark: over ? '!' : w.left <= 6 ? '●' : '○' };
+    };
+    const hasData = ['normal', 'list', 'readonly', 'paused'].includes(mode);
+    const shown = data.filter((d) => (!S.fProject || d.projects.includes(S.fProject)) && (!S.fMode || d.mode === S.fMode) && (!S.fPerson || d.owner === S.fPerson || (d.wait.who || '') === S.fPerson));
+    const anyFilter = !!(S.fProject || S.fMode || S.fPerson);
+
+    const chipRow = narrow ? 'display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; padding-bottom: 2px;' : 'display: flex; flex-wrap: wrap; gap: 4px;';
+    const cardOf = (d) => {
+      const w = waitOf(d);
+      return {
+        num: d.num, title: x(d.title), mode: x(MODES[d.mode]), size: d.size,
+        chips: d.projects.map((p, i) => {
+          const hit = S.fProject === p;
+          return { name: p, primary: i === 0, mark: hit ? '✓ ' : '', title: i === 0 ? p + ' · ' + t.primary : p, style: (i === 0 ? TONE.accent + ' border-color: transparent; font-weight: 600;' : 'background: var(--card); color: var(--foreground);') + (hit ? ' box-shadow: 0 0 0 2px var(--ring);' : '') };
+        }),
+        wait: w.text, waitMark: w.mark, waitStyle: 'display: flex; gap: 6px; align-items: flex-start; padding: 5px 8px; border-radius: 8px; font-size: 12.5px; font-weight: 500; ' + TONE[w.tone],
+        docs: x([d.docs[0] + '/' + d.docs[1] + ' tài liệu đã duyệt', d.docs[0] + '/' + d.docs[1] + ' documents approved']),
+        cov: d.cov == null ? x(['Độ phủ —', 'Coverage —']) : x(['Độ phủ ' + d.cov + '%', 'Coverage ' + d.cov + '%']),
+        cost: money(d.cost) + ' USD',
+        auto: d.auto ? x(['Tự duyệt bởi AI · ' + d.auto + '/10', 'Auto-approved by AI · ' + d.auto + '/10']) : '',
+        q: d.q ? x(['Chờ trả lời (' + d.q + ')', 'Awaiting answer (' + d.q + ')']) : '',
+      };
+    };
+    const cols = STAGES.map(([id, nm]) => {
+      const list = shown.filter((d) => d.stage === id);
+      const collapsed = narrow && (S.collapsed[id] ?? list.length === 0);
+      return {
+        name: x(nm), type: id, count: list.length, cards: list.map(cardOf), none: list.length === 0, open: !collapsed, expanded: collapsed ? 'false' : 'true', chev: collapsed ? '▸' : '▾',
+        toggle: () => this.setState({ collapsed: { ...S.collapsed, [id]: !collapsed } }),
+        style: narrow ? 'width: 100%; box-sizing: border-box; background: var(--muted); border-radius: 12px; padding: 4px 8px 8px; display: flex; flex-direction: column; gap: 8px;' : 'flex: 0 0 232px; width: 232px; box-sizing: border-box; background: var(--muted); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 8px;',
+      };
+    });
+
+    const stageName = Object.fromEntries(STAGES.map(([id, nm]) => [id, x(nm)]));
+    const rows = shown.map((d) => {
+      const w = waitOf(d);
+      return {
+        id: 'i' + d.num, title: d.num + ' · ' + x(d.title), sub: d.num + '-' + d.slug, mode: x(MODES[d.mode]), size: d.size, _sort_stage: STAGES.findIndex((s) => s[0] === d.stage),
+        stage: { text: stageName[d.stage], tone: 'sec', dot: false }, projects: d.projects.map((p, i) => (i === 0 ? p + ' (' + t.primary + ')' : p)), _f_project: d.projects,
+        wait: { text: w.text, tone: w.tone }, docs: d.docs[0] + '/' + d.docs[1], cov: d.cov == null ? '—' : d.cov + '%', _sort_cov: d.cov == null ? -1 : d.cov, cost: money(d.cost), _sort_cost: d.cost,
+        flags: [d.auto ? x(['Tự duyệt bởi AI ' + d.auto, 'Auto-approved ' + d.auto]) : '', d.q ? x(['Chờ trả lời (' + d.q + ')', 'Awaiting answer (' + d.q + ')']) : ''].filter(Boolean),
+      };
+    });
+    const columns = [
+      { key: 'title', label: x(['Hạng mục', 'Item']), type: 'title', sub: 'sub', subMono: true },
+      { key: 'stage', label: x(['Giai đoạn', 'Stage']), type: 'badge', sortable: true },
+      { key: 'mode', label: x(['Chế độ', 'Mode']) }, { key: 'size', label: x(['Cỡ', 'Size']), type: 'mono' },
+      { key: 'projects', label: x(['Dự án', 'Projects']), type: 'tags' },
+      { key: 'wait', label: x(['Đang chờ', 'Waiting for']), type: 'badge' },
+      { key: 'docs', label: x(['Tài liệu duyệt', 'Docs approved']), type: 'num' },
+      { key: 'cov', label: x(['Độ phủ', 'Coverage']), type: 'num', sortable: true },
+      { key: 'cost', label: x(['Chi phí (USD)', 'Cost (USD)']), type: 'num', sortable: true },
+      { key: 'flags', label: x(['Ghi chú', 'Flags']), type: 'tags' },
+    ];
+    const facets = [{ key: 'stage', label: x(['Giai đoạn', 'Stage']) }, { key: 'mode', label: x(['Chế độ', 'Mode']) }];
+
+    const seg = (on) => 'display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const lg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    const views = [['board', ['Bảng', 'Board'], 'M3 3h7v18H3zM14 3h7v10h-7z'], ['list', ['Danh sách', 'List'], 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01']].map(([k, l, icon]) => ({
+      label: x(l), icon, on: view === k ? 'true' : 'false', style: seg(view === k), pick: () => this.setState({ view: k, mode: mode === 'list' ? 'normal' : mode }),
+    }));
+    const M = [['normal', ['Bình thường', 'Normal']], ['list', ['Dạng danh sách', 'List view']], ['loading', ['Đang tải', 'Loading']], ['emptyOff', ['Rỗng: chưa bật AI SDLC', 'Empty: AI SDLC off']], ['emptyNone', ['Rỗng: chưa có hạng mục', 'Empty: no items']], ['error', ['Lỗi tải', 'Load error']], ['readonly', ['Chỉ đọc', 'Read-only']], ['paused', ['Dự án tạm dừng', 'Project paused']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k }) }));
+
+    const opts = (all, list) => [{ v: '', label: all }, ...list.map(([v, label]) => ({ v, label }))];
+    const showRows = hasData && shown.length > 0;
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, role, t, narrow, wide: !narrow,
+      chipRow, rootClass: narrow ? 'nr' : '',
+      rootStyle: narrow ? 'width: 360px; min-height: 780px; display: flex; flex-direction: column; overflow-x: hidden; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;' : 'width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      winStyle: narrow ? 'width: 100%; display: flex; flex-direction: column; flex: 1; min-width: 0;' : 'width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; min-width: 0; padding: 14px 12px 28px; display: flex; flex-direction: column; gap: 12px;' : 'flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;',
+      headStyle: narrow ? 'display: flex; flex-direction: column; gap: 10px;' : 'display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px;',
+      toolStyle: 'display: flex; flex-wrap: wrap; align-items: center; gap: 8px;',
+      filterStyle: narrow ? 'display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 4px;' : 'display: flex; flex-wrap: wrap; align-items: center; gap: 10px;',
+      boardStyle: narrow ? 'display: flex; flex-direction: column; gap: 10px;' : 'display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; padding-bottom: 8px;',
+      isVi: en ? 'false' : 'true', isEn: en ? 'true' : 'false', viS: lg(!en), enS: lg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+      views, modes, cols, rows, columns, facets, size: narrow ? 5 : 10, minW: narrow ? 320 : 1100, selectable: false,
+      hasData, isLoading: mode === 'loading', isError: mode === 'error', isOff: mode === 'emptyOff', isNone: mode === 'emptyNone', isRo: mode === 'readonly', isPaused: mode === 'paused', canWrite: mode !== 'readonly',
+      showBoard: showRows && view === 'board', showList: showRows && view === 'list', showNoMatch: hasData && shown.length === 0,
+      skel: [1, 2, 3, 4].map((n) => ({ n })),
+      fProject: S.fProject, fMode: S.fMode, fPerson: S.fPerson, anyFilter, showProjHint: !!S.fProject,
+      projOpts: opts(x(['Tất cả dự án', 'All projects']), [['payment-api', 'payment-api'], ['web-shop', 'web-shop'], ['mobile-app', 'mobile-app']]),
+      modeOpts: opts(x(['Tất cả chế độ', 'All modes']), Object.keys(MODES).map((k) => [k, x(MODES[k])])),
+      personOpts: opts(x(['Mọi người', 'Everyone']), PEOPLE.map((p) => [p, p])),
+      onProject: (e) => this.setState({ fProject: e?.target?.value ?? '' }), onMode: (e) => this.setState({ fMode: e?.target?.value ?? '' }), onPerson: (e) => this.setState({ fPerson: e?.target?.value ?? '' }),
+      clearFilters: () => this.setState({ fProject: '', fMode: '', fPerson: '' }),
+      countText: x(['Hiện ' + shown.length + '/' + data.length + ' hạng mục', 'Showing ' + shown.length + '/' + data.length + ' items']),
+      retry: () => this.setState({ mode: 'loading' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

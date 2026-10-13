@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · AI SDLC · Câu hỏi chờ tôi</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible,textarea:focus-visible,select:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:var(--bh,30px);padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-secondary{background:var(--secondary);color:var(--secondary-foreground)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border-radius:9999px;font-size:12px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.num{font-variant-numeric:tabular-nums}
+.input{box-sizing:border-box;padding:8px 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:pulse 1.6s ease-in-out infinite}}
+@keyframes pulse{50%{opacity:.4}}
+</style>
+</helmet>
+<!-- Artboard app 1440x900 (cửa sổ giả + AppNav). Đặt prop narrow = true để xem 360 px: không AppNav, thanh đầu có nút Menu, một cột. -->
+<div data-theme="{{theme}}" style="{{outerStyle}}">
+  <div style="{{winStyle}}">
+    <sc-if value="{{wide}}" hint-placeholder-val="{{true}}">
+      <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+        <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+        <span class="muted" style="flex: 1; text-align: center; font-size: 12.5px;">{{t.winTitle}}</span>
+        <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+      </div>
+    </sc-if>
+    <sc-if value="{{narrow}}" hint-placeholder-val="{{false}}">
+      <header style="height: 52px; flex: none; box-sizing: border-box; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); background: var(--background);">
+        <strong style="flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{t.title}}</strong>
+        <span class="badge num" style="{{badgeStyle}}">{{pendingCount}}</span>
+        <button type="button" class="btn btn-outline" aria-haspopup="menu" aria-label="{{t.menu}}"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>{{t.menu}}</button>
+      </header>
+    </sc-if>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <sc-if value="{{wide}}" hint-placeholder-val="{{true}}"><dc-import name="AppNav" active="sdlc-questions" role="{{role}}" lang="{{lang}}" hint-size="220px,800px"></dc-import></sc-if>
+      <main style="{{mainStyle}}">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+            <span class="muted" style="font-size: 12.5px;">AI SDLC</span>
+            <h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; line-height: 1.2; letter-spacing: -0.03em;">{{t.title}}</h1>
+            <p class="muted" style="margin: 0; font-size: 13px; max-width: 640px;">{{t.lead}}</p>
+          </div>
+          <span class="badge" style="{{sync.style}}" role="status" title="{{t.syncTip}}"><span aria-hidden="true">{{sync.mark}}</span>{{sync.text}}</span>
+        </header>
+
+        <div role="tablist" aria-label="{{t.title}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+          <div class="seg">
+            <sc-for list="{{tabs}}" as="tb" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{tb.on}}" onClick="{{tb.pick}}" style="{{tb.style}}">{{tb.label}} <span class="num mono" style="font-size: 12px; opacity: .8;">({{tb.count}})</span></button></sc-for>
+          </div>
+          <sc-if value="{{ro}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--muted); color: var(--muted-foreground);"><span aria-hidden="true">○</span>{{t.roBadge}}</span></sc-if>
+        </div>
+
+        <!-- Trạng thái xem: công cụ của bảng thiết kế, không phải của sản phẩm. -->
+        <section aria-label="{{t.states}}" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px dashed var(--input); border-radius: 10px;">
+          <span class="muted" style="font-size: 12.5px;">{{t.states}}</span>
+          <div class="seg"><sc-for list="{{modes}}" as="m" hint-placeholder-count="7"><button type="button" aria-pressed="{{m.on}}" onClick="{{m.pick}}" style="{{m.style}}">{{m.label}}</button></sc-for></div>
+        </section>
+
+        <sc-if value="{{showOverdue}}" hint-placeholder-val="{{false}}">
+          <div role="alert" class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span>{{t.overdueText}}</span></div>
+        </sc-if>
+
+        <sc-if value="{{allDoneBanner}}" hint-placeholder-val="{{false}}">
+          <div role="status" class="alert" style="background: var(--success-soft); color: var(--success);"><span aria-hidden="true">✓</span><span>{{t.allDoneText}}</span></div>
+        </sc-if>
+
+        <sc-if value="{{isLoading}}" hint-placeholder-val="{{false}}">
+          <section aria-busy="true" aria-label="{{t.loading}}" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="card pulse" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;"><div style="height: 16px; width: 40%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 85%; border-radius: 6px; background: var(--muted);"></div><div style="height: 36px; width: 100%; border-radius: 8px; background: var(--muted);"></div><div style="height: 36px; width: 100%; border-radius: 8px; background: var(--muted);"></div></div>
+            <div class="card pulse" style="padding: 16px; display: flex; flex-direction: column; gap: 10px;"><div style="height: 16px; width: 30%; border-radius: 6px; background: var(--muted);"></div><div style="height: 14px; width: 70%; border-radius: 6px; background: var(--muted);"></div><div style="height: 36px; width: 100%; border-radius: 8px; background: var(--muted);"></div></div>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{showEmpty}}" hint-placeholder-val="{{false}}">
+          <section class="card" style="padding: 32px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;">
+            <strong>{{t.emptyTitle}}</strong>
+            <span class="muted" style="max-width: 460px;">{{t.emptyText}}</span>
+            <a href="AppSdlcBoard.dc.html" class="btn btn-outline" style="text-decoration: none;">{{t.emptyAction}}</a>
+          </section>
+        </sc-if>
+
+        <sc-if value="{{showPending}}" hint-placeholder-val="{{true}}">
+          <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+            <section class="card" aria-label="{{g.label}}" style="overflow: hidden;">
+              <div class="card-h" style="align-items: flex-start;">
+                <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;">
+                    <a href="AppSdlcItem.dc.html" class="mono" style="font-size: 13px; font-weight: 600; color: var(--primary);">{{g.label}}</a>
+                    <strong style="font-size: 14.5px; overflow-wrap: anywhere;">{{g.title}}</strong>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px;" class="muted">
+                    <span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); height: 20px; font-size: 11.5px;">{{g.project}}</span>
+                    <span class="badge" style="background: var(--accent); color: var(--accent-foreground); height: 20px; font-size: 11.5px;">{{g.modeLabel}}</span>
+                    <span>{{g.by}}</span>
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+                  <span class="badge num mono" style="{{g.dueStyle}}"><span aria-hidden="true">{{g.dueMark}}</span>{{g.dueText}}</span>
+                  <span class="muted num" style="font-size: 12px;">{{g.countText}}</span>
+                </div>
+              </div>
+
+              <sc-if value="{{g.errBanner}}" hint-placeholder-val="{{false}}">
+                <div role="alert" class="alert" style="margin: 12px 16px 0; background: var(--destructive-soft); color: var(--destructive);">
+                  <span aria-hidden="true">!</span>
+                  <span style="flex: 1; min-width: 0;"><strong>{{t.errTitle}}</strong><br>{{t.errText}} <span class="mono" style="font-size: 12px;">{{t.errCode}}</span></span>
+                  <button type="button" class="btn btn-outline" onClick="{{g.retry}}">{{t.retry}}</button>
+                </div>
+              </sc-if>
+
+              <ol style="margin: 0; padding: 12px 16px; list-style: none; display: flex; flex-direction: column; gap: 14px;">
+                <sc-for list="{{g.qs}}" as="q" hint-placeholder-count="3">
+                  <li style="{{q.boxStyle}}">
+                    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;">
+                      <span class="mono num muted" style="font-size: 12px;">{{q.no}}</span>
+                      <span class="badge" style="{{q.stateStyle}}"><span aria-hidden="true">{{q.stateMark}}</span>{{q.stateText}}</span>
+                      <sc-if value="{{q.late}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span>{{t.late}}</span></sc-if>
+                    </div>
+                    <p style="margin: 0; font-size: 14px; font-weight: 500; overflow-wrap: anywhere;">{{q.text}}</p>
+
+                    <sc-if value="{{q.isDone}}" hint-placeholder-val="{{false}}">
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 10px; border-radius: 8px; background: var(--success-soft); color: var(--success); font-size: 13px;">
+                        <span aria-hidden="true">✓</span>
+                        <span style="flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere;"><span class="sr">{{t.answered}}: </span>{{q.answer}}</span>
+                        <span class="muted" style="font-size: 12px; color: inherit; opacity: .85;">{{q.srcText}}</span>
+                        <sc-if value="{{q.canEdit}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-outline" onClick="{{q.edit}}">{{t.edit}}</button></sc-if>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{q.isOpen}}" hint-placeholder-val="{{true}}">
+                      <div role="radiogroup" aria-label="{{q.text}}" style="display: flex; flex-direction: column; gap: 6px;">
+                        <sc-for list="{{q.opts}}" as="o" hint-placeholder-count="3">
+                          <label style="{{o.style}}"><input type="radio" name="{{q.id}}" checked="{{o.on}}" disabled="{{ro}}" onChange="{{o.pick}}" style="margin: 3px 0 0; accent-color: var(--primary); flex: none;"><span style="flex: 1; min-width: 0; overflow-wrap: anywhere;">{{o.label}}</span><sc-if value="{{o.sug}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--accent); color: var(--accent-foreground); height: 20px; font-size: 11.5px;"><span aria-hidden="true">★</span>{{t.sugBadge}}</span></sc-if></label>
+                        </sc-for>
+                      </div>
+                      <label style="display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 500;"><span class="muted">{{t.free}}</span><textarea class="input" rows="2" disabled="{{ro}}" placeholder="{{t.freeHint}}" value="{{q.txt}}" onInput="{{q.onTxt}}" style="resize: vertical; min-height: 56px;"></textarea></label>
+                      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--muted);">
+                        <span style="flex: 1 1 220px; min-width: 0; font-size: 12.5px;"><strong>{{t.sugBy}}</strong> {{q.sugText}}<br><span class="muted">{{q.sugWhy}}</span></span>
+                        <sc-if value="{{canWrite}}" hint-placeholder-val="{{true}}">
+                          <button type="button" class="btn btn-outline" onClick="{{q.useSug}}">{{t.useSug}}</button>
+                          <button type="button" class="btn btn-secondary" disabled="{{q.noAns}}" onClick="{{q.quick}}">{{t.quick}}</button>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                  </li>
+                </sc-for>
+              </ol>
+
+              <div style="padding: 10px 16px 14px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;">
+                <span class="muted" style="flex: 1 1 200px; min-width: 0; font-size: 12.5px;">{{g.footNote}}</span>
+                <sc-if value="{{g.showSendAll}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-default" disabled="{{g.sendOff}}" onClick="{{g.sendAll}}">{{g.sendLabel}}</button></sc-if>
+                <sc-if value="{{g.showCompose}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-default" disabled="{{g.composeOff}}" onClick="{{g.compose}}">{{g.composeLabel}}</button></sc-if>
+                <sc-if value="{{g.autoNote}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--accent); color: var(--accent-foreground);"><span aria-hidden="true">●</span>{{t.autoRun}}</span></sc-if>
+              </div>
+            </section>
+          </sc-for>
+          <div class="muted" style="font-size: 12px;">{{t.maxNote}}</div>
+        </sc-if>
+
+        <sc-if value="{{showAnswered}}" hint-placeholder-val="{{false}}">
+          <section class="card" aria-label="{{t.tabAnswered}}" style="overflow: hidden;">
+            <div class="card-h"><h2 style="margin: 0; font-size: 14.5px; font-weight: 600;">{{t.tabAnswered}}</h2><span class="muted" style="font-size: 12.5px;">{{t.answeredMeta}}</span></div>
+            <ul style="margin: 0; padding: 4px 16px; list-style: none; display: flex; flex-direction: column;">
+              <sc-for list="{{past}}" as="p" hint-placeholder-count="3">
+                <li style="padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;">
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12.5px;"><span class="mono" style="font-weight: 600;">{{p.item}}</span><span class="badge mono" style="background: var(--secondary); color: var(--secondary-foreground); height: 20px; font-size: 11.5px;">{{p.round}}</span><span class="muted">{{p.meta}}</span></div>
+                  <span style="font-size: 13.5px; overflow-wrap: anywhere;">{{p.q}}</span>
+                  <span style="display: flex; gap: 6px; font-size: 13px; color: var(--success); overflow-wrap: anywhere;"><span aria-hidden="true">✓</span><span><span class="sr">{{t.answered}}: </span>{{p.a}}</span></span>
+                </li>
+              </sc-for>
+            </ul>
+            <div class="muted" style="padding: 10px 16px; font-size: 12.5px;">{{t.answeredNote}}</div>
+          </section>
+        </sc-if>
+      </main>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"narrow":{"editor":"boolean","default":false},"role":{"editor":"enum","options":["dev","writer","lead"],"default":"writer"},"$preview":{"width":1440,"height":900}}'>
+// modes: normal,loading,empty,error,alldone,readonly,overdue
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'normal', tab: 'pending', sel: {}, txt: {}, sent: {}, composed: {}, lang: null };
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const narrow = !!this.props.narrow;
+    const role = this.props.role ?? 'writer';
+    const dark = !!this.props.dark;
+    const S = this.state;
+    const mode = S.mode;
+    const ro = mode === 'readonly';
+
+    const T = {
+      winTitle: ['xDev Hive · AI SDLC · Câu hỏi chờ tôi', 'xDev Hive · AI SDLC · Questions for me'],
+      title: ['Câu hỏi chờ tôi', 'Questions for me'],
+      lead: ['Agent hỏi lại khi thiếu thông tin để soạn tài liệu. Chọn một lựa chọn, dùng đề xuất của agent hoặc tự viết. Mỗi vòng tối đa 5 câu.', 'The agent asks when it lacks information to draft a document. Pick an option, use the agent suggestion or write your own. At most 5 questions per round.'],
+      menu: ['Menu', 'Menu'], states: ['Trạng thái xem', 'View state'], loading: ['Đang tải câu hỏi', 'Loading questions'],
+      tabPending: ['Chờ tôi', 'Waiting for me'], tabAnswered: ['Đã trả lời', 'Answered'],
+      roBadge: ['chỉ đọc', 'read-only'],
+      syncTip: ['Câu trả lời đồng bộ giữa app và web trong 10 giây.', 'Answers sync between app and web within 10 seconds.'],
+      emptyTitle: ['Không có câu hỏi nào đang chờ bạn.', 'No questions are waiting for you.'],
+      emptyText: ['Khi agent cần làm rõ yêu cầu của một hạng mục, câu hỏi hiện ở đây và trong chi tiết hạng mục.', 'When an agent needs to clarify an item, its questions appear here and in the item detail.'],
+      emptyAction: ['Xem các hạng mục', 'See items'],
+      overdueText: ['013 · Yêu cầu có câu hỏi quá hạn 3 ngày. Hub đã nhắc bạn một lần và không tự dùng đề xuất của agent.', 'Item 013 · Requirements has a question 3 days overdue. The hub reminded you once and does not apply the agent suggestion on its own.'],
+      allDoneText: ['Bạn đã trả lời hết các câu hỏi. Badge trên menu về 0.', 'You answered every question. The menu badge is back to 0.'],
+      errTitle: ['Không gửi được câu trả lời.', 'Could not send your answers.'], errText: ['Mất kết nối tới hub. Nội dung bạn nhập vẫn còn ở dưới.', 'Lost connection to the hub. What you typed is kept below.'], errCode: ['HUB_UNREACHABLE · 503', 'HUB_UNREACHABLE · 503'], retry: ['Thử lại', 'Retry'],
+      late: ['Quá hạn 3 ngày', '3 days overdue'], answered: ['Đã trả lời', 'Answered'], edit: ['Sửa', 'Edit'],
+      sugBadge: ['Đề xuất', 'Suggested'], sugBy: ['Đề xuất của agent:', 'Agent suggestion:'], free: ['Hoặc trả lời cách khác', 'Or answer another way'], freeHint: ['Viết câu trả lời của bạn…', 'Write your answer…'],
+      useSug: ['Dùng đề xuất', 'Use suggestion'], quick: ['Trả lời nhanh', 'Quick answer'],
+      autoRun: ['Chế độ auto: agent tự soạn lại', 'Auto mode: the agent redrafts on its own'],
+      maxNote: ['Agent gửi tối đa 5 câu mỗi vòng; câu thừa bị bỏ và agent được báo.', 'The agent sends at most 5 questions per round; extra ones are dropped and the agent is told.'],
+      answeredMeta: ['Đã ghi vào mục Clarifications của tài liệu', 'Recorded in the Clarifications section of the document'],
+      answeredNote: ['Câu trả lời cũ nằm trong prompt của vòng soạn sau, nên agent không hỏi lại.', 'Earlier answers stay in the next draft round prompt, so the agent does not ask again.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    // Dữ liệu mẫu dùng chung với các màn SDLC khác.
+    const ITEMS = [
+      { id: '012', stage: ['Specify', 'Specify'], title: ['Hoàn tiền một phần', 'Partial refunds'], project: 'payment-api', modeLabel: ['Spec Kit', 'Spec Kit'], auto: false, round: 2, run: 'r_8f3a', dueDays: 2, qs: [
+        { id: 'q012a', text: ['Hoàn tiền một phần có áp dụng cho giao dịch ví điện tử không?', 'Do partial refunds apply to e-wallet transactions?'], opts: [['Có, mọi phương thức thanh toán', 'Yes, every payment method'], ['Chỉ thẻ và chuyển khoản ngân hàng', 'Cards and bank transfers only'], ['Không, để bản sau', 'No, leave it for a later release']], sug: 1, why: ['Ví điện tử là hạng mục 010, chưa phát hành.', 'E-wallet is item 010 and is not released yet.'] },
+        { id: 'q012b', text: ['Một giao dịch được hoàn một phần tối đa mấy lần?', 'How many partial refunds can one transaction have?'], opts: [['Không giới hạn, đến hết số tiền gốc', 'Unlimited, up to the original amount'], ['Tối đa 3 lần', 'At most 3 times'], ['Tối đa 1 lần', 'At most once']], sug: 0, why: ['Khớp FR-003: tổng hoàn không vượt số tiền gốc.', 'Matches FR-003: the total refund never exceeds the original amount.'] },
+        { id: 'q012c', text: ['Hoàn vượt 5.000.000 đ có cần PO duyệt thêm không?', 'Does a refund above 5,000,000 VND need extra PO approval?'], opts: [['Có, PO duyệt từng khoản', 'Yes, PO approves each one'], ['Không, chỉ ghi audit', 'No, audit log only']], sug: 0, why: ['Chính sách thanh toán hiện tại yêu cầu hai người cho khoản lớn.', 'The current payment policy requires two people for large amounts.'] },
+      ] },
+      { id: '013', stage: ['Yêu cầu', 'Requirements'], title: ['Xuất báo cáo tháng', 'Monthly report export'], project: 'web-shop', modeLabel: ['AI-DLC Express', 'AI-DLC Express'], auto: true, round: 1, run: 'r_91c2', dueDays: mode === 'overdue' ? -3 : 1, qs: [
+        { id: 'q013a', text: ['Báo cáo tháng chốt số liệu vào lúc nào?', 'When is the monthly report closed?'], opts: [['Ngày cuối tháng, 23:59', 'Last day of the month, 23:59'], ['Mùng 1 tháng sau, 00:30', 'First day of next month, 00:30']], sug: 1, why: ['Chờ đối soát đêm cuối tháng xong.', 'Waits for the end-of-month reconciliation.'] },
+      ] },
+      { id: '014', stage: ['Tiếp nhận', 'Intake'], title: ['Đồng bộ kho', 'Stock sync'], project: 'mobile-app', modeLabel: ['Small', 'Small'], auto: false, round: 1, run: 'r_7d40', dueDays: 2, qs: [
+        { id: 'q014a', text: ['Đồng bộ kho chạy theo lịch hay theo sự kiện?', 'Does stock sync run on a schedule or on events?'], opts: [['Theo sự kiện, khi kho đổi', 'On events, when stock changes'], ['Theo lịch, mỗi 15 phút', 'On a schedule, every 15 minutes']], sug: 0, why: ['Mobile cần số tồn mới nhất khi quét mã.', 'Mobile needs the latest stock when scanning.'] },
+      ] },
+    ];
+    const PAST = [
+      { item: '012 · Specify', round: 1, q: ['Spec có liệt kê ngoại lệ hoàn tiền cho giao dịch đã đối soát không?', 'Should the spec list refund exceptions for reconciled transactions?'], a: ['Có, thêm mục "Ngoại lệ" vào FR-004', 'Yes, add an "Exceptions" section to FR-004'], who: 'Trần Lan', when: ['2 giờ trước', '2 h ago'], src: 'choice' },
+      { item: '012 · Specify', round: 1, q: ['Đơn vị tiền của số tiền hoàn là gì?', 'What currency unit is the refund amount in?'], a: ['VND, số nguyên đồng', 'VND, whole dong'], who: 'Trần Lan', when: ['2 giờ trước', '2 h ago'], src: 'suggest' },
+      { item: '009 · Tiếp nhận', round: 1, q: ['Lỗi làm tròn áp dụng cho phí hay cho số tiền gốc?', 'Does the rounding bug affect the fee or the original amount?'], a: ['Cả hai; phí làm tròn xuống đồng', 'Both; fees round down to the dong'], who: 'Trần Lan', when: ['hôm qua', 'yesterday'], src: 'free' },
+    ];
+    const SRC = { choice: ['Đã chọn', 'Chosen'], suggest: ['Dùng đề xuất', 'Used suggestion'], free: ['Trả lời tự do', 'Free answer'] };
+
+    // Mẫu lỗi gửi: nội dung người dùng đã nhập vẫn còn.
+    const errSel = { q012a: 1, q012b: 0 }; const errTxt = { q012c: 'Có, nhưng chỉ khi khoản hoàn vượt 5.000.000 đ trong một ngày.' };
+    const selOf = (id) => (id in S.sel ? S.sel[id] : (mode === 'error' ? errSel[id] : undefined));
+    const txtOf = (id) => (id in S.txt ? S.txt[id] : (mode === 'error' ? (errTxt[id] ?? '') : ''));
+    const hasAns = (id) => (txtOf(id).trim() !== '' || (selOf(id) !== undefined && selOf(id) !== null));
+    const allQs = ITEMS.flatMap((it) => it.qs);
+    const ansOf = (q) => {
+      if (mode === 'alldone' && !(q.id in S.sent)) return { text: x(q.opts[q.sug]), src: 'suggest' };
+      return S.sent[q.id] || null;
+    };
+    const sendQ = (q) => {
+      const free = txtOf(q.id).trim();
+      const rec = free ? { text: free, src: 'free' } : { text: x(q.opts[selOf(q.id)]), src: selOf(q.id) === q.sug ? 'suggest' : 'choice' };
+      return rec;
+    };
+
+    const items = mode === 'empty' ? [] : ITEMS;
+    const seg = (on) => 'height: 28px; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+    const segTab = (on) => 'min-height: ' + (narrow ? '36px' : '28px') + '; padding: 0 10px; border: 0; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600; box-shadow: var(--shadow-sm);' : 'background: transparent; color: var(--muted-foreground);');
+
+    const groups = items.map((it) => {
+      const qsDone = it.qs.every((q) => ansOf(q));
+      const pendingN = it.qs.filter((q) => !ansOf(q)).length;
+      const answerN = it.qs.filter((q) => !ansOf(q) && hasAns(q.id)).length;
+      const overdue = it.dueDays < 0;
+      const qs = it.qs.map((q, i) => {
+        const a = ansOf(q);
+        const sel = selOf(q.id);
+        const free = txtOf(q.id);
+        const done = !!a;
+        const late = overdue && !done;
+        const opts = q.opts.map((o, k) => ({
+          label: x(o), on: sel === k && free.trim() === '', sug: k === q.sug,
+          style: 'display: flex; align-items: flex-start; gap: 8px; min-height: ' + (narrow ? '40px' : '34px') + '; box-sizing: border-box; padding: 7px 10px; border-radius: 8px; font-size: 13.5px; cursor: ' + (ro ? 'not-allowed' : 'pointer') + '; border: 1px solid ' + (sel === k && free.trim() === '' ? 'color-mix(in srgb, var(--primary) 45%, transparent)' : 'var(--border)') + '; background: ' + (sel === k && free.trim() === '' ? 'var(--accent)' : 'var(--background)') + ';',
+          pick: () => { if (!ro) this.setState({ sel: { ...S.sel, [q.id]: k }, txt: { ...S.txt, [q.id]: '' } }); },
+        }));
+        return {
+          id: q.id, no: x(['Câu ', 'Question ']) + (i + 1) + '/' + it.qs.length, text: x(q.text), opts, late,
+          isDone: done, isOpen: !done, answer: a ? a.text : '', srcText: a ? x(SRC[a.src]) : '', canEdit: done && !ro && mode !== 'alldone',
+          stateText: done ? x(['Đã trả lời', 'Answered']) : x(['Chờ trả lời', 'Waiting']), stateMark: done ? '✓' : '●',
+          stateStyle: done ? 'background: var(--success-soft); color: var(--success);' : 'background: var(--warning-soft); color: var(--warning);',
+          boxStyle: 'display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid ' + (late ? 'var(--destructive)' : 'var(--border)') + '; border-radius: 10px; background: var(--background);',
+          txt: free, onTxt: (e) => { if (!ro) this.setState({ txt: { ...S.txt, [q.id]: e?.target?.value ?? '' }, sel: { ...S.sel, [q.id]: null } }); },
+          sugText: x(q.opts[q.sug]), sugWhy: x(q.why), noAns: !hasAns(q.id),
+          useSug: () => { if (!ro) this.setState({ sel: { ...S.sel, [q.id]: q.sug }, txt: { ...S.txt, [q.id]: '' } }); },
+          quick: () => { if (!ro && hasAns(q.id)) this.setState({ sent: { ...S.sent, [q.id]: sendQ(q) } }); },
+          edit: () => { const s = { ...S.sent }; delete s[q.id]; this.setState({ sent: s }); },
+        };
+      });
+      const failedHere = mode === 'error' && it.id === '012' && !qsDone;
+      const dueText = overdue ? x(['Quá hạn ' + -it.dueDays + ' ngày', -it.dueDays + ' days overdue']) : x(['Hạn trả lời: còn ' + it.dueDays + ' ngày', 'Reply due: ' + it.dueDays + ' days left']);
+      const composed = !!S.composed[it.id];
+      return {
+        label: it.id + ' · ' + x(it.stage), title: x(it.title), project: it.project, modeLabel: x(it.modeLabel),
+        by: x(['Agent Claude Code · run ' + it.run + ' · vòng ' + it.round, 'Claude Code agent · run ' + it.run + ' · round ' + it.round]),
+        countText: x([it.qs.length + ' câu (tối đa 5 mỗi vòng)', it.qs.length + ' questions (max 5 per round)']),
+        dueText, dueMark: overdue ? '!' : '○',
+        dueStyle: overdue ? 'background: var(--destructive-soft); color: var(--destructive);' : 'background: var(--muted); color: var(--muted-foreground);',
+        errBanner: failedHere, retry: () => { const sent = { ...S.sent }; it.qs.forEach((q) => { if (hasAns(q.id)) sent[q.id] = sendQ(q); }); this.setState({ mode: 'normal', sent }); },
+        qs,
+        footNote: qsDone ? (it.auto ? x(['Đủ câu trả lời.', 'All answered.']) : x(['Đủ câu trả lời. Soạn lại để agent ghi quyết định vào Clarifications.', 'All answered. Redraft so the agent records the decisions in Clarifications.'])) : x([answerN + '/' + pendingN + ' câu đã có câu trả lời, chưa gửi.', answerN + '/' + pendingN + ' questions have an answer, not sent yet.']),
+        showSendAll: !qsDone && !ro, sendOff: answerN === 0,
+        sendLabel: x(['Trả lời cả vòng (' + answerN + '/' + pendingN + ')', 'Answer the whole round (' + answerN + '/' + pendingN + ')']),
+        sendAll: () => { if (ro) return; const sent = { ...S.sent }; it.qs.forEach((q) => { if (!ansOf(q) && hasAns(q.id)) sent[q.id] = sendQ(q); }); this.setState({ sent }); },
+        showCompose: qsDone && !it.auto && !ro, composeOff: composed,
+        composeLabel: composed ? x(['Đã gửi lệnh soạn lại ✓', 'Redraft requested ✓']) : x(['Soạn lại với câu trả lời', 'Redraft with the answers']),
+        compose: () => this.setState({ composed: { ...S.composed, [it.id]: true } }),
+        autoNote: qsDone && it.auto,
+      };
+    });
+
+    const pendingCount = mode === 'empty' ? 0 : allQs.filter((q) => !ansOf(q)).length;
+    const answeredCount = PAST.length + allQs.filter((q) => ansOf(q)).length;
+    const tabs = [['pending', t.tabPending, pendingCount], ['answered', t.tabAnswered, answeredCount]].map(([k, l, c]) => ({
+      label: l, count: c, on: S.tab === k ? 'true' : 'false', style: segTab(S.tab === k), pick: () => this.setState({ tab: k }),
+    }));
+    const M = [['normal', ['Bình thường', 'Normal']], ['loading', ['Đang tải', 'Loading']], ['empty', ['Rỗng', 'Empty']], ['error', ['Lỗi gửi', 'Send error']], ['alldone', ['Đã trả lời hết', 'All answered']], ['readonly', ['Chỉ đọc', 'Read-only']], ['overdue', ['Quá hạn', 'Overdue']]];
+    const modes = M.map(([k, l]) => ({ label: x(l), on: mode === k ? 'true' : 'false', style: seg(mode === k), pick: () => this.setState({ mode: k, sent: {}, composed: {}, sel: {}, txt: {} }) }));
+
+    const sync = mode === 'loading' ? { mark: '○', text: x(['Đang đồng bộ…', 'Syncing…']), style: 'background: var(--muted); color: var(--muted-foreground);' }
+      : mode === 'error' ? { mark: '!', text: x(['Chưa đồng bộ', 'Not synced']), style: 'background: var(--destructive-soft); color: var(--destructive);' }
+      : { mark: '●', text: x(['Đã đồng bộ · 4 giây trước', 'Synced · 4 s ago']), style: 'background: var(--success-soft); color: var(--success);' };
+
+    const past = [...allQs.filter((q) => S.sent[q.id]).map((q) => ({ item: q.id.slice(1, 4) + ' · ' + x(ITEMS.find((it) => it.qs.includes(q)).stage), round: x(['vòng ', 'round ']) + ITEMS.find((it) => it.qs.includes(q)).round, q: x(q.text), a: S.sent[q.id].text, meta: x(['Bạn · vừa xong · ', 'You · just now · ']) + x(SRC[S.sent[q.id].src]) })),
+      ...PAST.map((p) => ({ item: p.item.replace('Tiếp nhận', x(['Tiếp nhận', 'Intake'])), round: x(['vòng ', 'round ']) + p.round, q: x(p.q), a: x(p.a), meta: p.who + ' · ' + x(p.when) + ' · ' + x(SRC[p.src]) }))];
+
+    const listTab = S.tab === 'pending';
+    return {
+      theme: dark ? 'dark' : 'light', lang, role, narrow, wide: !narrow, ro, canWrite: !ro, t, tabs, modes, sync, groups, past, pendingCount,
+      outerStyle: narrow ? 'width: 360px; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; --bh: 36px;' : 'width: 1440px; height: 900px; box-sizing: border-box; padding: 30px; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;',
+      winStyle: narrow ? 'display: flex; flex-direction: column; background: var(--background); color: var(--foreground);' : 'width: 1380px; height: 840px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);',
+      mainStyle: narrow ? 'box-sizing: border-box; width: 100%; min-width: 0; padding: 16px 16px 32px; display: flex; flex-direction: column; gap: 14px;' : 'flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;',
+      badgeStyle: pendingCount ? 'background: var(--warning-soft); color: var(--warning);' : 'background: var(--muted); color: var(--muted-foreground);',
+      isLoading: mode === 'loading', showEmpty: listTab && mode === 'empty', showPending: listTab && mode !== 'loading' && mode !== 'empty', showAnswered: !listTab && mode !== 'loading',
+      showOverdue: mode === 'overdue' && listTab, allDoneBanner: mode === 'alldone' && listTab,
+      viS: 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (!en ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
+      enS: 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 11px; cursor: pointer; ' + (en ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);'),
+      toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>
