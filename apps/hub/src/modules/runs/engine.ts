@@ -2,6 +2,7 @@ import {
   type AgentMemoryPolicy,
   type AssistStartInput,
   type ChecklistItem,
+  defaultRouting,
   defaultTokenSaving,
   type JobMcpServer,
   type JobPolicy,
@@ -17,7 +18,7 @@ import {
   TERMINAL_RUN_STATES,
 } from "@xdev-hive/contracts";
 import { type DiffStats, diffStats, reportRepo, steerResultData } from "@xdev-hive/contracts/worker-protocol";
-import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, ne, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
 import {
@@ -121,6 +122,7 @@ import {
   reviewSkipReason,
 } from "./policy.ts";
 import { parseReviewReport, prNumberOf, type ReviewReport, reviewComment, reviewPrompt } from "./review.ts";
+import { type RoutedRun, routeRun } from "./routing.ts";
 import { createMcpRunTokens } from "./run-tokens.ts";
 import { type RunResult, runEvents, runLeases, runLogs, runs } from "./schema.ts";
 import { registerScmHandlers } from "./scm-events.ts";
@@ -245,6 +247,21 @@ async function planReportOf(tx: Tx, run: RunRow) {
 /** Kế hoạch đang có hiệu lực: bản người duyệt sửa nếu có. */
 const planInForce = (p: PlanRow) => p.editedContent ?? p.content;
 
+/** Nhãn issue ghi vào source.labels lúc tạo task (scm-events.ts); task tạo từ web không có. */
+function taskLabels(task: TaskRow): string[] {
+  const labels = task.source.labels;
+  return Array.isArray(labels) ? labels.filter((l): l is string => typeof l === "string") : [];
+}
+
+/** Số run code đã thất bại của task, ngoài run đang xét: tín hiệu "thử lại sau lỗi" để nâng cấp model. */
+async function failedCodeRuns(tx: Tx, taskId: string, exceptRunId: string): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(runs)
+    .where(and(eq(runs.taskId, taskId), eq(runs.kind, "code"), eq(runs.state, "failed"), ne(runs.id, exceptRunId)));
+  return row?.n ?? 0;
+}
+
 /**
  * Worker chỉ cấu hình MCP của Hive cho Claude và Codex. Run plan phải gọi plan_submit, nên run không chọn CLI thì
  * không giao cho CLI khác (Gemini, Antigravity) để khỏi chắc chắn thất bại.
@@ -322,6 +339,8 @@ interface SpecContext {
   budget: JobBudget | undefined;
   /** Model và quyền CLI sau khi áp Chính sách agent của tổ chức. */
   model: string | null;
+  /** Effort và cố vấn của định tuyến theo cấp độ task; null khi run không qua định tuyến. */
+  routing: RoutedRun | null;
   /** Quyền theo dự án sau chính sách; máy đã gắn dự án tự tính lại theo công tắc của máy (ADR 0020). */
   runPermissions: "workspace" | "full";
   /** Chính sách tổ chức cho toàn quyền: worker cần để áp công tắc toàn quyền của máy. */
@@ -468,6 +487,14 @@ function buildSpec(
     instructions,
     cli,
     model: ctx.model,
+    // Bỏ khi không định tuyến để worker cũ (bỏ qua trường lạ) và worker mới nhận cùng một spec như trước.
+    ...(ctx.routing
+      ? {
+          effort: ctx.routing.effort,
+          ...(ctx.routing.advisor ? { advisor: ctx.routing.advisor } : {}),
+          tier: ctx.routing.tier,
+        }
+      : {}),
     runPermissions: ctx.runPermissions,
     fullAllowed: ctx.fullAllowed,
     // Bỏ khi không có gì để worker cũ (chưa biết trường này) và worker mới nhận cùng một spec như trước.
@@ -669,10 +696,8 @@ export function createRunsEngine(deps: RunsDeps) {
         ...(await instructionsOf(tx, run.id)),
       ];
       const sandbox = sandboxed ? await loadSandboxJobConfig(tx, project.id) : undefined;
-      const budget = jobBudget(
-        clampBudget(policy, project.settings.budget),
-        task ? await taskSpentUsd(tx, task.id) : 0,
-      );
+      const baseBudget = clampBudget(policy, project.settings.budget);
+      const taskSpent = task ? await taskSpentUsd(tx, task.id) : 0;
       // Run review, plan, leader là run chỉ đọc: server ngoài (vd. GitHub) có tool ghi mà chế độ chỉ đọc của CLI không
       // chặn hết, nên chỉ run code nhận.
       const mcpServers = run.kind === "code" ? await mcpServersForProject(tx, project.id) : [];
@@ -704,7 +729,7 @@ export function createRunsEngine(deps: RunsDeps) {
         "claude";
       // Ghi CLI thực giao: run không chọn CLI thì chỉ sự kiện này biết agent nào chạy (costs.summary nhóm theo CLI).
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
-      const requested =
+      const explicitModel =
         run.model ??
         (run.kind === "brief"
           ? (BRIEF_MODELS[cli] ?? null)
@@ -712,7 +737,38 @@ export function createRunsEngine(deps: RunsDeps) {
               run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
             ]) ??
         null;
+      // Định tuyến theo cấp độ task chỉ cho run code; run review, plan, brief giữ model theo loại run.
+      const routed =
+        run.kind === "code" && task
+          ? routeRun(cli, project.settings.routing ?? defaultRouting, {
+              manual: run.tier,
+              type: task.type,
+              labels: taskLabels(task),
+              title: task.title,
+              body: task.body,
+              plan: approvedPlan ? planInForce(approvedPlan) : null,
+              retried: run.attempt > 1 || (await failedCodeRuns(tx, task.id, run.id)) > 0,
+            })
+          : null;
+      const requested = explicitModel ?? routed?.model ?? null;
+      const budget = jobBudget(
+        // Số lượt tối đa của cấp độ chỉ là mặc định: dự án đã đặt budget.maxTurns thì giá trị đó thắng.
+        routed?.maxTurns != null ? { ...baseBudget, maxTurns: baseBudget?.maxTurns ?? routed.maxTurns } : baseBudget,
+        taskSpent,
+      );
       const model = resolveModel(policy, cli, requested);
+      const routing: RoutedRun | null = routed && {
+        ...routed,
+        model: model.model,
+        maxTurns: budget?.maxTurns ?? null,
+        reasons: [
+          ...routed.reasons,
+          ...(explicitModel
+            ? [`Model ${explicitModel} do người giao việc hay cấu hình dự án chọn; định tuyến chỉ chọn effort.`]
+            : []),
+          ...(model.notice ? [model.notice] : []),
+        ],
+      };
       for (const notice of [model.notice, permission.notice]) {
         if (notice) await noteOnce(tx, run, "policy", { message: notice });
       }
@@ -742,6 +798,7 @@ export function createRunsEngine(deps: RunsDeps) {
           agentPolicySnapshot: {
             model: model.model,
             requestedModel: requested,
+            routing,
             runPermissions: effective,
             sandbox: sandboxed,
             budget: budget ?? null,
@@ -764,6 +821,7 @@ export function createRunsEngine(deps: RunsDeps) {
             instructions,
             budget,
             model: model.model,
+            routing,
             runPermissions: permission.mode,
             fullAllowed: policy.allowFullPermission,
             policy: jobPolicy,
@@ -1987,6 +2045,7 @@ export function createRunsEngine(deps: RunsDeps) {
     const { row, afterCommit } = await queueRun(tx, task, project, {
       cli,
       model: input.model ?? null,
+      tier: input.tier ?? null,
       machineId: input.machineId ?? null,
       createdBy: userId,
       ownerUserId: userId,
@@ -2129,6 +2188,8 @@ export function createRunsEngine(deps: RunsDeps) {
     opts: {
       cli: RunRow["cli"];
       model?: string | null;
+      /** Cấp độ task do người đặt tay; bỏ trống thì hub suy lúc giao (routing.ts). */
+      tier?: RunRow["tier"];
       machineId?: string | null;
       createdBy: string;
       /** null: thao tác của hệ thống. Bỏ trống thì audit lấy người dùng trong context. */
@@ -2167,6 +2228,7 @@ export function createRunsEngine(deps: RunsDeps) {
               : opts.cli
                 ? (project.settings.models?.[opts.cli]?.code ?? null)
                 : null,
+          tier: opts.tier ?? null,
           pinnedMachineId: opts.machineId ?? null,
           branch: `ai/${task.key}`,
           policySnapshot: policy,
@@ -2413,6 +2475,7 @@ export function createRunsEngine(deps: RunsDeps) {
     if (input.replan) {
       ({ row: next, afterCommit } = await queueRun(tx, task, await loadProject(tx, run.projectId), {
         cli: run.cli,
+        tier: run.tier,
         machineId: run.pinnedMachineId,
         createdBy: userId,
         instructions,

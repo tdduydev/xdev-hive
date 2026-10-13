@@ -1,4 +1,10 @@
-import { type ProjectSettings, type ProjectSettingsPatch, projectSettings } from "@xdev-hive/contracts";
+import {
+  defaultRouting,
+  type ProjectSettings,
+  type ProjectSettingsPatch,
+  projectSettings,
+  TASK_TIERS,
+} from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import { recordAudit } from "../audit/index.ts";
 import { loadPolicy } from "../governance/index.ts";
@@ -47,6 +53,24 @@ export function applySettingsPatch(current: ProjectSettings, patch: ProjectSetti
   }
   if (patch.issueIntake) next.issueIntake = assign(current.issueIntake, patch.issueIntake);
   if (patch.tokenSaving) next.tokenSaving = assign(current.tokenSaving, patch.tokenSaving);
+  if (patch.routing) {
+    const base = current.routing ?? defaultRouting;
+    // Không dùng assign cho từng cấp: `advisor: null` là giá trị hợp lệ (tắt cố vấn), không phải lệnh bỏ khoá.
+    const tiers = { ...base.tiers };
+    for (const tier of TASK_TIERS) {
+      const part = patch.routing.tiers?.[tier];
+      if (part)
+        tiers[tier] = {
+          ...tiers[tier],
+          ...Object.fromEntries(Object.entries(part).filter(([, v]) => v !== undefined)),
+        };
+    }
+    next.routing = {
+      ...base,
+      ...(patch.routing.enabled === undefined ? {} : { enabled: patch.routing.enabled }),
+      tiers,
+    };
+  }
   if (patch.defaultCli !== undefined) next.defaultCli = patch.defaultCli;
   if (patch.budget !== undefined) {
     const budget = patch.budget === null ? {} : assign(current.budget, patch.budget);
