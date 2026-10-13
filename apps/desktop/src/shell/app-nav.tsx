@@ -113,7 +113,7 @@ export function AppNav({
               <div
                 aria-hidden="true"
                 className={cn(
-                  "px-2.5 pb-0.5 font-mono text-[10.5px] tracking-[.06em] text-muted-foreground uppercase compact:hidden",
+                  "px-2.5 pb-0.5 text-xs font-medium text-muted-foreground compact:hidden",
                   index > 0 && "pt-2.5",
                 )}
               >
