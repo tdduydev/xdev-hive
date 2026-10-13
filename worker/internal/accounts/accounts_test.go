@@ -223,7 +223,7 @@ func TestAcquireSkipsSignedOutAndWrongRole(t *testing.T) {
 }
 
 func TestRoleOf(t *testing.T) {
-	for kind, want := range map[string]string{"plan": RolePlan, "review": RoleReview, "code": RoleImplement, "": RoleImplement, "leader": RoleImplement, "docassist": RoleImplement, "brief": RolePlan} {
+	for kind, want := range map[string]string{"plan": RolePlan, "review": RoleReview, "code": RoleImplement, "": RoleImplement, "leader": RoleImplement, "docassist": RoleImplement, "brief": RolePlan, "skill_proposal": RolePlan} {
 		if got := RoleOf(kind); got != want {
 			t.Fatalf("RoleOf(%q) = %q", kind, got)
 		}
