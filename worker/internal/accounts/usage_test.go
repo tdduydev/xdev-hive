@@ -2,6 +2,7 @@ package accounts
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -124,8 +125,8 @@ func TestReadUsageClaude(t *testing.T) {
 	if u := ReadUsage(context.Background(), Account{ID: "claude-1", CLI: "claude"}.withDefaults(), home, vnMorning); *u.Reason != reasonNoCLI {
 		t.Fatalf("không có CLI: %+v", u)
 	}
-	if u := ReadUsage(context.Background(), Account{ID: "agy", CLI: "antigravity"}, home, vnMorning); *u.Reason != reasonUnsupported {
-		t.Fatalf("antigravity: %+v", u)
+	if u := ReadUsage(context.Background(), Account{ID: "gemini-1", CLI: "gemini"}, home, vnMorning); *u.Reason != reasonUnsupported {
+		t.Fatalf("gemini: %+v", u)
 	}
 }
 
@@ -221,5 +222,153 @@ func TestReadUsageCodexUsesConfigDir(t *testing.T) {
 	}
 	if u := ReadUsage(context.Background(), Account{ID: "codex-3", CLI: "codex", ConfigDir: filepath.Join(dir, "empty")}.withDefaults(), t.TempDir(), vnMorning); *u.Reason != reasonNoSession {
 		t.Fatalf("chưa có phiên: %+v", u)
+	}
+}
+
+// Claude: dòng tuần theo model ("Opus", "Sonnet only") thành Models, không phải thanh tuần.
+func TestParseClaudeUsageModels(t *testing.T) {
+	text := "Current session: 40% used · resets Oct 13 at 1:39pm (Asia/Saigon)\n" +
+		"Current week (all models): 47% used · resets Oct 17 at 9am (Asia/Saigon)\n" +
+		"Current week (Opus): 63% used · resets Oct 17 at 9am (Asia/Saigon)\n" +
+		"Current week (Sonnet only): 12.5% used\n"
+	u := parseClaudeUsage(text, vnMorning)
+	if u == nil || u.Week == nil || u.Week.Percent != 47 {
+		t.Fatalf("usage = %+v", u)
+	}
+	reset := utc(2026, 10, 17, 2, 0)
+	want := []ModelLimit{{Name: "Opus", Percent: 63, ResetsAt: &reset}, {Name: "Sonnet", Percent: 12.5}}
+	if !reflect.DeepEqual(u.Models, want) {
+		t.Fatalf("models = %+v", u.Models)
+	}
+	// Không có dòng theo model: không có Models, JSON không có trường models.
+	u = parseClaudeUsage("Current session: 5% used\nCurrent week (all models): 7% used\n", vnMorning)
+	if u == nil || u.Models != nil {
+		t.Fatalf("usage = %+v", u)
+	}
+	b, _ := json.Marshal(u)
+	if strings.Contains(string(b), `"models"`) || strings.Contains(string(b), `"groups"`) {
+		t.Fatalf("json = %s", b)
+	}
+	// Chỉ có dòng theo model thì vẫn là không có quota.
+	if u := parseClaudeUsage("Current week (Opus): 63% used", vnMorning); u != nil {
+		t.Fatalf("chỉ có model: %+v", u)
+	}
+}
+
+func agySample(t *testing.T) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", "agy-usage.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// 16:00 ngày 13/10/2026 giờ Việt Nam, lúc lấy mẫu agy /usage.
+var vnAfternoon = utc(2026, 10, 13, 9, 0)
+
+// Antigravity: mỗi nhóm model có hạn mức 5 giờ và tuần; Session, Week là của nhóm Claude and GPT (run code).
+func TestParseAgyUsageRealOutput(t *testing.T) {
+	u := parseAgyUsage(agySample(t), vnAfternoon)
+	if u == nil || len(u.Groups) != 2 {
+		t.Fatalf("usage = %+v", u)
+	}
+	gemini, code := u.Groups[0], u.Groups[1]
+	if gemini.Name != "Gemini Models" || gemini.Models != "Gemini Flash, Gemini Pro" || gemini.SessionDisabled {
+		t.Fatalf("gemini = %+v", gemini)
+	}
+	if gemini.Session.Percent != 2 || !gemini.Session.ResetsAt.Equal(utc(2026, 10, 13, 9, 14).Add(19*time.Second)) {
+		t.Fatalf("gemini 5h = %+v", gemini.Session)
+	}
+	if gemini.Week.Percent != 8 || !gemini.Week.ResetsAt.Equal(time.Date(2026, 10, 18, 17, 2, 15, 0, time.UTC)) {
+		t.Fatalf("gemini tuần = %+v", gemini.Week)
+	}
+	// Hết tuần: agy tắt hạn mức 5 giờ, remaining_fraction cũ của nó bị bỏ.
+	if code.Name != "Claude and GPT models" || code.Models != "Claude Opus, Claude Sonnet, GPT-OSS" || !code.SessionDisabled || code.Session != nil {
+		t.Fatalf("claude/gpt = %+v", code)
+	}
+	if code.Week.Percent != 100 || u.Week != code.Week || u.Session != nil {
+		t.Fatalf("thanh chính = %+v %+v", u.Session, u.Week)
+	}
+	if !u.CheckedAt.Equal(vnAfternoon) {
+		t.Fatalf("checkedAt = %v", u.CheckedAt)
+	}
+	// Ngưỡng dừng áp lên nhóm của run code.
+	if got := (Account{}).withDefaults().overLimit(*u, time.Time{}, vnAfternoon); got != "week" {
+		t.Fatalf("overLimit = %q", got)
+	}
+}
+
+func TestParseAgyUsageFallbackAndErrors(t *testing.T) {
+	// Không có nhóm Claude and GPT: lấy nhóm dùng nhiều nhất.
+	out := `{"status":"SUCCESS","command":{"name":"usage","data":{"groups":[
+	 {"name":"A","description":"Models within this group: X","buckets":[{"window":"5h","remaining_fraction":0.9,"reset_time":"2026-10-13T10:00:00Z"}]},
+	 {"name":"B","description":"","buckets":[{"window":"weekly","remaining_fraction":0.3,"reset_time":"2026-10-01T00:00:00Z"},{"window":"5h","remaining_fraction":0.6}]}]}}}`
+	u := parseAgyUsage([]byte(out), vnAfternoon)
+	if u == nil || u.Session != u.Groups[1].Session || u.Session.Percent != 40 || u.Session.ResetsAt != nil {
+		t.Fatalf("usage = %+v", u)
+	}
+	// Tuần đã qua giờ reset: về 0.
+	if u.Groups[1].Week.Percent != 0 || u.Groups[1].Week.ResetsAt != nil {
+		t.Fatalf("tuần đã reset = %+v", u.Groups[1].Week)
+	}
+	for _, bad := range []string{"", "not json", `{"status":"ERROR","command":{"data":{"groups":[]}}}`, `{"status":"SUCCESS","response":"x"}`, `{"status":"SUCCESS","command":{"data":{"groups":[{"name":"A","buckets":[]}]}}}`} {
+		if u := parseAgyUsage([]byte(bad), vnAfternoon); u != nil {
+			t.Fatalf("%q: %+v", bad, u)
+		}
+	}
+}
+
+// Antigravity: chạy agy /usage không đặt biến môi trường; tài khoản có thư mục riêng không đọc (agy không tách được).
+func TestReadUsageAntigravity(t *testing.T) {
+	home := t.TempDir()
+	sample := agySample(t)
+	var gotArgs [][]string
+	savedLook, savedRun := lookPath, runCLI
+	t.Cleanup(func() { lookPath, runCLI = savedLook, savedRun })
+	lookPath = func(name string) (string, error) { return "/opt/bin/" + name, nil }
+	runCLI = func(_ context.Context, name string, args []string, env map[string]string) ([]byte, error) {
+		if name != "/opt/bin/agy" || env != nil {
+			t.Fatalf("CLI = %q, env = %v", name, env)
+		}
+		gotArgs = append(gotArgs, args)
+		return sample, nil
+	}
+	u := ReadUsage(context.Background(), Account{ID: "antigravity-1", CLI: "antigravity"}.withDefaults(), home, vnAfternoon)
+	if u.Reason != nil || len(u.Groups) != 2 || u.Week.Percent != 100 {
+		t.Fatalf("usage = %+v", u)
+	}
+	if !reflect.DeepEqual(gotArgs[0], []string{"-p", "/usage", "--output-format", "json"}) {
+		t.Fatalf("args = %q", gotArgs[0])
+	}
+	if u := ReadUsage(context.Background(), Account{ID: "antigravity-2", CLI: "antigravity", ConfigDir: "~/agy2"}.withDefaults(), home, vnAfternoon); *u.Reason != reasonAgyDir || len(gotArgs) != 1 {
+		t.Fatalf("thư mục riêng: %+v", u)
+	}
+	sample = []byte(`{"status":"ERROR"}`)
+	if u := ReadUsage(context.Background(), Account{ID: "antigravity-1", CLI: "antigravity"}.withDefaults(), home, vnAfternoon); *u.Reason != reasonSilent {
+		t.Fatalf("CLI không báo: %+v", u)
+	}
+	noCLIs(t, "agy")
+	if u := ReadUsage(context.Background(), Account{ID: "antigravity-1", CLI: "antigravity"}.withDefaults(), home, vnAfternoon); *u.Reason != reasonNoCLI {
+		t.Fatalf("không có agy: %+v", u)
+	}
+}
+
+// Qua giờ reset: thanh theo model và theo nhóm cũng về 0, không đổi bản đã lưu.
+func TestUsageAtResetsModelsAndGroups(t *testing.T) {
+	past, future := vnMorning.Add(-time.Hour), vnMorning.Add(time.Hour)
+	u := Usage{
+		Models: []ModelLimit{{Name: "Opus", Percent: 60, ResetsAt: &past}, {Name: "Sonnet", Percent: 10, ResetsAt: &future}},
+		Groups: []Group{{Name: "A", Session: &Limit{Percent: 50, ResetsAt: &past}, Week: &Limit{Percent: 20, ResetsAt: &future}}},
+	}
+	got := u.at(vnMorning)
+	if got.Models[0] != (ModelLimit{Name: "Opus"}) || got.Models[1].Percent != 10 {
+		t.Fatalf("models = %+v", got.Models)
+	}
+	if got.Groups[0].Session.Percent != 0 || got.Groups[0].Week.Percent != 20 {
+		t.Fatalf("groups = %+v", got.Groups)
+	}
+	if u.Models[0].Percent != 60 || u.Groups[0].Session.Percent != 50 {
+		t.Fatal("at không được sửa bản gốc")
 	}
 }

@@ -29,7 +29,12 @@ type addedView struct {
 	Env          map[string]string `json:"env"`
 }
 
-const accountsUsage = "Cách dùng: hive-worker accounts [import-legacy [--force] | set --id ID --enabled BOOL | add --cli claude|codex --label TÊN [--how plan|sso|console|browser|device] [--email E] | update --id ID [--label TÊN] [--priority N] [--max-concurrent N] [--cooldown-minutes N] [--stop-at-session N] [--stop-at-week N] [--timeout-minutes N] [--roles plan,implement,review] | remove --id ID | usage [--id ID] | resume --id ID] [--json]"
+// discoverView là kết quả của `accounts discover --json`: đăng nhập trên máy mà accounts.json chưa có.
+type discoverView struct {
+	Found []accounts.Found `json:"found"`
+}
+
+const accountsUsage = "Cách dùng: hive-worker accounts [import-legacy [--force] | set --id ID --enabled BOOL | add --cli claude|codex --label TÊN [--how plan|sso|console|browser|device] [--email E] | update --id ID [--label TÊN] [--priority N] [--max-concurrent N] [--cooldown-minutes N] [--stop-at-session N] [--stop-at-week N] [--timeout-minutes N] [--roles plan,implement,review] | remove --id ID | usage [--id ID] | resume --id ID | discover [--add THƯ_MỤC|default:claude|codex|antigravity [--label TÊN]]] [--json]"
 
 // Test thay giờ và thư mục nhà.
 var (
@@ -68,6 +73,7 @@ func accountsCommand(args []string, stdout, stderr io.Writer) int {
 		ints[f.name] = fs.Int(f.name, 0, f.usage)
 	}
 	roles := fs.String("roles", "", "vai trò, cách nhau bằng dấu phẩy: plan,implement,review")
+	addFound := fs.String("add", "", "discover: thêm đăng nhập tìm thấy (thư mục cấu hình hoặc default:<cli>)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -169,6 +175,32 @@ func accountsCommand(args []string, stdout, stderr io.Writer) int {
 		if err := accounts.RefreshUsage(ctx, file, home, accountsNow, pick); err != nil {
 			return fail(err)
 		}
+	case "discover":
+		if *addFound == "" {
+			found, err := accounts.Discover(file, home)
+			if err != nil {
+				return fail(err)
+			}
+			if found == nil {
+				found = []accounts.Found{}
+			}
+			if *asJSON {
+				_ = json.NewEncoder(stdout).Encode(discoverView{Found: found})
+				return 0
+			}
+			if len(found) == 0 {
+				fmt.Fprintln(stdout, "Không tìm thấy đăng nhập CLI nào chưa có trong danh sách.")
+				return 0
+			}
+			for _, f := range found {
+				fmt.Fprintln(stdout, foundText(f))
+			}
+			return 0
+		}
+		// Thêm như add nhưng không mở đăng nhập: thư mục đã có đăng nhập (hoặc người dùng tự đăng nhập sau).
+		if _, err := accounts.AddFound(file, home, *addFound, *label); err != nil {
+			return fail(err)
+		}
 	case "resume":
 		if !needID() {
 			return 2
@@ -260,6 +292,28 @@ func usageText(u accounts.Usage) string {
 		return ""
 	}
 	return "; " + strings.Join(parts, "; ")
+}
+
+// foundText là một dòng của `accounts discover` khi không in JSON.
+func foundText(f accounts.Found) string {
+	dir := "đăng nhập mặc định (default:" + f.CLI + ")"
+	if f.ConfigDir != nil {
+		dir = *f.ConfigDir
+	}
+	login := "không kiểm được đăng nhập"
+	if f.LoggedIn != nil && *f.LoggedIn {
+		login = "đã đăng nhập"
+	} else if f.LoggedIn != nil {
+		login = "chưa đăng nhập"
+	}
+	if f.Email != nil {
+		login += " " + *f.Email
+	}
+	s := fmt.Sprintf("%-14s %-12s %s, %s", f.SuggestedID, f.CLI, dir, login)
+	if f.Note != nil {
+		s += "; " + *f.Note
+	}
+	return s
 }
 
 // envPrefix là biến môi trường viết trước lệnh đăng nhập cho người chạy tay trong shell.
