@@ -541,3 +541,24 @@ test("chunk của trang tải cùng lúc với me.get, không chờ me.get và o
   await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
   expect(order.slice(0, 2)).toEqual(["chunk", "me"]);
 });
+
+test("orgs.mine hỏi cùng lúc với me.get, không chờ me.get trả về", async ({ page }) => {
+  const hub = await open(page);
+  const order: string[] = [];
+  // Giữ me.get tới khi web hỏi orgs.mine (tối đa 3 giây): trước đây orgs.mine chỉ đi sau khi me.get trả về.
+  await page.route(
+    (url) => url.pathname === "/rpc/me/get",
+    async (route) => {
+      for (let waited = 0; waited < 3000 && !hub.rpcCalls.some((c) => c.path === "orgs/mine"); waited += 20) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      order.push(hub.rpcCalls.some((c) => c.path === "orgs/mine") ? "orgs" : "none");
+      order.push("me");
+      await route.fallback();
+    },
+  );
+  await page.goto("/tasks");
+  await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
+  expect(order.slice(0, 2)).toEqual(["orgs", "me"]);
+  expect(hub.rpcCalls.filter((c) => c.path === "orgs/mine")).toHaveLength(1);
+});
