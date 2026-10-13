@@ -972,17 +972,15 @@ mod tests {
     fn login_path_is_read_once_in_the_background() {
         let started = Instant::now();
         warm_user_path();
-        assert!(started.elapsed() < Duration::from_millis(100));
+        // Chỉ khởi động luồng nền, không chờ shell (shell nạp chậm có thể tới 5 giây).
+        assert!(started.elapsed() < Duration::from_millis(500));
         let first = Instant::now();
         let path = user_path();
         let first = first.elapsed();
-        let again = Instant::now();
-        assert_eq!(user_path(), path);
-        eprintln!(
-            "PATH của shell đăng nhập: lần đầu {first:?}, lần sau {:?}",
-            again.elapsed()
-        );
-        assert!(again.elapsed() < Duration::from_millis(1));
+        eprintln!("PATH của shell đăng nhập: lần đầu {first:?}");
+        // Lần sau trả đúng chuỗi đã nhớ (cùng địa chỉ), không chạy lại shell. Không đo giờ: máy bận thì chỉ việc chờ tới
+        // lượt CPU cũng vượt ngưỡng vài mili giây.
+        assert!(std::ptr::eq(user_path(), path));
     }
 
     #[test]

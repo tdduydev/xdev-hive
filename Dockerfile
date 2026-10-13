@@ -8,6 +8,8 @@ FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @xdev-hive/web build
+# Giờ dựng image: hub trả trong /api/v1/health (builtAt) để web hiện "build ngày …".
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > /repo/BUILD_TIME
 
 FROM build AS runtime
 ENV NODE_ENV=production HIVE_PORT=3000 HIVE_WEB_DIST=/repo/apps/web/dist

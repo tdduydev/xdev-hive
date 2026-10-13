@@ -100,6 +100,9 @@ export const readUsage = (id?: string) => invoke<Plans>("cli_profile_usage", { i
 export const resumePlan = (id: string) => invoke<Plans>("cli_profile_resume", { id });
 export const openLoginTerminal = (command: string, env: Record<string, string>) =>
   invoke<void>("open_login_terminal", { command, env });
+/** Mở Terminal chạy CLI của gói; Rust tự lấy binary và thư mục đăng nhập theo id, nên chỉ gửi id và thư mục làm việc. */
+export const openCliTerminal = (id: string, folder: string) =>
+  invoke<void>("open_cli_terminal", { id, folder: folder.trim() || null });
 
 export const CLI_NAME: Record<string, string> = {
   claude: "Claude Code",
