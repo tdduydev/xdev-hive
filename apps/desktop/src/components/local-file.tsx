@@ -1,10 +1,11 @@
+import { MarkdownEditor } from "@xdev-hive/doc-editor";
 import { Button } from "@xdev-hive/ui/button";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { LoaderCircleIcon, XIcon } from "lucide-react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "@/components/doc-view.tsx";
 import { type LocalFile, readLocalFile, writeLocalFile } from "@/lib/agent.ts";
-import { type Dict, useT } from "@/lib/i18n.ts";
+import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { errorText } from "@/lib/tauri.ts";
 import { cn } from "@/lib/utils.ts";
 
@@ -68,8 +69,8 @@ const isMarkdown = (path: string) => /\.(md|mdx|markdown)$/i.test(path);
 
 /**
  * File mở từ cây ở khung giữa màn Tài liệu: tài liệu (.md, .mdx, .txt) xem và sửa được rồi "Lưu vào file"; file code chỉ
- * xem, chữ đơn cách kèm số dòng. Không cần liên kết hub. `reload` tăng khi agent sửa file trong thư mục: bản chưa sửa
- * thì đọc lại luôn, đang soạn dở thì hỏi.
+ * xem, chữ đơn cách kèm số dòng. File Markdown sửa bằng trình soạn dùng chung với web, lưu ra vẫn là Markdown. Không
+ * cần liên kết hub. `reload` tăng khi agent sửa file trong thư mục: bản chưa sửa thì đọc lại luôn, đang soạn dở thì hỏi.
  */
 export function LocalFileView({
   folder,
@@ -83,6 +84,7 @@ export function LocalFileView({
   onClose: () => void;
 }) {
   const t = useT(text);
+  const lang = useLang();
   const [file, setFile] = useState<LocalFile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -162,7 +164,7 @@ export function LocalFileView({
     }
   }
 
-  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+  function onKey(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
       void save();
@@ -263,6 +265,17 @@ export function LocalFileView({
         !error && (
           <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">{t.loading}</div>
         )
+      ) : file.writable && mode === "edit" && isMarkdown(path) ? (
+        <MarkdownEditor
+          value={draft}
+          onChange={(md) => {
+            setDraft(md);
+            setJustSaved(false);
+          }}
+          lang={lang}
+          label={path}
+          onKeyDown={onKey}
+        />
       ) : file.writable && mode === "edit" ? (
         <Textarea
           aria-label={path}

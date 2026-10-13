@@ -2,6 +2,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   defaultProjectSettings,
+  defaultRouting,
   defaultTokenSaving,
   type ProjectSettingsPatch,
   projectSettingsPatch,
@@ -153,6 +154,74 @@ describe("projects.updateSettings: Tiết kiệm token", () => {
     expect(after.tokenSaving).toEqual({ ...defaultTokenSaving, cacheTtl: "1h", bashMaxChars: 30_000 });
     const off = await update("tadmin", p.key, { tokenSaving: { enabled: false } });
     expect(off.tokenSaving).toEqual({ ...defaultTokenSaving, cacheTtl: "1h", bashMaxChars: 30_000, enabled: false });
+  });
+
+  it("tokenSaving đã lưu thiếu rtk và codegraph được đọc là bật", async () => {
+    const p = await newProject();
+    await admin.query(
+      "update hive.projects set settings = settings #- '{tokenSaving,rtk}' #- '{tokenSaving,codegraph}' where id = $1",
+      [p.id],
+    );
+    const after = await update("tadmin", p.key, { tokenSaving: { cacheTtl: "1h" } });
+    expect(after.tokenSaving).toMatchObject({ rtk: true, codegraph: true, cacheTtl: "1h" });
+  });
+
+  it("bản vá không liên quan không bật lại rtk và codegraph đã tắt", async () => {
+    const p = await newProject();
+    await update("tadmin", p.key, { tokenSaving: { rtk: false, codegraph: false } });
+    const after = await update("tadmin", p.key, { tokenSaving: { bashMaxChars: 2000 } });
+    expect(after.tokenSaving).toMatchObject({ rtk: false, codegraph: false, bashMaxChars: 2000 });
+  });
+});
+
+describe("projects.updateSettings: tokenSaving mới và định tuyến", () => {
+  it("tokenSaving lưu trước khi có autocompactWindow/allowWeb vẫn đọc được, có mặc định", async () => {
+    const p = await newProject();
+    const old = { enabled: true, bashMaxChars: 9000, autocompactPct: 60, subagentModel: "haiku", cacheTtl: "1h" };
+    await admin.query(
+      "update hive.projects set settings = jsonb_set(settings, '{tokenSaving}', $2::jsonb) where id = $1",
+      [p.id, JSON.stringify(old)],
+    );
+    const patched = await update("tadmin", p.key, { tokenSaving: { allowWeb: true } });
+    expect(patched.tokenSaving).toEqual({
+      ...old,
+      autocompactWindow: 200_000,
+      allowWeb: true,
+      rtk: true,
+      codegraph: true,
+    });
+    const window = await update("tadmin", p.key, { tokenSaving: { autocompactWindow: 120_000 } });
+    expect(window.tokenSaving).toMatchObject({ autocompactWindow: 120_000, allowWeb: true, bashMaxChars: 9000 });
+  });
+
+  it("dự án lưu trước khi có routing được điền mặc định; vá từng cấp giữ các cấp khác, advisor null giữ nguyên null", async () => {
+    const p = await newProject();
+    await admin.query("update hive.projects set settings = settings - 'routing' where id = $1", [p.id]);
+    const first = await update("tadmin", p.key, { routing: { tiers: { heavy: { model: "opus-x", maxTurns: 250 } } } });
+    expect(first.routing).toEqual({
+      ...defaultRouting,
+      tiers: { ...defaultRouting.tiers, heavy: { ...defaultRouting.tiers.heavy, model: "opus-x", maxTurns: 250 } },
+    });
+    const advisor = await update("tadmin", p.key, { routing: { tiers: { medium: { advisor: "opus" } } } });
+    expect(advisor.routing.tiers.medium.advisor).toBe("opus");
+    expect(advisor.routing.tiers.heavy.model).toBe("opus-x");
+    const cleared = await update("tadmin", p.key, {
+      routing: { enabled: false, tiers: { medium: { advisor: null } } },
+    });
+    expect(cleared.routing.enabled).toBe(false);
+    expect(cleared.routing.tiers.medium.advisor).toBeNull();
+    expect(cleared.routing.tiers.light).toEqual(defaultRouting.tiers.light);
+  });
+
+  it.each<[string, unknown]>([
+    ["effort ngoài low/medium/high", { routing: { tiers: { light: { effort: "max" } } } }],
+    ["số lượt bằng 0", { routing: { tiers: { heavy: { maxTurns: 0 } } } }],
+    ["khoá lạ trong cấp", { routing: { tiers: { medium: { temperature: 1 } } } }],
+    ["cấp lạ", { routing: { tiers: { extreme: { model: "x" } } } }],
+    ["khoá lạ trong routing", { routing: { enable: true } }],
+    ["cửa sổ nén quá nhỏ", { tokenSaving: { autocompactWindow: 100 } }],
+  ])("từ chối %s", (_, patch) => {
+    expect(projectSettingsPatch.safeParse(patch).success).toBe(false);
   });
 });
 

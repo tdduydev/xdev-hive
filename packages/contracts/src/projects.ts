@@ -119,9 +119,10 @@ export const defaultIssueIntake: IssueIntake = { enabled: false, label: "hive", 
 /**
  * Cài đặt "Tiết kiệm token" cho run Claude Code (worker đặt thành biến môi trường của CLI). Bật mặc định vì số đo
  * trên máy dev cho thấy output Bash, subagent chạy model nặng và ghi cache 1 giờ là các khoản tốn nhất; dự án nào
- * cần ngữ cảnh đầy đủ thì tắt hoặc chỉnh từng mục. CLI khác Claude Code không bị ảnh hưởng.
+ * cần ngữ cảnh đầy đủ thì tắt hoặc chỉnh từng mục. Các biến môi trường và RTK chỉ áp cho Claude Code; CodeGraph áp cho
+ * cả Codex, Gemini và Antigravity. `enabled` là công tắc tổng: tắt thì worker không áp mục nào, kể cả rtk và codegraph.
  */
-export const tokenSavingSettings = z.object({
+const tokenSavingShape = {
   enabled: z.boolean(),
   /** Số ký tự tối đa của output một lệnh Bash đưa vào ngữ cảnh (BASH_MAX_OUTPUT_LENGTH). */
   bashMaxChars: z
@@ -135,8 +136,42 @@ export const tokenSavingSettings = z.object({
   subagentModel: z.string().trim().min(1, "Nhập tên model.").max(100, "Tối đa 100 ký tự."),
   /** Thời gian giữ cache prompt: `5m` rẻ hơn khi các lượt cách nhau ngắn, `1h` cho run có lượt chờ dài. */
   cacheTtl: z.enum(["5m", "1h"]),
+  /**
+   * Cửa sổ ngữ cảnh tối đa (token) trước khi Claude Code nén (CLAUDE_CODE_AUTO_COMPACT_WINDOW): chặn phiên phình gần
+   * 1 triệu token, vì mỗi lượt đọc lại cả ngữ cảnh.
+   */
+  autocompactWindow: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(50_000, "Tối thiểu 50.000 token.")
+    .max(1_000_000, "Tối đa 1.000.000 token."),
+  /** Cho agent dùng web (WebFetch, WebSearch; web_search của Codex). Tắt mặc định: run code hiếm khi cần. */
+  allowWeb: z.boolean(),
+  /** Nén output lệnh Bash qua RTK khi máy chạy run có rtk; chỉ Claude Code. */
+  rtk: z.boolean(),
+  /** Gắn MCP CodeGraph (`codegraph_explore`) và giữ chỉ mục code khi máy chạy run có codegraph. */
+  codegraph: z.boolean(),
+};
+
+// rtk và codegraph có mặc định vì settings đã lưu trước khi có hai mục này không chứa chúng. Mặc định chỉ đặt ở bản
+// đầy đủ: nếu đặt trong shape chung thì `.partial()` của bản vá vẫn điền true khi trường vắng, và một bản vá chỉ đổi
+// bashMaxChars sẽ lặng lẽ bật lại mục người dùng đã tắt.
+export const tokenSavingSettings = z.object({
+  ...tokenSavingShape,
+  rtk: tokenSavingShape.rtk.default(true),
+  codegraph: tokenSavingShape.codegraph.default(true),
 });
+export const tokenSavingPatch = z.object(tokenSavingShape).partial().strict();
 export type TokenSaving = z.output<typeof tokenSavingSettings>;
+
+/**
+ * Dạng đọc từ settings đã lưu: mục thêm sau có mặc định để dự án lưu trước đó vẫn hợp lệ. Bản vá dùng
+ * tokenSavingSettings không có mặc định, vì `.partial()` của trường có mặc định vẫn điền mặc định và đè giá trị đã lưu.
+ */
+const storedTokenSaving = tokenSavingSettings.extend({
+  autocompactWindow: tokenSavingSettings.shape.autocompactWindow.default(200_000),
+  allowWeb: tokenSavingSettings.shape.allowWeb.default(false),
+});
 
 export const defaultTokenSaving: TokenSaving = {
   enabled: true,
@@ -144,6 +179,54 @@ export const defaultTokenSaving: TokenSaving = {
   autocompactPct: 70,
   subagentModel: "sonnet",
   cacheTtl: "5m",
+  autocompactWindow: 200_000,
+  allowWeb: false,
+  rtk: true,
+  codegraph: true,
+};
+
+/** Cấp độ task: nhẹ (chữ, tài liệu, sửa nhỏ), vừa (một màn, CRUD), nặng (nhiều module, giao thức, bảo mật). */
+export const taskTier = z.enum(["light", "medium", "heavy"]);
+export type TaskTier = z.output<typeof taskTier>;
+export const TASK_TIERS: readonly TaskTier[] = taskTier.options;
+
+/** Mức effort chung của Claude Code (`--effort`) và Codex (`model_reasoning_effort`). */
+export const routingEffort = z.enum(["low", "medium", "high"]);
+export type RoutingEffort = z.output<typeof routingEffort>;
+
+export const tierRoute = z.object({
+  /** Model của Claude Code cho cấp này; CLI khác giữ model đã cấu hình (tên model mỗi CLI một kiểu). */
+  model: z.string().trim().min(1, "Nhập tên model.").max(100, "Tối đa 100 ký tự."),
+  effort: routingEffort,
+  /** `--max-turns` của Claude Code; dự án đặt budget.maxTurns thì giá trị đó thắng. */
+  maxTurns: z
+    .number("Nhập một số.")
+    .int("Nhập số nguyên.")
+    .min(1, "Tối thiểu 1 lượt.")
+    .max(10_000, "Tối đa 10.000 lượt."),
+  /** Model cố vấn (`--advisor`): Claude Code chạy `model` và chỉ hỏi cố vấn ở điểm quyết định; null là tắt. */
+  advisor: z.string().trim().min(1).max(100).nullable(),
+});
+export type TierRoute = z.output<typeof tierRoute>;
+
+/**
+ * Định tuyến model và effort theo cấp độ task cho run code (số đo: Opus chiếm 92% chi phí). Run review, plan, brief
+ * giữ model theo loại run như trước. Cấp độ suy từ nhãn, loại task, cỡ kế hoạch và mô tả; run thử lại sau lỗi lên
+ * một cấp.
+ */
+export const routingSettings = z.object({
+  enabled: z.boolean(),
+  tiers: z.object({ light: tierRoute, medium: tierRoute, heavy: tierRoute }),
+});
+export type RoutingSettings = z.output<typeof routingSettings>;
+
+export const defaultRouting: RoutingSettings = {
+  enabled: true,
+  tiers: {
+    light: { model: "sonnet", effort: "medium", maxTurns: 60, advisor: null },
+    medium: { model: "sonnet", effort: "high", maxTurns: 120, advisor: null },
+    heavy: { model: "opus", effort: "high", maxTurns: 200, advisor: null },
+  },
 };
 
 export const runPermissionMode = z.enum(["workspace", "full"]);
@@ -306,7 +389,9 @@ export const projectSettings = z.object({
    */
   issueIntake: issueIntakeSettings.default(() => ({ ...defaultIssueIntake })),
   /** Có mặc định vì dự án tạo trước khi có mục này không có nó trong settings đã lưu. */
-  tokenSaving: tokenSavingSettings.default(() => ({ ...defaultTokenSaving })),
+  tokenSaving: storedTokenSaving.default(() => ({ ...defaultTokenSaving })),
+  /** Có mặc định vì settings đã lưu trước khi có định tuyến không có mục này. */
+  routing: routingSettings.default(() => structuredClone(defaultRouting)),
   /**
    * CLI cho run không do người chọn (task từ issue, chạy lại theo bình luận). Bỏ trống thì máy nào có CLI cũng nhận.
    * Không đặt mặc định để settings đã lưu trước đó vẫn hợp lệ.
@@ -375,7 +460,19 @@ export const projectSettingsPatch = z
       })
       .optional(),
     issueIntake: issueIntakeSettings.partial().strict().optional(),
-    tokenSaving: tokenSavingSettings.partial().strict().optional(),
+    tokenSaving: tokenSavingPatch.optional(),
+    routing: z
+      .strictObject({
+        enabled: z.boolean().optional(),
+        tiers: z
+          .strictObject({
+            light: tierRoute.partial().strict().optional(),
+            medium: tierRoute.partial().strict().optional(),
+            heavy: tierRoute.partial().strict().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
     defaultCli: cli.nullable().optional(),
     budget: z
       .strictObject({
@@ -413,6 +510,7 @@ export function defaultProjectSettings(requiredApprovals = 1): ProjectSettings {
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { ...defaultIssueIntake },
     tokenSaving: { ...defaultTokenSaving },
+    routing: structuredClone(defaultRouting),
     brief: { ...DEFAULT_BRIEF_SETTINGS },
   };
 }

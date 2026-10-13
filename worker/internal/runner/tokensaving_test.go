@@ -13,6 +13,8 @@ import (
 var savingEnvNames = []string{
 	"BASH_MAX_OUTPUT_LENGTH", "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "CLAUDE_CODE_SUBAGENT_MODEL",
 	"CLAUDE_CODE_PROMPT_CACHE_TTL", "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL", "MAX_MCP_OUTPUT_TOKENS",
+	"CLAUDE_CODE_AUTO_COMPACT_WINDOW", "CLAUDE_CODE_DISABLE_BUNDLED_SKILLS", "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+	"CLAUDE_CODE_DISABLE_WORKFLOWS", "CLAUDE_CODE_DISABLE_CFC_PROMPT", "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS",
 }
 
 func TestSavingEnvDefaults(t *testing.T) {
@@ -23,6 +25,13 @@ func TestSavingEnvDefaults(t *testing.T) {
 		"CLAUDE_CODE_PROMPT_CACHE_TTL":          "5m",
 		"CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL": "5m",
 		"MAX_MCP_OUTPUT_TOKENS":                 "15000",
+		// Không có phiên bản claude (claudeVersion rỗng) nên chỉ có biến không cần kiểm phiên bản.
+		"CLAUDE_CODE_AUTO_COMPACT_WINDOW":         "200000",
+		"CLAUDE_CODE_DISABLE_BUNDLED_SKILLS":      "1",
+		"CLAUDE_CODE_DISABLE_AUTO_MEMORY":         "1",
+		"CLAUDE_CODE_DISABLE_WORKFLOWS":           "1",
+		"CLAUDE_CODE_DISABLE_CFC_PROMPT":          "1",
+		"CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS": "15000",
 	}
 	// Hub cũ (nil) và spec thiếu trường (số 0, chuỗi rỗng) đều ra mặc định.
 	for name, job := range map[string]*TokenSavingJob{"hub cũ": nil, "spec thiếu trường": {Enabled: true}} {

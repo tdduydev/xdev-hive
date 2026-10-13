@@ -20,6 +20,8 @@ type Usage struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Explore chỉ có với Claude (ADR 0022); CLI khác để nil để hub cũ và worker cũ không khác nhau về hình dạng.
 	Explore *ExploreUsage `json:"explore,omitempty"`
+	// RTK là số lệnh qua RTK và token output RTK ước bớt được trong lần thử; chỉ có khi run dùng RTK (tools.go).
+	RTK *RTKUsage `json:"rtk,omitempty"`
 }
 
 // ExploreUsage là usage dùng để khảo sát repo trước lần sửa file đầu tiên. Edited false là agent chưa sửa gì, số
@@ -36,7 +38,7 @@ type ExploreUsage struct {
 func (u Usage) equal(o Usage) bool {
 	return u.InputTokens == o.InputTokens && u.OutputTokens == o.OutputTokens &&
 		u.CacheReadTokens == o.CacheReadTokens && u.CacheWriteTokens == o.CacheWriteTokens &&
-		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore)
+		eqPtr(u.CostUSD, o.CostUSD) && eqPtr(u.Turns, o.Turns) && eqPtr(u.Model, o.Model) && eqPtr(u.Explore, o.Explore) && eqPtr(u.RTK, o.RTK)
 }
 
 func eqPtr[T comparable](a, b *T) bool {
@@ -83,6 +85,7 @@ func (u claudeAPIUsage) counts() tokenCounts {
 
 type claudeLine struct {
 	Type    string `json:"type"`
+	Subtype string `json:"subtype"`
 	Model   string `json:"model"`
 	Message *struct {
 		ID      string          `json:"id"`
@@ -115,6 +118,9 @@ type claudeUsage struct {
 	turns  *int
 	model  string
 	cached Usage
+	// stop là subtype của tin result khi Claude tự dừng vì chạm giới hạn (error_max_turns, error_max_budget_usd), đã thử
+	// trên claude 2.1.296: cả hai thoát mã 1 và num_turns của error_max_turns là giới hạn + 1.
+	stop string
 	// explore đóng băng ở lần sửa file đầu tiên; nil tới lúc đó.
 	explore *ExploreUsage
 }
@@ -130,6 +136,9 @@ func (l claudeLine) editsFiles() bool {
 	}
 	return false
 }
+
+// StopSubtype là lý do Claude tự dừng vì giới hạn; rỗng khi chưa dừng hay dừng vì lý do khác.
+func (c *claudeUsage) StopSubtype() string { return c.stop }
 
 func (c *claudeUsage) Line(line []byte) bool {
 	var l claudeLine
@@ -157,6 +166,9 @@ func (c *claudeUsage) Line(line []byte) bool {
 		}
 		c.msgs[l.Message.ID] = prev.max(l.Message.Usage.counts())
 	case "result":
+		if l.Subtype == "error_max_turns" || l.Subtype == "error_max_budget_usd" {
+			c.stop = l.Subtype
+		}
 		// Khi Claude tự dừng vì --max-budget-usd, result.usage toàn số 0 còn modelUsage mới có số thật: lấy số lớn
 		// nhất của từng trường để usage không bao giờ giảm.
 		var f tokenCounts
