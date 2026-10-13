@@ -177,6 +177,18 @@ describe("TokensScreen", () => {
     expect(await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
   });
 
+  it("chưa chọn thư mục: tính mọi phiên trên máy; phần lỗi hiện — và lý do, không kẹt Đang đọc", async () => {
+    const calls = fakeTauri({ ...claudeHandlers, session_stats: () => Promise.reject("Không đọc được ~/.claude.") });
+    render(<TokensScreen />);
+    expect(await screen.findByText("Không đọc được ~/.claude.")).toBeTruthy();
+    expect(await screen.findByText("hạn mức tiêu ở mức ngữ cảnh trên 150k")).toBeTruthy();
+    expect(screen.getByText("12,7k", { selector: "span.text-2xl" })).toBeTruthy();
+    const input = screen.getByText("Token vào 7 ngày").parentElement as HTMLElement;
+    expect(within(input).getByText("—")).toBeTruthy();
+    expect(screen.queryByText("Đang đọc…")).toBeNull();
+    expect(calls.filter((c) => c.command !== "claude_usage").every((c) => c.args?.folder === null)).toBe(true);
+  });
+
   it("tiếng Anh", async () => {
     setLang("en");
     fakeTauri(claudeHandlers);
