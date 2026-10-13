@@ -28,7 +28,16 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]);
+export const runKind = hive.enum("run_kind", [
+  "code",
+  "review",
+  "plan",
+  "leader",
+  "doccheck",
+  "docassist",
+  "brief",
+  "skill_proposal",
+]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
