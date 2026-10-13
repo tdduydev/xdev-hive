@@ -324,7 +324,7 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 export function createAppRouter(queryClient: QueryClient) {
-  return createRouter({
+  const router = createRouter({
     routeTree,
     context: { queryClient },
     defaultPreload: "intent",
@@ -332,6 +332,13 @@ export function createAppRouter(queryClient: QueryClient) {
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
   });
+  // Router chỉ tải chunk của trang sau khi mọi beforeLoad (me.get rồi orgs.mine) xong. Tải ngay khi bắt đầu chuyển
+  // trang thì chunk về song song với các lời gọi đó, trang vẽ sớm hơn một lượt đi về. Chunk đã tải thì không tải lại.
+  router.subscribe("onBeforeLoad", ({ toLocation }) => {
+    const [routes] = router.getMatchedRoutes(toLocation.pathname);
+    for (const route of routes) router.loadRouteChunk(route)?.catch(() => {});
+  });
+  return router;
 }
 
 declare module "@tanstack/react-router" {

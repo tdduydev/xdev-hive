@@ -514,3 +514,30 @@ test("chuyển giữa trang chủ và bảng việc không tải lại danh sác
   await expect(page.getByRole("region", { name: "Số liệu" })).toContainText("1run đang chạy");
   expect({ tasks: calls("tasks/list"), runs: calls("runs/latest") }).toEqual({ tasks: 1, runs: 1 });
 });
+
+test("chunk của trang tải cùng lúc với me.get, không chờ me.get và orgs.mine xong", async ({ page }) => {
+  await open(page);
+  const order: string[] = [];
+  let chunkRequested = () => {};
+  const chunk = new Promise<void>((resolve) => {
+    chunkRequested = resolve;
+  });
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/src/pages/tasks-page.tsx")) {
+      order.push("chunk");
+      chunkRequested();
+    }
+  });
+  // Giữ me.get tới khi trang xin chunk (tối đa 3 giây): trước đây chunk chỉ tải sau khi me.get và orgs.mine trả về.
+  await page.route(
+    (url) => url.pathname === "/rpc/me/get",
+    async (route) => {
+      await Promise.race([chunk, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      order.push("me");
+      await route.fallback();
+    },
+  );
+  await page.goto("/tasks");
+  await expect(page.getByRole("heading", { name: "Bảng việc" })).toBeVisible();
+  expect(order.slice(0, 2)).toEqual(["chunk", "me"]);
+});
