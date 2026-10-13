@@ -88,7 +88,7 @@
     `apps/hub/db/migrations/meta/*`, `apps/hub/src/migrations-upgrade.db.test.ts`, `apps/hub/src/modules/tasks/rls.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T005 🎯 [P] Thiết kế màn app (dùng chung web) bằng skill `ui-ux-pro-max`, design system v2, shadcn/ui; mỗi màn có
+- [x] T005 🎯 [P] Thiết kế màn app (dùng chung web) bằng skill `ui-ux-pro-max`, design system v2, shadcn/ui; mỗi màn có
   trạng thái rỗng/đang chạy/lỗi, 360 px, sáng/tối, chữ vi/en. Gồm phần nhiều dự án (chọn dự án tham gia, tab Dự án, tab
   Contract, làn dự án trong bản tách, độ phủ theo dự án) và tự duyệt (nhãn, điểm, hạn, Thu hồi, "Không tự duyệt: …").
   - **Scope**: `docs/design-system/screens/{AppSdlcBoard,AppSdlcNewItem,AppSdlcItem,AppSdlcQuestions,AppSdlcBreakdown,AppSdlcTrace,AppSdlcMetrics}.dc.html`
