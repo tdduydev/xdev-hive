@@ -30,6 +30,12 @@ fn main() {
         "cli_accounts",
         "cli_profiles",
         "cli_profile_set",
+        "cli_profile_add",
+        "cli_profile_update",
+        "cli_profile_remove",
+        "cli_profile_usage",
+        "cli_profile_resume",
+        "open_login_terminal",
         "folder_tree",
         "propose_doc",
     ]);
