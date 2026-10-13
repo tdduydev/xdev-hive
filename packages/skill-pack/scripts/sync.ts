@@ -54,8 +54,14 @@ function files(dir: string): string[] {
 }
 
 /** Kiểm thư mục library/ và dựng manifest. Lỗi thì dừng: bản sao hỏng không được vào hub. */
-function buildManifest(library: string, sources: Sources, commit: string): SkillPackManifest {
+function buildManifest(
+  library: string,
+  sources: Sources,
+  commit: string,
+  previous: SkillPackManifest | null,
+): SkillPackManifest {
   const skills: PackSkillMeta[] = [];
+  const before = new Map(previous?.skills.map((s) => [s.name, s]));
   for (const s of sources.skills) {
     const dir = join(library, s.name);
     if (!NAME.test(s.name)) fail(`${s.name}: tên skill không hợp lệ`);
@@ -75,6 +81,8 @@ function buildManifest(library: string, sources: Sources, commit: string): Skill
       bytes += buf.length;
     }
     const repo = s.repo ? sources.repos[s.repo] : undefined;
+    const hash = treeHash(dir);
+    const old = before.get(s.name);
     skills.push({
       name: s.name,
       description: fm.description,
@@ -90,7 +98,8 @@ function buildManifest(library: string, sources: Sources, commit: string): Skill
               url: `https://github.com/${s.repo}${s.path ? `/tree/${repo.commit}/${s.path}` : ""}`,
             }
           : null,
-      hash: treeHash(dir),
+      hash,
+      version: old?.hash === hash ? (old.version ?? 1) : (old?.version ?? 0) + 1,
       files: list.length,
       bytes,
     });
@@ -105,7 +114,8 @@ function pull(repoDir: string) {
   const commit = git(repoDir, "rev-parse", "HEAD");
   const sources = JSON.parse(readFileSync(join(repoDir, "sources.json"), "utf8")) as Sources;
   const library = join(repoDir, "library");
-  const manifest = buildManifest(library, sources, commit);
+  const previous = existsSync(join(PACK_DIR, "pack.json")) ? readManifest() : null;
+  const manifest = buildManifest(library, sources, commit, previous);
   const dest = join(PACK_DIR, "skills");
   rmSync(dest, { recursive: true, force: true });
   cpSync(library, dest, { recursive: true });
@@ -123,7 +133,7 @@ function check(repoDir: string) {
     execFileSync("tar", ["-x", "-f", tarFile, "-C", tmp]);
     rmSync(tarFile);
     const sources = JSON.parse(readFileSync(join(tmp, "sources.json"), "utf8")) as Sources;
-    const expected = buildManifest(join(tmp, "library"), sources, manifest.source.commit);
+    const expected = buildManifest(join(tmp, "library"), sources, manifest.source.commit, manifest);
     if (JSON.stringify(expected) !== JSON.stringify(manifest))
       fail(`pack.json khác library/ ở ${manifest.source.commit.slice(0, 12)}; chạy lại "pull".`);
     for (const s of manifest.skills) {

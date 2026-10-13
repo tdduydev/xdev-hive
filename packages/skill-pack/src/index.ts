@@ -20,6 +20,8 @@ export interface PackSkillMeta {
   upstream: { repo: string; commit: string; path: string; url: string } | null;
   /** sha256 của cả thư mục skill (treeHash): worker cache theo giá trị này, test kiểm bản sao không bị sửa tay. */
   hash: string;
+  /** Tăng mỗi lần nội dung đổi (scripts/sync.ts): app desktop so số này để báo có bản mới như skill của hub. */
+  version: number;
   files: number;
   bytes: number;
 }
