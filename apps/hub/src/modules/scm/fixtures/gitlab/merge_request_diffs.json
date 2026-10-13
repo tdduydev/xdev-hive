@@ -1,0 +1,58 @@
+[
+  {
+    "old_path": "README.md",
+    "new_path": "README.md",
+    "a_mode": "100644",
+    "b_mode": "100644",
+    "diff": "@@ -1,3 +1,4 @@\n # web\n-cũ\n+mới\n+thêm\n tiếp\n",
+    "new_file": false,
+    "renamed_file": false,
+    "deleted_file": false,
+    "generated_file": false
+  },
+  {
+    "old_path": "src/a.ts",
+    "new_path": "src/b.ts",
+    "a_mode": "100644",
+    "b_mode": "100644",
+    "diff": "",
+    "new_file": false,
+    "renamed_file": true,
+    "deleted_file": false,
+    "generated_file": false
+  },
+  {
+    "old_path": "docs/big.json",
+    "new_path": "docs/big.json",
+    "a_mode": "100644",
+    "b_mode": "100644",
+    "diff": "",
+    "new_file": false,
+    "renamed_file": false,
+    "deleted_file": false,
+    "generated_file": false,
+    "too_large": true
+  },
+  {
+    "old_path": "/dev/null",
+    "new_path": "src/c.ts",
+    "a_mode": "0",
+    "b_mode": "100644",
+    "diff": "@@ -0,0 +1,2 @@\n+export const c = 1;\n+export const d = 2;\n",
+    "new_file": true,
+    "renamed_file": false,
+    "deleted_file": false,
+    "generated_file": false
+  },
+  {
+    "old_path": "gone.txt",
+    "new_path": "gone.txt",
+    "a_mode": "100644",
+    "b_mode": "0",
+    "diff": "@@ -1 +0,0 @@\n-bye\n",
+    "new_file": false,
+    "renamed_file": false,
+    "deleted_file": true,
+    "generated_file": false
+  }
+]

@@ -19,10 +19,12 @@ import type {
   ChecksState,
   CommentOptions,
   CommitFilesInput,
+  CommitStatusInput,
   CreateRepoInput,
   FetchLike,
   GitProvider,
   MergeMethod,
+  PullRequestFile,
   PullRequestInput,
   PullRequestState,
   RepoInfo,
@@ -31,6 +33,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
+import { COMMIT_STATUS_DESCRIPTION_MAX, MAX_PR_FILES } from "./types.ts";
 
 export interface GitLabProviderOptions {
   /** Địa chỉ GitLab, ví dụ `https://gitlab.com` hoặc bản tự host. */
@@ -109,6 +112,43 @@ function mergeableOf(mr: GlMergeRequest): PullRequestState["mergeable"] {
   if (mr.merge_status === "can_be_merged") return "clean";
   if (mr.merge_status === "cannot_be_merged") return "blocked";
   return "unknown";
+}
+
+interface GlDiff {
+  old_path: string;
+  new_path: string;
+  new_file: boolean;
+  renamed_file: boolean;
+  deleted_file: boolean;
+  /** Hunk unified không có dòng `---`/`+++`; rỗng khi file nhị phân hoặc bị GitLab thu gọn. */
+  diff: string;
+  /** GitLab bỏ nội dung diff vì quá lớn (`collapsed` là vượt giới hạn tổng của MR, `too_large` là của riêng file). */
+  collapsed?: boolean;
+  too_large?: boolean;
+}
+
+/** GitLab không trả số dòng đổi; đếm từ hunk, nơi mọi dòng mở đầu bằng `+`/`-` đều là dòng đổi. */
+function countChanges(diff: string): { additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+")) additions++;
+    else if (line.startsWith("-")) deletions++;
+  }
+  return { additions, deletions };
+}
+
+function toPullRequestFile(d: GlDiff): PullRequestFile {
+  const omitted = d.collapsed === true || d.too_large === true;
+  const patch = omitted || d.diff === "" ? undefined : d.diff;
+  return {
+    path: d.new_path,
+    ...(d.renamed_file ? { previousPath: d.old_path } : {}),
+    status: d.new_file ? "added" : d.deleted_file ? "removed" : d.renamed_file ? "renamed" : "modified",
+    ...countChanges(patch ?? ""),
+    ...(patch === undefined ? {} : { patch }),
+    truncated: omitted,
+  };
 }
 
 /** GitLab trả `message` là chuỗi hoặc object theo trường (ví dụ `{"name":["has already been taken"]}`). */
@@ -505,6 +545,30 @@ export function createGitLabProvider(opts: GitLabProviderOptions): GitProvider {
       if (body === null) return null;
       // File .json được parseBody đọc thành object; trả lại đúng nội dung chữ.
       return typeof body === "string" ? body : JSON.stringify(body);
+    },
+
+    async prFiles(ref: RepoRef, number: number) {
+      const out: PullRequestFile[] = [];
+      // Đọc theo x-next-page như listFiles; dừng ở 3 000 file cho khớp GitHub.
+      for (let page = "1"; page && out.length < MAX_PR_FILES; ) {
+        const url = new URL(`${mrPath(ref, number)}/diffs`, apiBase);
+        url.search = new URLSearchParams({ per_page: "100", page }).toString();
+        const res = await orNull(() => send("GET", url, { headers: { "private-token": opts.token } }));
+        if (!res) return null;
+        out.push(...((await res.json()) as GlDiff[]).map(toPullRequestFile));
+        page = res.headers.get("x-next-page") ?? "";
+      }
+      return out.slice(0, MAX_PR_FILES);
+    },
+
+    async setCommitStatus(ref: RepoRef, sha: string, input: CommitStatusInput) {
+      // GitLab gọi trạng thái hỏng là `failed`; `name` là tên kiểm tra, tương đương `context` của GitHub.
+      await rest("POST", `projects/${encodeURIComponent(projectPath(ref))}/statuses/${sha}`, {
+        state: input.state === "failure" ? "failed" : input.state,
+        name: input.context,
+        description: input.description.slice(0, COMMIT_STATUS_DESCRIPTION_MAX),
+        ...(input.targetUrl ? { target_url: input.targetUrl } : {}),
+      });
     },
 
     async closePR(ref: RepoRef, number: number) {
