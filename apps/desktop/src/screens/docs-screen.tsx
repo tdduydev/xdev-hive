@@ -758,9 +758,10 @@ interface HubDocFull {
 
 /**
  * Màn Tài liệu (AppDocs.dc.html, specs/008-desktop-v2 T011): chọn thư mục dự án; cột trái là tài liệu của dự án trên
- * hub và cây code (chấm xanh: file agent đã đọc); giữa là bản nháp tài liệu với đề xuất của agent tô xanh; phải là
- * khung chat chạy Claude Code hoặc Codex chỉ đọc trên máy. Bản nháp lên hub bằng đề xuất (`propose_doc`), người duyệt
- * quyết.
+ * hub và cây code (chấm xanh: file agent đã đọc; bấm file để mở ở giữa); giữa là bản nháp tài liệu với đề xuất của
+ * agent tô xanh, hoặc file trong thư mục (components/local-file.tsx); phải là tab Chat chạy Claude Code hoặc Codex trên
+ * máy (mặc định chỉ đọc, người dùng bật chế độ ghi) và tab Terminal (components/terminal-pane.tsx). Bản nháp lên hub
+ * bằng đề xuất (`propose_doc`), người duyệt quyết.
  */
 export function DocsScreen() {
   const t = useT(text);
