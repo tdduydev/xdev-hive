@@ -89,95 +89,141 @@ export interface NavItem {
   writes?: Permission;
 }
 
-export const NAV_ITEMS: readonly NavItem[] = [
+export interface NavGroup {
+  id: "work" | "docs" | "machine";
+  /** Tiêu đề nhỏ trên nhóm, ẩn khi menu chỉ còn icon. */
+  label: Dict<string>;
+  items: readonly NavItem[];
+}
+
+/*
+ * Mười mục để phẳng thì dài và tên dễ lẫn (hai mục cùng chữ "Tài liệu"), nên gom theo việc người dùng đang làm: việc
+ * của mình, tài liệu của đội, rồi những gì chỉ nằm trên máy này.
+ */
+export const NAV_GROUPS: readonly NavGroup[] = [
   {
-    id: "home",
-    label: { vi: "Tổng quan", en: "Overview" },
-    icon: HouseIcon,
-    design: "AppHome.dc.html",
-    needs: "docs.read",
-  },
-  {
-    // Task mình tạo hoặc có run mình giao, và run mình giao (spec 008 US10). Bảng việc của cả đội ở web quản trị.
     id: "work",
-    label: { vi: "Việc của tôi", en: "My work" },
-    icon: ListTodoIcon,
-    design: "AppNav.dc.html",
-    needs: "work.mine",
-  },
-  {
-    // Phiên duyệt tài liệu đang chờ mình ở checkpoint hiện tại (spec 008 US11). Ai đọc được tài liệu cũng có thể được
-    // chỉ định duyệt; hub quyết ai được quyết.
-    id: "reviews",
-    label: { vi: "Chờ tôi duyệt", en: "Awaiting my review" },
-    icon: ClipboardCheckIcon,
-    design: "DocReview.dc.html",
-    needs: "docs.read",
-  },
-  {
-    // Tìm tài liệu đã duyệt, memory và skill của đội khi đang làm việc, chỉ đọc (spec 008 US12).
-    id: "knowledge",
-    label: { vi: "Tra cứu tri thức", en: "Knowledge" },
-    icon: LibraryIcon,
-    design: "AppNav.dc.html",
-    needs: "docs.read",
+    label: { vi: "Công việc", en: "Work" },
+    items: [
+      {
+        id: "home",
+        label: { vi: "Tổng quan", en: "Overview" },
+        icon: HouseIcon,
+        design: "AppHome.dc.html",
+        needs: "docs.read",
+      },
+      {
+        // Task mình tạo hoặc có run mình giao, và run mình giao (spec 008 US10). Bảng việc của cả đội ở web quản trị.
+        id: "work",
+        label: { vi: "Việc của tôi", en: "My work" },
+        icon: ListTodoIcon,
+        design: "AppNav.dc.html",
+        needs: "work.mine",
+      },
+      {
+        // Phiên duyệt tài liệu đang chờ mình ở checkpoint hiện tại (spec 008 US11). Ai đọc được tài liệu cũng có thể
+        // được chỉ định duyệt; hub quyết ai được quyết.
+        id: "reviews",
+        label: { vi: "Chờ tôi duyệt", en: "Awaiting my review" },
+        icon: ClipboardCheckIcon,
+        design: "DocReview.dc.html",
+        needs: "docs.read",
+      },
+    ],
   },
   {
     id: "docs",
     label: { vi: "Tài liệu", en: "Docs" },
-    icon: FileTextIcon,
-    design: "AppDocs.dc.html",
-    needs: "docs.read",
-    writes: "docs.write",
+    items: [
+      {
+        // Tìm tài liệu đã duyệt, memory và skill của đội khi đang làm việc, chỉ đọc (spec 008 US12).
+        id: "knowledge",
+        label: { vi: "Tra cứu tri thức", en: "Knowledge" },
+        icon: LibraryIcon,
+        design: "AppNav.dc.html",
+        needs: "docs.read",
+      },
+      {
+        // Trình soạn tài liệu dùng chung với web (packages/doc-editor, spec 008 US9). Ai đọc được tài liệu đều mở được;
+        // hub quyết định sửa hay chỉ đọc và bình luận.
+        id: "write",
+        label: { vi: "Soạn tài liệu", en: "Write docs" },
+        icon: FilePenLineIcon,
+        design: "DocEditor.dc.html",
+        needs: "docs.read",
+      },
+      {
+        // Agent đọc code của thư mục dự án rồi soạn bản nháp; nhãn nói rõ nguồn để không lẫn với Soạn tài liệu.
+        id: "docs",
+        label: { vi: "Tài liệu từ code", en: "Docs from code" },
+        icon: FileTextIcon,
+        design: "AppDocs.dc.html",
+        needs: "docs.read",
+        writes: "docs.write",
+      },
+    ],
   },
   {
-    // Trình soạn tài liệu dùng chung với web (packages/doc-editor, spec 008 US9). Ai đọc được tài liệu đều mở được;
-    // hub quyết định sửa hay chỉ đọc và bình luận.
-    id: "write",
-    label: { vi: "Soạn tài liệu", en: "Write docs" },
-    icon: FilePenLineIcon,
-    design: "DocEditor.dc.html",
-    needs: "docs.read",
-  },
-  {
-    id: "skills",
-    label: { vi: "Skills", en: "Skills" },
-    icon: ZapIcon,
-    design: "AppSkills.dc.html",
-    needs: "skills.read",
-    writes: "skills.sync",
-  },
-  {
-    id: "tokens",
-    label: { vi: "Token và ngữ cảnh", en: "Tokens & context" },
-    icon: ChartLineIcon,
-    design: "AppTokens.dc.html",
-    needs: "tokens.read",
-  },
-  {
-    id: "setup",
-    label: { vi: "Môi trường", en: "Environment" },
-    icon: WrenchIcon,
-    design: "AppSetup.dc.html",
-    needs: "env.manage",
-  },
-  {
-    id: "runs",
-    label: { vi: "Lượt chạy trên máy", en: "Runs on this machine" },
-    icon: PlayIcon,
-    design: "AppNav.dc.html",
-    needs: "runs.local",
+    id: "machine",
+    label: { vi: "Máy này", en: "This machine" },
+    items: [
+      {
+        id: "runs",
+        label: { vi: "Lượt chạy trên máy", en: "Runs on this machine" },
+        icon: PlayIcon,
+        design: "AppNav.dc.html",
+        needs: "runs.local",
+      },
+      {
+        id: "setup",
+        label: { vi: "Môi trường", en: "Environment" },
+        icon: WrenchIcon,
+        design: "AppSetup.dc.html",
+        needs: "env.manage",
+      },
+      {
+        id: "skills",
+        label: { vi: "Skills", en: "Skills" },
+        icon: ZapIcon,
+        design: "AppSkills.dc.html",
+        needs: "skills.read",
+        writes: "skills.sync",
+      },
+      {
+        id: "tokens",
+        label: { vi: "Token và ngữ cảnh", en: "Tokens & context" },
+        icon: ChartLineIcon,
+        design: "AppTokens.dc.html",
+        needs: "tokens.read",
+      },
+    ],
   },
 ];
 
+export const NAV_ITEMS: readonly NavItem[] = NAV_GROUPS.flatMap((group) => group.items);
+
 export const can = (profile: Profile, permission: Permission): boolean => PERMISSIONS[profile].includes(permission);
 
-/** Mục người dùng được thấy, kèm cờ chỉ đọc. */
-export function navItems(profile: Profile): (NavItem & { readOnly: boolean })[] {
-  return NAV_ITEMS.filter((item) => can(profile, item.needs)).map((item) => ({
-    ...item,
-    readOnly: item.writes !== undefined && !can(profile, item.writes),
-  }));
+export type VisibleNavItem = NavItem & { readOnly: boolean };
+
+/** Nhóm có mục người dùng được thấy, kèm cờ chỉ đọc; nhóm không còn mục nào thì bỏ để không treo tiêu đề trống. */
+export function navGroups(
+  profile: Profile,
+  groups: readonly NavGroup[] = NAV_GROUPS,
+): (Omit<NavGroup, "items"> & { items: VisibleNavItem[] })[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item) => can(profile, item.needs))
+        .map((item) => ({ ...item, readOnly: item.writes !== undefined && !can(profile, item.writes) })),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
+/** Mục người dùng được thấy, theo thứ tự trên menu. */
+export function navItems(profile: Profile): VisibleNavItem[] {
+  return navGroups(profile).flatMap((group) => group.items);
 }
 
 /** Màn theo `#/<id>` (phần sau `/` tiếp theo là tham số của màn, vd. `#/write/<key>`); mặc định Tổng quan. */
