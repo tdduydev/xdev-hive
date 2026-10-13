@@ -1,36 +1,13 @@
 import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
 import { outcomeCheck } from "./projects.ts";
+import { RUN_STATES, RUN_STATUS_GROUP_NAMES } from "./run-states.ts";
 import { cli } from "./worker-protocol.ts";
 
-/** Máy trạng thái của run (docs/architecture.md mục 4.1). */
-export const runState = z.enum([
-  "queued",
-  "planning",
-  "awaiting_plan",
-  "leased",
-  "preparing",
-  "running",
-  "awaiting_input",
-  "verifying",
-  "succeeded",
-  "no_changes",
-  "needs_review",
-  "failed",
-  "lost",
-  "cancelling",
-  "cancelled",
-]);
-export type RunState = z.output<typeof runState>;
+export { RUN_STATUS_GROUPS, TERMINAL_RUN_STATES } from "./run-states.ts";
 
-/** Trạng thái không đổi nữa; run ở đây không giữ lease và không nhận gói của worker. */
-export const TERMINAL_RUN_STATES: readonly RunState[] = [
-  "succeeded",
-  "no_changes",
-  "needs_review",
-  "failed",
-  "cancelled",
-];
+export const runState = z.enum(RUN_STATES);
+export type RunState = z.output<typeof runState>;
 
 /** `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động. */
 export const runKind = z.enum(["code", "review", "plan", "leader", "doccheck", "docassist"]);
@@ -159,17 +136,8 @@ export type RunSteerInput = z.output<typeof runSteerInput>;
 export const runSteerStatus = z.enum(["sent", "pending", "closing"]);
 export type RunSteerStatus = z.output<typeof runSteerStatus>;
 
-/** Nhóm trạng thái để lọc danh sách run; web và hub dùng chung một cách chia. */
-export const runStatusGroup = z.enum(["active", "waiting", "succeeded", "failed", "cancelled"]);
+export const runStatusGroup = z.enum(RUN_STATUS_GROUP_NAMES);
 export type RunStatusGroup = z.output<typeof runStatusGroup>;
-export const RUN_STATUS_GROUPS: Record<RunStatusGroup, readonly RunState[]> = {
-  active: ["queued", "planning", "leased", "preparing", "running", "verifying", "cancelling"],
-  /** Cần người: duyệt kế hoạch, trả lời agent, xem kết quả. */
-  waiting: ["awaiting_plan", "awaiting_input", "needs_review"],
-  succeeded: ["succeeded", "no_changes"],
-  failed: ["failed", "lost"],
-  cancelled: ["cancelled"],
-};
 
 export const runSearchInput = z.object({
   status: runStatusGroup.optional(),

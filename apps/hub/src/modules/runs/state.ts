@@ -103,9 +103,14 @@ export async function transition(
   return row;
 }
 
-/** Khoá dòng run tới hết transaction: gói của worker, hẹn giờ và người dùng đổi cùng một run lần lượt từng bên. */
+/**
+ * Khoá dòng run tới hết transaction: gói của worker, hẹn giờ và người dùng đổi cùng một run lần lượt từng bên. Khoá
+ * NO KEY UPDATE (đủ để các bên loại trừ nhau, như UPDATE không đổi khoá) chứ không FOR UPDATE: sửa run con kiểm khoá
+ * ngoại parent_run_id bằng FOR KEY SHARE trên run cha, mà FOR UPDATE chặn cả khoá đó. Huỷ run cha (khoá cha rồi con)
+ * chạy cùng lúc với đề nghị job cho run plan (sửa con, kiểm khoá ngoại tới cha) từng deadlock vì vậy.
+ */
 export async function lockRun(tx: Tx, id: string): Promise<RunRow | null> {
-  const [row] = await tx.select().from(runs).where(eq(runs.id, id)).for("update");
+  const [row] = await tx.select().from(runs).where(eq(runs.id, id)).for("no key update");
   return row ?? null;
 }
 
