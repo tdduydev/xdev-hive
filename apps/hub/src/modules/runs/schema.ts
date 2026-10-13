@@ -78,6 +78,8 @@ export const runs = hive
       pinnedMachineId: uuid("pinned_machine_id"),
       cli: text("cli").$type<"claude" | "codex" | "gemini" | "antigravity">(),
       model: text("model"),
+      /** Cấp độ task do người đặt tay (light|medium|heavy); null là hub suy từ task (routing.ts). */
+      tier: text("tier").$type<"light" | "medium" | "heavy">(),
       branch: text("branch").notNull(),
       /** Chính sách kết quả chốt lúc giao, để cấu hình dự án đổi sau không đổi kết quả của run. */
       policySnapshot: jsonb("policy_snapshot").$type<OutcomeCheck[]>().notNull(),

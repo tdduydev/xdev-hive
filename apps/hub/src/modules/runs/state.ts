@@ -1,4 +1,4 @@
-import type { Run, RunState } from "@xdev-hive/contracts";
+import { type Run, type RunState, runRouting } from "@xdev-hive/contracts";
 import { eq, sql } from "drizzle-orm";
 import type { ProjectRow } from "../catalog/index.ts";
 import type { Tx } from "../platform/index.ts";
@@ -13,6 +13,12 @@ export const RUNS_CHANNEL = "hive_runs";
 export const ON_MACHINE: readonly RunState[] = ["leased", "preparing", "running", "awaiting_input", "cancelling"];
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** Snapshot cũ (trước định tuyến) hay hỏng dạng thì coi như không có lựa chọn nào để hiện. */
+function routingOf(snapshot: Record<string, unknown> | null): Run["routing"] {
+  const parsed = runRouting.safeParse(snapshot?.routing);
+  return parsed.success ? parsed.data : null;
+}
 
 /** `machineName` để null; truy vấn trả run cho người xem điền tên qua withMachineNames (queries.ts). */
 export function toRun(r: RunRow): Run {
@@ -30,6 +36,8 @@ export function toRun(r: RunRow): Run {
     machineName: null,
     cli: r.cli,
     model: r.model,
+    tier: r.tier,
+    routing: routingOf(r.agentPolicySnapshot),
     pinnedMachineId: r.pinnedMachineId,
     branch: r.branch,
     policySnapshot: r.policySnapshot,
