@@ -550,6 +550,39 @@ describe("review chéo", () => {
     expect((await runRow(runId)).result.reasons.join(" ")).toContain("huỷ");
   });
 
+  it("huỷ run review → run cha kết luận ngay sau commit, không chờ hẹn giờ", async () => {
+    await crossReview({ required: true });
+    const w = await FakeWorker.connect(await seedMachine(`cn-${tag}`));
+    const { runId } = await queueRun();
+    await w.take(runId);
+    await w.finish(runId, 0, { commitCount: 1, changedFiles: ["a.ts"] });
+    await until(async () => (await reviewRunsOf(runId))[0]?.offer_machine_id != null);
+    await w.close();
+    const [child] = await reviewRunsOf(runId);
+    // Hàng đợi hẹn giờ không bao giờ chạy: run cha chỉ kết luận được nếu hub gọi verify ngay sau khi huỷ run con.
+    const noTimers = {
+      start: async () => {},
+      stop: async () => {},
+      enqueue: async () => null,
+      schedule: async () => {},
+      work: async () => {},
+    };
+    const direct = createRunsEngine({
+      pool,
+      publicUrl: baseURL,
+      authSecret: secret,
+      masterKey,
+      providerFactory: () => provider,
+      logger: quiet,
+      jobs: noTimers,
+    });
+    const after = await withTenant(pool, { orgId: org.orgId }, (tx) => direct.cancelRunsOfTask(tx, child.task_id));
+    after();
+    await until(async () => (await runRow(runId)).state === "failed", 900);
+    direct.stop();
+    expect((await runRow(runId)).result.reasons.join(" ")).toContain("huỷ");
+  });
+
   it("huỷ run của task khoá run cha trước run con: không deadlock với giao dịch khoá cha rồi con", async () => {
     await crossReview({ required: true });
     const w = await FakeWorker.connect(await seedMachine(`dl-${tag}`));
