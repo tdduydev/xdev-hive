@@ -7,7 +7,7 @@
     "node": ">=24.21"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "prepush": "node scripts/pre-push.ts",
     "dev": "node scripts/dev.ts",
     "dev:all": "node scripts/dev.ts",
