@@ -175,9 +175,9 @@ export function RunsScreen() {
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex min-w-72 flex-1 flex-col gap-1">
-          <p className="text-[13px] text-muted-foreground">{t.lead}</p>
-          {blocker && <p className="text-[13px] text-muted-foreground">{blocker}</p>}
-          {error && <p className="text-[13px] text-destructive">{error}</p>}
+          <p className="text-sm text-muted-foreground">{t.lead}</p>
+          {blocker && <p className="text-sm text-muted-foreground">{blocker}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading || !!blocker}>
           <RefreshCwIcon aria-hidden="true" className={cn(loading && "animate-spin")} />
@@ -187,7 +187,7 @@ export function RunsScreen() {
 
       <section className="grid grid-cols-1 gap-2.5 min-[760px]:grid-cols-3">
         <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-          <span className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
             <span aria-hidden="true" className={cn("size-2 rounded-full", WORKER_DOT[worker?.kind ?? "stopped"])} />
             {worker ? workerSentence(worker.label) : t.loading}
           </span>
@@ -195,12 +195,12 @@ export function RunsScreen() {
           <span className="text-xs text-muted-foreground">{t.running(active)}</span>
         </div>
         <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-          <span className="text-[12.5px] text-muted-foreground">{machine ?? "—"}</span>
+          <span className="text-sm text-muted-foreground">{machine ?? "—"}</span>
           <span className="font-mono text-2xl font-semibold tracking-tight">{runs ? recent.length : "—"}</span>
           <span className="text-xs text-muted-foreground">{t.today(recent.length)}</span>
         </div>
         <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-          <span className="text-[12.5px] text-muted-foreground">{t.cost}</span>
+          <span className="text-sm text-muted-foreground">{t.cost}</span>
           <span className="font-mono text-2xl font-semibold tracking-tight">{runs ? `$${cost.toFixed(2)}` : "—"}</span>
           <span className="text-xs text-muted-foreground">
             {runs
@@ -215,9 +215,9 @@ export function RunsScreen() {
 
       <section className="overflow-hidden rounded-xl border bg-card text-card-foreground">
         {runs === null ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{blocker ?? t.loading}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{blocker ?? t.loading}</p>
         ) : runs.length === 0 ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.empty}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.empty}</p>
         ) : (
           <Table className="min-w-160">
             <TableHeader>
@@ -245,13 +245,13 @@ export function RunsScreen() {
                           void invoke("open_hub_page", { path: `/runs/${r.id}` }).catch((e) => setError(errorText(e)))
                         }
                       >
-                        <span className="truncate font-mono text-[13px] font-medium">{r.taskKey}</span>
+                        <span className="truncate font-mono text-sm font-medium">{r.taskKey}</span>
                         <span className="truncate text-xs text-muted-foreground">
                           {t.kinds[r.kind]} · {r.title}
                         </span>
                       </button>
                     </Td>
-                    <Td className="text-[13px] whitespace-nowrap">{r.project?.name ?? "—"}</Td>
+                    <Td className="text-sm whitespace-nowrap">{r.project?.name ?? "—"}</Td>
                     <Td className="font-mono text-xs whitespace-nowrap">{r.cli ?? "—"}</Td>
                     <Td>
                       <Pill tone={stateTone(r.state)} dot={ACTIVE.has(r.state)}>

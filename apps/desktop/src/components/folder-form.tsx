@@ -33,7 +33,7 @@ export function FolderForm({
         <Label htmlFor="project-folder">{t.folder}</Label>
         <Input
           id="project-folder"
-          className="font-mono text-[13px] md:text-[13px]"
+          className="font-mono text-sm md:text-sm"
           placeholder="~/Work/payment-api"
           spellCheck={false}
           value={value}

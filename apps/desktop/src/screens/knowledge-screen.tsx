@@ -104,7 +104,7 @@ function Search() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-      <p className="text-[13px] text-muted-foreground">{t.lead}</p>
+      <p className="text-sm text-muted-foreground">{t.lead}</p>
       <search>
         <form onSubmit={onSubmit} className="flex items-end gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
@@ -132,7 +132,7 @@ function Search() {
           <Results title={t.docs} loading={docs.isPending} count={found.docs.length}>
             {found.docs.map((d) => (
               <ResultLink key={d.id} href={`#/knowledge/doc/${encodeURIComponent(d.key)}`}>
-                <span className="truncate text-[13.5px] font-medium">{d.title}</span>
+                <span className="truncate text-sm font-medium">{d.title}</span>
                 <span className="truncate font-mono text-xs text-muted-foreground">
                   {d.key} · {t.version(d.version)}
                 </span>
@@ -143,7 +143,7 @@ function Search() {
             {memory.data?.map((m) => (
               <li key={m.id} className="flex flex-col gap-1 px-4 py-2.5">
                 <span className="text-xs font-medium text-muted-foreground">{t.kinds[m.kind]}</span>
-                <span className="text-[13.5px] whitespace-pre-wrap">{m.content}</span>
+                <span className="text-sm whitespace-pre-wrap">{m.content}</span>
                 {m.files.length > 0 && (
                   <span className="truncate font-mono text-xs text-muted-foreground">{m.files.join(", ")}</span>
                 )}
@@ -153,7 +153,7 @@ function Search() {
           <Results title={t.skills} loading={skills.isPending} count={found.skills.length}>
             {found.skills.map((s) => (
               <ResultLink key={s.id} href={`#/knowledge/skill/${encodeURIComponent(s.id)}`}>
-                <span className="truncate font-mono text-[13px] font-medium">{s.name}</span>
+                <span className="truncate font-mono text-sm font-medium">{s.name}</span>
                 <span className="line-clamp-2 text-xs text-muted-foreground">{s.description}</span>
               </ResultLink>
             ))}
@@ -183,9 +183,9 @@ function Results({
       </h2>
       <div className="overflow-hidden rounded-xl border bg-card text-card-foreground">
         {loading ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.loading}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.loading}</p>
         ) : count === 0 ? (
-          <p className="px-4 py-3 text-[13px] text-muted-foreground">{t.none}</p>
+          <p className="px-4 py-3 text-sm text-muted-foreground">{t.none}</p>
         ) : (
           <ul className="m-0 flex list-none flex-col divide-y p-0">{children}</ul>
         )}
@@ -230,7 +230,7 @@ function Reader({
       {error ? (
         <Alert variant="destructive">{errorText(error)}</Alert>
       ) : content === undefined ? (
-        <p className="text-[13px] text-muted-foreground">{t.loading}</p>
+        <p className="text-sm text-muted-foreground">{t.loading}</p>
       ) : (
         <article className="flex flex-col gap-3 rounded-xl border bg-card px-5 py-4 text-card-foreground">
           <header className="flex flex-col gap-0.5">

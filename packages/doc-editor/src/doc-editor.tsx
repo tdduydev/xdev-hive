@@ -258,14 +258,14 @@ function Editor({
   return (
     <>
       <header className="flex min-h-13 flex-wrap items-center gap-3 border-b border-border px-5 py-2">
-        <nav className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground" aria-label="breadcrumb">
+        <nav className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground" aria-label="breadcrumb">
           {env.link({ to: { kind: "docs" }, className: "hover:underline", children: t.docs })}/{" "}
           <span className="truncate font-mono">{docKey}</span>
         </nav>
         <StageBadge stage={s.stage} draftNumber={s.draftNumber} />
         <span className="flex-1" />
         <Presence state={s} />
-        <span className="text-[12.5px] text-muted-foreground" role="status">
+        <span className="text-sm text-muted-foreground" role="status">
           {!canEdit
             ? t.readOnly
             : saveState === "saving"
@@ -322,7 +322,7 @@ function Editor({
             <NativeSelect
               aria-label={t.blockType}
               size="sm"
-              className="w-36! shrink-0 text-[13px]"
+              className="w-36! shrink-0 text-sm"
               disabled={!canEdit || kindOfActive === null}
               value={kindOfActive ?? ""}
               onChange={(e) => setEditing(setTextKind(editing, e.currentTarget.value as "h1" | "h2" | "h3" | "para"))}
@@ -371,7 +371,7 @@ function Editor({
               label={t.insert.mermaid}
               disabled={!canEdit}
               onClick={() => insert("mermaid")}
-              className="w-auto px-1.5 font-mono text-[11px]"
+              className="w-auto px-1.5 font-mono text-xs"
             >
               mmd
             </Tb>
@@ -385,7 +385,7 @@ function Editor({
             </Button>
           </div>
           <article className="relative mx-auto box-border w-full max-w-[780px] px-8 pt-9 pb-20">
-            <p className="mb-1 text-[12.5px] text-muted-foreground">
+            <p className="mb-1 text-sm text-muted-foreground">
               {s.draft.updatedBy?.name ?? ""} · {t.draftV(s.draftNumber)}
             </p>
             {canEdit && !suggest ? (
@@ -523,7 +523,7 @@ function Editor({
                 aria-selected={tab === k}
                 onClick={() => setTab(k)}
                 className={cn(
-                  "-mb-px h-10 cursor-pointer border-0 border-b-2 bg-transparent px-2.5 text-[13px]",
+                  "-mb-px h-10 cursor-pointer border-0 border-b-2 bg-transparent px-2.5 text-sm",
                   tab === k
                     ? "border-foreground font-semibold text-foreground"
                     : "border-transparent text-muted-foreground",
@@ -600,7 +600,7 @@ function Tb({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "inline-flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-[13px] text-foreground hover:bg-muted disabled:cursor-default disabled:opacity-40",
+        "inline-flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-sm text-foreground hover:bg-muted disabled:cursor-default disabled:opacity-40",
         className,
       )}
     >
@@ -644,7 +644,7 @@ function Presence({ state }: { state: DocEditorState }) {
           key={p.userId}
           title={`${p.name}${p.editing ? " ✎" : ""}`}
           className={cn(
-            "inline-flex size-7 items-center justify-center rounded-full border-2 border-background text-[11px] font-semibold",
+            "inline-flex size-7 items-center justify-center rounded-full border-2 border-background text-xs font-semibold",
             i > 0 && "-ml-2",
             AVATAR_TONES[i % AVATAR_TONES.length],
           )}
@@ -670,7 +670,7 @@ function WorkflowSteps({ state }: { state: DocEditorState }) {
   return (
     <nav
       aria-label={t.flow}
-      className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted px-5 py-2.5 text-[12.5px]"
+      className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted px-5 py-2.5 text-sm"
     >
       {!wf && <span className="text-muted-foreground">{t.noFlow}</span>}
       {wf && (
@@ -726,7 +726,7 @@ function BlockEditor({
         autoFocus
         aria-label={t.editBlock}
         aria-controls={slash !== null ? listId : undefined}
-        className="min-h-20 font-mono text-[13.5px]"
+        className="min-h-20 font-mono text-sm"
         rows={Math.min(24, Math.max(3, value.split("\n").length + 1))}
         value={value}
         onChange={(e) => onChange(e.currentTarget.value)}
@@ -753,7 +753,7 @@ function BlockEditor({
               aria-selected="false"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => onSlash(k)}
-              className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13.5px] hover:bg-muted"
+              className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-sm hover:bg-muted"
             >
               <span>{t.insert[k]}</span>
               {t.insertHint[k] && <span className="text-xs text-muted-foreground">{t.insertHint[k]}</span>}
@@ -765,7 +765,7 @@ function BlockEditor({
             aria-selected="false"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onAi}
-            className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-[13.5px] hover:bg-muted"
+            className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-sm hover:bg-muted"
           >
             <span>✦ {t.writeAi}</span>
             <span className="text-xs text-muted-foreground">{t.writeAiHint}</span>
@@ -823,11 +823,11 @@ function BlockView({ block, onToggle }: { block: string; onToggle?: ((line: numb
     return (
       <figure className="my-3">
         {lang && (
-          <figcaption className="mb-1 font-mono text-[11px] text-muted-foreground">
+          <figcaption className="mb-1 font-mono text-xs text-muted-foreground">
             {lang === "mermaid" ? "Mermaid" : lang}
           </figcaption>
         )}
-        <pre className="overflow-x-auto rounded-lg bg-brand-navy px-3.5 py-3 font-mono text-[13px] leading-relaxed whitespace-pre-wrap text-[#E2E8F0]">
+        <pre className="overflow-x-auto rounded-lg bg-brand-navy px-3.5 py-3 font-mono text-sm leading-relaxed whitespace-pre-wrap text-[#E2E8F0]">
           {lines
             .slice(
               1,
@@ -881,7 +881,7 @@ function SuggestionCard({
   const t = useText();
   const parts = useMemo(() => wordDiff(s.before, s.after), [s.before, s.after]);
   return (
-    <fieldset className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 text-[13px] shadow-sm">
+    <fieldset className="my-2 min-w-0 rounded-lg border border-border bg-card p-3 text-sm shadow-sm">
       <legend className="sr-only">{t.suggestedBy(s.author.name)}</legend>
       <p className="mb-2 text-sm leading-relaxed whitespace-pre-wrap">
         {parts.map((p, i) =>
@@ -904,7 +904,7 @@ function SuggestionCard({
       <div className="flex flex-wrap items-center gap-2.5">
         <span
           className={cn(
-            "inline-flex size-5.5 items-center justify-center rounded-full font-mono text-[9.5px] font-semibold",
+            "inline-flex size-5.5 items-center justify-center rounded-full font-mono text-xs font-semibold",
             s.author.runId ? "bg-brand-navy text-[#B8F1FF]" : "bg-muted",
           )}
         >
@@ -999,12 +999,12 @@ function CommentsPanel({
           + {t.newComment}
         </Button>
       )}
-      {!threads.length && !composer && <p className="text-[12.5px] text-muted-foreground">{t.noComments}</p>}
+      {!threads.length && !composer && <p className="text-sm text-muted-foreground">{t.noComments}</p>}
       {open.map((th) => (
         <ThreadCard key={th.id} thread={th} onChange={onChange} />
       ))}
       {resolved.length > 0 && (
-        <p className="text-center text-[12.5px] text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground">
           {t.resolvedCount(resolved.length)} ·{" "}
           <button type="button" className="cursor-pointer underline" onClick={() => setShowResolved(!showResolved)}>
             {showResolved ? t.hideResolved : t.showResolved}
@@ -1047,13 +1047,13 @@ function ThreadCard({ thread, onChange }: { thread: DocThread; onChange: () => u
         <div key={c.id} className="flex gap-2">
           <span
             className={cn(
-              "inline-flex size-6 flex-none items-center justify-center rounded-full text-[10px] font-semibold",
+              "inline-flex size-6 flex-none items-center justify-center rounded-full text-xs font-semibold",
               c.author.runId ? "bg-brand-navy font-mono text-[#B8F1FF]" : "bg-[#DCFCE7] text-[#166534]",
             )}
           >
             {c.author.runId ? "AI" : initialsOf(c.author.name)}
           </span>
-          <div className="min-w-0 text-[13.5px]">
+          <div className="min-w-0 text-sm">
             <strong className="font-semibold">{c.author.name}</strong>{" "}
             <span className="text-xs text-muted-foreground">{new Date(c.createdAt).toLocaleString()}</span>
             <div className="break-words whitespace-pre-wrap">{c.body}</div>
@@ -1070,7 +1070,7 @@ function ThreadCard({ thread, onChange }: { thread: DocThread; onChange: () => u
         <Input
           aria-label={t.reply}
           placeholder={t.reply}
-          className="h-7.5 text-[13px]"
+          className="h-7.5 text-sm"
           value={reply}
           onChange={(e) => setReply(e.currentTarget.value)}
         />
@@ -1148,9 +1148,9 @@ function AiPanel({
     <div className="flex flex-col gap-3 p-3.5">
       {error && <Alert variant="destructive">{error}</Alert>}
       <QueryState query={targets} />
-      {targets.data && !targets.data.length && <p className="text-[13px] text-muted-foreground">{t.aiNoMachine}</p>}
+      {targets.data && !targets.data.length && <p className="text-sm text-muted-foreground">{t.aiNoMachine}</p>}
       {targets.data && targets.data.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-border p-3 text-[13px]">
+        <div className="flex flex-col gap-2 rounded-lg border border-border p-3 text-sm">
           <div className="flex items-center gap-2">
             <span className={cn("size-2 rounded-full", machine ? "bg-success" : "bg-muted-foreground")} />
             <label htmlFor={`${ids}-m`} className="flex-1 whitespace-nowrap">
@@ -1159,7 +1159,7 @@ function AiPanel({
             <NativeSelect
               id={`${ids}-m`}
               size="sm"
-              className="w-44! text-[12.5px]"
+              className="w-44! text-sm"
               value={machine?.machineId ?? ""}
               onChange={(e) => setMachineId(e.currentTarget.value)}
             >
@@ -1178,7 +1178,7 @@ function AiPanel({
             <NativeSelect
               id={`${ids}-c`}
               size="sm"
-              className="w-44! text-[12.5px]"
+              className="w-44! text-sm"
               value={pickedCli ?? ""}
               onChange={(e) => setCli(e.currentTarget.value)}
             >
@@ -1197,7 +1197,7 @@ function AiPanel({
           type="button"
           disabled={disabled}
           onClick={() => start.mutate(k)}
-          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-transparent px-3 py-2 text-left text-[13.5px] hover:bg-muted disabled:cursor-default disabled:opacity-50"
+          className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-border bg-transparent px-3 py-2 text-left text-sm hover:bg-muted disabled:cursor-default disabled:opacity-50"
         >
           <span className="text-primary">✦</span>
           <span className="flex flex-col leading-snug">
@@ -1229,7 +1229,7 @@ function AiPanel({
         <section className="flex flex-col gap-2">
           <h3 className="text-xs font-medium text-muted-foreground">{t.aiHistory}</h3>
           {runs.data?.map((r) => (
-            <div key={r.runId} className="rounded-lg border border-border p-2.5 text-[12.5px]">
+            <div key={r.runId} className="rounded-lg border border-border p-2.5 text-sm">
               <div className="flex flex-wrap items-center gap-1.5">
                 <strong className="font-semibold">
                   {r.action === "custom" ? (r.prompt ?? "") : t.aiActions[r.action][0]}
@@ -1292,7 +1292,7 @@ function HistoryPanel({ docKey, canEdit, content }: { docKey: string; canEdit: b
               placeholder={t.snapshotPh}
               value={name}
               onChange={(e) => setName(e.currentTarget.value)}
-              className="h-8 text-[13px]"
+              className="h-8 text-sm"
             />
             <Button type="submit" size="sm" variant="outline" disabled={!name.trim() || create.isPending}>
               {t.snapshotCreate}
@@ -1302,8 +1302,8 @@ function HistoryPanel({ docKey, canEdit, content }: { docKey: string; canEdit: b
         </form>
       )}
       <QueryState query={list} />
-      {list.data && !list.data.length && <p className="text-[12.5px] text-muted-foreground">{t.noSnapshots}</p>}
-      <ol className="flex flex-col gap-3 text-[13.5px]">
+      {list.data && !list.data.length && <p className="text-sm text-muted-foreground">{t.noSnapshots}</p>}
+      <ol className="flex flex-col gap-3 text-sm">
         {list.data?.map((sn) => (
           <li key={sn.id}>
             <button
@@ -1319,7 +1319,7 @@ function HistoryPanel({ docKey, canEdit, content }: { docKey: string; canEdit: b
               <span className="text-muted-foreground">· {new Date(sn.createdAt).toLocaleString()}</span>
             </button>
             {sn.submission && (
-              <div className="text-[12.5px] text-muted-foreground">
+              <div className="text-sm text-muted-foreground">
                 {t.submission[sn.submission.status] ?? sn.submission.status}
                 {sn.submission.note ? ` · ${sn.submission.note}` : ""}
               </div>
@@ -1328,16 +1328,13 @@ function HistoryPanel({ docKey, canEdit, content }: { docKey: string; canEdit: b
         ))}
       </ol>
       {picked && (
-        <section
-          aria-label={t.diffAgainst}
-          className="rounded-lg border border-border py-2 text-[12.5px] leading-[1.7]"
-        >
+        <section aria-label={t.diffAgainst} className="rounded-lg border border-border py-2 text-sm leading-[1.7]">
           <h3 className="px-3 pb-1 text-xs font-medium text-muted-foreground">{t.diffAgainst}</h3>
           <QueryState query={detail} />
           {blocks.map((b, bi) =>
             b.kind === "gap" ? (
               // biome-ignore lint/suspicious/noArrayIndexKey: khối diff không có mã; vị trí là định danh.
-              <div key={bi} className="bg-muted/60 px-3 font-mono text-[11px] text-muted-foreground">
+              <div key={bi} className="bg-muted/60 px-3 font-mono text-xs text-muted-foreground">
                 ⋯ {b.count}
               </div>
             ) : (
@@ -1423,13 +1420,13 @@ function SubmitDialog({
                     {g.name}
                     {!g.runs && <span className="text-xs text-muted-foreground"> · {t.sbSkip}</span>}
                   </span>
-                  <span className="text-[12.5px] text-muted-foreground">{g.who}</span>
+                  <span className="text-sm text-muted-foreground">{g.who}</span>
                 </li>
               ))}
             </ol>
           </>
         )}
-        <label htmlFor={noteId} className="flex flex-col gap-1.5 text-[13px] font-medium">
+        <label htmlFor={noteId} className="flex flex-col gap-1.5 text-sm font-medium">
           {t.sbNote}
           <Textarea id={noteId} value={note} onChange={(e) => setNote(e.currentTarget.value)} className="h-16" />
         </label>
