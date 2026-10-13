@@ -74,7 +74,7 @@
   - **Scope**: `packages/contracts/src/{breakdown.ts,breakdown.test.ts}`, `packages/contracts/src/fixtures/breakdown/**`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T004 🎯 Bảng và migration 0058
+- [x] T004 🎯 Bảng và migration 0058
   - `sdlc/schema.ts` mới (12 bảng như plan.md, gồm `sdlc_item_projects`, `sdlc_artifact_syncs`, `sdlc_auto_approvals`;
     `orgScoped`, policy `hive_owner` select); `tasks/schema.ts` (`checklist`, `task_dependencies`); `runs/schema.ts`
     (`required_labels`, enum `sdlc`); `fleet/schema.ts` (`labels`, `labels_only`, `accounts`, `accounts_at`;
