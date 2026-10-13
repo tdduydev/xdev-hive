@@ -78,7 +78,7 @@
   - **Scope**: `apps/hub/src/modules/knowledge/{reviews.ts,review-rules.ts,router.ts,index.ts,reviews.db.test.ts}`
   - **Phụ thuộc**: T001, T002 · **Mức**: vừa
 
-- [ ] T011 [P] [US1] Luật thuần của `codereview`
+- [x] T011 [P] [US1] Luật thuần của `codereview`
   - `match.ts`: chọn quy trình theo phạm vi và độ cụ thể (dự án > đội > tổ chức, rồi `updated_at`), trả cả quy trình
     bị lấn.
   - `gates.ts`: điều kiện checkpoint (đường dẫn, loại task, số dòng), quy tắc `max-files`, `deny-paths`, `max-diff`,
