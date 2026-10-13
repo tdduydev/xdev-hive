@@ -133,7 +133,7 @@
     `apps/hub/src/{runs.db.test.ts,review.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nặng
 
-- [ ] T022 [US2] Checkpoint AI
+- [x] T022 [US2] Checkpoint AI
   - `ai.ts`: tạo một run review mỗi reviewer qua deps, lưu `run_ids`; `onReviewRunFinished` gom kết quả vào `details`,
     gộp theo `gates.ts`, kết luận khi đủ; run review lỗi/huỷ → checkpoint không đạt với lý do; đăng một bình luận tổng
     hợp lên PR (`commentOnIssue`).
