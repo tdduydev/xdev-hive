@@ -2,6 +2,8 @@
 export * from "./blocks.ts";
 export { DocEditor } from "./doc-editor.tsx";
 export { type DocEditorEnv, type DocEditorLink, DocEditorProvider, type Lang } from "./env.tsx";
+export { MarkdownCodec } from "./markdown.ts";
+export { MarkdownEditor } from "./markdown-editor.tsx";
 export {
   REVIEWER_ROLE_LABEL,
   ReviewPane,

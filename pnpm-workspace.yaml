@@ -13,3 +13,7 @@ allowBuilds:
   esbuild: false
   protobufjs: false
   ssh2: false
+
+# @tiptap/react kéo menu nổi theo dải ^3.x; ghim cùng bản với các gói Tiptap khác (packages/doc-editor) để khớp peer.
+overrides:
+  "@tiptap/extension-floating-menu": 3.31.3
