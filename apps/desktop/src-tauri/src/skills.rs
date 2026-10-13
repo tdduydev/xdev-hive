@@ -54,6 +54,17 @@ pub struct SkillFile {
     pub version: u32,
     /// Nội dung SKILL.md đầy đủ (frontmatter và nội dung), giao diện dựng từ skill của hub.
     pub text: String,
+    /// File kèm theo SKILL.md (skill mặc định của Hive: scripts, references, data). Giao diện cũ không gửi trường này.
+    #[serde(default)]
+    pub extra: Vec<ExtraFile>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtraFile {
+    /// Đường dẫn tương đối kiểu POSIX trong thư mục skill, vd. `references/rules.md`.
+    pub path: String,
+    pub text: String,
 }
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -80,6 +91,16 @@ pub fn valid_name(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+}
+
+/// Đường dẫn file kèm theo do hub gửi: chỉ cho đi xuống trong thư mục skill, không tuyệt đối, không `..`.
+pub fn valid_path(path: &str) -> bool {
+    !path.is_empty()
+        && path.len() <= 300
+        && path != "SKILL.md"
+        && path
+            .split('/')
+            .all(|c| !c.is_empty() && c != "." && c != ".." && !c.contains(['\\', ':', '\0']))
 }
 
 pub fn sha256(text: &str) -> String {
@@ -189,8 +210,23 @@ pub fn install_at(
             result.conflicts.push(f.name.clone());
             continue;
         }
+        if let Some(bad) = f.extra.iter().find(|e| !valid_path(&e.path)) {
+            return Err(format!(
+                "Đường dẫn file không hợp lệ trong skill {}: {}",
+                f.name, bad.path
+            ));
+        }
         for dir in dirs_for(target) {
-            write_atomic(&base.join(dir).join(&f.name).join("SKILL.md"), &f.text)?;
+            let root = base.join(dir).join(&f.name);
+            // Skill có file kèm theo được thay cả thư mục, để file bản cũ đã bỏ không còn sót lại cho agent đọc nhầm.
+            if !f.extra.is_empty() && root.is_dir() {
+                std::fs::remove_dir_all(&root)
+                    .map_err(|e| format!("Không xoá được {}: {e}", root.display()))?;
+            }
+            write_atomic(&root.join("SKILL.md"), &f.text)?;
+            for e in &f.extra {
+                write_atomic(&root.join(&e.path), &e.text)?;
+            }
         }
         ledger.insert(
             f.name.clone(),
@@ -346,7 +382,61 @@ mod tests {
             name: name.into(),
             version,
             text: format!("---\nname: {name}\n---\n{body}\n"),
+            extra: vec![],
         }
+    }
+    fn extra(path: &str, text: &str) -> ExtraFile {
+        ExtraFile {
+            path: path.into(),
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn installs_extra_files_and_drops_stale_ones_on_update() {
+        let base = temp();
+        let mut ledger = BTreeMap::new();
+        let mut v1 = file("ui-ux-pro-max", 1, "Thiết kế");
+        v1.extra = vec![
+            extra("data/styles.csv", "a,b\n"),
+            extra("scripts/old.py", "print(1)\n"),
+        ];
+        install_at(&base, Target::Project, &mut ledger, &[v1], false).unwrap();
+        for dir in [".claude/skills", ".agents/skills"] {
+            let root = base.join(dir).join("ui-ux-pro-max");
+            assert_eq!(
+                std::fs::read_to_string(root.join("data/styles.csv")).unwrap(),
+                "a,b\n"
+            );
+            assert!(root.join("scripts/old.py").is_file());
+        }
+        let mut v2 = file("ui-ux-pro-max", 2, "Thiết kế v2");
+        v2.extra = vec![extra("data/styles.csv", "a,b,c\n")];
+        let r = install_at(&base, Target::Project, &mut ledger, &[v2], false).unwrap();
+        assert_eq!(r.done, vec!["ui-ux-pro-max".to_string()]);
+        let root = base.join(".claude/skills/ui-ux-pro-max");
+        assert_eq!(
+            std::fs::read_to_string(root.join("data/styles.csv")).unwrap(),
+            "a,b,c\n"
+        );
+        assert!(!root.join("scripts/old.py").exists());
+        assert_eq!(ledger["ui-ux-pro-max"].version, 2);
+    }
+
+    #[test]
+    fn rejects_extra_paths_that_escape_the_skill_folder() {
+        let base = temp();
+        let mut ledger = BTreeMap::new();
+        for bad in ["../x.md", "/etc/x", "a/../../x", "a\\b", "SKILL.md", ""] {
+            let mut f = file("hive", 1, "x");
+            f.extra = vec![extra(bad, "x")];
+            assert!(
+                install_at(&base, Target::Project, &mut ledger, &[f], false).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(!base.join(".claude/skills/hive").exists());
+        assert!(valid_path("references/rules.md"));
     }
 
     #[test]
