@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-profile-remove"
+description = "Enables the cli_profile_remove command without any pre-configured scope."
+commands.allow = ["cli_profile_remove"]
+
+[[permission]]
+identifier = "deny-cli-profile-remove"
+description = "Denies the cli_profile_remove command without any pre-configured scope."
+commands.deny = ["cli_profile_remove"]
