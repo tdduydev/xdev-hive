@@ -1,6 +1,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { auditContract } from "./audit.ts";
+import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
 import { docEditorContract } from "./doc-editor.ts";
@@ -21,11 +22,13 @@ import { tenancyContract } from "./tenancy.ts";
 import { reviewsContract, workflowsContract } from "./workflows.ts";
 
 export * from "./audit.ts";
+export * from "./code-reviews.ts";
 export * from "./cost.ts";
 export * from "./desktop-connect.ts";
 export * from "./doc-editor.ts";
 export * from "./doc-text.ts";
 export * from "./egress.ts";
+export * from "./glob.ts";
 export * from "./knowledge.ts";
 export * from "./knowledge-search.ts";
 export * from "./line-diff.ts";
@@ -126,6 +129,7 @@ export const contract = {
   policies: policiesContract,
   reviewWorkflows: workflowsContract,
   reviews: reviewsContract,
+  codeReviews: codeReviewsContract,
   docEditor: docEditorContract,
   desktopConnect: desktopConnectContract,
 };

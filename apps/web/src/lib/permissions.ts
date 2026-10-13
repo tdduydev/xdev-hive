@@ -22,6 +22,8 @@ export const PERMISSION_LABEL: Record<string, Dict<string>> = {
   leader: { vi: "Leader", en: "Leader" },
   "leader.chat": { vi: "Trò chuyện với leader", en: "Chat with the leader" },
   "leader.approve": { vi: "Duyệt đề xuất của leader", en: "Approve leader proposals" },
+  reviews: { vi: "Review code", en: "Code review" },
+  "reviews.override": { vi: "Quyết thay checkpoint tự động", en: "Override automatic checkpoints" },
   knowledge: { vi: "Kiến thức", en: "Knowledge" },
   docs: { vi: "Tài liệu", en: "Docs" },
   "docs.read": { vi: "Xem", en: "View" },
