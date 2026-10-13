@@ -7,6 +7,7 @@ import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import { contract } from "@xdev-hive/contracts";
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import type pg from "pg";
 import {
   exportAudit,
@@ -206,6 +207,10 @@ export function createApp({
   const rpc = new RPCHandler(router, { clientInterceptors: [mapDomainErrors] });
   const openapi = new OpenAPIHandler(router, { clientInterceptors: [mapDomainErrors] });
   const app = new Hono();
+  // Danh sách của trang chủ và bảng việc cỡ MB với vài nghìn task (JSON nén còn chừng một phần mười, ~6 ms mỗi MB).
+  // Luồng SSE (text/event-stream) không bị nén vì phải tới từng sự kiện.
+  app.use("/rpc/*", compress());
+  app.use("/api/*", compress());
   // Better Auth giữ /api/auth/*; phải đăng ký trước handler OpenAPI vì cùng tiền tố /api.
   if (baseAuth) app.on(["GET", "POST"], "/api/auth/*", (c) => baseAuth.handler(c.req.raw));
   // SSE nằm ngoài oRPC (luồng dài, Last-Event-ID); cũng phải đứng trước handler OpenAPI.
