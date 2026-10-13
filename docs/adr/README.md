@@ -24,3 +24,4 @@ write one: [0000](0000-record-architecture-decisions.md).
 | [0016](0016-desktop-local-ui.md) | Build desktop local UI with React, Vite, Tailwind and shadcn/ui | Proposed |
 | [0017](0017-admin-web-client-app-and-machine-ownership.md) | Split the admin web from the client app, and run personal machines only for their owner | Accepted |
 | [0018](0018-code-review-workflows.md) | Review agent pull requests with code review workflows | Proposed |
+| [0020](0020-local-project-folders-and-machine-full-permission.md) | Bind hub projects to local repositories, and grant full permission per project on the machine | Accepted |
