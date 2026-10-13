@@ -520,7 +520,7 @@ export function PlansScreen() {
   return (
     <div className="flex flex-col gap-3.5">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <p className="min-w-72 flex-1 text-[13px] text-muted-foreground">{t.lead}</p>
+        <p className="min-w-72 flex-1 text-sm text-muted-foreground">{t.lead}</p>
         <Button size="sm" onClick={() => setAdding(true)}>
           <PlusIcon aria-hidden="true" />
           {t.add}
@@ -563,7 +563,7 @@ export function PlansScreen() {
         <p
           role="status"
           className={cn(
-            "rounded-lg px-3 py-2 text-[13px]",
+            "rounded-lg px-3 py-2 text-sm",
             notice.tone === "ok" && "bg-success-soft text-success",
             notice.tone === "info" && "bg-muted text-foreground",
             notice.tone === "bad" && "bg-destructive-soft text-destructive",
@@ -573,12 +573,12 @@ export function PlansScreen() {
         </p>
       )}
       {error && (
-        <p role="alert" className="text-[13px] text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      {!list && !error && <p className="text-[13px] text-muted-foreground">{t.loading}</p>}
-      {list?.length === 0 && <p className="text-[13px] text-muted-foreground">{t.empty}</p>}
+      {!list && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
+      {list?.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
 
       {all.length > 0 && (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -659,7 +659,7 @@ function SummaryCard({
 }) {
   return (
     <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-      <span className="text-[12.5px] text-muted-foreground">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span className={cn("font-mono text-2xl font-semibold tracking-tight", warn && "text-warning")}>{value}</span>
       <span className="truncate text-xs text-muted-foreground">{sub}</span>
     </div>
@@ -705,12 +705,12 @@ function PlanRow({
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
         <span className="flex min-w-52 flex-[1.4] flex-col gap-0.5 leading-snug">
-          <strong className="truncate text-[13.5px] font-semibold">{name(p)}</strong>
+          <strong className="truncate text-sm font-semibold">{name(p)}</strong>
           <span className="truncate text-xs text-muted-foreground">
             {CLI_NAME[p.cli] ?? p.cli} · <span className="font-mono">{p.id}</span>
           </span>
           {p.email && <span className="truncate text-xs text-muted-foreground">{p.email}</span>}
-          <span className="truncate text-[11.5px] text-muted-foreground">
+          <span className="truncate text-xs text-muted-foreground">
             {t.meta(p.priority, Math.max(p.maxConcurrent, 1))}
           </span>
         </span>
@@ -831,10 +831,7 @@ function Meter({
 }) {
   if (!limit) {
     return (
-      <span
-        data-usage-unknown={label}
-        className="flex min-w-32 flex-1 flex-col gap-1 text-[11px] text-muted-foreground"
-      >
+      <span data-usage-unknown={label} className="flex min-w-32 flex-1 flex-col gap-1 text-xs text-muted-foreground">
         <span>{label}</span>
         <span className="text-xs font-medium text-foreground">{t.unknown}</span>
         <span className="truncate">{why}</span>
@@ -844,7 +841,7 @@ function Meter({
   const pct = Math.max(0, Math.min(100, Math.round(limit.percent)));
   return (
     <span className="flex min-w-32 flex-1 flex-col gap-1.5">
-      <span className="flex items-baseline text-[11px] text-muted-foreground">
+      <span className="flex items-baseline text-xs text-muted-foreground">
         <span>{label}</span>
         <span className="ml-auto font-mono text-xs font-semibold text-foreground">{pct}%</span>
       </span>
@@ -870,7 +867,7 @@ function Meter({
         />
       </span>
       {limit.resetsAt && (
-        <span className="truncate text-[11px] text-muted-foreground">
+        <span className="truncate text-xs text-muted-foreground">
           {future(limit.resetsAt, now) ? t.resetAt(clock(limit.resetsAt, now, lang)) : t.resetPast}
         </span>
       )}
@@ -1030,7 +1027,7 @@ function AddPlanDialog({
         </form>
         <p className="text-xs text-muted-foreground">{t.addNote}</p>
         {error && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
@@ -1169,7 +1166,7 @@ function EditPlanDialog({
           {errors.roles && <FieldError>{errors.roles}</FieldError>}
         </form>
         {error && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
@@ -1224,7 +1221,7 @@ function RemovePlanDialog({
         <DialogTitle>{t.removeTitle}</DialogTitle>
         <DialogDescription>{plan ? t.confirmRemove(plan.id) : ""}</DialogDescription>
         {error && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}

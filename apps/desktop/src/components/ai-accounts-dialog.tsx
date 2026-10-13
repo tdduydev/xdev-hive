@@ -101,7 +101,7 @@ function Bar({ label, limit, resets }: { label: string; limit: Limit; resets: st
       <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-muted">
         <div className={cn("h-full", left < 30 ? "bg-warning" : "bg-primary")} style={{ width: `${left}%` }} />
       </div>
-      <span className="text-[11px] text-muted-foreground">{t.used(Math.round(limit.percent), resets)}</span>
+      <span className="text-xs text-muted-foreground">{t.used(Math.round(limit.percent), resets)}</span>
     </div>
   );
 }
@@ -177,10 +177,10 @@ export function AiAccountsDialog({
       <DialogContent className="gap-3.5 p-5 sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="text-[17px] font-semibold">{t.title}</DialogTitle>
-          <DialogDescription className="text-[13px]">{t.lead}</DialogDescription>
+          <DialogDescription className="text-sm">{t.lead}</DialogDescription>
         </DialogHeader>
-        {error && <p className="text-[13px] text-destructive">{error}</p>}
-        {!accounts && !error && <p className="text-[13px] text-muted-foreground">{t.loading}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!accounts && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
         {accounts?.map((a) => {
           const look = LOOK[a.engine];
           const q = quota[a.engine];
@@ -215,14 +215,14 @@ export function AiAccountsDialog({
                   <span className="flex items-center gap-1.5">
                     <strong className="font-semibold">{look.name}</strong>
                     {isDefault && a.loggedIn && (
-                      <Pill tone="sel" className="h-5 text-[11.5px]">
+                      <Pill tone="sel" className="h-5 text-xs">
                         {t.isDefault}
                       </Pill>
                     )}
                   </span>
                   <span className="truncate text-xs text-muted-foreground">{meta}</span>
                 </span>
-                <Pill dot tone={a.loggedIn ? "ok" : "neutral"} className="h-5 text-[11.5px]">
+                <Pill dot tone={a.loggedIn ? "ok" : "neutral"} className="h-5 text-xs">
                   {a.loggedIn ? t.connected : a.installed ? t.notConnected : t.notInstalled}
                 </Pill>
               </div>
@@ -248,9 +248,9 @@ export function AiAccountsDialog({
                 </>
               )}
               {a.installed && !a.loggedIn && (
-                <div className="flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2.5 text-[12.5px]">
+                <div className="flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2.5 text-sm">
                   <span className="text-muted-foreground">{t.howTo}</span>
-                  <span className="rounded-md border bg-card px-2 py-1 font-mono text-[11.5px]">{look.login}</span>
+                  <span className="rounded-md border bg-card px-2 py-1 font-mono text-xs">{look.login}</span>
                   <div className="flex justify-end">
                     <Button size="sm" onClick={() => void load()}>
                       {t.recheck}
