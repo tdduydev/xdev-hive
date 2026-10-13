@@ -1,4 +1,5 @@
-import { LogBuffer, mergeEvents, type RunEventView, type RunLogChunk } from "@xdev-hive/contracts";
+import type { RunEventView, RunLogChunk } from "@xdev-hive/contracts";
+import { LogBuffer, mergeEvents } from "@xdev-hive/contracts/run-log";
 import { useEffect, useRef, useState } from "react";
 import { runStreamUrl } from "@/lib/run-stream.ts";
 
