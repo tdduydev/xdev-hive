@@ -19,6 +19,7 @@ import (
 	"github.com/tdduydev/xdev-hive/worker/internal/accounts"
 	"github.com/tdduydev/xdev-hive/worker/internal/projects"
 	"github.com/tdduydev/xdev-hive/worker/internal/runner"
+	"github.com/tdduydev/xdev-hive/worker/internal/terminal"
 )
 
 const (
@@ -100,12 +101,14 @@ type jobs struct {
 	update   string
 	// shared: hub báo máy dùng chung trong welcome của phiên hiện tại; chỉ khi đó mới nhận lệnh gói (accounts.go).
 	shared bool
-	done   chan struct{}
-	wg     sync.WaitGroup
+	// term giữ phiên terminal Leader (terminal.go); nil khi máy không khai capability terminal.
+	term *terminal.Host
+	done chan struct{}
+	wg   sync.WaitGroup
 }
 
 func newJobs(ctx context.Context, cfg Config) *jobs {
-	return &jobs{
+	j := &jobs{
 		cfg:     cfg,
 		ctx:     ctx,
 		log:     cfg.Logger,
@@ -116,6 +119,8 @@ func newJobs(ctx context.Context, cfg Config) *jobs {
 		offers:  map[string]pendingOffer{},
 		done:    make(chan struct{}),
 	}
+	j.term = newTerminalHost(j)
+	return j
 }
 
 // write gửi một gói qua kết nối hiện tại, errOffline khi chưa có kết nối.
@@ -168,6 +173,7 @@ func (j *jobs) detach(conn *websocket.Conn) {
 	j.mu.Unlock()
 	if current {
 		j.cancelLogin()
+		j.closeTerminals("Worker mất kết nối hub nên phiên đã đóng.")
 	}
 }
 
@@ -505,6 +511,7 @@ func (j *jobs) finished() bool {
 
 // wait chờ các run đang chạy dừng hẳn (CLI thoát, worktree được gỡ, kết quả ghi xuống đĩa) khi worker tắt.
 func (j *jobs) wait(timeout time.Duration) {
+	j.waitTerminals(timeout)
 	ch := make(chan struct{})
 	go func() { j.wg.Wait(); close(ch) }()
 	select {
