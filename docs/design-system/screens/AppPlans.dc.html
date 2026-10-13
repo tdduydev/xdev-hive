@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>App · Gói agent</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+button:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:30px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:13px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:9999px;font-size:13px;font-weight:500;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="width: 1440px; height: 1500px; box-sizing: border-box; padding: 30px; display: flex; align-items: flex-start; justify-content: center; background: linear-gradient(160deg, #142745 0%, #0F172A 100%); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <div style="position: relative; width: 1380px; height: 1440px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; background: var(--background); color: var(--foreground); border: 1px solid var(--border); box-shadow: 0 30px 60px -12px rgb(0 0 0 / .5);">
+    <div style="height: 38px; flex: none; padding: 0 12px; display: flex; align-items: center; gap: 8px; background: var(--muted); border-bottom: 1px solid var(--border);">
+      <span aria-hidden="true" style="display: flex; gap: 6px;"><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FF5F57;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #FEBC2E;"></span><span style="width: 11px; height: 11px; border-radius: 9999px; background: #28C840;"></span></span>
+      <span class="muted" style="flex: 1; text-align: center; font-size: 13px;">xDev Hive · {{t.title}}</span>
+      <div style="display: inline-flex; padding: 2px; background: var(--background); border-radius: 7px;"><button type="button" onClick="{{toVi}}" style="{{viS}}">VI</button><button type="button" onClick="{{toEn}}" style="{{enS}}">EN</button></div>
+    </div>
+    <div style="flex: 1; min-height: 0; display: flex;">
+      <!-- AppNav chưa có mục "Gói agent" (xem nav.ts); tạm đặt đang ở Môi trường cho cùng nhóm Máy này. -->
+      <dc-import name="AppNav" active="setup" role="dev" lang="{{lang}}" hint-size="220px,1400px"></dc-import>
+      <main style="flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+        <header style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px;">
+          <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 4px;"><h1 style="margin: 0; font-family: var(--font-heading); font-size: 22px; letter-spacing: -0.03em;">{{t.title}}</h1><p class="muted" style="margin: 0; font-size: 14px;">{{t.lead}}</p></div>
+          <button type="button" class="btn btn-outline">{{t.read}}</button>
+          <button type="button" class="btn btn-default" onClick="{{openAdd}}">{{t.add}}</button>
+        </header>
+
+        <!-- Cả máy: một hàng thẻ, một ô tổng và một ô cho mỗi CLI. Hẹp thì xếp dọc. -->
+        <section aria-label="{{t.machine}}" class="card" style="display: grid; grid-template-columns: 1.1fr repeat(3, 1fr); overflow: hidden;">
+          <div style="padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+            <span class="muted" style="font-size: 13px; font-weight: 500;">{{t.machine}}</span>
+            <div style="display: flex; gap: 18px; align-items: baseline;">
+              <span><strong class="mono" style="font-size: 24px;">{{sum.ready}}</strong> <span class="muted">{{t.ready}}</span></span>
+              <span><strong class="mono" style="font-size: 24px;">{{sum.running}}</strong> <span class="muted">{{t.running}}</span></span>
+              <span><strong class="mono" style="font-size: 24px;">{{sum.slots}}</strong> <span class="muted">{{t.slots}}</span></span>
+            </div>
+            <span class="muted" style="font-size: 13px;">{{sum.sub}}</span>
+          </div>
+          <sc-for each="{{sum.clis}}" as="c">
+            <div style="padding: 14px 16px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;">
+              <span style="display: flex; align-items: center; gap: 8px;"><span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-foreground); font-size: 13px; font-weight: 600;">{{c.mark}}</span><strong style="font-size: 14px;">{{c.name}}</strong><span class="muted" style="font-size: 13px;">{{c.count}}</span></span>
+              <span style="font-size: 13px;"><span class="muted">{{t.sessionLeft}}</span> <strong class="mono">{{c.s}}</strong></span>
+              <span style="font-size: 13px;"><span class="muted">{{t.weekLeft}}</span> <strong class="mono">{{c.w}}</strong></span>
+              <span class="muted" style="font-size: 13px;">{{c.reset}}</span>
+            </div>
+          </sc-for>
+        </section>
+
+        <div role="status" style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-foreground); font-size: 14px;">
+          <span aria-hidden="true">⌕</span><span style="flex: 1;"><strong>{{t.found}}</strong> <span style="opacity: .85;">{{t.foundSub}}</span></span>
+          <button type="button" class="btn btn-default" onClick="{{openFound}}">{{t.review}}</button>
+        </div>
+
+        <sc-for each="{{blocks}}" as="b">
+          <section aria-label="{{b.name}}" style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-foreground); font-size: 14px; font-weight: 600;">{{b.mark}}</span>
+              <h2 style="margin: 0; font-family: var(--font-heading); font-size: 16px; letter-spacing: -0.02em;">{{b.name}}</h2>
+              <span class="badge" style="background: var(--muted); color: var(--muted-foreground);">{{b.count}}</span>
+              <span style="flex: 1;"></span>
+              <sc-if value="{{b.canAdd}}"><button type="button" class="btn btn-outline" onClick="{{openAdd}}">+ {{b.addLabel}}</button></sc-if>
+            </div>
+            <ul class="cards" style="list-style: none; margin: 0; padding: 0;">
+              <sc-for each="{{b.cards}}" as="p">
+                <li class="card" style="{{p.style}}">
+                  <div style="display: flex; align-items: flex-start; gap: 8px;">
+                    <span style="flex: 1; min-width: 0; display: flex; flex-direction: column;"><strong style="font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{p.name}}</strong><span class="muted" style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{p.email}}</span><span class="muted mono" style="font-size: 13px;">{{p.id}}</span></span>
+                    <span class="badge" style="{{p.chip}}"><span aria-hidden="true">{{p.glyph}}</span>{{p.state}}</span>
+                    <button type="button" class="btn btn-outline" aria-label="{{t.actions}}" style="width: 30px; padding: 0;">⋯</button>
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <sc-for each="{{p.meters}}" as="m">
+                      <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <span style="display: flex; font-size: 13px;"><span class="muted">{{m.label}}</span><strong class="mono" style="margin-left: auto;">{{m.pct}}</strong></span>
+                        <span role="meter" aria-label="{{m.label}}" style="position: relative; height: 6px; border-radius: 9999px; background: var(--muted);"><span style="{{m.fill}}"></span><span title="{{t.stop}}" style="{{m.stopStyle}}"></span></span>
+                        <span class="muted" style="font-size: 13px;">{{m.reset}}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{p.models.length}}">
+                    <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 10px; border-top: 1px solid var(--border);">
+                      <span class="muted" style="font-size: 13px;">{{t.byModel}}</span>
+                      <sc-for each="{{p.models}}" as="m">
+                        <span style="display: grid; grid-template-columns: 64px 1fr 40px; align-items: center; gap: 8px; font-size: 13px;"><span>{{m.name}}</span><span role="meter" aria-label="{{m.name}}" style="position: relative; height: 4px; border-radius: 9999px; background: var(--muted);"><span style="{{m.fill}}"></span></span><strong class="mono" style="text-align: right;">{{m.pct}}</strong></span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{p.groups.length}}">
+                    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border);">
+                      <sc-for each="{{p.groups}}" as="g">
+                        <div style="display: flex; flex-direction: column; gap: 3px;">
+                          <span style="display: flex; align-items: baseline; gap: 6px; font-size: 13px;"><strong>{{g.name}}</strong><span class="muted" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{g.models}}</span></span>
+                          <span style="font-size: 13px;"><span class="muted">{{t.session}}</span> <strong class="mono">{{g.s}}</strong> · <span class="muted">{{t.week}}</span> <strong class="mono">{{g.w}}</strong></span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <div style="display: flex; align-items: center; gap: 8px; margin-top: auto;">
+                    <span class="muted" style="flex: 1; font-size: 13px;">{{p.meta}}</span>
+                    <sc-if value="{{p.note}}"><span style="font-size: 13px; color: var(--warning);">{{p.note}}</span></sc-if>
+                  </div>
+                </li>
+              </sc-for>
+            </ul>
+            <sc-if value="{{b.off}}"><button type="button" style="height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 1px solid var(--border); border-radius: 12px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left;">› {{b.off}}</button></sc-if>
+          </section>
+        </sc-for>
+      </main>
+    </div>
+
+    <sc-if value="{{showAdd}}">
+      <div style="position: absolute; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div role="dialog" aria-label="{{t.add}}" class="card" style="width: 520px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><strong style="font-size: 16px;">{{t.add}}</strong><span class="muted" style="font-size: 13px;">{{t.addStep}}</span></div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <sc-for each="{{clis}}" as="c">
+              <button type="button" aria-pressed="{{c.on}}" style="{{c.style}}"><span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-foreground); font-weight: 600;">{{c.mark}}</span><strong>{{c.name}}</strong><span class="muted" style="font-size: 13px;">{{c.sub}}</span></button>
+            </sc-for>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 13px; font-weight: 500;">{{t.way}}</span>
+            <sc-for each="{{ways}}" as="w">
+              <label style="{{w.style}}"><span aria-hidden="true" style="{{w.dot}}"></span><span style="display: flex; flex-direction: column;"><strong style="font-size: 14px;">{{w.name}}</strong><span class="muted" style="font-size: 13px;">{{w.hint}}</span></span></label>
+            </sc-for>
+          </div>
+          <span class="muted" style="font-size: 13px;">{{t.addNote}}</span>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeAll}}">{{t.cancel}}</button><button type="button" class="btn btn-default">{{t.addGo}}</button></div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{showFound}}">
+      <div style="position: absolute; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; padding: 20px;">
+        <div role="dialog" aria-label="{{t.found}}" class="card" style="width: 520px; padding: 20px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-lg);">
+          <div style="display: flex; flex-direction: column; gap: 4px;"><strong style="font-size: 16px;">{{t.found}}</strong><span class="muted" style="font-size: 13px;">{{t.foundLead}}</span></div>
+          <sc-for each="{{foundRows}}" as="f">
+            <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;"><input type="checkbox" checked="{{f.on}}" style="margin-top: 4px;"><span style="flex: 1; display: flex; flex-direction: column;"><strong style="font-size: 14px;">{{f.title}}</strong><span class="muted" style="font-size: 13px;">{{f.sub}}</span><sc-if value="{{f.note}}"><span style="font-size: 13px; color: var(--warning);">{{f.note}}</span></sc-if></span></label>
+          </sc-for>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;"><button type="button" class="btn btn-outline" onClick="{{closeAll}}">{{t.cancel}}</button><button type="button" class="btn btn-default">{{t.addFound}}</button></div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["list","add","found"],"default":"list"},"$preview":{"width":1440,"height":1500}}'>
+// Gói agent: nhóm theo CLI. Mỗi khối một lưới thẻ (≥1200px 3 cột, hẹp hơn 2 rồi 1 cột); gói tắt gom cuối khối.
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { lang: null, view: null }; }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const en = lang === 'en';
+    const view = this.state.view ?? this.props.view ?? 'list';
+    const x = (p) => (en ? p[1] : p[0]);
+    const t = {
+      title: x(['Gói agent', 'Agent plans']),
+      lead: x(['Mỗi gói là một tài khoản CLI đăng nhập trên máy này. Worker chia run cho các gói đang bật: gói còn nhiều quota trước, rồi theo ưu tiên.', 'Each plan is a CLI account signed in on this machine. The worker spreads runs over enabled plans: most quota left first, then priority.']),
+      read: x(['Đọc lại quota', 'Read quota again']), add: x(['Thêm gói', 'Add plan']), machine: x(['Cả máy', 'Whole machine']),
+      ready: x(['sẵn sàng', 'ready']), running: x(['đang chạy', 'running']), slots: x(['chỗ trống', 'free slots']),
+      sessionLeft: x(['Phiên còn:', 'Session left:']), weekLeft: x(['Tuần còn:', 'Week left:']),
+      found: x(['Tìm thấy 2 đăng nhập chưa thêm', 'Found 2 sign-ins not added yet']), foundSub: x(['trên máy này, ngoài danh sách gói.', 'on this machine, outside the plan list.']), review: x(['Xem và thêm', 'Review and add']),
+      foundLead: x(['Tích những đăng nhập muốn thêm vào danh sách gói. App chỉ ghi đường dẫn, không đọc token.', 'Tick the sign-ins to add to the plan list. The app only records the path and never reads tokens.']),
+      addFound: x(['Thêm 1 gói', 'Add 1 plan']), cancel: x(['Huỷ', 'Cancel']), actions: x(['Thao tác cho gói', 'Plan actions']),
+      byModel: x(['Tuần theo model', 'Week by model']), session: x(['Phiên', 'Session']), week: x(['Tuần', 'Week']), stop: x(['Ngưỡng dừng', 'Stop threshold']),
+      addStep: x(['Bước 1: chọn CLI. Bước 2: chọn cách đăng nhập. App mở Terminal rồi tự chờ bạn đăng nhập xong.', 'Step 1: pick the CLI. Step 2: pick how to sign in. The app opens a terminal and waits until you finish.']),
+      way: x(['Cách đăng nhập', 'Sign-in method']), addGo: x(['Thêm và mở Terminal', 'Add and open terminal']),
+      addNote: x(['App không thấy mật khẩu hay token: CLI tự giữ đăng nhập trong thư mục của gói.', 'The app never sees passwords or tokens: the CLI keeps its sign-in in the plan folder.']),
+    };
+    const S = {
+      running: [['Đang chạy', 'Running'], 'sel', '▶'], ready: [['Sẵn sàng', 'Ready'], 'ok', '✓'], disabled: [['Tắt', 'Off'], 'off', '⏻'],
+      signedOut: [['Chưa đăng nhập', 'Signed out'], 'bad', '🔒'], cooling: [['Đang nghỉ', 'Resting'], 'warn', '⏳'], near: [['Gần ngưỡng', 'Near threshold'], 'warn', '▲'],
+    };
+    const tone = { ok: 'background: var(--success-soft); color: var(--success);', warn: 'background: var(--warning-soft); color: var(--warning);', bad: 'background: var(--destructive-soft); color: var(--destructive);', sel: 'background: var(--accent); color: var(--accent-foreground);', off: 'background: var(--muted); color: var(--muted-foreground);' };
+    const bar = (pct, stop) => ({ fill: 'position: absolute; inset: 0 auto 0 0; width: ' + pct + '%; border-radius: 9999px; background: ' + (pct >= stop ? 'var(--destructive)' : pct >= stop - 10 ? 'var(--warning)' : 'var(--primary)') + ';', stopStyle: 'position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--muted-foreground); left: ' + stop + '%;' });
+    const meters = (s, w, rs, rw) => [{ label: t.session + ' · 5 ' + x(['giờ', 'h']), pct: s + '%', reset: rs, ...bar(s, 95) }, { label: t.week, pct: w + '%', reset: rw, ...bar(w, 90) }];
+    const card = (c) => ({ style: 'padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;' + (c.off ? ' opacity: .75;' : ''), name: c.name, email: c.email, id: c.id, chip: tone[S[c.st][1]], glyph: S[c.st][2], state: x(S[c.st][0]), t, meters: c.m || [], models: c.models || [], groups: c.groups || [], meta: x(['ưu tiên ' + (c.pri ?? 0) + ' · ' + (c.runs ?? 0) + '/' + (c.max ?? 1) + ' run', 'priority ' + (c.pri ?? 0) + ' · ' + (c.runs ?? 0) + '/' + (c.max ?? 1) + ' runs']), note: c.note || '' });
+    const mod = (name, p) => ({ name, pct: p + '%', fill: bar(p, 100).fill });
+    const rst = (a, b) => x(['reset ' + a, 'resets ' + b]);
+    const claude = [
+      card({ name: 'Duy Max', email: 'duy@fpt.com', id: 'claude-1', st: 'running', runs: 1, max: 2, m: meters(42, 89, rst('16:00', '4pm'), rst('T5 09:00', 'Thu 09:00')), models: [mod('Sonnet', 12), mod('Opus', 71)] }),
+      card({ name: 'Gói phụ', email: 'phu@fpt.com', id: 'claude-2', st: 'cooling', pri: 10, m: meters(97, 40, rst('17:30', '5:30pm'), rst('T6 09:00', 'Fri 09:00')), models: [mod('Sonnet', 9)], note: x(['Nghỉ tới 17:30 · Dùng tiếp', 'Rests until 17:30 · Use again']) }),
+      card({ name: 'Gói đội', email: 'doi@fpt.com', id: 'claude-4', st: 'ready', pri: 20, m: meters(8, 22, rst('18:10', '6:10pm'), rst('T4 09:00', 'Wed 09:00')), models: [mod('Sonnet', 5), mod('Opus', 18)] }),
+    ];
+    const codex = [
+      card({ name: 'Codex chính', email: 'codex@fpt.com', id: 'codex-1', st: 'ready', m: meters(15, 33, rst('15:10', '3:10pm'), rst('T3 08:00', 'Tue 08:00')) }),
+      card({ name: 'Codex mới', email: '', id: 'codex-2', st: 'signedOut', m: [{ label: t.session, pct: '—', reset: x(['Chưa biết', 'Unknown']), ...bar(0, 95) }, { label: t.week, pct: '—', reset: x(['Chưa biết', 'Unknown']), ...bar(0, 90) }], note: x(['Đăng nhập để dùng', 'Sign in to use']) }),
+    ];
+    const gem = { name: x(['Nhóm Gemini', 'Gemini models']), models: 'Gemini Flash, Gemini Pro', s: '2%', w: '8%' };
+    const agy = [card({ name: 'Antigravity', email: 'duy@fpt.com', id: 'antigravity-1', st: 'ready', m: meters(31, 18, rst('17:00', '5pm'), rst('T6 09:00', 'Fri 09:00')), groups: [{ name: x(['Nhóm Claude và GPT', 'Claude and GPT models']), models: 'Claude Sonnet, GPT-OSS', s: '31%', w: '18%' }, gem, { name: x(['Nhóm tính toán', 'Compute models']), models: 'Gemini Flash Lite', s: x(['tắt', 'off']), w: '—' }] })];
+    const blocks = [
+      { mark: 'C', name: 'Claude Code', count: x(['7 gói', '7 plans']), canAdd: true, addLabel: x(['Thêm gói Claude Code', 'Add Claude Code plan']), cards: claude, off: x(['4 gói đang tắt', '4 plans off']) },
+      { mark: 'O', name: 'Codex', count: x(['2 gói', '2 plans']), canAdd: true, addLabel: x(['Thêm gói Codex', 'Add Codex plan']), cards: codex, off: '' },
+      { mark: 'A', name: 'Antigravity', count: x(['1 gói', '1 plan']), canAdd: false, addLabel: '', cards: agy, off: '' },
+    ];
+    const cs = (mark, name, count, s, w, reset) => ({ mark, name, count, s, w, reset });
+    const sum = { ready: 8, running: 1, slots: 9, sub: x(['trên 10 gói đang bật · reset sớm nhất 15:10', 'of 10 enabled plans · earliest reset 15:10']), clis: [
+      cs('C', 'Claude Code', x(['7 gói', '7 plans']), x(['thấp nhất 3% · TB 41%', 'lowest 3% · avg 41%']), x(['thấp nhất 11% · TB 38%', 'lowest 11% · avg 38%']), x(['reset sớm nhất 16:00', 'earliest reset 4pm'])),
+      cs('O', 'Codex', x(['2 gói', '2 plans']), x(['thấp nhất 85% · TB 85%', 'lowest 85% · avg 85%']), x(['thấp nhất 67% · TB 67%', 'lowest 67% · avg 67%']), x(['reset sớm nhất 15:10', 'earliest reset 3:10pm'])),
+      cs('A', 'Antigravity', x(['1 gói', '1 plan']), x(['thấp nhất 69% · TB 69%', 'lowest 69% · avg 69%']), x(['thấp nhất 82% · TB 82%', 'lowest 82% · avg 82%']), x(['reset sớm nhất 17:00', 'earliest reset 5pm'])),
+    ] };
+    const pick = (on) => 'display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; border-radius: 10px; font: inherit; cursor: pointer; color: var(--foreground); text-align: left; background: ' + (on ? 'var(--accent)' : 'var(--card)') + '; border: 1px solid ' + (on ? 'var(--primary)' : 'var(--border)') + ';';
+    const clis = [{ mark: 'C', name: 'Claude Code', sub: x(['Gói Pro, Max, Team hay SSO', 'Pro, Max, Team or SSO plan']), on: true, style: pick(true) }, { mark: 'O', name: 'Codex', sub: x(['Đăng nhập bằng ChatGPT', 'Sign in with ChatGPT']), on: false, style: pick(false) }];
+    const wayRow = (on) => 'display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid ' + (on ? 'var(--primary)' : 'var(--border)') + '; background: ' + (on ? 'var(--accent)' : 'transparent') + ';';
+    const wayDot = (on) => 'margin-top: 4px; width: 14px; height: 14px; flex: none; box-sizing: border-box; border-radius: 9999px; border: ' + (on ? '4px solid var(--primary)' : '1px solid var(--input)') + ';';
+    const ways = [
+      { name: x(['Gói Claude (Pro, Max, Team)', 'Claude plan (Pro, Max, Team)']), hint: x(['Trang claude.ai mở trên trình duyệt: Google, email hay SSO đều được.', 'The claude.ai page opens in the browser: Google, email or SSO.']), style: wayRow(true), dot: wayDot(true) },
+      { name: x(['SSO của công ty', 'Company SSO']), hint: x(['Đi thẳng luồng SSO của tổ chức.', 'Goes straight to the organization SSO.']), style: wayRow(false), dot: wayDot(false) },
+      { name: x(['Anthropic Console (trả theo API)', 'Anthropic Console (API billing)']), hint: x(['Tính tiền theo API.', 'Billed by API usage.']), style: wayRow(false), dot: wayDot(false) },
+    ];
+    const seg = (on) => 'height: 22px; min-width: 28px; padding: 0 6px; border: 0; border-radius: 5px; font-family: var(--font-mono); font-size: 13px; cursor: pointer; ' + (on ? 'background: var(--card); color: var(--foreground); font-weight: 600;' : 'background: transparent; color: var(--muted-foreground);');
+    return {
+      theme: this.props.dark ? 'dark' : 'light', lang, t, sum, blocks, clis, ways,
+      foundRows: [
+        { title: 'claude-8', sub: x(['Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@fpt.com', 'Claude Code · ~/.xdev-hive/accounts/claude-8 · hoa@fpt.com']), on: true, note: '' },
+        { title: x(['Đăng nhập mặc định của Codex', 'Default Codex sign-in']), sub: 'Codex · ~/.codex · duy@fpt.com', on: false, note: x(['Trùng email với codex-1', 'Same email as codex-1']) },
+      ],
+      showAdd: view === 'add', showFound: view === 'found',
+      openAdd: () => this.setState({ view: 'add' }), openFound: () => this.setState({ view: 'found' }), closeAll: () => this.setState({ view: 'list' }),
+      viS: seg(!en), enS: seg(en), toVi: () => this.setState({ lang: 'vi' }), toEn: () => this.setState({ lang: 'en' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

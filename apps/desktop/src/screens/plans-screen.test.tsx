@@ -1,9 +1,20 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { saveFolder } from "@/lib/folder.ts";
 import { setLang } from "@/lib/i18n.ts";
-import { clock, machineSummary, meterTone, type Plan, planRows, planState, reloginOf } from "@/lib/plans.ts";
+import {
+  cliBlocks,
+  cliSummary,
+  clock,
+  type FoundLogin,
+  machineSummary,
+  meterTone,
+  type Plan,
+  planRows,
+  planState,
+  reloginOf,
+} from "@/lib/plans.ts";
 import { LOGIN_POLL_MS, PlansScreen } from "@/screens/plans-screen.tsx";
 
 const NOW = Date.parse("2026-10-13T08:00:00Z");
@@ -54,7 +65,8 @@ function seed(): Plan[] {
 
 type Call = { command: string; args?: Record<string, unknown> };
 
-function fakeTauri(list = seed()) {
+/** `found` undefined: worker cũ không có lệnh `accounts discover` (lệnh lỗi như sidecar thật). */
+function fakeTauri(list = seed(), found?: FoundLogin[]) {
   const calls: Call[] = [];
   const reply = () => ({ path: "/x/accounts.json", accounts: list });
   const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
@@ -100,6 +112,18 @@ function fakeTauri(list = seed()) {
     },
     open_login_terminal: () => null,
     open_cli_terminal: () => null,
+    ...(found && {
+      cli_profile_discover: () => ({ found }),
+      cli_profile_discover_add: ({ cli, configDir }: Record<string, unknown>) => {
+        const i = found.findIndex((f) => f.cli === cli && f.configDir === configDir);
+        const f = found.splice(i, 1)[0] as FoundLogin;
+        list = [
+          ...list,
+          { ...base, id: f.suggestedId, label: f.suggestedId, cli: f.cli, ...(f.email && { email: f.email }) },
+        ];
+        return reply();
+      },
+    }),
   };
   window.__TAURI__ = {
     core: {
@@ -120,6 +144,7 @@ function fakeTauri(list = seed()) {
 }
 
 const row = (id: string) => document.querySelector(`[data-plan="${id}"]`) as HTMLElement;
+const block = (cli: string) => document.querySelector(`[data-cli="${cli}"]`) as HTMLElement;
 const sent = (calls: Call[], command: string) => calls.filter((c) => c.command === command).map((c) => c.args);
 
 beforeEach(() => {
@@ -155,6 +180,33 @@ describe("hàm của màn Gói agent", () => {
     expect(off.map((p) => p.id)).toEqual(["claude-3"]);
   });
 
+  it("gom theo CLI và tính quota còn lại của từng CLI", () => {
+    const blocks = cliBlocks(seed(), NOW);
+    expect(blocks.map((b) => [b.cli, b.on.map((p) => p.id), b.off.map((p) => p.id)])).toEqual([
+      ["claude", ["claude-1", "claude-2"], ["claude-3"]],
+      ["codex", ["codex-2", "codex-1"], []],
+    ]);
+    // CLI lạ xếp sau ba CLI đã biết.
+    expect(cliBlocks([{ ...base, id: "g", label: "g", cli: "gemini" }, ...seed()], NOW).map((b) => b.cli)).toEqual([
+      "claude",
+      "codex",
+      "gemini",
+    ]);
+    const [claude, codex] = cliSummary(seed(), NOW) as [
+      ReturnType<typeof cliSummary>[number],
+      ReturnType<typeof cliSummary>[number],
+    ];
+    expect(claude).toMatchObject({
+      cli: "claude",
+      plans: 3,
+      session: { lowest: 3, average: 31 },
+      reset: { at: at(90) },
+    });
+    // Gói chỉ có phiên thì tuần tính trên các gói có số.
+    expect(claude.week).toEqual({ lowest: 11, average: 11 });
+    expect(codex).toMatchObject({ cli: "codex", plans: 2, session: null, week: null, reset: null });
+  });
+
   it("màu thanh theo ngưỡng dừng, lệnh đăng nhập lại theo thư mục của gói", () => {
     expect(meterTone(70, 90)).toBe("ok");
     expect(meterTone(80, 90)).toBe("near");
@@ -174,14 +226,116 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     fakeTauri();
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
-    const summary = screen.getByRole("region", { name: "Gói sẵn sàng" });
+    const summary = screen.getByRole("region", { name: "Cả máy" });
     expect(summary.textContent).toContain("trên 4 gói đang bật");
     expect(summary.textContent).toContain(`reset sớm nhất: Gói phụ · ${clock(at(90), NOW, "vi")}`);
     expect(screen.getByText(`cập nhật lúc ${clock(at(-3), NOW, "vi")}`)).toBeTruthy();
 
     expect(screen.queryByText("Gói cũ")).toBeNull();
-    await user().click(screen.getByRole("button", { name: "1 gói đang tắt" }));
+    await user().click(within(block("claude")).getByRole("button", { name: "1 gói đang tắt" }));
     expect(within(row("claude-3")).getByText("Tắt")).toBeTruthy();
+    expect(within(row("claude-3")).getByRole("button", { name: "Bật gói Gói cũ" })).toBeTruthy();
+  });
+
+  it("nhóm theo CLI: tiêu đề, số gói, nút Thêm gói của từng CLI và ô tổng từng CLI", async () => {
+    fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const claude = block("claude");
+    expect(within(claude).getByRole("heading", { name: "Claude Code" })).toBeTruthy();
+    expect(within(claude).getByText("3 gói")).toBeTruthy();
+    expect(within(claude).getAllByRole("listitem")).toHaveLength(2);
+    expect(row("claude-1").closest("[data-cli]")).toBe(claude);
+    expect(row("codex-1").closest("[data-cli]")).toBe(block("codex"));
+    expect(within(block("codex")).getByText("2 gói")).toBeTruthy();
+    expect(within(claude).getByRole("button", { name: "Thêm gói Claude Code" })).toBeTruthy();
+    expect(within(block("codex")).getByRole("button", { name: "Thêm gói Codex" })).toBeTruthy();
+    expect(block("antigravity")).toBeNull();
+
+    // Ô tổng: phiên còn thấp nhất 3% (gói 97% đã dùng), trung bình 31%; tuần chỉ có một gói còn 11%.
+    const total = document.querySelector('[data-cli-summary="claude"]') as HTMLElement;
+    expect(total.textContent).toContain("Phiên còn thấp nhất 3% · TB 31%");
+    expect(total.textContent).toContain("Tuần còn thấp nhất 11% · TB 11%");
+    expect(total.textContent).toContain(`reset sớm nhất ${clock(at(90), NOW, "vi")}`);
+    const codex = document.querySelector('[data-cli-summary="codex"]') as HTMLElement;
+    expect(codex.textContent).toContain("Phiên còn Chưa biết");
+  });
+
+  it("thẻ Claude có dòng tuần theo model khi worker trả `models`", async () => {
+    const list = seed();
+    const first = list[0] as Plan;
+    first.usage = {
+      ...(first.usage as NonNullable<Plan["usage"]>),
+      models: [
+        { name: "Sonnet", percent: 12, resetsAt: at(1440) },
+        { name: "Opus", percent: 71.4, resetsAt: null },
+      ],
+    };
+    fakeTauri(list);
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const r = row("claude-1");
+    expect(within(r).getByText("Tuần theo model")).toBeTruthy();
+    expect(within(r).getByRole("meter", { name: "Tuần Sonnet: Duy Max" }).getAttribute("aria-valuenow")).toBe("12");
+    expect(within(r).getByRole("meter", { name: "Tuần Opus: Duy Max" }).getAttribute("aria-valuenow")).toBe("71");
+    // Worker cũ không có `models`: không có khối model.
+    expect(within(row("claude-2")).queryByText("Tuần theo model")).toBeNull();
+  });
+
+  it("thẻ Antigravity hiện từng nhóm; nhóm tắt phiên ghi rõ", async () => {
+    const agy: Plan = {
+      ...base,
+      id: "antigravity-1",
+      label: "Antigravity chính",
+      cli: "antigravity",
+      state: "ready",
+      usage: {
+        session: { percent: 31, resetsAt: at(60) },
+        week: { percent: 18, resetsAt: at(2 * 1440) },
+        checkedAt: at(-2),
+        reason: null,
+        groups: [
+          {
+            name: "Claude and GPT models",
+            models: "Claude Sonnet, GPT-OSS",
+            session: { percent: 31, resetsAt: at(60) },
+            week: { percent: 18, resetsAt: at(2 * 1440) },
+          },
+          {
+            name: "Gemini Models",
+            models: "Gemini Flash, Gemini Pro",
+            session: null,
+            week: { percent: 8, resetsAt: null },
+            sessionDisabled: true,
+          },
+        ],
+      },
+    };
+    fakeTauri([...seed(), agy]);
+    render(<PlansScreen />);
+    await screen.findByText("Antigravity chính");
+    const section = block("antigravity");
+    expect(within(section).getByRole("heading", { name: "Antigravity" })).toBeTruthy();
+    // Antigravity không có luồng đăng nhập trong app: không có nút Thêm gói riêng.
+    expect(within(section).queryByRole("button", { name: /Thêm gói/ })).toBeNull();
+    const r = row("antigravity-1");
+    const first = r.querySelector('[data-group="Claude and GPT models"]') as HTMLElement;
+    expect(first.textContent).toContain("Claude Sonnet, GPT-OSS");
+    expect(
+      within(first)
+        .getByRole("meter", { name: "Claude and GPT models · Phiên 5 giờ: Antigravity chính" })
+        .getAttribute("aria-valuenow"),
+    ).toBe("31");
+    const off = r.querySelector('[data-group="Gemini Models"]') as HTMLElement;
+    expect(within(off).getByText("Phiên 5 giờ của nhóm này đang tắt")).toBeTruthy();
+    expect(within(off).queryByRole("meter", { name: /Phiên 5 giờ/ })).toBeNull();
+    expect(
+      within(off).getByRole("meter", { name: "Gemini Models · Tuần: Antigravity chính" }).getAttribute("aria-valuenow"),
+    ).toBe("8");
+    // Ô tổng có thêm cột Antigravity.
+    expect((document.querySelector('[data-cli-summary="antigravity"]') as HTMLElement).textContent).toContain(
+      "Phiên còn thấp nhất 69%",
+    );
   });
 
   it("dòng gói: nhãn, CLI và id, email, chip trạng thái, thanh % và vạch ngưỡng", async () => {
@@ -189,7 +343,10 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
     const r = row("claude-1");
-    expect(r.textContent).toContain("Claude Code · claude-1");
+    expect(r.textContent).toContain("claude-1");
+    expect(r.textContent).toContain("ưu tiên 0 · 1/2 run");
+    // Trạng thái có ký hiệu đi kèm chữ, không chỉ màu.
+    expect(within(r).getByText("Đang chạy").querySelector("svg")).toBeTruthy();
     expect(within(r).getByText("duy@fpt.com")).toBeTruthy();
     expect(within(r).getByText("Đang chạy")).toBeTruthy();
     const session = within(r).getByRole("meter", { name: "Phiên 5 giờ: Duy Max" });
@@ -202,7 +359,7 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
 
     expect(within(row("codex-1")).getByText("Sẵn sàng")).toBeTruthy();
     expect(within(row("codex-1")).getAllByText("Chưa biết")).toHaveLength(2);
-    expect(within(row("codex-1")).getAllByText("CLI không báo")).toHaveLength(2);
+    expect(within(row("codex-1")).getByText("CLI không báo")).toBeTruthy();
 
     const cooling = row("claude-2");
     expect(within(cooling).getByText("Đang nghỉ", { exact: true })).toBeTruthy();
@@ -232,9 +389,11 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     const u = user();
     await u.click(screen.getByRole("button", { name: "Đọc lại quota" }));
     expect(sent(calls, "cli_profile_usage")).toEqual([{ id: null }]);
-    await u.click(screen.getByRole("button", { name: "Tắt gói Codex chính" }));
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Codex chính" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Tắt" }));
     expect(sent(calls, "cli_profile_set")).toEqual([{ id: "codex-1", enabled: false }]);
-    expect(await screen.findByRole("button", { name: "2 gói đang tắt" })).toBeTruthy();
+    expect(await within(block("codex")).findByRole("button", { name: "1 gói đang tắt" })).toBeTruthy();
+    expect(within(block("claude")).getByRole("button", { name: "1 gói đang tắt" })).toBeTruthy();
   });
 
   it("Đang nghỉ tới {giờ} và Dùng tiếp gọi accounts resume", async () => {
@@ -256,16 +415,30 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     const u = user();
     await u.click(screen.getByRole("button", { name: "Thêm gói" }));
     const dialog = await screen.findByRole("dialog", { name: "Thêm gói" });
-    const how = within(dialog).getByLabelText("Cách đăng nhập");
-    expect([...how.querySelectorAll("option")].map((o) => o.value)).toEqual(["plan", "sso", "console"]);
+    // Bước 1: chọn CLI bằng thẻ, chưa có cách đăng nhập.
+    expect(within(dialog).getByText("Bước 1/2: chọn CLI.")).toBeTruthy();
+    expect(within(dialog).queryByRole("radio")).toBeNull();
+    expect(within(dialog).getByText(/Antigravity không đăng nhập từ đây/)).toBeTruthy();
 
-    await u.selectOptions(within(dialog).getByLabelText("CLI"), "codex");
-    expect([...how.querySelectorAll("option")].map((o) => o.value)).toEqual(["browser", "device"]);
+    await u.click(within(dialog).getByRole("button", { name: "Codex" }));
+    const ways = () =>
+      within(dialog)
+        .getAllByRole("radio")
+        .map((r) => r.closest("div")?.textContent ?? "");
+    expect(ways()).toHaveLength(2);
+    expect(within(dialog).getByRole("radio", { name: "Trình duyệt trên máy này" })).toBeTruthy();
+    expect(within(dialog).getByRole("radio", { name: "Mã thiết bị (đăng nhập ở máy khác)" })).toBeTruthy();
     expect(within(dialog).queryByLabelText("Email (tuỳ chọn)")).toBeNull();
-    await u.selectOptions(within(dialog).getByLabelText("CLI"), "claude");
+    await u.click(within(dialog).getByRole("button", { name: "Đổi CLI" }));
+    await u.click(within(dialog).getByRole("button", { name: "Claude Code" }));
+    expect(within(dialog).getByText(/^Bước 2\/2/)).toBeTruthy();
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(3);
+    expect(
+      (within(dialog).getByRole("radio", { name: "Gói Claude (Pro, Max, Team)" }) as HTMLInputElement).checked,
+    ).toBe(true);
 
     await u.type(within(dialog).getByLabelText("Tên hiển thị"), "Gói công ty");
-    await u.selectOptions(how, "sso");
+    await u.click(within(dialog).getByRole("radio", { name: "SSO của công ty" }));
     await u.type(within(dialog).getByLabelText("Email (tuỳ chọn)"), "duy@fpt.com");
     await u.click(within(dialog).getByRole("button", { name: "Thêm và đăng nhập" }));
 
@@ -298,12 +471,112 @@ describe("màn Gói agent", { timeout: 20_000 }, () => {
     render(<PlansScreen />);
     await screen.findByText("Duy Max");
     const u = user();
-    await u.click(screen.getByRole("button", { name: "Thêm gói" }));
+    await u.click(within(block("codex")).getByRole("button", { name: "Thêm gói Codex" }));
+    // Mở từ nút của khối: CLI chọn sẵn, vào thẳng bước 2.
     const dialog = await screen.findByRole("dialog", { name: "Thêm gói" });
-    await u.selectOptions(within(dialog).getByLabelText("CLI"), "codex");
-    await u.selectOptions(within(dialog).getByLabelText("Cách đăng nhập"), "device");
+    expect(within(dialog).getByText(/^Bước 2\/2/)).toBeTruthy();
+    await u.click(within(dialog).getByRole("radio", { name: "Mã thiết bị (đăng nhập ở máy khác)" }));
     await u.click(within(dialog).getByRole("button", { name: "Thêm và đăng nhập" }));
     expect(sent(calls, "cli_profile_add")).toEqual([{ cli: "codex", label: "Codex 3", how: "device", email: null }]);
+  });
+
+  it("nút Thêm gói Claude Code mở hộp với Claude Code chọn sẵn", async () => {
+    fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    await user().click(within(block("claude")).getByRole("button", { name: "Thêm gói Claude Code" }));
+    const dialog = await screen.findByRole("dialog", { name: "Thêm gói" });
+    expect(within(dialog).getByText("Claude Code")).toBeTruthy();
+    expect(within(dialog).getByLabelText("Email (tuỳ chọn)")).toBeTruthy();
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(3);
+  });
+
+  it("Dùng tiếp và Bật/Tắt cũng có trong menu ⋯", async () => {
+    const { calls } = fakeTauri();
+    render(<PlansScreen />);
+    await screen.findByText("Duy Max");
+    const u = user();
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Gói phụ" }));
+    await u.click(await screen.findByRole("menuitem", { name: "Dùng tiếp" }));
+    expect(sent(calls, "cli_profile_resume")).toEqual([{ id: "claude-2" }]);
+    // Gói đang chạy bình thường không có Dùng tiếp.
+    await u.click(screen.getByRole("button", { name: "Thao tác cho Duy Max" }));
+    expect(await screen.findByRole("menuitem", { name: "Tắt" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "Dùng tiếp" })).toBeNull();
+  });
+
+  describe("tìm đăng nhập trên máy", () => {
+    const found: FoundLogin[] = [
+      {
+        cli: "claude",
+        configDir: "~/.xdev-hive/accounts/claude-8",
+        loggedIn: true,
+        email: "hoa@fpt.com",
+        suggestedId: "claude-8",
+        note: null,
+      },
+      {
+        cli: "codex",
+        configDir: null,
+        loggedIn: true,
+        email: "duy@fpt.com",
+        suggestedId: "codex-3",
+        note: "Trùng email với codex-1",
+      },
+    ];
+
+    it("có kết quả thì hiện băng; tích chọn rồi Thêm gọi discover add cho từng đăng nhập", async () => {
+      const { calls } = fakeTauri(seed(), structuredClone(found));
+      render(<PlansScreen />);
+      await screen.findByText("Duy Max");
+      const banner = await screen.findByRole("region", { name: "Tìm thấy 2 đăng nhập chưa thêm" });
+      expect(sent(calls, "cli_profile_discover")).toHaveLength(1);
+      const u = user();
+      await u.click(within(banner).getByRole("button", { name: "Xem và thêm" }));
+      const dialog = await screen.findByRole("dialog", { name: "Tìm thấy 2 đăng nhập chưa thêm" });
+      // Đăng nhập nghi trùng (có ghi chú) mặc định không tích.
+      const boxes = within(dialog).getAllByRole("checkbox") as HTMLInputElement[];
+      expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+      expect(within(dialog).getByText("Trùng email với codex-1")).toBeTruthy();
+      expect(within(dialog).getByText("Đăng nhập mặc định của Codex")).toBeTruthy();
+      await u.click(boxes[1] as HTMLInputElement);
+      await u.click(within(dialog).getByRole("button", { name: "Thêm 2 gói" }));
+
+      expect(sent(calls, "cli_profile_discover_add")).toEqual([
+        { cli: "claude", configDir: "~/.xdev-hive/accounts/claude-8", label: null },
+        { cli: "codex", configDir: null, label: null },
+      ]);
+      expect((await screen.findByRole("status")).textContent).toBe("Đã thêm 2 gói từ đăng nhập có sẵn trên máy.");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(row("claude-8")).toBeTruthy();
+      expect(row("codex-3")).toBeTruthy();
+      // Thêm xong thì tìm lại: không còn gì thì băng biến mất.
+      await waitFor(() => expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull());
+    });
+
+    it("không có lệnh discover (worker cũ) thì ẩn im lặng, không báo lỗi", async () => {
+      const { calls } = fakeTauri();
+      render(<PlansScreen />);
+      await screen.findByText("Duy Max");
+      await waitFor(() => expect(sent(calls, "cli_profile_discover")).toHaveLength(1));
+      expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("không có đăng nhập nào lạ thì không có băng", async () => {
+      fakeTauri(seed(), []);
+      render(<PlansScreen />);
+      await screen.findByText("Duy Max");
+      expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull();
+    });
+
+    it("Ẩn đóng băng", async () => {
+      fakeTauri(seed(), structuredClone(found));
+      render(<PlansScreen />);
+      const banner = await screen.findByRole("region", { name: "Tìm thấy 2 đăng nhập chưa thêm" });
+      await user().click(within(banner).getByRole("button", { name: "Ẩn" }));
+      expect(screen.queryByRole("region", { name: /Tìm thấy/ })).toBeNull();
+    });
   });
 
   it("Đăng nhập lại từ menu ⋯ mở Terminal với thư mục của gói", async () => {

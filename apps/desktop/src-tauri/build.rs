@@ -35,6 +35,8 @@ fn main() {
         "cli_profile_remove",
         "cli_profile_usage",
         "cli_profile_resume",
+        "cli_profile_discover",
+        "cli_profile_discover_add",
         "open_login_terminal",
         "open_cli_terminal",
         "folder_tree",
