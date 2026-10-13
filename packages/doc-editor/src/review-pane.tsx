@@ -26,8 +26,13 @@ import { type Dict, type Lang, useDocEditorEnv } from "./env.tsx";
  */
 
 export const REVIEWER_ROLE_LABEL: Dict<Record<ReviewerRole, string>> = {
-  vi: { "org-admin": "Quản trị tổ chức", "team-admin": "Quản trị đội", "team-member": "Thành viên đội" },
-  en: { "org-admin": "Org admin", "team-admin": "Team admin", "team-member": "Team member" },
+  vi: {
+    "org-admin": "Quản trị tổ chức",
+    "team-admin": "Quản trị đội",
+    "team-member": "Thành viên đội",
+    "team-ba": "BA/PO của đội",
+  },
+  en: { "org-admin": "Org admin", "team-admin": "Team admin", "team-member": "Team member", "team-ba": "Team BA/PO" },
 };
 
 const HOUR = 3_600_000;

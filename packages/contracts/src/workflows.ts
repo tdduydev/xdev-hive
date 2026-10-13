@@ -18,10 +18,22 @@ export type WorkflowPreset = z.output<typeof workflowPreset>;
 export type CodeWorkflowPreset = (typeof CODE_PRESET_IDS)[number];
 export const gateKind = z.enum(["ai", "human", "rule", "ext"]);
 export type GateKind = z.output<typeof gateKind>;
-export const reviewerRole = z.enum(["org-admin", "team-admin", "team-member"]);
+/** `team-ba`: vai trò BA/PO của đội (specs/011 FR-061), được chọn làm người duyệt tài liệu. */
+export const reviewerRole = z.enum(["org-admin", "team-admin", "team-member", "team-ba"]);
 export type ReviewerRole = z.output<typeof reviewerRole>;
-/** Quy tắc theo loại: `sections`, `requirements` chỉ cho tài liệu; `command`… chỉ cho code; hai cái giữa dùng chung. */
-export const DOC_RULE_CHECKS = ["sections", "requirements", "no-secrets", "max-diff"] as const;
+/**
+ * Quy tắc theo loại: `sections`, `requirements` chỉ cho tài liệu; `command`… chỉ cho code; hai cái giữa dùng chung.
+ * `no-open-questions`, `breakdown`, `coverage` là của tài liệu hạng mục AI SDLC (specs/011 FR-017).
+ */
+export const DOC_RULE_CHECKS = [
+  "sections",
+  "requirements",
+  "no-secrets",
+  "max-diff",
+  "no-open-questions",
+  "breakdown",
+  "coverage",
+] as const;
 export const CODE_RULE_CHECKS = [
   "command",
   "max-files",
@@ -39,6 +51,9 @@ export const ruleCheck = z.enum([
   "max-files",
   "deny-paths",
   "agent-report",
+  "no-open-questions",
+  "breakdown",
+  "coverage",
 ]);
 export type RuleCheck = z.output<typeof ruleCheck>;
 export const rejectRoute = z.enum(["author", "agent", "previous"]);
@@ -91,6 +106,11 @@ export const reviewGate = z.object({
       quorum: z.number().int().min(0).max(50).default(1),
       /** Quy trình code: chủ run code (người giao việc) cũng được quyết. Tắt theo nguyên tắc bốn mắt (Q2). */
       allowRequester: z.boolean().optional(),
+      /**
+       * Đội mà `roles` được tính trong đó thay cho đội của tài liệu. Chỉ hub điền khi dựng cổng theo đội của hạng mục
+       * AI SDLC (specs/011 D21); quy trình và chế độ người sửa không được đặt.
+       */
+      teamScope: z.uuid().optional(),
     })
     .optional(),
   /** Gate quy tắc. */
@@ -266,6 +286,7 @@ export const workflowInput = z
           issue(`Checkpoint “${g.name}” cần người duyệt.`, path);
         if (g.kind === "rule" && !g.rules?.length) issue(`Checkpoint “${g.name}” cần ít nhất một quy tắc.`, path);
         if (g.kind === "ai" && !g.ai) issue(`Checkpoint “${g.name}” cần danh sách AI kiểm.`, path);
+        if (g.reviewers?.teamScope) issue("Đội của người duyệt do hub điền, không đặt trong quy trình.", path);
         checkGateSubject(w.subject, g, path, issue);
       }
     }
@@ -317,6 +338,8 @@ export const gateRun = z.object({
   finishedAt: z.iso.datetime().nullable(),
   /** Run agent của gate AI. */
   runId: z.uuid().nullable(),
+  /** Checkpoint người do hub tự duyệt (specs/011 D25): điểm review AI, ngưỡng hiệu lực, dòng tự duyệt để thu hồi. */
+  auto: z.object({ score: z.number(), threshold: z.number(), approvalId: z.uuid() }).optional(),
 });
 export type GateRun = z.output<typeof gateRun>;
 
