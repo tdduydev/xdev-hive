@@ -709,6 +709,8 @@ pub fn run() {
             profiles::cli_profile_remove,
             profiles::cli_profile_usage,
             profiles::cli_profile_resume,
+            profiles::cli_profile_discover,
+            profiles::cli_profile_discover_add,
             profiles::open_login_terminal,
             profiles::open_cli_terminal,
             cli::folder_tree,
