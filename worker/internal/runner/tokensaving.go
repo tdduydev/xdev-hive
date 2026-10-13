@@ -24,10 +24,10 @@ const (
 	defaultAutocompactWindow = 200000
 	// Mặc định của Claude Code là 25000; đọc file lớn đi vào ngữ cảnh và bị đọc lại ở mọi lượt sau.
 	defaultFileReadMaxTokens = "15000"
-	// claudeCodeTools là tool có sẵn cho run code; bỏ Task/TodoWrite/Skill... làm prompt hệ thống gọn hơn và tắt subagent
-	// (30% chi phí đo được). MultiEdit không có trong claude 2.1.296 (init chỉ liệt kê 6 tool dưới đây dù --tools có
-	// nêu MultiEdit), nên không khai.
-	claudeCodeTools = "Bash,Read,Edit,Write,Grep,Glob"
+	// claudeCodeTools là tool có sẵn cho run code. Giữ Skill (bộ skill mặc định của Hive), TodoWrite và Task (subagent đã
+	// bị ép model rẻ bằng CLAUDE_CODE_SUBAGENT_MODEL); bỏ phần còn lại (web, notebook...) cho prompt hệ thống gọn. MultiEdit
+	// không có trong claude 2.1.296 nên không khai; init của bản này cũng chưa liệt kê TodoWrite, nhưng --tools nhận tên.
+	claudeCodeTools = "Bash,Read,Edit,Write,Grep,Glob,Skill,TodoWrite,Task"
 )
 
 // TokenSavingJob là mục tokenSaving trong spec job (settings dự án "Tiết kiệm token"). nil là hub cũ chưa gửi: dùng

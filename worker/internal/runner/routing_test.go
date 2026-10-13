@@ -79,7 +79,7 @@ func TestSavingArgsClaude(t *testing.T) {
 	join := func(a []string) string { return strings.Join(a, " ") }
 	code := Job{CLI: "claude", Kind: "code", claudeVersion: "2.1.296"}
 	got := join(savingArgs(TokenSavingConfig{}, code))
-	for _, want := range []string{"--exclude-dynamic-system-prompt-sections", "--tools Bash,Read,Edit,Write,Grep,Glob", "--disallowedTools WebFetch,WebSearch"} {
+	for _, want := range []string{"--exclude-dynamic-system-prompt-sections", "--tools Bash,Read,Edit,Write,Grep,Glob,Skill,TodoWrite,Task", "--disallowedTools WebFetch,WebSearch"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("thiếu %q: %s", want, got)
 		}
@@ -199,7 +199,7 @@ func TestClaudeAdvisorDroppedWhenTelemetryOff(t *testing.T) {
 
 func TestClaudeCommandCarriesSavingFlags(t *testing.T) {
 	args, _ := claudeArgs(t, Job{claudeVersion: "2.1.296", Kind: "code", cliArgs: savingArgs(TokenSavingConfig{}, Job{CLI: "claude", Kind: "code", claudeVersion: "2.1.296"})})
-	if !strings.Contains(args, "--tools Bash,Read,Edit,Write,Grep,Glob") || !strings.Contains(args, "--exclude-dynamic-system-prompt-sections") {
+	if !strings.Contains(args, "--tools Bash,Read,Edit,Write,Grep,Glob,Skill,TodoWrite,Task") || !strings.Contains(args, "--exclude-dynamic-system-prompt-sections") {
 		t.Fatalf("lệnh = %s", args)
 	}
 }
