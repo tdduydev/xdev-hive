@@ -48,7 +48,12 @@ const STATE_TONE: Record<RunState, Tone> = {
 
 export const runStateTone = (state: RunState): Tone => STATE_TONE[state];
 
-export const CLI_LABEL: Record<string, string> = { claude: "Claude", codex: "Codex", gemini: "Gemini" };
+export const CLI_LABEL: Record<string, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  gemini: "Gemini",
+  antigravity: "Antigravity",
+};
 export const cliLabel = (cli: string | null): string => (cli ? (CLI_LABEL[cli] ?? cli) : "CLI bất kỳ");
 
 /** 8 ký tự đầu của id, đủ để người xem phân biệt run như mã commit rút gọn. */

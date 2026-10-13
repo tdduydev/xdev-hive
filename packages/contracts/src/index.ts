@@ -54,6 +54,8 @@ export const healthOutput = z.object({
   status: z.literal("ok"),
   version: z.string(),
   time: z.iso.datetime(),
+  /** CLI hub giao run được; worker chỉ khai những CLI này trong hello và khi đăng ký. Hub cũ không trả. */
+  clis: z.array(z.string()).optional(),
 });
 export const desktopUpdateOutput = z.object({
   version: z.string(),

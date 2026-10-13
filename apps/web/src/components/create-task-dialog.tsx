@@ -13,8 +13,8 @@ import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
-type Cli = "claude" | "codex" | "gemini";
-const CLIS: Cli[] = ["claude", "codex", "gemini"];
+type Cli = "claude" | "codex" | "gemini" | "antigravity";
+const CLIS: Cli[] = ["claude", "codex", "gemini", "antigravity"];
 const isCli = (v: string): v is Cli => (CLIS as string[]).includes(v);
 
 /**
