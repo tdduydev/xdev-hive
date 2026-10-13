@@ -260,12 +260,20 @@ fn notify(app: &AppHandle, body: &str) {
 /// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
 const SIDECAR_RUN_ARGS: [&str; 3] = ["run", "--status-json", "--stdin-control"];
 
+/// PATH của shell đăng nhập cho worker: app mở từ Finder chỉ có /usr/bin:/bin…, nên worker không thấy claude/codex cài
+/// qua nvm, Homebrew hay ~/.local/bin, báo "Chưa có CLI trên máy" và không chạy được run.
+fn sidecar_path() -> (&'static str, String) {
+    ("PATH", doctor::user_path().to_string())
+}
+
 fn spawn_worker(app: &AppHandle) -> Result<(), String> {
+    let (key, path) = sidecar_path();
     let (mut rx, child) = app
         .shell()
         .sidecar(SIDECAR)
         .map_err(|e| e.to_string())?
         .args(SIDECAR_RUN_ARGS)
+        .env(key, path)
         .spawn()
         .map_err(|e| e.to_string())?;
     let pid = child.pid();
@@ -444,11 +452,16 @@ async fn sidecar_json<T: serde::de::DeserializeOwned>(
     args: Vec<String>,
     env: Vec<(&str, String)>,
 ) -> Result<T, String> {
+    // Lần đầu dò PATH đăng nhập có thể mất một chút (chạy shell); không giữ luồng async trong lúc đó.
+    let (key, path) = tauri::async_runtime::spawn_blocking(sidecar_path)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut cmd = app
         .shell()
         .sidecar(SIDECAR)
         .map_err(|e| e.to_string())?
-        .args(args);
+        .args(args)
+        .env(key, path);
     for (k, v) in env {
         cmd = cmd.env(k, v);
     }
@@ -828,6 +841,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sidecar_gets_the_login_shell_path() {
+        let (key, path) = super::sidecar_path();
+        assert_eq!(key, "PATH");
+        assert!(!path.is_empty());
+        assert_eq!(
+            path,
+            super::doctor::user_path(),
+            "worker và Terminal dùng cùng một PATH"
+        );
+    }
+
     #[test]
     fn sidecar_runs_under_app_control_without_self_update() {
         // Worker tắt tự cập nhật khi chạy với --stdin-control (worker/cmd/hive-worker TestSidecarDisablesSelfUpdate).
