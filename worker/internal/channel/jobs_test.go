@@ -211,12 +211,23 @@ func TestOfferExpiresAndCancelFreesSlot(t *testing.T) {
 	}
 }
 
+// codexAccounts là accounts.json có một tài khoản Codex đã đăng nhập (thư mục cấu hình có auth.json).
+func codexAccounts(t *testing.T) []byte {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "auth.json"), []byte(`{"tokens":{"id_token":"h.e30.s"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	quoted, _ := json.Marshal(dir)
+	return []byte(`{"accounts":[{"id":"codex-3","cli":"codex","configDir":` + string(quoted) + `,"enabled":true,"maxConcurrent":1}]}`)
+}
+
 // Máy có hai chỗ nhưng chỉ một tài khoản Codex cho một run: đề nghị thứ hai vẫn được nhận (hub không bỏ máy) nhưng
 // chờ tài khoản; bỏ đề nghị (huỷ, hết hạn) thì trả tài khoản.
 func TestOfferHoldsAccountAndReleasesIt(t *testing.T) {
 	j := testJobs(t, 2)
 	path := filepath.Join(t.TempDir(), "accounts.json")
-	if err := os.WriteFile(path, []byte(`{"accounts":[{"id":"codex-3","cli":"codex","enabled":true,"maxConcurrent":1}]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, codexAccounts(t), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	j.cfg.Accounts = accounts.NewPool(path)
@@ -241,25 +252,25 @@ func TestOfferHoldsAccountAndReleasesIt(t *testing.T) {
 func TestWaitAccountUntilFreeOrCancelled(t *testing.T) {
 	j := testJobs(t, 2)
 	path := filepath.Join(t.TempDir(), "accounts.json")
-	if err := os.WriteFile(path, []byte(`{"accounts":[{"id":"codex-3","cli":"codex","enabled":true,"maxConcurrent":1}]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, codexAccounts(t), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	j.cfg.Accounts = accounts.NewPool(path)
 	saved := accountPoll
 	accountPoll = 10 * time.Millisecond
 	defer func() { accountPoll = saved }()
-	held, _ := j.cfg.Accounts.Acquire("codex")
+	held, _ := j.cfg.Accounts.Acquire("codex", accounts.RoleImplement)
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		held.Release()
 	}()
-	got, err := j.waitAccount(context.Background(), "codex", "r")
+	got, err := j.waitAccount(context.Background(), "codex", accounts.RoleImplement, "r")
 	if err != nil || got.Label() != "codex-3" {
 		t.Fatalf("chờ xong phải nhận codex-3: %v %v", got, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := j.waitAccount(ctx, "codex", "r"); err == nil {
+	if _, err := j.waitAccount(ctx, "codex", accounts.RoleImplement, "r"); err == nil {
 		t.Fatal("huỷ khi đang chờ phải trả lỗi")
 	}
 }
