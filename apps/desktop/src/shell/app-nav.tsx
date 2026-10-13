@@ -89,10 +89,8 @@ export function AppNav({
         className="mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-card px-2 py-1.5 text-left hover:bg-muted compact:hidden"
       >
         <span className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="truncate font-mono text-[12.5px] font-semibold">
-            {folder ? folderName(folder) : t.noFolder}
-          </span>
-          <span className="truncate font-mono text-[11px] text-muted-foreground">
+          <span className="truncate text-sm font-semibold">{folder ? folderName(folder) : t.noFolder}</span>
+          <span className={cn("truncate text-xs text-muted-foreground", folder && "font-mono")}>
             {folder ? shortPath(folder) : t.folder}
           </span>
         </span>
@@ -107,14 +105,14 @@ export function AppNav({
             aria-current={current ? "page" : undefined}
             title={item.label[lang]}
             className={cn(
-              "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13.5px] text-foreground no-underline hover:bg-muted",
+              "flex h-8 items-center gap-2.5 rounded-md px-2.5 text-sm text-foreground no-underline hover:bg-muted",
               "compact:mx-auto compact:w-9 compact:justify-center compact:px-0",
               current && "bg-accent font-semibold text-accent-foreground hover:bg-accent",
             )}
           >
             <item.icon aria-hidden="true" className="size-4 shrink-0" />
             <span className="flex-1 compact:sr-only">{item.label[lang]}</span>
-            {item.readOnly && <span className="text-[10.5px] text-muted-foreground compact:hidden">{t.readOnly}</span>}
+            {item.readOnly && <span className="text-xs text-muted-foreground compact:hidden">{t.readOnly}</span>}
           </a>
         );
       })}
@@ -142,7 +140,7 @@ export function AppNav({
         )}
       >
         {account ? (
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground">
             {initials(account.name || account.email)}
           </span>
         ) : (
@@ -151,10 +149,10 @@ export function AppNav({
           </span>
         )}
         <span className="flex min-w-0 flex-1 flex-col leading-tight compact:sr-only">
-          <span className={cn("truncate text-[13px]", account ? "font-medium" : "text-muted-foreground")}>
+          <span className={cn("truncate text-sm", account ? "font-medium" : "text-muted-foreground")}>
             {account ? account.name || account.email : t.notLinked}
           </span>
-          {account && <span className="truncate text-[11.5px] text-muted-foreground">{roleLine}</span>}
+          {account && <span className="truncate text-xs text-muted-foreground">{roleLine}</span>}
         </span>
       </button>
     </nav>

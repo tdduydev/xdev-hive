@@ -9,7 +9,7 @@ export function GateKindBadge({ kind, className }: { kind: GateKind; className?:
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium whitespace-nowrap",
+        "inline-flex h-5 items-center rounded-full px-2 text-xs font-medium whitespace-nowrap",
         KIND_CLASS[kind],
         className,
       )}
