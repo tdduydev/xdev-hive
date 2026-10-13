@@ -461,7 +461,10 @@ export function createRunsEngine(deps: RunsDeps) {
 
   // ---- Giao job ----------------------------------------------------------------------------------------------
 
-  /** Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. */
+  /**
+   * Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. `contended`: có máy phù
+   * hợp bị bỏ qua chỉ vì giao dịch giao run khác đang giữ khoá của nó, nên chưa biết máy đó còn slot hay không.
+   */
   async function pickMachine(tx: Tx, run: RunRow, sandboxed: boolean, policy: Policy) {
     const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
     const candidates = online.filter(
@@ -478,13 +481,17 @@ export function createRunsEngine(deps: RunsDeps) {
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
             : m.clis.length > 0),
     );
+    let contended = false;
     for (const m of candidates) {
       // Khoá theo máy tới hết transaction để hai run không cùng lấy slot cuối của một máy. Thử khoá (không chờ):
       // máy đang được giao run khác thì xét máy kế tiếp, không xếp hàng chờ.
       const res = await tx.execute<{ locked: boolean }>(
         sql`select pg_try_advisory_xact_lock(hashtextextended(${`runs:machine:${m.id}`}, 0)) as locked`,
       );
-      if (!res.rows[0]?.locked) continue;
+      if (!res.rows[0]?.locked) {
+        contended = true;
+        continue;
+      }
       const [busy] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(runs)
@@ -494,13 +501,28 @@ export function createRunsEngine(deps: RunsDeps) {
             and(eq(runs.offerMachineId, m.id), eq(runs.state, "queued"), gt(runs.offerExpiresAt, new Date())),
           ),
         );
-      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return m;
+      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return { machine: m, contended };
     }
-    return null;
+    return { machine: null, contended };
+  }
+
+  /**
+   * Thử giao lại sau khi giao dịch đang giữ khoá máy commit (thường vài chục ms). Không thử thì run nằm queued tới
+   * heartbeat kế tiếp dù máy còn slot: hai run được giao cùng lúc, run sau chờ tới 30 giây.
+   */
+  const CONTENDED_RETRIES = 5;
+  function dispatchLater(orgId: string, runId: string, retry: number) {
+    if (stopped || retry > CONTENDED_RETRIES) return;
+    const h = setTimeout(() => {
+      timers.delete(h);
+      background(dispatch(orgId, runId, retry), "Không giao được run");
+    }, 50 * retry);
+    h.unref();
+    timers.add(h);
   }
 
   /** Đề nghị run `queued` cho một máy. Không có máy phù hợp thì giữ queued; máy rảnh ra sẽ gọi lại. */
-  async function dispatch(orgId: string, runId: string): Promise<boolean> {
+  async function dispatch(orgId: string, runId: string, retry = 0): Promise<boolean> {
     const offer = await tenant(orgId, async (tx) => {
       const run = await lockRun(tx, runId);
       if (run?.state !== "queued") return null;
@@ -518,7 +540,8 @@ export function createRunsEngine(deps: RunsDeps) {
         return null;
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
-      const machine = await pickMachine(tx, run, sandboxed, policy);
+      const { machine, contended } = await pickMachine(tx, run, sandboxed, policy);
+      if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
           await noteOnce(tx, run, "waiting_machine", {
@@ -617,6 +640,10 @@ export function createRunsEngine(deps: RunsDeps) {
         } satisfies OutgoingMessage,
       };
     });
+    if (offer === "contended") {
+      dispatchLater(orgId, runId, retry + 1);
+      return false;
+    }
     if (!offer) return false;
     // Máy vừa rớt kết nối: hẹn giờ hết hạn đề nghị sẽ chuyển sang máy khác.
     if (!send(offer.machineId, offer.msg)) log.warn(`Không gửi được job_offer tới máy ${offer.machineId}`);
