@@ -173,6 +173,24 @@ describe("đề xuất trong câu trả lời của agent", () => {
     expect(buildPrompt("Có gì trong repo?", null, "en")).not.toContain("<current-doc>");
   });
 
+  it("lời nhắc có bản đồ thư mục và danh sách tài liệu để agent không Glob cả repo lớn", () => {
+    const map = {
+      tree: [
+        { path: "docs", dir: true, depth: 0 },
+        { path: "docs/spec", dir: true, depth: 1 },
+        { path: "README.md", dir: false, depth: 0 },
+      ],
+      docs: ["README.md", "docs/spec/srs.docx"],
+    };
+    const p = buildPrompt("Tóm tắt tài liệu", null, "vi", map);
+    expect(p).toContain("do not Glob or Grep `**` from the root");
+    expect(p).toContain("  - docs/spec/srs.docx");
+    expect(p).toContain("    docs/spec/");
+    const none = buildPrompt("Tóm tắt tài liệu", null, "vi", { tree: [], docs: [] });
+    expect(none).toContain("No document files");
+    expect(buildPrompt("x", null, "vi")).not.toContain("Glob");
+  });
+
   it("gom sự kiện: file đã đọc, đọc lỗi bỏ chấm, kế hoạch thay chỗ, kết quả thành đề xuất", () => {
     let s: ChatState = { ...emptyChat(FOLDER, "codex"), docKey: KEY, runId: "run-1" };
     const events: AgentEvent[] = [

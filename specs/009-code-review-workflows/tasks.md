@@ -70,7 +70,7 @@
 
 ## Phase 2: User Story 1 — Cấu hình quy trình Code (P1) 🎯 MVP
 
-- [ ] T010 [US1] `knowledge` nhận quy trình Code
+- [x] T010 [US1] `knowledge` nhận quy trình Code
   - `saveWorkflow`, `listWorkflows` theo `subject`; `matchWorkflow` và `dryRunWorkflow` chỉ xét `subject = 'doc'`;
     từ chối CLI/model bị chính sách agent cấm (FR-011, đọc qua `governance/index.ts`).
   - Export qua `index.ts`: `listCodeWorkflows(tx, scope)`, `flatGates`, `slaOf`, `requiredApprovals`, `eligible`.
@@ -87,7 +87,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{match.ts,gates.ts,match.test.ts,gates.test.ts}`
   - **Phụ thuộc**: T001 · **Mức**: nặng
 
-- [ ] T012 [US1] Chạy thử và tạo từ cấu hình dự án (hub)
+- [x] T012 [US1] Chạy thử và tạo từ cấu hình dự án (hub)
   - `dry-run.ts` + route `codeReviews.dryRun`, `codeReviews.workflowFromProject`; `router.ts` khởi tạo.
   - Test DB: chạy thử trên run có `diffStats`; dự án bật review chéo → bản nháp đúng.
   - **Scope**: `apps/hub/src/modules/codereview/{dry-run.ts,router.ts,index.ts,dry-run.db.test.ts}`
