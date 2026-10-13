@@ -119,6 +119,23 @@ func TestDetectCLIsUsesOverrides(t *testing.T) {
 	}
 }
 
+// Antigravity cài lệnh agy chứ không phải lệnh trùng tên CLI.
+func TestDetectCLIsFindsAntigravityAsAgy(t *testing.T) {
+	bin := t.TempDir()
+	name := "agy"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv(runner.CLIOverridesEnv, "")
+	if got := detectCLIs(); len(got) != 1 || got[0] != "antigravity" {
+		t.Fatalf("detectCLIs = %v", got)
+	}
+}
+
 func TestRegisterJSONAndConfigNeverPrintToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

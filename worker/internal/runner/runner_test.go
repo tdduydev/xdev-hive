@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -247,6 +246,9 @@ func TestReapOrphans(t *testing.T) {
 
 // TestMain cho phép chính binary test đóng vai CLI claude giả (copy thành claude/claude.exe vào PATH): Windows không chạy được shell script.
 func TestMain(m *testing.M) {
+	if capture := os.Getenv("HIVE_FAKE_AGY"); capture != "" {
+		fakeAgy(capture)
+	}
 	if mode := os.Getenv("HIVE_FAKE_MCP_MODE"); mode != "" {
 		for i, a := range os.Args {
 			if a == "--mcp-config" && i+1 < len(os.Args) {
@@ -266,28 +268,7 @@ func TestMain(m *testing.M) {
 
 func installFakeClaude(t *testing.T) string {
 	t.Helper()
-	name := "claude"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	bin := t.TempDir()
-	src, err := os.Open(os.Args[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer src.Close()
-	dst, err := os.OpenFile(filepath.Join(bin, name), os.O_CREATE|os.O_WRONLY, 0700)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := io.Copy(dst, src); err != nil {
-		_ = dst.Close()
-		t.Fatal(err)
-	}
-	if err := dst.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return bin
+	return installFakeCLI(t, "claude")
 }
 
 func TestFakeCLIHelper(t *testing.T) {
@@ -565,11 +546,12 @@ func TestDefaultCLIArgumentsAndClaudeMCPFile(t *testing.T) {
 func TestReadOnlyKindsNeverGetWriteFlags(t *testing.T) {
 	env := map[string]string{"HIVE_HUB_URL": "https://hub.example", "HIVE_RUN_TOKEN": "run-secret"}
 	readOnlyFlags := map[string][]string{
-		"claude": {"--permission-mode", "plan"},
-		"codex":  {"--sandbox", "read-only"},
-		"gemini": {"--approval-mode", "plan"},
+		"claude":      {"--permission-mode", "plan"},
+		"codex":       {"--sandbox", "read-only"},
+		"gemini":      {"--approval-mode", "plan"},
+		"antigravity": {"--mode", "plan", "--sandbox"},
 	}
-	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools"}
+	writeFlags := []string{"bypassPermissions", "acceptEdits", "--dangerously-bypass-approvals-and-sandbox", "workspace-write", "yolo", "--allowedTools", "--dangerously-skip-permissions"}
 	for cli, want := range readOnlyFlags {
 		for _, kind := range []string{"", "code", KindReview, KindPlan, KindLeader, KindDocCheck, KindDocAssist} {
 			for _, mode := range []string{"", "workspace", "full"} {
