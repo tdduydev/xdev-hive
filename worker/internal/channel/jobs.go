@@ -227,7 +227,7 @@ func (j *jobs) onOffer(m *JobOffer) {
 		// Giữ tài khoản ngay khi nhận để hai đề nghị cùng lúc không chọn trùng một tài khoản đã đủ run. Không tài khoản
 		// nào rảnh thì vẫn nhận và chờ lúc chạy (execute): từ chối thì hub bỏ máy này cho lần thử, mà run của chủ máy cá
 		// nhân không có máy nào khác nhận.
-		account, err := j.cfg.Accounts.Acquire(cli)
+		account, err := j.cfg.Accounts.Acquire(cli, accounts.RoleOf(spec.Kind))
 		if err != nil && !errors.Is(err, accounts.ErrBusy) {
 			reason = fmt.Sprintf("CLI %s: %v", cli, err)
 			break
@@ -278,7 +278,7 @@ func (j *jobs) execute(ctx context.Context, run *activeRun, offer *JobOffer, lea
 	}
 	job, err := decodeJob(offer, lease, j.cfg.HubURL, j.cfg.Project)
 	if err == nil && run.waitAccount {
-		run.account, err = j.waitAccount(ctx, job.CLI, run.runID)
+		run.account, err = j.waitAccount(ctx, job.CLI, accounts.RoleOf(job.Kind), run.runID)
 		if err != nil && ctx.Err() != nil {
 			_ = sink.Emit(runner.Event{Type: "result", RunID: run.runID, Attempt: run.attempt, Result: &runner.Result{Status: "cancelled", Error: err.Error()}})
 			return
@@ -314,17 +314,19 @@ func (j *jobs) removeDir(dir string) {
 // accountPoll là chu kỳ thử lại khi chờ tài khoản CLI rảnh (hết run khác, hết nghỉ).
 var accountPoll = 15 * time.Second
 
-// waitAccount chờ một tài khoản của CLI rảnh cho run đã nhận lease. Lease của hub vẫn được gia hạn qua heartbeat.
-func (j *jobs) waitAccount(ctx context.Context, cli, runID string) (*accounts.Lease, error) {
-	logged := false
+// waitAccount chờ một tài khoản của CLI nhận được run (rảnh, hết nghỉ, dưới ngưỡng quota) cho run đã nhận lease. Lease
+// của hub vẫn được gia hạn qua heartbeat.
+func (j *jobs) waitAccount(ctx context.Context, cli, role, runID string) (*accounts.Lease, error) {
+	last := ""
 	for {
-		account, err := j.cfg.Accounts.Acquire(cli)
+		account, err := j.cfg.Accounts.Acquire(cli, role)
 		if !errors.Is(err, accounts.ErrBusy) {
 			return account, err
 		}
-		if !logged {
-			j.log.Info("Chờ tài khoản CLI rảnh", "run", runID, "cli", cli)
-			logged = true
+		// Ghi lại khi lý do đổi (hết nghỉ nhưng chạm ngưỡng, …), không ghi mỗi lần thử.
+		if err.Error() != last {
+			j.log.Info("Chờ tài khoản CLI nhận run", "run", runID, "cli", cli, "reason", err.Error())
+			last = err.Error()
 		}
 		select {
 		case <-ctx.Done():

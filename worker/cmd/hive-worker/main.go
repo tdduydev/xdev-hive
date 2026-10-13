@@ -70,7 +70,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set --id ID --enabled BOOL] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
+	fmt.Fprintln(os.Stderr, "Cách dùng: hive-worker <version | check --hub URL | register --hub URL --token MÃ [--machine TÊN] [--json] | run [--status-json] [--stdin-control] | host [--allow-runc] [--image IMAGE] | config [--json] | accounts [import-legacy | set | add | update | remove | usage | resume] [--json] | service install|uninstall|status|restart | update [--check] [--version X.Y.Z] [--json] | egress-proxy --allowlist FILE [--listen HOST:PORT] [--unix-socket PATH]>")
 }
 
 func serviceCommand(args []string, stdout, stderr io.Writer) int {
@@ -355,6 +355,7 @@ func run(args []string) int {
 	// Nhiều tài khoản CLI trên máy (accounts.json cạnh file cấu hình): không đặt --capacity thì nhận cùng lúc theo
 	// maxParallel của file, hoặc tổng số run các tài khoản bật cho phép; tối đa maxAutoCapacity.
 	pool := accounts.NewPool(accounts.DefaultPath(path))
+	go pool.Watch(ctx)
 	slots := *capacity
 	if !flagSet(fs, "capacity") {
 		if slots, err = accounts.Capacity(accounts.DefaultPath(path), maxAutoCapacity); err != nil {
