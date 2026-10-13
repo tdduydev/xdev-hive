@@ -32,6 +32,13 @@
   --sidebar-ring: var(--ring);
 }
 
+/* Thang chữ như web: chữ nhỏ nhất 13px vì dấu tiếng Việt chồng hai tầng (ể, ặ) ở 12px khó đọc. */
+@theme {
+  --text-2xs: 12px;
+  --text-xs: 13px;
+  --text-xs--line-height: 1.45;
+}
+
 @theme inline {
   --color-brand-sky: var(--brand-sky);
   --color-brand-blue: var(--brand-blue);
@@ -71,7 +78,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --font-sans: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-heading: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-heading: "IBM Plex Sans Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, Menlo, monospace;
 
   --radius-sm: calc(var(--radius) * 0.6);
