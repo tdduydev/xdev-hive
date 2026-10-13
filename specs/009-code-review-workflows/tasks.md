@@ -211,7 +211,7 @@
 
 ## Phase 7: User Story 7 — SLA và quyết thay (P3)
 
-- [ ] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
+- [x] T060 [P] [US7] Nhắc hạn checkpoint người duyệt
   - `sla.ts`: job cron 10 phút dùng `hive.code_review_overdue_orgs()`, gửi `code_review.overdue` một lần mỗi lượt chờ.
   - **Scope**: `apps/hub/src/modules/codereview/{sla.ts,sla.db.test.ts}`
   - **Phụ thuộc**: T020 · **Mức**: nhẹ
