@@ -15,20 +15,6 @@ import { emailDomain } from "@/lib/people.ts";
 import { loginHref, safeRedirect } from "@/lib/redirect.ts";
 import { orpc } from "@/lib/rpc.ts";
 
-export interface LoginSearch {
-  /** Trang muốn vào trước khi bị chuyển về đây. */
-  redirect?: string;
-  /** Mã lỗi Better Auth gắn vào khi chuyển hướng về sau OAuth/SSO. */
-  error?: string;
-}
-
-export function validateLoginSearch(search: Record<string, unknown>): LoginSearch {
-  return {
-    ...(typeof search.redirect === "string" ? { redirect: search.redirect } : {}),
-    ...(typeof search.error === "string" ? { error: search.error } : {}),
-  };
-}
-
 type Pending = "sso" | "github" | "gitlab" | "email" | "signup";
 /** Lỗi hiện ngay cạnh cách đăng nhập vừa dùng; `redirect` là lỗi hub gửi về qua `?error=`. */
 type Failure = { at: AuthMethod | "redirect"; message: string };

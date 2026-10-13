@@ -1,8 +1,10 @@
+import rpcMethods from "virtual:rpc-methods";
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
-import { type ContractRouterClient, inferRPCMethodFromContractRouter } from "@orpc/contract";
+import type { ContractRouterClient } from "@orpc/contract";
 import { createTanstackQueryUtils, type RouterUtils } from "@orpc/tanstack-query";
-import { type Contract, contract } from "@xdev-hive/contracts";
+import type { Contract } from "@xdev-hive/contracts";
+import { methodOf } from "@/lib/rpc-methods.ts";
 
 /** Header hub đọc để biết tổ chức đang làm việc. */
 export const ORG_HEADER = "x-hive-org";
@@ -13,7 +15,7 @@ function createClient(headers: Record<string, string> = {}): HubClient {
   const link = new RPCLink({
     url: () => `${window.location.origin}/rpc`,
     // Gọi đúng method khai báo trong hợp đồng: thủ tục chỉ đọc như me.get đi bằng GET thay vì POST mặc định.
-    method: inferRPCMethodFromContractRouter(contract),
+    method: (_, path) => methodOf(rpcMethods, path),
     headers,
   });
   return createORPCClient(link);
