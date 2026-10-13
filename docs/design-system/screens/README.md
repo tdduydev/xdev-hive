@@ -15,6 +15,8 @@ nằm trong [`v1/`](v1/README.md).
 | `ds/xdev-hive/` | Token v2 mà artboard nạp (`tokens.css` sinh từ `tokens.json`, cùng giá trị với `../tokens.json`) |
 | `v1/` | Thiết kế cũ theo design system v1 (navy, `canvas`/`surface`) |
 
+Kiểu Markdown, khối code, sơ đồ Mermaid và terminal dùng chung nằm ở [`../prose-and-terminal.md`](../prose-and-terminal.md).
+
 Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html` cùng thư mục. Đừng chia thư mục con.
 
 ## Đọc file
