@@ -26428,6 +26428,16 @@
                                 ],
                                 "type": "string"
                               },
+                              "autocompactWindow": {
+                                "type": "integer",
+                                "minimum": 50000,
+                                "maximum": 1000000,
+                                "default": 200000
+                              },
+                              "allowWeb": {
+                                "type": "boolean",
+                                "default": false
+                              },
                               "rtk": {
                                 "type": "boolean",
                                 "default": true
@@ -26450,8 +26460,178 @@
                               "autocompactPct": 70,
                               "subagentModel": "sonnet",
                               "cacheTtl": "5m",
+                              "autocompactWindow": 200000,
+                              "allowWeb": false,
                               "rtk": true,
                               "codegraph": true
+                            }
+                          },
+                          "routing": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "tiers": {
+                                "type": "object",
+                                "properties": {
+                                  "light": {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      "effort": {
+                                        "enum": [
+                                          "low",
+                                          "medium",
+                                          "high"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "maxTurns": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "advisor": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 100
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "effort",
+                                      "maxTurns",
+                                      "advisor"
+                                    ]
+                                  },
+                                  "medium": {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      "effort": {
+                                        "enum": [
+                                          "low",
+                                          "medium",
+                                          "high"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "maxTurns": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "advisor": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 100
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "effort",
+                                      "maxTurns",
+                                      "advisor"
+                                    ]
+                                  },
+                                  "heavy": {
+                                    "type": "object",
+                                    "properties": {
+                                      "model": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      "effort": {
+                                        "enum": [
+                                          "low",
+                                          "medium",
+                                          "high"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "maxTurns": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "advisor": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 100
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "model",
+                                      "effort",
+                                      "maxTurns",
+                                      "advisor"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "tiers"
+                            ],
+                            "default": {
+                              "enabled": true,
+                              "tiers": {
+                                "light": {
+                                  "model": "sonnet",
+                                  "effort": "medium",
+                                  "maxTurns": 60,
+                                  "advisor": null
+                                },
+                                "medium": {
+                                  "model": "sonnet",
+                                  "effort": "high",
+                                  "maxTurns": 120,
+                                  "advisor": null
+                                },
+                                "heavy": {
+                                  "model": "opus",
+                                  "effort": "high",
+                                  "maxTurns": 200,
+                                  "advisor": null
+                                }
+                              }
                             }
                           },
                           "defaultCli": {
@@ -27720,6 +27900,16 @@
                               ],
                               "type": "string"
                             },
+                            "autocompactWindow": {
+                              "type": "integer",
+                              "minimum": 50000,
+                              "maximum": 1000000,
+                              "default": 200000
+                            },
+                            "allowWeb": {
+                              "type": "boolean",
+                              "default": false
+                            },
                             "rtk": {
                               "type": "boolean",
                               "default": true
@@ -27742,8 +27932,178 @@
                             "autocompactPct": 70,
                             "subagentModel": "sonnet",
                             "cacheTtl": "5m",
+                            "autocompactWindow": 200000,
+                            "allowWeb": false,
                             "rtk": true,
                             "codegraph": true
+                          }
+                        },
+                        "routing": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "tiers": {
+                              "type": "object",
+                              "properties": {
+                                "light": {
+                                  "type": "object",
+                                  "properties": {
+                                    "model": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    "effort": {
+                                      "enum": [
+                                        "low",
+                                        "medium",
+                                        "high"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "maxTurns": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "advisor": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "effort",
+                                    "maxTurns",
+                                    "advisor"
+                                  ]
+                                },
+                                "medium": {
+                                  "type": "object",
+                                  "properties": {
+                                    "model": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    "effort": {
+                                      "enum": [
+                                        "low",
+                                        "medium",
+                                        "high"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "maxTurns": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "advisor": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "effort",
+                                    "maxTurns",
+                                    "advisor"
+                                  ]
+                                },
+                                "heavy": {
+                                  "type": "object",
+                                  "properties": {
+                                    "model": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    "effort": {
+                                      "enum": [
+                                        "low",
+                                        "medium",
+                                        "high"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "maxTurns": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "advisor": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "model",
+                                    "effort",
+                                    "maxTurns",
+                                    "advisor"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "tiers"
+                          ],
+                          "default": {
+                            "enabled": true,
+                            "tiers": {
+                              "light": {
+                                "model": "sonnet",
+                                "effort": "medium",
+                                "maxTurns": 60,
+                                "advisor": null
+                              },
+                              "medium": {
+                                "model": "sonnet",
+                                "effort": "high",
+                                "maxTurns": 120,
+                                "advisor": null
+                              },
+                              "heavy": {
+                                "model": "opus",
+                                "effort": "high",
+                                "maxTurns": 200,
+                                "advisor": null
+                              }
+                            }
                           }
                         },
                         "defaultCli": {
@@ -29014,6 +29374,16 @@
                                   ],
                                   "type": "string"
                                 },
+                                "autocompactWindow": {
+                                  "type": "integer",
+                                  "minimum": 50000,
+                                  "maximum": 1000000,
+                                  "default": 200000
+                                },
+                                "allowWeb": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
                                 "rtk": {
                                   "type": "boolean",
                                   "default": true
@@ -29036,8 +29406,178 @@
                                 "autocompactPct": 70,
                                 "subagentModel": "sonnet",
                                 "cacheTtl": "5m",
+                                "autocompactWindow": 200000,
+                                "allowWeb": false,
                                 "rtk": true,
                                 "codegraph": true
+                              }
+                            },
+                            "routing": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "tiers": {
+                                  "type": "object",
+                                  "properties": {
+                                    "light": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    },
+                                    "medium": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    },
+                                    "heavy": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "tiers"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "tiers": {
+                                  "light": {
+                                    "model": "sonnet",
+                                    "effort": "medium",
+                                    "maxTurns": 60,
+                                    "advisor": null
+                                  },
+                                  "medium": {
+                                    "model": "sonnet",
+                                    "effort": "high",
+                                    "maxTurns": 120,
+                                    "advisor": null
+                                  },
+                                  "heavy": {
+                                    "model": "opus",
+                                    "effort": "high",
+                                    "maxTurns": 200,
+                                    "advisor": null
+                                  }
+                                }
                               }
                             },
                             "defaultCli": {
@@ -30461,6 +31001,16 @@
                                   ],
                                   "type": "string"
                                 },
+                                "autocompactWindow": {
+                                  "type": "integer",
+                                  "minimum": 50000,
+                                  "maximum": 1000000,
+                                  "default": 200000
+                                },
+                                "allowWeb": {
+                                  "type": "boolean",
+                                  "default": false
+                                },
                                 "rtk": {
                                   "type": "boolean",
                                   "default": true
@@ -30483,8 +31033,178 @@
                                 "autocompactPct": 70,
                                 "subagentModel": "sonnet",
                                 "cacheTtl": "5m",
+                                "autocompactWindow": 200000,
+                                "allowWeb": false,
                                 "rtk": true,
                                 "codegraph": true
+                              }
+                            },
+                            "routing": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "tiers": {
+                                  "type": "object",
+                                  "properties": {
+                                    "light": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    },
+                                    "medium": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    },
+                                    "heavy": {
+                                      "type": "object",
+                                      "properties": {
+                                        "model": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "effort": {
+                                          "enum": [
+                                            "low",
+                                            "medium",
+                                            "high"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "maxTurns": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "advisor": {
+                                          "anyOf": [
+                                            {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      },
+                                      "required": [
+                                        "model",
+                                        "effort",
+                                        "maxTurns",
+                                        "advisor"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "tiers"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "tiers": {
+                                  "light": {
+                                    "model": "sonnet",
+                                    "effort": "medium",
+                                    "maxTurns": 60,
+                                    "advisor": null
+                                  },
+                                  "medium": {
+                                    "model": "sonnet",
+                                    "effort": "high",
+                                    "maxTurns": 120,
+                                    "advisor": null
+                                  },
+                                  "heavy": {
+                                    "model": "opus",
+                                    "effort": "high",
+                                    "maxTurns": 200,
+                                    "advisor": null
+                                  }
+                                }
                               }
                             },
                             "defaultCli": {
@@ -33443,11 +34163,142 @@
                             ],
                             "type": "string"
                           },
+                          "autocompactWindow": {
+                            "type": "integer",
+                            "minimum": 50000,
+                            "maximum": 1000000
+                          },
+                          "allowWeb": {
+                            "type": "boolean"
+                          },
                           "rtk": {
                             "type": "boolean"
                           },
                           "codegraph": {
                             "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "routing": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "tiers": {
+                            "type": "object",
+                            "properties": {
+                              "light": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                  },
+                                  "effort": {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "maxTurns": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10000
+                                  },
+                                  "advisor": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "medium": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                  },
+                                  "effort": {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "maxTurns": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10000
+                                  },
+                                  "advisor": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              },
+                              "heavy": {
+                                "type": "object",
+                                "properties": {
+                                  "model": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 100
+                                  },
+                                  "effort": {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "maxTurns": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10000
+                                  },
+                                  "advisor": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "additionalProperties": false
                           }
                         },
                         "additionalProperties": false
@@ -34242,6 +35093,16 @@
                           ],
                           "type": "string"
                         },
+                        "autocompactWindow": {
+                          "type": "integer",
+                          "minimum": 50000,
+                          "maximum": 1000000,
+                          "default": 200000
+                        },
+                        "allowWeb": {
+                          "type": "boolean",
+                          "default": false
+                        },
                         "rtk": {
                           "type": "boolean",
                           "default": true
@@ -34264,8 +35125,178 @@
                         "autocompactPct": 70,
                         "subagentModel": "sonnet",
                         "cacheTtl": "5m",
+                        "autocompactWindow": 200000,
+                        "allowWeb": false,
                         "rtk": true,
                         "codegraph": true
+                      }
+                    },
+                    "routing": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "tiers": {
+                          "type": "object",
+                          "properties": {
+                            "light": {
+                              "type": "object",
+                              "properties": {
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "effort": {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxTurns": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "advisor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "model",
+                                "effort",
+                                "maxTurns",
+                                "advisor"
+                              ]
+                            },
+                            "medium": {
+                              "type": "object",
+                              "properties": {
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "effort": {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxTurns": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "advisor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "model",
+                                "effort",
+                                "maxTurns",
+                                "advisor"
+                              ]
+                            },
+                            "heavy": {
+                              "type": "object",
+                              "properties": {
+                                "model": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "effort": {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                "maxTurns": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "advisor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "model",
+                                "effort",
+                                "maxTurns",
+                                "advisor"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "light",
+                            "medium",
+                            "heavy"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "tiers"
+                      ],
+                      "default": {
+                        "enabled": true,
+                        "tiers": {
+                          "light": {
+                            "model": "sonnet",
+                            "effort": "medium",
+                            "maxTurns": 60,
+                            "advisor": null
+                          },
+                          "medium": {
+                            "model": "sonnet",
+                            "effort": "high",
+                            "maxTurns": 120,
+                            "advisor": null
+                          },
+                          "heavy": {
+                            "model": "opus",
+                            "effort": "high",
+                            "maxTurns": 200,
+                            "advisor": null
+                          }
+                        }
                       }
                     },
                     "defaultCli": {
@@ -50449,6 +51480,123 @@
                             }
                           ]
                         },
+                        "tier": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "routing": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "tier": {
+                                  "enum": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ],
+                                  "type": "string"
+                                },
+                                "baseTier": {
+                                  "enum": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ],
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "enum": [
+                                    "manual",
+                                    "label",
+                                    "plan",
+                                    "type",
+                                    "description",
+                                    "default"
+                                  ],
+                                  "type": "string"
+                                },
+                                "model": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "effort": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "low",
+                                        "medium",
+                                        "high"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "advisor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "maxTurns": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "reasons": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "tier",
+                                "baseTier",
+                                "source",
+                                "model",
+                                "effort",
+                                "advisor",
+                                "maxTurns",
+                                "reasons"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "pinnedMachineId": {
                           "anyOf": [
                             {
@@ -51746,6 +52894,123 @@
                             }
                           ]
                         },
+                        "tier": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "routing": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "tier": {
+                                  "enum": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ],
+                                  "type": "string"
+                                },
+                                "baseTier": {
+                                  "enum": [
+                                    "light",
+                                    "medium",
+                                    "heavy"
+                                  ],
+                                  "type": "string"
+                                },
+                                "source": {
+                                  "enum": [
+                                    "manual",
+                                    "label",
+                                    "plan",
+                                    "type",
+                                    "description",
+                                    "default"
+                                  ],
+                                  "type": "string"
+                                },
+                                "model": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "effort": {
+                                  "anyOf": [
+                                    {
+                                      "enum": [
+                                        "low",
+                                        "medium",
+                                        "high"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "advisor": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "maxTurns": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer",
+                                      "minimum": -9007199254740991,
+                                      "maximum": 9007199254740991
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "reasons": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "tier",
+                                "baseTier",
+                                "source",
+                                "model",
+                                "effort",
+                                "advisor",
+                                "maxTurns",
+                                "reasons"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
                         "pinnedMachineId": {
                           "anyOf": [
                             {
@@ -52622,6 +53887,14 @@
                       }
                     ]
                   },
+                  "tier": {
+                    "enum": [
+                      "light",
+                      "medium",
+                      "heavy"
+                    ],
+                    "type": "string"
+                  },
                   "machineId": {
                     "type": "string",
                     "format": "uuid"
@@ -52760,6 +54033,123 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tier": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "light",
+                            "medium",
+                            "heavy"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "routing": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "tier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "baseTier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "source": {
+                              "enum": [
+                                "manual",
+                                "label",
+                                "plan",
+                                "type",
+                                "description",
+                                "default"
+                              ],
+                              "type": "string"
+                            },
+                            "model": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effort": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "advisor": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "maxTurns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reasons": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "tier",
+                            "baseTier",
+                            "source",
+                            "model",
+                            "effort",
+                            "advisor",
+                            "maxTurns",
+                            "reasons"
+                          ]
                         },
                         {
                           "type": "null"
@@ -53834,6 +55224,123 @@
                           }
                         ]
                       },
+                      "tier": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "light",
+                              "medium",
+                              "heavy"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "routing": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "tier": {
+                                "enum": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ],
+                                "type": "string"
+                              },
+                              "baseTier": {
+                                "enum": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ],
+                                "type": "string"
+                              },
+                              "source": {
+                                "enum": [
+                                  "manual",
+                                  "label",
+                                  "plan",
+                                  "type",
+                                  "description",
+                                  "default"
+                                ],
+                                "type": "string"
+                              },
+                              "model": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "effort": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "advisor": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "maxTurns": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reasons": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": [
+                              "tier",
+                              "baseTier",
+                              "source",
+                              "model",
+                              "effort",
+                              "advisor",
+                              "maxTurns",
+                              "reasons"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "pinnedMachineId": {
                         "anyOf": [
                           {
@@ -54812,6 +56319,123 @@
                         "anyOf": [
                           {
                             "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "tier": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "light",
+                              "medium",
+                              "heavy"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "routing": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "tier": {
+                                "enum": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ],
+                                "type": "string"
+                              },
+                              "baseTier": {
+                                "enum": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ],
+                                "type": "string"
+                              },
+                              "source": {
+                                "enum": [
+                                  "manual",
+                                  "label",
+                                  "plan",
+                                  "type",
+                                  "description",
+                                  "default"
+                                ],
+                                "type": "string"
+                              },
+                              "model": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "effort": {
+                                "anyOf": [
+                                  {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "advisor": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "maxTurns": {
+                                "anyOf": [
+                                  {
+                                    "type": "integer",
+                                    "minimum": -9007199254740991,
+                                    "maximum": 9007199254740991
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "reasons": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": [
+                              "tier",
+                              "baseTier",
+                              "source",
+                              "model",
+                              "effort",
+                              "advisor",
+                              "maxTurns",
+                              "reasons"
+                            ]
                           },
                           {
                             "type": "null"
@@ -55889,6 +57513,123 @@
                               }
                             ]
                           },
+                          "tier": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "light",
+                                  "medium",
+                                  "heavy"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "routing": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "tier": {
+                                    "enum": [
+                                      "light",
+                                      "medium",
+                                      "heavy"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "baseTier": {
+                                    "enum": [
+                                      "light",
+                                      "medium",
+                                      "heavy"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "source": {
+                                    "enum": [
+                                      "manual",
+                                      "label",
+                                      "plan",
+                                      "type",
+                                      "description",
+                                      "default"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "model": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "effort": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "low",
+                                          "medium",
+                                          "high"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "advisor": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "maxTurns": {
+                                    "anyOf": [
+                                      {
+                                        "type": "integer",
+                                        "minimum": -9007199254740991,
+                                        "maximum": 9007199254740991
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "reasons": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "tier",
+                                  "baseTier",
+                                  "source",
+                                  "model",
+                                  "effort",
+                                  "advisor",
+                                  "maxTurns",
+                                  "reasons"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "pinnedMachineId": {
                             "anyOf": [
                               {
@@ -56916,6 +58657,123 @@
                         }
                       ]
                     },
+                    "tier": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "light",
+                            "medium",
+                            "heavy"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "routing": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "tier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "baseTier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "source": {
+                              "enum": [
+                                "manual",
+                                "label",
+                                "plan",
+                                "type",
+                                "description",
+                                "default"
+                              ],
+                              "type": "string"
+                            },
+                            "model": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effort": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "advisor": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "maxTurns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reasons": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "tier",
+                            "baseTier",
+                            "source",
+                            "model",
+                            "effort",
+                            "advisor",
+                            "maxTurns",
+                            "reasons"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "pinnedMachineId": {
                       "anyOf": [
                         {
@@ -57891,6 +59749,123 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "tier": {
+                      "anyOf": [
+                        {
+                          "enum": [
+                            "light",
+                            "medium",
+                            "heavy"
+                          ],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "routing": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "tier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "baseTier": {
+                              "enum": [
+                                "light",
+                                "medium",
+                                "heavy"
+                              ],
+                              "type": "string"
+                            },
+                            "source": {
+                              "enum": [
+                                "manual",
+                                "label",
+                                "plan",
+                                "type",
+                                "description",
+                                "default"
+                              ],
+                              "type": "string"
+                            },
+                            "model": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "effort": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "low",
+                                    "medium",
+                                    "high"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "advisor": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "maxTurns": {
+                              "anyOf": [
+                                {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "reasons": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": [
+                            "tier",
+                            "baseTier",
+                            "source",
+                            "model",
+                            "effort",
+                            "advisor",
+                            "maxTurns",
+                            "reasons"
+                          ]
                         },
                         {
                           "type": "null"
@@ -68446,11 +70421,142 @@
                                         ],
                                         "type": "string"
                                       },
+                                      "autocompactWindow": {
+                                        "type": "integer",
+                                        "minimum": 50000,
+                                        "maximum": 1000000
+                                      },
+                                      "allowWeb": {
+                                        "type": "boolean"
+                                      },
                                       "rtk": {
                                         "type": "boolean"
                                       },
                                       "codegraph": {
                                         "type": "boolean"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "routing": {
+                                    "type": "object",
+                                    "properties": {
+                                      "enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "tiers": {
+                                        "type": "object",
+                                        "properties": {
+                                          "light": {
+                                            "type": "object",
+                                            "properties": {
+                                              "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 100
+                                              },
+                                              "effort": {
+                                                "enum": [
+                                                  "low",
+                                                  "medium",
+                                                  "high"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "maxTurns": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 10000
+                                              },
+                                              "advisor": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 100
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          "medium": {
+                                            "type": "object",
+                                            "properties": {
+                                              "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 100
+                                              },
+                                              "effort": {
+                                                "enum": [
+                                                  "low",
+                                                  "medium",
+                                                  "high"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "maxTurns": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 10000
+                                              },
+                                              "advisor": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 100
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "additionalProperties": false
+                                          },
+                                          "heavy": {
+                                            "type": "object",
+                                            "properties": {
+                                              "model": {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 100
+                                              },
+                                              "effort": {
+                                                "enum": [
+                                                  "low",
+                                                  "medium",
+                                                  "high"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "maxTurns": {
+                                                "type": "integer",
+                                                "minimum": 1,
+                                                "maximum": 10000
+                                              },
+                                              "advisor": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string",
+                                                    "minLength": 1,
+                                                    "maxLength": 100
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              }
+                                            },
+                                            "additionalProperties": false
+                                          }
+                                        },
+                                        "additionalProperties": false
                                       }
                                     },
                                     "additionalProperties": false
@@ -69894,11 +72000,142 @@
                                           ],
                                           "type": "string"
                                         },
+                                        "autocompactWindow": {
+                                          "type": "integer",
+                                          "minimum": 50000,
+                                          "maximum": 1000000
+                                        },
+                                        "allowWeb": {
+                                          "type": "boolean"
+                                        },
                                         "rtk": {
                                           "type": "boolean"
                                         },
                                         "codegraph": {
                                           "type": "boolean"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "routing": {
+                                      "type": "object",
+                                      "properties": {
+                                        "enabled": {
+                                          "type": "boolean"
+                                        },
+                                        "tiers": {
+                                          "type": "object",
+                                          "properties": {
+                                            "light": {
+                                              "type": "object",
+                                              "properties": {
+                                                "model": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                "effort": {
+                                                  "enum": [
+                                                    "low",
+                                                    "medium",
+                                                    "high"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "maxTurns": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 10000
+                                                },
+                                                "advisor": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string",
+                                                      "minLength": 1,
+                                                      "maxLength": 100
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "additionalProperties": false
+                                            },
+                                            "medium": {
+                                              "type": "object",
+                                              "properties": {
+                                                "model": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                "effort": {
+                                                  "enum": [
+                                                    "low",
+                                                    "medium",
+                                                    "high"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "maxTurns": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 10000
+                                                },
+                                                "advisor": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string",
+                                                      "minLength": 1,
+                                                      "maxLength": 100
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "additionalProperties": false
+                                            },
+                                            "heavy": {
+                                              "type": "object",
+                                              "properties": {
+                                                "model": {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                "effort": {
+                                                  "enum": [
+                                                    "low",
+                                                    "medium",
+                                                    "high"
+                                                  ],
+                                                  "type": "string"
+                                                },
+                                                "maxTurns": {
+                                                  "type": "integer",
+                                                  "minimum": 1,
+                                                  "maximum": 10000
+                                                },
+                                                "advisor": {
+                                                  "anyOf": [
+                                                    {
+                                                      "type": "string",
+                                                      "minLength": 1,
+                                                      "maxLength": 100
+                                                    },
+                                                    {
+                                                      "type": "null"
+                                                    }
+                                                  ]
+                                                }
+                                              },
+                                              "additionalProperties": false
+                                            }
+                                          },
+                                          "additionalProperties": false
                                         }
                                       },
                                       "additionalProperties": false
@@ -71387,11 +73624,142 @@
                                       ],
                                       "type": "string"
                                     },
+                                    "autocompactWindow": {
+                                      "type": "integer",
+                                      "minimum": 50000,
+                                      "maximum": 1000000
+                                    },
+                                    "allowWeb": {
+                                      "type": "boolean"
+                                    },
                                     "rtk": {
                                       "type": "boolean"
                                     },
                                     "codegraph": {
                                       "type": "boolean"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "routing": {
+                                  "type": "object",
+                                  "properties": {
+                                    "enabled": {
+                                      "type": "boolean"
+                                    },
+                                    "tiers": {
+                                      "type": "object",
+                                      "properties": {
+                                        "light": {
+                                          "type": "object",
+                                          "properties": {
+                                            "model": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            "effort": {
+                                              "enum": [
+                                                "low",
+                                                "medium",
+                                                "high"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "maxTurns": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 10000
+                                            },
+                                            "advisor": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "medium": {
+                                          "type": "object",
+                                          "properties": {
+                                            "model": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            "effort": {
+                                              "enum": [
+                                                "low",
+                                                "medium",
+                                                "high"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "maxTurns": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 10000
+                                            },
+                                            "advisor": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        },
+                                        "heavy": {
+                                          "type": "object",
+                                          "properties": {
+                                            "model": {
+                                              "type": "string",
+                                              "minLength": 1,
+                                              "maxLength": 100
+                                            },
+                                            "effort": {
+                                              "enum": [
+                                                "low",
+                                                "medium",
+                                                "high"
+                                              ],
+                                              "type": "string"
+                                            },
+                                            "maxTurns": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 10000
+                                            },
+                                            "advisor": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string",
+                                                  "minLength": 1,
+                                                  "maxLength": 100
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            }
+                                          },
+                                          "additionalProperties": false
+                                        }
+                                      },
+                                      "additionalProperties": false
                                     }
                                   },
                                   "additionalProperties": false

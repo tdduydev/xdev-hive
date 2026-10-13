@@ -256,6 +256,8 @@ async function onIssue(
       number: e.issue.number,
       url: e.issue.url,
       author: e.issue.author,
+      // Định tuyến model đọc nhãn `tier:*` và nhãn loại việc từ đây (routing.ts).
+      labels: e.issue.labels,
     },
   );
   let started: RunRow | null = null;

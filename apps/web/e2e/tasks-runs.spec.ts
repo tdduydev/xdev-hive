@@ -415,6 +415,37 @@ test("run của đội (không chủ): thành viên huỷ được nhưng chỉ 
   await expect(page.getByText("Run của đội: chỉ quản trị đội", { exact: false })).toBeVisible();
 });
 
+test("run có định tuyến: hiện model đã chọn và từng lý do; run cũ không có thẻ này", async ({ page }) => {
+  const routed = {
+    ...RUNNING,
+    routing: {
+      tier: "heavy",
+      baseTier: "medium",
+      source: "plan",
+      model: "opus",
+      effort: "high",
+      advisor: null,
+      maxTurns: 200,
+      reasons: ["Kế hoạch lớn (9 file, 4 bước, 3 module).", "Thử lại sau lỗi nên nâng từ cấp vừa lên nặng."],
+    },
+  };
+  await open(page, { "runs/get": () => ok(routed) });
+  await fakeStream(page, [{ event: "end", data: { state: "running" } }]);
+  await page.goto(`/runs/${RUNNING.id}`);
+  const card = page.getByRole("region", { name: "Model đã chọn và vì sao" });
+  await expect(card).toContainText("Nặng (nâng từ vừa)");
+  await expect(card).toContainText("Cỡ kế hoạch");
+  await expect(card).toContainText("opus");
+  await expect(card).toContainText("200");
+  await expect(card.getByText("Kế hoạch lớn (9 file, 4 bước, 3 module).")).toBeVisible();
+  await expect(card.getByText("Thử lại sau lỗi nên nâng từ cấp vừa lên nặng.")).toBeVisible();
+
+  await open(page, { "runs/get": () => ok(RUNNING) });
+  await page.goto(`/runs/${RUNNING.id}`);
+  await expect(page.getByRole("heading", { name: "Chi tiết" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Model đã chọn và vì sao" })).toHaveCount(0);
+});
+
 test("run đã xong: không có nút gửi chỉ dẫn và huỷ; có PR và kết quả kiểm tra", async ({ page }) => {
   const done = {
     ...RUNS[1],

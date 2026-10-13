@@ -123,7 +123,11 @@ type jobSpec struct {
 	Policy      runner.JobPolicy   `json:"policy"`
 	// TokenSaving là cài đặt "Tiết kiệm token" của dự án; nil với hub cũ.
 	TokenSaving *runner.TokenSavingJob `json:"tokenSaving"`
-	Checks      *struct {
+	// Effort, Advisor, Tier: lựa chọn của định tuyến theo cấp độ task; rỗng với hub cũ hay dự án tắt định tuyến.
+	Effort  string `json:"effort"`
+	Advisor string `json:"advisor"`
+	Tier    string `json:"tier"`
+	Checks  *struct {
 		Commands []runner.CheckCommand `json:"commands"`
 	} `json:"checks"`
 	Brief *struct {
@@ -157,6 +161,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy, ProjectID: strings.ToLower(s.ProjectID)}
 	j.MCPServers = s.MCPServers
 	j.TokenSaving = s.TokenSaving
+	j.Effort, j.Advisor, j.Tier = s.Effort, s.Advisor, s.Tier
 	if s.Checks != nil {
 		j.Checks = s.Checks.Commands
 	}
