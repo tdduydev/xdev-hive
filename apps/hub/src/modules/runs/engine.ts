@@ -2098,7 +2098,7 @@ export function createRunsEngine(deps: RunsDeps) {
         ),
       )
       .orderBy(asc(runs.createdAt), asc(runs.id))
-      .for("update");
+      .for("no key update");
     const afters: Array<() => void> = [];
     for (const { id } of active) {
       const run = await lockRun(tx, id);
