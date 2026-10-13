@@ -461,7 +461,10 @@ export function createRunsEngine(deps: RunsDeps) {
 
   // ---- Giao job ----------------------------------------------------------------------------------------------
 
-  /** Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. */
+  /**
+   * Máy online, nối vào tiến trình này, có CLI phù hợp, chưa từ chối lần thử này và còn slot. `contended`: có máy phù
+   * hợp bị bỏ qua chỉ vì giao dịch giao run khác đang giữ khoá của nó, nên chưa biết máy đó còn slot hay không.
+   */
   async function pickMachine(tx: Tx, run: RunRow, sandboxed: boolean, policy: Policy) {
     const online = await listOnlineMachines(tx, run.teamId, sandboxed ? "host" : "worker");
     const candidates = online.filter(
@@ -478,13 +481,17 @@ export function createRunsEngine(deps: RunsDeps) {
             ? m.clis.some((c) => SUBMIT_CLIS.includes(c))
             : m.clis.length > 0),
     );
+    let contended = false;
     for (const m of candidates) {
       // Khoá theo máy tới hết transaction để hai run không cùng lấy slot cuối của một máy. Thử khoá (không chờ):
       // máy đang được giao run khác thì xét máy kế tiếp, không xếp hàng chờ.
       const res = await tx.execute<{ locked: boolean }>(
         sql`select pg_try_advisory_xact_lock(hashtextextended(${`runs:machine:${m.id}`}, 0)) as locked`,
       );
-      if (!res.rows[0]?.locked) continue;
+      if (!res.rows[0]?.locked) {
+        contended = true;
+        continue;
+      }
       const [busy] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(runs)
@@ -494,13 +501,28 @@ export function createRunsEngine(deps: RunsDeps) {
             and(eq(runs.offerMachineId, m.id), eq(runs.state, "queued"), gt(runs.offerExpiresAt, new Date())),
           ),
         );
-      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return m;
+      if ((busy?.n ?? 0) < machineSlots(policy, m.capacity)) return { machine: m, contended };
     }
-    return null;
+    return { machine: null, contended };
+  }
+
+  /**
+   * Thử giao lại sau khi giao dịch đang giữ khoá máy commit (thường vài chục ms). Không thử thì run nằm queued tới
+   * heartbeat kế tiếp dù máy còn slot: hai run được giao cùng lúc, run sau chờ tới 30 giây.
+   */
+  const CONTENDED_RETRIES = 5;
+  function dispatchLater(orgId: string, runId: string, retry: number) {
+    if (stopped || retry > CONTENDED_RETRIES) return;
+    const h = setTimeout(() => {
+      timers.delete(h);
+      background(dispatch(orgId, runId, retry), "Không giao được run");
+    }, 50 * retry);
+    h.unref();
+    timers.add(h);
   }
 
   /** Đề nghị run `queued` cho một máy. Không có máy phù hợp thì giữ queued; máy rảnh ra sẽ gọi lại. */
-  async function dispatch(orgId: string, runId: string): Promise<boolean> {
+  async function dispatch(orgId: string, runId: string, retry = 0): Promise<boolean> {
     const offer = await tenant(orgId, async (tx) => {
       const run = await lockRun(tx, runId);
       if (run?.state !== "queued") return null;
@@ -518,7 +540,8 @@ export function createRunsEngine(deps: RunsDeps) {
         return null;
       }
       const sandboxed = sandboxedRun(project, policy, run.kind);
-      const machine = await pickMachine(tx, run, sandboxed, policy);
+      const { machine, contended } = await pickMachine(tx, run, sandboxed, policy);
+      if (!machine && contended) return "contended" as const;
       if (!machine) {
         if (!sandboxed) {
           await noteOnce(tx, run, "waiting_machine", {
@@ -617,6 +640,10 @@ export function createRunsEngine(deps: RunsDeps) {
         } satisfies OutgoingMessage,
       };
     });
+    if (offer === "contended") {
+      dispatchLater(orgId, runId, retry + 1);
+      return false;
+    }
     if (!offer) return false;
     // Máy vừa rớt kết nối: hẹn giờ hết hạn đề nghị sẽ chuyển sang máy khác.
     if (!send(offer.machineId, offer.msg)) log.warn(`Không gửi được job_offer tới máy ${offer.machineId}`);
@@ -823,6 +850,7 @@ export function createRunsEngine(deps: RunsDeps) {
   }
 
   async function onRunResult(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_result" }>) {
+    let cancelledRun: RunRow | null = null;
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
@@ -843,7 +871,7 @@ export function createRunsEngine(deps: RunsDeps) {
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
       if (run.state === "cancelling") {
-        await finishCancelled(tx, run, {});
+        cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;
       }
       await transition(tx, run, "verifying", { headSha: msg.headSha }, { exit: msg.exit });
@@ -857,6 +885,7 @@ export function createRunsEngine(deps: RunsDeps) {
     });
     send(machine.id, { type: "ack", runId: msg.runId, uptoSeq: msg.seq });
     if (next === "verify") background(verify(machine.orgId, msg.runId), `verifying run ${msg.runId} lỗi`);
+    if (next === "cancelled" && cancelledRun) verifyParent(cancelledRun);
     if (next) background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run đang chờ");
   }
 
@@ -1330,6 +1359,15 @@ export function createRunsEngine(deps: RunsDeps) {
     await schedule({ kind: "verify", orgId: run.orgId, runId: run.parentRunId }, new Date(Date.now() + 1000), tx);
   }
 
+  /**
+   * Kết luận run cha ngay sau commit khi run con kết thúc theo đường huỷ hay mất máy; hẹn giờ của childFinished chỉ là
+   * đường dự phòng khi hub chết, chờ nó thì run cha treo thêm 1 giây (cộng chu kỳ quét của pg-boss).
+   */
+  function verifyParent(run: RunRow) {
+    if (run.kind === "code" || !run.parentRunId) return;
+    background(verify(run.orgId, run.parentRunId), `verifying run ${run.parentRunId} lỗi`);
+  }
+
   /** Run plan: succeeded khi agent đã gọi plan_submit. Xong thì kết luận run code cha (chờ duyệt hay thất bại). */
   async function verifyPlan(orgId: string, runId: string): Promise<void> {
     const ctx = await tenant(orgId, async (tx) => {
@@ -1601,10 +1639,12 @@ export function createRunsEngine(deps: RunsDeps) {
         }
         if (run.kind === "doccheck") await docCheckDone(tx, run, null, "Máy chạy run kiểm tài liệu mất kết nối.");
         await childFinished(tx, run);
+        return { failed: run };
       }
       return null;
     });
     if (out && "recheckAt" in out) await schedule(t, out.recheckAt);
+    else if (out && "failed" in out) verifyParent(out.failed);
     else if (out?.requeued) await dispatch(t.orgId, t.runId);
   }
 
@@ -1670,6 +1710,7 @@ export function createRunsEngine(deps: RunsDeps) {
       after: () => {
         child();
         if (offered) send(offered, { type: "cancel", runId: run.id, graceSec: 0 });
+        verifyParent(run);
       },
     };
   }
