@@ -3,7 +3,6 @@ package runner
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +38,10 @@ const KindDocAssist = "docassist"
 // worker có nó, vì worker cũ không biết các kind này sẽ chạy như run code có quyền ghi.
 var Capabilities = []string{KindDocCheck, KindDocAssist}
 
+// NeedsFull: CLI chỉ chạy run code khi có toàn quyền (agy không giới hạn được trong thư mục làm việc); run chỉ đọc thì
+// không cần.
+func NeedsFull(cli, kind string) bool { return cli == "antigravity" && !readOnlyKind(kind) }
+
 // readOnlyKind là nơi duy nhất quyết định run nào chỉ đọc: CLI không nhận cờ ghi (kể cả khi dự án bật quyền full),
 // lệnh override phải tự khai chỉ đọc, và worker không push. Thêm kind mới thì quyết định ở đây trước.
 func readOnlyKind(kind string) bool {
@@ -73,7 +76,11 @@ type Job struct {
 	// MCPServers là MCP server ngoài hub cho phép (MCP-06); xem externalMCPServers.
 	MCPServers []MCPServer
 	// Policy là hook bắt buộc của tổ chức; rỗng là không có.
-	Policy    JobPolicy
+	Policy JobPolicy
+	// ProjectID là id dự án trên hub. LocalRepo là thư mục repo máy đã gắn với dự án đó (projects.json, ADR 0020):
+	// có thì worktree của run tạo từ repo này thay vì repo cache bare. Runner host bỏ qua.
+	ProjectID string
+	LocalRepo string
 	workspace string
 	repoCache string
 }
@@ -212,11 +219,17 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	work := filepath.Join(root, safeName(job.RunID)+"-"+fmt.Sprint(job.Attempt))
 	_ = os.RemoveAll(work)
-	digest := sha256.Sum256([]byte(job.RepoURL))
-	cache := filepath.Join(r.DataDir, "repos", fmt.Sprintf("%x.git", digest[:12]))
-	job.repoCache = cache
+	src := bareSource(r.DataDir, job.RepoURL)
+	if job.LocalRepo != "" && r.Sandbox == nil && job.SandboxPolicy == nil {
+		src = localSource(job.LocalRepo)
+	} else {
+		job.repoCache = src.common
+	}
 	// Kết quả gửi sau khi dọn worktree: hub coi run_result là hết việc của máy và bỏ mọi sự kiện đến sau nó.
 	var result *Result
+	// worktreeGit là gitdir riêng của worktree trong repo; pushed: nhánh của run đã lên origin.
+	var worktreeGit string
+	pushed := false
 	defer func() {
 		// Xoá file của worktree lớn mất cả giây: dời thư mục sang chỗ bỏ (tức thì) rồi chỉ prune trong khoá, xoá file
 		// sau khi gửi kết quả. Không dời được (Windows còn process giữ file) thì gỡ như cũ.
@@ -224,10 +237,22 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		if os.Rename(work, trash) != nil {
 			trash = ""
 			// Git may refuse to remove a locked worktree; force is needed during cancellation too.
-			_ = gitWrite(context.Background(), cache, cache, "worktree", "remove", "--force", work)
+			if _, err := os.Stat(work); err == nil && src.lock != "" {
+				_ = gitWrite(context.Background(), src.lock, src.dir, "worktree", "remove", "--force", work)
+			}
 			_ = os.RemoveAll(work)
 		}
-		_ = gitWrite(context.Background(), cache, cache, "worktree", "prune")
+		if src.local {
+			removeLocalWorktree(r.DataDir, work, worktreeGit)
+			// Run không đẩy được gì thì nhánh trong repo của người dùng về như trước run.
+			if pushed {
+				_ = os.Remove(markPath(work))
+			} else {
+				restoreBranch(work)
+			}
+		} else {
+			_ = gitWrite(context.Background(), src.lock, src.dir, "worktree", "prune")
+		}
 		if trash != "" {
 			defer r.removeDir(trash)
 		}
@@ -247,24 +272,30 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			}
 		}
 	}()
-	if err := os.MkdirAll(filepath.Dir(cache), 0700); err != nil {
-		return err
-	}
-	if err := cloneOnce(ctx, r.DataDir, job.RepoURL, cache); err != nil {
-		return err
+	if src.local {
+		if err := src.openLocal(ctx, r.DataDir, job.RepoURL); err != nil {
+			return err
+		}
+	} else {
+		if err := os.MkdirAll(filepath.Dir(src.dir), 0700); err != nil {
+			return err
+		}
+		if err := cloneOnce(ctx, r.DataDir, job.RepoURL, src.dir); err != nil {
+			return err
+		}
 	}
 	fetch := []string{"fetch", "origin", job.BaseBranch + ":refs/remotes/origin/" + job.BaseBranch}
 	if job.Kind == KindReview {
 		// Run review cần cả nhánh run cha; một lệnh fetch cho hai nhánh đỡ một lần nối và thương lượng với remote.
 		fetch = append(fetch, job.Branch+":refs/remotes/origin/"+job.Branch)
 	}
-	if err := gitWrite(ctx, cache, cache, fetch...); err != nil {
+	if err := gitWrite(ctx, src.lock, src.dir, fetch...); err != nil {
 		return err
 	}
 	if job.Kind == KindReview {
 		// Run review đọc đúng nhánh run cha đã push. Tách HEAD thay vì tạo nhánh local để lỡ agent commit cũng không
 		// có gì trỏ tới nhánh của cha.
-		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.Branch); err != nil {
+		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.Branch); err != nil {
 			return err
 		}
 		if err := writeReviewDiff(ctx, work, job.BaseBranch); err != nil {
@@ -273,11 +304,18 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	} else if job.Kind == KindPlan || job.Kind == KindLeader || job.Kind == KindDocCheck || job.Kind == KindDocAssist {
 		// Kế hoạch lập trên nhánh chính, nơi run code sẽ bắt đầu. Tách HEAD để không tạo hay đặt lại nhánh ai/<task>
 		// của run code.
-		if err := addWorktree(ctx, cache, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
+		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "--detach", work, "origin/"+job.BaseBranch); err != nil {
 			return err
 		}
-	} else if err := addWorktree(ctx, cache, work, "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
-		return err
+	} else {
+		if src.local {
+			if err := src.prepareBranch(ctx, root, work, job.Branch); err != nil {
+				return err
+			}
+		}
+		if err := addWorktreeAt(ctx, src.lock, src.dir, work, "-B", job.Branch, work, "origin/"+job.BaseBranch); err != nil {
+			return err
+		}
 	}
 	job.workspace = work
 	if job.SandboxPolicy != nil {
@@ -320,12 +358,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 		runCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-	// Git ghi index trong gitdir riêng và objects/refs trong bare cache ngoài worktree.
+	// Git ghi index trong gitdir riêng và objects/refs trong bare cache (hoặc .git của repo đã gắn) ngoài worktree.
 	gitDir, err := gitOutput(ctx, work, "rev-parse", "--absolute-git-dir")
 	if err != nil {
 		return err
 	}
-	cacheRoot, err := filepath.Abs(cache)
+	worktreeGit = filepath.Clean(filepath.FromSlash(strings.TrimSpace(gitDir)))
+	cacheRoot, err := filepath.Abs(src.common)
 	if err != nil {
 		return err
 	}
@@ -496,6 +535,7 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 			result = &Result{Status: "failed", Error: err.Error()}
 			return err
 		}
+		pushed = true
 	}
 	result = &done
 	return nil
@@ -524,6 +564,14 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 	for _, id := range liveRunIDs {
 		live[safeName(id)+"-"] = true
 	}
+	isLive := func(name string) bool {
+		for prefix := range live {
+			if strings.HasPrefix(name, prefix) {
+				return true
+			}
+		}
+		return false
+	}
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return err
@@ -533,16 +581,11 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 			continue
 		}
 		name := entry.Name()
-		keep := false
-		for prefix := range live {
-			if strings.HasPrefix(name, prefix) {
-				keep = true
-				break
-			}
-		}
-		if keep {
+		if isLive(name) {
 			continue
 		}
+		// Worktree của repo đã gắn: gỡ siêu dữ liệu trong repo người dùng và trả nhánh về như trước run.
+		reapLocal(dataDir, filepath.Join(root, name))
 		for _, repoDir := range mustReadDir(filepath.Join(dataDir, "repos")) {
 			if !repoDir.IsDir() {
 				continue
@@ -553,6 +596,12 @@ func ReapOrphans(dataDir string, liveRunIDs []string) error {
 		}
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
+		}
+	}
+	// File ghi nhánh còn lại khi worker chết sau lúc dời worktree mà trước lúc trả nhánh.
+	for _, entry := range mustReadDir(root) {
+		if base, ok := strings.CutSuffix(entry.Name(), ".branch.json"); ok && !entry.IsDir() && !isLive(base) {
+			restoreBranch(filepath.Join(root, base))
 		}
 	}
 	return nil
@@ -577,7 +626,12 @@ func cloneOnce(ctx context.Context, dataDir, repoURL, cache string) error {
 // worktree và file trong thư mục run, nên làm ngoài khoá: repo lớn checkout mất vài giây, giữ khoá thì các run song
 // song của cùng repo phải xếp hàng chờ nhau.
 func addWorktree(ctx context.Context, cache, work string, args ...string) error {
-	if err := gitWrite(ctx, cache, cache, append([]string{"worktree", "add", "--no-checkout"}, args...)...); err != nil {
+	return addWorktreeAt(ctx, cache, cache, work, args...)
+}
+
+// addWorktreeAt như addWorktree, với khoá và thư mục chạy lệnh riêng (repo đã gắn khoá trong DataDir).
+func addWorktreeAt(ctx context.Context, lock, dir, work string, args ...string) error {
+	if err := gitWrite(ctx, lock, dir, append([]string{"worktree", "add", "--no-checkout"}, args...)...); err != nil {
 		return err
 	}
 	return git(ctx, work, "reset", "--hard", "--quiet")
@@ -957,6 +1011,11 @@ func appendExclude(work, name string) error {
 	path := strings.TrimSpace(dir)
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(work, path)
+	}
+	// info/exclude nằm ở thư mục git chung: với repo người dùng đã gắn (ADR 0020), ghi mỗi run một dòng sẽ làm file
+	// của họ dài mãi.
+	if b, err := os.ReadFile(path); err == nil && strings.Contains("\n"+string(b)+"\n", "\n/"+name+"\n") {
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
