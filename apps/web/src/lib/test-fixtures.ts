@@ -43,7 +43,7 @@ export function makeRun(over: Partial<Run> = {}): Run {
     headSha: null,
     prUrl: null,
     timeoutSec: 3600,
-    cost: { tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, costUsd: null, turns: null },
+    cost: { tokensIn: 0, tokensOut: 0, cacheRead: 0, cacheWrite: 0, costUsd: null, turns: null, accountId: null },
     explore: null,
     createdBy: "u1",
     ownerUserId: "u1",

@@ -1,0 +1,1 @@
+ALTER TABLE "hive"."runs" ADD COLUMN "account_id" text;

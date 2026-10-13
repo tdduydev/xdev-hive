@@ -296,6 +296,16 @@ func TestFakeCLIHelper(t *testing.T) {
 		// In thư mục đăng nhập CLI nhận được, để test kiểm worker đặt đúng biến của tài khoản.
 		fmt.Println("CODEX_HOME=" + os.Getenv("CODEX_HOME"))
 		os.Exit(0)
+	case "saving-env":
+		// In nhóm biến tiết kiệm token CLI nhận được; dòng "-" là biến không đặt.
+		for _, k := range savingEnvNames {
+			v, ok := os.LookupEnv(k)
+			if !ok {
+				v = "-"
+			}
+			fmt.Println("SAVING " + k + "=" + v)
+		}
+		os.Exit(0)
 	case "limit":
 		fmt.Fprintln(os.Stderr, "ERROR: You've hit your usage limit. Try again later.")
 		os.Exit(1)

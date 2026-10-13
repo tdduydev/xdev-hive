@@ -107,7 +107,7 @@
 
 ## Phase 3: User Story 2 — Checkpoint tự động sau run code (P1)
 
-- [ ] T020 [US2] Máy trạng thái phiên
+- [x] T020 [US2] Máy trạng thái phiên
   - `service.ts`: `matchFor`, `start` (bản chụp, `head_sha`, số liệu, `run_reasons`), `advance` (bỏ qua theo điều kiện,
     `rule`, `ext` qua job, `human` đặt `due_at` + `code_review.awaiting`), `cancel`; khoá `FOR UPDATE`; audit
     `codereview.start|gate|cancel`.

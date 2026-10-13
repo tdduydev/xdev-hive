@@ -17,6 +17,30 @@ const taskType = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "Loại task gồm c
 const title = z.string().trim().min(1, "Tiêu đề không được để trống.").max(200, "Tiêu đề dài tối đa 200 ký tự.");
 const body = z.string().max(50_000, "Nội dung dài tối đa 50.000 ký tự.");
 
+/** Mục checklist của task (specs/011 FR-027): bước nhỏ trong task thay vì task riêng trên bảng. */
+export const taskChecklistItem = z.object({
+  /** Ổn định qua các lần áp bản tách, để agent đánh dấu bằng `task_update` đúng mục. */
+  id: z.string().min(1).max(40),
+  text: z.string().trim().min(1).max(500),
+  done: z.boolean().default(false),
+  /** Mã requirement mục này làm (FR-001, R-3…). */
+  requirementIds: z.array(z.string().max(40)).max(20).default([]),
+});
+export type TaskChecklistItem = z.output<typeof taskChecklistItem>;
+export const TASK_CHECKLIST_MAX = 50;
+export const TASK_DEPENDENCIES_MAX = 50;
+
+/** Task đang chặn task này; `projectKey` để hiện "Chờ web-shop-12" khi khác dự án (D24). */
+export const taskBlocker = z.object({
+  id,
+  key: z.string(),
+  title: z.string(),
+  status: taskStatus,
+  projectId: id,
+  projectKey: z.string(),
+});
+export type TaskBlocker = z.output<typeof taskBlocker>;
+
 export const task = z.object({
   id,
   projectId: id,
@@ -34,6 +58,12 @@ export const task = z.object({
   createdBy: z.string(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  // Thêm cho AI SDLC (specs/011); hub chưa có cột thì không trả, client coi như rỗng.
+  checklist: z.array(taskChecklistItem).optional(),
+  /** Task phải `done` trước khi task này chạy được; có thể khác dự án trong cùng tổ chức. */
+  dependsOn: z.array(id).optional(),
+  /** Phần của `dependsOn` chưa `done`. */
+  blockedBy: z.array(taskBlocker).optional(),
 });
 export type Task = z.output<typeof task>;
 
@@ -53,6 +83,8 @@ export const taskUpdateInput = z.object({
   type: taskType.nullish(),
   preferredCli: cli.nullish(),
   status: z.enum(["todo", "done"]).optional(),
+  /** Thay cả checklist. */
+  checklist: z.array(taskChecklistItem).max(TASK_CHECKLIST_MAX, "Checklist tối đa 50 mục.").optional(),
 });
 export type TaskUpdateInput = z.output<typeof taskUpdateInput>;
 
@@ -183,6 +215,19 @@ export const plansContract = {
     .output(planDecision),
 };
 
+export const taskSetDependenciesInput = z
+  .object({
+    taskId: id,
+    /** Thay cả danh sách; rỗng là bỏ mọi phụ thuộc. */
+    dependsOn: z.array(id).max(TASK_DEPENDENCIES_MAX, "Task phụ thuộc tối đa 50 task."),
+  })
+  .refine((d) => !d.dependsOn.includes(d.taskId), {
+    message: "Task không phụ thuộc chính nó.",
+    path: ["dependsOn"],
+  })
+  .transform((d) => ({ ...d, dependsOn: [...new Set(d.dependsOn)] }));
+export type TaskSetDependenciesInput = z.input<typeof taskSetDependenciesInput>;
+
 export const tasksContract = {
   create: orgRoute("POST", "/v1/tasks", "Tạo task trong dự án (thành viên đội)", "tasks")
     .input(taskCreateInput)
@@ -202,6 +247,14 @@ export const tasksContract = {
   update: orgRoute("PATCH", "/v1/tasks/{id}", "Sửa task (thành viên đội)", "tasks").input(taskUpdateInput).output(task),
   cancel: orgRoute("POST", "/v1/tasks/{id}/cancel", "Huỷ task và run đang chạy của nó (thành viên đội)", "tasks")
     .input(z.object({ id }))
+    .output(task),
+  setDependencies: orgRoute(
+    "POST",
+    "/v1/tasks/{taskId}/dependencies",
+    "Đặt phụ thuộc của task, kể cả task dự án khác (cần quyền sửa task ở cả hai dự án; từ chối chu trình)",
+    "tasks",
+  )
+    .input(taskSetDependenciesInput)
     .output(task),
   plans: plansContract,
 };

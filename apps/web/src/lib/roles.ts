@@ -8,6 +8,7 @@ export const TEAM_ROLE_LABEL: Record<TeamRole, string> = {
   admin: "Quản trị đội",
   member: "Thành viên",
   viewer: "Chỉ xem",
+  ba: "BA/PO",
 };
 
 /*

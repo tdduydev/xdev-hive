@@ -1,6 +1,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
-import { cli, machineId, workerOs } from "./worker-protocol.ts";
+import { orgRoute } from "./common.ts";
+import { cli, machineId, workerAccountSummary, workerOs } from "./worker-protocol.ts";
 
 const id = z.uuid("Mã không hợp lệ.");
 // `code` ổn định để client phân biệt lý do mà không phải đọc message.
@@ -11,6 +12,15 @@ export type MachineKind = z.output<typeof machineKind>;
 
 export const machineStatus = z.enum(["online", "offline", "paused", "revoked"]);
 export type MachineStatus = z.output<typeof machineStatus>;
+
+/** Nhãn máy (specs/011 FR-041): hub đặt, worker không tự khai, để máy không tự nhận nhãn để lấy việc. */
+export const machineLabel = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "Nhãn gồm chữ thường không dấu, số, `-`, tối đa 32 ký tự.");
+export const machineLabels = z
+  .array(machineLabel)
+  .max(10, "Máy có tối đa 10 nhãn.")
+  .transform((list) => [...new Set(list)]);
 
 export const machine = z.object({
   id,
@@ -32,8 +42,43 @@ export const machine = z.object({
   shared: z.boolean(),
   /** Người đã đăng ký máy (chủ máy cá nhân). */
   registeredBy: z.string().nullable(),
+  // Các trường dưới thêm cho AI SDLC (specs/011); hub chưa có cột thì không trả.
+  /** Rỗng khi không trả. */
+  labels: z.array(z.string()).optional(),
+  /** Chỉ nhận run có ít nhất một nhãn của máy. */
+  labelsOnly: z.boolean().optional(),
+  /** Capability worker khai trong hello (`sdlc`, `accounts-remote`…). */
+  capabilities: z.array(z.string()).optional(),
+  /** Tóm tắt tài khoản CLI từ heartbeat; null hoặc không có khi worker chưa báo ("Máy chưa báo gói"). */
+  accounts: z.array(workerAccountSummary).nullable().optional(),
+  accountsAt: z.iso.datetime().nullable().optional(),
 });
 export type Machine = z.output<typeof machine>;
+
+/**
+ * Máy trên trang Đội máy AI SDLC (specs/011 US15): máy có nhãn của đội, kèm run `sdlc` và run task hạng mục đang chạy.
+ * Máy cá nhân của người khác có `accounts` null (ADR 0017).
+ */
+export const sdlcFleetMachine = machine.extend({
+  teamName: z.string(),
+  slotsUsed: z.number().int(),
+  runs: z.array(
+    z.object({
+      runId: id,
+      kind: z.string(),
+      projectKey: z.string(),
+      /** Hạng mục và bước khi run thuộc AI SDLC. */
+      item: z.object({ id, ref: z.string(), title: z.string() }).nullable(),
+      step: z.string().nullable(),
+      startedAt: z.iso.datetime().nullable(),
+    }),
+  ),
+  /** Mọi tài khoản dưới ngưỡng dừng: lúc sớm nhất có tài khoản dùng lại được. */
+  quotaResetsAt: z.iso.datetime().nullable(),
+  /** Quản trị đội bật/tắt tài khoản được: máy dùng chung và worker có capability `accounts-remote`. */
+  canSetAccounts: z.boolean(),
+});
+export type SdlcFleetMachine = z.output<typeof sdlcFleetMachine>;
 
 export const registrationOutput = z.object({
   /** Chỉ hiện một lần; hub chỉ lưu băm. */
@@ -102,7 +147,16 @@ export const fleetContract = {
         tags: ["fleet"],
       })
       .errors(userErrors)
-      .input(z.object({ teamId: id, kind: machineKind.default("worker") }))
+      .input(
+        z.object({
+          teamId: id,
+          kind: machineKind.default("worker"),
+          // Máy worker AI SDLC (specs/011 FR-042): máy nhận nhãn và cờ từ mã, không cần cờ mới cho install.sh.
+          labels: machineLabels.default([]),
+          shared: z.boolean().default(false),
+          labelsOnly: z.boolean().default(false),
+        }),
+      )
       .output(registrationOutput),
     revoke: oc
       .route({ method: "POST", path: "/v1/machines/{machineId}/revoke", summary: "Thu hồi máy", tags: ["fleet"] })
@@ -148,6 +202,32 @@ export const fleetContract = {
         }),
       )
       .output(machine),
+    setLabels: oc
+      .route({
+        method: "POST",
+        path: "/v1/machines/{machineId}/labels",
+        summary: "Đặt nhãn máy và cờ chỉ nhận run có nhãn (quản trị đội); áp cho lần giao run kế",
+        tags: ["fleet"],
+      })
+      .errors(userErrors)
+      .input(z.object({ machineId: id, labels: machineLabels, labelsOnly: z.boolean() }))
+      .output(machine),
+    setAccount: oc
+      .route({
+        method: "POST",
+        path: "/v1/machines/{machineId}/accounts/{accountId}",
+        summary: "Bật hoặc tắt một tài khoản CLI trên máy dùng chung (quản trị đội)",
+        tags: ["fleet"],
+      })
+      .errors({
+        ...userErrors,
+        CONFLICT: { message: "Cập nhật worker để điều khiển gói từ web.", data: reason },
+      })
+      .input(z.object({ machineId: id, accountId: z.string().min(1).max(64), enabled: z.boolean() }))
+      .output(machine),
+    sdlc: orgRoute("GET", "/v1/machines/sdlc", "Đội máy AI SDLC: máy có nhãn, run đang chạy, gói và quota", "fleet")
+      .input(z.object({ teamId: id.optional() }))
+      .output(z.array(sdlcFleetMachine)),
     workerRelease: oc
       .route({
         method: "GET",

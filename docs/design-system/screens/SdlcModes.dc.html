@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Chế độ AI SDLC</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/xdev-hive/tokens.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--primary)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+.btn{height:32px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:8px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.btn-default{background:var(--primary);color:var(--primary-foreground)}
+.btn-outline{background:var(--background);color:var(--foreground);border-color:var(--border)}
+.btn-ghost{background:transparent;color:var(--foreground)}
+.btn-sm{height:28px;font-size:13px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.card{background:var(--card);color:var(--card-foreground);border:1px solid var(--border);border-radius:12px}
+.card-h{padding:14px 16px 0;display:flex;flex-direction:column;gap:2px}
+.card-t{margin:0;font-size:15px;font-weight:600}
+.card-b{padding:12px 16px 16px;display:flex;flex-direction:column;gap:12px}
+.badge{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:9999px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:9999px;border:1px solid var(--border);font-size:12px;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.muted{color:var(--muted-foreground)}
+.hint{font-size:12px;font-weight:400;color:var(--muted-foreground)}
+.input{height:32px;box-sizing:border-box;padding:0 10px;border:1px solid var(--input);border-radius:8px;background:transparent;color:var(--foreground);font:inherit;font-size:13.5px;width:100%}
+.input[disabled]{background:var(--muted);cursor:not-allowed}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:500;min-width:0}
+.seg{display:inline-flex;padding:3px;background:var(--muted);border-radius:8px;gap:2px;flex-wrap:wrap}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.row-t{display:flex;flex-direction:column;gap:2px}
+.sw{flex:none;width:36px;height:20px;border-radius:9999px;border:0;padding:2px;cursor:pointer;display:inline-flex;transition:background .2s}
+.sw[disabled]{opacity:.5;cursor:not-allowed}
+.sw span{width:16px;height:16px;border-radius:9999px;background:var(--background);box-shadow:var(--shadow-sm);transition:transform .2s}
+.sk{background:var(--muted);border-radius:6px;animation:sk 1.4s ease-in-out infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:.45}}
+.alert{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:8px;font-size:13px}
+</style>
+</helmet>
+<div data-theme="{{theme}}" style="min-height: 1900px; display: flex; flex-wrap: wrap; background: var(--background); color: var(--foreground); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;">
+  <dc-import name="Sidebar" active="sdlc-modes" lang="{{lang}}" hint-size="240px,1900px"></dc-import>
+  <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column;">
+    <dc-import name="Topbar" crumb="{{t.title}}" lang="{{lang}}" dark="{{dark}}" on-lang="{{setLang}}" on-theme="{{setTheme}}" hint-size="100%,52px"></dc-import>
+    <main style="box-sizing: border-box; width: 100%; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 16px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+          <div class="muted" style="font-size: 13px;">{{t.crumb}}</div>
+          <h1 style="margin: 0; font-family: var(--font-heading); font-size: 24px; line-height: 1.2; font-weight: 600; letter-spacing: -0.03em;">{{t.title}}</h1>
+          <p class="muted" style="margin: 0; max-width: 760px;">{{t.lead}}</p>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          <button type="button" class="btn btn-outline" onClick="{{toggleDry}}" aria-expanded="{{dry.aria}}" disabled="{{ui.noMode}}">{{t.dry}}</button>
+          <sc-if value="{{ui.preset}}" hint-placeholder-val="{{false}}"><button type="button" class="btn btn-default">{{t.clone}}</button></sc-if>
+          <sc-if value="{{ui.custom}}" hint-placeholder-val="{{true}}"><button type="button" class="btn btn-default" disabled="{{ui.saveOff}}">{{ui.saveLabel}}</button></sc-if>
+        </div>
+      </header>
+
+      <sc-if value="{{ui.error}}" hint-placeholder-val="{{false}}">
+        <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); align-items: center;"><span aria-hidden="true">!</span><span style="flex: 1;"><strong style="font-weight: 600;">{{t.errTitle}}</strong> {{t.errBody}}</span><button type="button" class="btn btn-outline btn-sm">{{t.retry}}</button></div>
+      </sc-if>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;">
+        <!-- Danh sách chế độ -->
+        <section class="card" aria-label="{{t.listLabel}}" style="flex: 1 1 280px; max-width: 340px; min-width: 260px; display: flex; flex-direction: column;">
+          <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+            <input class="input" type="search" aria-label="{{t.search}}" placeholder="{{t.search}}">
+            <button type="button" class="btn btn-outline btn-sm" style="align-self: flex-start;">+ {{t.newMode}}</button>
+          </div>
+          <sc-if value="{{ui.loading}}" hint-placeholder-val="{{false}}">
+            <div style="padding: 14px; display: flex; flex-direction: column; gap: 10px;" aria-busy="true"><div class="sk" style="height: 44px;"></div><div class="sk" style="height: 44px;"></div><div class="sk" style="height: 44px;"></div><div class="sk" style="height: 44px;"></div><span class="hint">{{t.loading}}</span></div>
+          </sc-if>
+          <sc-if value="{{ui.listReady}}" hint-placeholder-val="{{true}}">
+            <div style="padding: 10px 8px; display: flex; flex-direction: column; gap: 4px;">
+              <span class="hint" style="padding: 2px 8px; font-weight: 500;">{{t.customGroup}}</span>
+              <sc-if value="{{ui.noCustom}}" hint-placeholder-val="{{false}}">
+                <div style="margin: 2px 4px 8px; padding: 14px; border: 1px dashed var(--input); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start;"><strong style="font-weight: 600; font-size: 13.5px;">{{t.emptyTitle}}</strong><span class="hint">{{t.emptyBody}}</span><button type="button" class="btn btn-outline btn-sm">{{t.clone}}</button></div>
+              </sc-if>
+              <sc-for list="{{customs}}" as="m" hint-placeholder-count="1">
+                <button type="button" onClick="{{m.pick}}" aria-pressed="{{m.on}}" style="{{m.style}}">
+                  <span style="display: flex; align-items: center; gap: 6px;"><strong style="font-weight: 600; font-size: 13.5px;">{{m.name}}</strong><span class="badge" style="margin-left: auto; background: var(--warning-soft); color: var(--warning);">{{t.heavy}}</span></span>
+                  <span class="hint">{{m.team}} · {{m.method}}</span>
+                  <span class="hint" style="color: var(--warning);">{{m.outdated}}</span>
+                </button>
+              </sc-for>
+              <span class="hint" style="padding: 8px 8px 2px; font-weight: 500;">🔒 {{t.presetGroup}}</span>
+              <sc-for list="{{presets}}" as="m" hint-placeholder-count="6">
+                <button type="button" onClick="{{m.pick}}" aria-pressed="{{m.on}}" style="{{m.style}}">
+                  <span style="display: flex; align-items: center; gap: 6px;"><strong style="font-weight: 600; font-size: 13.5px;">{{m.name}}</strong><sc-if value="{{m.heavy}}" hint-placeholder-val="{{false}}"><span class="badge" style="margin-left: auto; background: var(--warning-soft); color: var(--warning);">{{t.heavy}}</span></sc-if></span>
+                  <span class="hint">{{m.method}} · {{m.sizes}}</span>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </section>
+
+        <!-- Trình sửa -->
+        <div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+          <sc-if value="{{ui.loading}}" hint-placeholder-val="{{false}}">
+            <section class="card" aria-busy="true"><div class="card-b" style="padding-top: 16px;"><div class="sk" style="height: 22px; width: 40%;"></div><div class="sk" style="height: 32px;"></div><div class="sk" style="height: 180px;"></div><div class="sk" style="height: 120px;"></div></div></section>
+          </sc-if>
+          <sc-if value="{{ui.noMode}}" hint-placeholder-val="{{false}}">
+            <section class="card"><div class="card-b" style="align-items: center; text-align: center; padding: 48px 24px;"><span aria-hidden="true" style="font-size: 28px;">⚙</span><strong style="font-weight: 600; font-size: 15px;">{{t.noSelTitle}}</strong><span class="muted" style="max-width: 460px;">{{t.noSelBody}}</span></div></section>
+          </sc-if>
+
+          <sc-if value="{{ui.editor}}" hint-placeholder-val="{{true}}">
+            <sc-if value="{{ui.preset}}" hint-placeholder-val="{{false}}">
+              <div class="alert" style="background: var(--accent); color: var(--accent-foreground);"><span aria-hidden="true">🔒</span><span><strong style="font-weight: 600;">{{t.presetNote}}</strong> {{t.presetNoteBody}}</span></div>
+            </sc-if>
+            <sc-if value="{{ui.custom}}" hint-placeholder-val="{{true}}">
+              <div class="alert" style="background: var(--warning-soft); color: var(--warning);"><span aria-hidden="true">!</span><span>{{t.snapshotNote}}</span></div>
+            </sc-if>
+            <sc-if value="{{ui.invalid}}" hint-placeholder-val="{{false}}">
+              <div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive); flex-direction: column; gap: 6px;">
+                <strong style="font-weight: 600;">{{ui.invalidTitle}}</strong>
+                <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px;"><sc-for list="{{problems}}" as="p" hint-placeholder-count="4"><li><span class="badge" style="{{p.style}}">{{p.level}}</span> {{p.text}}</li></sc-for></ul>
+              </div>
+            </sc-if>
+
+            <section class="card">
+              <div class="card-h"><h2 class="card-t">{{t.info}}</h2><span class="hint">{{t.infoHint}}</span></div>
+              <div class="card-b">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px;">
+                  <label class="field">{{t.name}}<input class="input" value="{{cur.name}}" disabled="{{ui.preset}}"></label>
+                  <label class="field">{{t.method}}<select class="input" disabled="{{ui.preset}}"><option>{{cur.method}}</option></select></label>
+                  <label class="field">{{t.converge}}<input class="input mono" value="3" inputmode="numeric" disabled="{{ui.preset}}" style="max-width: 96px;"><span class="hint">{{t.convergeHint}}</span></label>
+                  <label class="field">{{t.revisions}}<input class="input mono" value="2" inputmode="numeric" disabled="{{ui.preset}}" style="max-width: 96px;"><span class="hint">{{t.revisionsHint}}</span></label>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+                  <div class="field">{{t.sizes}}<div class="seg" role="group" aria-label="{{t.sizes}}"><sc-for list="{{sizes}}" as="z" hint-placeholder-count="4"><button type="button" aria-pressed="{{z.on}}" onClick="{{z.flip}}" style="{{z.style}}">{{z.label}}</button></sc-for></div></div>
+                  <div class="field">{{t.blocking}}<div class="seg" role="radiogroup" aria-label="{{t.blocking}}"><sc-for list="{{blockings}}" as="b" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{b.on}}" onClick="{{b.pick}}" style="{{b.style}}">{{b.label}}</button></sc-for></div></div>
+                </div>
+                <sc-if value="{{cur.heavy}}" hint-placeholder-val="{{true}}"><div class="alert" style="background: var(--muted);"><span aria-hidden="true">🔒</span><span>{{t.heavyNote}}</span></div></sc-if>
+              </div>
+            </section>
+
+            <section class="card" aria-label="{{t.pipeline}}">
+              <div class="card-h"><h2 class="card-t">{{t.pipeline}}</h2><span class="hint">{{t.pipelineHint}}</span></div>
+              <div class="card-b">
+                <div style="display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px;">
+                  <sc-for list="{{phases}}" as="ph" hint-placeholder-count="5">
+                    <button type="button" onClick="{{ph.pick}}" aria-pressed="{{ph.on}}" style="{{ph.style}}">
+                      <span style="display: flex; align-items: baseline; gap: 6px; width: 100%;"><strong style="font-family: var(--font-heading); font-size: 14px; letter-spacing: -0.02em;">{{ph.name}}</strong><span class="mono muted" style="font-size: 11px; margin-left: auto;">{{ph.kind}}</span></span>
+                      <sc-if value="{{ph.optional}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{t.optional}}</span></sc-if>
+                      <sc-for list="{{ph.docs}}" as="d" hint-placeholder-count="2"><span style="display: flex; align-items: center; gap: 4px; flex-wrap: wrap;"><span class="chip mono" style="background: var(--card); {{d.style}}">{{d.name}}</span><span class="hint">{{d.scope}}</span></span></sc-for>
+                      <sc-for list="{{ph.gates}}" as="g" hint-placeholder-count="3">
+                        <span style="display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 6px 8px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); text-align: left;">
+                          <span style="display: flex; align-items: center; gap: 6px;"><span class="badge" style="{{g.kindStyle}}">{{g.kind}}</span><span style="font-size: 12.5px; font-weight: 600;">{{g.name}}</span></span>
+                          <sc-if value="{{g.cond}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--warning);">⤷ {{g.cond}}</span></sc-if>
+                          <sc-if value="{{g.perProject}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--primary);">⧉ {{t.perProject}}</span></sc-if>
+                          <sc-if value="{{g.auto}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--success);">✓ {{g.auto}}</span></sc-if>
+                        </span>
+                      </sc-for>
+                      <sc-if value="{{ph.alwaysHuman}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--muted-foreground);">🔒 {{t.alwaysHuman}}</span></sc-if>
+                      <sc-if value="{{ph.codeStart}}" hint-placeholder-val="{{false}}"><span class="badge" style="background: var(--accent); color: var(--accent-foreground);">{{t.codeStart}}</span></sc-if>
+                      <sc-if value="{{ph.bad}}" hint-placeholder-val="{{false}}"><span style="font-size: 11.5px; color: var(--destructive); font-weight: 600;">! {{t.hasError}}</span></sc-if>
+                    </button>
+                  </sc-for>
+                  <button type="button" disabled="{{ui.preset}}" style="flex: 0 0 120px; min-height: 120px; border: 1px dashed var(--input); border-radius: 12px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer;">+ {{t.addPhase}}</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="card" aria-label="{{sel.title}}">
+              <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;"><div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">{{sel.title}}</h2><span class="hint">{{sel.sub}}</span></div></div>
+              <div class="card-b" style="gap: 16px;">
+                <sc-if value="{{sel.hasDocs}}" hint-placeholder-val="{{true}}">
+                  <div class="field">{{t.docs}}
+                    <div style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+                      <sc-for list="{{sel.docs}}" as="d" hint-placeholder-count="3">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 10px; align-items: end; padding: 10px 12px; border-bottom: 1px solid var(--border);">
+                          <label class="field" style="grid-column: span 2; min-width: min(100%, 260px);">{{d.name}} <span class="hint">{{d.note}}</span><input class="input mono" value="{{d.path}}" disabled="{{ui.preset}}" style="{{d.pathStyle}}"></label>
+                          <div class="field">{{t.scope}}<div class="seg"><span style="{{d.scopeStyle}}">{{d.scope}}</span></div></div>
+                          <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; height: 32px;"><input type="checkbox" checked="{{d.required}}" disabled="{{ui.preset}}" style="accent-color: var(--primary);">{{t.required}}</label>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <span class="hint">{{t.docsHint}}</span>
+                  </div>
+                </sc-if>
+                <sc-if value="{{sel.noDocs}}" hint-placeholder-val="{{false}}"><div class="alert" style="background: var(--muted);"><span aria-hidden="true">i</span><span>{{sel.noDocsText}}</span></div></sc-if>
+
+                <sc-if value="{{sel.hasGates}}" hint-placeholder-val="{{true}}">
+                  <div class="field">{{t.gates}}
+                    <div style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;">
+                      <sc-for list="{{sel.gates}}" as="g" hint-placeholder-count="3">
+                        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border);">
+                          <span class="badge" style="{{g.kindStyle}}">{{g.kind}}</span>
+                          <span style="flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; line-height: 1.35;"><strong style="font-weight: 600; font-size: 13.5px;">{{g.name}}</strong><span class="hint">{{g.detail}}</span></span>
+                          <sc-if value="{{g.isHuman}}" hint-placeholder-val="{{true}}">
+                            <span style="display: flex; align-items: center; gap: 8px; font-size: 13px;"><span>{{t.perProject}}</span><button type="button" role="switch" aria-checked="{{g.pp.aria}}" aria-label="{{t.perProject}}: {{g.name}}" class="sw" disabled="{{ui.preset}}" onClick="{{g.pp.flip}}" style="{{g.pp.track}}"><span style="{{g.pp.knob}}"></span></button></span>
+                          </sc-if>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <span class="hint">{{t.perProjectHint}}</span>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{sel.hasHuman}}" hint-placeholder-val="{{true}}">
+                  <div class="field">{{t.autoTitle}}
+                    <div style="border: 1px solid var(--border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 12px;">
+                      <div class="row"><span class="row-t"><strong style="font-weight: 500;">{{t.autoOn}}</strong><span class="hint">{{sel.autoHint}}</span></span><button type="button" role="switch" aria-checked="{{sel.au.aria}}" aria-label="{{t.autoOn}}" class="sw" disabled="{{sel.au.locked}}" onClick="{{sel.au.flip}}" style="{{sel.au.track}}"><span style="{{sel.au.knob}}"></span></button></div>
+                      <sc-if value="{{sel.au.lockedNote}}" hint-placeholder-val="{{false}}"><div class="alert" style="background: var(--muted);"><span aria-hidden="true">🔒</span><span>{{sel.au.lockedNote}}</span></div></sc-if>
+                      <sc-if value="{{sel.au.on}}" hint-placeholder-val="{{true}}">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px;">
+                          <label class="field">{{t.autoGate}}<select class="input" disabled="{{ui.preset}}"><option>{{sel.au.gate}}</option></select></label>
+                          <label class="field">{{t.autoScore}}<span style="display: flex; align-items: center; gap: 8px;"><input class="input mono" value="{{sel.au.score}}" inputmode="decimal" disabled="{{ui.preset}}" style="{{sel.au.scoreStyle}} max-width: 96px;"><span class="muted mono">/ 10</span></span><span class="hint">{{t.autoScoreHint}} {{sel.au.pass}}</span></label>
+                          <label class="field">{{t.autoHours}}<span style="display: flex; align-items: center; gap: 8px;"><input class="input mono" value="{{sel.au.hours}}" inputmode="numeric" disabled="{{ui.preset}}" style="max-width: 96px;"><span class="muted">{{t.hours}}</span></span><span class="hint">{{t.autoHoursHint}}</span></label>
+                        </div>
+                        <sc-if value="{{sel.au.error}}" hint-placeholder-val="{{false}}"><div role="alert" class="alert" style="background: var(--destructive-soft); color: var(--destructive);"><span aria-hidden="true">!</span><span>{{sel.au.error}}</span></div></sc-if>
+                      </sc-if>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-h"><h2 class="card-t">{{t.contract}}</h2><span class="hint">{{t.contractHint}}</span></div>
+              <div class="card-b">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px;">
+                  <label class="field">{{t.contractPath}}<input class="input mono" value="specs/{NNN}-{slug}/contracts/{name}.{ext}" disabled="{{ui.preset}}"></label>
+                  <div class="field">{{t.contractPhase}}<span style="display: flex; gap: 6px; flex-wrap: wrap;"><span class="chip" style="background: var(--accent); color: var(--accent-foreground); border-color: transparent;">Plan</span></span></div>
+                </div>
+                <div class="field">{{t.formats}}<span style="display: flex; flex-wrap: wrap; gap: 6px;"><sc-for list="{{formats}}" as="f" hint-placeholder-count="6"><span class="chip mono" style="{{f.style}}">{{f.label}}</span></sc-for></span></div>
+                <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 3px; font-size: 13px;"><sc-for list="{{contractRules}}" as="r" hint-placeholder-count="3"><li>{{r}}</li></sc-for></ul>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="card-h"><h2 class="card-t">{{t.decomp}}</h2><span class="hint">{{t.decompHint}}</span></div>
+              <div class="card-b">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px;">
+                  <label class="field">{{t.parser}}<select class="input" disabled="{{ui.preset}}"><option>speckit-tasks</option><option>kiro-tasks</option><option>openspec-tasks</option><option>bmad-stories</option><option>aidlc-units</option><option>hive-tasks</option></select></label>
+                  <div class="field">{{t.granularity}}<div class="seg" role="radiogroup" aria-label="{{t.granularity}}"><sc-for list="{{grains}}" as="g" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{g.on}}" onClick="{{g.pick}}" style="{{g.style}}">{{g.label}}</button></sc-for></div></div>
+                  <label class="field">{{t.reqId}}<input class="input mono" value="FR-\d{3}" disabled="{{ui.preset}}"><span class="hint">{{t.reqIdHint}}</span></label>
+                  <label class="field">{{t.maxTasks}}<input class="input mono" value="30" inputmode="numeric" disabled="{{ui.preset}}" style="max-width: 96px;"></label>
+                  <label class="field">{{t.maxChecklist}}<input class="input mono" value="20" inputmode="numeric" disabled="{{ui.preset}}" style="max-width: 96px;"></label>
+                </div>
+                <span class="hint">{{t.decompProject}}</span>
+              </div>
+            </section>
+
+            <sc-if value="{{dry.open}}" hint-placeholder-val="{{true}}">
+              <section class="card" aria-label="{{t.dry}}" style="border-color: var(--primary);">
+                <div class="card-h" style="flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px;"><div style="display: flex; flex-direction: column; gap: 2px;"><h2 class="card-t">{{t.dry}}</h2><span class="hint">{{t.dryHint}}</span></div><span class="badge" style="background: var(--secondary); color: var(--secondary-foreground);">{{t.noWrite}}</span></div>
+                <div class="card-b">
+                  <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+                    <label class="field" style="flex: 1 1 220px;">{{t.dryTitle}}<input class="input" value="{{t.dryTitleVal}}"></label>
+                    <div class="field">{{t.dryProjects}}<div class="seg"><span style="{{dry.seg}}">3</span></div></div>
+                    <button type="button" class="btn btn-default">{{t.dryRun}}</button>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--muted);"><span class="muted" style="font-size: 13px;">{{t.dryFolder}}</span><code class="mono" style="font-size: 13px; font-weight: 600;">specs/012-hoan-tien-mot-phan/</code></div>
+                  <div style="border: 1px solid var(--border); border-radius: 10px; overflow-x: auto;">
+                    <table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px;">
+                      <thead><tr style="text-align: left; background: var(--muted); color: var(--muted-foreground);"><th style="padding: 8px 12px; font-weight: 500;">{{t.dryPhase}}</th><th style="padding: 8px 12px; font-weight: 500;">{{t.dryDocs}}</th><th style="padding: 8px 12px; font-weight: 500;">{{t.dryGates}}</th></tr></thead>
+                      <tbody>
+                        <sc-for list="{{dryRows}}" as="r" hint-placeholder-count="5">
+                          <tr style="border-top: 1px solid var(--border); vertical-align: top;">
+                            <td style="padding: 8px 12px; font-weight: 600; white-space: nowrap;">{{r.phase}}</td>
+                            <td style="padding: 8px 12px;" class="mono"><sc-for list="{{r.docs}}" as="d" hint-placeholder-count="1"><div style="font-size: 12px;">{{d}}</div></sc-for></td>
+                            <td style="padding: 8px 12px;"><sc-for list="{{r.gates}}" as="g" hint-placeholder-count="2"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 1px 0;"><span class="badge" style="{{g.kindStyle}}">{{g.kind}}</span><span>{{g.name}}</span><sc-if value="{{g.note}}" hint-placeholder-val="{{false}}"><span class="hint" style="color: var(--warning);">⤷ {{g.note}}</span></sc-if></div></sc-for><sc-if value="{{r.none}}" hint-placeholder-val="{{false}}"><span class="hint">{{t.dryNoGate}}</span></sc-if></td>
+                          </tr>
+                        </sc-for>
+                      </tbody>
+                    </table>
+                  </div>
+                  <span class="hint">{{t.dryNote}}</span>
+                </div>
+              </section>
+            </sc-if>
+          </sc-if>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"lang":{"editor":"enum","options":["vi","en"],"default":"vi"},"dark":{"editor":"boolean","default":false},"view":{"editor":"enum","options":["edit","preset","dryrun","invalid","empty","loading","error"],"default":"edit"},"$preview":{"width":1440,"height":1900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { lang: null, dark: null, view: null, sel: null, phase: null, dry: null, sizes: { S: false, M: true, L: true, XL: false }, blocking: 'hard', grain: 'heading', pp: { specify: false, plan: true, tasks: true }, au: { plan: true, tasks: true } };
+  }
+  renderVals() {
+    const lang = this.state.lang ?? this.props.lang ?? 'vi';
+    const dark = this.state.dark ?? !!this.props.dark;
+    const view = this.state.view ?? this.props.view ?? 'edit';
+    const en = lang === 'en';
+    const x = (p) => (en ? p[1] : p[0]);
+    const T = {
+      crumb: ['Quản trị agent', 'Agent governance'], title: ['Chế độ AI SDLC', 'AI SDLC modes'],
+      lead: ['Chế độ là dữ liệu: giai đoạn, tài liệu, cổng duyệt, luật tách task và mức chặn. Preset chỉ đọc; nhân bản để sửa. Hạng mục mới chụp chế độ lúc tạo.', 'A mode is data: phases, documents, review gates, task-breakdown rules and blocking level. Presets are read-only; clone one to edit. A new item snapshots the mode when created.'],
+      dry: ['Chạy thử', 'Dry run'], clone: ['Nhân bản để sửa', 'Clone to edit'], save: ['Lưu chế độ', 'Save mode'], saveErr: ['Không lưu được', 'Cannot save'],
+      errTitle: ['Không tải được chế độ.', 'Could not load modes.'], errBody: ['Hub không trả lời. Thử lại sau ít giây.', 'The hub did not answer. Try again in a few seconds.'], retry: ['Thử lại', 'Retry'],
+      listLabel: ['Danh sách chế độ', 'Mode list'], search: ['Tìm chế độ…', 'Find a mode…'], newMode: ['Chế độ mới từ preset', 'New mode from a preset'], loading: ['Đang tải…', 'Loading…'],
+      customGroup: ['Chế độ của tổ chức và đội', 'Organization and team modes'], presetGroup: ['Preset có sẵn', 'Built-in presets'], heavy: ['Nặng', 'Heavy'],
+      emptyTitle: ['Chưa có chế độ riêng', 'No custom mode yet'], emptyBody: ['Nhân bản một preset rồi sửa đường dẫn, cổng duyệt hoặc ngưỡng tự duyệt cho đội của bạn.', 'Clone a preset, then change paths, review gates or the auto-approval threshold for your team.'],
+      noSelTitle: ['Chọn một chế độ', 'Pick a mode'], noSelBody: ['Chọn preset để xem giai đoạn và cổng, hoặc nhân bản để tạo chế độ riêng.', 'Pick a preset to see its phases and gates, or clone one to build your own.'],
+      presetNote: ['Preset chỉ đọc.', 'Presets are read-only.'], presetNoteBody: ['Nhân bản thành chế độ của tổ chức hoặc đội rồi sửa. Preset nhận bản cập nhật cùng hub.', 'Clone it into an organization or team mode, then edit. Presets update with the hub.'],
+      snapshotNote: ['2 hạng mục đang mở giữ bản chụp cũ của chế độ này. Hạng mục mới dùng bản vừa lưu.', '2 open items keep the old snapshot of this mode. New items use the version you save.'],
+      invalidTitle: ['4 lỗi và 1 cảnh báo, chưa lưu được:', '4 errors and 1 warning, cannot save yet:'], lvErr: ['Lỗi', 'Error'], lvWarn: ['Cảnh báo', 'Warning'],
+      pPath: ['Đường dẫn tài liệu phải nằm trong repo và không thuộc thư mục bị cấm.', 'A document path must stay inside the repo and outside forbidden folders.'],
+      pReq: ['Giai đoạn yêu cầu của chế độ nặng luôn cần người duyệt.', 'The requirements phase of a heavy mode always needs a person.'],
+      pScore: ['Ngưỡng tự duyệt phải từ điểm đạt của checkpoint AI (7) trở lên.', 'The auto-approval threshold must be at least the AI checkpoint pass score (7).'],
+      pCli: ['Model gpt-5 của bước Soạn bị chính sách agent của tổ chức cấm.', 'Model gpt-5 of the Draft step is blocked by the organization agent policy.'],
+      pHard: ['Chặn cứng không có tác dụng: chưa có tài liệu bắt buộc.', 'Hard blocking has no effect: there is no required document yet.'],
+      info: ['Thông tin', 'General'], infoHint: ['Cỡ dùng cho gợi ý khi tạo hạng mục; chế độ có cỡ L hoặc XL là chế độ nặng.', 'Sizes feed the suggestion when creating an item; a mode with size L or XL is a heavy mode.'],
+      name: ['Tên', 'Name'], method: ['Phương pháp', 'Method'], converge: ['Số vòng converge', 'Converge rounds'], convergeHint: ['0 đến 5. 0 là không có bước converge.', '0 to 5. 0 means no converge step.'],
+      revisions: ['Lượt agent sửa theo góp ý', 'Agent revisions per review'], revisionsHint: ['0 đến 5. Hết lượt thì về chủ hạng mục.', '0 to 5. When used up it goes back to the item owner.'],
+      sizes: ['Cỡ phù hợp', 'Suitable sizes'], blocking: ['Mức chặn code', 'Code blocking'], bHard: ['Chặn cứng', 'Hard'], bSoft: ['Cảnh báo', 'Warn'], bNone: ['Không', 'None'],
+      heavyNote: ['Chế độ nặng: giai đoạn Yêu cầu luôn cần người duyệt, không tự duyệt được.', 'Heavy mode: the Requirements phase always needs a person and cannot be auto-approved.'],
+      pipeline: ['Giai đoạn và cổng', 'Phases and gates'], pipelineHint: ['Chọn một giai đoạn để sửa tài liệu, cổng và tự duyệt. Chặn code tính từ giai đoạn Triển khai.', 'Pick a phase to edit its documents, gates and auto-approval. Code blocking counts from the Implementation phase.'],
+      optional: ['Tuỳ chọn', 'Optional'], perProject: ['Theo dự án', 'Per project'], alwaysHuman: ['Luôn cần người', 'Always a person'], codeStart: ['Chặn code bắt đầu ở đây', 'Code gate starts here'], hasError: ['Có lỗi', 'Has errors'], addPhase: ['Giai đoạn', 'Phase'],
+      docs: ['Tài liệu của giai đoạn', 'Phase documents'], scope: ['Phạm vi', 'Scope'], required: ['Bắt buộc', 'Required'], docsHint: ['Đường dẫn tương đối trong repo. Biến khuôn: {NNN} {slug} {date} {unit}.', 'Repo-relative path. Template variables: {NNN} {slug} {date} {unit}.'],
+      gates: ['Cổng duyệt', 'Review gates'], perProjectHint: ['Cổng người đánh dấu "Theo dự án" tách thành một checkpoint cho đội của mỗi dự án tham gia; hai dự án cùng đội dùng chung một checkpoint.', 'A human gate marked "Per project" splits into one checkpoint per participating team; two projects of one team share a checkpoint.'],
+      autoTitle: ['Tự duyệt AI', 'AI auto-approval'], autoOn: ['Cho phép tự duyệt ở giai đoạn này', 'Allow auto-approval in this phase'], autoGate: ['Cổng người', 'Human gate'], autoScore: ['Ngưỡng điểm', 'Score threshold'], autoScoreHint: ['Từ điểm đạt của checkpoint AI:', 'At least the AI checkpoint pass score:'], autoHours: ['Hạn thu hồi', 'Revocation window'], hours: ['giờ', 'hours'], autoHoursHint: ['1 đến 168, mặc định 24.', '1 to 168, default 24.'],
+      contract: ['Contract liên repo', 'Cross-repository contracts'], contractHint: ['Tài liệu riêng của hạng mục nhiều dự án: một dự án cung cấp, một hay nhiều dự án dùng.', 'A separate document of a multi-project item: one provider project, one or more consumer projects.'],
+      contractPath: ['Đường dẫn trong repo bên cung cấp', 'Path in the provider repo'], contractPhase: ['Giai đoạn chứa contract', 'Phase holding contracts'], formats: ['Định dạng cho phép', 'Allowed formats'],
+      decomp: ['Tách task', 'Task breakdown'], decompHint: ['Hub đọc tài liệu tách việc thành task, phụ thuộc và đợt. Việc nhỏ là checklist trong task.', 'The hub reads the breakdown document into tasks, dependencies and waves. Small steps are checklists inside a task.'],
+      parser: ['Bộ đọc', 'Parser'], granularity: ['Độ mịn', 'Granularity'], reqId: ['Mẫu id requirement', 'Requirement id pattern'], reqIdHint: ['Biểu thức chính quy, phải biên dịch được.', 'A regular expression that must compile.'], maxTasks: ['Số task tối đa', 'Max tasks'], maxChecklist: ['Mục checklist tối đa mỗi task', 'Max checklist items per task'],
+      decompProject: ['Hạng mục nhiều dự án: gắn thẻ [@web-shop] trên dòng task hoặc dòng "Dự án:" dưới tiêu đề phần; không ghi là dự án chính.', 'Multi-project items: tag a task line with [@web-shop] or add a "Project:" line under a section heading; no tag means the home project.'],
+      dryHint: ['Cho tiêu đề mẫu để xem đường dẫn tài liệu và cổng sẽ dùng.', 'Give a sample title to see the document paths and gates that would apply.'], noWrite: ['Không ghi dữ liệu', 'Writes nothing'], dryTitle: ['Tiêu đề mẫu', 'Sample title'], dryTitleVal: ['Hoàn tiền một phần', 'Partial refund'], dryProjects: ['Số dự án', 'Projects'], dryRun: ['Xem kết quả', 'Show result'],
+      dryFolder: ['Thư mục hạng mục', 'Item folder'], dryPhase: ['Giai đoạn', 'Phase'], dryDocs: ['Tài liệu', 'Documents'], dryGates: ['Checkpoint', 'Checkpoints'], dryNoGate: ['Không có cổng', 'No gate'],
+      dryNote: ['Checkpoint có mũi tên chỉ chạy khi điều kiện đúng: ở ví dụ này tiêu đề có từ khoá "hoàn tiền" nên thêm checkpoint Pháp chế.', 'A checkpoint with an arrow runs only when its condition holds: here the title has the keyword "refund", so the Legal checkpoint is added.'],
+    };
+    const t = {}; Object.keys(T).forEach((k) => { t[k] = x(T[k]); });
+
+    const optOn = 'border: 1px solid var(--primary); background: var(--accent); color: var(--accent-foreground);';
+    const optOff = 'border: 1px solid transparent; background: transparent; color: var(--foreground);';
+    const segOn = 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: var(--card); color: var(--foreground); font: inherit; font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm); cursor: pointer;';
+    const segOff = 'height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 13px; cursor: pointer;';
+    const kindStyle = (k) => 'height: 20px; font-size: 11px; ' + ({ ai: 'background: var(--accent); color: var(--accent-foreground);', rule: 'background: var(--secondary); color: var(--secondary-foreground);', human: 'background: var(--success-soft); color: var(--success);', ext: 'background: var(--warning-soft); color: var(--warning);' }[k]);
+    const kindLabel = { ai: 'AI', rule: x(['Luật', 'Rule']), human: x(['Người', 'Human']), ext: x(['Ngoài', 'External']) };
+
+    // Danh sách chế độ
+    const presetDefs = [
+      ['aidlc-express', 'AI-DLC Express', 'AI-DLC', ['M']], ['aidlc-feature', 'AI-DLC Feature', 'AI-DLC', ['L']], ['aidlc-enterprise', 'AI-DLC Enterprise', 'AI-DLC', ['XL']],
+      ['speckit', 'Spec Kit', 'Spec Kit', ['M', 'L']], ['bmad-quick', 'BMAD Quick', 'BMAD', ['S', 'M']], ['bmad-method', 'BMAD Method', 'BMAD', ['L', 'XL']],
+      ['kiro-requirements', 'Kiro · Requirements', 'Kiro', ['M', 'L']], ['kiro-design', 'Kiro · Design', 'Kiro', ['M', 'L']], ['kiro-bugfix', 'Kiro · Bugfix', 'Kiro', ['S']],
+      ['openspec', 'OpenSpec', 'OpenSpec', ['M', 'L']], ['bugfix', 'Bugfix', 'Hive', ['S']], ['small', 'Small', 'Hive', ['S']],
+    ];
+    const heavyOf = (sz) => sz.some((s) => s === 'L' || s === 'XL');
+    const empty = view === 'empty', loading = view === 'loading', errored = view === 'error';
+    const customDef = { id: 'speckit-pay', name: 'Spec Kit — Thanh toán', method: 'Spec Kit', team: x(['Đội Backend', 'Backend team']) };
+    const defaultSel = empty ? null : (view === 'preset' ? 'speckit' : customDef.id);
+    const sel = this.state.sel === undefined ? defaultSel : (this.state.sel ?? defaultSel);
+    const isPreset = presetDefs.some((p) => p[0] === sel);
+    const isCustom = sel === customDef.id;
+    const editor = !loading && !errored && !!sel;
+    const pickFn = (id) => () => this.setState({ sel: id, phase: null });
+    const presets = presetDefs.map(([id, name, method, sizes]) => ({ name, method, sizes: sizes.join('–'), heavy: heavyOf(sizes), on: sel === id, style: 'display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 8px 10px; border-radius: 8px; text-align: left; font: inherit; cursor: pointer; ' + (sel === id ? optOn : optOff), pick: pickFn(id) }));
+    const customs = empty ? [] : [{ name: customDef.name, method: customDef.method, team: customDef.team, outdated: x(['2 hạng mục dùng bản cũ', '2 items on the old snapshot']), on: sel === customDef.id, style: 'display: flex; flex-direction: column; gap: 1px; width: 100%; padding: 8px 10px; border-radius: 8px; text-align: left; font: inherit; cursor: pointer; ' + (sel === customDef.id ? optOn : optOff), pick: pickFn(customDef.id) }];
+
+    // Dữ liệu chế độ đang xem (mẫu theo Spec Kit)
+    const bad = view === 'invalid';
+    const heavy = this.state.sizes.L || this.state.sizes.XL;
+    const phaseSel = this.state.phase ?? (bad ? 'specify' : 'plan');
+    const pp = this.state.pp, au = this.state.au;
+    const specifyAuto = bad ? true : false;
+    const planScore = bad ? 6 : 9;
+    const phaseData = [
+      { id: 'specify', name: 'Specify', kind: 'requirements', docs: [{ name: 'spec.md', scope: 'item', required: true, path: 'specs/{NNN}-{slug}/spec.md', note: x(['6 mục bắt buộc', '6 required sections']) }],
+        gates: [{ kind: 'rule', name: x(['Mục bắt buộc, không còn câu hỏi mở', 'Sections, no open questions']), detail: 'sections · requirements · no-open-questions' }, { kind: 'ai', name: x(['Rà soát yêu cầu', 'Requirements review']), detail: x(['Điểm đạt 7/10', 'Pass score 7/10']), pass: 7 }, { kind: 'human', name: 'PO', detail: x(['Vai trò: PO · SLA 8 giờ', 'Role: PO · SLA 8 h']), id: 'po' },
+          ...(isCustom ? [{ kind: 'human', name: x(['Pháp chế', 'Legal']), detail: x(['Vai trò: Pháp chế · quorum 1', 'Role: Legal · quorum 1']), cond: x(['từ khoá "hoàn tiền"', 'keyword "refund"']), id: 'legal' }] : [])],
+        canAuto: true, autoKey: 'specify', autoGate: 'PO', score: 9, hours: 24, forceLock: heavy },
+      { id: 'plan', name: 'Plan', kind: 'design', docs: [{ name: 'plan.md', scope: 'item', required: true, path: bad ? '../specs/plan.md' : 'specs/{NNN}-{slug}/plan.md', note: x(['Kiểm constitution', 'Constitution check']), bad }, { name: 'data-model.md', scope: 'item', required: false, path: 'specs/{NNN}-{slug}/data-model.md', note: '' }, { name: 'contracts/{name}', scope: 'contract', required: true, path: 'specs/{NNN}-{slug}/contracts/{name}.{ext}', note: x(['Lặp lại được', 'Repeatable']) }],
+        gates: [{ kind: 'ai', name: x(['Kiểm constitution', 'Constitution check']), detail: x(['Điểm đạt 7/10', 'Pass score 7/10']), pass: 7 }, { kind: 'human', name: 'Tech lead', detail: x(['Vai trò: Tech lead · SLA 24 giờ', 'Role: Tech lead · SLA 24 h']), id: 'tl-plan' }],
+        canAuto: true, autoKey: 'plan', autoGate: 'Tech lead', score: planScore, hours: 24 },
+      { id: 'tasks', name: 'Tasks', kind: 'decomposition', docs: [{ name: 'tasks.md', scope: 'item', required: true, path: 'specs/{NNN}-{slug}/tasks.md', note: x(['Bản tách task', 'Task breakdown']) }],
+        gates: [{ kind: 'rule', name: x(['Đọc được, đủ độ phủ', 'Parsable, covered']), detail: 'breakdown · coverage' }, { kind: 'ai', name: x(['Rà soát bản tách', 'Breakdown review']), detail: x(['Điểm đạt 7/10', 'Pass score 7/10']), pass: 7 }, { kind: 'human', name: 'Tech lead', detail: x(['Vai trò: Tech lead · quorum 1', 'Role: Tech lead · quorum 1']), id: 'tl-tasks' }],
+        canAuto: true, autoKey: 'tasks', autoGate: 'Tech lead', score: 9, hours: 24 },
+      { id: 'implement', name: 'Implement', kind: 'implementation', docs: [], gates: [], codeStart: true },
+      { id: 'converge', name: 'Converge', kind: 'verification', docs: [], gates: [], optional: true },
+    ];
+    const ppOn = (id) => (id === 'tl-plan' ? pp.plan : id === 'tl-tasks' ? pp.tasks : id === 'po' ? pp.specify : false);
+    const ppKey = (id) => (id === 'tl-plan' ? 'plan' : id === 'tl-tasks' ? 'tasks' : id === 'po' ? 'specify' : id);
+    const autoState = (ph) => {
+      if (!ph.canAuto) return null;
+      const locked = ph.id === 'specify' && heavy;
+      const on = ph.id === 'specify' ? specifyAuto : !!au[ph.autoKey];
+      const aiPass = (ph.gates.find((g) => g.kind === 'ai') || {}).pass;
+      let error = '';
+      if (locked && on) error = t.pReq;
+      else if (on && aiPass !== undefined && ph.score < aiPass) error = t.pScore;
+      return { locked, on, error, score: ph.score, hours: ph.hours, pass: aiPass, gate: ph.autoGate };
+    };
+
+    const phases = phaseData.map((ph) => {
+      const a = autoState(ph);
+      const humanAuto = a && a.on ? x(['Tự duyệt ≥ ' + a.score + ' · thu hồi ' + a.hours + ' giờ', 'Auto-approve ≥ ' + a.score + ' · revoke ' + a.hours + ' h']) : '';
+      const hasErr = (a && a.error) || ph.docs.some((d) => d.bad);
+      return {
+        name: ph.name, kind: ph.kind, optional: !!ph.optional, codeStart: !!ph.codeStart, bad: !!hasErr, on: ph.id === phaseSel,
+        alwaysHuman: ph.id === 'specify' && heavy,
+        style: 'flex: 1 0 230px; max-width: 280px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; border-radius: 12px; font: inherit; text-align: left; cursor: pointer; color: var(--foreground); ' + (ph.id === phaseSel ? 'border: 2px solid var(--primary); background: var(--accent);' : 'border: 2px solid transparent; background: var(--muted);') + (hasErr ? ' outline: 2px solid var(--destructive); outline-offset: -2px;' : ''),
+        docs: ph.docs.map((d) => ({ name: d.name, scope: d.scope === 'contract' ? x(['contract', 'contract']) : x(['chung', 'shared']), style: d.required ? '' : 'border-style: dashed;' })),
+        gates: ph.gates.map((g) => ({ kind: kindLabel[g.kind], kindStyle: kindStyle(g.kind), name: g.name, cond: g.cond || '', perProject: g.kind === 'human' && ppOn(g.id), auto: g.kind === 'human' && humanAuto && g.name === ph.autoGate ? humanAuto : '' })),
+        pick: () => this.setState({ phase: ph.id }),
+      };
+    });
+
+    const cur = phaseData.find((p) => p.id === phaseSel);
+    const a = autoState(cur);
+    const selv = {
+      title: cur.name + ' · ' + cur.kind,
+      sub: x(['Sửa tài liệu, cổng và tự duyệt của giai đoạn này.', 'Edit the documents, gates and auto-approval of this phase.']),
+      hasDocs: cur.docs.length > 0, noDocs: cur.docs.length === 0 && cur.gates.length === 0,
+      noDocsText: cur.codeStart ? x(['Giai đoạn Triển khai không có tài liệu hay cổng: run code của task chỉ chạy khi mọi tài liệu bắt buộc phía trước đã có baseline (mức chặn ' + (this.state.blocking === 'hard' ? 'chặn cứng' : this.state.blocking === 'soft' ? 'cảnh báo' : 'không') + ').', 'The Implementation phase has no documents or gates: task code runs start only when every required document before it has a baseline (blocking: ' + this.state.blocking + ').']) : x(['Giai đoạn Converge chỉ có bước agent: kiểm lệch spec–code tối đa 3 vòng.', 'The Converge phase has only an agent step: spec–code drift checks, up to 3 rounds.']),
+      docs: cur.docs.map((d) => ({ name: d.name, note: d.note, path: d.path, required: d.required, scope: d.scope === 'contract' ? 'contract' : (d.scope === 'item' ? x(['Chung', 'Shared']) : x(['Mỗi dự án', 'Per project'])),
+        scopeStyle: segOn + ' cursor: default;', pathStyle: d.bad ? 'border-color: var(--destructive); color: var(--destructive);' : '' })),
+      hasGates: cur.gates.length > 0,
+      gates: cur.gates.map((g) => ({ kind: kindLabel[g.kind], kindStyle: kindStyle(g.kind), name: g.name + (g.cond ? ' ⤷ ' + g.cond : ''), detail: g.detail, isHuman: g.kind === 'human',
+        pp: (() => { const k = ppKey(g.id); const on = ppOn(g.id); return { aria: on ? 'true' : 'false', track: 'background: ' + (on ? 'var(--primary)' : 'var(--input)') + ';', knob: on ? 'transform: translateX(16px);' : '', flip: () => this.setState({ pp: { ...this.state.pp, [k]: !on } }) }; })() })),
+      hasHuman: !!a,
+      autoHint: a ? (a.locked ? t.pReq : x(['Hub tự quyết cổng ' + a.gate + ' khi checkpoint AI đạt ngưỡng; dự án và tổ chức chỉ siết thêm.', 'The hub decides the ' + a.gate + ' gate when the AI checkpoint reaches the threshold; projects and the organization can only tighten.'])) : '',
+      au: a ? {
+        on: a.on, locked: a.locked || isPreset, aria: a.on ? 'true' : 'false', track: 'background: ' + (a.on ? (a.error ? 'var(--destructive)' : 'var(--primary)') : 'var(--input)') + ';', knob: a.on ? 'transform: translateX(16px);' : '',
+        lockedNote: a.locked ? x(['Chế độ có cỡ L hoặc XL: giai đoạn Yêu cầu luôn cần người duyệt. Bỏ cỡ L, XL khỏi chế độ nếu muốn tự duyệt.', 'The mode has size L or XL: the Requirements phase always needs a person. Remove L and XL from the mode to allow auto-approval.']) : '',
+        gate: a.gate, score: String(a.score), hours: String(a.hours), pass: String(a.pass ?? '—'), error: a.error,
+        scoreStyle: a.error && a.error === t.pScore ? 'border-color: var(--destructive);' : '',
+        flip: () => (cur.id === 'specify' ? null : this.setState({ au: { ...this.state.au, [cur.autoKey]: !a.on } })),
+      } : { on: false, locked: true, aria: 'false', track: '', knob: '', lockedNote: '', gate: '', score: '', hours: '', pass: '', error: '', scoreStyle: '', flip: () => null },
+    };
+
+    const problems = bad ? [
+      { level: t.lvErr, style: 'background: var(--destructive); color: var(--background);', text: t.pPath }, { level: t.lvErr, style: 'background: var(--destructive); color: var(--background);', text: t.pReq },
+      { level: t.lvErr, style: 'background: var(--destructive); color: var(--background);', text: t.pScore }, { level: t.lvErr, style: 'background: var(--destructive); color: var(--background);', text: t.pCli },
+      { level: t.lvWarn, style: 'background: var(--warning); color: var(--background);', text: t.pHard },
+    ] : [];
+
+    const sizes = ['S', 'M', 'L', 'XL'].map((z) => ({ label: z, on: !!this.state.sizes[z], style: this.state.sizes[z] ? segOn : segOff, flip: () => (isPreset ? null : this.setState({ sizes: { ...this.state.sizes, [z]: !this.state.sizes[z] } })) }));
+    const blockings = [['hard', t.bHard], ['soft', t.bSoft], ['none', t.bNone]].map(([k, l]) => ({ label: l, on: this.state.blocking === k, style: this.state.blocking === k ? segOn : segOff, pick: () => (isPreset ? null : this.setState({ blocking: k })) }));
+    const grains = [['item', x(['Từng mục', 'Item'])], ['heading', x(['Theo phần', 'Heading'])], ['single', x(['Một task', 'Single'])]].map(([k, l]) => ({ label: l, on: this.state.grain === k, style: this.state.grain === k ? segOn : segOff, pick: () => (isPreset ? null : this.setState({ grain: k })) }));
+    const formats = ['openapi', 'asyncapi', 'graphql', 'proto', 'jsonschema', 'markdown'].map((f, i) => ({ label: f, style: i < 4 ? 'background: var(--accent); color: var(--accent-foreground); border-color: transparent;' : '' }));
+    const contractRules = [
+      x(['Cổng là cổng của giai đoạn cộng một checkpoint người cho đội của bên cung cấp và đội của mỗi bên dùng.', 'The gate is the phase gate plus one human checkpoint for the provider team and for each consumer team.']),
+      x(['🔒 Không bao giờ tự duyệt, kể cả khi giai đoạn bật tự duyệt.', '🔒 Never auto-approved, even when the phase allows auto-approval.']),
+      x(['Là tài liệu bắt buộc trước giai đoạn Triển khai của mọi bên; bên dùng nhận bản sao chỉ đọc trong repo.', 'A required document before the Implementation phase of every party; consumers get a read-only copy in their repo.']),
+    ];
+
+    const sampleDocs = { specify: ['specs/012-hoan-tien-mot-phan/spec.md'], plan: ['specs/012-hoan-tien-mot-phan/plan.md', 'specs/012-hoan-tien-mot-phan/data-model.md', 'specs/012-hoan-tien-mot-phan/contracts/<name>.<ext>'], tasks: ['specs/012-hoan-tien-mot-phan/tasks.md'], implement: [], converge: [] };
+    const dryRows = phaseData.map((ph) => ({
+      phase: ph.name, docs: sampleDocs[ph.id], none: ph.gates.length === 0,
+      gates: ph.gates.map((g) => ({ kind: kindLabel[g.kind], kindStyle: kindStyle(g.kind), name: g.name, note: g.cond ? x(['thêm vì ', 'added because ']) + g.cond : '' })).concat(ph.id === 'plan' ? [{ kind: kindLabel.human, kindStyle: kindStyle('human'), name: x(['Tech lead · Đội Web', 'Tech lead · Web team']), note: x(['theo dự án: web-shop, mobile-app', 'per project: web-shop, mobile-app']) }] : []),
+    })).filter((r) => isCustom || r.phase !== '');
+    const dryOpen = editor && (this.state.dry ?? view === 'dryrun');
+    const ui = {
+      loading, error: errored, noMode: !editor && !loading, editor, preset: editor && isPreset, custom: editor && isCustom, invalid: editor && bad, listReady: !loading, noCustom: empty,
+      saveOff: bad, saveLabel: bad ? t.saveErr : t.save, invalidTitle: t.invalidTitle,
+    };
+    return {
+      theme: dark ? 'dark' : 'light', lang, dark, t, ui, presets, customs, phases, sel: selv, cur: { name: isPreset ? (presetDefs.find((p) => p[0] === sel) || [])[1] : customDef.name, method: isPreset ? (presetDefs.find((p) => p[0] === sel) || [])[2] : customDef.method, heavy },
+      problems, sizes, blockings, grains, formats, contractRules, dryRows, dry: { open: dryOpen, aria: dryOpen ? 'true' : 'false', seg: segOn + ' cursor: default;' },
+      toggleDry: () => this.setState({ dry: !dryOpen }),
+      setLang: (v) => this.setState({ lang: v }), setTheme: (v) => this.setState({ dark: v }),
+    };
+  }
+}
+</script>
+</body>
+</html>

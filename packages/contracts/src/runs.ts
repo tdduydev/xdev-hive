@@ -10,10 +10,10 @@ export const runState = z.enum(RUN_STATES);
 export type RunState = z.output<typeof runState>;
 
 /**
- * `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động; `brief`: viết lại bản tóm
- * tắt repo của dự án (ADR 0022).
+ * `review`: review chéo; `plan`: lập kế hoạch; `leader`: trả lời chat và đề xuất hành động; `sdlc`: bước agent của
+ * hạng mục AI SDLC (soạn tài liệu trong worktree tạm, không đẩy; specs/011 FR-010); `brief`: viết lại bản tóm tắt repo của dự án (ADR 0022).
  */
-export const runKind = z.enum(["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]);
+export const runKind = z.enum(["code", "review", "plan", "leader", "doccheck", "docassist", "sdlc", "brief"]);
 
 /** Kết quả một bước kiểm tra của chính sách kết quả ở bước verifying. */
 export const checkOutcome = z.object({
@@ -46,6 +46,8 @@ export const runCost = z.object({
   /** null khi CLI không báo USD (Codex, Gemini). */
   costUsd: z.number().nullable(),
   turns: z.number().int().nullable(),
+  /** Id gói (tài khoản CLI trên máy) đã chạy run, theo worker báo; null khi dùng đăng nhập mặc định hay worker cũ. */
+  accountId: z.string().nullable(),
 });
 export type RunCost = z.output<typeof runCost>;
 
@@ -84,6 +86,8 @@ export const run = z.object({
   createdBy: z.string(),
   /** Chủ run: người giao run, và chỉ máy của họ hoặc máy dùng chung chạy được. null là run của đội (Leader, gate AI, webhook). */
   ownerUserId: z.string().nullable(),
+  /** Máy nhận run phải có mọi nhãn này (specs/011 FR-041). Hub chưa có cột thì không trả, coi như rỗng. */
+  requiredLabels: z.array(z.string()).optional(),
   createdAt: z.iso.datetime(),
   startedAt: z.iso.datetime().nullable(),
   finishedAt: z.iso.datetime().nullable(),
@@ -121,6 +125,33 @@ export type RunLogChunk = z.output<typeof runLogChunk>;
 // Tham số query của GET luôn là chuỗi; coerce để OpenAPI nhận được số.
 const cursor = z.coerce.number().int().min(0).default(0);
 const limit = z.coerce.number().int().min(1).max(1000).default(500);
+
+/**
+ * Mã lỗi CONFLICT khi hub không tạo run code (specs/011 FR-028, FR-029). Đặt ở đây chứ không ở sdlc.ts vì đây là lỗi
+ * của `runs.start` (và mọi đường tạo run qua `queueRun`), và sdlc.ts import tasks.ts, tasks.ts import file này.
+ */
+export const SDLC_GATE_BLOCKED = "SDLC_GATE_BLOCKED";
+export const TASK_DEPENDENCIES_OPEN = "TASK_DEPENDENCIES_OPEN";
+
+/** Một lý do chặn: tài liệu chưa có baseline, task phụ thuộc chưa xong, hoặc dự án đã tắt AI SDLC. */
+export const runGateMissing = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("artifact"),
+    /** Key tài liệu hub. */
+    docKey: z.string(),
+    /** "plan.md (Plan)", "contract refund-api". */
+    name: z.string(),
+    phase: z.string(),
+    /** `revoked`: đang duyệt lại sau khi thu hồi tự duyệt. */
+    reason: z.enum(["no_baseline", "revoked"]),
+  }),
+  z.object({ kind: z.literal("dependency"), taskId: id, key: z.string(), status: z.string() }),
+  z.object({ kind: z.literal("project"), projectId: id, key: z.string() }),
+]);
+export type RunGateMissing = z.output<typeof runGateMissing>;
+export const runGateErrorData = z
+  .object({ code: z.string(), itemId: id.optional(), missing: z.array(runGateMissing).optional() })
+  .optional();
 
 export const runStartInput = z.object({
   taskId: id,
@@ -179,7 +210,12 @@ export const runSearchResult = z.object({
 export type RunSearchResult = z.output<typeof runSearchResult>;
 
 export const runsContract = {
-  start: orgRoute("POST", "/v1/runs", "Giao task cho agent (thành viên đội)", "runs").input(runStartInput).output(run),
+  start: orgRoute("POST", "/v1/runs", "Giao task cho agent (thành viên đội)", "runs")
+    .errors({
+      CONFLICT: { message: "Dữ liệu bị trùng hoặc xung đột.", data: runGateErrorData },
+    })
+    .input(runStartInput)
+    .output(run),
   list: orgRoute("GET", "/v1/tasks/{taskId}/runs", "Các run của task, mới nhất trước", "runs")
     .input(z.object({ taskId: id }))
     .output(z.array(run)),

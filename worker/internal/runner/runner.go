@@ -71,8 +71,10 @@ type Job struct {
 	RepoURL, BaseBranch, Branch, CLI, Model, Prompt string
 	Env                                             map[string]string
 	SetupEnv                                        map[string]string
-	Timeout                                         time.Duration
-	SetupScript                                     string
+	// TokenSaving là cấu hình "Tiết kiệm token" của dự án trong spec job; nil là hub cũ (dùng mặc định).
+	TokenSaving *TokenSavingJob
+	Timeout     time.Duration
+	SetupScript string
 	// Steers nhận chỉ dẫn của hub cho run này; nil là không có. Kết quả đi ra thành sự kiện "steer_result".
 	Steers           <-chan Steer
 	EnvironmentImage string
@@ -91,6 +93,10 @@ type Job struct {
 	BriefSHA  string
 	workspace string
 	repoCache string
+	// savingEnv và accountID do Run tính từ cấu hình máy và tài khoản đã giữ; nằm trên Job để đường sandbox và đường
+	// host dùng chung.
+	savingEnv map[string]string
+	accountID string
 }
 
 type Event struct {
@@ -167,8 +173,10 @@ type Runner struct {
 	CLICommands map[string]Command
 	Sandbox     *SandboxConfig
 	// Account là tài khoản CLI đã giữ cho run (spec 008 US13); nil là đăng nhập mặc định. Runner host (sandbox) bỏ qua.
-	Account   *accounts.Lease
-	KillGrace time.Duration
+	Account *accounts.Lease
+	// TokenSaving, nếu có, thay HIVE_WORKER_TOKEN_SAVING (code đặt thắng biến môi trường, như CLICommands).
+	TokenSaving *TokenSavingConfig
+	KillGrace   time.Duration
 	// Grace, nếu có, thay KillGrace và được đọc lúc phải dừng CLI chứ không phải lúc bắt đầu, để lệnh huỷ của hub
 	// đặt được thời gian chờ riêng (cancel.graceSec) cho run đang chạy. Trả 0 là dừng ngay.
 	Grace func() time.Duration
@@ -193,6 +201,14 @@ func (r Runner) grace() time.Duration {
 		return r.Grace()
 	}
 	return r.KillGrace
+}
+
+// tokenSavingConfig lấy cấu hình máy; biến môi trường hỏng trả lỗi kèm cấu hình rỗng để run vẫn chạy với mặc định.
+func (r Runner) tokenSavingConfig() (TokenSavingConfig, error) {
+	if r.TokenSaving != nil {
+		return *r.TokenSaving, nil
+	}
+	return TokenSavingFromEnv()
 }
 
 func Run(ctx context.Context, job Job, sink Sink) error { return (Runner{}).Run(ctx, job, sink) }
@@ -391,6 +407,11 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	// Vượt trần chi phí thì dừng CLI theo đường huỷ (SIGINT, chờ grace rồi kill).
 	runCtx, stopForBudget := context.WithCancel(runCtx)
 	defer stopForBudget()
+	savingCfg, savingErr := r.tokenSavingConfig()
+	job.savingEnv = savingEnv(savingCfg, job)
+	if r.Sandbox == nil {
+		job.accountID = r.Account.ID()
+	}
 	cmd, err := r.cliCommand(job)
 	if err != nil {
 		return err
@@ -400,7 +421,8 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	process := cmd.Cmd
 	process.Dir = work
-	process.Env = mergeEnv(os.Environ(), job.Env)
+	// job.Env của dự án đặt sau nhóm tiết kiệm token: biến dự án đã đặt rõ thì không bị mặc định đè.
+	process.Env = mergeEnv(os.Environ(), mergeMap(job.savingEnv, job.Env))
 	if r.Sandbox == nil {
 		// Đặt sau job.Env để spec của hub không đổi được thư mục đăng nhập của máy.
 		process.Env = mergeEnv(process.Env, r.Account.Env())
@@ -442,6 +464,9 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	if cmd.notice != "" {
 		_, _ = fmt.Fprintln(stderrLog, cmd.notice)
+	}
+	if savingErr != nil {
+		_, _ = fmt.Fprintf(stderrLog, "[xdev-hive] Bỏ qua cấu hình tiết kiệm token của máy: %v\n", savingErr)
 	}
 	if tool := hooksOf(job.Policy.Hooks, "PreToolUse", "PostToolUse"); len(tool) > 0 && (job.CLI != "claude" || cmd.input != InputStreamJSON) {
 		// Chỉ Claude Code nhận hook theo tool qua --settings; báo vào log để người xem run biết hook nào không chạy.
@@ -982,6 +1007,7 @@ func (w *logWriter) Write(p []byte) (int, error) {
 // startMeter đọc usage từ stdout của CLI và gửi sự kiện cost theo chu kỳ. Hàm trả về dừng chu kỳ và gửi usage cuối.
 func startMeter(job Job, sink Sink, stop context.CancelFunc) (*meter, func() error) {
 	m := newMeter(job.CLI, job.Budget, func(u Usage) error {
+		u.AccountID = job.accountID
 		return emit(sink, Event{Type: "cost", RunID: job.RunID, Attempt: job.Attempt, Cost: &u})
 	}, func(string) { stop() })
 	done := make(chan struct{})
