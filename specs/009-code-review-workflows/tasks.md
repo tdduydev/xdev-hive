@@ -173,7 +173,7 @@
     `apps/web/src/lib/{code-reviews.ts,code-reviews.test.ts,nav.ts}`, `apps/web/e2e/{code-reviews.spec.ts,fake-hub.ts,code-reviews-fixture.ts}`
   - **Phụ thuộc**: T013 (cùng `fake-hub.ts`), T031 · **Mức**: vừa
 
-- [ ] T033 [P] [US3] Desktop: tab Code trong màn "Chờ tôi duyệt"
+- [x] T033 [P] [US3] Desktop: tab Code trong màn "Chờ tôi duyệt"
   - Dùng `@xdev-hive/code-review`; từ điển vi/en; route `#/reviews/code/<id>`.
   - **Scope**: `apps/desktop/src/screens/{reviews-screen.tsx,reviews-screen.test.tsx}`, `apps/desktop/package.json`
   - **Phụ thuộc**: T031 · **Mức**: vừa
