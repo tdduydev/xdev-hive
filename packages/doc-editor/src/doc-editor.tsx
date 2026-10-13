@@ -2,7 +2,6 @@ import { ORPCError } from "@orpc/client";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type AssistAction,
-  blockKind,
   type DocDraft,
   type DocEditorState,
   type DocSuggestion,
@@ -11,7 +10,6 @@ import {
   initialsOf,
   lineDiff,
   mergeBlocks,
-  splitBlocks,
   TERMINAL_RUN_STATES,
   wordDiff,
 } from "@xdev-hive/contracts";
@@ -19,29 +17,18 @@ import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Dialog, DialogActions, DialogContent, DialogDescription, DialogTitle } from "@xdev-hive/ui/dialog";
 import { Input } from "@xdev-hive/ui/input";
-import { Markdown } from "@xdev-hive/ui/markdown";
 import { NativeSelect } from "@xdev-hive/ui/native-select";
 import { Textarea } from "@xdev-hive/ui/textarea";
 import { cn } from "cn";
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  type BlockTemplate,
-  blockTemplate,
-  embedKey,
-  insertBlock,
-  quoteFor,
-  replaceBlock,
-  setTextKind,
-  suggestionsByBlock,
-  textKindOf,
-  toggleCheck,
-  wrapSelection,
-} from "./blocks.ts";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { quoteFor, suggestionsByBlock, suggestionsFromEdit } from "./blocks.ts";
+import { setDocMarks } from "./editor-views.tsx";
 import { useDocEditorEnv, useText } from "./env.tsx";
+import { EditorSurface, EditorToolbar, Sep, Tb, useMarkdownEditor } from "./markdown-editor.tsx";
 
 /** Lưu sau khi ngừng gõ chừng này; đủ ngắn để người khác thấy bản mới, đủ dài để không lưu mỗi phím. */
 const AUTOSAVE_MS = 1200;
-const SLASH: BlockTemplate[] = ["h2", "checklist", "table", "requirement", "code", "mermaid", "embed", "callout"];
 
 const hubCode = (e: unknown) =>
   e instanceof ORPCError && typeof e.data === "object" && e.data && "code" in e.data ? String(e.data.code) : null;
@@ -174,11 +161,6 @@ function Editor({
   });
   const refreshSide = () => queryClient.invalidateQueries({ queryKey: api.docEditor.key() });
 
-  const createSuggestion = useMutation({
-    mutationFn: (v: { before: string; after: string }) => api.docEditor.suggestions.create.call({ key: docKey, ...v }),
-    onSuccess: () => void refreshSide(),
-    onError: (e) => setError(env.errorMessage(e)),
-  });
   const decide = useMutation({
     mutationFn: (v: { id: string; accept: boolean }) => api.docEditor.suggestions.decide.call(v),
     onSuccess: ({ draft }) => {
@@ -189,71 +171,113 @@ function Editor({
     onError: (e) => setError(env.errorMessage(e)),
   });
 
-  const blocks = useMemo(() => splitBlocks(content), [content]);
-  const byBlock = useMemo(() => suggestionsByBlock(blocks, suggestions.data ?? []), [blocks, suggestions.data]);
-  const [active, setActive] = useState<number | null>(null);
-  const [editing, setEditing] = useState("");
-  const area = useRef<HTMLTextAreaElement | null>(null);
+  // Chế độ đề xuất: chỗ sửa nằm ở `pending` (chưa lưu), bấm Gửi đề xuất thì thành đề xuất theo khối.
+  const [pending, setPending] = useState<string | null>(null);
+  const proposed = useMemo(() => (pending === null ? [] : suggestionsFromEdit(content, pending)), [content, pending]);
+  const sendSuggestions = useMutation({
+    mutationFn: async (list: { before: string; after: string }[]) => {
+      for (const v of list) await api.docEditor.suggestions.create.call({ key: docKey, ...v });
+    },
+    onSuccess: () => {
+      setPending(null);
+      void refreshSide();
+    },
+    onError: (e) => setError(env.errorMessage(e)),
+  });
+  const [aiQuote, setAiQuote] = useState<string | undefined>(undefined);
+  const h = useMarkdownEditor({
+    value: pending ?? content,
+    onChange: (md) => (suggest ? setPending(md === content ? null : md) : setContent(md)),
+    editable: canEdit,
+    lang: env.lang,
+    label: t.editorLabel,
+    onAi: () => openAi(),
+  });
+  const { editor } = h;
 
-  function open(index: number) {
-    if (!canEdit) return;
-    commit();
-    setActive(index);
-    setEditing(blocks[index] ?? "");
-  }
-  /** Xong khối đang sửa: sửa thẳng thì đổi bản nháp, chế độ đề xuất thì gửi thành đề xuất sửa. */
-  function commit(next = editing) {
-    if (active === null) return;
-    const before = blocks[active] ?? "";
-    setActive(null);
-    if (next.trim() === before.trim()) return;
-    if (suggest) createSuggestion.mutate({ before, after: next.trim() });
-    else setContent(replaceBlock(content, active, next));
-  }
-  function insert(kind: BlockTemplate) {
-    const block = blockTemplate(kind, content);
-    if (active !== null && editing.trim().startsWith("/")) {
-      setEditing(block);
-      return;
+  // Thẻ đề xuất nằm ngay dưới khối chứa đoạn gốc (widget trong trình soạn, React vẽ vào qua portal).
+  const hosts = useRef(new Map<string, HTMLElement>());
+  const host = (id: string) => {
+    let el = hosts.current.get(id);
+    if (!el) {
+      el = document.createElement("div");
+      el.contentEditable = "false";
+      hosts.current.set(id, el);
     }
-    const after = active ?? blocks.length - 1;
-    commit();
-    if (suggest) {
-      setActive(blocks.length);
-      setEditing(block);
-      return;
-    }
-    const out = insertBlock(content, after, block);
-    setContent(out.content);
-    setActive(out.index);
-    setEditing(block);
+    return el;
+  };
+  const [anchored, setAnchored] = useState<ReadonlySet<string>>(new Set());
+  // biome-ignore lint/correctness/useExhaustiveDependencies: host chỉ đọc ref; đặt lại khi tài liệu, đề xuất hay bình luận đổi.
+  useEffect(() => {
+    if (!editor) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const place = () => {
+      if (editor.isDestroyed) return;
+      // Đổi decoration giữa lúc bộ gõ (Telex, VNI) đang ghép chữ làm trình duyệt chốt sai chỗ: đợi ghép xong.
+      if (editor.view.composing) {
+        timer = setTimeout(place, 150);
+        return;
+      }
+      const byBlock = suggestionsByBlock(
+        h.codec.blocks(editor.state.doc),
+        (suggestions.data ?? []).filter((x) => x.before),
+      );
+      const anchors: { index: number; key: string; host: HTMLElement }[] = [];
+      for (const [index, list] of byBlock)
+        if (index >= 0) for (const x of list) anchors.push({ index, key: x.id, host: host(x.id) });
+      const quotes = (threads.data ?? [])
+        .filter((x) => !x.resolvedAt && x.anchored && x.quote)
+        .map((x) => x.quote ?? "");
+      setDocMarks(editor, { highlight: [...new Set(anchors.map((a) => a.index))], anchors, quotes });
+      const ids = new Set(anchors.map((a) => a.key));
+      setAnchored((prev) => (prev.size === ids.size && [...ids].every((id) => prev.has(id)) ? prev : ids));
+    };
+    place();
+    // Đặt lại sau khi gõ; chạy ngoài lượt dispatch đang diễn ra của ProseMirror.
+    const onTransaction = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+      if (!transaction.docChanged) return;
+      clearTimeout(timer);
+      timer = setTimeout(place, 150);
+    };
+    editor.on("transaction", onTransaction);
+    return () => {
+      clearTimeout(timer);
+      editor.off("transaction", onTransaction);
+    };
+  }, [editor, suggestions.data, threads.data, h.codec]);
+
+  function openAi() {
+    // Ngữ cảnh cho AI là khối đang chọn chữ hoặc đang đặt con trỏ, như khối đang sửa trước đây.
+    setAiQuote(editor && (editor.isFocused || !editor.state.selection.empty) ? h.currentBlock() : undefined);
+    setTab("ai");
   }
-  function mark(m: "bold" | "italic" | "strike" | "code" | "link") {
-    const el = area.current;
-    if (!el || active === null) return;
-    const out = wrapSelection(editing, el.selectionStart, el.selectionEnd, m);
-    setEditing(out.text);
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(out.start, out.end);
-    });
-  }
-  function startComment(index: number | null) {
-    const block = index === null ? "" : (blocks[index] ?? "");
-    const selected = window.getSelection()?.toString() ?? "";
+  function startComment() {
+    const selected = h.selectedText() || window.getSelection()?.toString() || "";
+    const block = editor && (editor.isFocused || selected) ? h.currentBlock() : "";
     setComposer({ quote: block ? quoteFor(block, selected) : selected.trim() || null });
     setTab("comments");
   }
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Escape") commit();
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) commit();
-  };
+  function addBlockAtEnd() {
+    if (!editor) return;
+    const last = editor.state.doc.lastChild;
+    const c = editor.chain();
+    if (!(last?.type.name === "paragraph" && !last.content.size))
+      c.insertContentAt(editor.state.doc.content.size, { type: "paragraph" });
+    c.focus("end").run();
+  }
 
-  const slashQuery = active !== null && /^\/\S*$/.test(editing.trim()) ? editing.trim().slice(1).toLowerCase() : null;
-  const kindOfActive = active !== null ? textKindOf(editing) : null;
   const editingCount = s.presence.filter((p) => p.editing).length;
   const openThreads = (threads.data ?? []).filter((x) => !x.resolvedAt).length;
-  const pendingNew = byBlock.get(blocks.length - 1)?.filter((x) => !x.before) ?? [];
+  const loose = (suggestions.data ?? []).filter((x) => !anchored.has(x.id));
+  const card = (x: DocSuggestion) => (
+    <SuggestionCard
+      key={x.id}
+      s={x}
+      canDecide={canEdit}
+      busy={decide.isPending || dirty || pending !== null}
+      onDecide={(accept) => decide.mutate({ id: x.id, accept })}
+    />
+  );
 
   return (
     <>
@@ -275,7 +299,13 @@ function Editor({
                 : `${t.saved}${editingCount ? ` · ${t.editingNow(editingCount)}` : ""}`}
         </span>
         {canEdit && (
-          <Button variant="outline" size="sm" onClick={() => setSuggest(!suggest)} aria-pressed={suggest}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSuggest(!suggest)}
+            aria-pressed={suggest}
+            disabled={pending !== null}
+          >
             {suggest ? t.modeSuggest : t.modeEdit}
           </Button>
         )}
@@ -314,76 +344,48 @@ function Editor({
       )}
       <div className="flex min-h-0 flex-1 flex-wrap">
         <section className="flex min-w-0 flex-[999_1_560px] flex-col">
-          <div
-            role="toolbar"
-            aria-label={t.toolbar}
-            className="sticky top-0 z-3 flex flex-wrap items-center gap-0.5 border-b border-border bg-background px-5 py-1.5"
-          >
-            <NativeSelect
-              aria-label={t.blockType}
-              size="sm"
-              className="w-36! shrink-0 text-sm"
-              disabled={!canEdit || kindOfActive === null}
-              value={kindOfActive ?? ""}
-              onChange={(e) => setEditing(setTextKind(editing, e.currentTarget.value as "h1" | "h2" | "h3" | "para"))}
-            >
-              <option value="" disabled>
-                {t.blockType}
-              </option>
-              <option value="para">{t.para}</option>
-              <option value="h1">{t.h1}</option>
-              <option value="h2">{t.h2}</option>
-              <option value="h3">{t.h3}</option>
-            </NativeSelect>
+          <EditorToolbar h={h}>
             <Sep />
-            <Tb label={t.bold} disabled={active === null} onClick={() => mark("bold")} className="font-bold">
-              B
-            </Tb>
-            <Tb label={t.italic} disabled={active === null} onClick={() => mark("italic")} className="italic">
-              I
-            </Tb>
-            <Tb label={t.strike} disabled={active === null} onClick={() => mark("strike")} className="line-through">
-              S
-            </Tb>
-            <Tb label={t.code} disabled={active === null} onClick={() => mark("code")} className="font-mono">
-              {"</>"}
-            </Tb>
-            <Tb label={t.link} disabled={active === null} onClick={() => mark("link")}>
-              ↗
-            </Tb>
-            <Sep />
-            <Tb label={t.insert.bullet} disabled={!canEdit} onClick={() => insert("bullet")}>
-              •≡
-            </Tb>
-            <Tb label={t.insert.ordered} disabled={!canEdit} onClick={() => insert("ordered")}>
-              1≡
-            </Tb>
-            <Tb label={t.insert.checklist} disabled={!canEdit} onClick={() => insert("checklist")}>
-              ☑
-            </Tb>
-            <Tb label={t.insert.table} disabled={!canEdit} onClick={() => insert("table")}>
-              ▦
-            </Tb>
-            <Tb label={t.insert.callout} disabled={!canEdit} onClick={() => insert("callout")}>
-              ⓘ
-            </Tb>
-            <Tb
-              label={t.insert.mermaid}
-              disabled={!canEdit}
-              onClick={() => insert("mermaid")}
-              className="w-auto px-1.5 font-mono text-xs"
-            >
-              mmd
-            </Tb>
-            <Sep />
-            <Tb label={t.comment} onClick={() => startComment(active)}>
+            <Tb label={t.comment} onClick={startComment}>
               ❝
             </Tb>
             <span className="flex-1" />
-            <Button variant="ghost" size="sm" className="text-primary" onClick={() => setTab("ai")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-primary"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={openAi}
+            >
               ✦ {t.askAi}
             </Button>
-          </div>
+          </EditorToolbar>
+          {suggest && canEdit && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-warning-soft/40 px-5 py-1.5 text-sm">
+              <span className="min-w-[200px] flex-1 text-muted-foreground">
+                {pending !== null ? t.pendingEdits(proposed.length) : t.suggestHint}
+              </span>
+              {pending !== null && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={sendSuggestions.isPending}
+                    onClick={() => setPending(null)}
+                  >
+                    {t.discardEdits}
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={sendSuggestions.isPending || !proposed.length}
+                    onClick={() => sendSuggestions.mutate(proposed)}
+                  >
+                    {t.sendSuggestions}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
           <article className="relative mx-auto box-border w-full max-w-[780px] px-8 pt-9 pb-20">
             <p className="mb-1 text-sm text-muted-foreground">
               {s.draft.updatedBy?.name ?? ""} · {t.draftV(s.draftNumber)}
@@ -398,110 +400,13 @@ function Editor({
             ) : (
               <h1 className="mb-4 text-3xl font-semibold tracking-tight">{title}</h1>
             )}
-            {!blocks.length && active === null && <p className="text-muted-foreground">{t.emptyDoc}</p>}
-            {blocks.map((block, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: khối Markdown không có mã; vị trí là định danh của nó.
-              <div key={`${i}:${block.slice(0, 24)}`} className="group relative">
-                {active === i ? (
-                  <BlockEditor
-                    value={editing}
-                    onChange={setEditing}
-                    onDone={() => commit()}
-                    onKeyDown={onKey}
-                    area={area}
-                    slash={slashQuery}
-                    onSlash={insert}
-                    onAi={() => {
-                      setActive(null);
-                      setTab("ai");
-                    }}
-                  />
-                ) : (
-                  <div
-                    className={cn(
-                      "-mx-2 rounded-md px-2 py-0.5",
-                      canEdit && "cursor-text hover:bg-muted/60",
-                      (byBlock.get(i)?.some((x) => x.before) ?? false) && "bg-warning-soft/40",
-                    )}
-                  >
-                    <BlockView
-                      block={block}
-                      onToggle={
-                        canEdit && !suggest
-                          ? (line) => setContent(replaceBlock(content, i, toggleCheck(block, line)))
-                          : undefined
-                      }
-                    />
-                  </div>
-                )}
-                {active !== i && (
-                  <div className="absolute top-0 right-0 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                    {canEdit && (
-                      <Button size="xs" variant="ghost" aria-label={t.editBlock} onClick={() => open(i)}>
-                        ✎
-                      </Button>
-                    )}
-                    <Button size="xs" variant="ghost" aria-label={t.comment} onClick={() => startComment(i)}>
-                      ❝
-                    </Button>
-                  </div>
-                )}
-                {(byBlock.get(i) ?? [])
-                  .filter((x) => x.before)
-                  .map((x) => (
-                    <SuggestionCard
-                      key={x.id}
-                      s={x}
-                      canDecide={canEdit}
-                      busy={decide.isPending || dirty}
-                      onDecide={(accept) => decide.mutate({ id: x.id, accept })}
-                    />
-                  ))}
-              </div>
-            ))}
-            {pendingNew.map((x) => (
-              <SuggestionCard
-                key={x.id}
-                s={x}
-                canDecide={canEdit}
-                busy={decide.isPending || dirty}
-                onDecide={(accept) => decide.mutate({ id: x.id, accept })}
-              />
-            ))}
-            {active === blocks.length && (
-              <BlockEditor
-                value={editing}
-                onChange={setEditing}
-                onDone={() => {
-                  const next = editing.trim();
-                  setActive(null);
-                  if (!next || next.startsWith("/")) return;
-                  if (suggest) createSuggestion.mutate({ before: "", after: next });
-                  else setContent(insertBlock(content, blocks.length - 1, next).content);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setActive(null);
-                }}
-                area={area}
-                slash={slashQuery}
-                onSlash={(k) => setEditing(blockTemplate(k, content))}
-                onAi={() => {
-                  setActive(null);
-                  setTab("ai");
-                }}
-              />
-            )}
-            {canEdit && active !== blocks.length && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="mt-2 text-muted-foreground"
-                onClick={() => {
-                  commit();
-                  setActive(blocks.length);
-                  setEditing("");
-                }}
-              >
+            <EditorSurface h={h} onComment={startComment} />
+            {(suggestions.data ?? [])
+              .filter((x) => anchored.has(x.id))
+              .map((x) => createPortal(card(x), host(x.id), x.id))}
+            {loose.map(card)}
+            {canEdit && (
+              <Button variant="ghost" size="sm" className="mt-2 text-muted-foreground" onClick={addBlockAtEnd}>
                 + {t.newBlock}
               </Button>
             )}
@@ -546,7 +451,7 @@ function Editor({
             <AiPanel
               docKey={docKey}
               canEdit={canEdit}
-              quote={active !== null ? editing : undefined}
+              quote={aiQuote}
               onDone={() => {
                 void refreshSide();
                 void refetch();
@@ -570,42 +475,6 @@ function Editor({
         />
       )}
     </>
-  );
-}
-
-function Sep() {
-  return <span aria-hidden="true" className="mx-1.5 h-4.5 w-px bg-border" />;
-}
-
-function Tb({
-  label,
-  onClick,
-  disabled,
-  className,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      // Giữ chữ đang chọn trong ô sửa khối khi bấm nút định dạng.
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7.5 w-7.5 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-sm text-foreground hover:bg-muted disabled:cursor-default disabled:opacity-40",
-        className,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -692,178 +561,6 @@ function WorkflowSteps({ state }: { state: DocEditorState }) {
         </>
       )}
     </nav>
-  );
-}
-
-function BlockEditor({
-  value,
-  onChange,
-  onDone,
-  onKeyDown,
-  area,
-  slash,
-  onSlash,
-  onAi,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onDone: () => void;
-  onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
-  area: React.RefObject<HTMLTextAreaElement | null>;
-  slash: string | null;
-  onSlash: (k: BlockTemplate) => void;
-  onAi: () => void;
-}) {
-  const t = useText();
-  const listId = useId();
-  const options = SLASH.filter(
-    (k) => slash === null || !slash || t.insert[k].toLowerCase().includes(slash) || k.includes(slash),
-  );
-  return (
-    <div className="relative my-1">
-      <Textarea
-        ref={area}
-        autoFocus
-        aria-label={t.editBlock}
-        aria-controls={slash !== null ? listId : undefined}
-        className="min-h-20 font-mono text-sm"
-        rows={Math.min(24, Math.max(3, value.split("\n").length + 1))}
-        value={value}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        onKeyDown={onKeyDown}
-      />
-      <div className="mt-1 flex justify-end gap-2">
-        <Button size="sm" variant="outline" onClick={onDone}>
-          {t.doneBlock}
-        </Button>
-      </div>
-      {slash !== null && (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label={t.slash}
-          className="absolute top-full left-0 z-10 mt-1 w-72 rounded-lg border border-border bg-popover p-1 shadow-lg"
-        >
-          <div className="px-2.5 py-1.5 text-xs text-muted-foreground">{t.blocks}</div>
-          {options.map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="option"
-              aria-selected="false"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onSlash(k)}
-              className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-sm hover:bg-muted"
-            >
-              <span>{t.insert[k]}</span>
-              {t.insertHint[k] && <span className="text-xs text-muted-foreground">{t.insertHint[k]}</span>}
-            </button>
-          ))}
-          <button
-            type="button"
-            role="option"
-            aria-selected="false"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={onAi}
-            className="flex w-full cursor-pointer flex-col rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left text-sm hover:bg-muted"
-          >
-            <span>✦ {t.writeAi}</span>
-            <span className="text-xs text-muted-foreground">{t.writeAiHint}</span>
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Hiện một khối theo kiểu của nó; nội dung là chữ của người dùng nên không bao giờ dựng HTML thô. */
-function BlockView({ block, onToggle }: { block: string; onToggle?: ((line: number) => void) | undefined }) {
-  const { link } = useDocEditorEnv();
-  const kind = blockKind(block);
-  if (kind === "checklist") {
-    return (
-      <div className="my-2 flex flex-col gap-1.5">
-        {block.split("\n").map((line, i) => {
-          const m = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
-          // biome-ignore lint/suspicious/noArrayIndexKey: dòng checklist không có mã; vị trí là định danh.
-          if (!m) return <Markdown key={`${i}:${line}`} content={line} />;
-          return (
-            // biome-ignore lint/suspicious/noArrayIndexKey: như trên.
-            <label key={`${i}:${line}`} className="flex items-start gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1.5 accent-primary"
-                checked={m[1] !== " "}
-                disabled={!onToggle}
-                onChange={() => onToggle?.(i)}
-              />
-              <span>{m[2]}</span>
-            </label>
-          );
-        })}
-      </div>
-    );
-  }
-  if (kind === "callout") {
-    const body = block
-      .split("\n")
-      .slice(1)
-      .map((l) => l.replace(/^>\s?/, ""))
-      .join("\n");
-    return (
-      <div className="my-4 flex gap-2.5 rounded-[10px] bg-accent px-3.5 py-3 text-sm text-accent-foreground">
-        <span aria-hidden="true">ⓘ</span>
-        <Markdown content={body} />
-      </div>
-    );
-  }
-  if (kind === "code" || kind === "mermaid") {
-    const lines = block.split("\n");
-    const lang = (lines[0] ?? "").replace(/^\s*(`{3,}|~{3,})/, "").trim();
-    return (
-      <figure className="my-3">
-        {lang && (
-          <figcaption className="mb-1 font-mono text-xs text-muted-foreground">
-            {lang === "mermaid" ? "Mermaid" : lang}
-          </figcaption>
-        )}
-        <pre className="overflow-x-auto rounded-lg bg-brand-navy px-3.5 py-3 font-mono text-sm leading-relaxed whitespace-pre-wrap text-[#E2E8F0]">
-          {lines
-            .slice(
-              1,
-              lines
-                .at(-1)
-                ?.trim()
-                .match(/^(`{3,}|~{3,})$/)
-                ? -1
-                : undefined,
-            )
-            .join("\n")}
-        </pre>
-      </figure>
-    );
-  }
-  if (kind === "embed") {
-    const key = embedKey(block) ?? "";
-    return (
-      <>
-        {link({
-          to: { kind: "doc", key },
-          className: "my-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted",
-          children: (
-            <>
-              <span aria-hidden="true">↗</span>
-              <span className="font-mono">{key}</span>
-            </>
-          ),
-        })}
-      </>
-    );
-  }
-  return (
-    <div className="py-1">
-      <Markdown content={block} />
-    </div>
   );
 }
 

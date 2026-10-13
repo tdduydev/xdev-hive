@@ -118,7 +118,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
           <div style="margin: 16px 0; padding: 12px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-foreground); font-size: 14px; display: flex; gap: 10px;"><span>ⓘ</span><span>{{t.callout1}}</span></div>
 
           <h2>1. {{t.h_goal}}</h2>
-          <p>{{t.goal1}} <span class="hl" title="comment">{{t.goalHl}}</span>{{t.goal2}}</p>
+          <p style="position: relative;">{{t.goal1}} <span class="hl" title="comment">{{t.goalHl}}</span>{{t.goal2}}
+            <!-- Menu nổi khi chọn chữ (Tiptap BubbleMenu): định dạng và bình luận cho đoạn đang chọn. -->
+            <span class="menu" role="toolbar" aria-label="{{t.selMenu}}" style="left: 40%; top: -42px; display: inline-flex; gap: 2px;"><button type="button" class="tb" aria-label="Bold" style="font-weight: 700;">B</button><button type="button" class="tb" aria-label="Italic" style="font-style: italic;">I</button><button type="button" class="tb" aria-label="Strike" style="text-decoration: line-through;">S</button><button type="button" class="tb mono" aria-label="Code" style="font-size: 12px;">&lt;/&gt;</button><button type="button" class="tb" aria-label="Link">↗</button><span class="sep"></span><button type="button" class="tb" aria-label="{{t.comment}}">❝</button></span>
+          </p>
 
           <h2>2. {{t.h_req}}</h2>
           <p>{{t.req1}}</p>
@@ -331,7 +334,7 @@ class Component extends DCLogic {
       suggestion: ['Đề xuất sửa', 'Suggested edit'], sugBy: ['Claude gợi ý sửa', 'Claude suggests'], sugWhy: ['khớp với quy ước phí trong tài liệu payment-api/money v7', 'matches the fee rule in payment-api/money v7'], rejectSug: ['Bỏ', 'Reject'], acceptSug: ['Nhận', 'Accept'],
       req: ['Yêu cầu', 'Requirement'], priority: ['Ưu tiên', 'Priority'], r1: ['Hoàn nhiều lần cho một giao dịch', 'Multiple refunds per transaction'], r2: ['Chặn tổng hoàn vượt số tiền gốc', 'Block refunds above the original amount'], r3: ['Hiện lịch sử hoàn trên web', 'Show refund history on web'],
       h_accept: ['Tiêu chí chấp nhận', 'Acceptance criteria'], ac1: ['Hoàn 2 lần 50% thì lần thứ 3 bị chặn với BILL-409.', 'Two 50% refunds block the third with BILL-409.'], ac2: ['Đối soát cuối ngày khớp tổng tiền hoàn.', 'End-of-day reconciliation matches refunded totals.'],
-      h_api: ['API', 'API'], slash: ['Chèn khối', 'Insert block'], blocks: ['Khối cơ bản', 'Basic blocks'],
+      h_api: ['API', 'API'], slash: ['Chèn khối', 'Insert block'], selMenu: ['Định dạng đoạn chọn', 'Selection format'], blocks: ['Khối cơ bản', 'Basic blocks'],
       c1: ['Phí đã thu có được hoàn không? Pháp chế cần xác nhận.', 'Are collected fees refundable? Legal needs to confirm.'], c2: ['Đã hỏi pháp chế, chờ phản hồi trước checkpoint Pháp chế.', 'Asked legal; waiting before the Legal checkpoint.'], reply: ['Trả lời…', 'Reply…'], resolve: ['Đóng', 'Resolve'], resolved: ['4 bình luận đã đóng', '4 resolved comments'],
       planMax: ['gói Max của bạn', 'your Max plan'], planVia: ['Chạy qua app xDev Hive trên máy bạn', 'Runs through the xDev Hive app on your machine'], provider: ['Nhà cung cấp', 'Provider'],
       aiPh: ['Ví dụ: viết phần rủi ro dựa trên runbook thanh toán', 'e.g. write the risks section from the payments runbook'],
