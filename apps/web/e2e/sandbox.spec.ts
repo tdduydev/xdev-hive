@@ -27,6 +27,7 @@ const PROJECT = {
     outcome: { default: [], byType: {} },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { enabled: false, label: "hive", mention: "hive" },
+    brief: { auto: true, refreshCommits: 50, refreshDays: 7 },
     budget: {},
   },
   createdBy: "u1",
