@@ -5,6 +5,57 @@ import { buildPatch, fieldOfPath, formFromSettings, saveErrors } from "@/lib/pro
 
 const base = (): ProjectSettings => defaultProjectSettings(1);
 
+describe("buildPatch: tiết kiệm token", () => {
+  it("settings chưa có tokenSaving (hub cũ) hiện mặc định và không tạo bản vá", () => {
+    const s = base();
+    // biome-ignore lint/suspicious/noExplicitAny: mô phỏng hub cũ không gửi mục này
+    delete (s as any).tokenSaving;
+    const form = formFromSettings(s);
+    expect(form).toMatchObject({
+      tokenSaving: true,
+      bashMaxChars: "15000",
+      autocompactPct: "70",
+      subagentModel: "sonnet",
+      cacheTtl: "5m",
+    });
+    expect(buildPatch(form, s)).toEqual({ ok: true, patch: null });
+  });
+
+  it("chỉ gửi mục tokenSaving khi đổi, đủ năm trường", () => {
+    const s = base();
+    const form = { ...formFromSettings(s), cacheTtl: "1h" as const, bashMaxChars: " 20000 " };
+    expect(buildPatch(form, s)).toEqual({
+      ok: true,
+      patch: {
+        tokenSaving: {
+          enabled: true,
+          bashMaxChars: 20000,
+          autocompactPct: 70,
+          subagentModel: "sonnet",
+          cacheTtl: "1h",
+        },
+      },
+    });
+  });
+
+  it("số ngoài khoảng và tên model trống báo lỗi của hub ở đúng ô", () => {
+    const s = base();
+    const r = buildPatch({ ...formFromSettings(s), bashMaxChars: "500", subagentModel: "  " }, s);
+    expect(r).toMatchObject({
+      ok: false,
+      errors: { bashMaxChars: "Tối thiểu 1.000 ký tự.", subagentModel: "Nhập tên model." },
+    });
+  });
+
+  it("ô số trống hoặc là chữ báo lỗi ngay, không gửi", () => {
+    const s = base();
+    const empty = buildPatch({ ...formFromSettings(s), autocompactPct: "" }, s);
+    expect(!empty.ok && empty.errors.autocompactPct).toBe("Nhập một số.");
+    const text = buildPatch({ ...formFromSettings(s), autocompactPct: "abc" }, s);
+    expect(!text.ok && text.errors.autocompactPct).toBe("Nhập một số, hoặc để trống.");
+  });
+});
+
 describe("buildPatch", () => {
   it("không đổi gì thì không có bản vá", () => {
     const s = base();

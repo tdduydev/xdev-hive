@@ -86,6 +86,20 @@ const text: Dict<{
   cliDefault: string;
   writeCode: string;
   reviewCode: string;
+  tokensTitle: string;
+  tokensHint: string;
+  tokensOn: string;
+  tokensOnHint: string;
+  bashChars: string;
+  bashCharsHint: string;
+  compactPct: string;
+  compactPctHint: string;
+  subagent: string;
+  subagentHint: string;
+  cacheTtl: string;
+  cacheTtlHint: string;
+  cacheTtl5: string;
+  cacheTtl1h: string;
   permTitle: string;
   pWt: string;
   pWtHint: string;
@@ -165,6 +179,21 @@ const text: Dict<{
     cliDefault: "Mặc định của CLI",
     writeCode: "Viết code",
     reviewCode: "Review",
+    tokensTitle: "Tiết kiệm token",
+    tokensHint:
+      "Worker đặt các giới hạn này cho run Claude Code của dự án. Codex, Gemini và Antigravity không bị ảnh hưởng. Bản chỉnh của máy và biến môi trường của dự án có thể ghi đè từng mục.",
+    tokensOn: "Bật tiết kiệm token",
+    tokensOnHint: "Tắt thì run Claude Code dùng cấu hình mặc định của CLI.",
+    bashChars: "Output lệnh tối đa",
+    bashCharsHint: "Ký tự giữ lại từ một lệnh Bash. Output dài bị đọc lại ở mọi lượt sau nên rất tốn.",
+    compactPct: "Tự nén ngữ cảnh khi đầy",
+    compactPctHint: "Phần trăm ngữ cảnh khiến agent tự nén. Thấp hơn là nén sớm hơn, ngữ cảnh gọn hơn.",
+    subagent: "Model của subagent",
+    subagentHint: "Ví dụ sonnet hoặc haiku. Subagent không kế thừa model đắt của run chính.",
+    cacheTtl: "Thời gian giữ cache",
+    cacheTtlHint: "5 phút đủ khi các lượt cách nhau ngắn. Chọn 1 giờ nếu run hay chờ build, test dài hơn 5 phút.",
+    cacheTtl5: "5 phút",
+    cacheTtl1h: "1 giờ",
     permTitle: "Quyền CLI của run",
     pWt: "Trong worktree (khuyên dùng)",
     pWtHint:
@@ -247,6 +276,23 @@ const text: Dict<{
     cliDefault: "CLI default",
     writeCode: "Writing code",
     reviewCode: "Review",
+    tokensTitle: "Token saving",
+    tokensHint:
+      "The worker sets these limits for the project's Claude Code runs. Codex, Gemini and Antigravity are not affected. A machine override or a project environment variable can replace each item.",
+    tokensOn: "Turn on token saving",
+    tokensOnHint: "When off, Claude Code runs use the CLI defaults.",
+    bashChars: "Max command output",
+    bashCharsHint:
+      "Characters kept from one Bash command. Long output is re-read on every later turn, so it is costly.",
+    compactPct: "Auto-compact when context is full",
+    compactPctHint: "Context percentage that makes the agent compact. Lower compacts earlier and keeps context small.",
+    subagent: "Subagent model",
+    subagentHint: "For example sonnet or haiku. Subagents do not inherit the main run's expensive model.",
+    cacheTtl: "Cache lifetime",
+    cacheTtlHint:
+      "5 minutes is enough when turns are close together. Pick 1 hour if runs often wait on builds or tests longer than 5 minutes.",
+    cacheTtl5: "5 minutes",
+    cacheTtl1h: "1 hour",
     permTitle: "CLI permissions for runs",
     pWt: "Inside the worktree (recommended)",
     pWtHint:
@@ -273,7 +319,7 @@ const text: Dict<{
   },
 };
 
-/** /projects/$key/settings: merge, review chéo, plan mode, ngân sách, model, quyền CLI của run. */
+/** /projects/$key/settings: merge, review chéo, plan mode, ngân sách, model, tiết kiệm token, quyền CLI của run. */
 export function ProjectSettingsPage() {
   const me = useMe();
   const { org, api } = useOrg();
@@ -429,7 +475,14 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
   const [failure, setFailure] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [confirmFull, setConfirmFull] = useState(false);
-  const ids = { method: useId(), reviewBy: useId(), paths: useId(), pathsHint: useId(), pathsError: useId() };
+  const ids = {
+    cacheTtl: useId(),
+    method: useId(),
+    reviewBy: useId(),
+    paths: useId(),
+    pathsHint: useId(),
+    pathsError: useId(),
+  };
 
   const save = useMutation({
     mutationFn: (patch: NonNullable<Extract<ReturnType<typeof buildPatch>, { ok: true }>["patch"]>) =>
@@ -484,6 +537,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
     { href: "#sandbox", label: t.sandboxTitle },
     { href: "#budget", label: t.budgetTitle },
     { href: "#model", label: t.modelTitle },
+    { href: "#tokens", label: t.tokensTitle },
     { href: "#perm", label: t.permTitle },
   ];
 
@@ -762,6 +816,59 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                   />
                 </div>
               ))}
+            </div>
+          </Section>
+
+          <Section id="tokens" title={t.tokensTitle} hint={t.tokensHint}>
+            <SwitchRow
+              label={t.tokensOn}
+              hint={t.tokensOnHint}
+              checked={form.tokenSaving}
+              onChange={(v) => set("tokenSaving", v)}
+              disabled={disabled}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label={t.bashChars}
+                hint={t.bashCharsHint}
+                error={errors.bashMaxChars}
+                value={form.bashMaxChars}
+                onChange={(v) => set("bashMaxChars", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="ký tự"
+              />
+              <TextField
+                label={t.compactPct}
+                hint={t.compactPctHint}
+                error={errors.autocompactPct}
+                value={form.autocompactPct}
+                onChange={(v) => set("autocompactPct", v)}
+                disabled={disabled || !form.tokenSaving}
+                inputMode="numeric"
+                suffix="%"
+              />
+              <TextField
+                label={t.subagent}
+                hint={t.subagentHint}
+                error={errors.subagentModel}
+                value={form.subagentModel}
+                onChange={(v) => set("subagentModel", v)}
+                disabled={disabled || !form.tokenSaving}
+              />
+              <Field invalid={errors.cacheTtl !== undefined}>
+                <FieldLabel htmlFor={ids.cacheTtl}>{t.cacheTtl}</FieldLabel>
+                <NativeSelect
+                  id={ids.cacheTtl}
+                  value={form.cacheTtl}
+                  onChange={(e) => set("cacheTtl", e.currentTarget.value as SettingsForm["cacheTtl"])}
+                  disabled={disabled || !form.tokenSaving}
+                >
+                  <option value="5m">{t.cacheTtl5}</option>
+                  <option value="1h">{t.cacheTtl1h}</option>
+                </NativeSelect>
+                {errors.cacheTtl ? <FieldError>{errors.cacheTtl}</FieldError> : <FieldHint>{t.cacheTtlHint}</FieldHint>}
+              </Field>
             </div>
           </Section>
 
