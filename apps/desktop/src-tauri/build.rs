@@ -36,6 +36,7 @@ fn main() {
         "cli_profile_usage",
         "cli_profile_resume",
         "open_login_terminal",
+        "open_cli_terminal",
         "folder_tree",
         "propose_doc",
         "update_status",
