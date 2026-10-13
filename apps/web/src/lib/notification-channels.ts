@@ -11,6 +11,10 @@ export const NOTIFICATION_EVENT_LABEL: Record<NotificationEvent, string> = {
   "plan.awaiting_approval": "Kế hoạch chờ duyệt",
   "review.awaiting": "Tài liệu chờ duyệt",
   "review.overdue": "Duyệt tài liệu quá hạn",
+  "code_review.awaiting": "PR chờ duyệt",
+  "code_review.overdue": "Duyệt PR quá hạn",
+  "code_review.returned": "PR bị trả lại",
+  "code_review.approved": "PR đã duyệt, chờ merge",
 };
 
 export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_LABEL) as NotificationEvent[];
