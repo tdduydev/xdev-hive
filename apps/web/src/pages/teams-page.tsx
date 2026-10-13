@@ -197,15 +197,6 @@ const text: Dict<{
   },
 };
 
-export interface TeamsSearch {
-  /** Đội đang xem; không có thì xem đội đầu tiên. */
-  doi?: string;
-}
-
-export function validateTeamsSearch(search: Record<string, unknown>): TeamsSearch {
-  return typeof search.doi === "string" ? { doi: search.doi } : {};
-}
-
 /** Quyền của người đang xem với đội đang chọn; chỉ để ẩn nút, hub vẫn kiểm lại. */
 type Access = "loading" | "none" | "view" | "manage";
 

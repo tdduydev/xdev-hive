@@ -16,35 +16,20 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { StatTile } from "@/components/ui/stat-tile.tsx";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { formatUsd } from "@/lib/format.ts";
+import { type TasksSearch, validateTasksSearch } from "@/lib/route-search.ts";
 import { cliLabel, prLabel } from "@/lib/run-view.ts";
 import {
   BOARD_FILTERS,
-  type BoardFilter,
   type BoardRow,
   boardRows,
   boardStats,
   filterCounts,
   filterRows,
-  isBoardFilter,
   runActivity,
 } from "@/lib/task-board.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
-
-export interface TasksSearch {
-  /** Nhóm lọc; không có là "Tất cả". */
-  status?: BoardFilter;
-  /** Chữ trong ô tìm. */
-  q?: string;
-}
-
-export function validateTasksSearch(search: Record<string, unknown>): TasksSearch {
-  return {
-    ...(isBoardFilter(search.status) && search.status !== "all" ? { status: search.status } : {}),
-    ...(typeof search.q === "string" && search.q ? { q: search.q } : {}),
-  };
-}
 
 /** Bảng việc tự làm mới sau chừng này; chi tiết một run thì nhận trực tiếp qua SSE ở /runs/$id. */
 const REFRESH_MS = 30_000;
