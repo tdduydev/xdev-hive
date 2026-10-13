@@ -163,6 +163,6 @@ when the organization policy forbids full permission.
 
 - [0006](0006-outbound-worker-protocol.md), [0007](0007-sandbox-gvisor-egress-proxy.md),
   [0017](0017-admin-web-client-app-and-machine-ownership.md), [run-permissions.md](../run-permissions.md)
-- SRS FLEET-10, DESK-12
+- SRS FLEET-11, DESK-12
 - `worker/internal/projects`, `worker/internal/runner/local.go`, `apps/hub/src/modules/runs/engine.ts`
   (`machinePermission`), `apps/desktop/src/screens/projects-screen.tsx`

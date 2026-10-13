@@ -13,12 +13,29 @@ export interface Limit {
   percent: number;
   resetsAt: string | null;
 }
+/** Claude: tuần theo từng model ("Current week (Sonnet only)"). */
+export interface ModelLimit {
+  name: string;
+  percent: number;
+  resetsAt: string | null;
+}
+/** Antigravity: mỗi nhóm model có hạn mức phiên 5 giờ và tuần riêng; `sessionDisabled` thì nhóm không có hạn mức phiên. */
+export interface GroupLimit {
+  name: string;
+  models: string;
+  session: Limit | null;
+  week: Limit | null;
+  sessionDisabled?: boolean;
+}
 export interface Usage {
   session: Limit | null;
   week: Limit | null;
   checkedAt: string | null;
   /** Vì sao không có số (worker viết tiếng Việt): "Chưa đăng nhập", "CLI không báo", … */
   reason: string | null;
+  /** Hai trường dưới do worker mới trả; worker cũ không có thì màn chỉ vẽ hai thước chung. */
+  models?: ModelLimit[];
+  groups?: GroupLimit[];
 }
 
 export interface Plan {
@@ -34,7 +51,7 @@ export interface Plan {
   stopAtWeek?: number;
   roles?: Role[];
   timeoutMinutes?: number;
-  /** Worker chọn được gói của CLI này (Claude Code, Codex). */
+  /** Worker chọn được gói của CLI này (Claude Code, Codex, Antigravity). */
   supported: boolean;
   /** null khi không biết cách kiểm đăng nhập của CLI này. */
   loggedIn: boolean | null;
@@ -104,12 +121,34 @@ export const openLoginTerminal = (command: string, env: Record<string, string>) 
 export const openCliTerminal = (id: string, folder: string) =>
   invoke<void>("open_cli_terminal", { id, folder: folder.trim() || null });
 
+/** Đăng nhập tìm thấy trên máy mà accounts.json chưa có (`accounts discover`). */
+export interface FoundLogin {
+  cli: string;
+  configDir: string | null;
+  loggedIn: boolean | null;
+  email: string | null;
+  suggestedId: string;
+  note: string | null;
+}
+
+/** Worker cũ chưa có lệnh `accounts discover` thì lệnh lỗi; nơi gọi nuốt lỗi và ẩn băng tìm gói. */
+export const discoverPlans = () => invoke<{ found: FoundLogin[] }>("cli_profile_discover");
+export const addFoundPlan = (f: Pick<FoundLogin, "cli" | "configDir">) =>
+  invoke<Plans>("cli_profile_discover_add", { cli: f.cli, configDir: f.configDir, label: null });
+
 export const CLI_NAME: Record<string, string> = {
   claude: "Claude Code",
   codex: "Codex",
   gemini: "Gemini",
   antigravity: "Antigravity",
 };
+
+/** Thứ tự khối trên màn; CLI lạ xếp sau theo thứ tự xuất hiện. */
+export const CLI_ORDER = ["claude", "codex", "antigravity"] as const;
+
+/** CLI có luồng đăng nhập để thêm gói từ app; Antigravity chỉ vào danh sách qua "tìm trên máy". */
+export const ADDABLE_CLIS = ["claude", "codex"] as const;
+export type AddableCli = (typeof ADDABLE_CLIS)[number];
 
 /** Mặc định của worker khi gói chưa có trường (accounts.json của bản cũ). */
 export const DEFAULTS = { stopAtSession: 95, stopAtWeek: 90, timeoutMinutes: 60, roles: ROLES };
@@ -161,6 +200,46 @@ export function machineSummary(list: Plan[], now = Date.now()) {
     slots: ready.reduce((n, p) => n + Math.max(0, slots(p)), 0),
     reset: resets[0] ?? null,
   };
+}
+
+/** Gói gom theo CLI, mỗi CLI giữ thứ tự của `planRows` (gói cần ra tay lên đầu, gói tắt gom riêng). */
+export function cliBlocks(list: Plan[], now = Date.now()): { cli: string; on: Plan[]; off: Plan[] }[] {
+  const { on, off } = planRows(list, now);
+  const seen = new Set(list.map((p) => p.cli));
+  const clis = [
+    ...CLI_ORDER.filter((c) => seen.has(c)),
+    ...[...seen].filter((c) => !(CLI_ORDER as readonly string[]).includes(c)),
+  ];
+  return clis.map((cli) => ({ cli, on: on.filter((p) => p.cli === cli), off: off.filter((p) => p.cli === cli) }));
+}
+
+/** Phần quota còn lại (0–100) của các gói: gói thấp nhất và trung bình. */
+export interface Spread {
+  lowest: number;
+  average: number;
+}
+
+const left = (l: Limit) => Math.max(0, Math.min(100, 100 - Math.round(l.percent)));
+
+function spread(limits: Limit[]): Spread | null {
+  if (limits.length === 0) return null;
+  const values = limits.map(left);
+  return { lowest: Math.min(...values), average: Math.round(values.reduce((a, b) => a + b, 0) / values.length) };
+}
+
+/** Ô "Cả máy" theo từng CLI: số gói, quota phiên và tuần còn lại, lần reset sớm nhất của các gói đang bật. */
+export function cliSummary(list: Plan[], now = Date.now()) {
+  return cliBlocks(list, now).map(({ cli, on, off }) => {
+    const reset = machineSummary(on, now).reset;
+    const pick = (f: (p: Plan) => Limit | null | undefined) => spread(on.map(f).filter((l): l is Limit => !!l));
+    return {
+      cli,
+      plans: on.length + off.length,
+      session: pick((p) => p.usage?.session),
+      week: pick((p) => p.usage?.week),
+      reset,
+    };
+  });
 }
 
 /** Lần đọc quota mới nhất của các gói đang bật. */

@@ -8,23 +8,56 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@xdev-hive/ui/dialog";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "@xdev-hive/ui/empty";
 import { Input } from "@xdev-hive/ui/input";
 import { Label } from "@xdev-hive/ui/label";
-import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { Pill } from "@xdev-hive/ui/pill";
-import { ChevronRightIcon, EllipsisIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
-import { type FormEvent, Fragment, type ReactNode, useCallback, useEffect, useId, useState } from "react";
+import {
+  ActivityIcon,
+  ChevronRightIcon,
+  CircleCheckIcon,
+  EllipsisIcon,
+  HourglassIcon,
+  LockIcon,
+  type LucideIcon,
+  OctagonAlertIcon,
+  PackageXIcon,
+  PlusIcon,
+  PowerOffIcon,
+  RefreshCwIcon,
+  ScanSearchIcon,
+  TriangleAlertIcon,
+} from "lucide-react";
+import {
+  type CSSProperties,
+  type FormEvent,
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useState,
+} from "react";
 import { shortPath, useFolder } from "@/lib/folder.ts";
 import { type Dict, type Lang, useLang, useT } from "@/lib/i18n.ts";
 import {
+  ADDABLE_CLIS,
+  type AddableCli,
+  addFoundPlan,
   addPlan,
   CLI_NAME,
+  cliBlocks,
+  cliSummary,
   clock,
   DEFAULTS,
+  discoverPlans,
+  type FoundLogin,
+  type GroupLimit,
   type Limit,
   LOGIN_WAYS,
   type LoginWay,
   lastChecked,
+  type ModelLimit,
   machineSummary,
   meterTone,
   openCliTerminal,
@@ -32,7 +65,6 @@ import {
   type Plan,
   type PlanPatch,
   type PlanState,
-  planRows,
   planState,
   plans,
   RANGES,
@@ -43,6 +75,7 @@ import {
   reloginOf,
   removePlan,
   resumePlan,
+  type Spread,
   setPlanEnabled,
   updatePlan,
 } from "@/lib/plans.ts";
@@ -58,14 +91,22 @@ type Notice = { tone: "ok" | "info" | "bad"; text: string };
 const text: Dict<{
   lead: string;
   add: string;
+  addFor: (cli: string) => string;
   loading: string;
+  emptyTitle: string;
   empty: string;
+  machine: string;
   summaryReady: string;
   summaryReadySub: (total: number) => string;
   summaryRunning: string;
   summaryRunningSub: string;
   summarySlots: string;
   summarySlotsSub: (reset: string) => string;
+  cliCount: (n: number) => string;
+  sessionLeft: string;
+  weekLeft: string;
+  spread: (lowest: number, average: number) => string;
+  earliestReset: (time: string) => string;
   unknown: string;
   updatedAt: (time: string) => string;
   readAll: string;
@@ -75,11 +116,14 @@ const text: Dict<{
   states: Record<PlanState, string>;
   session: string;
   week: string;
+  byModel: string;
+  weekOf: (model: string) => string;
+  groupDisabled: string;
   stopMark: (percent: number) => string;
   resetAt: (time: string) => string;
   resetPast: string;
   why: { signedOut: string; notChecked: string; noReport: string };
-  meta: (priority: number, runs: number) => string;
+  meta: (priority: number, active: number, max: number) => string;
   enable: string;
   disable: string;
   toggleLabel: (on: boolean, label: string) => string;
@@ -113,9 +157,23 @@ const text: Dict<{
   removing: string;
   removed: (id: string) => string;
   cancel: string;
+  foundTitle: (n: number) => string;
+  foundSub: string;
+  foundReview: string;
+  foundHide: string;
+  foundLead: string;
+  foundDefault: (cli: string) => string;
+  foundSignedOut: string;
+  foundAdd: (n: number) => string;
+  foundAdding: string;
+  foundAdded: (n: number) => string;
   addTitle: string;
+  addStep: (step: number) => string;
+  addPickCli: string;
+  addCliHints: Record<AddableCli, string>;
+  addAntigravity: string;
+  addChangeCli: string;
   addLead: string;
-  cli: string;
   accountLabel: string;
   accountLabelHint: (example: string) => string;
   loginWay: string;
@@ -139,16 +197,25 @@ const text: Dict<{
   range: (field: string, min: number, max: number) => string;
 }> = {
   vi: {
-    lead: "Mỗi gói là một tài khoản Claude Code hay Codex đăng nhập trên máy này. Worker chia run cho các gói đang bật: gói còn nhiều quota trước, rồi theo ưu tiên; gói chạm ngưỡng dừng hay hết lượt được nghỉ tới giờ reset.",
+    lead: "Mỗi gói là một tài khoản Claude Code, Codex hay Antigravity đăng nhập trên máy này. Worker chia run cho các gói đang bật: gói còn nhiều quota trước, rồi theo ưu tiên; gói chạm ngưỡng dừng hay hết lượt được nghỉ tới giờ reset.",
     add: "Thêm gói",
+    addFor: (cli) => `Thêm gói ${cli}`,
     loading: "Đang đọc gói…",
-    empty: "Chưa có gói nào: worker dùng đăng nhập mặc định của từng CLI. Bấm Thêm gói để đăng nhập thêm tài khoản.",
+    emptyTitle: "Chưa có gói nào",
+    empty:
+      "Worker đang dùng đăng nhập mặc định của từng CLI. Thêm gói để đăng nhập thêm tài khoản cho worker xoay vòng.",
+    machine: "Cả máy",
     summaryReady: "Gói sẵn sàng",
     summaryReadySub: (total) => `trên ${total} gói đang bật`,
     summaryRunning: "Đang chạy",
     summaryRunningSub: "agent trên máy này",
     summarySlots: "Chỗ trống",
     summarySlotsSub: (reset) => `reset sớm nhất: ${reset}`,
+    cliCount: (n) => `${n} gói`,
+    sessionLeft: "Phiên còn",
+    weekLeft: "Tuần còn",
+    spread: (lowest, average) => `thấp nhất ${lowest}% · TB ${average}%`,
+    earliestReset: (time) => `reset sớm nhất ${time}`,
     unknown: "Chưa biết",
     updatedAt: (time) => `cập nhật lúc ${time}`,
     readAll: "Đọc lại quota",
@@ -167,11 +234,14 @@ const text: Dict<{
     },
     session: "Phiên 5 giờ",
     week: "Tuần",
+    byModel: "Tuần theo model",
+    weekOf: (model) => `Tuần ${model}`,
+    groupDisabled: "Phiên 5 giờ của nhóm này đang tắt",
     stopMark: (percent) => `Ngưỡng dừng ${percent}%`,
     resetAt: (time) => `reset ${time}`,
     resetPast: "đã tới giờ reset, chờ đọc lại",
     why: { signedOut: "chưa đăng nhập", notChecked: "chưa kiểm", noReport: "CLI không báo" },
-    meta: (priority, runs) => `ưu tiên ${priority} · tối đa ${runs} run cùng lúc`,
+    meta: (priority, active, max) => `ưu tiên ${priority} · ${active}/${max} run`,
     enable: "Bật",
     disable: "Tắt",
     toggleLabel: (on, label) => `${on ? "Tắt" : "Bật"} gói ${label}`,
@@ -206,10 +276,31 @@ const text: Dict<{
     removing: "Đang xoá…",
     removed: (id) => `Đã xoá gói ${id}. Thư mục đăng nhập của CLI vẫn còn trên máy.`,
     cancel: "Huỷ",
+    foundTitle: (n) => `Tìm thấy ${n} đăng nhập chưa thêm`,
+    foundSub: "trên máy này, ngoài danh sách gói.",
+    foundReview: "Xem và thêm",
+    foundHide: "Ẩn",
+    foundLead:
+      "Tích những đăng nhập muốn thêm vào danh sách gói. App chỉ ghi đường dẫn thư mục đăng nhập, không đọc token.",
+    foundDefault: (cli) => `Đăng nhập mặc định của ${cli}`,
+    foundSignedOut: "Chưa đăng nhập",
+    foundAdd: (n) => `Thêm ${n} gói`,
+    foundAdding: "Đang thêm…",
+    foundAdded: (n) => `Đã thêm ${n} gói từ đăng nhập có sẵn trên máy.`,
     addTitle: "Thêm gói",
+    addStep: (step) =>
+      step === 1
+        ? "Bước 1/2: chọn CLI."
+        : "Bước 2/2: chọn cách đăng nhập. App mở Terminal chạy lệnh đăng nhập rồi tự chờ bạn đăng nhập xong.",
+    addPickCli: "CLI",
+    addCliHints: {
+      claude: "Gói Pro, Max, Team, SSO hay Console",
+      codex: "Đăng nhập bằng ChatGPT",
+    },
+    addAntigravity: "Antigravity không đăng nhập từ đây: đăng nhập trong ứng dụng Antigravity, app tự tìm thấy.",
+    addChangeCli: "Đổi CLI",
     addLead:
       "Đăng nhập thêm một tài khoản của CLI trên máy này, trong thư mục đăng nhập riêng để worker xoay vòng các gói.",
-    cli: "CLI",
     accountLabel: "Tên hiển thị",
     accountLabelHint: (example) => `để trống: ${example}`,
     loginWay: "Cách đăng nhập",
@@ -255,16 +346,25 @@ const text: Dict<{
     range: (field, min, max) => `${field}: nhập số nguyên từ ${min} đến ${max}.`,
   },
   en: {
-    lead: "Each plan is a Claude Code or Codex account signed in on this machine. The worker spreads runs over the enabled plans: most quota left first, then priority; a plan at its stop threshold or out of usage rests until the reset.",
+    lead: "Each plan is a Claude Code, Codex or Antigravity account signed in on this machine. The worker spreads runs over the enabled plans: most quota left first, then priority; a plan at its stop threshold or out of usage rests until the reset.",
     add: "Add plan",
+    addFor: (cli) => `Add ${cli} plan`,
     loading: "Reading plans…",
-    empty: "No plans yet: the worker uses each CLI's default sign-in. Press Add plan to sign in another account.",
+    emptyTitle: "No plans yet",
+    empty:
+      "The worker uses each CLI's default sign-in. Add a plan to sign in another account for the worker to rotate.",
+    machine: "Whole machine",
     summaryReady: "Plans ready",
     summaryReadySub: (total) => `of ${total} enabled plans`,
     summaryRunning: "Running",
     summaryRunningSub: "agents on this machine",
     summarySlots: "Free slots",
     summarySlotsSub: (reset) => `earliest reset: ${reset}`,
+    cliCount: (n) => `${n} ${n === 1 ? "plan" : "plans"}`,
+    sessionLeft: "Session left",
+    weekLeft: "Week left",
+    spread: (lowest, average) => `lowest ${lowest}% · avg ${average}%`,
+    earliestReset: (time) => `earliest reset ${time}`,
     unknown: "Unknown",
     updatedAt: (time) => `updated at ${time}`,
     readAll: "Read quota again",
@@ -283,11 +383,14 @@ const text: Dict<{
     },
     session: "5-hour session",
     week: "Week",
+    byModel: "Week by model",
+    weekOf: (model) => `Week ${model}`,
+    groupDisabled: "The 5-hour session of this group is off",
     stopMark: (percent) => `Stop threshold ${percent}%`,
     resetAt: (time) => `resets ${time}`,
     resetPast: "reset time passed, waiting for a new read",
     why: { signedOut: "not signed in", notChecked: "not checked", noReport: "the CLI does not report it" },
-    meta: (priority, runs) => `priority ${priority} · up to ${runs} runs at once`,
+    meta: (priority, active, max) => `priority ${priority} · ${active}/${max} runs`,
     enable: "Enable",
     disable: "Disable",
     toggleLabel: (on, label) => `${on ? "Disable" : "Enable"} plan ${label}`,
@@ -325,10 +428,31 @@ const text: Dict<{
     removing: "Removing…",
     removed: (id) => `Removed plan ${id}. The CLI's sign-in folder stays on this machine.`,
     cancel: "Cancel",
+    foundTitle: (n) => `Found ${n} sign-in${n === 1 ? "" : "s"} not added yet`,
+    foundSub: "on this machine, outside the plan list.",
+    foundReview: "Review and add",
+    foundHide: "Hide",
+    foundLead:
+      "Tick the sign-ins to add to the plan list. The app only records the sign-in folder path and never reads tokens.",
+    foundDefault: (cli) => `Default ${cli} sign-in`,
+    foundSignedOut: "Not signed in",
+    foundAdd: (n) => `Add ${n} ${n === 1 ? "plan" : "plans"}`,
+    foundAdding: "Adding…",
+    foundAdded: (n) => `Added ${n} ${n === 1 ? "plan" : "plans"} from sign-ins already on this machine.`,
     addTitle: "Add plan",
+    addStep: (step) =>
+      step === 1
+        ? "Step 1 of 2: pick the CLI."
+        : "Step 2 of 2: pick how to sign in. The app opens a terminal with the sign-in command and waits until you finish.",
+    addPickCli: "CLI",
+    addCliHints: {
+      claude: "Pro, Max, Team, SSO or Console plan",
+      codex: "Sign in with ChatGPT",
+    },
+    addAntigravity: "Antigravity is not signed in from here: sign in inside the Antigravity app and this app finds it.",
+    addChangeCli: "Change CLI",
     addLead:
       "Sign in one more CLI account on this machine, in a sign-in folder of its own so the worker can rotate plans.",
-    cli: "CLI",
     accountLabel: "Display name",
     accountLabelHint: (example) => `leave empty: ${example}`,
     loginWay: "Sign-in method",
@@ -388,10 +512,33 @@ const STATE_TONE: Record<PlanState, "neutral" | "ok" | "warn" | "bad" | "sel"> =
   near: "warn",
 };
 
+/** Trạng thái đi kèm ký hiệu để không chỉ phân biệt bằng màu. */
+const STATE_ICON: Record<PlanState, LucideIcon> = {
+  running: ActivityIcon,
+  ready: CircleCheckIcon,
+  disabled: PowerOffIcon,
+  noCli: PackageXIcon,
+  signedOut: LockIcon,
+  overLimit: OctagonAlertIcon,
+  cooling: HourglassIcon,
+  near: TriangleAlertIcon,
+};
+
 const BAR_TONE = { ok: "bg-primary", near: "bg-warning", over: "bg-destructive" } as const;
 
+/** Chữ cái làm logo của CLI: app không có logo thương hiệu của các CLI. */
+const CLI_MARK: Record<string, string> = { claude: "C", codex: "O", antigravity: "A" };
+
+/** Lưới thẻ: 1 cột khi hẹp, 2 cột từ 900px, 3 cột từ 1200px. */
+const CARD_GRID =
+  "m-0 grid list-none grid-cols-1 gap-3 p-0 min-[900px]:grid-cols-2 min-[1200px]:grid-cols-3 [&>li]:min-w-0";
+
 const name = (p: Plan) => p.label || p.id;
+const cliName = (cli: string) => CLI_NAME[cli] ?? cli;
 const future = (iso: string | null | undefined, now: number) => !!iso && Date.parse(iso) > now;
+const pctOf = (limit: Limit) => Math.max(0, Math.min(100, Math.round(limit.percent)));
+const foundKey = (f: FoundLogin) => `${f.cli}|${f.configDir ?? ""}`;
+const isAddable = (cli: string): cli is AddableCli => (ADDABLE_CLIS as readonly string[]).includes(cli);
 
 /** Giờ của trang, nhích mỗi phút: giờ reset và giờ nghỉ không đổi nhanh hơn thế. */
 function useMinute(): number {
@@ -404,8 +551,8 @@ function useMinute(): number {
 }
 
 /**
- * Màn Gói agent (mục "plans" của AppNav), làm theo trang Gói agent của app v1: dải tóm tắt, danh sách gói với trạng
- * thái và hai thanh quota, thêm gói bằng đăng nhập trong Terminal, sửa, xoá, dùng tiếp.
+ * Màn Gói agent (mục "plans" của AppNav; thiết kế AppPlans.dc.html): ô "Cả máy" ở đầu, rồi mỗi CLI một khối với lưới
+ * thẻ gói. Thêm gói bằng đăng nhập trong Terminal, tìm đăng nhập có sẵn trên máy, sửa, xoá, dùng tiếp.
  */
 export function PlansScreen() {
   const t = useT(text);
@@ -416,10 +563,13 @@ export function PlansScreen() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [showOff, setShowOff] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [showOff, setShowOff] = useState<Record<string, boolean>>({});
+  const [adding, setAdding] = useState<{ cli: AddableCli | null } | null>(null);
   const [editing, setEditing] = useState<Plan | null>(null);
   const [removing, setRemoving] = useState<Plan | null>(null);
+  const [found, setFound] = useState<FoundLogin[]>([]);
+  const [foundOpen, setFoundOpen] = useState(false);
+  const [foundHidden, setFoundHidden] = useState(false);
   const [folder] = useFolder();
   // Gói vừa mở đăng nhập từ đây, theo id: lúc bắt đầu chờ.
   const [waiting, setWaiting] = useState<Record<string, number>>({});
@@ -435,6 +585,18 @@ export function PlansScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Không chặn màn: worker cũ chưa có `accounts discover` thì lỗi, và băng tìm gói không hiện.
+  const discover = useCallback(async () => {
+    try {
+      setFound((await discoverPlans()).found ?? []);
+    } catch {
+      setFound([]);
+    }
+  }, []);
+  useEffect(() => {
+    void discover();
+  }, [discover]);
 
   const waitingIds = Object.keys(waiting).sort().join(",");
   useEffect(() => {
@@ -523,10 +685,11 @@ export function PlansScreen() {
   const all = list ?? [];
   const summary = machineSummary(all, now);
   const checked = lastChecked(all);
-  const { on, off } = planRows(all, now);
+  const blocks = cliBlocks(all, now);
+  const perCli = cliSummary(all, now);
 
-  const row = (p: Plan) => (
-    <PlanRow
+  const card = (p: Plan) => (
+    <PlanCard
       key={p.id}
       plan={p}
       t={t}
@@ -545,31 +708,75 @@ export function PlansScreen() {
   );
 
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <p className="min-w-72 flex-1 text-sm text-muted-foreground">{t.lead}</p>
-        <Button size="sm" onClick={() => setAdding(true)}>
+        <Button size="sm" onClick={() => setAdding({ cli: null })}>
           <PlusIcon aria-hidden="true" />
           {t.add}
         </Button>
       </header>
 
-      <section aria-label={t.summaryReady} className="grid grid-cols-1 gap-2.5 min-[760px]:grid-cols-3">
-        <SummaryCard
-          label={t.summaryReady}
-          value={list ? summary.ready : "—"}
-          sub={t.summaryReadySub(summary.enabled)}
-          warn={summary.enabled > 0 && summary.ready === 0}
-        />
-        <SummaryCard label={t.summaryRunning} value={list ? summary.running : "—"} sub={t.summaryRunningSub} />
-        <SummaryCard
-          label={t.summarySlots}
-          value={list ? summary.slots : "—"}
-          sub={t.summarySlotsSub(
-            summary.reset ? `${summary.reset.label} · ${clock(summary.reset.at, now, lang)}` : t.unknown,
-          )}
-        />
+      <section
+        aria-label={t.machine}
+        style={{ "--cols": perCli.length + 1 } as CSSProperties}
+        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border bg-border min-[760px]:grid-cols-2 min-[1200px]:[grid-template-columns:repeat(var(--cols),minmax(0,1fr))]"
+      >
+        <div className="flex flex-col gap-1.5 bg-card px-4 py-3 text-card-foreground">
+          <span className="text-sm font-medium text-muted-foreground">{t.machine}</span>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+            <Stat
+              label={t.summaryReady}
+              value={list ? summary.ready : "—"}
+              warn={summary.enabled > 0 && summary.ready === 0}
+            />
+            <Stat label={t.summaryRunning} value={list ? summary.running : "—"} />
+            <Stat label={t.summarySlots} value={list ? summary.slots : "—"} />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {t.summaryReadySub(summary.enabled)} ·{" "}
+            {t.summarySlotsSub(
+              summary.reset ? `${summary.reset.label} · ${clock(summary.reset.at, now, lang)}` : t.unknown,
+            )}
+          </span>
+        </div>
+        {perCli.map((c) => (
+          <div
+            key={c.cli}
+            data-cli-summary={c.cli}
+            className="flex flex-col gap-1 bg-card px-4 py-3 text-card-foreground"
+          >
+            <span className="flex items-center gap-2">
+              <CliMark cli={c.cli} />
+              <strong className="text-sm font-semibold">{cliName(c.cli)}</strong>
+              <span className="text-xs text-muted-foreground">{t.cliCount(c.plans)}</span>
+            </span>
+            <SpreadLine label={t.sessionLeft} spread={c.session} t={t} />
+            <SpreadLine label={t.weekLeft} spread={c.week} t={t} />
+            <span className="text-xs text-muted-foreground">
+              {c.reset ? t.earliestReset(clock(c.reset.at, now, lang)) : ""}
+            </span>
+          </div>
+        ))}
       </section>
+
+      {found.length > 0 && !foundHidden && (
+        <section
+          aria-label={t.foundTitle(found.length)}
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-accent px-4 py-2.5 text-sm text-accent-foreground"
+        >
+          <ScanSearchIcon aria-hidden="true" className="size-4 shrink-0" />
+          <span className="min-w-56 flex-1">
+            <strong className="font-semibold">{t.foundTitle(found.length)}</strong> {t.foundSub}
+          </span>
+          <Button size="sm" onClick={() => setFoundOpen(true)}>
+            {t.foundReview}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setFoundHidden(true)}>
+            {t.foundHide}
+          </Button>
+        </section>
+      )}
 
       <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
         {checked && <span className="text-xs text-muted-foreground">{t.updatedAt(clock(checked, now, lang))}</span>}
@@ -605,38 +812,64 @@ export function PlansScreen() {
         </p>
       )}
       {!list && !error && <p className="text-sm text-muted-foreground">{t.loading}</p>}
-      {list?.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
-
-      {all.length > 0 && (
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {on.map(row)}
-          {off.length > 0 && (
-            <li>
-              <button
-                type="button"
-                aria-expanded={showOff}
-                onClick={() => setShowOff((v) => !v)}
-                className="flex min-h-9 w-full cursor-pointer items-center gap-1 rounded-xl border px-4 text-left text-xs font-medium text-muted-foreground hover:bg-muted"
-              >
-                <ChevronRightIcon
-                  aria-hidden="true"
-                  className={cn("size-3.5 transition-transform", showOff && "rotate-90")}
-                />
-                {t.offGroup(off.length)}
-              </button>
-            </li>
-          )}
-          {showOff && off.map(row)}
-        </ul>
+      {list?.length === 0 && (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>{t.emptyTitle}</EmptyTitle>
+            <EmptyDescription>{t.empty}</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent className="flex-row flex-wrap justify-center">
+            {ADDABLE_CLIS.map((cli) => (
+              <Button key={cli} size="sm" variant="outline" onClick={() => setAdding({ cli })}>
+                <PlusIcon aria-hidden="true" />
+                {t.addFor(cliName(cli))}
+              </Button>
+            ))}
+          </EmptyContent>
+        </Empty>
       )}
 
+      {blocks.map(({ cli, on, off }) => (
+        <section key={cli} data-cli={cli} aria-label={cliName(cli)} className="flex flex-col gap-3">
+          <header className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+            <CliMark cli={cli} large />
+            <h2 className="text-base font-semibold">{cliName(cli)}</h2>
+            <Pill>{t.cliCount(on.length + off.length)}</Pill>
+            <span className="flex-1" />
+            {isAddable(cli) && (
+              <Button size="sm" variant="outline" onClick={() => setAdding({ cli })}>
+                <PlusIcon aria-hidden="true" />
+                {t.addFor(cliName(cli))}
+              </Button>
+            )}
+          </header>
+          {on.length > 0 && <ul className={CARD_GRID}>{on.map(card)}</ul>}
+          {off.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={!!showOff[cli]}
+              onClick={() => setShowOff((v) => ({ ...v, [cli]: !v[cli] }))}
+              className="flex min-h-9 w-full cursor-pointer items-center gap-1 rounded-xl border px-4 text-left text-xs font-medium text-muted-foreground hover:bg-muted"
+            >
+              <ChevronRightIcon
+                aria-hidden="true"
+                className={cn("size-3.5 transition-transform", showOff[cli] && "rotate-90")}
+              />
+              {t.offGroup(off.length)}
+            </button>
+          )}
+          {showOff[cli] && <ul className={CARD_GRID}>{off.map(card)}</ul>}
+        </section>
+      ))}
+
       <AddPlanDialog
-        open={adding}
+        open={adding !== null}
+        initialCli={adding?.cli ?? null}
         list={all}
         t={t}
-        onOpenChange={setAdding}
+        onOpenChange={(o) => !o && setAdding(null)}
         onAdded={(id, terminalError, command) => {
-          setAdding(false);
+          setAdding(null);
           void load();
           waitFor(id);
           setNotice(
@@ -646,6 +879,21 @@ export function PlansScreen() {
           );
         }}
       />
+      {foundOpen && (
+        <FoundDialog
+          found={found}
+          t={t}
+          onClose={() => setFoundOpen(false)}
+          onChanged={(accounts) => {
+            setList(accounts);
+            void discover();
+          }}
+          onDone={(count) => {
+            setFoundOpen(false);
+            setNotice({ tone: "ok", text: t.foundAdded(count) });
+          }}
+        />
+      )}
       {editing && (
         <EditPlanDialog
           key={editing.id}
@@ -667,33 +915,46 @@ export function PlansScreen() {
           setRemoving(null);
           setWaiting(({ [id]: _, ...rest }) => rest);
           setNotice({ tone: "ok", text: t.removed(id) });
+          void discover();
         }}
       />
     </div>
   );
 }
 
-function SummaryCard({
-  label,
-  value,
-  sub,
-  warn,
-}: {
-  label: string;
-  value: number | string;
-  sub: string;
-  warn?: boolean;
-}) {
+function CliMark({ cli, large }: { cli: string; large?: boolean }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl border bg-card px-3.5 py-3 text-card-foreground">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={cn("font-mono text-2xl font-semibold tracking-tight", warn && "text-warning")}>{value}</span>
-      <span className="truncate text-xs text-muted-foreground">{sub}</span>
-    </div>
+    <span
+      aria-hidden="true"
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-md bg-accent font-semibold text-accent-foreground",
+        large ? "size-7 text-sm" : "size-5.5 text-xs",
+      )}
+    >
+      {CLI_MARK[cli] ?? cliName(cli).slice(0, 1).toUpperCase()}
+    </span>
   );
 }
 
-function PlanRow({
+function Stat({ label, value, warn }: { label: string; value: number | string; warn?: boolean }) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className={cn("font-mono text-2xl font-semibold tracking-tight", warn && "text-warning")}>{value}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
+    </span>
+  );
+}
+
+function SpreadLine({ label, spread, t }: { label: string; spread: Spread | null; t: T }) {
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-1.5 text-xs">
+      <span className="text-muted-foreground">{label}</span>{" "}
+      <span className="font-medium">{spread ? t.spread(spread.lowest, spread.average) : t.unknown}</span>
+    </span>
+  );
+}
+
+function PlanCard({
   plan: p,
   t,
   lang,
@@ -723,37 +984,62 @@ function PlanRow({
   onResume: () => void;
 }) {
   const state = planState(p, now);
+  const StateIcon = STATE_ICON[state];
   const relogin = reloginOf(p);
   const cooling = future(p.coolUntil, now);
+  const session = p.usage?.session ?? null;
+  const week = p.usage?.week ?? null;
   const why =
     p.usage?.reason ||
     (p.loggedIn === false ? t.why.signedOut : p.usage?.checkedAt ? t.why.noReport : t.why.notChecked);
+  const models = p.usage?.models ?? [];
+  const groups = p.usage?.groups ?? [];
+  const resumable = cooling || state === "overLimit";
+  const notes =
+    resumable || future(p.resumeUntil, now) || !p.supported || state === "noCli" || state === "signedOut" || waiting;
   return (
     <li
       data-plan={p.id}
       data-state={state}
-      className={cn("rounded-xl border bg-card text-card-foreground", !p.enabled && "opacity-75")}
+      className={cn(
+        "flex h-full flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground",
+        !p.enabled && "opacity-75",
+      )}
     >
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-3">
-        <span className="flex min-w-52 flex-[1.4] flex-col gap-0.5 leading-snug">
+      <div className="flex items-start gap-2">
+        <span className="flex min-w-0 flex-1 flex-col leading-snug">
           <strong className="truncate text-sm font-semibold">{name(p)}</strong>
-          <span className="truncate text-xs text-muted-foreground">
-            {CLI_NAME[p.cli] ?? p.cli} · <span className="font-mono">{p.id}</span>
-          </span>
           {p.email && <span className="truncate text-xs text-muted-foreground">{p.email}</span>}
-          <span className="truncate text-xs text-muted-foreground">
-            {t.meta(p.priority, Math.max(p.maxConcurrent, 1))}
-          </span>
+          <span className="truncate font-mono text-xs text-muted-foreground">{p.id}</span>
         </span>
-        <Pill tone={STATE_TONE[state]} dot={state === "running"}>
+        <Pill tone={STATE_TONE[state]}>
+          <StateIcon aria-hidden="true" className="size-3.5" />
           {t.states[state]}
         </Pill>
+        <RowMenu
+          label={t.rowActions(name(p))}
+          t={t}
+          disabled={busy}
+          enabled={p.enabled}
+          supported={p.supported}
+          canRelogin={!!relogin}
+          canResume={resumable}
+          folder={folder}
+          onToggle={onToggle}
+          onEdit={onEdit}
+          onRelogin={onRelogin}
+          onOpenCli={onOpenCli}
+          onRemove={onRemove}
+          onResume={onResume}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
         <Meter
           label={t.session}
           plan={name(p)}
-          limit={p.usage?.session ?? null}
+          limit={session}
           stop={p.stopAtSession ?? DEFAULTS.stopAtSession}
-          why={why}
           t={t}
           lang={lang}
           now={now}
@@ -761,52 +1047,23 @@ function PlanRow({
         <Meter
           label={t.week}
           plan={name(p)}
-          limit={p.usage?.week ?? null}
+          limit={week}
           stop={p.stopAtWeek ?? DEFAULTS.stopAtWeek}
-          why={why}
           t={t}
           lang={lang}
           now={now}
         />
-        <span className="ml-auto flex items-center justify-end gap-1.5">
-          {state === "signedOut" && relogin && (
-            <Button size="sm" disabled={busy} onClick={onRelogin}>
-              {t.login}
-            </Button>
-          )}
-          {state === "noCli" && p.supported && (
-            <Button size="sm" variant="outline" render={<a href="#/setup">{t.installCli}</a>} nativeButton={false} />
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            aria-label={t.toggleLabel(p.enabled, name(p))}
-            disabled={busy || !p.supported}
-            onClick={onToggle}
-          >
-            {p.enabled ? t.disable : t.enable}
-          </Button>
-          <RowMenu
-            label={t.rowActions(name(p))}
-            t={t}
-            disabled={busy}
-            canRelogin={!!relogin}
-            folder={folder}
-            onEdit={onEdit}
-            onRelogin={onRelogin}
-            onOpenCli={onOpenCli}
-            onRemove={onRemove}
-          />
-        </span>
+        {/* Gói chưa đăng nhập hay thiếu CLI đã có dòng giải thích riêng bên dưới. */}
+        {(!session || !week) && p.supported && state !== "signedOut" && state !== "noCli" && (
+          <span className="col-span-2 text-xs text-muted-foreground">{why}</span>
+        )}
       </div>
-      {(cooling ||
-        state === "overLimit" ||
-        future(p.resumeUntil, now) ||
-        !p.supported ||
-        state === "noCli" ||
-        state === "signedOut" ||
-        waiting) && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 pb-3 text-xs text-muted-foreground">
+
+      {models.length > 0 && <ModelWeeks models={models} plan={name(p)} t={t} />}
+      {groups.length > 0 && <GroupLimits groups={groups} plan={name(p)} t={t} />}
+
+      {notes && (
+        <div className="flex flex-col items-start gap-1.5 text-xs text-muted-foreground">
           {!p.supported ? (
             <span>{t.unsupported}</span>
           ) : state === "noCli" ? (
@@ -815,10 +1072,13 @@ function PlanRow({
             <span className="text-destructive">{t.signedOut}</span>
           ) : null}
           {waiting && state === "signedOut" && <span>{t.loginWaiting}</span>}
-          {(cooling || state === "overLimit") && (
-            <span className="flex items-center gap-2">
+          {resumable && (
+            <span className="flex flex-wrap items-center gap-2">
               {cooling && p.coolUntil ? (
-                <Pill tone="warn">{t.coolingUntil(clock(p.coolUntil, now, lang))}</Pill>
+                <Pill tone="warn">
+                  <HourglassIcon aria-hidden="true" className="size-3.5" />
+                  {t.coolingUntil(clock(p.coolUntil, now, lang))}
+                </Pill>
               ) : (
                 <span className="text-warning">{t.overLimit}</span>
               )}
@@ -839,7 +1099,64 @@ function PlanRow({
           )}
         </div>
       )}
+
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {t.meta(p.priority, p.active ?? 0, Math.max(p.maxConcurrent, 1))}
+        </span>
+        {state === "signedOut" && relogin && (
+          <Button size="sm" disabled={busy} onClick={onRelogin}>
+            {t.login}
+          </Button>
+        )}
+        {state === "noCli" && p.supported && (
+          <Button size="sm" variant="outline" render={<a href="#/setup">{t.installCli}</a>} nativeButton={false} />
+        )}
+        {!p.enabled && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={t.toggleLabel(false, name(p))}
+            disabled={busy || !p.supported}
+            onClick={onToggle}
+          >
+            {t.enable}
+          </Button>
+        )}
+      </div>
     </li>
+  );
+}
+
+/** Thanh phần trăm đã dùng; có `stop` thì vẽ thêm vạch ngưỡng dừng của gói. */
+function Bar({ pct, stop, label, thin }: { pct: number; stop?: number; label: string; thin?: boolean }) {
+  const tone = meterTone(pct, stop ?? 100);
+  return (
+    <>
+      {/* biome-ignore lint/a11y/useSemanticElements: thẻ <meter> không vẽ được vạch ngưỡng dừng bên trong thanh. */}
+      <span
+        role="meter"
+        aria-label={label}
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className={cn("relative block rounded-full bg-muted", thin ? "h-1" : "h-1.5")}
+      >
+        <span
+          data-tone={tone}
+          className={cn("absolute inset-y-0 left-0 rounded-full", BAR_TONE[tone])}
+          style={{ width: `${pct}%` }}
+        />
+        {stop !== undefined && (
+          <span
+            data-stop={stop}
+            title={`${stop}%`}
+            className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-muted-foreground"
+            style={{ left: `${Math.min(100, stop)}%` }}
+          />
+        )}
+      </span>
+    </>
   );
 }
 
@@ -848,7 +1165,6 @@ function Meter({
   plan,
   limit,
   stop,
-  why,
   t,
   lang,
   now,
@@ -857,54 +1173,92 @@ function Meter({
   plan: string;
   limit: Limit | null;
   stop: number;
-  why: string;
   t: T;
   lang: Lang;
   now: number;
 }) {
   if (!limit) {
     return (
-      <span data-usage-unknown={label} className="flex min-w-32 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+      <span data-usage-unknown={label} className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         <span>{label}</span>
         <span className="text-xs font-medium text-foreground">{t.unknown}</span>
-        <span className="truncate">{why}</span>
       </span>
     );
   }
-  const pct = Math.max(0, Math.min(100, Math.round(limit.percent)));
+  const pct = pctOf(limit);
   return (
-    <span className="flex min-w-32 flex-1 flex-col gap-1.5">
+    <span className="flex min-w-0 flex-col gap-1.5">
       <span className="flex items-baseline text-xs text-muted-foreground">
         <span>{label}</span>
         <span className="ml-auto font-mono text-xs font-semibold text-foreground">{pct}%</span>
       </span>
-      {/* biome-ignore lint/a11y/useSemanticElements: thẻ <meter> không vẽ được vạch ngưỡng dừng bên trong thanh. */}
-      <span
-        role="meter"
-        aria-label={`${label}: ${plan}`}
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        className="relative h-1.5 rounded-[3px] bg-muted"
-      >
-        <span
-          data-tone={meterTone(pct, stop)}
-          className={cn("absolute inset-y-0 left-0 rounded-[3px]", BAR_TONE[meterTone(pct, stop)])}
-          style={{ width: `${pct}%` }}
-        />
-        <span
-          data-stop={stop}
-          title={t.stopMark(stop)}
-          className="absolute -top-[3px] -bottom-[3px] w-0.5 bg-muted-foreground"
-          style={{ left: `${Math.min(100, stop)}%` }}
-        />
-      </span>
+      <Bar pct={pct} stop={stop} label={`${label}: ${plan}`} />
       {limit.resetsAt && (
-        <span className="truncate text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {future(limit.resetsAt, now) ? t.resetAt(clock(limit.resetsAt, now, lang)) : t.resetPast}
         </span>
       )}
     </span>
+  );
+}
+
+/** Claude: tuần theo từng model; không có ngưỡng dừng riêng nên thanh chỉ đổi màu khi gần hết. */
+function ModelWeeks({ models, plan, t }: { models: ModelLimit[]; plan: string; t: T }) {
+  return (
+    <div data-models className="flex flex-col gap-1.5 border-t pt-3">
+      <span className="text-xs text-muted-foreground">{t.byModel}</span>
+      {models.map((m) => {
+        const pct = pctOf(m);
+        return (
+          <span key={m.name} className="grid grid-cols-[4.5rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs">
+            <span className="truncate">{m.name}</span>
+            <Bar pct={pct} thin label={`${t.weekOf(m.name)}: ${plan}`} />
+            <span className="text-right font-mono font-semibold">{pct}%</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Antigravity: mỗi nhóm model có hạn mức phiên 5 giờ và tuần riêng; nhóm tắt phiên thì ghi rõ thay vì thanh rỗng. */
+function GroupLimits({ groups, plan, t }: { groups: GroupLimit[]; plan: string; t: T }) {
+  const row = (g: GroupLimit, label: string, limit: Limit | null) => {
+    const pct = limit ? pctOf(limit) : null;
+    return (
+      <span className="grid grid-cols-[4.5rem_minmax(0,1fr)_2.75rem] items-center gap-2 text-xs">
+        <span className="truncate text-muted-foreground">{label}</span>
+        {pct === null ? (
+          <span className="col-span-2 text-muted-foreground">{t.unknown}</span>
+        ) : (
+          <>
+            <Bar pct={pct} thin label={`${g.name} · ${label}: ${plan}`} />
+            <span className="text-right font-mono font-semibold">{pct}%</span>
+          </>
+        )}
+      </span>
+    );
+  };
+  return (
+    <div data-groups className="flex flex-col gap-2 border-t pt-3">
+      {groups.map((g) => (
+        <div key={g.name} data-group={g.name} className="flex flex-col gap-1.5">
+          <span className="flex flex-wrap items-baseline gap-x-2 text-xs">
+            <strong className="font-semibold">{g.name}</strong>
+            {g.models && <span className="min-w-0 truncate text-muted-foreground">{g.models}</span>}
+          </span>
+          {g.sessionDisabled ? (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <PowerOffIcon aria-hidden="true" className="size-3.5" />
+              {t.groupDisabled}
+            </span>
+          ) : (
+            row(g, t.session, g.session)
+          )}
+          {row(g, t.week, g.week)}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -915,22 +1269,32 @@ function RowMenu({
   label,
   t,
   disabled,
+  enabled,
+  supported,
   canRelogin,
+  canResume,
   folder,
+  onToggle,
   onEdit,
   onRelogin,
   onOpenCli,
   onRemove,
+  onResume,
 }: {
   label: string;
   t: T;
   disabled: boolean;
+  enabled: boolean;
+  supported: boolean;
   canRelogin: boolean;
+  canResume: boolean;
   folder: string;
+  onToggle: () => void;
   onEdit: () => void;
   onRelogin: () => void;
   onOpenCli: () => void;
   onRemove: () => void;
+  onResume: () => void;
 }) {
   return (
     <Menu.Root>
@@ -946,6 +1310,14 @@ function RowMenu({
             <Menu.Item className={MENU_ITEM} onClick={onEdit}>
               {t.edit}
             </Menu.Item>
+            <Menu.Item className={MENU_ITEM} disabled={!supported} onClick={onToggle}>
+              {enabled ? t.disable : t.enable}
+            </Menu.Item>
+            {canResume && (
+              <Menu.Item className={MENU_ITEM} onClick={onResume}>
+                {t.resume}
+              </Menu.Item>
+            )}
             <Menu.Item className={MENU_ITEM} disabled={!canRelogin} onClick={onRelogin}>
               {t.relogin}
             </Menu.Item>
@@ -970,39 +1342,140 @@ function RowMenu({
   );
 }
 
+/** Hộp liệt kê đăng nhập tìm thấy trên máy; thêm lần lượt từng cái đã tích để một cái lỗi không làm mất các cái đã thêm. */
+function FoundDialog({
+  found,
+  t,
+  onClose,
+  onChanged,
+  onDone,
+}: {
+  found: FoundLogin[];
+  t: T;
+  onClose: () => void;
+  onChanged: (accounts: Plan[]) => void;
+  onDone: (count: number) => void;
+}) {
+  // Mặc định chỉ tích đăng nhập đã vào được và không bị nghi trùng; worker ghi lý do vào `note`.
+  const [picked, setPicked] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(found.map((f) => [foundKey(f), f.loggedIn !== false && !f.note])),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const chosen = found.filter((f) => picked[foundKey(f)]);
+
+  async function submit() {
+    setBusy(true);
+    let done = 0;
+    try {
+      for (const f of chosen) {
+        onChanged((await addFoundPlan(f)).accounts);
+        done += 1;
+      }
+      onDone(done);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t.foundTitle(found.length)}</DialogTitle>
+          <DialogDescription>{t.foundLead}</DialogDescription>
+        </DialogHeader>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {found.map((f) => {
+            const key = foundKey(f);
+            const title = f.configDir ? f.suggestedId : t.foundDefault(cliName(f.cli));
+            return (
+              <li key={key}>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 has-checked:border-primary has-checked:bg-accent">
+                  <input
+                    type="checkbox"
+                    checked={!!picked[key]}
+                    onChange={(e) => setPicked((v) => ({ ...v, [key]: e.target.checked }))}
+                    className="mt-1 size-4 cursor-pointer accent-primary"
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                      {title}
+                      <Pill>{cliName(f.cli)}</Pill>
+                      {f.loggedIn === false && <Pill tone="warn">{t.foundSignedOut}</Pill>}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {[f.email, f.configDir].filter(Boolean).join(" · ")}
+                    </span>
+                    {f.note && <span className="text-xs text-warning">{f.note}</span>}
+                  </span>
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <DialogActions>
+          <Button variant="outline" disabled={busy} onClick={onClose}>
+            {t.cancel}
+          </Button>
+          <Button disabled={busy || chosen.length === 0} onClick={() => void submit()}>
+            {busy ? t.foundAdding : t.foundAdd(chosen.length)}
+          </Button>
+        </DialogActions>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Thêm gói theo hai bước: chọn CLI bằng thẻ, rồi cách đăng nhập. Mở từ nút của khối CLI thì bắt đầu ở bước 2. */
 function AddPlanDialog({
   open,
+  initialCli,
   list,
   t,
   onOpenChange,
   onAdded,
 }: {
   open: boolean;
+  initialCli: AddableCli | null;
   list: Plan[];
   t: T;
   onOpenChange: (open: boolean) => void;
   onAdded: (id: string, terminalError: string | null, command: string) => void;
 }) {
   const id = useId();
-  const [cli, setCli] = useState<"claude" | "codex">("claude");
+  const [cli, setCli] = useState<AddableCli | null>(initialCli);
   const [label, setLabel] = useState("");
   const [how, setHow] = useState<LoginWay>("plan");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fallback = `${CLI_NAME[cli]} ${list.filter((p) => p.cli === cli).length + 1}`;
+  const fallback = cli ? `${CLI_NAME[cli]} ${list.filter((p) => p.cli === cli).length + 1}` : "";
 
+  function pick(next: AddableCli | null) {
+    setCli(next);
+    if (next) setHow(LOGIN_WAYS[next][0] as LoginWay);
+    setError(null);
+  }
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `pick` chỉ đặt state; mở lại hộp thì đặt lại từ CLI của nút bấm.
   useEffect(() => {
     if (!open) return;
-    setCli("claude");
+    pick(initialCli);
     setLabel("");
-    setHow("plan");
     setEmail("");
-    setError(null);
-  }, [open]);
+  }, [open, initialCli]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!cli) return;
     setBusy(true);
     try {
       const added = await addPlan({ cli, label: label.trim() || fallback, how, email });
@@ -1022,55 +1495,90 @@ function AddPlanDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t.addTitle}</DialogTitle>
-          <DialogDescription>{t.addLead}</DialogDescription>
+          <DialogDescription>{t.addStep(cli ? 2 : 1)}</DialogDescription>
         </DialogHeader>
-        <form id={`${id}-form`} onSubmit={submit} className="grid gap-x-3 gap-y-2.5 sm:grid-cols-[140px_minmax(0,1fr)]">
-          <Label htmlFor={`${id}-cli`}>{t.cli}</Label>
-          <NativeSelect
-            id={`${id}-cli`}
-            value={cli}
-            onChange={(e) => {
-              const next = e.target.value as "claude" | "codex";
-              setCli(next);
-              setHow(LOGIN_WAYS[next][0] as LoginWay);
-            }}
-          >
-            <NativeSelectOption value="claude">Claude Code</NativeSelectOption>
-            <NativeSelectOption value="codex">Codex</NativeSelectOption>
-          </NativeSelect>
-          <Label htmlFor={`${id}-label`}>{t.accountLabel}</Label>
-          <Input
-            id={`${id}-label`}
-            value={label}
-            placeholder={t.accountLabelHint(fallback)}
-            onChange={(e) => setLabel(e.target.value)}
-          />
-          <Label htmlFor={`${id}-how`}>{t.loginWay}</Label>
-          <NativeSelect id={`${id}-how`} value={how} onChange={(e) => setHow(e.target.value as LoginWay)}>
-            {LOGIN_WAYS[cli].map((w) => (
-              <NativeSelectOption key={w} value={w}>
-                {t.ways[w]}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <span className="text-xs text-muted-foreground sm:col-start-2">{t.wayHints[how]}</span>
-          {cli === "claude" && (
-            <>
-              <Label htmlFor={`${id}-email`}>{t.email}</Label>
+        {!cli ? (
+          <>
+            <fieldset aria-label={t.addPickCli} className="m-0 grid min-w-0 gap-2.5 border-0 p-0 sm:grid-cols-2">
+              {ADDABLE_CLIS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={CLI_NAME[c]}
+                  onClick={() => pick(c)}
+                  className="flex cursor-pointer flex-col items-start gap-2 rounded-xl border bg-card p-3 text-left hover:border-primary hover:bg-accent"
+                >
+                  <CliMark cli={c} large />
+                  <strong className="text-sm font-semibold">{CLI_NAME[c]}</strong>
+                  <span className="text-xs text-muted-foreground">{t.addCliHints[c]}</span>
+                </button>
+              ))}
+            </fieldset>
+            <p className="text-xs text-muted-foreground">{t.addAntigravity}</p>
+          </>
+        ) : (
+          <form id={`${id}-form`} onSubmit={submit} className="grid gap-y-3">
+            <div className="flex items-center gap-2">
+              <CliMark cli={cli} />
+              <strong className="text-sm font-semibold">{CLI_NAME[cli]}</strong>
+              <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => pick(null)}>
+                {t.addChangeCli}
+              </Button>
+            </div>
+            <fieldset className="m-0 grid min-w-0 gap-1.5 border-0 p-0">
+              <legend className="mb-1 text-sm font-medium">{t.loginWay}</legend>
+              {LOGIN_WAYS[cli].map((w) => (
+                <div
+                  key={w}
+                  className="flex items-start gap-2.5 rounded-xl border px-3 py-2 has-checked:border-primary has-checked:bg-accent"
+                >
+                  <input
+                    id={`${id}-way-${w}`}
+                    type="radio"
+                    name={`${id}-how`}
+                    checked={how === w}
+                    aria-describedby={`${id}-hint-${w}`}
+                    onChange={() => setHow(w)}
+                    className="mt-1 size-4 cursor-pointer accent-primary"
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <label htmlFor={`${id}-way-${w}`} className="cursor-pointer text-sm font-medium">
+                      {t.ways[w]}
+                    </label>
+                    <span id={`${id}-hint-${w}`} className="text-xs text-muted-foreground">
+                      {t.wayHints[w]}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </fieldset>
+            <div className="grid gap-1.5">
+              <Label htmlFor={`${id}-label`}>{t.accountLabel}</Label>
               <Input
-                id={`${id}-email`}
-                type="email"
-                value={email}
-                placeholder="ten@congty.vn"
-                onChange={(e) => setEmail(e.target.value)}
+                id={`${id}-label`}
+                value={label}
+                placeholder={t.accountLabelHint(fallback)}
+                onChange={(e) => setLabel(e.target.value)}
               />
-            </>
-          )}
-        </form>
-        <p className="text-xs text-muted-foreground">{t.addNote}</p>
+            </div>
+            {cli === "claude" && (
+              <div className="grid gap-1.5">
+                <Label htmlFor={`${id}-email`}>{t.email}</Label>
+                <Input
+                  id={`${id}-email`}
+                  type="email"
+                  value={email}
+                  placeholder="ten@congty.vn"
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            )}
+          </form>
+        )}
+        {cli && <p className="text-xs text-muted-foreground">{t.addNote}</p>}
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -1080,9 +1588,11 @@ function AddPlanDialog({
           <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
             {t.cancel}
           </Button>
-          <Button type="submit" form={`${id}-form`} disabled={busy}>
-            {busy ? t.adding : t.addAndSignIn}
-          </Button>
+          {cli && (
+            <Button type="submit" form={`${id}-form`} disabled={busy}>
+              {busy ? t.adding : t.addAndSignIn}
+            </Button>
+          )}
         </DialogActions>
       </DialogContent>
     </Dialog>

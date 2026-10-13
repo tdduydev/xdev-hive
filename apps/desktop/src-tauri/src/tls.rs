@@ -85,6 +85,8 @@ mod tests {
             accepted.load(Ordering::SeqCst),
             started.elapsed()
         );
-        assert_eq!(accepted.load(Ordering::SeqCst), 1);
+        // hyper trả kết nối về pool không đồng bộ sau khi đọc xong body, nên lời gọi kế có lúc mở thêm một kết nối
+        // (CI từng thấy 2). Không dùng chung client thì là 10.
+        assert!(accepted.load(Ordering::SeqCst) <= 3);
     }
 }

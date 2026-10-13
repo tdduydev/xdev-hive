@@ -14,6 +14,7 @@ import { Steps } from "@/components/ui/steps.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { cx } from "@/lib/cx.ts";
 import { formatClock, formatDayTime, formatDuration, formatInt, formatUsd } from "@/lib/format.ts";
+import { teamRoleLookup } from "@/lib/projects.ts";
 import {
   budgetPercent,
   canCancel,
@@ -24,12 +25,14 @@ import {
   isTerminal,
   prLabel,
   RUN_STATE_LABEL,
+  runAccess,
   runPhases,
   runStateTone,
   shortId,
 } from "@/lib/run-view.ts";
 import { useNow } from "@/lib/use-now.ts";
 import { type StreamStatus, useRunStream } from "@/lib/use-run-stream.ts";
+import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
@@ -400,6 +403,12 @@ function RunActions({
   onToggleSteer: () => void;
 }) {
   const [cancelling, setCancelling] = useState(false);
+  const me = useMe();
+  const { org, api } = useOrg();
+  // Hub kiểm lại; danh sách thành viên chỉ để biết người xem có phải quản trị đội của run không.
+  const members = useQuery(api.orgMembers.list.queryOptions());
+  const teamAdmin = teamRoleLookup(org.role, members.data, me.id)(run.teamId) === "admin";
+  const access = runAccess(run, me.id, teamAdmin);
   const steerable = canSteer(run.state);
   const cancellable = canCancel(run.state);
   if (!steerable && !cancellable) return null;
@@ -409,6 +418,8 @@ function RunActions({
         <Button
           variant="outline"
           onClick={onToggleSteer}
+          disabled={!access.steer}
+          title={access.reason ?? undefined}
           aria-expanded={steerOpen}
           aria-controls={steerOpen ? steerPanelId : undefined}
         >
@@ -416,10 +427,16 @@ function RunActions({
         </Button>
       )}
       {cancellable && (
-        <Button variant="destructive" onClick={() => setCancelling(true)} aria-haspopup="dialog">
+        <Button
+          variant="destructive"
+          onClick={() => setCancelling(true)}
+          disabled={!access.cancel}
+          aria-haspopup="dialog"
+        >
           Huỷ run
         </Button>
       )}
+      {steerable && access.reason && <span className="text-xs text-muted-foreground">{access.reason}</span>}
       <Dialog open={cancelling} onOpenChange={setCancelling}>
         <DialogContent>
           <CancelConfirm run={run} onDone={() => setCancelling(false)} />
