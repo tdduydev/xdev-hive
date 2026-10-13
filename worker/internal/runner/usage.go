@@ -16,6 +16,8 @@ type Usage struct {
 	CostUSD          *float64 `json:"costUsd"`
 	Turns            *int     `json:"turns"`
 	Model            *string  `json:"model"`
+	// AccountID là id gói (tài khoản CLI) đã chạy run, để hub tính token theo gói; rỗng khi dùng đăng nhập mặc định.
+	AccountID string `json:"accountId,omitempty"`
 }
 
 func (u Usage) equal(o Usage) bool {
