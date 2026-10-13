@@ -133,6 +133,8 @@ type jobSpec struct {
 	Brief *struct {
 		SHA string `json:"sha"`
 	} `json:"brief"`
+	// TaskText là tiêu đề, mô tả và kế hoạch đã duyệt của task, nguồn từ khoá của context pack; rỗng với hub cũ.
+	TaskText string `json:"taskText"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -162,6 +164,7 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	j.MCPServers = s.MCPServers
 	j.TokenSaving = s.TokenSaving
 	j.Effort, j.Advisor, j.Tier = s.Effort, s.Advisor, s.Tier
+	j.TaskText = s.TaskText
 	if s.Checks != nil {
 		j.Checks = s.Checks.Commands
 	}
