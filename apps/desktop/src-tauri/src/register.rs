@@ -166,6 +166,24 @@ pub fn parse_register_command(input: &str) -> Result<RegisterArgs, String> {
     validate(&hub, &token, machine.as_deref())
 }
 
+/// Biến môi trường mang token đăng ký sang sidecar.
+pub const TOKEN_ENV: &str = "HIVE_REGISTRATION_TOKEN";
+
+/// Tham số và biến môi trường để chạy `hive-worker register`. Token chỉ đi qua biến môi trường: tham số dòng lệnh của
+/// tiến trình thì người dùng khác trên máy đọc được (`ps`, Task Manager), nên token không bao giờ nằm trong đó.
+pub fn sidecar_invocation(args: &RegisterArgs) -> (Vec<String>, Vec<(&'static str, String)>) {
+    let mut cli = vec![
+        "register".to_string(),
+        "--hub".into(),
+        args.hub.clone(),
+        "--json".into(),
+    ];
+    if let Some(m) = &args.machine {
+        cli.extend(["--machine".into(), m.clone()]);
+    }
+    (cli, vec![(TOKEN_ENV, args.token.clone())])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +257,51 @@ mod tests {
         assert!(
             parse_register_command("--hub https://h.example --token x --machine Máy_Lan").is_err()
         );
+    }
+
+    #[test]
+    fn trims_whitespace_around_and_inside_pasted_command() {
+        // Dán từ web hay chat thường kèm khoảng trắng đầu cuối, tab, xuống dòng Windows và nhiều dấu cách liền nhau.
+        let messy = "  \t hive-worker   register\t--hub   https://hive.example.com/  \r\n   --token\thwr_t  --machine  may-1 \r\n ";
+        assert_eq!(
+            parse_register_command(messy),
+            Ok(args("https://hive.example.com", "hwr_t", Some("may-1")))
+        );
+        // Lệnh nhiều dòng của PowerShell và cmd có khoảng trắng sau ký tự nối dòng vẫn tách đúng từng cờ.
+        let powershell = "hive-worker.exe register `\r\n    --hub \"https://hive.example.com\" `\r\n    --token 'hwr_ps'";
+        let cmd = "hive-worker.exe register ^\r\n    --hub https://hive.example.com ^\r\n    --token hwr_cmd";
+        assert_eq!(
+            parse_register_command(powershell),
+            Ok(args("https://hive.example.com", "hwr_ps", None))
+        );
+        assert_eq!(
+            parse_register_command(cmd),
+            Ok(args("https://hive.example.com", "hwr_cmd", None))
+        );
+    }
+
+    #[test]
+    fn token_never_goes_into_command_line_arguments() {
+        for parsed in [
+            parse_register_command(
+                "hive-worker register --hub https://h.example --token hwr_secret --machine may-1",
+            ),
+            parse_register_command(
+                "hive-worker register --hub=https://h.example --token=hwr_secret",
+            ),
+            validate("https://h.example", "hwr_secret", None),
+        ] {
+            let parsed = parsed.expect("lệnh hợp lệ");
+            let (cli, env) = sidecar_invocation(&parsed);
+            assert!(
+                cli.iter()
+                    .all(|a| !a.contains("hwr_secret") && !a.starts_with("--token")),
+                "token lọt vào tham số: {cli:?}"
+            );
+            assert_eq!(env, vec![(TOKEN_ENV, "hwr_secret".to_string())]);
+            assert_eq!(&cli[..2], &["register".to_string(), "--hub".to_string()]);
+            assert!(cli.contains(&"--json".to_string()));
+        }
     }
 
     #[test]

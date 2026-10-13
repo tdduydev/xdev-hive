@@ -363,8 +363,12 @@ func run(args []string) int {
 		}
 	}
 	// --stdin-control là app desktop chạy worker làm sidecar: app tự cập nhật cả gói, worker không tự thay mình.
-	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, *statusJSON, !*stdinControl, cfg.HubURL)
+	return startWorker(ctx, cfg, slots, dataDir, "", nil, pool, *statusJSON, selfUpdates(*stdinControl), cfg.HubURL)
 }
+
+// selfUpdates: worker tự cài bản mới khi hub bảo, trừ khi chạy làm sidecar của app desktop (--stdin-control): binary
+// nằm trong gói app đã ký và app cập nhật cả gói, worker tự thay mình sẽ làm hỏng chữ ký và lệch phiên bản.
+func selfUpdates(stdinControl bool) bool { return !stdinControl }
 
 func host(args []string) int {
 	fs := flag.NewFlagSet("host", flag.ContinueOnError)
