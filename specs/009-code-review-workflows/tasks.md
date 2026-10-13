@@ -58,7 +58,7 @@
     `apps/hub/src/modules/scm/{github,gitlab,local}.test.ts`, `apps/hub/src/modules/scm/fixtures/**`
   - **Phụ thuộc**: không · **Mức**: vừa
 
-- [ ] T004 [P] Thiết kế UI hai màn (cấu hình Code, khung review PR) bằng skill `ui-ux-pro-max`, theo design system và
+- [x] T004 [P] Thiết kế UI hai màn (cấu hình Code, khung review PR) bằng skill `ui-ux-pro-max`, theo design system và
   shadcn/ui; ghi lại thành mô tả component, trạng thái, 360 px, sáng/tối.
   - **Scope**: `docs/design-system/screens/CodeReview.dc.html` (mới), `docs/design-system/screens/Workflows.dc.html`
     (thêm biến thể Code)

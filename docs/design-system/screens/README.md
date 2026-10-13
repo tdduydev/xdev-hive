@@ -60,6 +60,7 @@ Các file để phẳng một cấp vì `<dc-import name="X">` nạp `X.dc.html`
 | `Proposals.dc.html` | Đề xuất sửa tài liệu và skill | `/knowledge/proposals` |
 | `Workflows.dc.html` | Quy trình duyệt theo AI SDLC (AI-DLC, Spec Kit, BMAD, tự tạo) | `/knowledge/workflows` |
 | `DocReview.dc.html` | Chờ tôi duyệt: diff, AI tự kiểm, truy vết R-n | `/knowledge/reviews` |
+| `CodeReview.dc.html` | Chờ tôi duyệt, tab Code (PR): checkpoint máy, diff, review AI, quyết định | `/knowledge/reviews?tab=code` |
 | `Members.dc.html` | Thành viên: đang hoạt động, lời mời, chờ duyệt | `/admin/members` |
 | `Teams.dc.html` | Đội và hệ thống | `/admin/teams` |
 | `Roles.dc.html` | Vai trò và quyền dạng cây | `/admin/roles` |
