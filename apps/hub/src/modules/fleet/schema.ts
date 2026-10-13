@@ -49,6 +49,12 @@ export const machines = hive
       capacity: integer("capacity").notNull().default(1),
       /** Việc ngoài run code mà worker khai làm được trong hello (vd. `doccheck`). */
       capabilities: text("capabilities").array().notNull().default(sql`'{}'::text[]`),
+      /**
+       * Dự án máy đã gắn với repo trên máy và dự án máy cho toàn quyền, worker báo trong hello và heartbeat (ADR 0020).
+       * Worker cũ không báo: rỗng, như máy chưa gắn dự án nào.
+       */
+      boundProjects: text("bound_projects").array().notNull().default(sql`'{}'::text[]`),
+      fullProjects: text("full_projects").array().notNull().default(sql`'{}'::text[]`),
       status: machineStatus("status").notNull().default("offline"),
       pausedAt: timestamp("paused_at", { withTimezone: true }),
       /** Khoá công khai máy gửi lúc đăng ký (mục 6). Chưa dùng tới khi có access token ngắn hạn. */

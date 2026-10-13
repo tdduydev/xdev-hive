@@ -207,11 +207,21 @@ export interface MachineInfo {
   capabilities: string[];
 }
 
+/** Dự án máy đã gắn repo và dự án máy cho toàn quyền (ADR 0020). */
+export interface MachineProjects {
+  boundProjects: string[];
+  fullProjects: string[];
+}
+
 /**
  * Ghi máy đang online. Trả false khi máy vừa bị thu hồi, để gateway đóng kết nối. Điều kiện revoked_at is null nằm
  * trong câu UPDATE nên không có khe giữa lúc kiểm và lúc ghi.
  */
-export async function markOnline(pool: pg.Pool, m: AuthedMachine, info?: MachineInfo): Promise<boolean> {
+export async function markOnline(
+  pool: pg.Pool,
+  m: AuthedMachine,
+  info?: Partial<MachineInfo & MachineProjects>,
+): Promise<boolean> {
   const rows = await withTenant(pool, { orgId: m.orgId }, (tx) =>
     tx
       .update(machines)
@@ -332,15 +342,17 @@ export async function listOnlineMachines(
   teamId: string,
   kind: MachineKind = "worker",
 ): Promise<
-  Array<{
-    id: string;
-    name: string;
-    clis: string[];
-    capacity: number;
-    capabilities: string[];
-    shared: boolean;
-    registeredBy: string | null;
-  }>
+  Array<
+    {
+      id: string;
+      name: string;
+      clis: string[];
+      capacity: number;
+      capabilities: string[];
+      shared: boolean;
+      registeredBy: string | null;
+    } & MachineProjects
+  >
 > {
   return tx
     .select({
@@ -351,6 +363,8 @@ export async function listOnlineMachines(
       capabilities: machines.capabilities,
       shared: machines.shared,
       registeredBy: machines.registeredBy,
+      boundProjects: machines.boundProjects,
+      fullProjects: machines.fullProjects,
     })
     .from(machines)
     .where(
@@ -395,14 +409,17 @@ export async function machinesOfUser(tx: Tx, userId: string) {
 export async function findMachine(
   tx: Tx,
   id: string,
-): Promise<{
-  id: string;
-  teamId: string;
-  kind: MachineKind;
-  revoked: boolean;
-  shared: boolean;
-  registeredBy: string | null;
-} | null> {
+): Promise<
+  | ({
+      id: string;
+      teamId: string;
+      kind: MachineKind;
+      revoked: boolean;
+      shared: boolean;
+      registeredBy: string | null;
+    } & MachineProjects)
+  | null
+> {
   const [row] = await tx
     .select({
       id: machines.id,
@@ -411,6 +428,8 @@ export async function findMachine(
       revokedAt: machines.revokedAt,
       shared: machines.shared,
       registeredBy: machines.registeredBy,
+      boundProjects: machines.boundProjects,
+      fullProjects: machines.fullProjects,
     })
     .from(machines)
     .where(eq(machines.id, id));
@@ -422,8 +441,32 @@ export async function findMachine(
         revoked: row.revokedAt !== null,
         shared: row.shared,
         registeredBy: row.registeredBy,
+        boundProjects: row.boundProjects,
+        fullProjects: row.fullProjects,
       }
     : null;
+}
+
+/**
+ * Máy worker (chưa thu hồi, kể cả offline) của đội đã bật toàn quyền cho dự án tại máy, để kiểm lúc giao run
+ * Antigravity khi dự án không cho toàn quyền (ADR 0020). Run vẫn chờ tới khi một máy như vậy online.
+ */
+export async function machinesGrantingFull(
+  tx: Tx,
+  teamId: string,
+  projectId: string,
+): Promise<Array<{ id: string; shared: boolean; registeredBy: string | null }>> {
+  return tx
+    .select({ id: machines.id, shared: machines.shared, registeredBy: machines.registeredBy })
+    .from(machines)
+    .where(
+      and(
+        eq(machines.teamId, teamId),
+        eq(machines.kind, "worker"),
+        isNull(machines.revokedAt),
+        sql`${projectId} = any(${machines.fullProjects})`,
+      ),
+    );
 }
 
 /**

@@ -222,7 +222,14 @@ class FakeWorker {
     });
   }
 
-  static async connect(m: { name: string; token: string; clis: string[]; capacity: number; capabilities?: string[] }) {
+  static async connect(m: {
+    name: string;
+    token: string;
+    clis: string[];
+    capacity: number;
+    capabilities?: string[];
+    localProjects?: { bound: string[]; full: string[] };
+  }) {
     const w = new FakeWorker(m.token);
     openWorkers.add(w);
     await new Promise<void>((resolve, reject) => {
@@ -238,6 +245,7 @@ class FakeWorker {
       clis: m.clis,
       capacity: m.capacity,
       ...(m.capabilities ? { capabilities: m.capabilities } : {}),
+      ...(m.localProjects ? { localProjects: m.localProjects } : {}),
     });
     await w.next("welcome");
     return w;
@@ -1265,6 +1273,147 @@ describe("chính sách agent của tổ chức", () => {
       await Promise.all([claude.close(), agy.close()]);
       await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
     }
+  });
+
+  // ADR 0020: toàn quyền theo dự án, bật tại máy. Worker báo dự án đã gắn và dự án máy cho toàn quyền trong hello và
+  // heartbeat; hub gửi fullAllowed cho worker tự áp, và chọn máy chạy được Antigravity theo đó.
+  describe("toàn quyền bật tại máy", () => {
+    const machineProjects = async (id: string) =>
+      (await admin.query("select bound_projects, full_projects from hive.machines where id = $1", [id])).rows[0] as {
+        bound_projects: string[];
+        full_projects: string[];
+      };
+
+    it("job mang projectId và fullAllowed theo chính sách tổ chức", async () => {
+      const w = await FakeWorker.connect(await seedMachine(`full-spec-${tag}`));
+      try {
+        const run = await startRun((await newTask("Spec có fullAllowed")).id);
+        const offer = await w.next("job_offer", (o) => o.runId === run.id);
+        expect(offer.spec).toMatchObject({ projectId, runPermissions: "workspace", fullAllowed: true });
+        w.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+        await setPolicy({ allowFullPermission: false });
+        const denied = await startRun((await newTask("Spec khi tổ chức cấm")).id);
+        expect((await w.next("job_offer", (o) => o.runId === denied.id)).spec).toMatchObject({ fullAllowed: false });
+        w.send({ type: "job_reject", runId: denied.id, attempt: 1, reason: "test" });
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("máy cá nhân bật toàn quyền cho dự án: Antigravity chạy dù dự án chỉ workspace; tắt qua heartbeat thì thôi", async () => {
+      const m = await seedMachine(`full-own-${tag}`, ["antigravity", "claude"], 1, devUserId);
+      const w = await FakeWorker.connect({ ...m, localProjects: { bound: [projectId], full: [projectId] } });
+      try {
+        expect(await machineProjects(m.id)).toEqual({ bound_projects: [projectId], full_projects: [projectId] });
+        const run = await startRun((await newTask("Antigravity nhờ máy cho toàn quyền")).id, { cli: "antigravity" });
+        const offer = await w.next("job_offer", (o) => o.runId === run.id);
+        // Spec vẫn mang quyền của dự án; worker tự nâng theo projects.json và fullAllowed.
+        expect(offer.spec).toMatchObject({
+          cli: "antigravity",
+          projectId,
+          runPermissions: "workspace",
+          fullAllowed: true,
+        });
+        expect((await runRow(run.id)).agent_policy_snapshot).toMatchObject({ runPermissions: "full" });
+        expect((await policyEvents(run.id)).map((e) => e.data.message)).toEqual([
+          expect.stringContaining("đã bật toàn quyền cho dự án này"),
+        ]);
+        w.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+        // Run không chọn CLI: máy cho toàn quyền thì Antigravity (CLI đầu của máy) được chọn.
+        const auto = await startRun((await newTask("Tự chọn CLI trên máy toàn quyền")).id);
+        expect((await w.next("job_offer", (o) => o.runId === auto.id)).spec).toMatchObject({ cli: "antigravity" });
+        w.send({ type: "job_reject", runId: auto.id, attempt: 1, reason: "test" });
+
+        // Tắt công tắc trong app: heartbeat sau đó mang danh sách mới.
+        w.send({ type: "heartbeat", load: 0, runs: [], localProjects: { bound: [projectId], full: [] } });
+        await w.next("heartbeat_ack");
+        expect(await machineProjects(m.id)).toEqual({ bound_projects: [projectId], full_projects: [] });
+        const off = await api<{ code: string }>("POST", "/v1/runs", {
+          taskId: (await newTask("Antigravity khi máy đã tắt")).id,
+          cli: "antigravity",
+        });
+        expect(off.status).toBe(409);
+        expect(JSON.stringify(off.data)).toContain("CLI_NEEDS_FULL_PERMISSIONS");
+        const fallback = await startRun((await newTask("Tự chọn CLI khi máy đã tắt")).id);
+        expect((await w.next("job_offer", (o) => o.runId === fallback.id)).spec).toMatchObject({ cli: "claude" });
+        w.send({ type: "job_reject", runId: fallback.id, attempt: 1, reason: "test" });
+
+        // Heartbeat không mang danh sách (worker cũ hơn trong cùng phiên không có) giữ giá trị đã biết.
+        w.send({ type: "heartbeat", load: 0, runs: [] });
+        await w.next("heartbeat_ack");
+        expect(await machineProjects(m.id)).toEqual({ bound_projects: [projectId], full_projects: [] });
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("tổ chức cấm toàn quyền thì công tắc của máy không có tác dụng", async () => {
+      await setPolicy({ allowFullPermission: false });
+      const m = await seedMachine(`full-deny-${tag}`, ["antigravity", "claude"], 1, devUserId);
+      const w = await FakeWorker.connect({ ...m, localProjects: { bound: [projectId], full: [projectId] } });
+      try {
+        const res = await api<{ code: string }>("POST", "/v1/runs", {
+          taskId: (await newTask("Antigravity khi tổ chức cấm")).id,
+          cli: "antigravity",
+        });
+        expect(res.status).toBe(409);
+        const auto = await startRun((await newTask("Tự chọn CLI khi tổ chức cấm")).id);
+        expect((await w.next("job_offer", (o) => o.runId === auto.id)).spec).toMatchObject({
+          cli: "claude",
+          fullAllowed: false,
+        });
+        w.send({ type: "job_reject", runId: auto.id, attempt: 1, reason: "test" });
+      } finally {
+        await w.close();
+      }
+    });
+
+    it("dự án cho toàn quyền: máy đã gắn mà chưa bật không nhận Antigravity, máy chưa gắn vẫn nhận", async () => {
+      await admin.query(
+        `update hive.projects set settings = settings || '{"runPermissions":{"mode":"full"}}'::jsonb where id = $1`,
+        [projectId],
+      );
+      const boundOff = await seedMachine(`full-off-${tag}`, ["antigravity"]);
+      const plain = await seedMachine(`full-plain-${tag}`, ["antigravity"]);
+      const a = await FakeWorker.connect({ ...boundOff, localProjects: { bound: [projectId], full: [] } });
+      const b = await FakeWorker.connect(plain);
+      try {
+        const run = await startRun((await newTask("Antigravity trên máy chưa gắn")).id, { cli: "antigravity" });
+        expect((await b.next("job_offer", (o) => o.runId === run.id)).spec).toMatchObject({ runPermissions: "full" });
+        await expect(a.next("job_offer", (o) => o.runId === run.id, 300)).rejects.toThrow();
+        b.send({ type: "job_reject", runId: run.id, attempt: 1, reason: "test" });
+        // Máy duy nhất còn lại chưa bật toàn quyền: run chờ và ghi lý do.
+        await until(
+          async () =>
+            (
+              await admin.query("select 1 from hive.run_events where run_id = $1 and type = 'waiting_machine'", [
+                run.id,
+              ])
+            ).rows.length > 0,
+        );
+        const waiting = await admin.query(
+          "select data from hive.run_events where run_id = $1 and type = 'waiting_machine'",
+          [run.id],
+        );
+        expect(waiting.rows[0].data.message).toContain("Antigravity cần toàn quyền");
+      } finally {
+        await Promise.all([a.close(), b.close()]);
+        await admin.query("update hive.projects set settings = settings - 'runPermissions' where id = $1", [projectId]);
+      }
+    });
+
+    it("worker cũ nối lại không báo dự án: hub xoá danh sách của lần trước", async () => {
+      const m = await seedMachine(`full-old-${tag}`);
+      const w = await FakeWorker.connect({ ...m, localProjects: { bound: [projectId], full: [projectId] } });
+      await w.close();
+      const old = await FakeWorker.connect(m);
+      try {
+        await until(async () => (await machineProjects(m.id)).bound_projects.length === 0);
+        expect(await machineProjects(m.id)).toEqual({ bound_projects: [], full_projects: [] });
+      } finally {
+        await old.close();
+      }
+    });
   });
 
   it("tổ chức chạm trần ngày: run chờ, báo một lần; nâng trần thì giao", async () => {

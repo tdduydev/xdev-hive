@@ -128,7 +128,9 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
           return ws.close(CLOSE.protocolUnsupported, `Hub dùng giao thức v${PROTOCOL_VERSION}`);
         }
         const { os, version, clis, capacity, capabilities } = msg;
-        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity, capabilities }))) {
+        // Worker cũ không báo dự án đã gắn: xoá danh sách của lần nối trước, vì bản cũ không còn áp công tắc của máy.
+        const projects = { boundProjects: msg.localProjects?.bound ?? [], fullProjects: msg.localProjects?.full ?? [] };
+        if (!(await markOnline(opts.pool, machine, { os, version, clis, capacity, capabilities, ...projects }))) {
           return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
         }
         if (ws.readyState !== ws.OPEN) return;
@@ -145,7 +147,11 @@ export function attachWorkerGateway(server: Server, opts: GatewayOptions): { clo
         case "hello":
           return ws.close(CLOSE.badMessage, "Đã gửi hello rồi");
         case "heartbeat": {
-          if (!(await markOnline(opts.pool, machine))) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
+          const projects = msg.localProjects && {
+            boundProjects: msg.localProjects.bound,
+            fullProjects: msg.localProjects.full,
+          };
+          if (!(await markOnline(opts.pool, machine, projects))) return ws.close(CLOSE.revoked, "Máy đã bị thu hồi");
           const onHeartbeat = opts.onHeartbeat ?? registered.onHeartbeat;
           const { renewed, cancel } = (await onHeartbeat?.(machine, msg)) ?? { renewed: [], cancel: [] };
           sendToMachine(machine.id, { type: "heartbeat_ack", renewed, cancel });

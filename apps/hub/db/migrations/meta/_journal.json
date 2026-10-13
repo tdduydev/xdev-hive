@@ -400,6 +400,13 @@
       "when": 1791877165124,
       "tag": "0056_code_review_workflows",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1791884829964,
+      "tag": "0057_machine_local_projects",
+      "breakpoints": true
     }
   ]
 }
