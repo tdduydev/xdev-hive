@@ -1,4 +1,4 @@
-import type { ChecklistItem, ReviewPhase } from "@xdev-hive/contracts";
+import type { ChecklistItem, CodeWorkflow, ReviewPhase, WorkflowSubject } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -347,14 +347,23 @@ export const reviewWorkflows = hive
       teamId: uuid("team_id"),
       name: text("name").notNull(),
       preset: text("preset").notNull(),
+      /** Quy trình cũ đều là tài liệu nên cột mới mặc định `doc`: nâng cấp không phải sửa dữ liệu. */
+      subject: text("subject").$type<WorkflowSubject>().notNull().default("doc"),
       docPrefixes: text("doc_prefixes").array().notNull(),
       phases: jsonb("phases").$type<ReviewPhase[]>().notNull(),
+      /** Phạm vi và tuỳ chọn của quy trình Code (specs/009); null với quy trình tài liệu. */
+      code: jsonb("code").$type<CodeWorkflow>(),
       enabled: boolean("enabled").notNull().default(true),
       updatedBy: text("updated_by"),
       createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
       updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     },
-    () => [orgScoped("review_workflows")],
+    () => [
+      check("review_workflows_subject", sql`subject in ('doc', 'code')`),
+      // Khối `code` có đúng khi và chỉ khi là quy trình Code, để hai loại không lẫn nhau dù ghi tay vào bảng.
+      check("review_workflows_code", sql`(subject = 'code') = (code is not null)`),
+      orgScoped("review_workflows"),
+    ],
   )
   .enableRLS();
 

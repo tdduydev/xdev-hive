@@ -38,7 +38,7 @@
     `packages/contracts/src/{workflows,code-reviews,glob}.test.ts`, `packages/contracts/openapi.json`
   - **Phụ thuộc**: không · **Mức**: nặng
 
-- [ ] T002 Bảng và migration
+- [x] T002 Bảng và migration
   - `knowledge/schema.ts`: `review_workflows.subject`, `code`, hai CHECK.
   - `codereview/schema.ts` mới: `code_reviews`, `code_review_gate_runs` đúng plan.md (chỉ số, unique một phiên mở mỗi
     PR, `orgScoped`, policy `hive_owner` select).
