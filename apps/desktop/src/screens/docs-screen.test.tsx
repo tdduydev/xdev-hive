@@ -37,6 +37,7 @@ vi.mock("@xterm/xterm", () => ({
       this.options = options;
       xterm.terms.push(this);
     }
+    unicode = { activeVersion: "6" };
     loadAddon() {}
     open() {}
     focus() {}
@@ -399,7 +400,7 @@ describe("DocsScreen", () => {
     expect(within(added[0] as HTMLElement).getByText("AI thêm")).toBeTruthy();
     expect(screen.getAllByText("internal/channel/ws.go:42").length).toBeGreaterThan(0);
     expect(screen.getByTestId("del").textContent).toContain("TODO");
-    expect(screen.getByText(/Proxy công ty: dự kiến/).className).toContain("text-warning");
+    expect(screen.getByText(/Proxy công ty: dự kiến/).className).toContain("hive-planned");
     // Chưa liên kết phiên trước đó: phiên mới được nhớ cho lần hỏi tiếp.
     expect(JSON.parse(localStorage.getItem("hive.docs.sessions") ?? "[]")[0]).toMatchObject({
       id: "7854d262-d8c6-4701-964c-dee4af8a1f1b",

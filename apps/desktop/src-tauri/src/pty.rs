@@ -114,8 +114,14 @@ pub fn spawn_spec(
     })
 }
 
+/// Màu mặc định cho `ls` của GNU (macOS dùng CLICOLOR). Chỉ dùng 16 màu ANSI để bảng màu của theme terminal quyết định
+/// màu thật.
+const DEFAULT_LS_COLORS: &str =
+    "di=1;34:ln=1;36:so=1;35:pi=33:ex=1;32:bd=1;33:cd=1;33:su=37;41:sg=30;43:tw=30;42:ow=34;42";
+
 /// Môi trường của terminal: danh sách cho phép của `cli.rs`, PATH đăng nhập, kiểu terminal của xterm.js. App mở từ
-/// Finder không có LANG: thiếu thì đặt UTF-8 để giao diện của CLI vẽ đúng chữ có dấu.
+/// Finder không có LANG: thiếu thì đặt UTF-8 để giao diện của CLI vẽ đúng chữ có dấu. Terminal này luôn là màn hình
+/// màu thật nên bật màu cho CLI không tự dò được; NO_COLOR không nằm trong danh sách cho phép nên không bao giờ lọt vào.
 pub fn term_env(
     vars: impl IntoIterator<Item = (OsString, OsString)>,
     path: &str,
@@ -127,6 +133,16 @@ pub fn term_env(
         .collect();
     env.push(("TERM".into(), "xterm-256color".into()));
     env.push(("COLORTERM".into(), "truecolor".into()));
+    for (key, value) in [
+        ("FORCE_COLOR", "1"),
+        ("CLICOLOR", "1"),
+        ("CLICOLOR_FORCE", "1"),
+        ("LS_COLORS", DEFAULT_LS_COLORS),
+    ] {
+        if !env.iter().any(|(k, _)| k == key) {
+            env.push((key.into(), value.into()));
+        }
+    }
     if cfg!(unix) && !env.iter().any(|(k, _)| k == "LANG" || k == "LC_ALL") {
         env.push(("LANG".into(), "en_US.UTF-8".into()));
     }
@@ -478,10 +494,28 @@ mod tests {
                 .map(|(_, v)| v.to_string_lossy().into_owned())
         };
         assert_eq!(get("TERM").as_deref(), Some("xterm-256color"));
+        assert_eq!(get("COLORTERM").as_deref(), Some("truecolor"));
+        for key in ["FORCE_COLOR", "CLICOLOR", "CLICOLOR_FORCE"] {
+            assert_eq!(get(key).as_deref(), Some("1"), "{key}");
+        }
+        assert!(get("LS_COLORS").is_some_and(|v| v.contains("di=")));
+        assert_eq!(get("NO_COLOR"), None);
         assert_eq!(get("CLAUDE_CONFIG_DIR").as_deref(), Some("/plan"));
         assert_eq!(get("PATH").as_deref(), Some("/usr/bin"));
         assert_eq!(get("HIVE_MACHINE_TOKEN"), None);
         assert_eq!(env.iter().filter(|(k, _)| k == "TERM").count(), 1);
+    }
+
+    #[test]
+    fn terminal_env_never_passes_no_color_and_sets_one_ls_colors() {
+        let vars = vec![
+            (OsString::from("NO_COLOR"), OsString::from("1")),
+            (OsString::from("LS_COLORS"), OsString::from("di=35")),
+        ];
+        let env = term_env(vars, "/usr/bin", None);
+        assert!(!env.iter().any(|(k, _)| k == "NO_COLOR"));
+        let ls: Vec<_> = env.iter().filter(|(k, _)| k == "LS_COLORS").collect();
+        assert_eq!(ls.len(), 1);
     }
 
     #[cfg(unix)]
