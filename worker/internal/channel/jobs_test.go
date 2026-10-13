@@ -526,3 +526,30 @@ func TestResultMessageCarriesCommandReport(t *testing.T) {
 		t.Fatalf("report có commands dù không chạy lệnh: %s", plain.Report)
 	}
 }
+
+func TestDecodeJobPassesTokenSaving(t *testing.T) {
+	offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"repoUrl":"https://git.example/a.git","cli":"claude","tokenSaving":{"enabled":true,"bashMaxChars":8000,"autocompactPct":60,"subagentModel":"haiku","cacheTtl":"1h"}}`)}
+	job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &runner.TokenSavingJob{Enabled: true, BashMaxChars: 8000, AutocompactPct: 60, SubagentModel: "haiku", CacheTTL: "1h"}
+	if !reflect.DeepEqual(job.TokenSaving, want) {
+		t.Fatalf("TokenSaving = %+v", job.TokenSaving)
+	}
+	// Hub cũ không gửi tokenSaving: nil, worker dùng mặc định.
+	offer.Spec = json.RawMessage(`{"repoUrl":"https://git.example/a.git","cli":"claude"}`)
+	if job, err = decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p"); err != nil || job.TokenSaving != nil {
+		t.Fatalf("job = %+v, err = %v", job.TokenSaving, err)
+	}
+}
+
+func TestDecodeJobReadsBriefSHA(t *testing.T) {
+	for spec, want := range map[string]string{`"brief":{"sha":"abc1234"}`: "abc1234", `"brief":null`: "", `"x":1`: ""} {
+		offer := &JobOffer{RunID: "r", Attempt: 1, Spec: json.RawMessage(`{"kind":"brief","repoUrl":"https://git.example/a.git","cli":"claude",` + spec + `}`)}
+		job, err := decodeJob(offer, Lease{RunToken: "t"}, "https://hub.example", "p")
+		if err != nil || job.Kind != runner.KindBrief || job.BriefSHA != want {
+			t.Fatalf("%s: %+v, %v", spec, job, err)
+		}
+	}
+}

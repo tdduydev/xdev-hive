@@ -26400,6 +26400,50 @@
                               "mention": "hive"
                             }
                           },
+                          "tokenSaving": {
+                            "type": "object",
+                            "properties": {
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "bashMaxChars": {
+                                "type": "integer",
+                                "minimum": 1000,
+                                "maximum": 150000
+                              },
+                              "autocompactPct": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "subagentModel": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 100
+                              },
+                              "cacheTtl": {
+                                "enum": [
+                                  "5m",
+                                  "1h"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "enabled",
+                              "bashMaxChars",
+                              "autocompactPct",
+                              "subagentModel",
+                              "cacheTtl"
+                            ],
+                            "default": {
+                              "enabled": true,
+                              "bashMaxChars": 15000,
+                              "autocompactPct": 70,
+                              "subagentModel": "sonnet",
+                              "cacheTtl": "5m"
+                            }
+                          },
                           "defaultCli": {
                             "anyOf": [
                               {
@@ -26577,6 +26621,34 @@
                                 },
                                 "default": {}
                               }
+                            }
+                          },
+                          "brief": {
+                            "type": "object",
+                            "properties": {
+                              "auto": {
+                                "type": "boolean"
+                              },
+                              "refreshCommits": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 10000
+                              },
+                              "refreshDays": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 365
+                              }
+                            },
+                            "required": [
+                              "auto",
+                              "refreshCommits",
+                              "refreshDays"
+                            ],
+                            "default": {
+                              "auto": true,
+                              "refreshCommits": 50,
+                              "refreshDays": 7
                             }
                           }
                         },
@@ -27610,6 +27682,50 @@
                             "mention": "hive"
                           }
                         },
+                        "tokenSaving": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "bashMaxChars": {
+                              "type": "integer",
+                              "minimum": 1000,
+                              "maximum": 150000
+                            },
+                            "autocompactPct": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            },
+                            "subagentModel": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "cacheTtl": {
+                              "enum": [
+                                "5m",
+                                "1h"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "enabled",
+                            "bashMaxChars",
+                            "autocompactPct",
+                            "subagentModel",
+                            "cacheTtl"
+                          ],
+                          "default": {
+                            "enabled": true,
+                            "bashMaxChars": 15000,
+                            "autocompactPct": 70,
+                            "subagentModel": "sonnet",
+                            "cacheTtl": "5m"
+                          }
+                        },
                         "defaultCli": {
                           "anyOf": [
                             {
@@ -27787,6 +27903,34 @@
                               },
                               "default": {}
                             }
+                          }
+                        },
+                        "brief": {
+                          "type": "object",
+                          "properties": {
+                            "auto": {
+                              "type": "boolean"
+                            },
+                            "refreshCommits": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 10000
+                            },
+                            "refreshDays": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 365
+                            }
+                          },
+                          "required": [
+                            "auto",
+                            "refreshCommits",
+                            "refreshDays"
+                          ],
+                          "default": {
+                            "auto": true,
+                            "refreshCommits": 50,
+                            "refreshDays": 7
                           }
                         }
                       },
@@ -28822,6 +28966,50 @@
                                 "mention": "hive"
                               }
                             },
+                            "tokenSaving": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "bashMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 1000,
+                                  "maximum": 150000
+                                },
+                                "autocompactPct": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "subagentModel": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "cacheTtl": {
+                                  "enum": [
+                                    "5m",
+                                    "1h"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "bashMaxChars",
+                                "autocompactPct",
+                                "subagentModel",
+                                "cacheTtl"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "bashMaxChars": 15000,
+                                "autocompactPct": 70,
+                                "subagentModel": "sonnet",
+                                "cacheTtl": "5m"
+                              }
+                            },
                             "defaultCli": {
                               "anyOf": [
                                 {
@@ -28999,6 +29187,34 @@
                                   },
                                   "default": {}
                                 }
+                              }
+                            },
+                            "brief": {
+                              "type": "object",
+                              "properties": {
+                                "auto": {
+                                  "type": "boolean"
+                                },
+                                "refreshCommits": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "refreshDays": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "auto",
+                                "refreshCommits",
+                                "refreshDays"
+                              ],
+                              "default": {
+                                "auto": true,
+                                "refreshCommits": 50,
+                                "refreshDays": 7
                               }
                             }
                           },
@@ -30187,6 +30403,50 @@
                                 "mention": "hive"
                               }
                             },
+                            "tokenSaving": {
+                              "type": "object",
+                              "properties": {
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "bashMaxChars": {
+                                  "type": "integer",
+                                  "minimum": 1000,
+                                  "maximum": 150000
+                                },
+                                "autocompactPct": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                },
+                                "subagentModel": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 100
+                                },
+                                "cacheTtl": {
+                                  "enum": [
+                                    "5m",
+                                    "1h"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "enabled",
+                                "bashMaxChars",
+                                "autocompactPct",
+                                "subagentModel",
+                                "cacheTtl"
+                              ],
+                              "default": {
+                                "enabled": true,
+                                "bashMaxChars": 15000,
+                                "autocompactPct": 70,
+                                "subagentModel": "sonnet",
+                                "cacheTtl": "5m"
+                              }
+                            },
                             "defaultCli": {
                               "anyOf": [
                                 {
@@ -30364,6 +30624,34 @@
                                   },
                                   "default": {}
                                 }
+                              }
+                            },
+                            "brief": {
+                              "type": "object",
+                              "properties": {
+                                "auto": {
+                                  "type": "boolean"
+                                },
+                                "refreshCommits": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 10000
+                                },
+                                "refreshDays": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 365
+                                }
+                              },
+                              "required": [
+                                "auto",
+                                "refreshCommits",
+                                "refreshDays"
+                              ],
+                              "default": {
+                                "auto": true,
+                                "refreshCommits": 50,
+                                "refreshDays": 7
                               }
                             }
                           },
@@ -33087,6 +33375,37 @@
                         },
                         "additionalProperties": false
                       },
+                      "tokenSaving": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "bashMaxChars": {
+                            "type": "integer",
+                            "minimum": 1000,
+                            "maximum": 150000
+                          },
+                          "autocompactPct": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100
+                          },
+                          "subagentModel": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "cacheTtl": {
+                            "enum": [
+                              "5m",
+                              "1h"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
                       "defaultCli": {
                         "anyOf": [
                           {
@@ -33299,6 +33618,25 @@
                               }
                             },
                             "default": {}
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "brief": {
+                        "type": "object",
+                        "properties": {
+                          "auto": {
+                            "type": "boolean"
+                          },
+                          "refreshCommits": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10000
+                          },
+                          "refreshDays": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 365
                           }
                         },
                         "additionalProperties": false
@@ -33830,6 +34168,50 @@
                         "mention": "hive"
                       }
                     },
+                    "tokenSaving": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "bashMaxChars": {
+                          "type": "integer",
+                          "minimum": 1000,
+                          "maximum": 150000
+                        },
+                        "autocompactPct": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 100
+                        },
+                        "subagentModel": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "cacheTtl": {
+                          "enum": [
+                            "5m",
+                            "1h"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "bashMaxChars",
+                        "autocompactPct",
+                        "subagentModel",
+                        "cacheTtl"
+                      ],
+                      "default": {
+                        "enabled": true,
+                        "bashMaxChars": 15000,
+                        "autocompactPct": 70,
+                        "subagentModel": "sonnet",
+                        "cacheTtl": "5m"
+                      }
+                    },
                     "defaultCli": {
                       "anyOf": [
                         {
@@ -34007,6 +34389,34 @@
                           },
                           "default": {}
                         }
+                      }
+                    },
+                    "brief": {
+                      "type": "object",
+                      "properties": {
+                        "auto": {
+                          "type": "boolean"
+                        },
+                        "refreshCommits": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 10000
+                        },
+                        "refreshDays": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 365
+                        }
+                      },
+                      "required": [
+                        "auto",
+                        "refreshCommits",
+                        "refreshDays"
+                      ],
+                      "default": {
+                        "auto": true,
+                        "refreshCommits": 50,
+                        "refreshDays": 7
                       }
                     }
                   },
@@ -34469,6 +34879,13 @@
                       ],
                       "type": "string"
                     },
+                    "status": {
+                      "enum": [
+                        "approved",
+                        "pending"
+                      ],
+                      "type": "string"
+                    },
                     "content": {
                       "type": "string"
                     },
@@ -34567,6 +34984,7 @@
                   "required": [
                     "id",
                     "kind",
+                    "status",
                     "content",
                     "files",
                     "scope",
@@ -34945,6 +35363,20 @@
             "allowReserved": true
           },
           {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "enum": [
+                "approved",
+                "pending"
+              ],
+              "type": "string",
+              "default": "approved"
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          },
+          {
             "name": "includeSuperseded",
             "in": "query",
             "schema": {
@@ -35010,6 +35442,13 @@
                           "convention",
                           "gotcha",
                           "note"
+                        ],
+                        "type": "string"
+                      },
+                      "status": {
+                        "enum": [
+                          "approved",
+                          "pending"
                         ],
                         "type": "string"
                       },
@@ -35111,6 +35550,7 @@
                     "required": [
                       "id",
                       "kind",
+                      "status",
                       "content",
                       "files",
                       "scope",
@@ -35526,6 +35966,13 @@
                         ],
                         "type": "string"
                       },
+                      "status": {
+                        "enum": [
+                          "approved",
+                          "pending"
+                        ],
+                        "type": "string"
+                      },
                       "content": {
                         "type": "string"
                       },
@@ -35637,6 +36084,7 @@
                     "required": [
                       "id",
                       "kind",
+                      "status",
                       "content",
                       "files",
                       "scope",
@@ -36062,6 +36510,13 @@
                       ],
                       "type": "string"
                     },
+                    "status": {
+                      "enum": [
+                        "approved",
+                        "pending"
+                      ],
+                      "type": "string"
+                    },
                     "content": {
                       "type": "string"
                     },
@@ -36160,12 +36615,874 @@
                   "required": [
                     "id",
                     "kind",
+                    "status",
                     "content",
                     "files",
                     "scope",
                     "author",
                     "createdAt",
                     "supersededBy"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{id}/approve": {
+      "post": {
+        "operationId": "memory.approve",
+        "summary": "Duyệt memory agent đề xuất (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "kind": {
+                      "enum": [
+                        "decision",
+                        "convention",
+                        "gotcha",
+                        "note"
+                      ],
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "approved",
+                        "pending"
+                      ],
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "level": {
+                          "enum": [
+                            "org",
+                            "team",
+                            "project"
+                          ],
+                          "type": "string"
+                        },
+                        "teamId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "projectId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "level",
+                        "teamId",
+                        "projectId"
+                      ]
+                    },
+                    "author": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "runId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "userId",
+                        "runId"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "supersededBy": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "status",
+                    "content",
+                    "files",
+                    "scope",
+                    "author",
+                    "createdAt",
+                    "supersededBy"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{id}/reject": {
+      "post": {
+        "operationId": "memory.reject",
+        "summary": "Bỏ memory agent đề xuất (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
                   ]
                 }
               }
@@ -38069,6 +39386,1362 @@
                       "createdAt"
                     ]
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/briefs": {
+      "get": {
+        "operationId": "briefs.get",
+        "summary": "Brief của dự án; null khi chưa có",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "allowEmptyValue": true,
+            "allowReserved": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "projectId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        "commitSha": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "source": {
+                          "enum": [
+                            "agent",
+                            "user"
+                          ],
+                          "type": "string"
+                        },
+                        "updatedBy": {
+                          "type": "object",
+                          "properties": {
+                            "userId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "runId": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "userId",
+                            "runId"
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "headSha": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "commitsBehind": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "refreshRunId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "projectId",
+                        "content",
+                        "version",
+                        "commitSha",
+                        "source",
+                        "updatedBy",
+                        "updatedAt",
+                        "headSha",
+                        "commitsBehind",
+                        "refreshRunId"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "briefs.save",
+        "summary": "Sửa tay brief của dự án (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 12000
+                  },
+                  "baseVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "project",
+                  "content",
+                  "baseVersion"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projectId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "commitSha": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "enum": [
+                        "agent",
+                        "user"
+                      ],
+                      "type": "string"
+                    },
+                    "updatedBy": {
+                      "type": "object",
+                      "properties": {
+                        "userId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "runId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "userId",
+                        "runId"
+                      ]
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "headSha": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "commitsBehind": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refreshRunId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "projectId",
+                    "content",
+                    "version",
+                    "commitSha",
+                    "source",
+                    "updatedBy",
+                    "updatedAt",
+                    "headSha",
+                    "commitsBehind",
+                    "refreshRunId"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "BAD_REQUEST"
+                        },
+                        "status": {
+                          "const": 400
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu gửi lên không hợp lệ."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "UNAUTHORIZED"
+                        },
+                        "status": {
+                          "const": 401
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Chưa đăng nhập."
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "FORBIDDEN"
+                        },
+                        "status": {
+                          "const": 403
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Bạn không có quyền làm việc này."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "NOT_FOUND"
+                        },
+                        "status": {
+                          "const": 404
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Không tìm thấy."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": true
+                        },
+                        "code": {
+                          "const": "CONFLICT"
+                        },
+                        "status": {
+                          "const": 409
+                        },
+                        "message": {
+                          "type": "string",
+                          "default": "Dữ liệu bị trùng hoặc xung đột."
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "code": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "defined": {
+                          "const": false
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "number"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "data": {}
+                      },
+                      "required": [
+                        "defined",
+                        "code",
+                        "status",
+                        "message"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/briefs/refresh": {
+      "post": {
+        "operationId": "briefs.refresh",
+        "summary": "Giao run viết lại brief của dự án (thành viên đội)",
+        "description": "Tổ chức lấy từ header `x-hive-org`.",
+        "tags": [
+          "knowledge"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "project"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "runId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "runId"
+                  ]
                 }
               }
             }
@@ -47627,7 +50300,8 @@
                             "leader",
                             "doccheck",
                             "docassist",
-                            "sdlc"
+                            "sdlc",
+                            "brief"
                           ],
                           "type": "string"
                         },
@@ -48035,6 +50709,16 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "accountId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -48043,7 +50727,56 @@
                             "cacheRead",
                             "cacheWrite",
                             "costUsd",
-                            "turns"
+                            "turns",
+                            "accountId"
+                          ]
+                        },
+                        "explore": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "turns": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "inputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "outputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cacheReadTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cacheWriteTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "edited",
+                                "turns",
+                                "inputTokens",
+                                "outputTokens",
+                                "cacheReadTokens",
+                                "cacheWriteTokens"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ]
                         },
                         "createdBy": {
@@ -48118,6 +50851,7 @@
                         "prUrl",
                         "timeoutSec",
                         "cost",
+                        "explore",
                         "createdBy",
                         "ownerUserId",
                         "createdAt",
@@ -48836,7 +51570,8 @@
                             "leader",
                             "doccheck",
                             "docassist",
-                            "sdlc"
+                            "sdlc",
+                            "brief"
                           ],
                           "type": "string"
                         },
@@ -49244,6 +51979,16 @@
                                   "type": "null"
                                 }
                               ]
+                            },
+                            "accountId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             }
                           },
                           "required": [
@@ -49252,7 +51997,56 @@
                             "cacheRead",
                             "cacheWrite",
                             "costUsd",
-                            "turns"
+                            "turns",
+                            "accountId"
+                          ]
+                        },
+                        "explore": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "turns": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "inputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "outputTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cacheReadTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "cacheWriteTokens": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "edited",
+                                "turns",
+                                "inputTokens",
+                                "outputTokens",
+                                "cacheReadTokens",
+                                "cacheWriteTokens"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
                           ]
                         },
                         "createdBy": {
@@ -49327,6 +52121,7 @@
                         "prUrl",
                         "timeoutSec",
                         "cost",
+                        "explore",
                         "createdBy",
                         "ownerUserId",
                         "createdAt",
@@ -49768,7 +52563,8 @@
                         "leader",
                         "doccheck",
                         "docassist",
-                        "sdlc"
+                        "sdlc",
+                        "brief"
                       ],
                       "type": "string"
                     },
@@ -50176,6 +52972,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -50184,7 +52990,56 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
+                      ]
+                    },
+                    "explore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "edited": {
+                              "type": "boolean"
+                            },
+                            "turns": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "inputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "outputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheReadTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheWriteTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "edited",
+                            "turns",
+                            "inputTokens",
+                            "outputTokens",
+                            "cacheReadTokens",
+                            "cacheWriteTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
                       ]
                     },
                     "createdBy": {
@@ -50259,6 +53114,7 @@
                     "prUrl",
                     "timeoutSec",
                     "cost",
+                    "explore",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -50748,7 +53604,8 @@
                           "leader",
                           "doccheck",
                           "docassist",
-                          "sdlc"
+                          "sdlc",
+                          "brief"
                         ],
                         "type": "string"
                       },
@@ -51156,6 +54013,16 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "accountId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -51164,7 +54031,56 @@
                           "cacheRead",
                           "cacheWrite",
                           "costUsd",
-                          "turns"
+                          "turns",
+                          "accountId"
+                        ]
+                      },
+                      "explore": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "edited": {
+                                "type": "boolean"
+                              },
+                              "turns": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "inputTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "outputTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "cacheReadTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "cacheWriteTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "edited",
+                              "turns",
+                              "inputTokens",
+                              "outputTokens",
+                              "cacheReadTokens",
+                              "cacheWriteTokens"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
                       "createdBy": {
@@ -51239,6 +54155,7 @@
                       "prUrl",
                       "timeoutSec",
                       "cost",
+                      "explore",
                       "createdBy",
                       "ownerUserId",
                       "createdAt",
@@ -51644,7 +54561,8 @@
                           "leader",
                           "doccheck",
                           "docassist",
-                          "sdlc"
+                          "sdlc",
+                          "brief"
                         ],
                         "type": "string"
                       },
@@ -52052,6 +54970,16 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "accountId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -52060,7 +54988,56 @@
                           "cacheRead",
                           "cacheWrite",
                           "costUsd",
-                          "turns"
+                          "turns",
+                          "accountId"
+                        ]
+                      },
+                      "explore": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "edited": {
+                                "type": "boolean"
+                              },
+                              "turns": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "inputTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "outputTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "cacheReadTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "cacheWriteTokens": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              }
+                            },
+                            "required": [
+                              "edited",
+                              "turns",
+                              "inputTokens",
+                              "outputTokens",
+                              "cacheReadTokens",
+                              "cacheWriteTokens"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
                         ]
                       },
                       "createdBy": {
@@ -52135,6 +55112,7 @@
                       "prUrl",
                       "timeoutSec",
                       "cost",
+                      "explore",
                       "createdBy",
                       "ownerUserId",
                       "createdAt",
@@ -52627,7 +55605,8 @@
                               "leader",
                               "doccheck",
                               "docassist",
-                              "sdlc"
+                              "sdlc",
+                              "brief"
                             ],
                             "type": "string"
                           },
@@ -53035,6 +56014,16 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "accountId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -53043,7 +56032,56 @@
                               "cacheRead",
                               "cacheWrite",
                               "costUsd",
-                              "turns"
+                              "turns",
+                              "accountId"
+                            ]
+                          },
+                          "explore": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "edited": {
+                                    "type": "boolean"
+                                  },
+                                  "turns": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "inputTokens": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "outputTokens": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "cacheReadTokens": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "cacheWriteTokens": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": [
+                                  "edited",
+                                  "turns",
+                                  "inputTokens",
+                                  "outputTokens",
+                                  "cacheReadTokens",
+                                  "cacheWriteTokens"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
                             ]
                           },
                           "createdBy": {
@@ -53124,6 +56162,7 @@
                           "prUrl",
                           "timeoutSec",
                           "cost",
+                          "explore",
                           "createdBy",
                           "ownerUserId",
                           "createdAt",
@@ -53566,7 +56605,8 @@
                         "leader",
                         "doccheck",
                         "docassist",
-                        "sdlc"
+                        "sdlc",
+                        "brief"
                       ],
                       "type": "string"
                     },
@@ -53974,6 +57014,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -53982,7 +57032,56 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
+                      ]
+                    },
+                    "explore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "edited": {
+                              "type": "boolean"
+                            },
+                            "turns": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "inputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "outputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheReadTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheWriteTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "edited",
+                            "turns",
+                            "inputTokens",
+                            "outputTokens",
+                            "cacheReadTokens",
+                            "cacheWriteTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
                       ]
                     },
                     "createdBy": {
@@ -54057,6 +57156,7 @@
                     "prUrl",
                     "timeoutSec",
                     "cost",
+                    "explore",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -54459,7 +57559,8 @@
                         "leader",
                         "doccheck",
                         "docassist",
-                        "sdlc"
+                        "sdlc",
+                        "brief"
                       ],
                       "type": "string"
                     },
@@ -54867,6 +57968,16 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "accountId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -54875,7 +57986,56 @@
                         "cacheRead",
                         "cacheWrite",
                         "costUsd",
-                        "turns"
+                        "turns",
+                        "accountId"
+                      ]
+                    },
+                    "explore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "edited": {
+                              "type": "boolean"
+                            },
+                            "turns": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "inputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "outputTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheReadTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "cacheWriteTokens": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "edited",
+                            "turns",
+                            "inputTokens",
+                            "outputTokens",
+                            "cacheReadTokens",
+                            "cacheWriteTokens"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
                       ]
                     },
                     "createdBy": {
@@ -54950,6 +58110,7 @@
                     "prUrl",
                     "timeoutSec",
                     "cost",
+                    "explore",
                     "createdBy",
                     "ownerUserId",
                     "createdAt",
@@ -58419,7 +61580,8 @@
                 "day",
                 "task",
                 "cli",
-                "machine"
+                "machine",
+                "account"
               ],
               "type": "string",
               "default": "day"
@@ -58441,7 +61603,8 @@
                         "day",
                         "task",
                         "cli",
-                        "machine"
+                        "machine",
+                        "account"
                       ],
                       "type": "string"
                     },
@@ -58540,12 +61703,73 @@
                         "cacheWrite",
                         "costUsd"
                       ]
+                    },
+                    "explore": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "runs": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "edited": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "turns": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "totalTurns": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "tokens": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "totalTokens": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "costShare": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "costUsd": {
+                              "type": "number"
+                            }
+                          },
+                          "required": [
+                            "runs",
+                            "edited",
+                            "turns",
+                            "totalTurns",
+                            "tokens",
+                            "totalTokens",
+                            "costShare",
+                            "costUsd"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
                     "groupBy",
                     "groups",
-                    "total"
+                    "total",
+                    "explore"
                   ]
                 }
               }
@@ -64922,6 +68146,37 @@
                                     },
                                     "additionalProperties": false
                                   },
+                                  "tokenSaving": {
+                                    "type": "object",
+                                    "properties": {
+                                      "enabled": {
+                                        "type": "boolean"
+                                      },
+                                      "bashMaxChars": {
+                                        "type": "integer",
+                                        "minimum": 1000,
+                                        "maximum": 150000
+                                      },
+                                      "autocompactPct": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100
+                                      },
+                                      "subagentModel": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 100
+                                      },
+                                      "cacheTtl": {
+                                        "enum": [
+                                          "5m",
+                                          "1h"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
                                   "defaultCli": {
                                     "anyOf": [
                                       {
@@ -65134,6 +68389,25 @@
                                           }
                                         },
                                         "default": {}
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  },
+                                  "brief": {
+                                    "type": "object",
+                                    "properties": {
+                                      "auto": {
+                                        "type": "boolean"
+                                      },
+                                      "refreshCommits": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 10000
+                                      },
+                                      "refreshDays": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 365
                                       }
                                     },
                                     "additionalProperties": false
@@ -66314,6 +69588,37 @@
                                       },
                                       "additionalProperties": false
                                     },
+                                    "tokenSaving": {
+                                      "type": "object",
+                                      "properties": {
+                                        "enabled": {
+                                          "type": "boolean"
+                                        },
+                                        "bashMaxChars": {
+                                          "type": "integer",
+                                          "minimum": 1000,
+                                          "maximum": 150000
+                                        },
+                                        "autocompactPct": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 100
+                                        },
+                                        "subagentModel": {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 100
+                                        },
+                                        "cacheTtl": {
+                                          "enum": [
+                                            "5m",
+                                            "1h"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
                                     "defaultCli": {
                                       "anyOf": [
                                         {
@@ -66526,6 +69831,25 @@
                                             }
                                           },
                                           "default": {}
+                                        }
+                                      },
+                                      "additionalProperties": false
+                                    },
+                                    "brief": {
+                                      "type": "object",
+                                      "properties": {
+                                        "auto": {
+                                          "type": "boolean"
+                                        },
+                                        "refreshCommits": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10000
+                                        },
+                                        "refreshDays": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 365
                                         }
                                       },
                                       "additionalProperties": false
@@ -67751,6 +71075,37 @@
                                   },
                                   "additionalProperties": false
                                 },
+                                "tokenSaving": {
+                                  "type": "object",
+                                  "properties": {
+                                    "enabled": {
+                                      "type": "boolean"
+                                    },
+                                    "bashMaxChars": {
+                                      "type": "integer",
+                                      "minimum": 1000,
+                                      "maximum": 150000
+                                    },
+                                    "autocompactPct": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 100
+                                    },
+                                    "subagentModel": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 100
+                                    },
+                                    "cacheTtl": {
+                                      "enum": [
+                                        "5m",
+                                        "1h"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
                                 "defaultCli": {
                                   "anyOf": [
                                     {
@@ -67963,6 +71318,25 @@
                                         }
                                       },
                                       "default": {}
+                                    }
+                                  },
+                                  "additionalProperties": false
+                                },
+                                "brief": {
+                                  "type": "object",
+                                  "properties": {
+                                    "auto": {
+                                      "type": "boolean"
+                                    },
+                                    "refreshCommits": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 10000
+                                    },
+                                    "refreshDays": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 365
                                     }
                                   },
                                   "additionalProperties": false
@@ -78812,6 +82186,32 @@
                         }
                       }
                     },
+                    "agentMemory": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "off",
+                            "propose",
+                            "direct"
+                          ],
+                          "type": "string"
+                        },
+                        "maxPerRun": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "maxPerRun"
+                      ],
+                      "default": {
+                        "mode": "propose",
+                        "maxPerRun": 5
+                      }
+                    },
                     "updatedAt": {
                       "anyOf": [
                         {
@@ -79545,6 +82945,32 @@
                         "default": {}
                       }
                     }
+                  },
+                  "agentMemory": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "enum": [
+                          "off",
+                          "propose",
+                          "direct"
+                        ],
+                        "type": "string"
+                      },
+                      "maxPerRun": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50
+                      }
+                    },
+                    "required": [
+                      "mode",
+                      "maxPerRun"
+                    ],
+                    "default": {
+                      "mode": "propose",
+                      "maxPerRun": 5
+                    }
                   }
                 },
                 "required": [
@@ -79846,6 +83272,32 @@
                           },
                           "default": {}
                         }
+                      }
+                    },
+                    "agentMemory": {
+                      "type": "object",
+                      "properties": {
+                        "mode": {
+                          "enum": [
+                            "off",
+                            "propose",
+                            "direct"
+                          ],
+                          "type": "string"
+                        },
+                        "maxPerRun": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 50
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "maxPerRun"
+                      ],
+                      "default": {
+                        "mode": "propose",
+                        "maxPerRun": 5
                       }
                     },
                     "updatedAt": {

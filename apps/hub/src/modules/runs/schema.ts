@@ -1,4 +1,4 @@
-import type { OutcomeCheck, RunResultView } from "@xdev-hive/contracts";
+import type { OutcomeCheck, RunExplore, RunResultView } from "@xdev-hive/contracts";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -28,7 +28,7 @@ const orgScoped = (name: string) => pgPolicy(`${name}_rw`, { for: "all", to: hiv
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
-export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader", "doccheck", "docassist"]);
+export const runKind = hive.enum("run_kind", ["code", "review", "plan", "leader", "doccheck", "docassist", "brief"]);
 export const runState = hive.enum("run_state", [
   "queued",
   "planning",
@@ -100,6 +100,17 @@ export const runs = hive
       cacheWrite: bigint("cache_write", { mode: "number" }).notNull().default(0),
       costUsd: numeric("cost_usd", { precision: 14, scale: 6, mode: "number" }),
       turns: integer("turns"),
+      /**
+       * Id gói (tài khoản CLI trên máy) đã chạy run, theo sự kiện cost của worker; lần thử sau ghi đè lần trước. null
+       * khi dùng đăng nhập mặc định hoặc worker cũ chưa báo. Id chỉ có nghĩa trong một máy (accounts.json), nên thống kê
+       * theo gói của dự án gộp các máy dùng cùng id.
+       */
+      accountId: text("account_id"),
+      /**
+       * Khảo sát trước lần sửa file đầu tiên của lần thử gần nhất (ADR 0022), worker báo trong sự kiện cost. null khi
+       * CLI không báo được; lần thử mới ghi đè vì số so sánh trước/sau là của một phiên agent.
+       */
+      explore: jsonb("explore").$type<RunExplore & { attempt: number }>(),
       /** Đề nghị job đang chờ máy trả lời; hết hạn thì hub đề nghị máy khác. */
       offerMachineId: uuid("offer_machine_id"),
       offerExpiresAt: timestamp("offer_expires_at", { withTimezone: true }),
@@ -134,6 +145,12 @@ export const runs = hive
       uniqueIndex("runs_review_active")
         .on(t.parentRunId)
         .where(sql`state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`),
+      // Mỗi dự án một run brief đang sống. Lọc theo branch thay cho kind = 'brief' vì cùng lý do 55P04 như trên.
+      uniqueIndex("runs_brief_active")
+        .on(t.projectId)
+        .where(
+          sql`branch like 'brief/%' and state not in ('succeeded', 'no_changes', 'needs_review', 'failed', 'cancelled')`,
+        ),
       foreignKey({ columns: [t.parentRunId, t.orgId], foreignColumns: [t.id, t.orgId] }).onDelete("cascade"),
       index("runs_org_team").on(t.orgId, t.teamId),
       index("runs_team_state").on(t.teamId, t.state),

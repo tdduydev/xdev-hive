@@ -61,6 +61,7 @@ export async function applyCost(tx: Tx, run: RunRow, eventId: number, data: Cost
             costUsd: sql`coalesce(${runs.costUsd}, 0) + greatest(0, ${String(data.costUsd)}::numeric - ${prevUsd}::numeric)`,
           }),
       ...(data.turns === null ? {} : { turns: sql`coalesce(${runs.turns}, 0) + ${d.turns}` }),
+      ...(data.accountId ? { accountId: data.accountId } : {}),
     })
     .where(eq(runs.id, run.id));
 }

@@ -27,6 +27,7 @@ const PROJECT = {
     outcome: { default: [], byType: {} },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { enabled: false, label: "hive", mention: "hive" },
+    brief: { auto: true, refreshCommits: 50, refreshDays: 7 },
     budget: { perRunUsd: 2 },
   },
   createdBy: "u1",
@@ -41,6 +42,7 @@ const cost = (costUsd: number | null) => ({
   cacheWrite: 0,
   costUsd,
   turns: null,
+  accountId: null,
 });
 
 const run = (n: number, over: Record<string, unknown>) => ({
@@ -65,6 +67,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   prUrl: null,
   timeoutSec: 3600,
   cost: cost(null),
+  explore: null,
   createdBy: "u1",
   ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
@@ -149,6 +152,42 @@ test("cấu hình dự án: quản trị sửa ngân sách, bật toàn quyền 
       key: "PAY",
       settings: { budget: { perRunUsd: 3.5 }, runPermissions: { mode: "full" } },
     });
+});
+
+test("cấu hình dự án: Tiết kiệm token hiện mặc định, sửa và lưu đúng bản vá, số sai báo ở ô", async ({ page }) => {
+  const h = await open(page, "admin", {
+    "projects/updateSettings": (input) => {
+      const patch = (input as { settings: Record<string, unknown> }).settings;
+      return ok({ ...PROJECT.settings, ...patch });
+    },
+  });
+  await page.goto("/projects/PAY/settings");
+  // Dự án lưu trước khi có mục này: form hiện mặc định (bật, 15.000 ký tự, 70%, sonnet, 5 phút).
+  await expect(page.getByRole("switch", { name: "Bật tiết kiệm token" })).toBeChecked();
+  await expect(page.getByRole("textbox", { name: "Output lệnh tối đa" })).toHaveValue("15000");
+  await expect(page.getByRole("textbox", { name: "Tự nén ngữ cảnh khi đầy" })).toHaveValue("70");
+  await expect(page.getByRole("textbox", { name: "Model của subagent" })).toHaveValue("sonnet");
+  await expect(page.getByLabel("Thời gian giữ cache")).toHaveValue("5m");
+
+  await page.getByRole("textbox", { name: "Output lệnh tối đa" }).fill("500");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect(page.getByText("Tối thiểu 1.000 ký tự.")).toBeVisible();
+  expect(h.rpcCalls.some((c) => c.path === "projects/updateSettings")).toBe(false);
+
+  await page.getByRole("textbox", { name: "Output lệnh tối đa" }).fill("8000");
+  await page.getByRole("textbox", { name: "Model của subagent" }).fill("haiku");
+  await page.getByLabel("Thời gian giữ cache").selectOption("1h");
+  await page.getByRole("button", { name: "Lưu cấu hình" }).click();
+  await expect
+    .poll(() => h.rpcCalls.find((c) => c.path === "projects/updateSettings")?.input)
+    .toMatchObject({
+      key: "PAY",
+      settings: { tokenSaving: { enabled: true, bashMaxChars: 8000, subagentModel: "haiku", cacheTtl: "1h" } },
+    });
+
+  // Tắt cả nhóm thì các ô khoá lại.
+  await page.getByRole("switch", { name: "Bật tiết kiệm token" }).click();
+  await expect(page.getByRole("textbox", { name: "Output lệnh tối đa" })).toBeDisabled();
 });
 
 test("cấu hình dự án: chính sách tổ chức khoá toàn quyền", async ({ page }) => {

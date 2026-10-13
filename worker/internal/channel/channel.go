@@ -121,9 +121,14 @@ type jobSpec struct {
 	SetupEnv    map[string]string  `json:"setupEnv"`
 	MCPServers  []runner.MCPServer `json:"mcpServers"`
 	Policy      runner.JobPolicy   `json:"policy"`
+	// TokenSaving là cài đặt "Tiết kiệm token" của dự án; nil với hub cũ.
+	TokenSaving *runner.TokenSavingJob `json:"tokenSaving"`
 	Checks      *struct {
 		Commands []runner.CheckCommand `json:"commands"`
 	} `json:"checks"`
+	Brief *struct {
+		SHA string `json:"sha"`
+	} `json:"brief"`
 }
 
 func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
@@ -151,8 +156,12 @@ func decodeJob(o *JobOffer, l Lease, hub, project string) (runner.Job, error) {
 	env := map[string]string{"HIVE_RUN_TOKEN": l.RunToken, "HIVE_MCP_TOKEN": l.RunToken, "HIVE_HUB_URL": hub, "HIVE_PROJECT": project}
 	j := runner.Job{Execution: s.Execution, SandboxPolicy: s.Sandbox, RunID: o.RunID, Kind: s.Kind, Budget: s.Budget, Attempt: o.Attempt, RepoURL: repo, BaseBranch: s.BaseBranch, Branch: s.Branch, CLI: s.CLI, Model: s.Model, RunPermissions: s.RunPermissions, Prompt: s.Prompt, Timeout: time.Duration(s.TimeoutSec) * time.Second, SetupScript: s.SetupScript, EnvironmentImage: s.Image, Env: env, SetupEnv: s.SetupEnv, Policy: s.Policy, ProjectID: strings.ToLower(s.ProjectID)}
 	j.MCPServers = s.MCPServers
+	j.TokenSaving = s.TokenSaving
 	if s.Checks != nil {
 		j.Checks = s.Checks.Commands
+	}
+	if s.Brief != nil {
+		j.BriefSHA = s.Brief.SHA
 	}
 	if s.Sandbox != nil {
 		j.EnvironmentImage = s.Sandbox.Image.BaseImage

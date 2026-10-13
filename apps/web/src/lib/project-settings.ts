@@ -1,9 +1,12 @@
 import { ORPCError } from "@orpc/client";
 import {
+  DEFAULT_BRIEF_SETTINGS,
+  defaultTokenSaving,
   type OutcomeCheck,
   type ProjectSettings,
   type ProjectSettingsPatch,
   projectSettingsPatch,
+  type TokenSaving,
 } from "@xdev-hive/contracts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 
@@ -41,8 +44,18 @@ export interface SettingsForm {
   perRunUsd: string;
   perTaskUsd: string;
   maxTurns: string;
+  /** Brief dự án (ADR 0022): hub tự giao run viết brief. */
+  briefAuto: boolean;
+  briefRefreshCommits: string;
+  briefRefreshDays: string;
   models: Record<SettingsCli, { code: string; review: string }>;
   runPermissions: PermissionMode;
+  /** Tiết kiệm token cho run Claude Code; ô số giữ dạng chuỗi như các ô khác. */
+  tokenSaving: boolean;
+  bashMaxChars: string;
+  autocompactPct: string;
+  subagentModel: string;
+  cacheTtl: TokenSaving["cacheTtl"];
 }
 
 const text = (n: number | undefined): string => (n === undefined ? "" : String(n));
@@ -53,6 +66,8 @@ const reviewIndex = (checks: OutcomeCheck[]): number => checks.findIndex((c) => 
 export function formFromSettings(s: ProjectSettings): SettingsForm {
   const review = s.outcome.default.find((c): c is ReviewCheck => c.check === "review");
   const model = (cli: SettingsCli) => ({ code: s.models?.[cli]?.code ?? "", review: s.models?.[cli]?.review ?? "" });
+  // Hub cũ chưa gửi mục này: hiện mặc định, như hub mới điền cho dự án lưu từ trước.
+  const saving = s.tokenSaving ?? defaultTokenSaving;
   return {
     mergeMode: s.merge.mode,
     requiredApprovals: String(s.merge.requiredApprovals),
@@ -70,6 +85,10 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     perRunUsd: text(s.budget?.perRunUsd),
     perTaskUsd: text(s.budget?.perTaskUsd),
     maxTurns: text(s.budget?.maxTurns),
+    // Hub cũ chưa có mục brief thì dùng mặc định, như hub mới tạo dự án.
+    briefAuto: s.brief?.auto ?? DEFAULT_BRIEF_SETTINGS.auto,
+    briefRefreshCommits: text(s.brief?.refreshCommits ?? DEFAULT_BRIEF_SETTINGS.refreshCommits),
+    briefRefreshDays: text(s.brief?.refreshDays ?? DEFAULT_BRIEF_SETTINGS.refreshDays),
     models: {
       claude: model("claude"),
       codex: model("codex"),
@@ -77,6 +96,11 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
       antigravity: model("antigravity"),
     },
     runPermissions: s.runPermissions?.mode ?? "workspace",
+    tokenSaving: saving.enabled,
+    bashMaxChars: String(saving.bashMaxChars),
+    autocompactPct: String(saving.autocompactPct),
+    subagentModel: saving.subagentModel,
+    cacheTtl: saving.cacheTtl,
   };
 }
 
@@ -91,6 +115,16 @@ function num(value: string, field: string, errors: FieldErrors): number | null {
   if (!v) return null;
   const n = Number(v);
   if (!Number.isFinite(n)) errors[field] = NOT_A_NUMBER;
+  return n;
+}
+
+/** Ô số bắt buộc: trống là lỗi ô (không có "không giới hạn" như ngân sách), trả NaN để zod không báo trùng. */
+function requiredNum(value: string, field: string, errors: FieldErrors): number {
+  const n = num(value, field, errors);
+  if (n === null) {
+    errors[field] = "Nhập một số.";
+    return Number.NaN;
+  }
   return n;
 }
 
@@ -147,10 +181,24 @@ function fullPatch(form: SettingsForm, current: ProjectSettings, errors: FieldEr
       perTaskUsd: num(form.perTaskUsd, "perTaskUsd", errors),
       maxTurns: num(form.maxTurns, "maxTurns", errors),
     },
+    // Ô trống thì về mặc định: hub không có "không giới hạn" cho hai ngưỡng này.
+    brief: {
+      auto: form.briefAuto,
+      refreshCommits:
+        num(form.briefRefreshCommits, "briefRefreshCommits", errors) ?? DEFAULT_BRIEF_SETTINGS.refreshCommits,
+      refreshDays: num(form.briefRefreshDays, "briefRefreshDays", errors) ?? DEFAULT_BRIEF_SETTINGS.refreshDays,
+    },
     models: Object.fromEntries(
       SETTINGS_CLIS.map((cli) => [cli, { code: model(form.models[cli].code), review: model(form.models[cli].review) }]),
     ),
     runPermissions: { mode: form.runPermissions },
+    tokenSaving: {
+      enabled: form.tokenSaving,
+      bashMaxChars: requiredNum(form.bashMaxChars, "bashMaxChars", errors),
+      autocompactPct: requiredNum(form.autocompactPct, "autocompactPct", errors),
+      subagentModel: form.subagentModel.trim(),
+      cacheTtl: form.cacheTtl,
+    },
   };
 }
 
@@ -162,10 +210,22 @@ export function fieldOfPath(path: readonly PropertyKey[]): string | undefined {
       return key === "requiredApprovals" ? "requiredApprovals" : key === "method" ? "mergeMethod" : undefined;
     case "budget":
       return key === "perRunUsd" || key === "perTaskUsd" || key === "maxTurns" ? key : undefined;
+    case "brief":
+      return key === "auto"
+        ? "briefAuto"
+        : key === "refreshCommits"
+          ? "briefRefreshCommits"
+          : key === "refreshDays"
+            ? "briefRefreshDays"
+            : undefined;
     case "models":
       return key && sub ? `models.${key}.${sub}` : undefined;
     case "runPermissions":
       return "runPermissions";
+    case "tokenSaving":
+      return key === "bashMaxChars" || key === "autocompactPct" || key === "subagentModel" || key === "cacheTtl"
+        ? key
+        : undefined;
     case "outcome": {
       // outcome.default.<i>.<trường>[.when.<trường>]
       const rest = path.slice(3).map(String);

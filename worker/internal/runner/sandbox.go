@@ -134,10 +134,7 @@ func sandboxEnv(env map[string]string, s SandboxConfig) map[string]string {
 }
 
 func sandboxCLIEnv(job Job) map[string]string {
-	env := map[string]string{}
-	for k, v := range job.Env {
-		env[k] = v
-	}
+	env := mergeMap(job.savingEnv, job.Env)
 	// Host credentials are read only from explicit runner-host variables; personal CLI config is never mounted.
 	credentials := map[string]string{
 		"claude": "ANTHROPIC_API_KEY", "codex": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY", "antigravity": "GEMINI_API_KEY",

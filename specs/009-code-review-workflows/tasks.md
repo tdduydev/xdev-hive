@@ -93,7 +93,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{dry-run.ts,router.ts,index.ts,dry-run.db.test.ts}`
   - **Phụ thuộc**: T010, T011 · **Mức**: vừa
 
-- [ ] T013 [US1] Web: trang Quy trình duyệt cho Code
+- [x] T013 [US1] Web: trang Quy trình duyệt cho Code
   - Hộp chọn Tài liệu/Code khi tạo; nhãn và bộ lọc loại; `workflow-code-config.tsx` (phạm vi, Khi đạt, trường checkpoint
     theo loại); chạy thử chọn run gần đây; nút "Tạo từ cấu hình dự án".
   - Hub giả và Playwright: tạo quy trình Code từ khung mẫu, lỗi quy tắc sai loại, chạy thử, người chỉ đọc; 360 px, tối.
@@ -107,7 +107,7 @@
 
 ## Phase 3: User Story 2 — Checkpoint tự động sau run code (P1)
 
-- [ ] T020 [US2] Máy trạng thái phiên
+- [x] T020 [US2] Máy trạng thái phiên
   - `service.ts`: `matchFor`, `start` (bản chụp, `head_sha`, số liệu, `run_reasons`), `advance` (bỏ qua theo điều kiện,
     `rule`, `ext` qua job, `human` đặt `due_at` + `code_review.awaiting`), `cancel`; khoá `FOR UPDATE`; audit
     `codereview.start|gate|cancel`.
@@ -158,7 +158,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{queries.ts,decide.ts,router.ts,decide.db.test.ts,queries.db.test.ts}`
   - **Phụ thuộc**: T012, T020, T003 · **Mức**: nặng
 
-- [ ] T031 [P] [US3] Package UI `@xdev-hive/code-review`
+- [x] T031 [P] [US3] Package UI `@xdev-hive/code-review`
   - `CodeReviewPane`, `FileDiff` (patch unified, phát hiện gắn dòng, file lớn → link ra PR), `AiResults`, `GateStepper`,
     `DecisionForm` (hướng trả lại, ghi chú bắt buộc khi trả lại, báo `headSha` cũ); chữ nhận qua props/từ điển để web và
     app dùng chung; test component.

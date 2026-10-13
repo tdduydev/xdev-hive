@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Project } from "@xdev-hive/contracts";
+import type { CostExplore, Project } from "@xdev-hive/contracts";
 import { Alert } from "@xdev-hive/ui/alert";
 import { Button } from "@xdev-hive/ui/button";
 import { Input } from "@xdev-hive/ui/input";
@@ -8,11 +8,14 @@ import { Table, Td, Th } from "@xdev-hive/ui/table";
 import { type FormEvent, useRef, useState } from "react";
 import { Card } from "@/components/ui/card.tsx";
 import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
+import { formatCacheHit, formatPercent } from "@/lib/format.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 type Period = 7 | 14 | 30;
-type GroupBy = "cli" | "machine" | "task";
+type GroupBy = "cli" | "machine" | "task" | "account";
+
+const GROUP_HEAD: Record<GroupBy, string> = { cli: "CLI", machine: "Mã máy", task: "Mã việc", account: "Gói" };
 
 function utcDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -120,12 +123,21 @@ export function CostsPage() {
               <Alert variant="destructive">{apiErrorMessage(daily.error)}</Alert>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                   <Metric label="Tổng chi phí đã báo" value={usd(daily.data.total.costUsd)} />
                   <Metric label="Run" value={number(daily.data.total.runs)} />
                   <Metric label="Token vào" value={number(daily.data.total.tokensIn)} />
                   <Metric label="Token ra" value={number(daily.data.total.tokensOut)} />
+                  <Metric
+                    label="Cache trúng"
+                    value={formatCacheHit(
+                      daily.data.total.cacheRead,
+                      daily.data.total.cacheWrite,
+                      daily.data.total.tokensIn,
+                    )}
+                  />
                 </div>
+                {daily.data.explore && <ExploreBlock explore={daily.data.explore} />}
                 <Card className="grid gap-3 p-4">
                   <div>
                     <h2 className="text-base font-semibold text-foreground">Chi phí theo ngày (USD)</h2>
@@ -138,7 +150,9 @@ export function CostsPage() {
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div>
                         <h2 className="text-base font-semibold text-foreground">Chi tiết chi phí</h2>
-                        <p className="text-xs text-muted-foreground">Nhóm theo CLI, máy hoặc việc.</p>
+                        <p className="text-xs text-muted-foreground">
+                          Nhóm theo CLI, máy, việc hoặc gói. Cache trúng = đọc cache ÷ (đọc + ghi cache + token vào).
+                        </p>
                       </div>
                       <label className="grid min-w-36 gap-1 text-xs font-medium" htmlFor="cost-group">
                         Nhóm theo
@@ -150,6 +164,7 @@ export function CostsPage() {
                           <option value="cli">CLI</option>
                           <option value="machine">Máy</option>
                           <option value="task">Việc</option>
+                          <option value="account">Gói</option>
                         </NativeSelect>
                       </label>
                     </div>
@@ -163,18 +178,20 @@ export function CostsPage() {
                       <Table>
                         <thead>
                           <tr>
-                            <Th>{groupBy === "cli" ? "CLI" : groupBy === "machine" ? "Mã máy" : "Mã việc"}</Th>
+                            <Th>{GROUP_HEAD[groupBy]}</Th>
                             <Th>Run</Th>
                             <Th>Token</Th>
+                            <Th>Cache trúng</Th>
                             <Th>Chi phí</Th>
                           </tr>
                         </thead>
                         <tbody>
                           {grouped.data.groups.map((group) => (
                             <tr key={group.key ?? "unknown"}>
-                              <Td>{group.key ?? "Chưa xác định"}</Td>
+                              <Td>{group.key ?? (groupBy === "account" ? "Đăng nhập mặc định" : "Chưa xác định")}</Td>
                               <Td>{number(group.runs)}</Td>
                               <Td>{number(group.tokensIn + group.tokensOut)}</Td>
+                              <Td>{formatCacheHit(group.cacheRead, group.cacheWrite, group.tokensIn)}</Td>
                               <Td>{usd(group.costUsd)}</Td>
                             </tr>
                           ))}
@@ -353,6 +370,29 @@ function Metric({ label, value }: { label: string; value: string | number }) {
     <Card className="grid min-w-0 content-start gap-1 p-3">
       <span className="text-xs text-muted-foreground">{label}</span>
       <b className="break-words text-base text-foreground">{value}</b>
+    </Card>
+  );
+}
+
+/** Phần chi phí run code dành cho đọc repo trước lần sửa đầu tiên; số chia là tỉ lệ trên tổng của các run có số đo. */
+function ExploreBlock({ explore }: { explore: CostExplore }) {
+  const share = (part: number, total: number) => formatPercent(total > 0 ? part / total : 0);
+  return (
+    <Card className="grid gap-3 p-4" role="group" aria-label="Khảo sát trước khi sửa">
+      <div>
+        <h2 className="text-base font-semibold text-foreground">Khảo sát trước khi sửa</h2>
+        <p className="text-xs text-muted-foreground">
+          Phần agent đọc repo trước lần sửa file đầu tiên, tính trên run code có số đo (Claude). Tỉ lệ chi phí và USD là
+          ước tính.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <Metric label="Run có số đo" value={`${number(explore.runs)} (${number(explore.edited)} đã sửa file)`} />
+        <Metric label="Lượt" value={`${number(explore.turns)} · ${share(explore.turns, explore.totalTurns)}`} />
+        <Metric label="Token" value={`${number(explore.tokens)} · ${share(explore.tokens, explore.totalTokens)}`} />
+        <Metric label="Tỉ lệ chi phí" value={formatPercent(explore.costShare)} />
+        <Metric label="Chi phí khảo sát" value={usd(explore.costUsd)} />
+      </div>
     </Card>
   );
 }
