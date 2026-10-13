@@ -4,28 +4,37 @@ import {
   DEFAULT_AGENT_POLICY,
   type ReviewGateInput,
   type WorkflowInput,
+  workflowInput,
 } from "@xdev-hive/contracts";
 import pg from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
 import { saveAgentPolicy } from "../governance/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
-import type { Principal } from "./access.ts";
+import type { Principal, Reader } from "./access.ts";
 import { saveDoc } from "./docs.ts";
-import { approveProposal, rejectProposal } from "./proposals.ts";
+import { editorState, previewSubmit } from "./editor.ts";
+import { approveProposal, createProposal, rejectProposal } from "./proposals.ts";
 import { remindOverdue } from "./review-jobs.ts";
 import {
+  AI_AUTO_ACTOR,
   applyAiResult,
+  type BaselineEvent,
+  DERIVED_WORKFLOW_ID,
   decideReview,
   dryRunWorkflow,
+  eligible,
   getReview,
   listCodeWorkflows,
   listReviews,
   listWorkflows,
   proposeWithReview,
+  provideReviewHooks,
+  type ReviewDeps,
   removeWorkflow,
   saveWorkflow,
+  startReview,
 } from "./reviews.ts";
 
 const { adminUrl, appUrl } = inject("db");
@@ -600,5 +609,380 @@ describe("quy trình code", () => {
     // Đội khác chỉ thấy quy trình của tổ chức.
     const other = await as("tmember", (tx) => listCodeWorkflows(tx, { teamId: randomUUID(), projectId: null }));
     expect(other.map((w) => w.id)).toEqual([orgWide.id]);
+  });
+});
+
+describe("điểm nối của AI SDLC", () => {
+  const derived = (gates: ReviewGateInput[], name = "001 · Spec") => ({
+    name,
+    phases: workflowInput.parse({ ...workflow(gates), name }).phases,
+  });
+  const proposeWith = (who: string, hooks: ReviewDeps, content = PRD_V2) =>
+    as(who, (tx) =>
+      proposeWithReview(
+        tx,
+        user(who),
+        { kind: "doc", key: docKey, content, baseVersion: docVersion, reason: "Thêm phí" },
+        hooks,
+      ),
+    );
+  const versionNow = async () =>
+    (await admin.query("select current_version from hive.docs where key = $1", [docKey])).rows[0].current_version;
+  const gateRun = async (instanceId: string, gateId: string) =>
+    (
+      await admin.query(
+        "select * from hive.review_gate_runs where instance_id = $1 and gate_id = $2 order by started_at desc",
+        [instanceId, gateId],
+      )
+    ).rows[0];
+  const approve = (who: string, id: string, hooks: ReviewDeps) =>
+    as(who, (tx) => decideReview(tx, org.user(who), { id, decision: "approve" }, hooks));
+
+  afterEach(() => provideReviewHooks({}));
+
+  it("workflowFor đi trước quy trình khớp tiền tố; không trả gì thì quy trình cũ vẫn áp", async () => {
+    await as("tadmin", (tx) => saveWorkflow(tx, org.user("tadmin"), workflow([human("po")])));
+    const workflowFor = vi.fn(async (_tx: Tx, key: string) => (key === docKey ? derived([human("lead")]) : null));
+    const p = await proposeWith("tmember", { workflowFor });
+    expect(workflowFor).toHaveBeenCalledWith(expect.anything(), docKey);
+    expect(await instanceOf(p.id)).toMatchObject({ workflow_id: null, workflow_name: "001 · Spec", gate_index: 0 });
+    expect((await instanceOf(p.id)).phases[0].gates[0].id).toBe("lead");
+
+    await freshDoc();
+    const q = await proposeWith("tmember", { workflowFor: async () => null });
+    expect(await instanceOf(q.id)).toMatchObject({
+      workflow_name: expect.stringContaining("PRD"),
+      status: "in_review",
+    });
+    expect((await instanceOf(q.id)).workflow_id).not.toBeNull();
+  });
+
+  it("hook cài một lần cho cả hub (provideReviewHooks) áp cả ở bản xem trước của trình soạn", async () => {
+    provideReviewHooks({ workflowFor: async (_tx, key) => (key === docKey ? derived([human("lead")]) : null) });
+    const preview = await as("tmember", (tx) => previewSubmit(tx, user("tmember"), { key: docKey }));
+    expect(preview.workflow).toEqual({ id: DERIVED_WORKFLOW_ID, name: "001 · Spec" });
+    expect(preview.gates.map((g) => g.gateId)).toEqual(["lead"]);
+    await as("tmember", (tx) => editorState(tx, user("tmember"), { key: docKey }));
+    const p = await proposeWith("tmember", {});
+    expect(await instanceOf(p.id)).toMatchObject({ workflow_name: "001 · Spec" });
+    // Deps của lời gọi thắng hook cài chung.
+    await freshDoc();
+    const q = await proposeWith("tmember", { workflowFor: async () => null });
+    expect(await instanceOf(q.id)).toBeUndefined();
+  });
+
+  it("onBaseline chạy trong transaction chốt phiên bản: lỗi thì bản mới không được lưu", async () => {
+    const events: BaselineEvent[] = [];
+    const hooks: ReviewDeps = {
+      workflowFor: async () => derived([human("lead")]),
+      onBaseline: async (_tx, e) => void events.push(e),
+    };
+    const p = await proposeWith("tmember", hooks);
+    const inst = await instanceOf(p.id);
+    await approve("tadmin", inst.id, hooks);
+    expect(events).toEqual([
+      { docKey, version: docVersion + 1, proposalId: p.id, reviewId: inst.id, reaffirm: false, autoApproved: false },
+    ]);
+
+    await freshDoc();
+    const boom: ReviewDeps = {
+      workflowFor: async () => derived([human("lead")]),
+      onBaseline: async () => {
+        throw new Error("sdlc lỗi");
+      },
+    };
+    const q = await proposeWith("tmember", boom);
+    await expect(approve("tadmin", (await instanceOf(q.id)).id, boom)).rejects.toThrow("sdlc lỗi");
+    expect(await versionNow()).toBe(docVersion);
+    expect((await instanceOf(q.id)).status).toBe("in_review");
+  });
+
+  it("queueAuthorFix nhận việc sửa thì không tạo task chung; không nhận thì dùng task chung", async () => {
+    const asked: string[] = [];
+    const hooks = (taken: boolean): ReviewDeps => ({
+      workflowFor: async () => derived([human("po")]),
+      queueAuthorFix: async (_tx, r) => {
+        asked.push(`${r.docKey}|${r.note}`);
+        return taken;
+      },
+    });
+    const tasksOf = async () =>
+      Number((await admin.query("select count(*) from hive.tasks where project_id = $1", [projectId])).rows[0].count);
+    const before = await tasksOf();
+    const route = (id: string, h: ReviewDeps, note: string) =>
+      as("tadmin", (tx) => decideReview(tx, org.user("tadmin"), { id, decision: "changes", note, route: "agent" }, h));
+
+    const taken = hooks(true);
+    const p = await proposeWith("tmember", taken);
+    await route((await instanceOf(p.id)).id, taken, "Ghi rõ trần phí");
+    expect(asked).toEqual([`${docKey}|Ghi rõ trần phí`]);
+    expect(await tasksOf()).toBe(before);
+    expect(await instanceOf(p.id)).toMatchObject({ status: "changes_requested", route: "agent" });
+
+    await freshDoc();
+    const declined = hooks(false);
+    const q = await proposeWith("tmember", declined);
+    await route((await instanceOf(q.id)).id, declined, "Thiếu rủi ro");
+    expect(await tasksOf()).toBe(before + 1);
+  });
+
+  it("traceFor thay cách truy vết mặc định; trả null thì dùng cách cũ", async () => {
+    const p = await proposeWith("tmember", { workflowFor: async () => derived([human("po")]) });
+    const id = (await instanceOf(p.id)).id;
+    const custom = [{ id: "FR-001", text: "Hoàn tiền", acceptance: [], tasks: [] }];
+    const seen = vi.fn(async () => custom);
+    const a = await as("tadmin", (tx) => getReview(tx, org.user("tadmin"), id, { traceFor: seen }));
+    expect(a.trace).toEqual(custom);
+    expect(seen).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ docKey, projectId }));
+    const b = await as("tadmin", (tx) => getReview(tx, org.user("tadmin"), id, { traceFor: async () => null }));
+    expect(b.trace.map((t) => t.id)).toEqual(["R-1", "R-2"]);
+  });
+
+  it("teamScope: vai trò của checkpoint tính trong đội đó, và người duyệt đội khác đọc được phiên", async () => {
+    const gate = human("lead-crm", { reviewers: { users: [], roles: ["team-admin"], quorum: 1 } });
+    const wf = derived([gate]);
+    (wf.phases[0]?.gates[0]?.reviewers as { teamScope?: string }).teamScope = org.otherTeamId;
+    const hooks: ReviewDeps = { workflowFor: async () => wf };
+    const p = await proposeWith("tmember", hooks);
+    const id = (await instanceOf(p.id)).id;
+    // tadmin là quản trị đội sở hữu tài liệu nhưng checkpoint tính trong đội CRM.
+    expect(
+      await errorCode(() =>
+        as("tadmin", (tx) => decideReview(tx, org.user("tadmin"), { id, decision: "approve" }, hooks)),
+      ),
+    ).toBe("REVIEW_NOT_REVIEWER");
+    const seen = await as("oadmin", (tx) => getReview(tx, org.user("oadmin"), id, hooks));
+    expect(seen).toMatchObject({ canDecide: true, awaitingMe: true });
+    const done = await approve("oadmin", id, hooks);
+    expect(done.status).toBe("approved");
+    // Không có teamScope thì người đội khác vẫn không đọc được như trước.
+    await freshDoc();
+    const q = await proposeWith("tmember", { workflowFor: async () => derived([human("lead")]) });
+    const qid = (await instanceOf(q.id)).id;
+    expect(await errorCode(() => as("oadmin", (tx) => getReview(tx, org.user("oadmin"), qid)))).toBe(
+      "REVIEW_NOT_FOUND",
+    );
+  });
+
+  it("team-ba được chọn làm người duyệt: BA/PO của đội, và quản trị, thành viên đội đó", () => {
+    const reader = (role: string | null, teamId = org.teamId): Reader => ({
+      kind: "user",
+      principal: { kind: "user", userId: "u" },
+      orgRole: "member",
+      teams: new Map(role ? [[teamId, role as never]] : []),
+    });
+    const gate = () =>
+      workflowInput.parse(workflow([human("ba", { reviewers: { users: [], roles: ["team-ba"], quorum: 1 } })]))
+        .phases[0]?.gates[0] as never;
+    const scope = { teamId: org.teamId, projectId: null };
+    expect(eligible(reader("ba"), gate(), scope)).toBe(true);
+    expect(eligible(reader("member"), gate(), scope)).toBe(true);
+    expect(eligible(reader("admin"), gate(), scope)).toBe(true);
+    expect(eligible(reader("viewer"), gate(), scope)).toBe(false);
+    expect(eligible(reader(null), gate(), scope)).toBe(false);
+    // BA của đội khác không duyệt được tài liệu của đội này.
+    expect(eligible(reader("ba", org.otherTeamId), gate(), scope)).toBe(false);
+  });
+
+  it("ruleContext cấp dữ liệu cho luật no-open-questions: còn câu hỏi mở thì trả về người viết", async () => {
+    const gates: ReviewGateInput[] = [
+      { id: "clear", name: "Hết câu hỏi", kind: "rule", rules: ["no-open-questions"] },
+      human("po"),
+    ];
+    const open = (n: number): ReviewDeps => ({
+      workflowFor: async () => derived(gates),
+      ruleContext: async () => ({ openQuestions: n }),
+    });
+    const p = await proposeWith("tmember", open(2));
+    expect(await instanceOf(p.id)).toMatchObject({ status: "changes_requested", route: "author" });
+    const note = (await admin.query("select decision_note from hive.proposals where id = $1", [p.id])).rows[0];
+    expect(note.decision_note).toContain("Không còn câu hỏi mở");
+
+    await freshDoc();
+    const q = await proposeWith("tmember", open(0));
+    expect(await instanceOf(q.id)).toMatchObject({ status: "in_review", gate_index: 1 });
+
+    // Chạy thử cũng đi qua hook.
+    provideReviewHooks(open(1));
+    const dry = await as("tviewer", (tx) => dryRunWorkflow(tx, user("tviewer"), { workflow: workflow(gates), docKey }));
+    expect(dry.gates[0]?.checklist.map((c) => c.passed)).toEqual([true, false]);
+  });
+
+  describe("tự duyệt", () => {
+    const decision = (score = 9.2) => ({
+      approve: true as const,
+      score,
+      threshold: 9,
+      approvalId: randomUUID(),
+      reasons: ["Reviewer khác CLI với tác giả."],
+    });
+
+    it("đồng ý: ghi quyết định system:ai-auto, đi tiếp như người duyệt, chốt baseline", async () => {
+      const events: BaselineEvent[] = [];
+      const approvalId = randomUUID();
+      const seen: unknown[] = [];
+      const hooks: ReviewDeps = {
+        workflowFor: async () =>
+          derived([{ id: "ai", name: "AI kiểm", kind: "rule", rules: ["requirements"] }, human("po")]),
+        autoDecide: async (_tx, req) => {
+          seen.push(req);
+          return { approve: true, score: 9.2, threshold: 9, approvalId };
+        },
+        onBaseline: async (_tx, e) => void events.push(e),
+      };
+      const p = await proposeWith("tmember", hooks);
+      const inst = await instanceOf(p.id);
+      expect(inst.status).toBe("approved");
+      expect(await versionNow()).toBe(docVersion + 1);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        review: { id: inst.id, docKey, projectId },
+        gate: { id: "po", kind: "human" },
+        checkpoints: [{ gateId: "ai", kind: "rule", status: "passed", decidedBy: null }],
+      });
+      expect(events).toEqual([expect.objectContaining({ reaffirm: false, autoApproved: true })]);
+      const run = await gateRun(inst.id, "po");
+      expect(run).toMatchObject({ status: "passed", decided_by: AI_AUTO_ACTOR });
+      expect(run.approvals).toEqual([
+        { userId: AI_AUTO_ACTOR, at: expect.any(String), auto: { score: 9.2, threshold: 9, approvalId } },
+      ]);
+      const detail = await as("tadmin", (tx) => getReview(tx, org.user("tadmin"), inst.id));
+      const po = detail.gates.find((g) => g.gateId === "po");
+      expect(po).toMatchObject({
+        status: "passed",
+        decidedBy: "Tự duyệt AI",
+        auto: { score: 9.2, threshold: 9, approvalId },
+      });
+      expect(po?.approvals[0]?.name).toBe("Tự duyệt AI");
+      const audit = await admin.query(
+        "select data from hive.audit_log where org_id = $1 and action = 'review.auto_approve' and target_id = $2",
+        [org.orgId, inst.id],
+      );
+      expect(audit.rows[0]?.data).toMatchObject({ gate: "po", score: 9.2, threshold: 9, approvalId });
+    });
+
+    it("từ chối kèm lý do: checkpoint chờ người, lý do ghi ở note và audit; người duyệt xong thì baseline không phải tự duyệt", async () => {
+      const events: BaselineEvent[] = [];
+      const hooks: ReviewDeps = {
+        workflowFor: async () => derived([human("po")]),
+        autoDecide: async () => ({ approve: false, reason: "Điểm 8.7 < ngưỡng 9" }),
+        onBaseline: async (_tx, e) => void events.push(e),
+      };
+      const p = await proposeWith("tmember", hooks);
+      const inst = await instanceOf(p.id);
+      expect(inst).toMatchObject({ status: "in_review", gate_index: 0 });
+      expect(await gateRun(inst.id, "po")).toMatchObject({
+        status: "waiting",
+        note: "Không tự duyệt: Điểm 8.7 < ngưỡng 9",
+      });
+      const audit = await admin.query(
+        "select data from hive.audit_log where org_id = $1 and action = 'review.auto_declined' and target_id = $2",
+        [org.orgId, inst.id],
+      );
+      expect(audit.rows[0]?.data).toMatchObject({ gate: "po", reason: "Điểm 8.7 < ngưỡng 9" });
+      await approve("tadmin", inst.id, hooks);
+      expect(events).toEqual([expect.objectContaining({ autoApproved: false })]);
+    });
+
+    it("từ chối im lặng hoặc null: như không có hook", async () => {
+      for (const answer of [{ approve: false as const }, null]) {
+        await freshDoc();
+        const p = await proposeWith("tmember", {
+          workflowFor: async () => derived([human("po")]),
+          autoDecide: async () => answer,
+        });
+        const inst = await instanceOf(p.id);
+        expect(inst).toMatchObject({ status: "in_review", gate_index: 0 });
+        expect((await gateRun(inst.id, "po")).note).toBeNull();
+      }
+    });
+
+    it("hai checkpoint người: tự duyệt cái đầu, cái sau do người; chỉ hỏi khi mọi checkpoint trước đã đạt", async () => {
+      const asked: string[] = [];
+      const hooks: ReviewDeps = {
+        workflowFor: async () => derived([human("po"), human("lead")]),
+        autoDecide: async (_tx, req) => {
+          asked.push(`${req.gate.id}:${req.checkpoints.map((c) => `${c.gateId}=${c.decidedBy}`).join(",")}`);
+          return req.gate.id === "po" ? decision() : { approve: false, reason: "Tech lead luôn do người" };
+        },
+      };
+      const p = await proposeWith("tmember", hooks);
+      const inst = await instanceOf(p.id);
+      expect(inst).toMatchObject({ status: "in_review", gate_index: 1 });
+      expect(asked).toEqual(["po:", `lead:po=${AI_AUTO_ACTOR}`]);
+      const detail = await as("tadmin", (tx) => getReview(tx, org.user("tadmin"), inst.id));
+      expect(detail.gates.map((g) => g.status)).toEqual(["passed", "waiting"]);
+      expect(detail.gate).toMatchObject({ id: "lead" });
+    });
+  });
+
+  describe("duyệt lại baseline (reaffirm)", () => {
+    const reaffirmProposal = (who: string) =>
+      as(who, (tx) =>
+        createProposal(tx, user(who), {
+          kind: "doc",
+          key: docKey,
+          baseVersion: docVersion,
+          content: PRD_V1,
+          reason: "Duyệt lại sau khi thu hồi tự duyệt",
+        }),
+      );
+
+    it("đạt thì gọi onBaseline với reaffirm và không tạo phiên bản mới", async () => {
+      const events: BaselineEvent[] = [];
+      const hooks: ReviewDeps = { onBaseline: async (_tx, e) => void events.push(e) };
+      const p = await reaffirmProposal("tmember");
+      const inst = await as("tadmin", (tx) =>
+        startReview(tx, p.id, hooks, { workflow: derived([human("po")]), reaffirm: true }),
+      );
+      expect(inst).toMatchObject({ status: "in_review" });
+      await approve("tadmin", inst?.id ?? "", hooks);
+      expect(await versionNow()).toBe(docVersion);
+      const versions = await admin.query(
+        "select count(*)::int as n from hive.doc_versions v join hive.docs d on d.id = v.doc_id where d.key = $1",
+        [docKey],
+      );
+      expect(versions.rows[0].n).toBe(1);
+      expect(events).toEqual([
+        { docKey, version: docVersion, proposalId: p.id, reviewId: inst?.id, reaffirm: true, autoApproved: false },
+      ]);
+      const prop = await admin.query("select status, result_version from hive.proposals where id = $1", [p.id]);
+      expect(prop.rows[0]).toMatchObject({ status: "approved", result_version: docVersion });
+      const audit = await admin.query(
+        "select 1 from hive.audit_log where action = 'review.reaffirm' and target_id = $1",
+        [inst?.id],
+      );
+      expect(audit.rowCount).toBe(1);
+    });
+
+    it("trả lại thì đi theo luồng sửa thường, không gọi onBaseline", async () => {
+      const onBaseline = vi.fn(async () => {});
+      const p = await reaffirmProposal("tmember");
+      const inst = await as("tadmin", (tx) =>
+        startReview(tx, p.id, { onBaseline }, { workflow: derived([human("po")]), reaffirm: true }),
+      );
+      await as("tadmin", (tx) =>
+        decideReview(
+          tx,
+          org.user("tadmin"),
+          { id: inst?.id ?? "", decision: "changes", note: "Còn sai" },
+          { onBaseline },
+        ),
+      );
+      expect(await instanceOf(p.id)).toMatchObject({ status: "changes_requested", route: "author" });
+      expect(onBaseline).not.toHaveBeenCalled();
+      expect(await versionNow()).toBe(docVersion);
+    });
+
+    it("tài liệu đã sang phiên bản khác thì xác nhận cũ không đạt được", async () => {
+      const p = await reaffirmProposal("tmember");
+      const inst = await as("tadmin", (tx) =>
+        startReview(tx, p.id, {}, { workflow: derived([human("po")]), reaffirm: true }),
+      );
+      await as("tadmin", (tx) =>
+        saveDoc(tx, user("tadmin"), { key: docKey, content: PRD_V2, baseVersion: docVersion }),
+      );
+      expect(await errorCode(() => approve("tadmin", inst?.id ?? "", {}))).toBe("VERSION_CONFLICT");
+    });
   });
 });
