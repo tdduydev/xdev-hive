@@ -6,6 +6,7 @@ import { useState } from "react";
 import { type Column, DataTable } from "@/components/data-table/data-table.tsx";
 import { useT } from "@/lib/i18n.ts";
 import { authorLabel, DetailCard, KnowledgeLayout, QueryState, ScopeBadge } from "@/pages/knowledge/common.tsx";
+import { SkillPackSection } from "@/pages/knowledge/skill-pack-section.tsx";
 import { SkillRepoCard } from "@/pages/knowledge/skill-repo-card.tsx";
 import { knowledgeText } from "@/pages/knowledge/text.ts";
 import { useOrg } from "@/shell/org-context.ts";
@@ -70,6 +71,7 @@ function SkillsScreen() {
           {selected ? <SkillDetail key={selected.id} skill={selected} /> : <DetailCard>{t.choose}</DetailCard>}
         </div>
       )}
+      <SkillPackSection />
     </KnowledgeLayout>
   );
 }
