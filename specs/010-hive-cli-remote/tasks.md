@@ -28,7 +28,8 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - `worker-protocol.ts`: mọi gói `term_*` theo bảng ở plan.md; `welcome.features?`, `welcome.owner?`; enum
     `termEventKind`, `termDenyCode`; thêm vào `workerToHub`/`hubToWorker`. Không đổi `PROTOCOL_VERSION`.
   - `terminal-auth.ts`: `canonicalChallenge(input)` (khoá theo thứ tự, NFC), kiểu `RemoteAuth`, `pairTag` input,
-    `inputMacPayload(connId, seq, data)`.
+    `inputMacPayload(connId, seq, data)`; `auth` là union `passkey | totp` (`{kind: "totp", code, ephPub, ts, nonce}`);
+    `welcome.policy?.totpFallback`, `term_state.totp`; mã từ chối `TOTP_*`.
   - Fixture: thêm mẫu mọi gói vào `worker-protocol.json`; `terminal-auth.json` mới với vector sinh bằng WebCrypto trong test
     (khoá ES256, authenticatorData, clientDataJSON, chữ ký đúng/sai origin/thiếu UV/phát lại; ECDH + HKDF + HMAC; tag
     ghép).
@@ -45,6 +46,8 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
     `revokeDevice`, `pushKey`, `pushSubscribe`, `pushUnsubscribe`); khung WS trình duyệt (`resume`, `control`, `in`,
     `resize`, `granted`, `revoked`, `state`, `sync`) với giới hạn cỡ; mã lỗi và thông báo tiếng Việt.
   - `desktop-connect.ts`: `purpose: "desktop" | "cli"` (mặc định `desktop`), output cho `cli` không có mã đăng ký máy.
+  - TOTP: trạng thái `totp` của máy, lỗi `TOTP_*` (tiếng Việt), `totpFallback` trong chính sách agent của tổ chức (hub
+    đọc qua `index.ts` của module chính sách), loại audit `terminal.totp_*`.
   - `notify.ts`: loại sự kiện `terminal.remote_session`, `terminal.attention`, `terminal.exit` cho hộp thư và đẩy.
   - `index.ts` gắn contract; `pnpm openapi`.
   - **Scope**: `packages/contracts/src/{terminal.ts,terminal.test.ts,desktop-connect.ts,notify.ts,index.ts}`,
@@ -99,6 +102,17 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
 ---
 
 ## Phase 2: User Story 1 — Phiên tương tác tại máy, ghi lên hub (P1) 🎯 MVP
+
+- [ ] T008 [US2] Worker: TOTP trong `remoteauth`
+  - `totp.go`: RFC 6238 (SHA-1, 6 số, 30 giây, ±1 bước) bằng thư viện chuẩn; `totp.json` (0600, nguyên tử) giữ `secret`,
+    `lastStep`, `failures`, `lockedUntil`, `lockLevel`; ghi ra đĩa trước khi trả kết quả; `VerifyAuth` chung cho
+    `kind: passkey|totp` (từ chối `TOTP_LOCKED`, `TOTP_INVALID`, `TOTP_REPLAY`); khoá 5 lần sai → 5 phút gấp đôi tối đa
+    1 giờ; chỉ nhận `totp` khi URL hub là `http://` (hoặc chủ máy bật riêng) và `policy.totpFallback != false`; HKDF trộn
+    mã vào `info` cho khoá phiên.
+  - Test: vector RFC 6238 (Phụ lục B), lệch ±1 bước, mã dùng lại, khởi động lại giữ `lastStep` và bộ đếm, khoá và gấp
+    đôi, mở khoá, hub HTTPS từ chối TOTP, chính sách tắt, so sánh hằng thời gian.
+  - **Scope**: `worker/internal/remoteauth/{totp.go,totp_test.go,verify.go,verify_test.go}`
+  - **Phụ thuộc**: T001, T005 (cùng làn) · **Mức**: nặng
 
 - [ ] T010 [US1] Worker: kiểu gói `term_*` và chuyển gói
   - `protocol.go`: kiểu Go cho mọi gói mới; test đọc fixture dùng chung.
@@ -209,15 +223,33 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `worker/cmd/hive/{remote.go,remote_test.go,qr.go}`, `worker/go.mod`, `worker/go.sum`
   - **Phụ thuộc**: T012, T020 · **Mức**: vừa
 
+- [ ] T025 [US2] Worker: tạo và quản lý khoá TOTP
+  - Thao tác socket nội bộ `remote.totp.begin|confirm|disable|unlock` (T020 đã có khung `remote.*`): sinh khoá, URI
+    `otpauth://`, chỉ lưu sau khi `confirm` bằng mã đúng, hết hạn 10 phút; tắt/đổi khoá tại máy; `term_state.totp`; từ chối
+    khi chế độ `host` hoặc máy dùng chung; ghi `remote-audit.log` (`totp_enroll|totp_disable|totp_unlock`), không ghi khoá
+    hay mã. `term_start`/`term_control` ở T031/T050 gọi `remoteauth.VerifyAuth` nên không cần sửa file của T031.
+  - Test: begin/confirm đúng và sai, hết hạn, tắt rồi bật khoá mới (khoá cũ hết hiệu lực), mở khoá, không có đường bật từ
+    hub, audit.
+  - **Scope**: `worker/internal/terminal/{totp_enroll.go,totp_enroll_test.go}`
+  - **Phụ thuộc**: T008, T020 · **Mức**: nặng
+
+- [ ] T026 [US2] CLI `hive remote totp …`
+  - `enroll` (in QR `otpauth://` và URI, hỏi nhập một mã để xác nhận, cảnh báo HTTP khi hub là `http://`), `status`,
+    `disable` (hỏi xác nhận), `unlock`; có `--json` cho app.
+  - **Scope**: `worker/cmd/hive/{remote_totp.go,remote_totp_test.go}`
+  - **Phụ thuộc**: T024 (cùng làn), T025 · **Mức**: vừa
+
 - [ ] T023 [US2] [US5] Desktop: màn Điều khiển từ xa
   - `remote.rs`: sidecar `hive remote watch --json`, lệnh `remote_*` gọi `hive remote … --json`; cửa sổ xác nhận ghép và
     "Hỏi trên máy"; thông báo hệ điều hành; khay "Tắt điều khiển từ xa ngay" và chấm khi có người điều khiển từ xa.
   - `remote-screen.tsx`: công tắc (xác nhận lần hai), thư mục (chọn bằng hộp thoại thư mục), thiết bị + QR, tuỳ chọn,
-    danh sách phiên + Ngắt + Ngắt tất cả; từ điển vi/en; capability chỉ cho cửa sổ cục bộ.
+    danh sách phiên + Ngắt + Ngắt tất cả; mục "Mã Authenticator (TOTP)" (bật + QR + nhập mã xác nhận, tắt, mở khoá, qua
+    `hive remote totp … --json`) và cảnh báo "Hub chạy HTTP" khi bật từ xa hoặc bật TOTP trên hub HTTP; từ điển vi/en;
+    capability chỉ cho cửa sổ cục bộ.
   - **Scope**: `apps/desktop/src/screens/{remote-screen.tsx,remote-screen.test.tsx,index.ts}`,
     `apps/desktop/src/shell/*` (mục AppNav), `apps/desktop/src-tauri/src/{remote.rs,tray_icon.rs,lib.rs}`,
     `apps/desktop/src-tauri/capabilities/*.json`, `apps/desktop/src-tauri/src/capabilities_audit.rs`
-  - **Phụ thuộc**: T015 (cùng `lib.rs`, `tauri.conf.json`), T024 · **Mức**: vừa
+  - **Phụ thuộc**: T015 (cùng `lib.rs`, `tauri.conf.json`), T024, T026 · **Mức**: vừa
 
 **Checkpoint**: chủ máy bật từ xa và ghép được điện thoại; chưa điều khiển được.
 
@@ -271,8 +303,18 @@ chạy `gofmt -l .`, `go vet ./...`, `go test ./...` trong `worker/`.
   - **Scope**: `apps/hub/src/modules/terminal/{close.ts,router.ts,audit.db.test.ts}`
   - **Phụ thuộc**: T030 · **Mức**: vừa
 
-**Checkpoint MVP**: US1 + US2 + US3 + US5 chạy sau cờ `HIVE_REMOTE_TERMINAL=1`; T091 (test tấn công) phải xanh trước khi
-bật cờ trên hub thật.
+- [ ] T027 [US2] [US3] Hub: đường lui TOTP và chính sách
+  - Chấp nhận `auth.kind = "totp"` ở `control` (và `start` khi T051 xong) chỉ khi chính sách tổ chức `totpFallback` bật
+    (`TOTP_NOT_ALLOWED` nếu tắt), chuyển tiếp mã tới worker không đọc, không lưu mã; `welcome.policy` gửi khi nối và khi
+    đổi chính sách; hiện `totp` của máy trong `machines`; audit `terminal.totp_ok|totp_fail|totp_locked|totp_enroll|
+    totp_disable` theo `term_state`/`term_denied`; không có route nào nhận hay lưu khoá.
+  - Test DB: chính sách tắt chặn, mã không bao giờ vào DB hay log, người khác chủ máy, audit đủ (SC-013), `welcome`
+    cũ không có `policy` vẫn chạy.
+  - **Scope**: `apps/hub/src/modules/terminal/{totp.ts,router.ts,index.ts,gateway.ts,totp.db.test.ts}`
+  - **Phụ thuộc**: T030, T041 (cùng làn), T008 · **Mức**: nặng
+
+**Checkpoint MVP**: US1 + US2 + US3 + US5 chạy sau cờ `HIVE_REMOTE_TERMINAL=1`; T091 (test tấn công, gồm ca TOTP) phải xanh
+trước khi bật cờ trên hub thật. Hub chạy HTTP (như `http://192.0.2.10:3000`) chỉ dùng được sau T008, T025–T028.
 
 ---
 
@@ -300,6 +342,19 @@ bật cờ trên hub thật.
 
 ---
 
+- [ ] T028 [US2] [US3] Web: nhập mã TOTP và cảnh báo HTTP
+  - Khi trang không phải secure context: `lib/terminal/totp-auth.ts` (gửi `auth{kind: "totp", code, ephPub, ts, nonce}`;
+    trộn mã vào HKDF như worker), `totp-code-sheet.tsx` (ô 6 số, "Chờ mã mới" khi mã vừa dùng, báo `TOTP_INVALID`,
+    `TOTP_REPLAY`, `TOTP_LOCKED` còn bao lâu, `TOTP_NOT_ALLOWED`), `http-warning.tsx` ("Hub chạy HTTP: nội dung phiên và
+    phím gõ đi qua mạng không mã hoá, chỉ dùng trong mạng nội bộ") hiện trên màn danh sách và màn terminal. Hub HTTPS: không
+    hiện ô mã. Chọn nhánh passkey/TOTP một chỗ trong `requestRemoteAuth` (gọi từ T032 và T052).
+  - Playwright 360×740 với hub giả HTTP (không virtual authenticator): mở phiên và xin quyền bằng mã, mã sai, mã dùng lại,
+    khoá, chính sách tắt, cảnh báo luôn hiện.
+  - **Scope**: `apps/web/src/lib/terminal/{totp-auth.ts,totp-auth.test.ts}`,
+    `apps/web/src/components/{totp-code-sheet.tsx,http-warning.tsx}`,
+    `apps/web/src/pages/remote/{remote-page.tsx,session-page.tsx}`, `apps/web/e2e/{remote-totp.spec.ts,fake-hub.ts}`
+  - **Phụ thuộc**: T032, T052 (cùng làn), T027 · **Mức**: vừa
+
 ## Phase 7: User Story 6 — `hive attach` (P2)
 
 - [ ] T060 [US6] CLI `hive attach`
@@ -319,7 +374,7 @@ bật cờ trên hub thật.
   - **Scope**: `apps/web/vite.config.ts`, `apps/web/src/sw.ts`, `apps/web/public/icons/**`, `apps/web/index.html`,
     `apps/web/src/lib/terminal/push.ts`, `apps/web/src/pages/remote/remote-page.tsx`, `apps/web/package.json`,
     `pnpm-lock.yaml`, `apps/web/e2e/pwa.spec.ts`
-  - **Phụ thuộc**: T052 (cùng làn) · **Mức**: vừa
+  - **Phụ thuộc**: T028 (cùng làn) · **Mức**: vừa
 
 - [ ] T071 [US7] Hub: Web Push
   - `push.ts`: khoá VAPID sinh lần đầu, mã hoá bằng khoá chủ; route `pushKey|pushSubscribe|pushUnsubscribe`; gửi khi
@@ -361,39 +416,41 @@ bật cờ trên hub thật.
 
 - [ ] T091 Bộ test tấn công (SC-001) và review bảo mật
   - Worker: assertion giả/phát lại/lệch giờ/sai origin/thiếu UV/khoá lạ, tag ghép sai, gói nhập không HMAC hoặc `seq`
-    lùi, `term_start` khi tắt, `subdir` thoát, gói bật/ghép giả từ hub. Hub: người khác, máy dùng chung, vé dùng lại, sai
-    Origin, người xem gửi nhập. Chạy `/security-review`; ghi kết quả vào PR.
+    lùi, `term_start` khi tắt, `subdir` thoát, gói bật/ghép giả từ hub; TOTP: mã sai, dùng lại, khoá và gấp đôi, khởi động
+    lại không đặt lại, hub HTTPS, chính sách tắt, `term_start`/`term_control` không mã (SC-011, SC-012). Hub: người khác, máy
+    dùng chung, vé dùng lại, sai Origin, người xem gửi nhập, request TOTP khi chính sách tắt, mã không vào DB/log. Chạy `/security-review`; ghi kết quả vào PR.
   - **Scope**: `worker/internal/terminal/attack_test.go`, `apps/hub/src/terminal-attack.db.test.ts`
-  - **Phụ thuộc**: T040, T041 cho MVP; thêm các ca `term_start` khi T050, T051 xong (cùng agent hoặc lượt hai) ·
+  - **Phụ thuộc**: T040, T041, T027 cho MVP; thêm các ca `term_start` khi T050, T051 xong (cùng agent hoặc lượt hai) ·
     **Mức**: nặng
 
 - [ ] T092 [P] Tài liệu
   - `docs/architecture.md` (module `terminal`, bảng gói ở mục 5, token, rủi ro), `docs/add.md`, `docs/sdd.md`, trạng thái
     RMT-xx/IF-07/NFR-17 trong `docs/srs.md`; hướng dẫn người dùng `docs/hive-cli.md` (cài, đăng nhập, chat, attach, bật
-    từ xa, ghép, tắt khẩn cấp).
+    từ xa, ghép, tắt khẩn cấp, bật mã Authenticator cho hub HTTP và rủi ro của nó).
   - **Scope**: `docs/{architecture.md,add.md,sdd.md,srs.md,hive-cli.md}`
   - **Phụ thuộc**: T090 · **Mức**: nhẹ
 
 - [ ] T093 `/speckit-analyze` trên spec, plan, tasks; xử lý mâu thuẫn; chụp màn mới (sáng, tối, 360 px).
   - **Scope**: `specs/010-hive-cli-remote/*`, `apps/web/e2e/screenshots/**`
-  - **Phụ thuộc**: T081, T023 · **Mức**: nhẹ
+  - **Phụ thuộc**: T081, T023, T028 · **Mức**: nhẹ
 
 ---
 
 ## Phụ thuộc và song song
 
 ```text
-T001 ─┬─ T002 ─┬─ T013 ─ T021 ─ T030 ─ T041 ─ T051 ─ T071 ─ T080      (hub)
-      │        ├─ T014 ─ T022 ─ T032 ─ T052 ─ T070 ─ T081             (web; T022 cần T021, T032 cần T030, T052 cần T051)
+T001 ─┬─ T002 ─┬─ T013 ─ T021 ─ T030 ─ T041 ─ T027 ─ T051 ─ T071 ─ T080 (hub; T027 cần T008)
+      │        ├─ T014 ─ T022 ─ T032 ─ T052 ─ T028 ─ T070 ─ T081        (web; T022 cần T021, T032 cần T030, T052 cần T051, T028 cần T027)
       │        └─ T012 ─ T024 ─ T060                                 (cli; T012 cần T011, T024 cần T020, T060 cần T030)
+      ├─ T005 ─ T008 ─ T025 ─ T026 (T025 cần T020; T026 cần T024)
       ├─ T005 ─────────────┐
       ├─ T007 ─ (T013)     │
       └─ T010 ─ T011 ─ T020 ─ T031 ─ T040 ─ T050 ─ T072              (worker)
 T003, T004 ─ T011
 T006 ─ T014, T022
-T012 ─ T015 ─ T023 (cần T024)                                        (phát hành, desktop)
+T012 ─ T015 ─ T023 (cần T024, T026)                                        (phát hành, desktop)
 T040, T041, T032 ─ T090 ─ T092
-T040, T041 ─ T091 (lượt hai sau T050, T051)
+T040, T041, T027 ─ T091 (lượt hai sau T050, T051)
 ```
 
 Đợt chạy song song gợi ý (tối đa khoảng 6 agent có build/test cùng lúc trên Mac mini):
@@ -402,14 +459,15 @@ T040, T041 ─ T091 (lượt hai sau T050, T051)
 |---|---|
 | 1 | T001, T003, T004, T006 |
 | 2 | T002, T005, T007, T010 |
-| 3 | T011, T013, T014 |
+| 3 | T008, T011, T013, T014 |
 | 4 | T012, T020, T021 |
-| 5 | T015, T022, T024, T030, T031 |
-| 6 | T023, T032, T040, T041 |
-| 7 | T050, T051, T060, T091 (lượt MVP) |
+| 5 | T015, T022, T024, T025, T030, T031 |
+| 6 | T023, T026, T032, T040, T041 |
+| 7 | T027, T050, T051, T060, T091 (lượt MVP) |
 | 8 | T052, T071, T072, T091 (lượt `term_start`) |
-| 9 | T070, T080, T090 |
-| 10 | T081, T092, T093 |
+| 9 | T028, T080, T090 |
+| 10 | T070, T092 |
+| 11 | T081, T093 |
 
 ## Làn (để không hai agent sửa cùng file)
 
@@ -419,13 +477,14 @@ T040, T041 ─ T091 (lượt hai sau T050, T051)
 | db | T007 | `migrations/**`, `terminal/schema.ts` |
 | worker-pty | T003 | `worker/internal/pty/**`, `go.mod` |
 | worker-ipc | T004 | `worker/internal/localipc/**` |
-| worker-auth | T005 | `worker/internal/remoteauth/**` |
+| worker-auth | T005 → T008 | `worker/internal/remoteauth/**` |
+| worker-totp | T025 | `worker/internal/terminal/totp_enroll*.go` (file riêng, song song được với T031) |
 | worker-channel | T010 | `worker/internal/channel/**`, `terminal/handler.go` |
 | worker-terminal | T011 → T020 → T031 → T040 → T050 → T072 | `worker/internal/terminal/**`, `accounts.go`, `cmd/hive-worker/main.go` |
-| cli | T012 → T024 → T060 | `worker/cmd/hive/**`, `go.mod` |
+| cli | T012 → T024 → T026 → T060 | `worker/cmd/hive/**`, `go.mod` |
 | release-desktop | T015 → T023 | `.goreleaser.yaml`, `release.yml`, `install.*`, `internal/update/**`, `apps/desktop/**` |
-| hub-terminal | T013 → T021 → T030 → T041 → T051 → T071 → T080 | `modules/terminal/{router.ts,index.ts,gateway.ts,live.ts}`, `fleet/gateway.ts`, `main.ts`, `app.ts` |
-| web | T014 → T022 → T032 → T052 → T070 → T081 | `apps/web/e2e/fake-hub.ts`, `router.tsx`, `pages/remote/**`, `package.json` |
+| hub-terminal | T013 → T021 → T030 → T041 → T027 → T051 → T071 → T080 | `modules/terminal/{router.ts,index.ts,gateway.ts,live.ts}`, `fleet/gateway.ts`, `main.ts`, `app.ts` |
+| web | T014 → T022 → T032 → T052 → T028 → T070 → T081 | `apps/web/e2e/fake-hub.ts`, `router.tsx`, `pages/remote/**`, `package.json` |
 | design | T006 | `docs/design-system/screens/**` |
 | verify | T090 | `scripts/e2e-remote.ts`, `ci.yml` |
 | security | T091 | `attack_test.go`, `terminal-attack.db.test.ts` (file mới, không chung với làn khác) |
@@ -437,8 +496,9 @@ khối `require`).
 
 ## Implementation Strategy
 
-- **MVP** (US1 + US2 + US3 + US5, sau cờ `HIVE_REMOTE_TERMINAL`): T001–T007, T010–T015, T020–T024, T030–T032, T040,
-  T041, T091. Đủ để: `hive chat` tại máy, xem lại trên web, bật từ xa và ghép điện thoại tại máy, mở phiên đang chạy trên
+- **MVP** (US1 + US2 + US3 + US5, sau cờ `HIVE_REMOTE_TERMINAL`): T001–T008, T010–T015, T020–T028, T030–T032, T040,
+  T041, T091. T008, T025–T028 là đường lui TOTP cho hub HTTP (Q2); chạy trên hub nội bộ HTTP cần đủ nhóm này, hub HTTPS chỉ
+  cần passkey. Đủ để: `hive chat` tại máy, xem lại trên web, bật từ xa và ghép điện thoại tại máy, mở phiên đang chạy trên
   điện thoại và gõ trả lời, tắt khẩn cấp, audit hai nơi. Chưa có PWA/đẩy: dev mở web trên trình duyệt điện thoại.
 - **Tăng dần**: T050–T052 (mở phiên từ điện thoại) → T060 (`hive attach`) → T070–T072 (PWA, thông báo) → T080–T081 (xem
   cùng) → T090, T092, T093.

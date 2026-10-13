@@ -1,8 +1,9 @@
 # 0019. Host interactive agent sessions in the worker and control them from a paired phone
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-13
 - Deciders: product owner (tdduydev), maintainers
+- Accepted: 2026-10-13, with the three open questions settled by the product owner (see Decision 10 to 12)
 
 ## Context
 
@@ -77,6 +78,27 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
 9. **One controller.** Each session has one controller: the local terminal or one paired remote device. Any number of
    read-only viewers may watch. The local terminal can always take control back. Nobody but the machine owner can ever
    control a session.
+10. **TOTP fallback when the hub runs over HTTP** (product owner, 2026-10-13). Passkeys stay the primary method whenever
+    HTTPS is available. A hub served over plain HTTP, such as the internal `http://192.0.2.10:3000`, cannot use
+    WebAuthn, so the worker accepts a TOTP code instead:
+    - The worker creates the 160-bit key on the machine, shows it as an `otpauth://` QR code for an Authenticator app,
+      and stores it only after the owner enters one correct code. The hub never sees or stores the key.
+    - The worker checks the code itself for every session start and every control request. The hub only relays it.
+    - Each action needs a newer code than the last accepted one (the last time step is kept on disk). Five wrong
+      codes in a row lock the machine for 5 minutes, doubling up to 1 hour. Every step is audited on the hub and on
+      the machine.
+    - The `auth` field of `term_start` and `term_control` becomes `passkey | totp`. `welcome.policy.totpFallback` lets
+      an organization disable the fallback.
+    - The desktop app and the web warn when remote control is used on an HTTP hub.
+
+    This is a weaker guarantee and the ADR records it: the code is not bound to the request, and on HTTP it crosses the
+    network in clear. A compromised hub, or anyone who can read the traffic, sees the code and the session content, and
+    can use the code once before the user does. TOTP still stops a stolen web session or personal token on its own.
+    Use it only inside an internal network.
+11. **Sessions are private by default** (product owner). Only the owner sees a session live and its recording. The owner
+    turns on "Cho đội xem" for each session; a session linked to a task does not open itself to the team.
+12. **Remote sessions never run with all permissions** unless the owner enables that on the machine and the
+    organization policy allows it.
 
 ## Consequences
 
@@ -86,8 +108,14 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
   windows and network drops.
 - Good: the code reuses the account picker, the worker's disk buffer with acks, personal tokens, the desktop sidecar
   pattern and the signed releases.
-- Bad: remote control needs an HTTPS hub, because WebAuthn and service workers require a secure context. A hub served
-  over plain HTTP, like the internal machine 34, cannot use it.
+- Bad: passkeys and the PWA need an HTTPS hub, because WebAuthn and service workers require a secure context. A hub
+  served over plain HTTP, like the internal machine 34, falls back to TOTP (Decision 10) with a weaker guarantee, no PWA
+  and no push notifications.
+- Bad: on an HTTP hub, session content and keystrokes travel unencrypted, and a hub compromise or a network sniffer is
+  enough to use a code in flight. The warning in the app and web, the organization policy switch and the advice to stay
+  on an internal network are the only mitigations; moving the hub to HTTPS removes the risk.
+- Bad: the wrong-code lock is per machine, so someone with a stolen web session can lock the owner out of remote control
+  on purpose. The owner unlocks at the machine.
 - Bad: the hub can read terminal output, which may contain secrets the agent prints. Recordings follow the agent policy
   retention and are private to the owner by default.
 - Bad: it adds the first Go dependencies for PTY handling (`aymanbagabas/go-pty`, with ConPTY on Windows) and for the
@@ -104,6 +132,10 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
 - **The CLI owns the PTY and opens its own hub connection.** Rejected: a second machine connection would need its own
   credentials and lease logic, the session would die with the terminal window, and the phone path would differ from the
   local one.
+- **Require HTTPS and passkeys with no fallback.** Proposed first, then rejected by the product owner: the team's
+  internal hub runs over HTTP and still needs remote control. TOTP kept by the worker is the accepted compromise.
+- **Hub-side OTP or password as the second factor.** Rejected: a compromised hub would check its own factor. The
+  worker holds the TOTP key and checks the code, so the hub has no authority to approve.
 - **Trust the hub to authorize remote access** (web session plus a hub-side second factor). Rejected: a compromised hub
   would mean a shell on every enabled laptop.
 - **Full end-to-end encryption of output.** Deferred: the hub could no longer record sessions or serve several viewers.
@@ -114,6 +146,6 @@ operator, or a stolen web session. Each of these must be unable to start a sessi
 
 ## Links
 
-- [specs/010-hive-cli-remote](../../specs/010-hive-cli-remote/spec.md), SRS RMT-01 … RMT-12, IF-07, NFR-17
+- [specs/010-hive-cli-remote](../../specs/010-hive-cli-remote/spec.md), SRS RMT-01 … RMT-13, IF-07, NFR-17
 - [0006](0006-outbound-worker-protocol.md), [0011](0011-signed-worker-releases-and-own-updater.md),
   [0016](0016-desktop-local-ui.md), [0017](0017-admin-web-client-app-and-machine-ownership.md)

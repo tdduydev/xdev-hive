@@ -4,13 +4,13 @@
 
 **Created**: 2026-10-13
 
-**Status**: Draft
+**Status**: Draft (đã ghi quyết định của product owner ngày 2026-10-13, xem Clarifications)
 
 **Input**: Yêu cầu của product owner (nguyên văn): "có thể tự viết cli hem, sau này có thể làm remote cli trên app luôn,
 trên dt ấy". Đã chốt: (1) CLI của Hive bọc agent có sẵn (Claude Code, Codex, Gemini CLI, Antigravity), không tự viết
 agent; (2) điều khiển từ xa qua web của hub chạy trên điện thoại (PWA), không làm app mobile riêng.
 
-**Requirements added**: RMT-01 … RMT-12, IF-07, NFR-17 trong [docs/srs.md](../../docs/srs.md#319-hive-cli-and-remote-sessions-rmt).
+**Requirements added**: RMT-01 … RMT-13, IF-07, NFR-17 trong [docs/srs.md](../../docs/srs.md#319-hive-cli-and-remote-sessions-rmt).
 **Decision record**: [ADR 0019](../../docs/adr/0019-hive-cli-and-remote-sessions.md).
 
 ## Bối cảnh
@@ -102,6 +102,13 @@ hợp lệ → được nhận.
    cho điều khiển từ xa.".
 7. **Given** có gọi API nào từ hub nhằm bật điều khiển từ xa hay thêm thiết bị, **Then** không tồn tại gói tin hay route
    nào làm được việc đó (chỉ tắt, gỡ thiết bị, ngắt phiên).
+8. **Given** hub chạy HTTP (không có passkey) và chính sách tổ chức cho phép đường lui TOTP, **When** chủ máy bấm "Bật mã
+   Authenticator" trên app hoặc chạy `hive remote totp enroll`, **Then** máy hiện QR `otpauth://` và chờ chủ nhập một mã
+   đúng từ app Authenticator; chỉ khi mã đúng thì khoá TOTP mới được lưu tại máy. Trước khi bật, app hiện cảnh báo rõ
+   rằng trên HTTP nội dung phiên và phím gõ đi qua mạng không mã hoá, chỉ nên dùng trong mạng nội bộ.
+9. **Given** TOTP đã bật, **When** mở phiên hay xin quyền gõ từ web (hub HTTP), **Then** web hỏi mã 6 số; worker tự kiểm mã
+   và từ chối mã đã dùng (`TOTP_REPLAY`), mã sai (`TOTP_INVALID`) hoặc khi đang bị khoá tạm (`TOTP_LOCKED`); hub không
+   kiểm được thay.
 
 ---
 
@@ -267,8 +274,21 @@ mở → "Không tìm thấy phiên".
   báo "Hub chưa hỗ trợ ghi phiên".
 - **Hub mới, worker cũ**: `hello.capabilities` không có `terminal` → hub không gửi gói `term_*`; web hiện "Máy cần cập
   nhật worker để điều khiển từ xa".
-- **Hub chạy HTTP** (không phải secure context): web không tạo/dùng passkey, không có service worker; trang Điều khiển từ
-  xa báo "Cần hub chạy HTTPS". Ghi phiên và `hive attach` vẫn dùng được.
+- **Hub chạy HTTP** (không phải secure context): web không tạo/dùng passkey, không có service worker, không cài PWA/đẩy.
+  Điều khiển từ xa chỉ dùng được qua đường lui TOTP (FR-033…FR-037) khi chủ máy đã bật TOTP tại máy và chính sách tổ chức
+  cho phép; không thì trang Điều khiển từ xa báo "Cần hub chạy HTTPS hoặc bật mã Authenticator tại máy". Web và app hiện
+  cảnh báo "Hub chạy HTTP: nội dung phiên và phím gõ không được mã hoá trên đường truyền". Ghi phiên và `hive attach` vẫn
+  dùng được.
+- **Hub HTTP đổi sang HTTPS** (hoặc ngược lại): passkey đã ghép gắn với origin nên không dùng được ở origin khác; TOTP
+  vẫn dùng được. Worker đọc origin từ `worker.json`, không tin origin do hub báo.
+- **Nhập sai mã TOTP nhiều lần**: 5 lần sai liên tiếp thì worker khoá tạm 5 phút (lần khoá sau gấp đôi, tối đa 1 giờ), từ
+  chối cả mã đúng trong lúc khoá, ghi audit; chủ máy mở khoá sớm được tại máy.
+- **Mã TOTP vừa dùng**: mỗi lần mở phiên hay xin quyền gõ cần một mã mới hơn mã đã nhận lần trước, nên hai thao tác liên
+  tiếp trong cùng cửa sổ 30 giây phải chờ mã kế tiếp; web báo "Chờ mã mới".
+- **Chính sách tổ chức tắt đường lui TOTP**: hub từ chối request kiểu TOTP (`TOTP_NOT_ALLOWED`), web không hiện ô nhập mã,
+  khoá TOTP đã lưu tại máy không bị xoá nhưng không dùng được cho tới khi chính sách bật lại.
+- **Mất điện thoại có app Authenticator** (khoá TOTP nằm trong app): chủ máy tắt TOTP và tạo khoá mới tại máy; khoá cũ hết
+  hiệu lực ngay.
 - **Worker mất kết nối hub**: PTY chạy tiếp; output vào bộ đệm đĩa (tối đa 32 MB mỗi phiên, quá thì bỏ phần cũ nhất và
   ghi sự kiện `gap`); quyền điều khiển từ xa bị thu; nối lại thì gửi bù.
 - **Hub khởi động lại**: bộ đệm vòng trong bộ nhớ mất; client nối lại được phát lại từ `terminal_chunks`.
@@ -355,6 +375,8 @@ Mở phiên và điều khiển từ xa (US3, US4)
   `challenge = SHA-256(JSON chuẩn hoá {machineId, action, params, ephPub, ts, nonce})`; worker MUST kiểm chữ ký ES256 bằng
   khoá của thiết bị đã ghép, `origin` bằng URL hub trong `worker.json`, `rpIdHash`, `ts` trong ±120 giây, `nonce` chưa
   dùng (bộ nhớ 10 phút), `signCount` không lùi (khi khác 0), và người dùng trong yêu cầu bằng người đã ghép thiết bị.
+  Khi hub chạy HTTP, yêu cầu có thể mang mã TOTP thay cho assertion theo FR-033…FR-037; hub MUST không bao giờ chấp nhận
+  mã TOTP thay cho assertion trên origin HTTPS khi thiết bị đã ghép passkey, trừ khi chủ máy bật riêng tại máy.
 - **FR-017 (RMT-06)**: Khi cấp quyền điều khiển, điện thoại và worker MUST suy ra khoá phiên bằng ECDH P-256 (khoá tạm
   của điện thoại nằm trong `params` đã ký) và HKDF-SHA256; mọi `term_input` và `term_resize` từ điện thoại MUST mang
   `seq` tăng nghiêm ngặt và HMAC-SHA256 (cắt 16 byte) trên `connId‖seq‖data`; worker bỏ gói sai.
@@ -400,7 +422,29 @@ App desktop (US2, US5)
 - **FR-031 (RMT-12)**: App MUST có màn **Điều khiển từ xa**: công tắc (xác nhận khi bật), thư mục được phép, thiết bị đã
   ghép (ghép bằng QR, gỡ), tuỳ chọn "Hỏi trên máy", thời gian chờ, danh sách phiên (nguồn tại máy/từ xa, ai điều khiển,
   thiết bị, thời gian) với nút Ngắt và "Ngắt tất cả"; khay có "Tắt điều khiển từ xa ngay" khi đang bật; thông báo hệ điều
-  hành khi có phiên mở từ xa hoặc thiết bị giành quyền. Chữ theo từ điển vi/en.
+  hành khi có phiên mở từ xa hoặc thiết bị giành quyền; mục "Mã Authenticator (TOTP)" (bật, QR, tắt, mở khoá) và cảnh
+  báo khi hub chạy HTTP. Chữ theo từ điển vi/en.
+
+Đường lui TOTP khi hub chạy HTTP (US2, US3, US4)
+
+- **FR-033 (RMT-13)**: Worker MUST hỗ trợ TOTP (RFC 6238: HMAC-SHA1, 6 số, bước 30 giây, cho lệch ±1 bước) làm đường lui khi
+  origin hub trong `worker.json` là HTTP. Khoá 160 bit MUST do worker tạo tại máy (qua socket nội bộ: app hoặc
+  `hive remote totp enroll`), lưu cạnh `remote.json` (0600, hoặc keychain khi có), hiện bằng QR `otpauth://` để quét vào
+  app Authenticator và chỉ được lưu sau khi chủ máy nhập một mã đúng. Hub MUST không bao giờ nhận hay lưu khoá. Khoá chỉ
+  bật, đổi hay tắt được tại máy.
+- **FR-034 (RMT-13)**: Worker MUST tự kiểm mã TOTP cho mỗi lần mở phiên (`term_start`) và mỗi lần xin quyền gõ
+  (`term_control`) (hub chỉ chuyển tiếp mã, không có quyền quyết định); mỗi thao tác cần mã mới, MUST từ chối mã có bước
+  thời gian không lớn hơn bước của mã đã nhận gần nhất (`TOTP_REPLAY`), kể cả sau khi worker khởi động lại (lưu bước cuối
+  ra đĩa). Nối lại bằng `resumeToken` (FR-021) không cần mã mới.
+- **FR-035 (RMT-13)**: Worker MUST giới hạn mã sai: 5 lần sai liên tiếp thì khoá mọi yêu cầu TOTP 5 phút, mỗi lần khoá liền
+  sau gấp đôi (tối đa 1 giờ); trong lúc khoá từ chối cả mã đúng (`TOTP_LOCKED`); bộ đếm tính theo máy (không theo
+  kết nối hay người dùng), lưu ra đĩa; chủ máy MUST mở khoá được tại máy.
+- **FR-036 (RMT-13)**: Mọi thao tác TOTP MUST có dòng `audit_log` (`terminal.totp_enroll|totp_disable|totp_ok|totp_fail|
+  totp_locked`) và dòng trong `remote-audit.log`; không ghi mã hay khoá.
+- **FR-037 (RMT-13)**: Chính sách tổ chức MUST có tuỳ chọn tắt đường lui TOTP; hub MUST từ chối request kiểu TOTP khi tắt
+  (`TOTP_NOT_ALLOWED`) và báo trạng thái cho worker trong `welcome.policy`. App desktop và web MUST hiện cảnh báo khi bật
+  điều khiển từ xa hay mở phiên trên hub HTTP: "Hub chạy HTTP: nội dung phiên và phím gõ đi qua mạng không mã hoá, chỉ
+  dùng trong mạng nội bộ". Passkey vẫn là cách chính; trên hub HTTPS web MUST dùng passkey và không hiện ô nhập mã TOTP.
 
 Audit (US5)
 
@@ -418,6 +462,8 @@ Audit (US5)
   hub giữ bản sao `remote_devices` để hiển thị và gỡ.
 - **Cấu hình từ xa của máy** (`remote.json`): bật/tắt, thư mục được phép (`id`, đường dẫn, nhãn), thiết bị, hỏi trên máy,
   thời gian chờ, cho toàn quyền.
+- **Khoá TOTP của máy** (`totp.json` 0600 hoặc keychain): khoá 160 bit, bước mã nhận gần nhất, số lần sai liên tiếp, thời
+  điểm hết khoá tạm. Chỉ nằm ở máy; hub chỉ biết "TOTP đã bật" qua `term_state`.
 - **Subscription đẩy** (`push_subscriptions`): endpoint và khoá Web Push của một trình duyệt của người dùng.
 
 ## Success Criteria *(mandatory)*
@@ -442,6 +488,13 @@ Audit (US5)
   hướng dẫn trên màn (đo thủ công trước khi phát hành).
 - **SC-010**: Worker và hub ở mọi tổ hợp cũ/mới vẫn chạy run như trước; test `worker_e2e_test.go` và `fleet.db.test.ts`
   hiện có xanh không sửa.
+- **SC-011**: Với hub HTTP: chỉ có quyền trên hub (phiên web đánh cắp, token cá nhân, ghi DB) mà không có mã TOTP thì 0
+  cách mở phiên hay xin quyền gõ; mã sai, mã dùng lại, mã khi đang khoá, request khi chính sách tắt TOTP đều bị từ
+  chối (test tấn công, mở rộng SC-001). Spec nêu rõ giới hạn còn lại: trên HTTP kẻ nghe được đường truyền hoặc hub bị chiếm
+  thấy được mã và output, nên mức chống hub bị chiếm của passkey (SC-001) không áp cho đường lui TOTP.
+- **SC-012**: 5 lần nhập sai liên tiếp thì lần thứ 6, dù mã đúng, bị `TOTP_LOCKED`; bộ đếm và bước mã cuối còn nguyên sau
+  khi worker khởi động lại (test Go).
+- **SC-013**: 100% thao tác TOTP (bật, tắt, đúng, sai, khoá) có dòng audit trên hub và tại máy (như SC-006).
 
 ## Out of Scope
 
@@ -449,6 +502,7 @@ Audit (US5)
 - Shell tuỳ ý từ xa: chỉ mở được agent CLI trong danh sách; không có `hive shell`.
 - Điều khiển (gõ) từ một terminal ở máy khác (`hive attach` từ xa chỉ xem); ghép "thiết bị" là CLI để sau.
 - Mã hoá đầu-cuối output (hub không đọc được); để sau như tuỳ chọn "không ghi lại".
+- Mã hoá đường truyền cho hub HTTP (làm bằng HTTPS ở tầng hạ tầng); TOTP không thay được việc đó.
 - Điều khiển từ xa trên máy dùng chung và runner host (container sandbox).
 - Chuyển phiên tương tác thành run (giao lại cho agent không tương tác) và ngược lại.
 - Gắn MCP của hub tự động vào phiên tương tác (dev đã cài token MCP qua AppSetup, DESK-08).
@@ -458,7 +512,9 @@ Audit (US5)
 
 ## Assumptions
 
-- Hub dùng thật chạy HTTPS (Caddy profile `https` hoặc proxy công ty); hub HTTP chỉ có ghi phiên và `hive attach`.
+- Hub dùng thật chạy HTTPS (Caddy profile `https` hoặc proxy công ty). Hub HTTP (như hub nội bộ
+  `http://192.0.2.10:3000`) có ghi phiên, `hive attach` và điều khiển từ xa qua đường lui TOTP, không có passkey, PWA và
+  thông báo đẩy.
 - Điện thoại dùng iOS 16.4+ (Safari, Web Push khi đã cài lên màn hình chính) hoặc Android với Chrome/Edge mới; trình
   duyệt hỗ trợ passkey với xác thực sinh trắc hoặc mã máy.
 - Worker trên máy dev chạy dưới tài khoản hệ điều hành của chủ máy (sidecar của app hoặc user service, FLEET-02).
@@ -467,13 +523,17 @@ Audit (US5)
 
 ## Clarifications
 
-Tối đa ba điểm cần product owner chốt; tài liệu viết theo đề xuất mặc định.
+Product owner chốt ngày 2026-10-13.
 
-- **Q1, ai xem được phiên** [NEEDS CLARIFICATION]: Đề xuất mặc định riêng tư (chỉ chủ xem trực tiếp và bản ghi); chủ bật
-  "Cho đội xem" từng phiên (US8). Lựa chọn khác: phiên gắn task tự cho đội xem bản ghi như log run.
-- **Q2, hub chạy HTTP** [NEEDS CLARIFICATION]: Đề xuất bắt buộc HTTPS + passkey cho điều khiển từ xa, không có đường lui
-  bằng mật khẩu hay mã OTP, vì bỏ passkey thì hub (hoặc phiên web bị đánh cắp) đủ để mở phiên. Lựa chọn khác: cho mã OTP
-  (TOTP) do worker giữ khoá làm đường lui khi hub HTTP.
-- **Q3, toàn quyền cho phiên từ xa** [NEEDS CLARIFICATION]: Đề xuất phiên từ xa luôn ở chế độ hỏi quyền; chỉ chạy toàn quyền
-  khi chủ máy bật riêng tại máy **và** chính sách tổ chức cho dự án dùng toàn quyền. Lựa chọn khác: cấm hẳn toàn quyền khi
-  điều khiển từ xa.
+- **Q1, ai xem được phiên**: Mặc định riêng tư, chỉ chủ xem trực tiếp và bản ghi; chủ bật "Cho đội xem" cho từng phiên
+  (US8, FR-029). Phiên gắn task không tự cho đội xem.
+- **Q2, hub chạy HTTP**: **Khác đề xuất ban đầu.** Cho mã TOTP làm đường lui khi hub chạy HTTP (ví dụ hub nội bộ
+  `http://192.0.2.10:3000`). Passkey vẫn là cách chính khi có HTTPS. TOTP: khoá do worker giữ (tạo và ghép tại máy,
+  quét QR bằng app Authenticator), worker tự kiểm mã (hub không kiểm được thay), mỗi lần mở phiên hay xin quyền gõ cần
+  mã mới, chống dùng lại mã, giới hạn số lần sai rồi khoá tạm, có audit (FR-033…FR-037). Rủi ro đã chấp nhận: trên HTTP
+  nội dung phiên và phím gõ đi qua mạng không mã hoá, và mã TOTP đi qua hub nên kẻ nghe đường truyền hoặc hub bị chiếm
+  có thể dùng mã đó trong cửa sổ 30 giây trước khi người dùng dùng, nên đường lui này chỉ nên dùng trong mạng nội bộ.
+  Giảm thiểu: app desktop và web hiện cảnh báo khi bật điều khiển từ xa trên hub HTTP; tổ chức tắt được đường lui bằng
+  chính sách; TOTP vẫn chặn phiên web hay token bị đánh cắp đơn thuần.
+- **Q3, toàn quyền cho phiên từ xa**: Phiên mở từ xa không chạy toàn quyền, trừ khi chủ máy bật riêng tại máy **và**
+  chính sách tổ chức cho phép (FR-019).
