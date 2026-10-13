@@ -26,7 +26,7 @@ const MODEL_SUGGESTIONS = ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku
 
 export const segButton = (on: boolean) =>
   cn(
-    "h-6.5 cursor-pointer rounded-md border-0 px-2.5 text-[12.5px] disabled:cursor-not-allowed",
+    "h-6.5 cursor-pointer rounded-md border-0 px-2.5 text-sm disabled:cursor-not-allowed",
     on ? "bg-card font-semibold text-foreground shadow-sm" : "bg-transparent text-muted-foreground",
   );
 
@@ -110,7 +110,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 text-[13px] font-medium">
+    <div className="flex min-w-0 flex-col gap-1.5 text-sm font-medium">
       <label htmlFor={htmlFor}>{label}</label>
       {children}
       {hint && <span className="text-xs font-normal text-muted-foreground">{hint}</span>}
@@ -170,7 +170,7 @@ export function GateConfig({
       <div className="flex flex-col gap-1 border-b px-4 py-3.5">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{t.config}</span>
-          <span className="font-mono text-[11px] text-muted-foreground" title={t.gateId}>
+          <span className="font-mono text-xs text-muted-foreground" title={t.gateId}>
             {g.id}
           </span>
           {canWrite && (
@@ -215,7 +215,7 @@ export function GateConfig({
         />
       </div>
       <div className="flex flex-col gap-3.5 px-4 py-3.5">
-        <fieldset className="m-0 border-0 p-0 text-[13px] font-medium">
+        <fieldset className="m-0 border-0 p-0 text-sm font-medium">
           <legend className="mb-1.5">{t.type}</legend>
           <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.75">
             {GATE_KINDS.map((k) => (
@@ -282,7 +282,7 @@ export function GateConfig({
             <Field label={t.aiChecks} htmlFor={`${ids}-checks`} hint={t.aiChecksHint}>
               <LinesInput
                 id={`${ids}-checks`}
-                className="min-h-23 text-[13.5px]"
+                className="min-h-23 text-sm"
                 value={g.ai.checks}
                 disabled={disabled}
                 onChange={(checks) =>
@@ -318,11 +318,11 @@ export function GateConfig({
 
         {g.kind === "rule" && (
           <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-            <legend className="mb-1.5 text-[13px] font-medium">{t.rules}</legend>
+            <legend className="mb-1.5 text-sm font-medium">{t.rules}</legend>
             {RULE_CHECKS.map((r) => {
               const on = g.rules?.includes(r) ?? false;
               return (
-                <label key={r} className="flex items-center gap-2 text-[13px]">
+                <label key={r} className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     className="size-4 accent-primary"
@@ -345,7 +345,7 @@ export function GateConfig({
               <Field label={t.sections} htmlFor={`${ids}-sections`} hint={t.sectionsHint}>
                 <LinesInput
                   id={`${ids}-sections`}
-                  className="min-h-20 font-mono text-[12.5px]"
+                  className="min-h-20 font-mono text-sm"
                   value={g.sections ?? []}
                   disabled={disabled}
                   onChange={(sections) => set({ sections })}
@@ -378,8 +378,8 @@ export function GateConfig({
         )}
 
         <fieldset className="m-0 flex flex-col gap-2.5 rounded-[10px] border border-dashed border-input px-3 pt-1.5 pb-2.5">
-          <legend className="px-1.5 text-[13px] font-medium">{t.when}</legend>
-          <span className="flex flex-wrap items-center gap-1.5 text-[12.5px]">
+          <legend className="px-1.5 text-sm font-medium">{t.when}</legend>
+          <span className="flex flex-wrap items-center gap-1.5 text-sm">
             {condChips.length === 0 && <span className="text-muted-foreground">{t.always}</span>}
             {condChips.map((chip) => (
               <span
@@ -441,7 +441,7 @@ export function GateConfig({
               </Field>
             </div>
           )}
-          <label className="flex items-start gap-2 text-[13px]">
+          <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
               className="mt-0.75 size-4 accent-primary"
@@ -550,7 +550,7 @@ function Approvers({
     );
   return (
     <>
-      <fieldset className="m-0 border-0 p-0 text-[13px] font-medium">
+      <fieldset className="m-0 border-0 p-0 text-sm font-medium">
         <legend className="mb-1.5">{t.approvers}</legend>
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-input p-1.5 font-normal">
           {r.roles.map((role) => {
@@ -584,7 +584,7 @@ function Approvers({
             <select
               aria-label={t.addApprover}
               value=""
-              className="h-6 min-w-30 flex-1 cursor-pointer bg-transparent text-[12.5px] text-muted-foreground outline-none"
+              className="h-6 min-w-30 flex-1 cursor-pointer bg-transparent text-sm text-muted-foreground outline-none"
               onChange={(e) => {
                 const [kind, id] = e.target.value.split(":") as [string, string];
                 if (kind === "role") onChange({ ...r, roles: [...r.roles, id as ReviewerRole] });
