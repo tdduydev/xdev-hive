@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-profile-resume"
+description = "Enables the cli_profile_resume command without any pre-configured scope."
+commands.allow = ["cli_profile_resume"]
+
+[[permission]]
+identifier = "deny-cli-profile-resume"
+description = "Denies the cli_profile_resume command without any pre-configured scope."
+commands.deny = ["cli_profile_resume"]

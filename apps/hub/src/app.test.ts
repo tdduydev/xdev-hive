@@ -13,6 +13,8 @@ describe("hub", () => {
     expect(res.status).toBe(200);
     const body = healthOutput.parse(await res.json());
     expect(body).toMatchObject({ status: "ok", version: "1.2.3" });
+    // Worker chỉ khai CLI có trong danh sách này (hub cũ không trả thì chỉ claude, codex, gemini).
+    expect(body.clis).toEqual(["claude", "codex", "gemini", "antigravity"]);
     expect(Number.isNaN(Date.parse(body.time))).toBe(false);
   });
 

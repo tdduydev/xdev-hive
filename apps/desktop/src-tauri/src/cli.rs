@@ -920,9 +920,16 @@ fn cli_output(program: &str, args: &[&str]) -> Option<(Option<i32>, String)> {
 /// đọc file chứa phiên đăng nhập của gói.
 #[tauri::command]
 pub async fn cli_accounts() -> Result<Vec<CliAccount>, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let mut out = Vec::new();
-        let version = cli_output("claude", &["--version"]);
+    tauri::async_runtime::spawn_blocking(|| read_cli_accounts(cli_output))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+type CliProbe = fn(&str, &[&str]) -> Option<(Option<i32>, String)>;
+
+fn read_cli_accounts(run: CliProbe) -> Vec<CliAccount> {
+    let claude = || {
+        let version = run("claude", &["--version"]);
         let mut claude = CliAccount {
             engine: "claude",
             installed: version.is_some(),
@@ -930,12 +937,14 @@ pub async fn cli_accounts() -> Result<Vec<CliAccount>, String> {
             ..Default::default()
         };
         if claude.installed
-            && let Some((_, text)) = cli_output("claude", &["auth", "status"])
+            && let Some((_, text)) = run("claude", &["auth", "status"])
         {
             (claude.logged_in, claude.method, claude.email, claude.plan) = parse_claude_auth(&text);
         }
-        out.push(claude);
-        let version = cli_output("codex", &["--version"]);
+        claude
+    };
+    let codex = || {
+        let version = run("codex", &["--version"]);
         let mut codex = CliAccount {
             engine: "codex",
             installed: version.is_some(),
@@ -943,15 +952,24 @@ pub async fn cli_accounts() -> Result<Vec<CliAccount>, String> {
             ..Default::default()
         };
         if codex.installed
-            && let Some((code, text)) = cli_output("codex", &["login", "status"])
+            && let Some((code, text)) = run("codex", &["login", "status"])
         {
             (codex.logged_in, codex.method) = parse_codex_login(code, &text);
         }
-        out.push(codex);
-        out
+        codex
+    };
+    // Hai CLI độc lập; mỗi bên khởi động mất vài trăm ms nên hỏi cùng lúc.
+    std::thread::scope(|s| {
+        let codex = s.spawn(codex);
+        let claude = claude();
+        vec![
+            claude,
+            codex.join().unwrap_or_else(|_| CliAccount {
+                engine: "codex",
+                ..Default::default()
+            }),
+        ]
     })
-    .await
-    .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1098,6 +1116,33 @@ pub async fn propose_doc(
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    #[test]
+    fn reads_claude_and_codex_accounts_at_the_same_time() {
+        // Mỗi lệnh giả mất 100 ms như CLI thật (claude, codex khởi động Node/Rust): bốn lệnh nối tiếp là 400 ms.
+        fn slow(program: &str, args: &[&str]) -> Option<(Option<i32>, String)> {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            Some(match (program, args) {
+                ("claude", ["auth", "status"]) => (
+                    Some(0),
+                    r#"{"loggedIn":true,"authMethod":"claude.ai","email":"ha@acme.vn","subscriptionType":"max"}"#.into(),
+                ),
+                ("codex", ["login", "status"]) => (Some(0), "Logged in using ChatGPT".into()),
+                _ => (Some(0), format!("{program} 2.1.0")),
+            })
+        }
+        let started = std::time::Instant::now();
+        let accounts = read_cli_accounts(slow);
+        let took = started.elapsed();
+        eprintln!("cli_accounts với lệnh 100 ms: {took:?}");
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(accounts[0].engine, "claude");
+        assert!(accounts[0].logged_in);
+        assert_eq!(accounts[0].version.as_deref(), Some("2.1.0"));
+        assert_eq!(accounts[1].engine, "codex");
+        assert!(accounts[1].logged_in);
+        assert!(took < std::time::Duration::from_millis(350));
+    }
 
     fn temp(tag: &str) -> PathBuf {
         static SEQ: AtomicU64 = AtomicU64::new(0);

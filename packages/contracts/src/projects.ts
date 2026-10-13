@@ -162,6 +162,14 @@ export const projectSettings = z.object({
           plan: z.string().trim().min(1).max(200).optional(),
         })
         .optional(),
+      antigravity: z
+        .object({
+          code: z.string().trim().min(1).max(200).optional(),
+          review: z.string().trim().min(1).max(200).optional(),
+          leader: z.string().trim().min(1).max(200).optional(),
+          plan: z.string().trim().min(1).max(200).optional(),
+        })
+        .optional(),
     })
     .optional(),
   merge: z.object({
@@ -250,6 +258,7 @@ export const projectSettingsPatch = z
         claude: cliModelsPatch.optional(),
         codex: cliModelsPatch.optional(),
         gemini: cliModelsPatch.optional(),
+        antigravity: cliModelsPatch.optional(),
       })
       .optional(),
     issueIntake: issueIntakeSettings.partial().strict().optional(),

@@ -7,8 +7,11 @@ import {
 } from "@xdev-hive/contracts";
 import { apiErrorMessage } from "@/lib/api-errors.ts";
 
-export const SETTINGS_CLIS = ["claude", "codex", "gemini"] as const;
+export const SETTINGS_CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
 export type SettingsCli = (typeof SETTINGS_CLIS)[number];
+/** Antigravity không gọi được tool MCP khi chạy chỉ đọc nên không nộp được review_submit. */
+export const REVIEW_CLIS = ["claude", "codex", "gemini"] as const;
+export type ReviewCli = (typeof REVIEW_CLIS)[number];
 export type MergeMode = ProjectSettings["merge"]["mode"];
 export type PermissionMode = "workspace" | "full";
 
@@ -29,7 +32,7 @@ export interface SettingsForm {
   /** Run code chạy trên runner host trong container gVisor thay cho máy dev. */
   sandbox: boolean;
   crossReview: boolean;
-  reviewBy: SettingsCli;
+  reviewBy: ReviewCli;
   reviewMinScore: string;
   reviewRequired: boolean;
   reviewMinLines: string;
@@ -67,7 +70,12 @@ export function formFromSettings(s: ProjectSettings): SettingsForm {
     perRunUsd: text(s.budget?.perRunUsd),
     perTaskUsd: text(s.budget?.perTaskUsd),
     maxTurns: text(s.budget?.maxTurns),
-    models: { claude: model("claude"), codex: model("codex"), gemini: model("gemini") },
+    models: {
+      claude: model("claude"),
+      codex: model("codex"),
+      gemini: model("gemini"),
+      antigravity: model("antigravity"),
+    },
     runPermissions: s.runPermissions?.mode ?? "workspace",
   };
 }

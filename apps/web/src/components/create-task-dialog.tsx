@@ -13,16 +13,39 @@ import { apiErrorMessage, formError } from "@/lib/api-errors.ts";
 import { CLI_LABEL } from "@/lib/run-view.ts";
 import { useOrg } from "@/shell/org-context.ts";
 
-type Cli = "claude" | "codex" | "gemini";
-const CLIS: Cli[] = ["claude", "codex", "gemini"];
+type Cli = "claude" | "codex" | "gemini" | "antigravity";
+const CLIS: Cli[] = ["claude", "codex", "gemini", "antigravity"];
 const isCli = (v: string): v is Cli => (CLIS as string[]).includes(v);
 
-/** Nút "Tạo việc" và dialog của nó. `projects` là dự án đang hoạt động; chỉ một dự án thì không hỏi lại. */
-export function CreateTaskButton({ projects, label }: { projects: Project[]; label?: string }) {
+/**
+ * Nút "Tạo việc" và dialog của nó. `projects` là dự án đang hoạt động; chỉ một dự án thì không hỏi lại. Nút bị khoá
+ * thì hiện `disabledReason` cạnh nút, để người dùng biết phải làm gì thay vì đoán.
+ */
+export function CreateTaskButton({
+  projects,
+  label,
+  disabledReason,
+}: {
+  projects: Project[];
+  label?: string;
+  disabledReason?: string | null | undefined;
+}) {
   const [open, setOpen] = useState(false);
+  const reasonId = useId();
+  const disabled = projects.length === 0;
   return (
     <>
-      <Button variant="default" onClick={() => setOpen(true)} disabled={projects.length === 0}>
+      {disabled && disabledReason && (
+        <p id={reasonId} className="max-w-xs text-sm text-muted-foreground">
+          {disabledReason}
+        </p>
+      )}
+      <Button
+        variant="default"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        aria-describedby={disabled && disabledReason ? reasonId : undefined}
+      >
         <Icon name="plus" />
         {label ?? "Tạo việc"}
       </Button>

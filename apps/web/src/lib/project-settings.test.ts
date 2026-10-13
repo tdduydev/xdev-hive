@@ -74,6 +74,7 @@ describe("buildPatch", () => {
     const s = base();
     const form = formFromSettings(s);
     form.models.claude.code = " claude-opus-5-5 ";
+    form.models.antigravity.code = "gemini-3.8-flash-high";
     form.runPermissions = "full";
     const r = buildPatch(form, s);
     expect(r.ok && r.patch).toEqual({
@@ -81,6 +82,7 @@ describe("buildPatch", () => {
         claude: { code: "claude-opus-5-5", review: null },
         codex: { code: null, review: null },
         gemini: { code: null, review: null },
+        antigravity: { code: "gemini-3.8-flash-high", review: null },
       },
       runPermissions: { mode: "full" },
     });
