@@ -465,3 +465,43 @@ scripts/e2e-remote.ts               # MỚI: hub thật + worker thật + CLI gi
    chỉ bật cờ khi cảnh báo HTTP đã hiện ở app và web.
 3. Mở phiên từ xa (US4), PWA + đẩy (US7), xem cùng (US8).
 4. Bỏ cờ sau một tuần thử nội bộ không có sự cố bảo mật.
+
+## Lát đầu: Terminal Leader trên máy dùng chung (spec Q4, tasks T100–T107)
+
+Làm trước phần máy **dùng chung** trên web máy tính để Leader của AI SDLC (specs/011 FR-067) là một phiên Claude CLI
+tương tác: web (xterm.js) → hub `/ws/terminal` → WSS → worker → PTY. Không passkey/TOTP, không socket nội bộ, không `hive`,
+không PWA: máy dùng chung không có chủ máy để giữ khoá, nên ranh giới là phiên web + quyền `leader.terminal` + audit.
+
+### Quyết định của lát đầu
+
+| # | Câu hỏi | Quyết định | Lý do |
+|---|---|---|---|
+| D16 | Gói giao thức | Gói riêng của lát đầu: H→W `term_open {sessionId, projectId, planId?, mode, cols, rows, cli, repoUrl, baseBranch, projectKey, accountId?, model, effort?, advisor?, runPermissions, fullAllowed, mcpToken, systemPrompt, tokenSaving?}`, `term_input {data}` (base64 ≤ 4 KiB), `term_resize`, `term_close`; W→H `term_opened {accountLabel, permissions}`, `term_output {seq, data}` (≤ 32 KiB, gom 40 ms, ≤ 256 KiB/s mỗi phiên), `term_exit {exitCode, reason, message?}`. Capability `terminal`. | Phiên do hub mở (không phải tại máy) nên không cần `term_start`/`term_control`/`term_granted` có chữ ký của bảng trên; giữ tên `term_*` để phần passkey sau thêm gói mới bên cạnh. Worker chỉ gửi `term_*` sau `term_open`, hub chỉ gửi cho máy có capability, nên hai bên cũ không gặp gói lạ. |
+| D17 | Ai mở, trên máy nào | Quyền mới `leader.terminal` (nguy hiểm): có ở quản trị tổ chức, `team-admin`, `team-ba`. Chỉ máy `shared`, `kind = worker`, online, có `terminal`, thuộc đội của dự án. Worker tự từ chối khi `welcome.features` không có `shared`. | Máy cá nhân dùng gói và máy của chủ (ADR 0017), chưa có passkey thì hub bị chiếm cũng không được mở shell trên đó. |
+| D18 | Worktree và quyền | Worktree tạm `terminals/<sessionId>` tách HEAD ở `origin/<base>` (repo đã gắn hoặc bare cache, như run leader). `projects.Effective`: toàn quyền → `--permission-mode bypassPermissions`, không thì `acceptEdits`. Không đẩy; đóng phiên xoá worktree; worker khởi động dọn `terminals/`. | Dùng lại đúng luồng run (ADR 0020), Claude hỏi duyệt ngay trong terminal khi cần. |
+| D19 | MCP của Leader | Hub ký token MCP riêng cho phiên (HKDF nhãn riêng, 24 giờ), chỉ đi hub → worker trong `term_open`, worker ghi vào `--mcp-config` 0600 và che khỏi output. Cổng MCP coi token là người mở (principal `user` + `terminal`). Đề xuất: chỉ tool đọc + `leader_action` (thành đề xuất trong cuộc trò chuyện của phiên) + `leader_tiers`. Bypass: tool của người mở + `leader_action` làm ngay; mọi lần gọi có audit `mcp.*` gắn `terminalSessionId`, `leader_action` thêm `terminal.action` (cấp độ, model, lý do). | Không lộ token hub ra trình duyệt; quyền của Leader không vượt quyền người mở; LEAD-02 giữ nguyên ở chế độ mặc định. |
+| D20 | Bản ghi và phát lại | Hub che bí mật theo mẫu (token Anthropic/GitHub/GitLab/Slack/AWS, JWT, `hive_pat_`, khoá riêng) trước khi lưu `terminal_chunks (session, seq)` và trước khi gửi trình duyệt; vòng đệm 512 KiB mỗi phiên trong bộ nhớ, thiếu thì đọc DB. | Như D8; worker đã che bí mật nó biết. |
+| D21 | Model của phiên | Mặc định `sonnet` effort high; dự án bật cố vấn cho cấp vừa thì thêm `--advisor` (worker bỏ khi CLI chưa hỗ trợ); người mở chọn `opus`, web hiện chi phí trung bình mỗi run code 30 ngày theo họ model. | PO 2026-10-13: không lãng phí; con số lấy từ dữ liệu thật của tổ chức thay cho bảng giá. |
+| D22 | Giới hạn | 4 phiên mỗi máy (hub kiểm khi mở, worker kiểm lại), đóng sau 30 phút không có input và output, nhập 32 KiB/s (đệm 64 KiB) và 200 khung/s mỗi kết nối, bị chặn 50 lần liền thì đóng 4429. Mất kết nối máy: hub đánh dấu `failed`, worker đóng mọi phiên. | Không làm nghẽn kênh worker (chung với run). |
+
+Bảng `terminal_sessions (org, team, project, machine, owner, mode, model, advisor, accountId/Label, permissions, threadId,
+planId, state, visibility, cols, rows, bytes, nextSeq, exitCode, endReason, …)` và `terminal_chunks (session, seq, data)`,
+RLS bật và ép (migration `0063_terminal_sessions.sql`). Route `terminal.options|open|list|get|close|setVisibility|ticket|chunks|activity`
+(`packages/contracts/src/terminal.ts`), cờ `HIVE_REMOTE_TERMINAL=1`.
+
+### Bảo mật của lát đầu
+
+Bất biến: (1) token gói và token MCP/hub không tới trình duyệt; (2) chỉ máy dùng chung, kiểm ở hub và worker; (3) Leader
+không có quyền vượt người mở, và ở chế độ Đề xuất không ghi gì lên hub nếu người duyệt không duyệt; (4) người mở mất
+quyền `leader.terminal` thì phiên đóng (kiểm mỗi lời gọi MCP và quét mỗi phút); (5) chỉ chủ phiên gõ.
+
+| # | Kẻ tấn công / tình huống | Muốn | Chặn bằng | Còn lại |
+|---|---|---|---|---|
+| T18 | Trang độc mở `/ws/terminal` bằng cookie người dùng (CSWSH) | Xem, gõ | Vé một lần 60 s lấy qua oRPC (phiên + CSRF); `Origin` phải là `HIVE_PUBLIC_URL` hoặc trùng Host; vé bị đốt cả khi Origin sai | — |
+| T19 | Đánh cắp cookie web của quản trị đội/BA | Mở phiên, chạy lệnh trên máy dùng chung | Không chặn được ở lát này (không có passkey); audit `terminal.open`, phiên riêng tư, Bypass phải xác nhận; quyền trong worktree tạm, toàn quyền chỉ khi máy bật cho dự án | Kẻ có phiên web chạy được agent trong worktree trên máy dùng chung — chấp nhận cho máy dùng chung trong mạng nội bộ; máy cá nhân không mở được |
+| T20 | Agent in token (đọc `.env`, biến môi trường) | Lộ bí mật qua bản ghi | Env của phiên bỏ `HIVE_*` và biến tên TOKEN/SECRET/PASSWORD/API_KEY (giữ biến đăng nhập Claude khi máy không có gói, giá trị bị che); worker che token đã biết, hub che theo mẫu trước khi lưu và gửi | Bí mật không theo mẫu nằm trong bản ghi riêng tư của chủ phiên |
+| T21 | Prompt injection khiến Leader gọi tool hub | Tạo task, giao run, đổi cài đặt | Đề xuất: mọi việc ghi thành đề xuất chờ người duyệt; Bypass: chỉ khi người mở chọn và xác nhận, audit từng lần | Ở Bypass, hành động trong quyền người mở diễn ra không qua duyệt |
+| T22 | Người xem (Cho đội xem) gõ phím | Điều khiển phiên | Vé người xem `canInput = false`; hub bỏ `in`/`resize` của người không phải chủ | — |
+| T23 | Gõ/dán ồ ạt | Nghẽn kênh worker | Giới hạn D22, đóng 4429 | — |
+| T24 | Người mở bị gỡ khỏi đội | Giữ phiên đang mở | Cổng MCP kiểm quyền mỗi lời gọi, quét định kỳ đóng phiên và gửi `term_close` | Tối đa ~1 phút output tiếp tục khi Leader không gọi MCP |
+| T25 | Token MCP của phiên lộ ra từ máy | Gọi tool hub bằng quyền người mở | Token chỉ dùng khi phiên còn chạy và người mở còn quyền; chết khi phiên đóng | Trong lúc phiên chạy, ai đọc được file `--mcp-config` (root máy dùng chung) dùng được token |
