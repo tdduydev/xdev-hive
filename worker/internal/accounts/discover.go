@@ -186,11 +186,13 @@ func discover(list []Account, home string) ([]Found, []candidate) {
 			taken[e.Name()] = true
 		}
 	}
+	// Cùng email ở hai CLI khác nhau (gói Claude và gói Codex của một người) là hai gói thật, nên chỉ so trong cùng CLI.
 	emails := map[string]string{}
 	for _, a := range list {
 		if _, email := loginOf(a, home); email != "" {
-			if _, ok := emails[strings.ToLower(email)]; !ok {
-				emails[strings.ToLower(email)] = a.ID
+			key := a.CLI + "\x00" + strings.ToLower(email)
+			if _, ok := emails[key]; !ok {
+				emails[key] = a.ID
 			}
 		}
 	}
@@ -210,7 +212,7 @@ func discover(list []Account, home string) ([]Found, []candidate) {
 			f.LoggedIn = ok
 			if email != "" {
 				f.Email = &email
-				if id, dup := emails[strings.ToLower(email)]; dup {
+				if id, dup := emails[c.cli+"\x00"+strings.ToLower(email)]; dup {
 					note := "Trùng email với " + id
 					f.Note = &note
 				}
