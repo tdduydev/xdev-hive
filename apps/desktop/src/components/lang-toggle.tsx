@@ -1,29 +1,29 @@
+import { NativeSelect, NativeSelectOption } from "@xdev-hive/ui/native-select";
 import { type Dict, type Lang, setLang, useLang, useT } from "@/lib/i18n.ts";
 import { cn } from "@/lib/utils.ts";
 
-const text: Dict<{ group: string }> = { vi: { group: "Ngôn ngữ" }, en: { group: "Language" } };
+const text: Dict<{ label: string }> = { vi: { label: "Ngôn ngữ" }, en: { label: "Language" } };
 
-/** Chọn ngôn ngữ giao diện VI/EN như Topbar.dc.html. */
+/** Tên ngôn ngữ viết bằng chính ngôn ngữ đó, để người không đọc được ngôn ngữ đang chọn vẫn tìm ra. */
+const LANG_NAME: Record<Lang, string> = { vi: "Tiếng Việt", en: "English" };
+
+/** Chọn ngôn ngữ giao diện bằng danh sách thả xuống. */
 export function LangToggle({ className }: { className?: string }) {
   const lang = useLang();
   const t = useT(text);
   return (
-    <fieldset className={cn("m-0 inline-flex min-w-0 rounded-md bg-muted p-0.5", className)}>
-      <legend className="sr-only">{t.group}</legend>
+    <NativeSelect
+      size="sm"
+      aria-label={t.label}
+      className={cn("w-32", className)}
+      value={lang}
+      onChange={(e) => setLang(e.target.value as Lang)}
+    >
       {(["vi", "en"] as const satisfies readonly Lang[]).map((value) => (
-        <button
-          key={value}
-          type="button"
-          aria-pressed={lang === value}
-          onClick={() => setLang(value)}
-          className={cn(
-            "h-6 min-w-8 cursor-pointer rounded-sm px-1.5 font-mono text-xs font-medium text-muted-foreground",
-            "aria-pressed:bg-card aria-pressed:font-semibold aria-pressed:text-foreground aria-pressed:shadow-sm",
-          )}
-        >
-          {value.toUpperCase()}
-        </button>
+        <NativeSelectOption key={value} value={value}>
+          {LANG_NAME[value]}
+        </NativeSelectOption>
       ))}
-    </fieldset>
+    </NativeSelect>
   );
 }

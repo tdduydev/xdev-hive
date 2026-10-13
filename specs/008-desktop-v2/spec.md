@@ -278,6 +278,32 @@ shows the approved version; no edit control is offered.
 
 ---
 
+### User Story 13 - Several CLI Accounts on One Machine (Priority: P2)
+
+The machine owner has logged in several accounts of the same agent CLI on their machine (for example several Claude
+Code subscriptions in separate config directories, as the v1 app allowed). The worker spreads the owner's runs over
+those accounts and skips an account that is disabled, busy or cooling down after a usage limit. Accounts set up in the
+v1 app (`~/.xdev-hive/config.json`, `~/.xdev-hive/accounts/<id>`) are brought over without logging in again.
+
+Decision (product owner, 2026-10-13): every account logged in on the machine may run the owner's runs on that
+machine. ADR 0017 still holds: a personal machine runs only its owner's runs, so these accounts never run a
+colleague's run.
+
+**Independent Test**: With two Claude accounts (different `CLAUDE_CONFIG_DIR`), two runs started together run one on
+each account; disabling one account sends every later run to the other.
+
+**Acceptance Scenarios**:
+1. **Given** a machine with the v1 app's accounts, **When** the app starts the first time without an accounts file,
+   **Then** it imports every v1 account (label, CLI, config directory, enabled, priority, concurrency, cooldown) and
+   lists them under AI accounts; login files are referenced in place, never copied or sent to the hub.
+2. **Given** several enabled accounts of the CLI a run needs, **When** the worker starts the run, **Then** it picks
+   the highest priority account that is not cooling down and is under its concurrency limit, runs the CLI with that
+   account's config directory, and records the account label on the run.
+3. **Given** a run that ends because the account hit a usage limit, **When** the worker sees the CLI's limit message,
+   **Then** that account cools down for its `cooldownMinutes` and later runs use another account.
+4. **Given** an account for a CLI the worker does not drive (for example Antigravity), **Then** the app lists it as not
+   supported by the worker and the worker never picks it.
+
 ### Edge Cases
 
 - **What happens if the user's personal MCP token expires while the worker machine token is still valid?**
@@ -324,6 +350,9 @@ shows the approved version; no edit control is offered.
 - **FR-025 (US12)**: The app MUST search approved docs, memory and skills the user can read, read-only.
 - **FR-026**: The hub MUST accept the user's personal token (`hive_pat_…`) as `Authorization: Bearer` on the user-scoped REST API (`/api/v1/…`) with exactly the user's rights, so the app reuses the web contracts; machine and run tokens MUST NOT be accepted there.
 - **FR-027**: Screens present on both surfaces MUST share contracts and data logic through `packages/`; UI is not copied between `apps/web` and `apps/desktop`.
+- **FR-028 (US13)**: The worker MUST read the machine's CLI accounts from `accounts.json` next to `worker.json` and pick one per run by priority, concurrency limit and cooldown; it MUST set only the account's config directory variable (`CLAUDE_CONFIG_DIR` for Claude Code, `CODEX_HOME` for Codex) for the CLI process. With no accounts file it uses the CLI's default login as today.
+- **FR-029 (US13)**: The app MUST import the v1 app's accounts once, when no `accounts.json` exists, and MUST let the user enable or disable each account. Account files hold no secrets; login data stays in each account's config directory.
+- **FR-030**: The app window MUST let the user collapse and expand `AppNav` (choice kept across restarts) and choose the interface language from a drop-down list.
 
 ### Key Entities
 
