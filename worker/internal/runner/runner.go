@@ -278,8 +278,13 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	}
 	runCtx := ctx
 	var cancel context.CancelFunc
-	if job.Timeout > 0 {
-		runCtx, cancel = context.WithTimeout(ctx, job.Timeout)
+	timeout := job.Timeout
+	// Thời hạn run của tài khoản (như app v1) chỉ rút ngắn thời hạn hub đặt, không kéo dài.
+	if t := r.Account.Timeout(); r.Sandbox == nil && t > 0 && (timeout <= 0 || t < timeout) {
+		timeout = t
+	}
+	if timeout > 0 {
+		runCtx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 	// Git ghi index trong gitdir riêng và objects/refs trong bare cache ngoài worktree.
