@@ -8,6 +8,7 @@ import {
   type CostSummary,
   DEFAULT_AGENT_POLICY,
   defaultProjectSettings,
+  type ProjectBrief,
   type ProjectSettings,
   type Run,
   type Task,
@@ -25,6 +26,7 @@ import { type OrgFixture, seedOrg } from "../test/org-fixture.ts";
 import { seedProject } from "../test/project-fixture.ts";
 import { createApp } from "./app.ts";
 import { loadProject } from "./modules/catalog/index.ts";
+import { costSummary } from "./modules/cost/index.ts";
 import { attachWorkerGateway, pauseMachine, registerRunHandlers, setMachineShared } from "./modules/fleet/index.ts";
 import { createAuth } from "./modules/identity/index.ts";
 import { saveDoc } from "./modules/knowledge/docs.ts";
@@ -1824,5 +1826,154 @@ describe("máy cá nhân và máy dùng chung (ADR 0017)", () => {
     const again = await api<{ id: string }>("POST", "/v1/runs", { taskId: task.id, machineId: others.id });
     expect(again.status, JSON.stringify(again.data)).toBe(200);
     await api("POST", `/v1/runs/${again.data.id}/cancel`);
+  });
+});
+
+describe("brief của dự án và khảo sát trước khi sửa (ADR 0022)", () => {
+  let briefProject = "";
+  let briefKey = "";
+  const baseSha = "a".repeat(40);
+  const laterSha = "b".repeat(40);
+
+  beforeAll(async () => {
+    await admin.query("update hive.runs set state = 'cancelled' where org_id = $1 and state = 'queued'", [org.orgId]);
+    briefKey = `br-${tag}`;
+    briefProject = (
+      await seedProject(admin, pool, {
+        orgId: org.orgId,
+        teamId: org.teamId,
+        systemId: org.systemId,
+        adminUserId: org.user("admin"),
+        masterKey,
+        key: briefKey,
+      })
+    ).projectId;
+  });
+
+  const briefRuns = async () =>
+    (
+      await admin.query("select id, state, owner_user_id from hive.runs where project_id = $1 and kind = 'brief'", [
+        briefProject,
+      ])
+    ).rows as Array<{ id: string; state: string; owner_user_id: string | null }>;
+
+  it("không máy nào làm được brief thì giao run code không xếp run brief", async () => {
+    const m = await seedMachine(`br-old-${tag}`);
+    const w = await FakeWorker.connect(m);
+    const task = await newTask("Chưa có brief", { projectId: briefProject });
+    const run = await startRun(task.id);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    // Chưa có brief: chỉ có chỉ dẫn khảo sát, spec không mang commit của brief.
+    expect(String(offer.spec.prompt)).toMatch(/^# Cách khảo sát repo/);
+    expect(String(offer.spec.prompt)).toContain("memory_search");
+    expect(String(offer.spec.prompt)).toContain("memory_write");
+    expect(offer.spec.brief).toBeUndefined();
+    expect(await briefRuns()).toEqual([]);
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+    await w.close();
+  });
+
+  it("Làm mới: run brief chỉ đọc bằng sonnet trên máy khai brief; nộp xong thì brief có version và commit", async () => {
+    const m = await seedMachine(`br-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["brief"] });
+    const res = await api<{ runId: string }>("POST", "/v1/briefs/refresh", { project: briefKey });
+    expect(res.status, JSON.stringify(res.data)).toBe(200);
+    // Bấm lần nữa khi run còn sống thì trả lại đúng run đó.
+    expect((await api<{ runId: string }>("POST", "/v1/briefs/refresh", { project: briefKey })).data.runId).toBe(
+      res.data.runId,
+    );
+    const offer = await w.next("job_offer", (o) => o.runId === res.data.runId);
+    expect(offer.spec).toMatchObject({ kind: "brief", cli: "claude", model: "sonnet", taskId: null });
+    expect(String(offer.spec.prompt)).toContain("brief_submit");
+    expect(String(offer.spec.prompt)).not.toContain("# Cách khảo sát repo");
+    expect((await runRow(res.data.runId)).owner_user_id).toBe(devUserId);
+    w.send({ type: "job_accept", runId: res.data.runId, attempt: 1 });
+    await w.next("lease", (l) => l.runId === res.data.runId);
+    // Agent gọi brief_submit (tool MCP chỉ ghi sự kiện, như các tool nộp kết quả khác).
+    await admin.query(
+      `insert into hive.run_events (org_id, run_id, attempt, seq, type, data) values ($1, $2, 1, null, 'brief_report', $3)`,
+      [org.orgId, res.data.runId, JSON.stringify({ content: "# Brief\n\nHub ở apps/hub.", commitSha: baseSha })],
+    );
+    w.sendRun({ type: "run_result", runId: res.data.runId, attempt: 1, exit: 0, headSha: null, report: null });
+    await until(async () => (await runRow(res.data.runId)).state === "succeeded", 15_000);
+    const brief = await api<ProjectBrief>("GET", `/v1/briefs?project=${briefKey}`);
+    expect(brief.data).toMatchObject({
+      projectId: briefProject,
+      content: "# Brief\n\nHub ở apps/hub.",
+      version: 1,
+      commitSha: baseSha,
+      source: "agent",
+      updatedBy: { userId: null, runId: res.data.runId },
+      commitsBehind: 0,
+      refreshRunId: null,
+    });
+    // Sửa tay với phiên bản cũ thì CONFLICT, không ghi đè brief agent vừa viết.
+    const stale = await api<{ data?: { code: string } }>("POST", "/v1/briefs", {
+      project: briefKey,
+      content: "Bản cũ",
+      baseVersion: 0,
+    });
+    expect(stale.status).toBe(409);
+    await w.close();
+  });
+
+  it("run code nhận brief đầu prompt, báo khảo sát và độ lệch; lệch quá ngưỡng thì xếp run brief mới", async () => {
+    const m = await seedMachine(`br-code-${tag}`, ["claude"], 2);
+    const w = await FakeWorker.connect({ ...m, capabilities: ["brief"] });
+    const task = await newTask("Có brief", { projectId: briefProject });
+    const run = await startRun(task.id);
+    // Brief vừa viết (0 commit, hôm nay) nên giao run code không làm mới.
+    expect((await briefRuns()).filter((r) => r.state === "queued")).toEqual([]);
+    const offer = await w.next("job_offer", (o) => o.runId === run.id);
+    const prompt = String(offer.spec.prompt);
+    expect(prompt).toMatch(/^# Brief của dự án \(bản tóm tắt repo, viết ở commit a{12}\)/);
+    expect(prompt).toContain("Hub ở apps/hub.");
+    expect(prompt.indexOf("Hub ở apps/hub.")).toBeLessThan(prompt.indexOf("Có brief"));
+    expect(offer.spec.brief).toEqual({ sha: baseSha });
+    w.send({ type: "job_accept", runId: run.id, attempt: 1 });
+    await w.next("lease", (l) => l.runId === run.id);
+
+    const send = async (data: Record<string, unknown>) => {
+      const s = w.sendRun({ type: "run_event", runId: run.id, attempt: 1, event: "cost", data });
+      await w.next("ack", (a) => a.runId === run.id && a.uptoSeq === s);
+    };
+    const usage = { inputTokens: 500, outputTokens: 50, cacheReadTokens: 9000, cacheWriteTokens: 100 };
+    const usageEvent = { ...usage, costUsd: 0.2, turns: 9, model: null };
+    await send({ ...usageEvent, explore: { edited: true, turns: 6, ...usage, inputTokens: 300 } });
+    // Gói đến muộn mang số trước khi sửa: không ghi đè số đã chốt.
+    await send({ ...usageEvent, explore: { edited: false, turns: 5, ...usage, inputTokens: 200 } });
+    const view = await api<Run>("GET", `/v1/runs/${run.id}`);
+    expect(view.data.explore).toEqual({ edited: true, turns: 6, ...usage, inputTokens: 300 });
+
+    w.sendRun({
+      type: "run_result",
+      runId: run.id,
+      attempt: 1,
+      exit: 1,
+      headSha: null,
+      report: { repo: { baseSha: laterSha, briefBehind: 60 } },
+    });
+    await until(async () => (await briefRuns()).some((r) => r.state !== "succeeded"), 15_000);
+    const brief = await api<ProjectBrief>("GET", `/v1/briefs?project=${briefKey}`);
+    expect(brief.data).toMatchObject({ headSha: laterSha, commitsBehind: 60 });
+    expect(brief.data.refreshRunId).toEqual(expect.any(String));
+    // Run brief tự động đi bằng máy của người đã giao run code.
+    expect((await briefRuns()).find((r) => r.id === brief.data.refreshRunId)?.owner_user_id).toBe(devUserId);
+
+    const summary = await withTenant(pool, { userId: org.user("tadmin"), orgId: org.orgId }, (tx) =>
+      costSummary(tx, org.user("tadmin"), {
+        projectId: briefProject,
+        from: new Date().toISOString().slice(0, 10),
+        to: new Date().toISOString().slice(0, 10),
+        groupBy: "cli",
+      }),
+    );
+    expect(summary.explore).toMatchObject({ runs: 1, edited: 1, turns: 6, totalTurns: 9 });
+    expect(summary.explore?.costShare).toBeGreaterThan(0);
+    expect(summary.explore?.costShare).toBeLessThan(1);
+    await admin.query("update hive.runs set state = 'cancelled' where project_id = $1 and state = 'queued'", [
+      briefProject,
+    ]);
+    await w.close();
   });
 });

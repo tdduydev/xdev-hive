@@ -28,6 +28,7 @@ const skill = {
 const memory = {
   id: "0a0a0a0a-0000-4000-8000-000000000006",
   kind: "decision",
+  status: "approved",
   content: "Lưu tiền theo đơn vị nhỏ nhất.",
   files: ["money.ts"],
   scope,
@@ -121,12 +122,12 @@ async function setup(
         ),
       "skills/list": () => ok([skill]),
       "skills/get": () => ok({ ...skill, content: "# Review\n- Check permissions\n```ts\nconst safe = true;\n```" }),
-      "memory/list": (input) =>
-        ok(
-          (input as { includeSuperseded?: boolean }).includeSuperseded
-            ? memories
-            : memories.filter((item) => !item.supersededBy),
-        ),
+      "memory/list": (input) => {
+        const { includeSuperseded, status } = input as { includeSuperseded?: boolean; status?: string };
+        // Hub chỉ liệt kê memory đã duyệt khi không chọn trạng thái; ở đây chưa có memory chờ duyệt nào.
+        if (status === "pending") return ok([]);
+        return ok(includeSuperseded ? memories : memories.filter((item) => !item.supersededBy));
+      },
       "memory/search": () => ok([{ ...memory, score: 0.98, matchedBy: ["text", "vector"] }]),
       "memory/write": (input) => {
         const item = { ...memory, ...(input as object), id: "0a0a0a0a-0000-4000-8000-000000000008" };

@@ -407,6 +407,13 @@
       "when": 1791884829964,
       "tag": "0057_machine_local_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1791902637305,
+      "tag": "0058_project_briefs",
+      "breakpoints": true
     }
   ]
 }

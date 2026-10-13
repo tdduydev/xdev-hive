@@ -6,6 +6,7 @@ import {
   canSteer,
   checkRows,
   describeEvent,
+  exploreTokens,
   prLabel,
   runAccess,
   runPhases,
@@ -170,5 +171,20 @@ describe("runAccess", () => {
   it("run của đội (không chủ): quản trị đội gửi chỉ dẫn được, thành viên chỉ huỷ được", () => {
     expect(runAccess({ ownerUserId: null }, "u1", true)).toEqual({ steer: true, cancel: true, reason: null });
     expect(runAccess({ ownerUserId: null }, "u1", false)).toMatchObject({ steer: false, cancel: true });
+  });
+});
+
+describe("exploreTokens", () => {
+  it("cộng token vào, ra và cache đọc, ghi", () => {
+    expect(
+      exploreTokens({
+        edited: true,
+        turns: 4,
+        inputTokens: 100,
+        outputTokens: 20,
+        cacheReadTokens: 3000,
+        cacheWriteTokens: 400,
+      }),
+    ).toBe(3520);
   });
 });
