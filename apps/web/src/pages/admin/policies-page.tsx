@@ -42,6 +42,7 @@ const CLIS: { id: Cli; name: string }[] = [
   { id: "claude", name: "Claude Code" },
   { id: "codex", name: "Codex" },
   { id: "gemini", name: "Gemini CLI" },
+  { id: "antigravity", name: "Antigravity" },
 ];
 const TEMPLATE_FILES: { id: TemplateKey; path: string }[] = [
   { id: "agents", path: "AGENTS.md" },

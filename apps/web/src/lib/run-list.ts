@@ -11,7 +11,7 @@ export const RUN_FILTERS: readonly { key: RunFilter; label: string }[] = [
   { key: "cancelled", label: "Đã huỷ" },
 ];
 
-const CLIS = ["claude", "codex", "gemini"] as const;
+const CLIS = ["claude", "codex", "gemini", "antigravity"] as const;
 type Cli = (typeof CLIS)[number];
 
 /** Bộ lọc của /runs, lưu trên URL để chia sẻ link và giữ khi tải lại. */

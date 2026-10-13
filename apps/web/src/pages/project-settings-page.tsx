@@ -20,6 +20,7 @@ import {
   type FieldErrors,
   formFromSettings,
   type PermissionMode,
+  REVIEW_CLIS,
   SETTINGS_CLIS,
   type SettingsForm,
   saveErrors,
@@ -151,7 +152,8 @@ const text: Dict<{
       "Run code chạy trên runner host, mỗi run một container gVisor không có mạng; chỉ ra được các địa chỉ trong allowlist.",
     sandboxLink: "Allowlist mạng và image môi trường của dự án",
     budgetTitle: "Ngân sách",
-    budgetHint: "Bỏ trống là không giới hạn. Codex và Gemini không báo USD nên trần USD chỉ có tác dụng với Claude.",
+    budgetHint:
+      "Bỏ trống là không giới hạn. Codex, Gemini và Antigravity không báo USD nên trần USD chỉ có tác dụng với Claude.",
     perRun: "Mỗi run",
     perTask: "Mỗi việc",
     perTaskHint: "Cộng mọi run của việc.",
@@ -179,7 +181,7 @@ const text: Dict<{
     saving: "Đang lưu…",
     cfTitle: "Cho agent toàn quyền?",
     cfDesc:
-      "CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo).",
+      "CLI sẽ chạy không sandbox và không hỏi duyệt (Claude: bypassPermissions, Codex: bỏ sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
     cf1: "Agent đọc và sửa được mọi file tài khoản đó truy cập.",
     cf2: "Agent chạy được mọi lệnh, kể cả lệnh mạng.",
     cf3: "Lỗi của agent có thể làm hỏng máy nhận việc.",
@@ -232,7 +234,8 @@ const text: Dict<{
     sandboxHint: "Code runs on the runner host, one gVisor container per run with no network except the allowlist.",
     sandboxLink: "Network allowlist and environment image",
     budgetTitle: "Budget",
-    budgetHint: "Empty means no limit. Codex and Gemini do not report USD, so USD caps only apply to Claude.",
+    budgetHint:
+      "Empty means no limit. Codex, Gemini and Antigravity do not report USD, so USD caps only apply to Claude.",
     perRun: "Per run",
     perTask: "Per task",
     perTaskHint: "Sum of every run of the task.",
@@ -260,7 +263,7 @@ const text: Dict<{
     saving: "Saving…",
     cfTitle: "Give agents full access?",
     cfDesc:
-      "The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo).",
+      "The CLI runs without a sandbox or approval prompts (Claude: bypassPermissions, Codex: no sandbox, Gemini: yolo, Antigravity: --dangerously-skip-permissions).",
     cf1: "The agent can read and change every file that account can reach.",
     cf2: "The agent can run any command, including network commands.",
     cf3: "An agent mistake can damage the machine.",
@@ -603,7 +606,7 @@ function SettingsEditor({ project, canEdit }: { project: Project; canEdit: boole
                       onChange={(e) => set("reviewBy", e.currentTarget.value as SettingsForm["reviewBy"])}
                       disabled={disabled}
                     >
-                      {SETTINGS_CLIS.map((c) => (
+                      {REVIEW_CLIS.map((c) => (
                         <option key={c} value={c}>
                           {CLI_LABEL[c]}
                         </option>

@@ -422,6 +422,26 @@ describe("plan mode", () => {
     await until(async () => (await runRow(run.id)).state === "no_changes");
   });
 
+  it("run code của Antigravity: run plan con để dispatch chọn Claude/Codex (agy không gọi được plan_submit)", async () => {
+    await setPlanMode(true);
+    taskNo++;
+    const created = await api<Task>("POST", "/v1/tasks", { projectId, title: `Antigravity lập kế hoạch ${taskNo}` });
+    const started = await api<Run>("POST", "/v1/runs", {
+      taskId: created.data.id,
+      cli: "antigravity",
+      model: "gemini-3.8-flash-high",
+    });
+    expect(started.status).toBe(200);
+    expect(started.data).toMatchObject({ state: "planning", cli: "antigravity" });
+    const [child] = await planChildren(started.data.id);
+    expect(child).toMatchObject({ kind: "plan", cli: null, model: null });
+    const w = await FakeWorker.connect(await seedMachine(`agy-plan-${tag}`));
+    const { spec } = await w.take(child.id);
+    expect(spec).toMatchObject({ kind: "plan", cli: "claude" });
+    await api("POST", `/v1/tasks/${created.data.id}/cancel`);
+    await w.close();
+  });
+
   it("bật planMode: run plan chỉ đọc → nộp kế hoạch → chờ duyệt → duyệt kèm sửa → run code có kế hoạch trong prompt", async () => {
     await setPlanMode(true);
     const w = await FakeWorker.connect(await seedMachine(`ok-${tag}`));
