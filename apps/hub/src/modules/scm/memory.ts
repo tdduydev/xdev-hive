@@ -6,10 +6,12 @@ import type {
   ChecksState,
   CommentOptions,
   CommitFilesInput,
+  CommitStatusInput,
   CreateRepoInput,
   GitProvider,
   GitProviderKind,
   MergeMethod,
+  PullRequestFile,
   PullRequestInput,
   PullRequestState,
   RepoInfo,
@@ -17,6 +19,7 @@ import type {
   ScmUser,
   WebhookInput,
 } from "./types.ts";
+import { COMMIT_STATUS_DESCRIPTION_MAX } from "./types.ts";
 
 type Method = Exclude<keyof GitProvider, "kind">;
 
@@ -31,6 +34,8 @@ export interface MemoryRepo {
   comments: Array<{ id: string; number: number; body: string; pullRequest: boolean }>;
   /** Kết quả CI theo sha; sha không có trong map là `none`. */
   checks: Map<string, ChecksState>;
+  /** Commit status theo `sha` rồi `context`; đặt lại cùng context thì ghi đè như nhà cung cấp thật. */
+  statuses: Map<string, Map<string, CommitStatusInput>>;
 }
 
 export interface MemoryPull {
@@ -43,6 +48,8 @@ export interface MemoryPull {
   draft: boolean;
   headSha: string;
   mergeable: PullRequestState["mergeable"];
+  /** Danh sách file `prFiles` trả; vắng thì suy ra từ nội dung nhánh head và base. */
+  files?: PullRequestFile[];
   /** Có sau mergePR. */
   merged?: { method: MergeMethod; sha: string };
 }
@@ -102,6 +109,7 @@ export function createMemoryProvider(
       pulls: [],
       comments: [],
       checks: new Map(),
+      statuses: new Map(),
     };
     repos.set(key(ref), repo);
     return repo;
@@ -132,6 +140,39 @@ export function createMemoryProvider(
     for (const branch of repo.branches.keys())
       if (headOf(repo, branch) === sha) return repo.branches.get(branch) as Map<string, string>;
     throw new GitProviderError("not_found", `${host}: không có commit ${sha}`);
+  };
+
+  /** Patch một hunk cho cả file: đủ để màn review có gì đó vẽ, không mô phỏng thuật toán diff. */
+  const wholeFilePatch = (before: string | undefined, after: string | undefined): string => {
+    const lines = (text: string | undefined) => (text ? text.replace(/\n$/, "").split("\n") : []);
+    const old = lines(before);
+    const now = lines(after);
+    return [
+      `@@ -${old.length ? 1 : 0},${old.length} +${now.length ? 1 : 0},${now.length} @@`,
+      ...old.map((l) => `-${l}`),
+      ...now.map((l) => `+${l}`),
+    ].join("\n");
+  };
+
+  const derivedFiles = (repo: MemoryRepo, pr: MemoryPull): PullRequestFile[] => {
+    const head = repo.branches.get(pr.head) ?? new Map<string, string>();
+    const base = repo.branches.get(pr.base) ?? new Map<string, string>();
+    const files: PullRequestFile[] = [];
+    for (const path of [...new Set([...head.keys(), ...base.keys()])].sort()) {
+      const before = base.get(path);
+      const after = head.get(path);
+      if (before === after) continue;
+      const patch = wholeFilePatch(before, after);
+      files.push({
+        path,
+        status: before === undefined ? "added" : after === undefined ? "removed" : "modified",
+        additions: after === undefined ? 0 : after.replace(/\n$/, "").split("\n").length,
+        deletions: before === undefined ? 0 : before.replace(/\n$/, "").split("\n").length,
+        patch,
+        truncated: false,
+      });
+    }
+    return files;
   };
 
   const track = <A extends unknown[], R>(method: Method, fn: (...args: A) => R) =>
@@ -294,6 +335,21 @@ export function createMemoryProvider(
     listFiles: track("listFiles", (ref: RepoRef, sha: string) => [...filesAt(need(ref), sha).keys()].sort()),
 
     readFile: track("readFile", (ref: RepoRef, path: string, sha: string) => filesAt(need(ref), sha).get(path) ?? null),
+
+    prFiles: track("prFiles", (ref: RepoRef, number: number): PullRequestFile[] | null => {
+      const repo = need(ref);
+      const pr = repo.pulls.find((p) => p.number === number);
+      return pr ? (pr.files ?? derivedFiles(repo, pr)) : null;
+    }),
+
+    setCommitStatus: track("setCommitStatus", (ref: RepoRef, sha: string, input: CommitStatusInput) => {
+      const byContext = need(ref).statuses.get(sha) ?? new Map<string, CommitStatusInput>();
+      byContext.set(input.context, {
+        ...input,
+        description: input.description.slice(0, COMMIT_STATUS_DESCRIPTION_MAX),
+      });
+      need(ref).statuses.set(sha, byContext);
+    }),
 
     closePR: track("closePR", (ref: RepoRef, number: number) => {
       const pr = need(ref).pulls.find((p) => p.number === number);

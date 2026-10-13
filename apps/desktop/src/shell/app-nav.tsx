@@ -88,7 +88,7 @@ export function AppNav({
     <nav
       aria-label={t.aria}
       data-compact={compact || undefined}
-      className="flex h-svh w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground compact:w-[60px] compact:px-2"
+      className="flex h-full w-[220px] shrink-0 flex-col gap-1 border-r bg-sidebar px-2.5 py-3 text-sidebar-foreground compact:w-[60px] compact:px-2"
     >
       <div className="px-1.5 pb-2 compact:hidden">
         <Wordmark className="h-[34px]" />

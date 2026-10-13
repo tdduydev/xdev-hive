@@ -266,3 +266,94 @@ describe("thẻ worker", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+describe("dòng báo bản mới", () => {
+  beforeEach(() => setLang("vi"));
+
+  function fakeTauri(opts: { ready?: { version: string; notes: string | null }; relaunch?: () => Promise<void> } = {}) {
+    const calls: string[] = [];
+    let push: (v: unknown) => void = () => {};
+    window.__TAURI__ = {
+      core: {
+        invoke: async <T,>(command: string) => {
+          calls.push(command);
+          if (command === "update_status") return { current: "0.2.0", ready: opts.ready ?? null } as T;
+          if (command === "relaunch_to_update") return (await opts.relaunch?.()) as T;
+          return null as T;
+        },
+      },
+      event: {
+        listen: async <T,>(event: string, handler: (e: { payload: T }) => void) => {
+          if (event === "update-ready") push = (v) => handler({ payload: v as T });
+          return () => {};
+        },
+      },
+    };
+    return { calls, emit: (v: unknown) => act(async () => push(v)) };
+  }
+
+  it("không hiện khi chưa có bản nào sẵn sàng", async () => {
+    const { calls } = fakeTauri();
+    render(<AppShell />);
+    await act(async () => {});
+    expect(calls).toContain("update_status");
+    expect(screen.queryByRole("button", { name: "Mở lại để cập nhật" })).toBeNull();
+  });
+
+  it("hiện khi có sự kiện update-ready, nút gọi relaunch_to_update", async () => {
+    const { calls, emit } = fakeTauri();
+    render(<AppShell />);
+    await emit({ version: "0.3.0", notes: null });
+    expect(screen.getByText("Đã tải bản 0.3.0. Mở lại để cập nhật.")).toBeTruthy();
+    // Không có ghi chú thì không có nút Xem thay đổi.
+    expect(screen.queryByRole("button", { name: "Xem thay đổi" })).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Mở lại để cập nhật" }));
+    expect(calls).toContain("relaunch_to_update");
+  });
+
+  it("bản đã tải từ trước khi mở cửa sổ cũng hiện", async () => {
+    fakeTauri({ ready: { version: "0.3.1", notes: null } });
+    render(<AppShell />);
+    expect(await screen.findByText("Đã tải bản 0.3.1. Mở lại để cập nhật.")).toBeTruthy();
+  });
+
+  it("Ẩn tạm giấu dòng báo, bản mới hơn hiện lại", async () => {
+    const { emit } = fakeTauri();
+    render(<AppShell />);
+    await emit({ version: "0.3.0", notes: null });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Ẩn tạm" }));
+    expect(screen.queryByText(/Đã tải bản 0.3.0/)).toBeNull();
+    await emit({ version: "0.3.1", notes: null });
+    expect(screen.getByText("Đã tải bản 0.3.1. Mở lại để cập nhật.")).toBeTruthy();
+  });
+
+  it("Xem thay đổi hiện ghi chú markdown", async () => {
+    const { emit } = fakeTauri();
+    render(<AppShell />);
+    await emit({ version: "0.3.0", notes: "## Có gì mới\n\n- Sửa lỗi **đăng nhập**" });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Xem thay đổi" }));
+    expect(await screen.findByRole("heading", { name: "Có gì mới" })).toBeTruthy();
+    expect(screen.getByText("đăng nhập").tagName).toBe("STRONG");
+  });
+
+  it("mở lại lỗi thì báo lỗi và cho bấm lại", async () => {
+    const { emit } = fakeTauri({
+      relaunch: () => Promise.reject("Không cài được bản 0.3.0: hết dung lượng"),
+    });
+    render(<AppShell />);
+    await emit({ version: "0.3.0", notes: null });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Mở lại để cập nhật" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("hết dung lượng");
+    expect((screen.getByRole("button", { name: "Mở lại để cập nhật" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("tiếng Anh", async () => {
+    setLang("en");
+    const { emit } = fakeTauri();
+    render(<AppShell />);
+    await emit({ version: "0.3.0", notes: "x" });
+    expect(screen.getByText("Version 0.3.0 is downloaded. Restart to update.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "What's new" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Hide for now" })).toBeTruthy();
+  });
+});

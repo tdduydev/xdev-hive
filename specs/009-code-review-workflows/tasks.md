@@ -20,7 +20,7 @@
 
 ## Phase 1: Nền (chặn mọi story)
 
-- [ ] T001 Contract cho quy trình Code và phiên review code
+- [x] T001 Contract cho quy trình Code và phiên review code
   - `workflows.ts`: `workflowSubject`, preset `code-basic|code-strict|code-fast` + `CODE_WORKFLOW_PRESETS`, `ruleCheck`
     thêm `command|max-files|deny-paths|agent-report`, `codeScope`, `codeOptions`, trường checkpoint mới (ai.reviewers,
     aggregate, blockOn, runner; commands, maxFiles, denyPaths; ext.whenNone; reviewers.allowRequester; conditions.paths,
@@ -50,7 +50,7 @@
     `apps/hub/src/migrations-upgrade.db.test.ts`
   - **Phụ thuộc**: T001 · **Mức**: vừa
 
-- [ ] T003 [P] `GitProvider.prFiles` và `setCommitStatus`
+- [x] T003 [P] `GitProvider.prFiles` và `setCommitStatus`
   - GitHub `GET /pulls/{n}/files` (phân trang, tối đa 3 000 file, `patch` có thể thiếu → `truncated`), GitLab
     `GET /merge_requests/{iid}/diffs`; `setCommitStatus(ref, sha, { context, state, description, targetUrl })`.
   - Bản `memory` và `local` cho test; fixture HTTP.

@@ -12,6 +12,10 @@ export const notificationEvent = z.enum([
   "merge.failed",
   "review.awaiting",
   "review.overdue",
+  "code_review.awaiting",
+  "code_review.overdue",
+  "code_review.returned",
+  "code_review.approved",
 ]);
 export type NotificationEvent = z.output<typeof notificationEvent>;
 
