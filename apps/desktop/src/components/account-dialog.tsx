@@ -121,9 +121,9 @@ export function AccountDialog({
           <DialogDescription>{t.lead}</DialogDescription>
         </DialogHeader>
         {!status?.hub ? (
-          <p className="text-[13px] text-muted-foreground">{t.noHub}</p>
+          <p className="text-sm text-muted-foreground">{t.noHub}</p>
         ) : account ? (
-          <div className="flex flex-col gap-2 text-[13px]">
+          <div className="flex flex-col gap-2 text-sm">
             <p>{t.linkedAs(account.name || account.email, account.orgName)}</p>
             <p className="text-muted-foreground">
               {t.role}: {account.orgRole ? t.orgRoles[account.orgRole] : "—"}
@@ -143,7 +143,7 @@ export function AccountDialog({
         ) : (
           <form id={`${id}-form`} onSubmit={submit} className="flex flex-col gap-2">
             {status.linked && status.error && (
-              <p role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-[13px] text-warning">
+              <p role="alert" className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning">
                 {t.broken} {status.error}
               </p>
             )}
@@ -154,7 +154,7 @@ export function AccountDialog({
               autoComplete="off"
               spellCheck={false}
               placeholder="hive_pat_…"
-              className="font-mono text-[13px] md:text-[13px]"
+              className="font-mono text-sm md:text-sm"
               value={token}
               onChange={(e) => setToken(e.target.value)}
             />
@@ -162,7 +162,7 @@ export function AccountDialog({
           </form>
         )}
         {error && (
-          <p role="alert" className="text-[13px] text-destructive">
+          <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
