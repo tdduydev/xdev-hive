@@ -20,6 +20,7 @@ use std::time::{Duration, Instant, SystemTime};
 const CLI_TIMEOUT: Duration = Duration::from_secs(30);
 const WINDOW: Duration = Duration::from_secs(7 * 24 * 3600);
 const MAX_SESSIONS: usize = 200;
+const SKILL_WINDOW: Duration = Duration::from_secs(30 * 24 * 3600);
 /// `/usage` và `/context` mất vài giây mỗi lần mà số liệu đổi chậm: dùng lại kết quả dưới một phút khi đổi màn rồi quay
 /// lại, hay khi màn Token và hộp tài khoản AI cùng hỏi.
 const PRINT_FRESH: Duration = Duration::from_secs(60);
@@ -498,6 +499,7 @@ type FileMemo<T> = Mutex<HashMap<PathBuf, (SystemTime, u64, T)>>;
 fn read_files<T: Clone + Send>(
     memo: &FileMemo<T>,
     files: Vec<PathBuf>,
+    window: Duration,
     read: fn(&Path) -> T,
 ) -> Vec<T> {
     let stamp = |p: &Path| {
@@ -548,9 +550,9 @@ fn read_files<T: Clone + Send>(
                 memo.insert(path.clone(), (*at, *len, v.clone()));
             }
         }
-        // File ra khỏi cửa sổ một tuần thì không bao giờ được hỏi lại.
+        // File ra khỏi cửa sổ thời gian thì không bao giờ được hỏi lại.
         let now = SystemTime::now();
-        memo.retain(|_, (at, _, _)| now.duration_since(*at).unwrap_or_default() < WINDOW);
+        memo.retain(|_, (at, _, _)| now.duration_since(*at).unwrap_or_default() < window);
     }
     for (i, v) in parsed {
         out[i] = Some(v);
@@ -564,6 +566,7 @@ fn claude_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
     let sessions: Vec<Session> = read_files(
         MEMO.get_or_init(Default::default),
         claude_files(root, folder, WINDOW),
+        WINDOW,
         read,
     )
     .into_iter()
@@ -598,7 +601,7 @@ fn codex_stats_in(root: &Path, folder: Option<&Path>) -> SessionStats {
     let read =
         |p: &Path| -> Read { open(p).map_or((None, None), |r| read_codex_session(r, &stem(p))) };
     let files = recent_files(root, SystemTime::now(), WINDOW);
-    for (session, limits) in read_files(MEMO.get_or_init(Default::default), files, read) {
+    for (session, limits) in read_files(MEMO.get_or_init(Default::default), files, WINDOW, read) {
         // Hạn mức là của tài khoản, không theo thư mục: lấy sự kiện mới nhất trong mọi phiên.
         if let Some((at, primary, secondary)) = limits {
             if at > latest {
@@ -644,6 +647,23 @@ pub fn count_skill_uses(
     folder: Option<&Path>,
     counts: &mut HashMap<String, u32>,
 ) {
+    add_skill_uses(&skill_calls(reader), folder, counts);
+}
+
+fn add_skill_uses(
+    (cwd, found): &(String, Vec<String>),
+    folder: Option<&Path>,
+    counts: &mut HashMap<String, u32>,
+) {
+    if in_folder(cwd, folder) {
+        for name in found {
+            *counts.entry(name.clone()).or_default() += 1;
+        }
+    }
+}
+
+/// cwd của phiên và tên skill của từng lần gọi tool `Skill`, theo thứ tự.
+fn skill_calls(reader: impl BufRead) -> (String, Vec<String>) {
     let mut found: Vec<String> = Vec::new();
     let mut cwd = String::new();
     for line in reader.lines().map_while(Result::ok) {
@@ -671,11 +691,7 @@ pub fn count_skill_uses(
             }
         }
     }
-    if in_folder(&cwd, folder) {
-        for name in found {
-            *counts.entry(name).or_default() += 1;
-        }
-    }
+    (cwd, found)
 }
 
 /// Số lần agent của tôi gọi từng skill trong 30 ngày (màn Skills, cột "Tôi dùng"). Codex không ghi lần đọc skill thành
@@ -684,18 +700,28 @@ pub fn count_skill_uses(
 pub async fn skill_uses(folder: Option<String>) -> Result<HashMap<String, u32>, String> {
     let dir = folder_path(folder.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || {
-        let mut counts = HashMap::new();
-        if let Some(root) = claude_root() {
-            for p in claude_files(&root, dir.as_deref(), Duration::from_secs(30 * 24 * 3600)) {
-                if let Some(r) = open(&p) {
-                    count_skill_uses(r, dir.as_deref(), &mut counts);
-                }
-            }
-        }
-        counts
+        claude_root()
+            .map(|root| skill_uses_in(&root, dir.as_deref()))
+            .unwrap_or_default()
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+fn skill_uses_in(root: &Path, folder: Option<&Path>) -> HashMap<String, u32> {
+    static MEMO: OnceLock<FileMemo<(String, Vec<String>)>> = OnceLock::new();
+    let read = |p: &Path| open(p).map(skill_calls).unwrap_or_default();
+    let files = claude_files(root, folder, SKILL_WINDOW);
+    let mut counts = HashMap::new();
+    for calls in read_files(
+        MEMO.get_or_init(Default::default),
+        files,
+        SKILL_WINDOW,
+        read,
+    ) {
+        add_skill_uses(&calls, folder, &mut counts);
+    }
+    counts
 }
 
 #[tauri::command]
@@ -796,6 +822,31 @@ mod tests {
         let c = claude_stats_in(&root, Some(Path::new("/w/app0")));
         assert_eq!(c.totals.sessions, 10);
         assert_eq!(c.totals.input, 10 * 2000 * 1002 + 5);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn skill_uses_read_unchanged_files_once() {
+        use std::io::Write;
+        let root = fake_sessions("skills", 40, 2000);
+        for f in 0..40 {
+            let mut out = std::fs::OpenOptions::new()
+                .append(true)
+                .open(root.join(format!("-w-app{}/s{f}.jsonl", f % 4)))
+                .unwrap();
+            writeln!(out, r#"{{"type":"assistant","cwd":"/w/app{}","message":{{"content":[{{"type":"tool_use","name":"Skill","input":{{"skill":"db-migration"}}}}]}}}}"#, f % 4).unwrap();
+        }
+        let first = Instant::now();
+        let all = skill_uses_in(&root, None);
+        let first = first.elapsed();
+        let second = Instant::now();
+        let again = skill_uses_in(&root, None);
+        let second = second.elapsed();
+        eprintln!("skill_uses trên 40 file (~70 MB): lần đầu {first:?}, lần sau {second:?}");
+        assert_eq!(all.get("db-migration"), Some(&40));
+        assert_eq!(all, again);
+        let one = skill_uses_in(&root, Some(Path::new("/w/app1")));
+        assert_eq!(one.get("db-migration"), Some(&10));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
