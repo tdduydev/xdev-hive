@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
+import { promisify } from "node:util";
+import { brotliCompress, gzip, constants as zlibConstants } from "node:zlib";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { implement } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -287,6 +289,18 @@ export function createApp({
       ".svg": "image/svg+xml",
       ".woff2": "font/woff2",
     };
+    // Hub phục vụ web trực tiếp (Caddy là tuỳ chọn) nên tự nén: JS của trang đầu ~900 KB, nén còn chừng một phần ba.
+    // File trong /assets/ có hash trong tên, không đổi trong suốt tiến trình, nên chỉ nén một lần rồi giữ bản nén.
+    const compressible = new Set([".css", ".html", ".js", ".json", ".svg"]);
+    const compressed = new Map<string, Promise<Uint8Array<ArrayBuffer>>>();
+    const brotli = promisify(brotliCompress);
+    const gz = promisify(gzip);
+    const encode = (encoding: "br" | "gzip", body: Buffer) =>
+      // Chép sang Uint8Array một lần lúc nén (bản giữ trong cache), vì Hono không nhận Buffer trên ArrayBufferLike.
+      (encoding === "br"
+        ? brotli(body, { params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 9 } })
+        : gz(body, { level: 9 })
+      ).then((b) => new Uint8Array(b));
     app.get("*", async (c) => {
       let pathname: string;
       try {
@@ -301,11 +315,26 @@ export function createApp({
         try {
           const body = await readFile(requested);
           // File trong /assets/ có hash trong tên nên cache lâu được; index.html thì không.
-          const cache = pathname.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";
-          return c.body(body, 200, {
+          const immutable = pathname.startsWith("/assets/");
+          const headers: Record<string, string> = {
             "Content-Type": types[extname(requested)] ?? "application/octet-stream",
-            "Cache-Control": cache,
-          });
+            "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-cache",
+          };
+          if (!compressible.has(extname(requested)) || body.length < 1024) return c.body(body, 200, headers);
+          headers.Vary = "Accept-Encoding";
+          const accept = c.req.header("accept-encoding") ?? "";
+          const encoding = /\bbr\b/.test(accept) ? "br" : /\bgzip\b/.test(accept) ? "gzip" : null;
+          if (!encoding) return c.body(body, 200, headers);
+          let packed: Promise<Uint8Array<ArrayBuffer>>;
+          if (immutable) {
+            const key = `${encoding}:${requested}`;
+            packed = compressed.get(key) ?? encode(encoding, body);
+            if (!compressed.has(key)) {
+              compressed.set(key, packed);
+              packed.catch(() => compressed.delete(key));
+            }
+          } else packed = encode(encoding, body);
+          return c.body(await packed, 200, { ...headers, "Content-Encoding": encoding });
         } catch {
           /* Đường dẫn SPA không phải file; trả entry point để client router xử lý. */
         }
