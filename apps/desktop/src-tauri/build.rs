@@ -45,6 +45,7 @@ fn main() {
         "local_project_unbind",
         "local_project_set_full",
         "folder_tree",
+        "folder_docs",
         "propose_doc",
         "update_status",
         "check_updates_now",
