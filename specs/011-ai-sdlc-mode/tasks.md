@@ -209,7 +209,7 @@
     `apps/hub/src/modules/governance/{policies.ts,index.ts,policies.db.test.ts}`
   - **Phụ thuộc**: T013, T014 · **Mức**: nặng
 
-- [ ] T018 🎯 [P] [US7] Vai trò BA/PO ở hub
+- [x] T018 🎯 [P] [US7] Vai trò BA/PO ở hub
   - `tenancy`: thứ hạng `viewer < ba < member < admin` trong `checkTeamRole`; vai trò hệ thống `team-ba` trong danh sách
     vai trò và `effectivePermissions`; mời/đổi vai trò nhận `ba`; tài khoản app trả `ba`; `knowledge` nhận `team-ba` làm
     người duyệt (qua T014).
