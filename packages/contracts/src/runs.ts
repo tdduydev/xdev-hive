@@ -2,7 +2,7 @@ import { z } from "zod";
 import { id, orgRoute, queryFlag } from "./common.ts";
 import { outcomeCheck } from "./projects.ts";
 import { RUN_STATES, RUN_STATUS_GROUP_NAMES } from "./run-states.ts";
-import { cli, exploreUsage } from "./worker-protocol.ts";
+import { cli, exploreUsage, rtkUsage } from "./worker-protocol.ts";
 
 export { RUN_STATUS_GROUPS, TERMINAL_RUN_STATES } from "./run-states.ts";
 
@@ -55,6 +55,10 @@ export type RunCost = z.output<typeof runCost>;
 export const runExplore = exploreUsage;
 export type RunExplore = z.output<typeof runExplore>;
 
+/** Token RTK đã tiết kiệm ở lần thử gần nhất; null khi run không dùng RTK (máy không có, tắt trong dự án, CLI khác Claude) hay worker cũ. */
+export const runRtk = rtkUsage;
+export type RunRtk = z.output<typeof runRtk>;
+
 export const run = z.object({
   id,
   taskId: id.nullable(),
@@ -83,6 +87,7 @@ export const run = z.object({
   timeoutSec: z.number().int(),
   cost: runCost,
   explore: runExplore.nullable(),
+  rtk: runRtk.nullable(),
   createdBy: z.string(),
   /** Chủ run: người giao run, và chỉ máy của họ hoặc máy dùng chung chạy được. null là run của đội (Leader, gate AI, webhook). */
   ownerUserId: z.string().nullable(),

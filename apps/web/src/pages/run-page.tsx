@@ -357,6 +357,11 @@ function CostCard({ run, capUsd }: { run: Run; capUsd: number | undefined }) {
           { term: "Số lượt", detail: run.cost.turns === null ? "—" : formatInt(run.cost.turns) },
         ]}
       />
+      {run.rtk && run.rtk.savedTokens > 0 && (
+        <p className="text-xs text-muted-foreground">
+          RTK tiết kiệm ~{formatInt(run.rtk.savedTokens)} token ({formatInt(run.rtk.commands)} lệnh)
+        </p>
+      )}
     </SectionCard>
   );
 }

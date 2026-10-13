@@ -33,6 +33,11 @@ export function useDocEditorEnv(): DocEditorEnv {
   return env;
 }
 
+/** Cho phần dùng được cả ngoài DocEditorProvider (MarkdownEditor trong app desktop soạn file trên máy). */
+export function useOptionalDocEditorEnv(): DocEditorEnv | null {
+  return useContext(Env);
+}
+
 export function useText() {
   return docEditorText[useDocEditorEnv().lang];
 }

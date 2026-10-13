@@ -131,6 +131,13 @@ export const exploreUsage = z.object({
 });
 export type ExploreUsage = z.output<typeof exploreUsage>;
 
+/** Số liệu RTK của lần thử: số lệnh Bash đã qua RTK và số token RTK ước tính đã bớt được. Luỹ kế như các trường cost. */
+export const rtkUsage = z.object({
+  commands: z.number().int().min(0),
+  savedTokens: z.number().int().min(0),
+});
+export type RtkUsage = z.output<typeof rtkUsage>;
+
 /**
  * `data` của sự kiện `cost`: usage luỹ kế của lần thử (không phải phần tăng thêm), gửi khi đổi, tối đa 5 giây một lần
  * và một lần cuối trước run_result. Trường CLI không báo là null.
@@ -150,6 +157,11 @@ export const costEventData = z.object({
    * nhưng đóng kết nối khi gặp loại sự kiện lạ. Worker cũ và CLI chưa đọc được (Codex, Gemini, Antigravity) không gửi.
    */
   explore: exploreUsage.optional(),
+  /**
+   * Số liệu RTK. Đi trong sự kiện cost vì cùng lý do với `explore` (hub cũ bỏ khoá lạ của data nhưng đóng kết nối khi
+   * gặp loại sự kiện lạ). Chỉ gửi khi run đã dùng RTK.
+   */
+  rtk: rtkUsage.optional(),
 });
 export type CostEventData = z.output<typeof costEventData>;
 
