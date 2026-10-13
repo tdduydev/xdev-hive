@@ -324,10 +324,16 @@ pub(crate) fn run_with_timeout(mut cmd: Command, timeout: Duration) -> Option<Ou
         buf
     });
     let deadline = Instant::now() + timeout;
+    // Phần lớn lệnh (git, --version) xong trong vài ms: chờ ngắn trước rồi giãn dần tới 50 ms, để lệnh nhanh không phải
+    // đợi trọn một nhịp mà lệnh lâu cũng không hỏi liên tục.
+    let mut pause = Duration::from_millis(1);
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(pause);
+                pause = (pause * 2).min(Duration::from_millis(50));
+            }
             _ => {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -939,6 +945,26 @@ mod tests {
             let started = Instant::now();
             assert!(run_with_timeout(cmd, Duration::from_millis(200)).is_none());
             assert!(started.elapsed() < Duration::from_secs(2));
+        }
+    }
+
+    #[test]
+    fn quick_commands_return_without_waiting_for_a_poll_tick() {
+        #[cfg(unix)]
+        {
+            // Lấy lần nhanh nhất: máy bận thì một lần lẻ có thể chậm, nhưng không lần nào dưới nhịp chờ 50 ms cũ.
+            let fastest = (0..5)
+                .map(|_| {
+                    let started = Instant::now();
+                    let out =
+                        run_with_timeout(Command::new("true"), Duration::from_secs(5)).unwrap();
+                    assert_eq!(out.code, Some(0));
+                    started.elapsed()
+                })
+                .min()
+                .unwrap();
+            eprintln!("`true` qua run_with_timeout: {fastest:?}");
+            assert!(fastest < Duration::from_millis(30));
         }
     }
 
