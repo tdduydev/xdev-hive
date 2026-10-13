@@ -1,6 +1,7 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { auditContract } from "./audit.ts";
+import { chatContract } from "./chat.ts";
 import { codeReviewsContract } from "./code-reviews.ts";
 import { costsContract } from "./cost.ts";
 import { desktopConnectContract } from "./desktop-connect.ts";
@@ -116,6 +117,7 @@ export const contract = {
   scmConnections: scmContract,
   notificationChannels: notificationChannelsContract,
   inbox: inboxContract,
+  chat: chatContract,
   projects: projectsContract,
   memory: memoryContract,
   docs: docsContract,
@@ -142,5 +144,6 @@ export const contract = {
 
 export type Contract = typeof contract;
 
+export * from "./chat.ts";
 export * from "./fleet.ts";
 export * from "./leader.ts";
