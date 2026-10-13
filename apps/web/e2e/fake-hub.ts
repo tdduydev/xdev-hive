@@ -1,5 +1,15 @@
 import type { Page } from "@playwright/test";
-import { type AuditExportInput, SYSTEM_ROLE_PERMISSIONS } from "@xdev-hive/contracts";
+import {
+  type AuditExportInput,
+  type CodeDryRunResult,
+  defaultProjectSettings,
+  outcomeToCodeWorkflow,
+  type ReviewWorkflow,
+  reviewPhase,
+  SYSTEM_ROLE_PERMISSIONS,
+  WORKFLOW_PRESETS,
+  type WorkflowInput,
+} from "@xdev-hive/contracts";
 
 export const USER = { id: "u1", name: "Trần Đức Duy", email: "duy@example.com", image: null };
 
@@ -430,4 +440,136 @@ export function rolesFixture(opts: { mine?: string[] } = {}) {
     "teams/list": () => ok(teamsList),
   };
   return { state, rpc };
+}
+
+export const CODE_WORKFLOW_ID = "3c3c3c3c-0000-4000-8000-0000000000c1";
+export const PAYMENT_PROJECT_ID = "7a7a7a7a-0000-4000-8000-000000000001";
+const RECONCILE_PROJECT_ID = "7a7a7a7a-0000-4000-8000-000000000002";
+
+/**
+ * Quy trình Code cho trang Quy trình duyệt (spec 009, T013): thêm quy trình "Code payment-api" vào `state` của
+ * workflowsFixture, kèm hai dự án, các run code đã mở PR để chạy thử, và hai route của hub cho quy trình code
+ * (`codeReviews/dryRun`, `codeReviews/workflowFromProject`). Gộp `rpc` trả về sau `workflowsFixture().rpc`; lưu và xoá
+ * vẫn do route của quy trình tài liệu xử lý vì cùng một danh sách.
+ */
+export function codeWorkflowsFixture(state: { workflows: ReviewWorkflow[] }) {
+  const now = "2026-10-13T08:00:00.000Z";
+  const teamId = "5a5a5a5a-0000-4000-8000-000000000001";
+  const codeWorkflow: ReviewWorkflow = {
+    id: CODE_WORKFLOW_ID,
+    name: "Code payment-api",
+    preset: "code-basic",
+    subject: "code",
+    teamId,
+    docPrefixes: [],
+    code: {
+      projects: ["payment-api"],
+      baseBranches: ["main"],
+      taskTypes: [],
+      paths: [],
+      merge: "project",
+      maxAgentRevisions: 2,
+      dismissStaleApprovals: false,
+    },
+    phases: WORKFLOW_PRESETS["code-basic"].map((p) => reviewPhase.parse(p)),
+    enabled: true,
+    updatedAt: now,
+    updatedBy: "u1",
+    inFlight: 0,
+  };
+  state.workflows = [...state.workflows, codeWorkflow];
+
+  const projects = [
+    { id: PAYMENT_PROJECT_ID, key: "payment-api", name: "Payment API", teamId, state: "active" },
+    { id: RECONCILE_PROJECT_ID, key: "reconcile", name: "Reconcile", teamId, state: "active" },
+  ];
+  const task = (n: number, title: string) => ({
+    id: `8b8b8b8b-0000-4000-8000-00000000000${n}`,
+    projectId: PAYMENT_PROJECT_ID,
+    teamId,
+    key: `PAY-${n}`,
+    number: n,
+    title,
+    type: "feature",
+    status: "review",
+  });
+  const tasks = [task(1, "Hoàn tiền một phần"), task(2, "Làm tròn tiền tệ")];
+  const codeRun = (n: number, taskId: string, pr: number, sha: string, finishedAt: string, withPr = true) => ({
+    id: `6e6e6e6e-0000-4000-8000-00000000010${n}`,
+    taskId,
+    projectId: PAYMENT_PROJECT_ID,
+    teamId,
+    kind: "code",
+    state: "succeeded",
+    branch: `ai/PAY-${n}`,
+    headSha: sha,
+    prUrl: withPr ? `https://github.com/acme/payment-api/pull/${pr}` : null,
+    createdAt: finishedAt,
+    finishedAt,
+  });
+  const runs = [
+    codeRun(1, tasks[0]?.id ?? "", 121, "0c4e2ab0000000000000000000000000000000aa", "2026-10-12T09:00:00.000Z"),
+    codeRun(2, tasks[1]?.id ?? "", 128, "7ff96370000000000000000000000000000000bb", "2026-10-13T07:00:00.000Z"),
+    // Run chưa mở PR không chạy thử được: hub cần PR để tính phạm vi và số liệu diff.
+    codeRun(3, tasks[1]?.id ?? "", 0, "1111111000000000000000000000000000000cc", "2026-10-13T07:30:00.000Z", false),
+  ];
+
+  const calls = {
+    dryRuns: [] as { workflow: WorkflowInput; runId: string }[],
+    fromProject: [] as string[],
+  };
+  const rpc: Record<string, RpcHandler> = {
+    "projects/list": () => ok(projects),
+    "tasks/list": () => ok(tasks),
+    "runs/latest": (input) => {
+      const { projectId } = input as { projectId?: string };
+      return ok(projectId === PAYMENT_PROJECT_ID ? runs : []);
+    },
+    "codeReviews/dryRun": (input) => {
+      const i = input as { workflow: WorkflowInput; runId: string };
+      calls.dryRuns.push(i);
+      const run = runs.find((r) => r.id === i.runId);
+      const project = projects.find((p) => p.id === run?.projectId) ?? projects[0];
+      if (!run || !project) return fail("NOT_FOUND", 404, "Không tìm thấy run.");
+      const scope = i.workflow.code?.projects ?? [];
+      const matched = !scope.length || scope.includes(project.key);
+      const phases = i.workflow.phases.flatMap((p) => p.gates.map((g) => ({ g, phase: p.name })));
+      const result: CodeDryRunResult = {
+        runId: run.id,
+        project: { id: project.id, key: project.key, name: project.name },
+        pr: { number: Number(run.prUrl?.split("/").at(-1)), url: run.prUrl ?? "" },
+        matched,
+        reason: matched
+          ? "Dự án payment-api, nhánh đích main, loại task feature đều nằm trong phạm vi."
+          : `Dự án ${project.key} không nằm trong phạm vi.`,
+        chosen: matched ? { id: i.workflow.id ?? null, name: i.workflow.name } : null,
+        outranked: matched ? [{ id: null, name: "Code mặc định của tổ chức" }] : [],
+        gates: phases.map(({ g, phase }) => {
+          // Mô phỏng điều kiện số dòng: PR thử đổi 84 dòng.
+          const min = g.conditions?.minChangedLines;
+          const skip = typeof min === "number" && min > 84;
+          return {
+            gateId: g.id,
+            name: g.name,
+            kind: g.kind,
+            phase,
+            runs: !skip,
+            reason: skip ? `Chỉ đổi 84 dòng, dưới ngưỡng ${min}.` : "Không có điều kiện, luôn chạy.",
+          };
+        }),
+      };
+      return ok(result);
+    },
+    "codeReviews/workflowFromProject": (input) => {
+      const { projectKey } = input as { projectKey: string };
+      calls.fromProject.push(projectKey);
+      const settings = defaultProjectSettings(0);
+      settings.features.crossReview = true;
+      settings.merge.requireCi = true;
+      settings.merge.requiredApprovals = 1;
+      settings.outcome.default.push({ check: "review", required: true, by: "codex", minScore: 8 });
+      return ok(outcomeToCodeWorkflow(settings, projectKey));
+    },
+  };
+  return { calls, rpc };
 }

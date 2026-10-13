@@ -93,7 +93,7 @@
   - **Scope**: `apps/hub/src/modules/codereview/{dry-run.ts,router.ts,index.ts,dry-run.db.test.ts}`
   - **Phụ thuộc**: T010, T011 · **Mức**: vừa
 
-- [ ] T013 [US1] Web: trang Quy trình duyệt cho Code
+- [x] T013 [US1] Web: trang Quy trình duyệt cho Code
   - Hộp chọn Tài liệu/Code khi tạo; nhãn và bộ lọc loại; `workflow-code-config.tsx` (phạm vi, Khi đạt, trường checkpoint
     theo loại); chạy thử chọn run gần đây; nút "Tạo từ cấu hình dự án".
   - Hub giả và Playwright: tạo quy trình Code từ khung mẫu, lỗi quy tắc sai loại, chạy thử, người chỉ đọc; 360 px, tối.
