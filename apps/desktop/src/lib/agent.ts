@@ -361,3 +361,26 @@ export const folderTree = (folder: string) => invoke<TreeEntry[]>("folder_tree",
 
 export const proposeDoc = (input: { key: string; baseVersion: number; content: string; note: string }) =>
   invoke<{ proposalId: string; status: string; key: string; baseVersion: number }>("propose_doc", input);
+
+/** Tài khoản CLI worker chọn cho run trên máy này (`hive-worker accounts`, spec 008 US13). Không có token. */
+export interface CliProfile {
+  id: string;
+  label: string;
+  cli: string;
+  configDir?: string;
+  enabled: boolean;
+  priority: number;
+  maxConcurrent: number;
+  cooldownMinutes: number;
+  /** Worker chọn được tài khoản của CLI này (Claude Code, Codex). */
+  supported: boolean;
+  /** null khi app không biết cách kiểm đăng nhập của CLI này. */
+  loggedIn: boolean | null;
+  email?: string;
+}
+export interface CliProfiles {
+  path: string;
+  accounts: CliProfile[];
+}
+export const cliProfiles = () => invoke<CliProfiles>("cli_profiles");
+export const setCliProfile = (id: string, enabled: boolean) => invoke<CliProfiles>("cli_profile_set", { id, enabled });

@@ -28,6 +28,8 @@ fn main() {
         "run_cli_stream",
         "cancel_cli_stream",
         "cli_accounts",
+        "cli_profiles",
+        "cli_profile_set",
         "folder_tree",
         "propose_doc",
     ]);

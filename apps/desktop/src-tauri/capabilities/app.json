@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "app",
-  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats), tài khoản (account_status, account_link, account_unlink), thư mục làm việc (workspace_meta, dialog:allow-open), đọc hub (hub_tool, chỉ tool đọc), máy này (this_machine), mở trang của hub (open_hub_page), skill trên máy (skill_uses, installed_skills, install_skills, remove_skills, propose_skill gửi đề xuất sửa skill), tài liệu từ thư mục (run_cli_stream, cancel_cli_stream chạy Claude Code hoặc Codex chỉ đọc; cli_accounts, folder_tree; propose_doc gửi đề xuất sửa tài liệu). Cửa sổ web của hub không có quyền nào.",
+  "description": "Cửa sổ app cục bộ (AppNav). Mỗi màn thêm đúng lệnh nó dùng: Môi trường (scan_environment, run_install), Token và ngữ cảnh (claude_context, claude_usage, session_stats), tài khoản (account_status, account_link, account_unlink), thư mục làm việc (workspace_meta, dialog:allow-open), đọc hub (hub_tool, chỉ tool đọc), máy này (this_machine), mở trang của hub (open_hub_page), skill trên máy (skill_uses, installed_skills, install_skills, remove_skills, propose_skill gửi đề xuất sửa skill), tài liệu từ thư mục (run_cli_stream, cancel_cli_stream chạy Claude Code hoặc Codex chỉ đọc; cli_accounts, folder_tree; propose_doc gửi đề xuất sửa tài liệu). Tài khoản CLI của máy (cli_profiles, cli_profile_set qua hive-worker accounts). Cửa sổ web của hub không có quyền nào.",
   "windows": ["app"],
   "permissions": [
     "core:default",
@@ -28,6 +28,8 @@
     "allow-run-cli-stream",
     "allow-cancel-cli-stream",
     "allow-cli-accounts",
+    "allow-cli-profiles",
+    "allow-cli-profile-set",
     "allow-folder-tree",
     "allow-propose-doc"
   ]
