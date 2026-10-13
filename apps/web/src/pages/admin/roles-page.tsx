@@ -545,7 +545,7 @@ function RoleDetail({
               </Pill>
             )}
           </div>
-          {desc && <span className="text-[13px] text-muted-foreground">{desc}</span>}
+          {desc && <span className="text-sm text-muted-foreground">{desc}</span>}
         </div>
         <div className="flex items-center gap-2.5">
           <span className="flex flex-col items-end gap-1 text-xs text-muted-foreground">
@@ -591,7 +591,7 @@ function RoleDetail({
           {t.collapseAll}
         </Button>
         <span className="flex-1" />
-        <label className="flex items-center gap-1.5 text-[13px]">
+        <label className="flex items-center gap-1.5 text-sm">
           <input
             type="checkbox"
             checked={onlyGranted}
@@ -603,11 +603,11 @@ function RoleDetail({
       </div>
 
       {system && (
-        <p className="mx-4.5 mt-3 rounded-lg bg-muted px-3 py-2.5 text-[13px] text-muted-foreground">{t.systemNote}</p>
+        <p className="mx-4.5 mt-3 rounded-lg bg-muted px-3 py-2.5 text-sm text-muted-foreground">{t.systemNote}</p>
       )}
 
       <ul aria-label={t.perms} className="m-0 list-none px-3 pt-2.5 pb-4">
-        {rows.length === 0 && <li className="px-2 py-3 text-[13px] text-muted-foreground">{t.noMatch}</li>}
+        {rows.length === 0 && <li className="px-2 py-3 text-sm text-muted-foreground">{t.noMatch}</li>}
         {rows.map(({ node, level }) => {
           const keys = leafKeys(node);
           const on = keys.filter((k) => draft.has(k)).length;
@@ -660,7 +660,7 @@ function RoleDetail({
                 </span>
                 {node.danger && <Pill tone="bad">{t.danger}</Pill>}
                 {node.children && (
-                  <span className="font-mono text-[11.5px] text-muted-foreground">
+                  <span className="font-mono text-xs text-muted-foreground">
                     {on}/{keys.length}
                   </span>
                 )}
@@ -675,7 +675,7 @@ function RoleDetail({
 
       {!locked && (
         <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t bg-card px-4.5 py-3">
-          <span className="flex-1 text-[13px] text-muted-foreground">{justSaved && !dirty ? t.saved : t.applies}</span>
+          <span className="flex-1 text-sm text-muted-foreground">{justSaved && !dirty ? t.saved : t.applies}</span>
           {save.isError && <Alert variant="destructive">{apiErrorMessage(save.error)}</Alert>}
           <Button variant="outline" disabled={!dirty} onClick={() => setDraft(new Set(original))}>
             {t.discard}
@@ -771,7 +771,7 @@ function Assignments({ role, canWrite, onChanged }: { role: CustomRole; canWrite
     <section aria-label={t.assigned} className="flex flex-col gap-2 border-b px-4.5 py-3">
       <span className="text-xs font-medium text-muted-foreground">{t.assigned}</span>
       {role.assignments.length === 0 ? (
-        <p className="text-[13px] text-muted-foreground">{t.noAssigned}</p>
+        <p className="text-sm text-muted-foreground">{t.noAssigned}</p>
       ) : (
         <ul className="flex flex-wrap gap-1.5">
           {role.assignments.map((a) => (

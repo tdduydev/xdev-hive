@@ -126,14 +126,14 @@ const text: Dict<{
 };
 
 /** Nút "Tạo dự án" và dialog của nó; chỉ hiện cho quản trị đội hoặc quản trị tổ chức. */
-export function CreateProjectButton() {
+export function CreateProjectButton({ label }: { label?: string }) {
   const [open, setOpen] = useState(false);
   const t = useT(text);
   return (
     <>
       <Button variant="default" onClick={() => setOpen(true)}>
         <Icon name="plus" />
-        {t.btnCreate}
+        {label ?? t.btnCreate}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-140 overflow-y-auto">
