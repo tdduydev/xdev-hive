@@ -14,6 +14,7 @@ import { apiErrorMessage } from "@/lib/api-errors.ts";
 import { type Dict, useT } from "@/lib/i18n.ts";
 import { hasSharedMachine, shareCandidate } from "@/lib/onboarding.ts";
 import { teamRoleLookup } from "@/lib/projects.ts";
+import { MachineAccountsDialog } from "@/pages/machine-accounts.tsx";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -29,6 +30,8 @@ const text: Dict<{
   noSharedMember: string;
   share: string;
   shareLabel: (name: string) => string;
+  accounts: string;
+  accountsLabel: (name: string) => string;
 }> = {
   vi: {
     emptyTitle: "Đội chưa đăng ký máy nào",
@@ -46,6 +49,8 @@ const text: Dict<{
     noSharedMember: "Nhờ quản trị đội bật “Cho đội dùng chung” ở một máy.",
     share: "Cho đội dùng chung",
     shareLabel: (name) => `Cho đội dùng chung máy ${name}`,
+    accounts: "Gói agent",
+    accountsLabel: (name) => `Gói agent của ${name}`,
   },
   en: {
     emptyTitle: "This team has no machines yet",
@@ -63,6 +68,8 @@ const text: Dict<{
     noSharedMember: "Ask a team admin to turn on “Share with team” for a machine.",
     share: "Share with team",
     shareLabel: (name) => `Share machine ${name} with the team`,
+    accounts: "Agent accounts",
+    accountsLabel: (name) => `Agent accounts of ${name}`,
   },
 };
 
@@ -254,6 +261,7 @@ function RegistrationDialog({ teamId, onClose }: { teamId: string; onClose: () =
 }
 
 export function MachinesPage() {
+  const t = useT(text);
   const { api, org } = useOrg();
   const me = useMe();
   const queryClient = useQueryClient();
@@ -269,6 +277,7 @@ export function MachinesPage() {
     if (!open && them) void navigate({ to: "/machines", search: {}, replace: true });
   }
   const [revokeId, setRevokeId] = useState<string | null>(null);
+  const [accountsId, setAccountsId] = useState<string | null>(null);
   const selectedTeam = teams.data?.find((team) => team.id === teamId) ?? teams.data?.[0];
   const teamProjects = projects.data?.filter((project) => project.teamId === selectedTeam?.id) ?? [];
   const taskQueries = useQueries({
@@ -321,6 +330,7 @@ export function MachinesPage() {
       paused ? api.machines.pause.call({ machineId }) : api.machines.resume.call({ machineId }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: api.machines.list.key() }),
   });
+  const accountsMachine = machines.data?.find((machine) => machine.id === accountsId);
   const activeRuns = runQueries
     .flatMap((query) => query.data ?? [])
     .filter((run) =>
@@ -524,6 +534,19 @@ export function MachinesPage() {
                               </>
                             )}
                             {share.isError && <span role="alert">{apiErrorMessage(share.error)}</span>}
+                            {/* Gói agent chỉ quản trị đội xem và điều khiển được (ADR 0017); máy cá nhân hiện lời nhắc trong hộp thoại. */}
+                            {teamAdmin && machine.status !== "revoked" && machine.kind === "worker" && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  aria-label={t.accountsLabel(machine.name)}
+                                  onClick={() => setAccountsId(machine.id)}
+                                >
+                                  {t.accounts}
+                                </Button>{" "}
+                              </>
+                            )}
                             {machine.status !== "revoked" && (
                               <Button variant="outline" size="sm" onClick={() => setRevokeId(machine.id)}>
                                 Thu hồi
@@ -563,6 +586,14 @@ export function MachinesPage() {
       </PageBody>
       <Dialog open={adding && Boolean(selectedTeam)} onOpenChange={setAdding}>
         {adding && selectedTeam && <RegistrationDialog teamId={selectedTeam.id} onClose={() => setAdding(false)} />}
+      </Dialog>
+      <Dialog
+        open={accountsMachine !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setAccountsId(null);
+        }}
+      >
+        {accountsMachine && <MachineAccountsDialog machine={accountsMachine} onClose={() => setAccountsId(null)} />}
       </Dialog>
       <Dialog
         open={revokeId !== null}

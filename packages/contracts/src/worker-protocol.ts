@@ -52,7 +52,7 @@ export const hello = z.object({
   capacity: z.number().int().min(0).max(64),
   /**
    * Việc worker làm được ngoài run code (vd. `doccheck`: run chỉ đọc kiểm tài liệu; `sdlc`: run soạn tài liệu AI SDLC;
-   * `accounts-remote`: nhận `account_set`). Worker cũ không gửi.
+   * `accounts-remote`: nhận `account_set` và đăng nhập gói từ web). Worker cũ không gửi.
    */
   capabilities: z.array(z.string().max(40)).max(20).default([]),
   resumeRuns: z.array(z.string().max(64)).max(64).default([]),
@@ -96,6 +96,31 @@ export const heartbeat = z.object({
   /** Tóm tắt tài khoản CLI; worker cũ không gửi, và thiếu thì hub giữ tóm tắt đã biết. */
   accounts: z.array(workerAccountSummary).max(32).optional(),
 });
+
+/** Cách đăng nhập gói từ web (T063): Claude theo gói, SSO, Console hoặc dán token `claude setup-token`; Codex mã thiết bị. */
+export const accountLoginHow = z.enum(["plan", "sso", "console", "token", "device"]);
+export type AccountLoginHow = z.output<typeof accountLoginHow>;
+/** CLI đăng nhập được từ web: cần CLI có lệnh đăng nhập không trình duyệt. */
+export const accountLoginCli = z.enum(["claude", "codex"]);
+export type AccountLoginCli = z.output<typeof accountLoginCli>;
+/** Giới hạn một phiên đăng nhập gói; worker và hub cùng tự huỷ sau thời gian này. */
+export const ACCOUNT_LOGIN_TIMEOUT_SEC = 600;
+
+const loginRequestId = z.string().min(1).max(64);
+
+/**
+ * Bước đăng nhập gói worker báo về (T063, ADR 0017). Worker chỉ gửi URL đăng nhập, mã thiết bị và lời nhắc của chính
+ * nó, không gửi output thô của CLI, để token hay thông tin khác trên máy không đi qua hub. `done` có `accountId`.
+ * Worker chỉ gửi gói này sau `account_login_start`, nên hub cũ không bao giờ nhận.
+ */
+export const accountLoginEvent = z.object({
+  ...envelope("account_login_event"),
+  requestId: loginRequestId,
+  kind: z.enum(["url", "code", "prompt", "done", "error"]),
+  text: z.string().max(2000),
+  accountId: z.string().min(1).max(64).optional(),
+});
+export type AccountLoginEvent = z.output<typeof accountLoginEvent>;
 
 // job_accept/job_reject cần runId và attempt để hub biết đang trả lời đề nghị nào; bảng ở mục 5 không ghi rõ.
 export const jobAccept = z.object({ ...envelope("job_accept"), runId, attempt });
@@ -392,6 +417,32 @@ export const accountSet = z.object({
   enabled: z.boolean(),
 });
 
+/**
+ * Bắt đầu đăng nhập một gói mới trên máy dùng chung không màn hình (T063). Worker tạo thư mục cấu hình riêng cho gói,
+ * chạy lệnh đăng nhập của CLI trong PTY rồi báo bước qua `account_login_event`. Cùng điều kiện như `account_set`; mỗi
+ * máy tối đa một phiên, hết hạn sau `ACCOUNT_LOGIN_TIMEOUT_SEC`.
+ */
+export const accountLoginStart = z.object({
+  ...envelope("account_login_start"),
+  requestId: loginRequestId,
+  cli: accountLoginCli,
+  label: z.string().trim().min(1).max(80),
+  how: accountLoginHow,
+});
+
+/**
+ * Chữ người dùng dán trên web (mã xác nhận của Claude hoặc token `setup-token`). Hub chuyển thẳng xuống worker, không
+ * lưu và không ghi log; worker ghi vào PTY hoặc file 0600 trong thư mục gói.
+ */
+export const accountLoginInput = z.object({
+  ...envelope("account_login_input"),
+  requestId: loginRequestId,
+  text: z.string().min(1).max(4096),
+});
+
+/** Huỷ phiên đăng nhập: worker dừng lệnh và xoá gói dở. */
+export const accountLoginCancel = z.object({ ...envelope("account_login_cancel"), requestId: loginRequestId });
+
 // ---- Run `sdlc` (specs/011, ADR 0021) ----
 
 /** Giới hạn file worker trả về sau run `sdlc`; vượt thì worker báo lỗi rõ thay vì cắt. */
@@ -441,6 +492,7 @@ export const workerToHub = z.discriminatedUnion("type", [
   runEvent,
   logChunk,
   runResult,
+  accountLoginEvent,
 ]);
 export const hubToWorker = z.discriminatedUnion("type", [
   welcome,
@@ -455,6 +507,9 @@ export const hubToWorker = z.discriminatedUnion("type", [
   drain,
   update,
   accountSet,
+  accountLoginStart,
+  accountLoginInput,
+  accountLoginCancel,
 ]);
 export type WorkerToHub = z.output<typeof workerToHub>;
 export type HubToWorker = z.output<typeof hubToWorker>;

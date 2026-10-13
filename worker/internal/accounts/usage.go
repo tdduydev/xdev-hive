@@ -162,6 +162,9 @@ func ReadUsage(ctx context.Context, a Account, home string, now time.Time) Usage
 		var env map[string]string
 		if dir != "" {
 			env = map[string]string{envVar["claude"]: dir}
+			if token := oauthToken(dir); token != "" {
+				env[tokenEnv] = token
+			}
 		}
 		ctx, cancel := context.WithTimeout(ctx, usageTimeout)
 		defer cancel()

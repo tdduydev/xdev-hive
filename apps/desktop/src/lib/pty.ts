@@ -1,4 +1,12 @@
+import {
+  TERMINAL_DEFAULT_FONT_SIZE,
+  TERMINAL_FONT_FAMILY,
+  TERMINAL_FONT_SIZES,
+  terminalTheme,
+} from "@xdev-hive/ui/terminal-theme";
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useSyncExternalStore } from "react";
 import { getLang } from "@/lib/i18n.ts";
@@ -44,10 +52,11 @@ const early = new Map<string, Uint8Array[]>();
 const listeners = new Set<() => void>();
 let listeningOn: unknown = null;
 let seq = 0;
-let snapshot: { sessions: TermSession[]; active: string | null } = { sessions, active };
+let fontSize = getTermFontSize();
+let snapshot: { sessions: TermSession[]; active: string | null; fontSize: number } = { sessions, active, fontSize };
 
 function emit() {
-  snapshot = { sessions, active };
+  snapshot = { sessions, active, fontSize };
   for (const l of listeners) l();
 }
 
@@ -99,17 +108,47 @@ function ensureListening() {
     .catch(fail);
 }
 
-/** Màu theo token của app (sáng/tối), đọc lúc mở terminal và khi đổi giao diện. */
+/** Bảng màu theo giao diện đang dùng (sáng/tối), đọc lúc mở terminal và khi đổi giao diện. */
 export function termTheme() {
-  const css = getComputedStyle(document.documentElement);
-  const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
   const dark = document.documentElement.classList.contains("dark");
-  return {
-    background: v("--card", dark ? "#1B2336" : "#FFFFFF"),
-    foreground: v("--foreground", dark ? "#F8FAFC" : "#0F172A"),
-    cursor: v("--primary", dark ? "#60A5FA" : "#1D4ED8"),
-    selectionBackground: dark ? "#334155" : "#BFDBFE",
-  };
+  return terminalTheme(dark ? "dark" : "light", document.documentElement);
+}
+
+const FONT_KEY = "hive.terminal.fontSize";
+
+export function getTermFontSize(): number {
+  try {
+    const n = Number(localStorage.getItem(FONT_KEY));
+    return (TERMINAL_FONT_SIZES as readonly number[]).includes(n) ? n : TERMINAL_DEFAULT_FONT_SIZE;
+  } catch {
+    return TERMINAL_DEFAULT_FONT_SIZE;
+  }
+}
+
+/** Đổi cỡ chữ mọi terminal đang mở; số cột đổi theo nên fit lại (onResize báo cho PTY). */
+export function setTermFontSize(size: number) {
+  try {
+    localStorage.setItem(FONT_KEY, String(size));
+  } catch {
+    /* Không lưu được thì chỉ mất lựa chọn ở lần mở sau. */
+  }
+  for (const l of live.values()) {
+    l.term.options.fontSize = size;
+    if (l.opened) {
+      try {
+        l.fit.fit();
+      } catch {
+        /* Khung đang ẩn: lần đổi cỡ khung sau fit lại. */
+      }
+    }
+  }
+  fontSize = size;
+  emit();
+}
+
+/** Chỉ mở link web: terminal in ra đường dẫn tuỳ ý (file://, lệnh của app khác) không được bấm. */
+export function openTermLink(_event: MouseEvent, uri: string) {
+  if (/^https?:\/\//i.test(uri)) window.open(uri, "_blank", "noopener,noreferrer");
 }
 
 export function useTerminals() {
@@ -131,13 +170,23 @@ export function openTerminal(options: TermOptions): string {
   const key = `term-${seq}`;
   const term = new Terminal({
     cursorBlink: true,
-    fontFamily: '"JetBrains Mono Variable", ui-monospace, Menlo, monospace',
-    fontSize: 13,
+    cursorStyle: "bar",
+    fontFamily: TERMINAL_FONT_FAMILY,
+    fontSize,
+    // Chữ đậm của CLI (tiêu đề, tên file) đã rõ nhờ màu; chỉ tô sáng khi CLI đòi màu "bright".
+    drawBoldTextInBrightColors: false,
+    minimumContrastRatio: 4.5,
     scrollback: 5000,
+    // Unicode11 là API đề xuất của xterm: bật mới đặt được bề rộng ô.
+    allowProposedApi: true,
     theme: termTheme(),
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
+  term.loadAddon(new WebLinksAddon(openTermLink));
+  // Bề rộng ô theo Unicode 11: emoji và chữ Việt có dấu tổ hợp không làm lệch cột.
+  term.loadAddon(new Unicode11Addon());
+  term.unicode.activeVersion = "11";
   const host = document.createElement("div");
   host.className = "h-full w-full";
   live.set(key, { term, fit, host, opened: false });
