@@ -391,18 +391,14 @@ Thông báo, audit, SLA (US7)
 - Thông báo dùng kênh và hộp thư có sẵn (OPS-01, OPS-02); cột `events` của kênh là `text[]` nên thêm loại sự kiện không
   cần migration.
 
-## Open Questions & Clarifications *(NEEDS CLARIFICATION)*
+## Clarifications
 
-- **[NEEDS CLARIFICATION Q1]**: Phê duyệt trong Hive có thay "Approve" trên GitHub/GitLab không? Bảo vệ nhánh hiện
-  yêu cầu `requiredApprovals` người approve trên nhà cung cấp; PR do bot của Hive mở nên bot không tự approve được, và
-  hàng merge sẽ kẹt ở "Chờ người duyệt" dù Hive đã duyệt.
-  **Đề xuất mặc định**: Hive đặt commit status `xdev-hive/review` (pending/success/failure) trên đầu PR; khi dự án có
-  quy trình Code, trang cài đặt dự án đề xuất đổi bảo vệ nhánh sang "yêu cầu status `xdev-hive/review`" và đặt số người
-  approve về 0. Phê duyệt trên GitHub/GitLab không được tính vào checkpoint.
-- **[NEEDS CLARIFICATION Q2]**: Người giao task cho agent có được duyệt PR của agent đó không? Đội nhỏ thường chỉ có
-  một người biết việc.
-  **Đề xuất mặc định**: không (giữ nguyên tắc bốn mắt như tài liệu: người viết không duyệt), trừ khi checkpoint bật
-  "Cho người giao việc duyệt". Quản trị tổ chức luôn quyết được.
-- **[NEEDS CLARIFICATION Q3]**: Quy trình có áp cho PR do người mở (không qua run của Hive) không?
-  **Đề xuất mặc định**: không trong bản này. Chỉ PR do run Hive mở; mở rộng sau bằng webhook `pull_request.opened`
-  và một loại run "check" để chạy lệnh kiểm.
+Product owner chốt ngày 2026-10-13 (đều theo đề xuất):
+
+- **Q1, phê duyệt và bảo vệ nhánh**: Hive đặt commit status `xdev-hive/review` (pending/success/failure) trên đầu PR;
+  khi dự án có quy trình Code, trang cài đặt dự án đề xuất đổi bảo vệ nhánh sang "yêu cầu status `xdev-hive/review`" và
+  đặt số người approve về 0. Phê duyệt trên GitHub/GitLab không được tính vào checkpoint.
+- **Q2, người giao việc tự duyệt**: không (nguyên tắc bốn mắt như tài liệu), trừ khi checkpoint bật "Cho người giao việc
+  duyệt". Quản trị tổ chức luôn quyết được.
+- **Q3, PR do người mở**: không trong bản này; chỉ PR do run của Hive mở. Mở rộng sau bằng webhook
+  `pull_request.opened` và một loại run "check".
