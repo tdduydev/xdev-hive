@@ -1,9 +1,15 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import type { ReviewGateInput, WorkflowInput } from "@xdev-hive/contracts";
+import {
+  CODE_WORKFLOW_PRESETS,
+  DEFAULT_AGENT_POLICY,
+  type ReviewGateInput,
+  type WorkflowInput,
+} from "@xdev-hive/contracts";
 import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { errorCode, type OrgFixture, seedOrg } from "../../../test/org-fixture.ts";
 import { seedProject } from "../../../test/project-fixture.ts";
+import { saveAgentPolicy } from "../governance/index.ts";
 import { createPool, parseMasterKey, type Tx, withTenant } from "../platform/index.ts";
 import type { Principal } from "./access.ts";
 import { saveDoc } from "./docs.ts";
@@ -14,6 +20,7 @@ import {
   decideReview,
   dryRunWorkflow,
   getReview,
+  listCodeWorkflows,
   listReviews,
   listWorkflows,
   proposeWithReview,
@@ -435,5 +442,163 @@ describe("phiên duyệt", () => {
       [org.orgId],
     );
     expect(inbox.rows[0].n).toBeGreaterThan(0);
+  });
+});
+
+describe("quy trình code", () => {
+  const codeWorkflow = (extra: Partial<WorkflowInput> = {}): WorkflowInput => ({
+    name: `Code ${randomUUID().slice(0, 4)}`,
+    preset: "code-basic",
+    subject: "code",
+    teamId: org.teamId,
+    docPrefixes: [],
+    code: {
+      projects: [projectKey],
+      baseBranches: ["main"],
+      taskTypes: [],
+      paths: [],
+      merge: "project",
+      maxAgentRevisions: 2,
+      dismissStaleApprovals: false,
+    },
+    phases: CODE_WORKFLOW_PRESETS["code-basic"],
+    enabled: true,
+    ...extra,
+  });
+  const save = (who: string, input: WorkflowInput) => as(who, (tx) => saveWorkflow(tx, org.user(who), input));
+  const setPolicy = (allowed: string[]) =>
+    as("admin", (tx) =>
+      saveAgentPolicy(tx, org.user("admin"), {
+        ...DEFAULT_AGENT_POLICY,
+        allowedModels: { ...DEFAULT_AGENT_POLICY.allowedModels, claude: allowed },
+      }),
+    );
+
+  it("lưu được, đọc lại đủ loại và phạm vi (không rơi về tài liệu); có audit kèm loại", async () => {
+    const saved = await save("tadmin", codeWorkflow());
+    expect(saved).toMatchObject({
+      subject: "code",
+      docPrefixes: [],
+      code: { projects: [projectKey], merge: "project" },
+    });
+    const [listed] = (await as("tviewer", (tx) => listWorkflows(tx, user("tviewer")))).filter((w) => w.id === saved.id);
+    expect(listed).toMatchObject({ subject: "code", code: { baseBranches: ["main"], maxAgentRevisions: 2 } });
+    const row = (await admin.query("select subject, code from hive.review_workflows where id = $1", [saved.id]))
+      .rows[0];
+    expect(row.subject).toBe("code");
+    expect(row.code.projects).toEqual([projectKey]);
+    const audit = await admin.query(
+      "select data from hive.audit_log where org_id = $1 and action = 'review_workflow.save' and target_id = $2",
+      [org.orgId, saved.id],
+    );
+    expect(audit.rows[0]?.data).toMatchObject({ subject: "code" });
+  });
+
+  it("sửa quy trình code giữ nguyên loại; đổi loại thì bị từ chối", async () => {
+    const saved = await save("tadmin", codeWorkflow());
+    const edited = await save(
+      "tadmin",
+      codeWorkflow({
+        id: saved.id,
+        name: "Đổi tên",
+        code: { ...codeWorkflow().code, ...saved.code, maxAgentRevisions: 4 },
+      }),
+    );
+    expect(edited).toMatchObject({ subject: "code", name: "Đổi tên", code: { maxAgentRevisions: 4 } });
+    const asDoc = workflow([human("po")], { id: saved.id });
+    expect(await errorCode(() => save("tadmin", asDoc))).toBe("WORKFLOW_SUBJECT_FIXED");
+  });
+
+  it("quy trình tài liệu cũ không đổi: vẫn subject doc, code null, khớp tài liệu như trước", async () => {
+    const doc = await save("tadmin", workflow([human("po")]));
+    expect(doc).toMatchObject({ subject: "doc", code: null });
+    // Quy trình code cùng đội không được chen vào việc chọn quy trình cho tài liệu.
+    await save("tadmin", codeWorkflow());
+    const p = await propose("tmember");
+    expect((await instanceOf(p.id)).workflow_id).toBe(doc.id);
+    expect(
+      (await as("tviewer", (tx) => listWorkflows(tx, user("tviewer"), "doc"))).every((w) => w.subject === "doc"),
+    ).toBe(true);
+  });
+
+  it("không có quy trình tài liệu thì quy trình code không bắt đề xuất tài liệu vào phiên duyệt", async () => {
+    await save("tadmin", codeWorkflow());
+    const p = await propose("tmember");
+    expect(await instanceOf(p.id)).toBeUndefined();
+  });
+
+  it("lọc danh sách theo loại", async () => {
+    const doc = await save("tadmin", workflow([human("po")]));
+    const code = await save("tadmin", codeWorkflow());
+    const ids = async (subject?: "doc" | "code") =>
+      (await as("tviewer", (tx) => listWorkflows(tx, user("tviewer"), subject))).map((w) => w.id);
+    expect(await ids("code")).toEqual([code.id]);
+    expect(await ids("doc")).toEqual([doc.id]);
+    expect((await ids()).sort()).toEqual([code.id, doc.id].sort());
+  });
+
+  it("quyền workflows.write: thành viên đội không lưu được; quản trị đội không lưu quy trình của tổ chức", async () => {
+    expect(await errorCode(() => save("tmember", codeWorkflow()))).toBe("TEAM_ROLE_REQUIRED");
+    expect(await errorCode(() => save("tadmin", codeWorkflow({ teamId: null })))).toBe("ORG_ROLE_REQUIRED");
+    expect(await save("admin", codeWorkflow({ teamId: null }))).toMatchObject({ teamId: null, subject: "code" });
+  });
+
+  it("quy tắc dành cho tài liệu bị từ chối ở quy trình code", async () => {
+    const bad = codeWorkflow({
+      phases: [{ name: "Kiểm", gates: [{ id: "r", name: "Quy tắc", kind: "rule", rules: ["sections"] }] }],
+    });
+    await expect(save("tadmin", bad)).rejects.toThrow(/chỉ dùng cho tài liệu/);
+  });
+
+  it("từ chối model bị chính sách agent cấm; model được phép và CLI không giới hạn thì lưu được", async () => {
+    const withModel = (cli: "claude" | "codex", model: string) =>
+      codeWorkflow({
+        phases: [
+          {
+            name: "Review AI",
+            gates: [
+              {
+                id: "ai",
+                name: "Review AI",
+                kind: "ai",
+                ai: { checks: ["Đúng yêu cầu"], passScore: 7, reviewers: [{ cli, model }] },
+              },
+            ],
+          },
+        ],
+      });
+    await setPolicy(["claude-sonnet-5-5"]);
+    try {
+      expect(await errorCode(() => save("tadmin", withModel("claude", "claude-opus-5-5")))).toBe(
+        "WORKFLOW_MODEL_FORBIDDEN",
+      );
+      await expect(save("tadmin", withModel("claude", "claude-sonnet-5-5"))).resolves.toMatchObject({
+        subject: "code",
+      });
+      await expect(save("tadmin", withModel("codex", "gpt-bất-kỳ"))).resolves.toMatchObject({ subject: "code" });
+    } finally {
+      await admin.query("delete from hive.agent_policies where org_id = $1", [org.orgId]);
+    }
+  });
+
+  it("chạy thử trên tài liệu chỉ nhận quy trình tài liệu", async () => {
+    expect(
+      await errorCode(() =>
+        as("tviewer", (tx) => dryRunWorkflow(tx, user("tviewer"), { workflow: codeWorkflow(), docKey })),
+      ),
+    ).toBe("WORKFLOW_SUBJECT_MISMATCH");
+  });
+
+  it("listCodeWorkflows: chỉ quy trình code đang bật của tổ chức hoặc của đúng đội", async () => {
+    const mine = await save("tadmin", codeWorkflow({ name: "Của đội" }));
+    const orgWide = await save("admin", codeWorkflow({ name: "Của tổ chức", teamId: null }));
+    await save("tadmin", codeWorkflow({ name: "Tắt", enabled: false }));
+    await save("tadmin", workflow([human("po")]));
+    const got = await as("tmember", (tx) => listCodeWorkflows(tx, { teamId: org.teamId, projectId }));
+    expect(got.map((w) => w.id).sort()).toEqual([mine.id, orgWide.id].sort());
+    expect(got.every((w) => w.subject === "code" && w.code)).toBe(true);
+    // Đội khác chỉ thấy quy trình của tổ chức.
+    const other = await as("tmember", (tx) => listCodeWorkflows(tx, { teamId: randomUUID(), projectId: null }));
+    expect(other.map((w) => w.id)).toEqual([orgWide.id]);
   });
 });
