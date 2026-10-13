@@ -13,7 +13,8 @@ import {
 } from "@xdev-hive/contracts";
 import { and, desc, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import type pg from "pg";
-import { ConflictError, type Jobs, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
+import { loadPolicy } from "../governance/index.ts";
+import { ConflictError, ForbiddenError, type Jobs, NotFoundError, type Tx, withTenant } from "../platform/index.ts";
 import {
   audit,
   authorColumns,
@@ -70,6 +71,7 @@ export function memoryView(m: MemoryRow): Memory {
   return {
     id: m.id,
     kind: m.kind,
+    status: m.status === "pending" ? "pending" : "approved",
     content: m.content,
     files: m.files,
     scope: scopeView(m),
@@ -99,7 +101,7 @@ async function insertMemory(
   tx: Tx,
   principal: Principal,
   scope: Scope,
-  values: { kind: Memory["kind"]; content: string; files: string[] },
+  values: { kind: Memory["kind"]; content: string; files: string[]; status?: Memory["status"] },
   deps: KnowledgeDeps,
 ): Promise<MemoryRow> {
   const [row] = await tx
@@ -111,10 +113,12 @@ async function insertMemory(
       kind: values.kind,
       content: nfc(values.content),
       files: values.files,
+      status: values.status ?? "approved",
       ...authorColumns(principal),
     })
     .returning();
   if (!row) throw new Error("Không ghi được memory.");
+  if (row.status !== "approved") return row;
   // Embedding tạo ở job, sau commit: không giữ transaction trong lúc gọi API ngoài, và API lỗi không làm mất memory.
   if (deps.embedder && deps.jobs && (await hasVectors(tx))) {
     await deps.jobs.enqueue<EmbedJob>(EMBED_QUEUE, { orgId: row.orgId, memoryId: row.id }, { tx });
@@ -136,9 +140,68 @@ export async function writeMemory(
   else if (reader.kind === "run") scope = { teamId: reader.teamId, projectId: reader.projectId };
   else throw new ConflictError("SCOPE_REQUIRED", "Cần chọn phạm vi cho memory (tổ chức, đội hoặc dự án).");
   await authorize(tx, reader, scope, "write");
-  const row = await insertMemory(tx, principal, scope, data, deps);
-  await audit(tx, principal, "memory.write", { type: "memory", id: row.id }, { kind: row.kind });
+  const status = principal.kind === "run" ? await agentWriteStatus(tx, principal.runId) : "approved";
+  const row = await insertMemory(tx, principal, scope, { ...data, status }, deps);
+  await audit(tx, principal, "memory.write", { type: "memory", id: row.id }, { kind: row.kind, status });
   return memoryView(row);
+}
+
+/**
+ * Memory agent ghi trong run theo chính sách tổ chức (ADR 0022): agent đọc lầm repo thì không được tự đưa điều sai
+ * vào prompt của mọi run sau, nên mặc định chờ người duyệt; giới hạn mỗi run để agent không chép cả repo vào memory.
+ */
+async function agentWriteStatus(tx: Tx, runId: string): Promise<Memory["status"]> {
+  const { agentMemory } = await loadPolicy(tx);
+  if (agentMemory.mode === "off") {
+    throw new ForbiddenError("AGENT_MEMORY_OFF", "Chính sách của tổ chức không cho agent ghi memory.");
+  }
+  // Khoá theo run để hai lệnh ghi song song của cùng run không cùng lọt qua giới hạn.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('memory-run'), hashtext(${runId}))`);
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(memories)
+    .where(eq(memories.authorRunId, runId));
+  if ((row?.n ?? 0) >= agentMemory.maxPerRun) {
+    throw new ConflictError(
+      "AGENT_MEMORY_LIMIT",
+      `Run đã ghi đủ ${agentMemory.maxPerRun} memory; chỉ ghi điều quan trọng nhất.`,
+    );
+  }
+  return agentMemory.mode === "propose" ? "pending" : "approved";
+}
+
+/** Duyệt memory agent đề xuất: từ đây nó hiện khi tìm và có embedding. */
+export async function approveMemory(
+  tx: Tx,
+  principal: Principal,
+  id: string,
+  deps: KnowledgeDeps = {},
+): Promise<Memory> {
+  const old = await pendingForDecision(tx, principal, id);
+  const [row] = await tx.update(memories).set({ status: "approved" }).where(eq(memories.id, old.id)).returning();
+  if (!row) throw notFound();
+  if (deps.embedder && deps.jobs && (await hasVectors(tx))) {
+    await deps.jobs.enqueue<EmbedJob>(EMBED_QUEUE, { orgId: row.orgId, memoryId: row.id }, { tx });
+  }
+  await audit(tx, principal, "memory.approve", { type: "memory", id: row.id }, { runId: row.authorRunId });
+  return memoryView(row);
+}
+
+/** Bỏ đề xuất thì xoá hẳn: memory chưa từng hiện cho ai nên không cần giữ lịch sử như supersede. */
+export async function rejectMemory(tx: Tx, principal: Principal, id: string): Promise<void> {
+  const old = await pendingForDecision(tx, principal, id);
+  await tx.delete(memories).where(eq(memories.id, old.id));
+  await audit(tx, principal, "memory.reject", { type: "memory", id: old.id }, { runId: old.authorRunId });
+}
+
+async function pendingForDecision(tx: Tx, principal: Principal, id: string): Promise<MemoryRow> {
+  const reader = await readerFor(tx, principal);
+  // Khoá dòng: hai người cùng duyệt và bỏ một đề xuất thì người sau thấy nó đã được quyết.
+  const [old] = await tx.select().from(memories).where(eq(memories.id, id)).for("update");
+  if (!old || !canRead(reader, old)) throw notFound();
+  await authorize(tx, reader, old, "write");
+  if (old.status !== "pending") throw new ConflictError("MEMORY_DECIDED", "Memory này đã được duyệt hoặc bỏ.");
+  return old;
 }
 
 export async function listMemories(tx: Tx, principal: Principal, input: MemoryListInput): Promise<Memory[]> {
@@ -151,7 +214,7 @@ export async function listMemories(tx: Tx, principal: Principal, input: MemoryLi
     .where(
       and(
         visibleWhere(reader, memories, project),
-        eq(memories.status, "approved"),
+        eq(memories.status, data.status),
         data.kind ? eq(memories.kind, data.kind) : undefined,
         data.includeSuperseded ? undefined : isNull(memories.supersededBy),
       ),

@@ -1,4 +1,4 @@
-import type { OutcomeCheck, Run, RunEventView, RunState } from "@xdev-hive/contracts";
+import type { OutcomeCheck, Run, RunEventView, RunExplore, RunState } from "@xdev-hive/contracts";
 // Bảng việc và trang chủ nằm trong bundle đầu: lấy từ module không zod thay vì cả hợp đồng.
 import { TERMINAL_RUN_STATES } from "@xdev-hive/contracts/run-states";
 import { formatClock, formatDuration } from "@/lib/format.ts";
@@ -253,6 +253,11 @@ export function describeEvent(e: RunEventView): string | null {
 export function budgetPercent(costUsd: number | null, capUsd: number | undefined): number | null {
   if (costUsd === null || !capUsd) return null;
   return Math.min(100, Math.round((costUsd / capUsd) * 100));
+}
+
+/** Token run dùng để khảo sát repo: vào, ra và cache (đọc cộng ghi), để người xem thấy một con số thay vì bốn. */
+export function exploreTokens(explore: RunExplore): number {
+  return explore.inputTokens + explore.outputTokens + explore.cacheReadTokens + explore.cacheWriteTokens;
 }
 
 /** Nhãn ngắn của PR/MR từ URL: số ở cuối (…/pull/128, …/merge_requests/12) thành "#128"; không đọc được thì "PR". */

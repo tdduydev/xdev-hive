@@ -83,11 +83,14 @@ func (a Account) withDefaults() Account {
 	return a
 }
 
-// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan là "plan", review là "review", còn lại "implement".
+// RoleOf là vai trò tài khoản cần nhận cho run loại kind: run plan và brief là "plan" (brief chỉ đọc, rẻ như plan),
+// review là "review", còn lại "implement".
 func RoleOf(kind string) string {
 	switch kind {
 	case RolePlan, RoleReview:
 		return kind
+	case "brief":
+		return RolePlan
 	}
 	return RoleImplement
 }

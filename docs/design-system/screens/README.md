@@ -86,7 +86,7 @@ Một app cho mọi người, menu hiện theo quyền. Không tách app dev và
 | `AppRegister.dc.html` | Cửa sổ đăng ký máy (5 trạng thái) |
 | `AppTray.dc.html` | Menu khay và thông báo hệ thống (7 trạng thái worker) |
 | `AppHome.dc.html` | Tổng quan: máy sẵn sàng, skill áp dụng, tài liệu nói gì, token |
-| `AppDocs.dc.html` | Chọn thư mục, viết tài liệu từ code bằng gói thuê bao; khung chat theo đúng Claude Code hoặc Codex; hộp tài khoản AI |
+| `AppDocs.dc.html` | Chọn thư mục, viết tài liệu từ code bằng gói thuê bao; cây code bấm mở file (code chỉ xem, tài liệu sửa và lưu vào file); khung phải có tab Chat (theo đúng Claude Code hoặc Codex, chọn model, chế độ Chỉ đọc / Accept edits / Bypass có hộp xác nhận) và Terminal (xterm.js chạy Claude Code, Codex, Antigravity hay shell bằng gói agent); hộp tài khoản AI |
 | `AppSkills.dc.html` | Skill áp cho thư mục, cài vào `.claude/skills/` và `.agents/skills/` |
 | `AppTokens.dc.html` | Ngữ cảnh theo nhóm của `/context`, thứ tiêu hạn mức theo `/usage`, gợi ý tối ưu |
 | `AppSetup.dc.html` | Môi trường: CLI, runtime, công cụ, MCP, thư viện dự án, kèm lệnh cài |
