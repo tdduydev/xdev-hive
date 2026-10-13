@@ -2,6 +2,8 @@
 
 mod account;
 mod browser_login;
+#[cfg(test)]
+mod capabilities_audit;
 mod cli;
 mod doctor;
 mod hub;
@@ -208,12 +210,26 @@ fn notify(app: &AppHandle, body: &str) {
     }
 }
 
+/// Tham số chạy worker làm sidecar. `--stdin-control` cũng tắt tự cập nhật của worker: app cập nhật cả gói (kèm
+/// sidecar) qua updater, worker không được tự thay binary nằm trong gói đã ký.
+const SIDECAR_RUN_ARGS: [&str; 3] = ["run", "--status-json", "--stdin-control"];
+
+/// Địa chỉ hub trả bản cập nhật cho app (route /api/v1/desktop/updates của hub, DESK-10).
+fn update_endpoint(hub: &str, os: &str, arch: &str, version: &str) -> Option<url::Url> {
+    url::Url::parse(&format!(
+        "{}/api/v1/desktop/updates/{os}/{arch}/{version}",
+        hub.trim_end_matches('/')
+    ))
+    .ok()
+    .filter(|u| matches!(u.scheme(), "http" | "https"))
+}
+
 fn spawn_worker(app: &AppHandle) -> Result<(), String> {
     let (mut rx, child) = app
         .shell()
         .sidecar(SIDECAR)
         .map_err(|e| e.to_string())?
-        .args(["run", "--status-json", "--stdin-control"])
+        .args(SIDECAR_RUN_ARGS)
         .spawn()
         .map_err(|e| e.to_string())?;
     let pid = child.pid();
@@ -474,17 +490,8 @@ async fn register_worker(
 }
 
 async fn register_and_start(app: &AppHandle, args: RegisterArgs) -> Result<String, String> {
-    let mut cli = vec![
-        "register".to_string(),
-        "--hub".into(),
-        args.hub.clone(),
-        "--json".into(),
-    ];
-    if let Some(m) = &args.machine {
-        cli.extend(["--machine".into(), m.clone()]);
-    }
-    let reg: WorkerConfig =
-        sidecar_json(app, cli, vec![("HIVE_REGISTRATION_TOKEN", args.token)]).await?;
+    let (cli, env) = register::sidecar_invocation(&args);
+    let reg: WorkerConfig = sidecar_json(app, cli, env).await?;
     let hub = reg
         .hub_url
         .filter(|_| reg.registered)
@@ -586,13 +593,12 @@ async fn check_updates(app: &AppHandle, hub: &str) -> bool {
     if !has_key {
         return false;
     }
-    let endpoint = format!(
-        "{hub}/api/v1/desktop/updates/{}/{}/{}",
+    let Some(url) = update_endpoint(
+        hub,
         std::env::consts::OS,
         std::env::consts::ARCH,
-        app.package_info().version
-    );
-    let Ok(url) = url::Url::parse(&endpoint) else {
+        &app.package_info().version.to_string(),
+    ) else {
         return false;
     };
     let updater = match app
@@ -811,6 +817,30 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_endpoint_matches_hub_route() {
+        assert_eq!(
+            super::update_endpoint("https://hive.acme.vn/", "macos", "aarch64", "0.2.4")
+                .map(|u| u.to_string()),
+            Some("https://hive.acme.vn/api/v1/desktop/updates/macos/aarch64/0.2.4".into())
+        );
+        assert_eq!(
+            super::update_endpoint("http://10.86.224.34:3000", "windows", "x86_64", "0.2.5")
+                .map(|u| u.path().to_string()),
+            Some("/api/v1/desktop/updates/windows/x86_64/0.2.5".into())
+        );
+        assert!(super::update_endpoint("khong phai url", "macos", "aarch64", "1.0.0").is_none());
+        assert!(super::update_endpoint("file:///etc", "macos", "aarch64", "1.0.0").is_none());
+    }
+
+    #[test]
+    fn sidecar_runs_under_app_control_without_self_update() {
+        // Worker tắt tự cập nhật khi chạy với --stdin-control (worker/cmd/hive-worker TestSidecarDisablesSelfUpdate).
+        assert_eq!(super::SIDECAR_RUN_ARGS[0], "run");
+        assert!(super::SIDECAR_RUN_ARGS.contains(&"--stdin-control"));
+        assert!(super::SIDECAR_RUN_ARGS.contains(&"--status-json"));
+    }
+
     use super::safe_hub_path;
 
     #[test]

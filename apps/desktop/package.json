@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "sidecar:build": "node scripts/build-sidecar.ts",
-    "prepare:app": "pnpm build && pnpm sidecar:build"
+    "prepare:app": "pnpm build && pnpm sidecar:build",
+    "bundle:verify": "node scripts/verify-bundle.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
