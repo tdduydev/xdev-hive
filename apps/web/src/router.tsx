@@ -79,10 +79,15 @@ export interface RouterContext {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   // Guard đặt ở gốc để cả đường dẫn không tồn tại cũng chuyển về /login khi chưa đăng nhập.
-  beforeLoad: async ({ context, location }) => {
+  beforeLoad: async ({ context, location, matches }) => {
     // Đường dẫn cũ đổi trước khi xét đăng nhập, để `?redirect=` sau đăng nhập đã là đường dẫn mới.
     const moved = legacyRedirect(location);
     if (moved) throw redirect({ href: moved, replace: true });
+    // Trang sau đăng nhập (sessionRoute) hỏi orgs.mine ngay sau me.get: hỏi cùng lúc cho đỡ một lượt đi về. Chưa đăng
+    // nhập thì lời gọi nhận 401 và bị bỏ qua; sessionRoute vẫn tự hỏi lại khi cache chưa có dữ liệu.
+    if (matches.some((m) => m.routeId === sessionRoute.id)) {
+      context.queryClient.ensureQueryData(orgsMineQuery).catch(() => {});
+    }
     const me = await context.queryClient.ensureQueryData(meQuery);
     const { redirect: back } = location.search as { redirect?: unknown };
     const href = authRedirect({ pathname: location.pathname, href: location.href, redirect: back }, me !== null);
