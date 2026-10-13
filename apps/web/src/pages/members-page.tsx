@@ -18,6 +18,7 @@ import { formatDay } from "@/lib/format.ts";
 import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { canInvite, canRevoke } from "@/lib/invites.ts";
 import { canSetOrgRole, canSetStatus, isOrgAdmin, ORG_ROLES } from "@/lib/roles.ts";
+import type { MembersTab } from "@/lib/route-search.ts";
 import { useMe } from "@/shell/me-context.ts";
 import { useOrg } from "@/shell/org-context.ts";
 import { PageBody, PageHeader } from "@/shell/page-header.tsx";
@@ -203,17 +204,6 @@ const memberText: Dict<{
     invitationStatus: { pending: "Pending", accepted: "Accepted", expired: "Expired" },
   },
 };
-
-export type MembersTab = "dang-hoat-dong" | "loi-moi" | "cho-duyet";
-
-export interface MembersSearch {
-  /** Tab đang mở; không có là tab Đang hoạt động. */
-  xem?: "loi-moi" | "cho-duyet";
-}
-
-export function validateMembersSearch(search: Record<string, unknown>): MembersSearch {
-  return search.xem === "loi-moi" || search.xem === "cho-duyet" ? { xem: search.xem } : {};
-}
 
 const tab =
   "flex cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-3 py-2.5 text-sm font-medium text-muted-foreground data-active:border-primary data-active:text-foreground data-disabled:cursor-not-allowed data-disabled:opacity-60";

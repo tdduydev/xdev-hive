@@ -1,46 +1,74 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, createRoute, createRouter, Outlet, redirect } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+  Outlet,
+  redirect,
+} from "@tanstack/react-router";
 import { meQuery } from "@/lib/me.ts";
 import { orgsMineQuery } from "@/lib/orgs.ts";
 import { authRedirect, legacyRedirect } from "@/lib/redirect.ts";
+import {
+  validateLeaderSearch,
+  validateLoginSearch,
+  validateMachinesSearch,
+  validateMembersSearch,
+  validateOnboardingSearch,
+  validateReviewsSearch,
+  validateTasksSearch,
+  validateTeamsSearch,
+} from "@/lib/route-search.ts";
 import { validateRunsSearch } from "@/lib/run-list.ts";
-import { AuditPage } from "@/pages/admin/audit-page.tsx";
-import { GitConnectionsPage } from "@/pages/admin/git-page.tsx";
-import { McpPage } from "@/pages/admin/mcp-page.tsx";
-import { PoliciesPage } from "@/pages/admin/policies-page.tsx";
-import { RolesPage } from "@/pages/admin/roles-page.tsx";
-import { CostsPage } from "@/pages/costs-page.tsx";
-import { DesktopConnectPage } from "@/pages/desktop-connect-page.tsx";
-import { HomePage } from "@/pages/home-page.tsx";
-import { InvitePage } from "@/pages/invite-page.tsx";
-import { DocEditorPage } from "@/pages/knowledge/doc-editor-page.tsx";
-import { DocsPage } from "@/pages/knowledge/docs-page.tsx";
-import { MemoryPage } from "@/pages/knowledge/memory-page.tsx";
-import { ProposalsPage } from "@/pages/knowledge/proposals-page.tsx";
-import { ReviewsPage, validateReviewsSearch } from "@/pages/knowledge/reviews-page.tsx";
-import { SkillsPage } from "@/pages/knowledge/skills-page.tsx";
-import { WorkflowsPage } from "@/pages/knowledge/workflows-page.tsx";
-import { LeaderPage, validateLeaderSearch } from "@/pages/leader-page.tsx";
-import { LoginPage, validateLoginSearch } from "@/pages/login-page.tsx";
-import { LoginSettingsPage } from "@/pages/login-settings-page.tsx";
-import { MachinesPage, validateMachinesSearch } from "@/pages/machines-page.tsx";
-import { McpConsentPage } from "@/pages/mcp-consent-page.tsx";
-import { MembersPage, validateMembersSearch } from "@/pages/members-page.tsx";
-import { MergeQueuePage } from "@/pages/merge-queue-page.tsx";
-import { NotificationsPage } from "@/pages/notifications-page.tsx";
-import { OnboardingPage, validateOnboardingSearch } from "@/pages/onboarding-page.tsx";
-import { PlanPage } from "@/pages/plan-page.tsx";
-import { ProjectSettingsPage } from "@/pages/project-settings-page.tsx";
-import { ProjectsPage } from "@/pages/projects-page.tsx";
-import { RunPage } from "@/pages/run-page.tsx";
-import { RunsPage } from "@/pages/runs-page.tsx";
-import { ProjectSandboxPage, SandboxAdminPage } from "@/pages/sandbox-pages.tsx";
+
 import { LoadErrorPage, NotFoundPage, PendingPage } from "@/pages/status-pages.tsx";
-import { ProjectTasksPage, TasksPage, validateTasksSearch } from "@/pages/tasks-page.tsx";
-import { TeamsPage, validateTeamsSearch } from "@/pages/teams-page.tsx";
 import { AppShell } from "@/shell/app-shell.tsx";
 import { OrgGate } from "@/shell/org-gate.tsx";
 import { SessionLayout } from "@/shell/session-layout.tsx";
+
+/*
+ * Mỗi trang là một chunk riêng, tải khi vào route (hoặc khi rê chuột lên link, nhờ defaultPreload). Bundle đầu chỉ còn
+ * router, khung app và thư viện dùng chung, nên trang đầu tiên hiện nhanh hơn.
+ */
+const AuditPage = lazyRouteComponent(() => import("@/pages/admin/audit-page.tsx"), "AuditPage");
+const GitConnectionsPage = lazyRouteComponent(() => import("@/pages/admin/git-page.tsx"), "GitConnectionsPage");
+const McpPage = lazyRouteComponent(() => import("@/pages/admin/mcp-page.tsx"), "McpPage");
+const PoliciesPage = lazyRouteComponent(() => import("@/pages/admin/policies-page.tsx"), "PoliciesPage");
+const RolesPage = lazyRouteComponent(() => import("@/pages/admin/roles-page.tsx"), "RolesPage");
+const CostsPage = lazyRouteComponent(() => import("@/pages/costs-page.tsx"), "CostsPage");
+const DesktopConnectPage = lazyRouteComponent(() => import("@/pages/desktop-connect-page.tsx"), "DesktopConnectPage");
+const HomePage = lazyRouteComponent(() => import("@/pages/home-page.tsx"), "HomePage");
+const InvitePage = lazyRouteComponent(() => import("@/pages/invite-page.tsx"), "InvitePage");
+const DocEditorPage = lazyRouteComponent(() => import("@/pages/knowledge/doc-editor-page.tsx"), "DocEditorPage");
+const DocsPage = lazyRouteComponent(() => import("@/pages/knowledge/docs-page.tsx"), "DocsPage");
+const MemoryPage = lazyRouteComponent(() => import("@/pages/knowledge/memory-page.tsx"), "MemoryPage");
+const ProposalsPage = lazyRouteComponent(() => import("@/pages/knowledge/proposals-page.tsx"), "ProposalsPage");
+const ReviewsPage = lazyRouteComponent(() => import("@/pages/knowledge/reviews-page.tsx"), "ReviewsPage");
+const SkillsPage = lazyRouteComponent(() => import("@/pages/knowledge/skills-page.tsx"), "SkillsPage");
+const WorkflowsPage = lazyRouteComponent(() => import("@/pages/knowledge/workflows-page.tsx"), "WorkflowsPage");
+const LeaderPage = lazyRouteComponent(() => import("@/pages/leader-page.tsx"), "LeaderPage");
+const LoginPage = lazyRouteComponent(() => import("@/pages/login-page.tsx"), "LoginPage");
+const LoginSettingsPage = lazyRouteComponent(() => import("@/pages/login-settings-page.tsx"), "LoginSettingsPage");
+const MachinesPage = lazyRouteComponent(() => import("@/pages/machines-page.tsx"), "MachinesPage");
+const McpConsentPage = lazyRouteComponent(() => import("@/pages/mcp-consent-page.tsx"), "McpConsentPage");
+const MembersPage = lazyRouteComponent(() => import("@/pages/members-page.tsx"), "MembersPage");
+const MergeQueuePage = lazyRouteComponent(() => import("@/pages/merge-queue-page.tsx"), "MergeQueuePage");
+const NotificationsPage = lazyRouteComponent(() => import("@/pages/notifications-page.tsx"), "NotificationsPage");
+const OnboardingPage = lazyRouteComponent(() => import("@/pages/onboarding-page.tsx"), "OnboardingPage");
+const PlanPage = lazyRouteComponent(() => import("@/pages/plan-page.tsx"), "PlanPage");
+const ProjectSettingsPage = lazyRouteComponent(
+  () => import("@/pages/project-settings-page.tsx"),
+  "ProjectSettingsPage",
+);
+const ProjectsPage = lazyRouteComponent(() => import("@/pages/projects-page.tsx"), "ProjectsPage");
+const RunPage = lazyRouteComponent(() => import("@/pages/run-page.tsx"), "RunPage");
+const RunsPage = lazyRouteComponent(() => import("@/pages/runs-page.tsx"), "RunsPage");
+const ProjectSandboxPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "ProjectSandboxPage");
+const SandboxAdminPage = lazyRouteComponent(() => import("@/pages/sandbox-pages.tsx"), "SandboxAdminPage");
+const ProjectTasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "ProjectTasksPage");
+const TasksPage = lazyRouteComponent(() => import("@/pages/tasks-page.tsx"), "TasksPage");
+const TeamsPage = lazyRouteComponent(() => import("@/pages/teams-page.tsx"), "TeamsPage");
 
 /*
  * Khai báo route bằng code, không dùng file-based: hiện chỉ có vài route, và file-based cần plugin Vite sinh
@@ -54,10 +82,15 @@ export interface RouterContext {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   // Guard đặt ở gốc để cả đường dẫn không tồn tại cũng chuyển về /login khi chưa đăng nhập.
-  beforeLoad: async ({ context, location }) => {
+  beforeLoad: async ({ context, location, matches }) => {
     // Đường dẫn cũ đổi trước khi xét đăng nhập, để `?redirect=` sau đăng nhập đã là đường dẫn mới.
     const moved = legacyRedirect(location);
     if (moved) throw redirect({ href: moved, replace: true });
+    // Trang sau đăng nhập (sessionRoute) hỏi orgs.mine ngay sau me.get: hỏi cùng lúc cho đỡ một lượt đi về. Chưa đăng
+    // nhập thì lời gọi nhận 401 và bị bỏ qua; sessionRoute vẫn tự hỏi lại khi cache chưa có dữ liệu.
+    if (matches.some((m) => m.routeId === sessionRoute.id)) {
+      context.queryClient.ensureQueryData(orgsMineQuery).catch(() => {});
+    }
     const me = await context.queryClient.ensureQueryData(meQuery);
     const { redirect: back } = location.search as { redirect?: unknown };
     const href = authRedirect({ pathname: location.pathname, href: location.href, redirect: back }, me !== null);
@@ -306,7 +339,7 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 export function createAppRouter(queryClient: QueryClient) {
-  return createRouter({
+  const router = createRouter({
     routeTree,
     context: { queryClient },
     defaultPreload: "intent",
@@ -314,6 +347,13 @@ export function createAppRouter(queryClient: QueryClient) {
     defaultPreloadStaleTime: 0,
     scrollRestoration: true,
   });
+  // Router chỉ tải chunk của trang sau khi mọi beforeLoad (me.get rồi orgs.mine) xong. Tải ngay khi bắt đầu chuyển
+  // trang thì chunk về song song với các lời gọi đó, trang vẽ sớm hơn một lượt đi về. Chunk đã tải thì không tải lại.
+  router.subscribe("onBeforeLoad", ({ toLocation }) => {
+    const [routes] = router.getMatchedRoutes(toLocation.pathname);
+    for (const route of routes) router.loadRouteChunk(route)?.catch(() => {});
+  });
+  return router;
 }
 
 declare module "@tanstack/react-router" {

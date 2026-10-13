@@ -763,21 +763,31 @@ async function names(tx: Tx, ids: string[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-async function summarize(
-  tx: Tx,
+/** Lượt chạy bắt đầu sau cùng, như `order by started_at desc limit 1` của currentRun. */
+function latestRun(rows: GateRunRow[]): GateRunRow | null {
+  return rows.reduce<GateRunRow | null>((a, r) => (!a || r.startedAt > a.startedAt ? r : a), null);
+}
+
+/** Mọi lượt chạy gate của các phiên, theo phiên; một truy vấn cho cả trang danh sách. */
+async function gateRunsOf(tx: Tx, instanceIds: string[]): Promise<Map<string, GateRunRow[]>> {
+  const byInstance = new Map<string, GateRunRow[]>();
+  if (!instanceIds.length) return byInstance;
+  const rows = await tx.select().from(reviewGateRuns).where(inArray(reviewGateRuns.instanceId, instanceIds));
+  for (const r of rows) byInstance.set(r.instanceId, [...(byInstance.get(r.instanceId) ?? []), r]);
+  return byInstance;
+}
+
+/** `gateRuns` là mọi lượt chạy gate của phiên, người gọi đọc sẵn để danh sách không hỏi database cho từng phiên. */
+function summarize(
   reader: Reader,
   inst: InstanceRow,
   nameOf: Map<string, string>,
-): Promise<ReviewSummary> {
+  gateRuns: GateRunRow[],
+): ReviewSummary {
   const flat = flatGates(inst.phases);
   const cur = inst.status === "in_review" ? flat[inst.gateIndex] : undefined;
-  const run = cur ? await currentRun(tx, inst) : null;
-  const [ai] = await tx
-    .select({ score: reviewGateRuns.score })
-    .from(reviewGateRuns)
-    .where(and(eq(reviewGateRuns.instanceId, inst.id), sql`${reviewGateRuns.score} is not null`))
-    .orderBy(desc(reviewGateRuns.startedAt))
-    .limit(1);
+  const run = cur ? latestRun(gateRuns.filter((r) => r.gateIndex === inst.gateIndex)) : null;
+  const ai = latestRun(gateRuns.filter((r) => r.score !== null));
   return {
     id: inst.id,
     proposalId: inst.proposalId,
@@ -851,8 +861,12 @@ export async function listReviews(
       tx,
       rows.map((r) => r.authorUserId ?? ""),
     );
+    const gateRuns = await gateRunsOf(
+      tx,
+      rows.map((r) => r.id),
+    );
     for (const r of rows) {
-      const s = await summarize(tx, reader, r, nameOf);
+      const s = summarize(reader, r, nameOf, gateRuns.get(r.id) ?? []);
       if (input.scope === "all" || s.awaitingMe) items.push(s);
       cursor = `${r.updatedAt.toISOString()}~${r.id}`;
       if (items.length >= input.limit) break;
@@ -919,7 +933,7 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
     };
   });
   // Gate chưa tới (sau gate hiện tại) chưa có lượt chạy: hiện là chờ nhưng không có thời điểm bắt đầu.
-  const summary = await summarize(tx, reader, inst, nameOf);
+  const summary = summarize(reader, inst, nameOf, runs);
   const cur = flat[inst.gateIndex];
   const previous = flat
     .slice(0, inst.gateIndex)
@@ -933,7 +947,8 @@ export async function getReview(tx: Tx, userId: string, id: string): Promise<Rev
     reason: p.reason,
     gates,
     trace: await traceOf(tx, userId, inst, p.content),
-    canDecide: !!cur && canDecideAt(reader, cur.gate, inst, await currentRun(tx, inst)),
+    canDecide:
+      !!cur && canDecideAt(reader, cur.gate, inst, latestRun(runs.filter((r) => r.gateIndex === inst.gateIndex))),
     previousGate: previous?.gate.id ?? null,
     currentGate: inst.status === "in_review" ? (cur?.gate ?? null) : null,
   };
