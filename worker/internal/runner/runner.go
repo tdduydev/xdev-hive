@@ -81,6 +81,9 @@ type Job struct {
 	// có thì worktree của run tạo từ repo này thay vì repo cache bare. Runner host bỏ qua.
 	ProjectID string
 	LocalRepo string
+	// Checks là lệnh kiểm của quy trình review code (spec.checks.commands); chạy sau khi agent xong, trước khi đẩy.
+	// Chỉ run code dùng; run chỉ đọc bỏ qua.
+	Checks    []CheckCommand
 	workspace string
 	repoCache string
 }
@@ -112,6 +115,9 @@ type Result struct {
 	ChangedFiles []string   `json:"changedFiles"`
 	DiffStats    *DiffStats `json:"-"`
 	Error        string     `json:"error,omitempty"`
+	// Commands đi vào report.commands của run_result; nil (không có lệnh kiểm) thì không xuất hiện, để hub phân biệt
+	// với worker cũ chỉ khi spec có checks.commands.
+	Commands []CommandResult `json:"commands,omitempty"`
 }
 
 // Command là lệnh chạy một CLI; "{{prompt}}" trong Args được thay bằng prompt của job. Input là InputStreamJSON khi
@@ -520,6 +526,12 @@ func (r Runner) Run(ctx context.Context, job Job, sink Sink) (retErr error) {
 	if count == 0 {
 		done.Status = "no_changes"
 	} else {
+		// Lệnh lỗi không chặn đẩy: hub đọc report.commands và quyết ở checkpoint, nên người xem vẫn thấy PR.
+		commands, err := r.runChecks(ctx, job, work, stdoutLog)
+		if err != nil {
+			return err
+		}
+		done.Commands = commands
 		if err := emit(sink, Event{Type: "phase", RunID: job.RunID, Attempt: job.Attempt, Phase: "publishing"}); err != nil {
 			return err
 		}

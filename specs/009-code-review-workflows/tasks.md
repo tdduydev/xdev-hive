@@ -248,7 +248,7 @@
 
 ## Phase 10: Quy tắc `command` trên worker
 
-- [ ] T090 [P] Worker chạy lệnh kiểm
+- [x] T090 [P] Worker chạy lệnh kiểm
   - Đọc `spec.checks.commands`; chạy sau khi agent thoát 0, trước khi đẩy, trong worktree hoặc container; env theo
     allowlist; timeout từng lệnh; 200 dòng cuối, che bí mật; `report.commands`. Shell theo OS.
   - `gofmt -l .`, `go vet ./...`, `go test ./...`.
