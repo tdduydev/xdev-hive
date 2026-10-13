@@ -43,9 +43,25 @@ export const docEditorText: Dict<{
   writeAi: string;
   writeAiHint: string;
   emptyDoc: string;
-  editBlock: string;
-  doneBlock: string;
-  addBelow: string;
+  editorLabel: string;
+  slashHint: string;
+  language: string;
+  languagePh: string;
+  mermaidPreview: string;
+  mermaidError: string;
+  mermaidLoading: string;
+  embedKey: string;
+  embedBad: string;
+  openEmbed: string;
+  linkUrl: string;
+  linkApply: string;
+  unlink: string;
+  selectionMenu: string;
+  table: Record<"rowAdd" | "colAdd" | "rowDel" | "colDel" | "tableDel", string>;
+  pendingEdits: (n: number) => string;
+  sendSuggestions: string;
+  discardEdits: string;
+  suggestHint: string;
   suggestedBy: (name: string) => string;
   stale: string;
   accept: string;
@@ -174,10 +190,27 @@ export const docEditorText: Dict<{
     blocks: "Khối cơ bản",
     writeAi: "Viết bằng AI",
     writeAiHint: "Dùng gói thuê bao trên máy của bạn",
-    emptyDoc: "Tài liệu còn trống. Gõ / ở khối mới để chèn tiêu đề, bảng, checklist…",
-    editBlock: "Sửa khối",
-    doneBlock: "Xong",
-    addBelow: "Thêm khối bên dưới",
+    emptyDoc: "Tài liệu còn trống. Gõ / ở dòng mới để chèn tiêu đề, bảng, checklist…",
+    editorLabel: "Nội dung tài liệu",
+    slashHint: "Gõ / để chèn khối",
+    language: "Ngôn ngữ của khối code",
+    languagePh: "ngôn ngữ",
+    mermaidPreview: "Xem trước sơ đồ",
+    mermaidError: "Sơ đồ chưa vẽ được",
+    mermaidLoading: "Đang vẽ sơ đồ…",
+    embedKey: "Key tài liệu nhúng",
+    embedBad: "Key dạng project/<dự án>/<tên>, chữ thường, số và . _ - /",
+    openEmbed: "Mở",
+    linkUrl: "Địa chỉ liên kết",
+    linkApply: "Gắn",
+    unlink: "Bỏ liên kết",
+    selectionMenu: "Định dạng đoạn chọn",
+    table: { rowAdd: "Thêm hàng", colAdd: "Thêm cột", rowDel: "Xoá hàng", colDel: "Xoá cột", tableDel: "Xoá bảng" },
+    pendingEdits: (n) => `${n} chỗ sửa chưa gửi`,
+    sendSuggestions: "Gửi đề xuất",
+    discardEdits: "Bỏ chỗ sửa",
+    suggestHint:
+      "Đang ở chế độ đề xuất: sửa ngay trong tài liệu rồi bấm Gửi đề xuất, bản nháp không đổi cho tới khi được nhận.",
     suggestedBy: (name) => `${name} đề xuất sửa`,
     stale: "Đoạn gốc đã đổi, không nhận được nữa.",
     accept: "Nhận",
@@ -320,10 +353,33 @@ export const docEditorText: Dict<{
     blocks: "Basic blocks",
     writeAi: "Write with AI",
     writeAiHint: "Uses your subscription on your machine",
-    emptyDoc: "The doc is empty. Type / in a new block to insert headings, tables, checklists…",
-    editBlock: "Edit block",
-    doneBlock: "Done",
-    addBelow: "Add block below",
+    emptyDoc: "The doc is empty. Type / on a new line to insert headings, tables, checklists…",
+    editorLabel: "Doc content",
+    slashHint: "Type / to insert a block",
+    language: "Code block language",
+    languagePh: "language",
+    mermaidPreview: "Diagram preview",
+    mermaidError: "The diagram could not be drawn",
+    mermaidLoading: "Drawing diagram…",
+    embedKey: "Embedded doc key",
+    embedBad: "Keys look like project/<project>/<name>: lowercase letters, digits and . _ - /",
+    openEmbed: "Open",
+    linkUrl: "Link address",
+    linkApply: "Apply",
+    unlink: "Remove link",
+    selectionMenu: "Format selection",
+    table: {
+      rowAdd: "Add row",
+      colAdd: "Add column",
+      rowDel: "Delete row",
+      colDel: "Delete column",
+      tableDel: "Delete table",
+    },
+    pendingEdits: (n) => `${n} unsent ${n === 1 ? "edit" : "edits"}`,
+    sendSuggestions: "Send suggestions",
+    discardEdits: "Discard edits",
+    suggestHint:
+      "Suggesting mode: edit right in the doc, then press Send suggestions; the draft changes only when they are accepted.",
     suggestedBy: (name) => `${name} suggests`,
     stale: "The original text changed; this can no longer be accepted.",
     accept: "Accept",

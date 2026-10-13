@@ -1,3 +1,4 @@
+import { MarkdownEditor } from "@xdev-hive/doc-editor";
 import { Button } from "@xdev-hive/ui/button";
 import {
   Dialog,
@@ -1503,11 +1504,12 @@ export function DocsScreen() {
               )}
             </div>
           ) : mode === "edit" ? (
-            <Textarea
-              aria-label={t.editorLabel}
+            <MarkdownEditor
+              key={hubDoc.key}
               value={draftText}
-              onChange={(e) => saveDraft(hubDoc.key, { base, text: e.target.value, title: hubDoc.title })}
-              className="min-h-0 flex-1 resize-none rounded-none border-0 px-9 py-6 font-mono text-sm [field-sizing:fixed] focus-visible:ring-0 md:text-sm"
+              onChange={(md) => saveDraft(hubDoc.key, { base, text: md, title: hubDoc.title })}
+              lang={lang}
+              label={t.editorLabel}
             />
           ) : mode === "diff" ? (
             <div className="flex-1 overflow-y-auto px-9 py-6 font-mono text-sm leading-relaxed">

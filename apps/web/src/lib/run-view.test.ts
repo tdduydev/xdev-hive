@@ -8,6 +8,7 @@ import {
   describeEvent,
   exploreTokens,
   prLabel,
+  routingRows,
   runAccess,
   runPhases,
 } from "@/lib/run-view.ts";
@@ -186,5 +187,41 @@ describe("exploreTokens", () => {
         cacheWriteTokens: 400,
       }),
     ).toBe(3520);
+  });
+});
+
+describe("routingRows", () => {
+  const base = {
+    tier: "medium" as const,
+    baseTier: "medium" as const,
+    source: "default" as const,
+    model: "sonnet",
+    effort: "high" as const,
+    advisor: null,
+    maxTurns: 120,
+    reasons: [],
+  };
+
+  it("hiện cấp, nguồn, model, effort và số lượt", () => {
+    expect(routingRows(base)).toEqual([
+      { term: "Cấp độ", detail: "Vừa" },
+      { term: "Nguồn cấp độ", detail: "Mặc định" },
+      { term: "Model", detail: "sonnet" },
+      { term: "Effort", detail: "high" },
+      { term: "Số lượt tối đa", detail: "120" },
+    ]);
+  });
+
+  it("nói rõ khi nâng cấp vì thử lại, có cố vấn", () => {
+    const rows = routingRows({ ...base, tier: "heavy", baseTier: "light", source: "type", advisor: "opus" });
+    expect(rows[0]).toEqual({ term: "Cấp độ", detail: "Nặng (nâng từ nhẹ)" });
+    expect(rows[1]).toEqual({ term: "Nguồn cấp độ", detail: "Loại task hoặc nhãn" });
+    expect(rows).toContainEqual({ term: "Cố vấn", detail: "opus" });
+  });
+
+  it("Codex: không có model và số lượt", () => {
+    const rows = routingRows({ ...base, model: null, maxTurns: null });
+    expect(rows).toContainEqual({ term: "Model", detail: "Theo cấu hình của CLI" });
+    expect(rows.some((r) => r.term === "Số lượt tối đa")).toBe(false);
   });
 });
