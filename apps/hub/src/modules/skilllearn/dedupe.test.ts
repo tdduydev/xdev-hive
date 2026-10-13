@@ -33,7 +33,10 @@ describe("findDuplicate", () => {
 
   it("skill khác chủ đề thì không trùng", () => {
     expect(
-      findDuplicate(candidate, { ...empty, skills: [{ name: "review-code", description: "Đọc diff kỹ trước khi duyệt" }] }),
+      findDuplicate(candidate, {
+        ...empty,
+        skills: [{ name: "review-code", description: "Đọc diff kỹ trước khi duyệt" }],
+      }),
     ).toBeNull();
   });
 
@@ -46,7 +49,12 @@ describe("findDuplicate", () => {
       { name: "migrate", description: "Luôn chạy db:generate rồi commit file SQL trong thư mục migrations" },
       {
         ...empty,
-        memories: [{ id: "m1", content: "Khi đổi bảng luôn chạy db:generate rồi commit file SQL trong thư mục migrations của hub." }],
+        memories: [
+          {
+            id: "m1",
+            content: "Khi đổi bảng luôn chạy db:generate rồi commit file SQL trong thư mục migrations của hub.",
+          },
+        ],
       },
     );
     expect(hit).toMatchObject({ kind: "memory", ref: "m1" });
@@ -62,7 +70,9 @@ describe("findDuplicate", () => {
     const rejected = [{ name: "lam-tron-so-tien", description: "Làm tròn tiền theo đơn vị nhỏ nhất của loại tiền tệ" }];
     expect(findDuplicate(candidate, { ...empty, rejected })).toMatchObject({ kind: "rejected" });
     expect(findDuplicate(candidate, { ...empty, pending: rejected })).toMatchObject({ kind: "pending" });
-    expect(findDuplicate(candidate, { ...empty, rejected }, { skipExisting: true })).toMatchObject({ kind: "rejected" });
+    expect(findDuplicate(candidate, { ...empty, rejected }, { skipExisting: true })).toMatchObject({
+      kind: "rejected",
+    });
   });
 
   it("đề xuất sửa bỏ qua skill đã có (nó vốn sửa skill đó)", () => {
