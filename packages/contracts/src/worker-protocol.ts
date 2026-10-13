@@ -125,6 +125,26 @@ export const diffStats = z.object({
 });
 export type DiffStats = z.output<typeof diffStats>;
 
+/**
+ * Lệnh kiểm hub giao trong `jobOffer.spec.checks.commands` (quy tắc `command` của quy trình review code,
+ * `outcome.command`). Worker chạy tuần tự trong worktree (hoặc container sandbox) sau khi agent thoát 0, trước khi đẩy.
+ */
+export const checkCommand = z.object({
+  run: z.string().trim().min(1).max(500),
+  timeoutSec: z.number().int().min(10).max(3600),
+});
+export type CheckCommand = z.output<typeof checkCommand>;
+
+/** Kết quả một lệnh kiểm trong `run_result.report.commands`. `exit` null khi hết thời hạn hoặc không chạy được. */
+export const checkCommandResult = z.object({
+  run: z.string().max(500),
+  exit: z.number().int().nullable(),
+  durationMs: z.number().int().min(0),
+  /** 200 dòng cuối của stdout + stderr, worker đã che chuỗi giống bí mật. */
+  tail: z.string().max(100_000),
+});
+export type CheckCommandResult = z.output<typeof checkCommandResult>;
+
 export const runResult = z.object({
   ...envelope("run_result"),
   runId,
@@ -136,6 +156,11 @@ export const runResult = z.object({
     .string()
     .regex(/^[0-9a-f]{40,64}$/)
     .nullable(),
+  /**
+   * Báo cáo tự do của worker. Khi job có `spec.checks.commands`, worker mới thêm `commands: CheckCommandResult[]` theo
+   * đúng thứ tự lệnh. Giữ dạng record để worker cũ vẫn hợp lệ: thiếu `commands` nghĩa là máy chưa chạy lệnh kiểm, hub
+   * để checkpoint chờ người xem thay vì coi là lỗi.
+   */
   report: z.record(z.string(), z.unknown()).nullable(),
   /** Worker cũ không gửi: hub vẫn yêu cầu review để tránh bỏ sót thay đổi. */
   diffStats: diffStats.optional(),
@@ -170,7 +195,10 @@ export const jobOffer = z.object({
   ...envelope("job_offer"),
   runId,
   attempt,
-  /** Nội dung job do module runs định nghĩa. */
+  /**
+   * Nội dung job do module runs định nghĩa. Run code có thể có `checks: { commands: CheckCommand[] }`; trường này đi
+   * qua `catchall` chứ không khai ở đây, vì worker cũ phải bỏ qua được nó và hub không được từ chối job thiếu nó.
+   */
   spec: z
     .object({
       execution: z.enum(["worker", "sandbox"]).optional(),

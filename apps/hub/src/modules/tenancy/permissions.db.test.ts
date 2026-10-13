@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { seedUsers } from "../../../test/seed.ts";
 import { createPool, ForbiddenError, type Tx, withTenant } from "../platform/index.ts";
-import { orgRoleOf, requireOrgRole, requireTeamRole, teamRoleOf } from "./index.ts";
+import { orgRoleOf, requireOrgRole, requireTeamRole, teamRoleOf, teamRolesOf, visibleTeamIds } from "./index.ts";
 
 const { adminUrl, appUrl } = inject("db");
 const admin = new pg.Pool({ connectionString: adminUrl });
@@ -153,6 +153,27 @@ describe("teamRoleOf", () => {
 
   it("id đội không tồn tại thì không có vai trò, kể cả owner", async () => {
     expect(await inA((tx) => teamRoleOf(tx, "owner", randomUUID()))).toBeNull();
+  });
+});
+
+describe("teamRolesOf", () => {
+  const users = ["owner", "admin", "tadmin", "tmember", "tviewer", "loner", "pending", "blocked", "only-b"];
+
+  it.each(users)("%s: cùng kết quả với teamRoleOf từng đội, một truy vấn cho mọi đội", async (user) => {
+    const teams = [teamA, teamA2, teamB, randomUUID()];
+    const one = new Map<string, string>();
+    for (const t of teams) {
+      const role = await inA((tx) => teamRoleOf(tx, user, t));
+      if (role) one.set(t, role);
+    }
+    expect(await inA((tx) => teamRolesOf(tx, user, teams))).toEqual(one);
+    // Bỏ trống danh sách là mọi đội của tổ chức trong context; đội B và id lạ không bao giờ có.
+    expect(await inA((tx) => teamRolesOf(tx, user))).toEqual(one);
+    expect(new Set(await inA((tx) => visibleTeamIds(tx, user)))).toEqual(new Set(one.keys()));
+  });
+
+  it("danh sách rỗng thì không hỏi database", async () => {
+    expect(await inA((tx) => teamRolesOf(tx, "owner", []))).toEqual(new Map());
   });
 });
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { createProviderFactory, type ResolvedConnection } from "./connections.ts";
 import { isGitProviderError } from "./errors.ts";
-import { createLocalProvider, type LocalPullRequest, localProviderFromEnv } from "./local.ts";
+import { createLocalProvider, type LocalPullRequest, localProviderFromEnv, parseGitDiff } from "./local.ts";
 
 // Provider chỉ để thử của scripts/e2e-smoke.ts: gọi git thật trên thư mục tạm.
 const root = mkdtempSync(join(tmpdir(), "hive-local-scm-"));
@@ -208,5 +208,105 @@ describe("createLocalProvider", () => {
       const err = await scm.getRepo(bad).catch((e: unknown) => e);
       expect(isGitProviderError(err, "invalid")).toBe(true);
     }
+  });
+
+  it("prFiles lấy diff từ điểm tách nhánh, không lẫn commit mới của nhánh chính", async () => {
+    const repo = { owner: "e2e", name: "diff" };
+    await scm.createRepo({ ...repo, visibility: "private", defaultBranch: "main", marker });
+    await scm.commitFiles(repo, {
+      branch: "main",
+      message: "nền",
+      files: [{ path: "a.txt", content: "một\nhai\nba\n" }],
+    });
+    await scm.commitFiles(repo, {
+      branch: "ai/D",
+      fromBranch: "main",
+      message: "d",
+      files: [
+        { path: "a.txt", content: "một\nHAI\nba\nbốn\n" },
+        { path: "tên mới.txt", content: "mới\n" },
+      ],
+    });
+    const pr = await scm.openPR(repo, { head: "ai/D", base: "main", title: "D", body: "" });
+    // Nhánh chính tiến thêm một commit không dính tới PR.
+    await scm.commitFiles(repo, { branch: "main", message: "khác", files: [{ path: "other.txt", content: "x\n" }] });
+    const files = await scm.prFiles(repo, pr.number);
+    expect(files?.map((f) => [f.path, f.status])).toEqual([
+      ["a.txt", "modified"],
+      ["tên mới.txt", "added"],
+    ]);
+    const a = files?.[0];
+    expect(a).toMatchObject({ additions: 2, deletions: 1, truncated: false });
+    expect(a?.patch?.startsWith("@@")).toBe(true);
+    expect(a?.patch).toContain("+HAI");
+    expect(await scm.prFiles(repo, 999)).toBeNull();
+  });
+
+  it("setCommitStatus ghi vào hive-statuses.jsonl của repo", async () => {
+    const repo = { owner: "e2e", name: "web" };
+    await scm.setCommitStatus(repo, "abc", { context: "xdev-hive/review", state: "success", description: "ok" });
+    const lines = readFileSync(join(opts.root, "e2e", "web.git", "hive-statuses.jsonl"), "utf8")
+      .trim()
+      .split("\n");
+    expect(JSON.parse(lines.at(-1) as string)).toEqual({
+      sha: "abc",
+      context: "xdev-hive/review",
+      state: "success",
+      description: "ok",
+    });
+  });
+});
+
+describe("parseGitDiff", () => {
+  it("đọc xoá, đổi tên, nhị phân và bỏ phần đầu của patch", () => {
+    const out = [
+      "diff --git a/gone.txt b/gone.txt",
+      "deleted file mode 100644",
+      "index 83db48f..0000000",
+      "--- a/gone.txt",
+      "+++ /dev/null",
+      "@@ -1,2 +0,0 @@",
+      "-bye",
+      "-bye",
+      "diff --git a/src/a.ts b/src/b.ts",
+      "similarity index 90%",
+      "rename from src/a.ts",
+      "rename to src/b.ts",
+      "index 1111111..2222222 100644",
+      "--- a/src/a.ts",
+      "+++ b/src/b.ts",
+      "@@ -1 +1 @@",
+      "-x",
+      "+y",
+      "diff --git a/logo.png b/logo.png",
+      "index 1111111..2222222 100644",
+      "Binary files a/logo.png and b/logo.png differ",
+      "diff --git a/lan.txt b/lan.txt",
+      "similarity index 100%",
+      "rename from lan.txt",
+      "rename to lan2.txt",
+    ].join("\n");
+    const files = parseGitDiff(out);
+    expect(files).toEqual([
+      {
+        path: "gone.txt",
+        status: "removed",
+        additions: 0,
+        deletions: 2,
+        patch: "@@ -1,2 +0,0 @@\n-bye\n-bye",
+        truncated: false,
+      },
+      {
+        path: "src/b.ts",
+        previousPath: "src/a.ts",
+        status: "renamed",
+        additions: 1,
+        deletions: 1,
+        patch: "@@ -1 +1 @@\n-x\n+y",
+        truncated: false,
+      },
+      { path: "logo.png", status: "modified", additions: 0, deletions: 0, truncated: false },
+      { path: "lan2.txt", previousPath: "lan.txt", status: "renamed", additions: 0, deletions: 0, truncated: false },
+    ]);
   });
 });

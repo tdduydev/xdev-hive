@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { brotliDecompressSync, gunzipSync } from "node:zlib";
 import { healthOutput } from "@xdev-hive/contracts";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.ts";
@@ -16,6 +17,14 @@ describe("hub", () => {
     // Worker chỉ khai CLI có trong danh sách này (hub cũ không trả thì chỉ claude, codex, gemini).
     expect(body.clis).toEqual(["claude", "codex", "gemini", "antigravity"]);
     expect(Number.isNaN(Date.parse(body.time))).toBe(false);
+  });
+
+  it("health trả giờ dựng image để web hiện ngày build; chạy từ mã nguồn thì null", async () => {
+    const built = createApp({ config: { port: 0, version: "abc1234", builtAt: "2026-10-13T07:05:00Z" } });
+    expect(healthOutput.parse(await (await built.request("/api/v1/health")).json()).builtAt).toBe(
+      "2026-10-13T07:05:00Z",
+    );
+    expect(healthOutput.parse(await (await app.request("/api/v1/health")).json()).builtAt).toBeNull();
   });
 
   it("đường dẫn lạ trả 404", async () => {
@@ -42,6 +51,46 @@ describe("phục vụ web", () => {
       expect((await web.request("/")).headers.get("cache-control") ?? "no-cache").toBe("no-cache");
       expect((await web.request("/%E0%A4%A")).status).toBe(404);
       expect(await (await web.request("/../../etc/passwd")).text()).toContain("Hive");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("nén file web", () => {
+  it("nén JS theo Accept-Encoding, giữ bản nén của /assets/; file nhỏ và ảnh để nguyên", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hive-web-"));
+    try {
+      await mkdir(join(dir, "assets"));
+      const js = `console.log(${JSON.stringify("Hive ".repeat(2000))});`;
+      await writeFile(join(dir, "index.html"), "<main>Hive</main>");
+      await writeFile(join(dir, "assets", "app.js"), js);
+      await writeFile(join(dir, "assets", "small.js"), "ok");
+      await writeFile(join(dir, "assets", "font.woff2"), "x".repeat(4000));
+      const web = createApp({ config: { port: 0, version: "1" }, webDist: dir });
+      const get = (path: string, encoding?: string) =>
+        web.request(path, { headers: encoding ? { "accept-encoding": encoding } : {} });
+
+      for (const [accept, encoding, decode] of [
+        ["gzip, deflate, br, zstd", "br", brotliDecompressSync],
+        ["gzip, deflate", "gzip", gunzipSync],
+      ] as const) {
+        for (let i = 0; i < 2; i++) {
+          const res = await get("/assets/app.js", accept);
+          expect(res.headers.get("content-encoding")).toBe(encoding);
+          expect(res.headers.get("vary")).toBe("Accept-Encoding");
+          expect(res.headers.get("cache-control")).toContain("immutable");
+          const raw = Buffer.from(await res.arrayBuffer());
+          expect(raw.length).toBeLessThan(js.length / 10);
+          expect(decode(raw).toString()).toBe(js);
+        }
+      }
+      const plain = await get("/assets/app.js");
+      expect(plain.headers.get("content-encoding")).toBeNull();
+      expect(await plain.text()).toBe(js);
+      expect((await get("/assets/small.js", "br")).headers.get("content-encoding")).toBeNull();
+      expect((await get("/assets/font.woff2", "br")).headers.get("content-encoding")).toBeNull();
+      expect(await (await get("/route/nested", "br")).text()).toContain("Hive");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
