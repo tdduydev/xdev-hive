@@ -276,7 +276,10 @@ export async function enqueueCodeReview(
     review.teamId,
   );
   if (review.status !== "approved")
-    throw new ConflictError("CODE_REVIEW_NOT_APPROVED", "PR chưa qua hết quy trình duyệt nên chưa vào hàng merge được.");
+    throw new ConflictError(
+      "CODE_REVIEW_NOT_APPROVED",
+      "PR chưa qua hết quy trình duyệt nên chưa vào hàng merge được.",
+    );
   const entry = await enqueueMerge(
     tx,
     {

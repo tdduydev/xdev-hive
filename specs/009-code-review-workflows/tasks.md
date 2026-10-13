@@ -148,7 +148,7 @@
 
 ## Phase 4: User Story 3 — "Chờ tôi duyệt" cho PR (P1)
 
-- [ ] T030 [US3] Đọc và quyết định (hub)
+- [x] T030 [US3] Đọc và quyết định (hub)
   - `queries.ts`: list (scope, status, dự án, SLA, con trỏ), count, get (`canDecide`, `canOverride`, `canEnqueue`),
     files (qua `prFiles`, đệm theo `head_sha` 10 phút).
   - `decide.ts`: approve (quorum), changes (gọi `routing` của T040 qua hàm nội bộ; trước T040 chỉ hướng `author`),
