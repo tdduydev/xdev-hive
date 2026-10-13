@@ -4,6 +4,7 @@ import { ConflictError, type RequestContext, type Tx, withTenant } from "../plat
 import { defaultProviderFactory } from "../scm/index.ts";
 import { allowWith, type OrgDeps, orgMiddlewares, requireOrgRole } from "../tenancy/index.ts";
 import type { Principal } from "./access.ts";
+import { briefView, getBrief, saveBrief } from "./brief.ts";
 import { docHistory, getDoc, listDocs, saveDoc } from "./docs.ts";
 import {
   addComment,
@@ -21,7 +22,16 @@ import {
   saveDraft,
   submitDraft,
 } from "./editor.ts";
-import { embedQuery, type KnowledgeDeps, listMemories, searchMemory, supersedeMemory, writeMemory } from "./memory.ts";
+import {
+  approveMemory,
+  embedQuery,
+  type KnowledgeDeps,
+  listMemories,
+  rejectMemory,
+  searchMemory,
+  supersedeMemory,
+  writeMemory,
+} from "./memory.ts";
 import { approveProposal, listProposals, rejectProposal } from "./proposals.ts";
 import {
   decideReview,
@@ -52,11 +62,19 @@ export interface DocAssistPort {
   start(tx: Tx, userId: string, input: AssistStartInput): Promise<{ assist: DocAssist; afterCommit: () => void }>;
 }
 
+/** Run viết lại brief, do module runs cài vào như DocAssistPort. */
+export interface BriefPort {
+  /** Run brief đang chờ hoặc đang chạy của dự án. */
+  activeRun(tx: Tx, projectId: string): Promise<string | null>;
+  refresh(tx: Tx, userId: string, project: string): Promise<{ runId: string; afterCommit: () => void }>;
+}
+
 export function knowledgeRouter(
   deps: KnowledgeDeps &
     OrgDeps &
     Partial<Pick<SkillRepoDeps, "masterKey" | "providerFactory" | "publicUrl">> & {
       docAssist?: DocAssistPort | undefined;
+      briefs?: BriefPort | undefined;
     },
 ) {
   const { authed, inOrg, orgMember } = orgMiddlewares(deps);
@@ -68,6 +86,7 @@ export function knowledgeRouter(
     jobs: deps.jobs,
   };
   const memory = implement(contract.memory).$context<RequestContext>().use(authed);
+  const briefs = implement(contract.briefs).$context<RequestContext>().use(authed);
   const docs = implement(contract.docs).$context<RequestContext>().use(authed).use(inOrg);
   const skills = implement(contract.skills).$context<RequestContext>().use(authed).use(inOrg);
   const proposals = implement(contract.proposals).$context<RequestContext>().use(authed).use(inOrg);
@@ -80,7 +99,31 @@ export function knowledgeRouter(
       throw new ConflictError("RUNS_DISABLED", "Hub chưa cấu hình HIVE_AUTH_SECRET nên chưa chạy được trợ lý AI.");
     return deps.docAssist;
   };
+  const briefPort = () => {
+    if (!deps.briefs)
+      throw new ConflictError("RUNS_DISABLED", "Hub chưa cấu hình HIVE_AUTH_SECRET nên chưa chạy được run viết brief.");
+    return deps.briefs;
+  };
   return {
+    briefs: {
+      get: briefs.get.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
+        const row = await getBrief(tx, asUser(user), input.project);
+        return row ? briefView(row, (await deps.briefs?.activeRun(tx, row.projectId)) ?? null) : null;
+      }),
+      save: briefs.save.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
+        const row = await saveBrief(tx, asUser(user), input);
+        return briefView(row, (await deps.briefs?.activeRun(tx, row.projectId)) ?? null);
+      }),
+      // Tự mở transaction để giao run tới máy sau khi commit, như runs.start.
+      refresh: briefs.refresh.use(orgMember).handler(async ({ context: { pool, user, orgId }, input }) => {
+        const port = briefPort();
+        const { runId, afterCommit } = await withTenant(pool, { userId: user.id, orgId }, (tx) =>
+          port.refresh(tx, user.id, input.project),
+        );
+        afterCommit();
+        return { runId };
+      }),
+    },
     docEditor: {
       state: editor.state
         .use(inOrg)
@@ -159,6 +202,13 @@ export function knowledgeRouter(
       supersede: memory.supersede
         .use(inOrg)
         .handler(({ context: { tx, user }, input }) => supersedeMemory(tx, asUser(user), input, deps)),
+      approve: memory.approve
+        .use(inOrg)
+        .handler(({ context: { tx, user }, input }) => approveMemory(tx, asUser(user), input.id, deps)),
+      reject: memory.reject.use(inOrg).handler(async ({ context: { tx, user }, input }) => {
+        await rejectMemory(tx, asUser(user), input.id);
+        return { ok: true as const };
+      }),
     },
     docs: {
       list: docs.list.handler(({ context: { tx, user }, input }) => listDocs(tx, asUser(user), input)),

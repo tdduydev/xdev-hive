@@ -29,6 +29,7 @@ const PROJECT = {
     outcome: { default: [], byType: {} },
     features: { planMode: false, crossReview: false, mergeQueue: false, leaderChat: false, sandbox: false },
     issueIntake: { enabled: false, label: "hive", mention: "hive" },
+    brief: { auto: true, refreshCommits: 50, refreshDays: 7 },
     budget: { perRunUsd: 2 },
   },
   createdBy: "u1",
@@ -92,6 +93,7 @@ const run = (n: number, over: Record<string, unknown>) => ({
   prUrl: null,
   timeoutSec: 3600,
   cost: cost(null),
+  explore: null,
   createdBy: "u1",
   ownerUserId: "u1",
   createdAt: "2026-10-11T06:00:00.000Z",
@@ -109,6 +111,14 @@ const RUNNING = run(4, {
   model: "claude-sonnet-5-5",
   startedAt: "2026-10-11T07:04:00.000Z",
   cost: cost(0.42, { tokensIn: 182400, cacheRead: 141050, tokensOut: 9850, turns: 14 }),
+  explore: {
+    edited: true,
+    turns: 6,
+    inputTokens: 4000,
+    outputTokens: 500,
+    cacheReadTokens: 60000,
+    cacheWriteTokens: 1500,
+  },
   policySnapshot: [
     { check: "changes", required: true, deny: ["infra/prod/**"] },
     { check: "agentReport", required: true },
@@ -350,6 +360,9 @@ test("chi tiết run: pha, log trực tiếp qua SSE, chi phí, chính sách, g�
   await expect(info).toContainText("mac-mini-lan");
   await expect(info).toContainText("0,42 USD");
   await expect(info).toContainText("182.400");
+  const explore = info.getByRole("region", { name: "Khảo sát trước khi sửa" });
+  await expect(explore).toContainText("66.000");
+  await expect(explore).not.toContainText("chưa sửa file");
   await expect(page.getByRole("meter", { name: "Đã dùng 21% trần chi phí của run" })).toBeVisible();
   await expect(info).toContainText("Có commit mới, không đụng infra/prod/**");
   await expect(info).toContainText("Chờ run kết thúc");

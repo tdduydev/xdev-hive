@@ -1,4 +1,5 @@
 import {
+  type AgentMemoryPolicy,
   type AssistStartInput,
   type ChecklistItem,
   type JobMcpServer,
@@ -7,16 +8,24 @@ import {
   type PlanApproveInput,
   type PlanDecision,
   type PlanRejectInput,
+  type RunExplore,
   type RunStartInput,
   type SandboxJobConfig,
   type TaskStatus,
   TERMINAL_RUN_STATES,
 } from "@xdev-hive/contracts";
-import { type DiffStats, diffStats, steerResultData } from "@xdev-hive/contracts/worker-protocol";
+import { type DiffStats, diffStats, reportRepo, steerResultData } from "@xdev-hive/contracts/worker-protocol";
 import { and, asc, desc, eq, gt, inArray, notInArray, or, sql } from "drizzle-orm";
 import type pg from "pg";
 import { recordAudit } from "../audit/index.ts";
-import { enqueueMerge, latestActiveProject, loadProject, type ProjectRow, projectFor } from "../catalog/index.ts";
+import {
+  enqueueMerge,
+  findProject,
+  latestActiveProject,
+  loadProject,
+  type ProjectRow,
+  projectFor,
+} from "../catalog/index.ts";
 import {
   type AuthedMachine,
   findMachine,
@@ -40,7 +49,17 @@ import {
   resolvePermission,
 } from "../governance/index.ts";
 import { authUser } from "../identity/index.ts";
-import { aiGateContext, applyAiResult, attachGateRun, completeWaitingGate } from "../knowledge/index.ts";
+import {
+  aiGateContext,
+  applyAiResult,
+  attachGateRun,
+  type BriefStaleness,
+  briefStaleness,
+  completeWaitingGate,
+  loadBrief,
+  recordBriefDrift,
+  submitBrief,
+} from "../knowledge/index.ts";
 import { mcpServersForProject } from "../mcp/index.ts";
 import { notify } from "../notify/index.ts";
 import {
@@ -78,6 +97,7 @@ import {
   toPlan,
 } from "../tasks/index.ts";
 import { teamRoleOf } from "../tenancy/index.ts";
+import { type BriefForPrompt, briefBlock, briefBranch, briefRunPrompt } from "./brief.ts";
 import {
   applyCost,
   assertTaskBudget,
@@ -240,14 +260,18 @@ const NO_READONLY_MCP_CLIS: readonly string[] = ["antigravity"];
  */
 const FULL_ONLY_CLIS: readonly string[] = ["antigravity"];
 /**
- * Run không có task, lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
- * trình duyệt), docassist (trợ lý của trình soạn tài liệu).
+ * Run không có task. Lời nhắc lấy từ sự kiện `<kind>_prompt` của hub: leader (trò chuyện), doccheck (gate AI của quy
+ * trình duyệt), docassist (trợ lý của trình soạn tài liệu); riêng brief dựng lúc giao từ brief hiện tại (ADR 0022).
  */
-const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist"];
+const PROMPT_KINDS: readonly RunRow["kind"][] = ["leader", "doccheck", "docassist", "brief"];
 /** Run phải nộp kết quả qua tool MCP nên chỉ giao cho CLI gọi được tool khi chạy không tương tác. */
-const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist"];
+const SUBMIT_KINDS: readonly RunRow["kind"][] = ["plan", "leader", "doccheck", "docassist", "brief"];
 /** Worker cũ không biết các kind này sẽ chạy chúng như run code (có quyền ghi): chỉ giao cho máy đã khai kind đó. */
-const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist"];
+const CAPABILITY_KINDS: readonly RunRow["kind"][] = ["doccheck", "docassist", "brief"];
+/** Run được ghi memory trong lúc chạy (tool memory_write mở cho các kind này, ADR 0022). */
+const MEMORY_WRITE_KINDS: readonly RunRow["kind"][] = ["code", "review"];
+/** Brief làm mới tự động dùng model rẻ: chỉ đọc và tóm tắt, không cần model mạnh nhất. */
+const BRIEF_MODELS: Partial<Record<string, string>> = { claude: "sonnet" };
 const promptEvent = (kind: RunRow["kind"]) => (kind === "leader" ? "leader_prompt" : `${kind}_prompt`);
 
 function reviewEvidence(child: RunRow, report: ReviewReport | null): ReviewEvidence {
@@ -312,6 +336,10 @@ interface SpecContext {
   leaderPrompt: string | null;
   /** MCP server ngoài được phép (MCP-06); chỉ run code nhận, xem dispatch. */
   mcpServers: JobMcpServer[];
+  /** Brief của dự án lúc giao (ADR 0022); null khi chưa có. */
+  brief: BriefForPrompt | null;
+  /** Chính sách memory của agent; null khi run này không được ghi memory. */
+  memoryWrite: AgentMemoryPolicy | null;
 }
 
 function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecContext): string {
@@ -337,6 +365,9 @@ function promptOf(run: RunRow, task: TaskRow, project: ProjectRow, ctx: SpecCont
       baseBranch,
       rejected: rejected ? { plan: planMarkdown(planInForce(rejected)), reason: rejected.note } : null,
     });
+  }
+  if (run.kind === "brief") {
+    return briefRunPrompt({ projectKey: project.key, baseBranch, current: ctx.brief });
   }
   if (run.kind === "leader") return ctx.leaderPrompt ?? "Hãy trả lời người dùng qua công cụ MCP leader_reply.";
   if (run.kind === "doccheck") return ctx.leaderPrompt ?? "Hãy kiểm tài liệu rồi gọi công cụ MCP doc_check_submit.";
@@ -392,7 +423,12 @@ function buildSpec(
   ctx: SpecContext,
 ): Record<string, unknown> {
   const taskPrompt = task ?? ({ id: "", key: "leader", title: "Trao đổi với leader", body: "" } as TaskRow);
-  const prompt = promptOf(run, taskPrompt, project, ctx);
+  const own = promptOf(run, taskPrompt, project, ctx);
+  // Leader chỉ có leader_reply, leader_propose nên không nhắc memory_search; run brief tự đọc repo để viết brief.
+  const prompt =
+    run.kind === "brief"
+      ? own
+      : `${briefBlock(ctx.brief, { memorySearch: run.kind !== "leader", memoryWrite: ctx.memoryWrite })}\n\n---\n\n${own}`;
   const { instructions, budget, sandbox, mcpServers } = ctx;
   return {
     kind: run.kind,
@@ -419,6 +455,8 @@ function buildSpec(
     timeoutSec: run.timeoutSec,
     ...(budget ? { budget } : {}),
     ...(mcpServers.length ? { mcpServers } : {}),
+    // Worker đếm nhánh chính đi trước commit này bao nhiêu commit và báo lại trong run_result.report.repo.
+    ...(ctx.brief?.commitSha ? { brief: { sha: ctx.brief.commitSha } } : {}),
   };
 }
 
@@ -643,9 +681,11 @@ export function createRunsEngine(deps: RunsDeps) {
       await hubEvent(tx, run, "offer", { machineId: machine.id, machine: machine.name, cli });
       const requested =
         run.model ??
-        project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
-          run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
-        ] ??
+        (run.kind === "brief"
+          ? (BRIEF_MODELS[cli] ?? null)
+          : project.settings.models?.[cli as NonNullable<RunRow["cli"]>]?.[
+              run.kind === "doccheck" || run.kind === "docassist" ? "review" : run.kind
+            ]) ??
         null;
       const model = resolveModel(policy, cli, requested);
       for (const notice of [model.notice, permission.notice]) {
@@ -660,6 +700,16 @@ export function createRunsEngine(deps: RunsDeps) {
         });
       }
       const jobPolicy = jobPolicyOf(policy);
+      const briefRow = await loadBrief(tx, project.id);
+      const brief: BriefForPrompt | null = briefRow
+        ? {
+            content: briefRow.content,
+            commitSha: briefRow.commitSha,
+            source: briefRow.source,
+            headSha: briefRow.headSha,
+            commitsBehind: briefRow.commitsBehind,
+          }
+        : null;
       // Bản chụp chính sách đã áp cho lần thử này (FR-006): đổi chính sách sau đó không làm đổi run đã giao.
       await tx
         .update(runs)
@@ -670,6 +720,8 @@ export function createRunsEngine(deps: RunsDeps) {
             runPermissions: effective,
             sandbox: sandboxed,
             budget: budget ?? null,
+            // Commit của brief worker sẽ so với nhánh chính; run_result báo độ lệch theo đúng commit này.
+            briefSha: brief?.commitSha ?? null,
             ...jobPolicy,
           },
         })
@@ -696,6 +748,9 @@ export function createRunsEngine(deps: RunsDeps) {
             sandbox,
             leaderPrompt: typeof leaderContext?.prompt.prompt === "string" ? leaderContext.prompt.prompt : null,
             mcpServers,
+            brief,
+            memoryWrite:
+              MEMORY_WRITE_KINDS.includes(run.kind) && policy.agentMemory.mode !== "off" ? policy.agentMemory : null,
           }),
         } satisfies OutgoingMessage,
       };
@@ -846,6 +901,7 @@ export function createRunsEngine(deps: RunsDeps) {
         const cost = parseCostData(msg.data);
         if (cost) await applyCost(tx, run, event.id, cost);
         else log.warn(`Bỏ sự kiện cost sai dạng: run ${run.id}, seq ${msg.seq}`);
+        if (cost?.explore) await applyExplore(tx, run, cost.explore);
       }
       if (msg.event === "steer_result") await onSteerResult(tx, run, msg.data);
       const to = msg.event === "phase" ? PHASE_STATE[String(msg.data.phase)] : undefined;
@@ -911,6 +967,8 @@ export function createRunsEngine(deps: RunsDeps) {
 
   async function onRunResult(machine: AuthedMachine, msg: Extract<RunMessage, { type: "run_result" }>) {
     let cancelledRun: RunRow | null = null;
+    // Gán trong callback của transaction; ép kiểu để TypeScript không thu hẹp về null.
+    let briefRun = null as { orgId: string; id: string } | null;
     const next = await tenant(machine.orgId, async (tx) => {
       const run = await lockRun(tx, msg.runId);
       if (!run || run.attempt !== msg.attempt || run.machineId !== machine.id) return null;
@@ -930,6 +988,7 @@ export function createRunsEngine(deps: RunsDeps) {
       if (inserted.length === 0 || !ON_MACHINE.includes(run.state)) return null;
       // Agent đã xong: máy không cần giữ lease nữa, slot trống cho run khác.
       await tx.delete(runLeases).where(eq(runLeases.runId, run.id));
+      briefRun = await onRepoReport(tx, run, msg.report);
       if (run.state === "cancelling") {
         cancelledRun = await finishCancelled(tx, run, {});
         return "cancelled" as const;
@@ -947,6 +1006,50 @@ export function createRunsEngine(deps: RunsDeps) {
     if (next === "verify") background(verify(machine.orgId, msg.runId), `verifying run ${msg.runId} lỗi`);
     if (next === "cancelled" && cancelledRun) verifyParent(cancelledRun);
     if (next) background(dispatchTeam(machine.orgId, machine.teamId), "Không giao được run đang chờ");
+    if (briefRun) background(dispatch(briefRun.orgId, briefRun.id), "Không giao được run brief");
+  }
+
+  /**
+   * Khảo sát trước khi sửa của lần thử hiện tại. Gói cost có thể tới lệch thứ tự: không để số cũ (ít lượt hơn, hay
+   * chưa sửa) ghi đè số mới của cùng lần thử; lần thử mới thì ghi đè.
+   */
+  async function applyExplore(tx: Tx, run: RunRow, explore: RunExplore): Promise<void> {
+    const prev = run.explore;
+    if (
+      prev?.attempt === run.attempt &&
+      ((prev.edited && !explore.edited) || (prev.edited === explore.edited && prev.turns > explore.turns))
+    ) {
+      return;
+    }
+    await tx
+      .update(runs)
+      .set({ explore: { ...explore, attempt: run.attempt } })
+      .where(eq(runs.id, run.id));
+  }
+
+  /**
+   * `report.repo` của worker (ADR 0022): ghi độ lệch của brief và, khi nhánh chính đã đi quá xa, xếp run làm mới.
+   * Trả run brief mới để giao sau khi commit.
+   */
+  async function onRepoReport(
+    tx: Tx,
+    run: RunRow,
+    report: Record<string, unknown> | null,
+  ): Promise<{ orgId: string; id: string } | null> {
+    const parsed = reportRepo.safeParse(report?.repo);
+    const briefSha = run.agentPolicySnapshot?.briefSha;
+    if (!parsed.success || !parsed.data.baseSha || parsed.data.briefBehind === null || typeof briefSha !== "string")
+      return null;
+    await recordBriefDrift(tx, run.projectId, {
+      briefSha,
+      headSha: parsed.data.baseSha,
+      behind: parsed.data.briefBehind,
+    });
+    if (run.kind === "brief") return null;
+    const project = await loadProject(tx, run.projectId);
+    if (!project) return null;
+    const queued = await queueBriefIfStale(tx, project, { ownerUserId: run.ownerUserId, by: "drift" });
+    return queued ? { orgId: queued.orgId, id: queued.id } : null;
   }
 
   const handlers: Required<RunHandlers> = {
@@ -1024,7 +1127,41 @@ export function createRunsEngine(deps: RunsDeps) {
     else if (run.kind === "plan") await verifyPlan(orgId, runId);
     else if (run.kind === "doccheck") await verifyDocCheck(orgId, runId);
     else if (run.kind === "docassist") await verifyDocAssist(orgId, runId);
+    else if (run.kind === "brief") await verifyBrief(orgId, runId);
     else await verifyLeader(orgId, runId);
+  }
+
+  /** Run brief: succeeded khi agent đã gọi brief_submit; brief lưu trong cùng transaction với kết luận của run. */
+  async function verifyBrief(orgId: string, runId: string): Promise<void> {
+    await tenant(orgId, async (tx) => {
+      const run = await lockRun(tx, runId);
+      if (run?.kind !== "brief" || run.state !== "verifying") return;
+      const data = await resultOf(tx, run);
+      const [ev] = await tx
+        .select({ data: runEvents.data })
+        .from(runEvents)
+        .where(and(eq(runEvents.runId, run.id), eq(runEvents.attempt, run.attempt), eq(runEvents.type, "brief_report")))
+        .orderBy(desc(runEvents.id))
+        .limit(1);
+      const report = ev?.data as { content: string; commitSha: string } | undefined;
+      const ok = exitOf(data) === 0 && Boolean(report);
+      if (ok && report) {
+        await submitBrief(tx, { kind: "run", runId: run.id, projectId: run.projectId }, report);
+      }
+      await transition(
+        tx,
+        run,
+        ok ? "succeeded" : "failed",
+        { finishedAt: new Date() },
+        {
+          message: ok
+            ? "Đã cập nhật brief của dự án."
+            : exitOf(data) === 0
+              ? "Agent không nộp brief (brief_submit)."
+              : "Run viết brief lỗi hoặc hết thời gian.",
+        },
+      );
+    });
   }
 
   /** Phiên duyệt mà run doccheck kiểm, ghi trong sự kiện lời nhắc lúc tạo run. */
@@ -2028,7 +2165,100 @@ export function createRunsEngine(deps: RunsDeps) {
       data: { taskId: task.id, cli: row.cli, machineId: row.pinnedMachineId, by: opts.createdBy, plan: planFirst },
     });
     const { orgId, id } = next;
-    return { row, afterCommit: () => background(dispatch(orgId, id), "Không giao được run") };
+    const brief = await queueBriefIfStale(tx, project, { ownerUserId: opts.ownerUserId ?? null, by: opts.createdBy });
+    return {
+      row,
+      afterCommit: () => {
+        background(dispatch(orgId, id), "Không giao được run");
+        if (brief) background(dispatch(brief.orgId, brief.id), "Không giao được run brief");
+      },
+    };
+  }
+
+  /**
+   * Xếp run viết lại brief khi dự án bật làm mới tự động và brief chưa có, đã cũ theo số commit hay số ngày (ADR 0022).
+   * Run brief đi bằng máy của người giao run gây ra nó khi có, để dự án không có máy dùng chung vẫn có brief.
+   */
+  async function queueBriefIfStale(
+    tx: Tx,
+    project: ProjectRow,
+    opts: { ownerUserId: string | null; by: string },
+  ): Promise<RunRow | null> {
+    const settings = project.settings.brief;
+    if (!settings.auto || !projectReady(project)) return null;
+    const reason = briefStaleness(await loadBrief(tx, project.id), settings);
+    if (!reason) return null;
+    // Không máy nào chạy được (worker cũ, chỉ có máy cá nhân của người khác) thì không xếp: run nằm chờ mãi chỉ làm
+    // rối danh sách run; lần giao sau sẽ thử lại.
+    const sandboxed = sandboxedRun(project, await loadPolicy(tx), "brief");
+    const online = await listOnlineMachines(tx, project.teamId, sandboxed ? "host" : "worker");
+    const owner = { ownerUserId: opts.ownerUserId };
+    if (!online.some((m) => m.capabilities.includes("brief") && usableBy(m, owner, sandboxed))) return null;
+    return createBriefRun(tx, project, { ...opts, reason });
+  }
+
+  /** Run brief của dự án; đã có run đang sống thì trả null (index runs_brief_active giữ mỗi dự án một run). */
+  async function createBriefRun(
+    tx: Tx,
+    project: ProjectRow,
+    opts: { ownerUserId: string | null; by: string; reason: BriefStaleness | "manual" },
+  ): Promise<RunRow | null> {
+    if (await activeBriefRun(tx, project.id)) return null;
+    const [row] = await tx
+      .insert(runs)
+      .values({
+        orgId: sql`hive.ctx_org()`,
+        teamId: project.teamId,
+        taskId: null,
+        projectId: project.id,
+        kind: "brief",
+        cli: null,
+        model: null,
+        branch: briefBranch(project.key),
+        policySnapshot: [],
+        // Chỉ đọc và tóm tắt: không cần thời hạn một giờ của run code.
+        timeoutSec: 20 * 60,
+        createdBy: opts.by,
+        ownerUserId: opts.ownerUserId,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) return null;
+    await hubEvent(tx, row, "state", { from: null, to: "queued", by: opts.by });
+    await notifyRun(tx, row.id);
+    await recordAudit(tx, {
+      action: "brief.run.start",
+      actorUserId: opts.reason === "manual" ? undefined : null,
+      targetType: "run",
+      targetId: row.id,
+      data: { projectId: project.id, reason: opts.reason },
+    });
+    return row;
+  }
+
+  async function activeBriefRun(tx: Tx, projectId: string): Promise<string | null> {
+    const [active] = await tx
+      .select({ id: runs.id })
+      .from(runs)
+      .where(
+        and(eq(runs.projectId, projectId), eq(runs.kind, "brief"), notInArray(runs.state, [...TERMINAL_RUN_STATES])),
+      )
+      .limit(1);
+    return active?.id ?? null;
+  }
+
+  /** "Làm mới" trên web: thành viên đội của dự án; run đi bằng máy của người bấm hoặc máy dùng chung. */
+  async function refreshBrief(tx: Tx, userId: string, ref: string) {
+    const found = await findProject(tx, ref);
+    if (!found) throw new NotFoundError("PROJECT_NOT_FOUND", "Không tìm thấy dự án trong tổ chức.");
+    const project = await projectFor(tx, userId, found.id, "member");
+    if (!projectReady(project)) throw new ConflictError("PROJECT_NOT_READY", "Dự án chưa khởi tạo xong repo.");
+    const active = await activeBriefRun(tx, project.id);
+    if (active) return { runId: active, afterCommit: () => undefined };
+    const row = await createBriefRun(tx, project, { ownerUserId: userId, by: userId, reason: "manual" });
+    if (!row) throw new ConflictError("BRIEF_RUN_ACTIVE", "Dự án đang có run viết brief.");
+    const { orgId, id } = row;
+    return { runId: id, afterCommit: () => background(dispatch(orgId, id), "Không giao được run brief") };
   }
 
   /**
@@ -2268,6 +2498,8 @@ export function createRunsEngine(deps: RunsDeps) {
     steerRun,
     cancelRun,
     cancelRunsOfTask,
+    /** Brief của dự án; router của knowledge gọi qua đây (knowledge không import runs). */
+    briefs: { activeRun: activeBriefRun, refresh: refreshBrief },
     /** Duyệt và từ chối kế hoạch; router của tasks gọi qua đây (tasks không import runs). */
     planActions: { approve: approvePlan, reject: rejectPlan },
     /** Đăng ký handler sự kiện Git (PR merge/đóng, issue có nhãn, bình luận nhắc bot) vào registry của scm. */

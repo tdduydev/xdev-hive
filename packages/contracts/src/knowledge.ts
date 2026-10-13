@@ -53,9 +53,17 @@ export const memoryWriteInput = z.object({
 });
 export type MemoryWriteInput = z.input<typeof memoryWriteInput>;
 
+/**
+ * `pending`: agent ghi trong run khi chính sách tổ chức đặt `agentMemory.mode = propose`; chỉ hiện khi tìm sau khi
+ * thành viên đội duyệt (ADR 0022).
+ */
+export const memoryStatus = z.enum(["approved", "pending"]);
+export type MemoryStatus = z.output<typeof memoryStatus>;
+
 export const memory = z.object({
   id,
   kind: memoryKind,
+  status: memoryStatus,
   content: z.string(),
   files: z.array(z.string()),
   scope: scopeView,
@@ -83,6 +91,8 @@ export type MemorySearchHit = z.output<typeof memorySearchHit>;
 export const memoryListInput = z.object({
   project: projectRef.optional(),
   kind: memoryKind.optional(),
+  /** `pending` liệt kê memory agent đề xuất đang chờ duyệt. */
+  status: memoryStatus.default("approved"),
   includeSuperseded: queryFlag.default(false),
   limit: queryInt(1, 200).default(50),
   offset: queryInt(0, 100_000).default(0),
@@ -161,6 +171,46 @@ export const docVersion = z.object({
   createdAt: z.iso.datetime(),
 });
 export type DocVersion = z.output<typeof docVersion>;
+
+// ---------------------------------------------------------------------------------------------------------------
+// Brief dự án (ADR 0022)
+
+/** Đủ cho khoảng 3k token; dài hơn thì mọi prompt phình theo, mất ý nghĩa tóm tắt. */
+export const BRIEF_MAX_CHARS = 12_000;
+export const briefContent = z
+  .string()
+  .trim()
+  .min(1, "Brief không được để trống.")
+  .max(BRIEF_MAX_CHARS, `Brief dài tối đa ${BRIEF_MAX_CHARS} ký tự.`);
+const commitSha = z.string().regex(/^[0-9a-f]{40,64}$/, "Commit SHA không hợp lệ.");
+
+export const projectBrief = z.object({
+  projectId: id,
+  content: z.string(),
+  version: z.number().int(),
+  /** Commit của nhánh chính agent đã đọc khi viết; null khi người sửa tay brief chưa từng có. */
+  commitSha: z.string().nullable(),
+  source: z.enum(["agent", "user"]),
+  updatedBy: knowledgeAuthor,
+  updatedAt: z.iso.datetime(),
+  /** Nhánh chính mới nhất worker thấy, và số commit nó đi trước `commitSha`; null khi chưa có run nào báo. */
+  headSha: z.string().nullable(),
+  commitsBehind: z.number().int().nullable(),
+  /** Run `brief` đang chờ hoặc đang chạy, để web không cho bấm "Làm mới" hai lần. */
+  refreshRunId: id.nullable(),
+});
+export type ProjectBrief = z.output<typeof projectBrief>;
+
+export const briefGetInput = z.object({ project: projectRef });
+export type BriefGetInput = z.input<typeof briefGetInput>;
+export const briefSaveInput = z.object({
+  project: projectRef,
+  content: briefContent,
+  /** Phiên bản mình đã đọc; 0 là tạo mới. Lệch thì CONFLICT để không ghi đè brief agent vừa viết. */
+  baseVersion: version,
+});
+export type BriefSaveInput = z.input<typeof briefSaveInput>;
+export const briefSubmitInput = z.object({ content: briefContent, commitSha });
 
 // ---------------------------------------------------------------------------------------------------------------
 // Skill
@@ -299,6 +349,12 @@ export const memoryContract = {
   supersede: orgRoute("POST", "/v1/memories/{id}/supersede", "Thay memory cũ bằng nội dung mới", "knowledge")
     .input(memorySupersedeInput)
     .output(memory),
+  approve: orgRoute("POST", "/v1/memories/{id}/approve", "Duyệt memory agent đề xuất (thành viên đội)", "knowledge")
+    .input(z.object({ id }))
+    .output(memory),
+  reject: orgRoute("POST", "/v1/memories/{id}/reject", "Bỏ memory agent đề xuất (thành viên đội)", "knowledge")
+    .input(z.object({ id }))
+    .output(z.object({ ok: z.literal(true) })),
 };
 
 export const docsContract = {
@@ -314,6 +370,18 @@ export const docsContract = {
   history: orgRoute("GET", "/v1/docs/history", "Các phiên bản của tài liệu, mới nhất trước", "knowledge")
     .input(z.object({ key: docKey }))
     .output(z.array(docVersion)),
+};
+
+export const briefContract = {
+  get: orgRoute("GET", "/v1/briefs", "Brief của dự án; null khi chưa có", "knowledge")
+    .input(briefGetInput)
+    .output(projectBrief.nullable()),
+  save: orgRoute("POST", "/v1/briefs", "Sửa tay brief của dự án (thành viên đội)", "knowledge")
+    .input(briefSaveInput)
+    .output(projectBrief),
+  refresh: orgRoute("POST", "/v1/briefs/refresh", "Giao run viết lại brief của dự án (thành viên đội)", "knowledge")
+    .input(briefGetInput)
+    .output(z.object({ runId: id })),
 };
 
 export const skillsContract = {
