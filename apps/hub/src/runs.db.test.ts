@@ -891,6 +891,113 @@ describe("quyền", () => {
   });
 });
 
+describe("ai được tác động vào run đã có chủ (ADR 0017)", () => {
+  interface Actor {
+    id: string;
+    cookie: string;
+  }
+  // Người thật có phiên Better Auth, vì quyền kiểm theo người gọi; fixture seedOrg không có mật khẩu.
+  async function actor(name: string, orgRole: "member" | "admin", teamRole: "member" | "admin" | null): Promise<Actor> {
+    const res = await fetch(`http://${base}/api/auth/sign-up/email`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, email: `${name}-${tag}@example.com`, password: "mat-khau-du-dai-123" }),
+    });
+    expect(res.status).toBe(200);
+    const id = ((await res.json()) as { user: { id: string } }).user.id;
+    await admin.query("insert into hive.org_members (org_id, user_id, role) values ($1, $2, $3)", [
+      org.orgId,
+      id,
+      orgRole,
+    ]);
+    if (teamRole) {
+      await admin.query("insert into hive.team_members (team_id, org_id, user_id, role) values ($1, $2, $3, $4)", [
+        org.teamId,
+        org.orgId,
+        id,
+        teamRole,
+      ]);
+    }
+    const cookie = res.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .join("; ");
+    return { id, cookie };
+  }
+  async function as(who: Actor, path: string, body: unknown) {
+    const res = await fetch(`http://${base}/api${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: who.cookie, "x-hive-org": org.orgId },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, data: (await res.json()) as { data?: { code?: string }; status?: string } };
+  }
+  const steerAs = (who: Actor, runId: string) => as(who, `/v1/runs/${runId}/steer`, { input: "đổi hướng làm" });
+  const cancelAs = (who: Actor, runId: string) => as(who, `/v1/runs/${runId}/cancel`, {});
+
+  let peer: Actor;
+  let teamAdmin: Actor;
+  let orgAdmin: Actor;
+  beforeAll(async () => {
+    peer = await actor("peer", "member", "member");
+    teamAdmin = await actor("tadm", "member", "admin");
+    orgAdmin = await actor("oadm", "admin", null);
+  });
+
+  async function teamRun(): Promise<string> {
+    const task = await newTask("Việc của đội");
+    const project = await withTenant(pool, { orgId: org.orgId }, (tx) => loadProject(tx, projectId));
+    const queued = await withTenant(pool, { orgId: org.orgId }, async (tx) => {
+      const t = await loadTask(tx, task.id);
+      if (!t || !project) throw new Error("thiếu task hoặc dự án");
+      return engine.queueRun(tx, t, project, { cli: null, createdBy: "github:octocat", actorUserId: null });
+    });
+    queued.afterCommit();
+    return queued.row.id;
+  }
+
+  it("steer run của dev: chỉ dev; thành viên khác, quản trị đội và quản trị tổ chức đều bị chặn", async () => {
+    const run = await startRun((await newTask("Steer của chủ")).id);
+    for (const other of [peer, teamAdmin, orgAdmin]) {
+      const res = await steerAs(other, run.id);
+      expect(res.status).toBe(403);
+      expect(res.data.data?.code).toBe("RUN_NOT_YOURS");
+    }
+    const own = await api<{ status: string }>("POST", `/v1/runs/${run.id}/steer`, { input: "thêm test" });
+    expect(own.status).toBe(200);
+    const { rows } = await admin.query("select data from hive.run_events where run_id = $1 and type = 'steer'", [
+      run.id,
+    ]);
+    expect(rows.map((r) => r.data.by)).toEqual([devUserId]);
+    await api("POST", `/v1/runs/${run.id}/cancel`);
+  });
+
+  it("steer run của đội: quản trị đội và quản trị tổ chức được, thành viên thường không", async () => {
+    const runId = await teamRun();
+    const denied = await steerAs(peer, runId);
+    expect(denied.status).toBe(403);
+    expect(denied.data.data?.code).toBe("RUN_NOT_YOURS");
+    expect((await api<{ data?: { code?: string } }>("POST", `/v1/runs/${runId}/steer`, { input: "x" })).status).toBe(
+      403,
+    );
+    expect((await steerAs(teamAdmin, runId)).status).toBe(200);
+    expect((await steerAs(orgAdmin, runId)).status).toBe(200);
+    await cancelAs(orgAdmin, runId);
+  });
+
+  it("huỷ run của dev: thành viên khác bị chặn, quản trị đội huỷ được; run của đội thì thành viên huỷ được", async () => {
+    const run = await startRun((await newTask("Huỷ của chủ")).id);
+    const denied = await cancelAs(peer, run.id);
+    expect(denied.status).toBe(403);
+    expect(denied.data.data?.code).toBe("RUN_NOT_YOURS");
+    expect((await runRow(run.id)).state).not.toBe("cancelled");
+    expect((await cancelAs(teamAdmin, run.id)).status).toBe(200);
+    expect((await runRow(run.id)).state).toBe("cancelled");
+    const teamRunId = await teamRun();
+    expect((await cancelAs(peer, teamRunId)).status).toBe(200);
+  });
+});
+
 describe("chi phí và ngân sách", () => {
   const today = new Date().toISOString().slice(0, 10);
   let costProject = "";

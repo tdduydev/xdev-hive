@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cli-profile-discover"
+description = "Enables the cli_profile_discover command without any pre-configured scope."
+commands.allow = ["cli_profile_discover"]
+
+[[permission]]
+identifier = "deny-cli-profile-discover"
+description = "Denies the cli_profile_discover command without any pre-configured scope."
+commands.deny = ["cli_profile_discover"]
