@@ -70,7 +70,7 @@
 
 ## Phase 2: User Story 1 — Cấu hình quy trình Code (P1) 🎯 MVP
 
-- [ ] T010 [US1] `knowledge` nhận quy trình Code
+- [x] T010 [US1] `knowledge` nhận quy trình Code
   - `saveWorkflow`, `listWorkflows` theo `subject`; `matchWorkflow` và `dryRunWorkflow` chỉ xét `subject = 'doc'`;
     từ chối CLI/model bị chính sách agent cấm (FR-011, đọc qua `governance/index.ts`).
   - Export qua `index.ts`: `listCodeWorkflows(tx, scope)`, `flatGates`, `slaOf`, `requiredApprovals`, `eligible`.
