@@ -22,6 +22,7 @@ import { type Dict, useLang, useT } from "@/lib/i18n.ts";
 import { usePermissions } from "@/lib/permissions.ts";
 import { McpServersTab } from "@/pages/admin/mcp-servers-tab.tsx";
 import { useOrg } from "@/shell/org-context.ts";
+import { PageBody, PageHeader } from "@/shell/page-header.tsx";
 
 const text: Dict<{
   title: string;
@@ -403,13 +404,8 @@ function McpOrgPage() {
   ];
   const endpoint = `${window.location.origin}/mcp`;
   return (
-    <div className="min-w-0 space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0 space-y-1">
-          <p className="text-xs text-muted-foreground">{t.crumb}</p>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">{t.title}</h1>
-          <p className="text-sm text-muted-foreground">{t.lead}</p>
-        </div>
+    <>
+      <PageHeader crumb={t.crumb} title={t.title}>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           <code className="max-w-full break-all rounded-lg border border-border bg-card px-3 py-1.5 text-xs">
             {endpoint}
@@ -438,244 +434,247 @@ function McpOrgPage() {
             </Button>
           )}
         </div>
-      </header>
-      {!canManage && <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t.memberHint}</p>}
-      {notice && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {notice}
-        </p>
-      )}
-      {toggle.error && (
-        <p role="alert" className="text-destructive">
-          {toggle.error.message}
-        </p>
-      )}
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          setTab(String(value));
-          setNotice("");
-        }}
-      >
-        <TabsList variant="line" className="h-auto w-full flex-wrap justify-start border-b border-border">
-          <TabsTrigger className="min-h-10 whitespace-normal" value="tools">
-            {t.tools}
-            <Pill small>{tools.data?.tools.length ?? "—"}</Pill>
-          </TabsTrigger>
-          <TabsTrigger className="min-h-10 whitespace-normal" value="servers">
-            {t.servers}
-            {canManageServers && <Pill small>{servers.data?.rules.length ?? "—"}</Pill>}
-          </TabsTrigger>
-          <TabsTrigger className="min-h-10 whitespace-normal" value="tokens">
-            {t.tokens}
-            <Pill small>{tokens.data?.tokens.length ?? "—"}</Pill>
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="tools">
-          {tools.isPending ? (
-            <p role="status">{t.loading}</p>
-          ) : tools.error ? (
-            <div role="alert">
-              <p>{t.failed}</p>
-              <Button variant="outline" onClick={() => void tools.refetch()}>
-                {t.retry}
-              </Button>
-            </div>
-          ) : (
-            <DataTable
-              columns={toolColumns}
-              rows={tools.data.tools}
-              selectable={false}
-              caption={t.tools}
-              placeholder={t.searchTools}
-              emptyContent={t.noTools}
-              facets={[
-                { key: "group", label: t.group, value: (r) => t.groups[r.group] },
-                { key: "state", label: t.state, value: (r) => (r.enabled ? t.on : t.off) },
-                { key: "caller", label: t.caller, value: (r) => t.callers[r.caller] },
-              ]}
-            />
-          )}
-        </TabsContent>
-        <TabsContent value="servers">
-          <McpServersTab canManage={canManageServers} editing={editingServer} onEdit={setEditingServer} />
-        </TabsContent>
-        <TabsContent value="tokens">
-          {tokens.isPending ? (
-            <p role="status">{t.loading}</p>
-          ) : tokens.error ? (
-            <div role="alert">
-              <p>{t.failed}</p>
-              <Button variant="outline" onClick={() => void tokens.refetch()}>
-                {t.retry}
-              </Button>
-            </div>
-          ) : (
-            <DataTable
-              columns={tokenColumns}
-              rows={tokens.data.tokens}
-              selectable={false}
-              caption={t.tokens}
-              placeholder={t.searchTokens}
-              emptyContent={t.noTokens}
-              facets={[
-                { key: "expiry", label: t.expires, value: status },
-                { key: "client", label: "Client", value: (r) => r.clientId },
-              ]}
-            />
-          )}
-        </TabsContent>
-      </Tabs>
-      <Dialog
-        open={creating}
-        onOpenChange={(open) => {
-          if (create.isPending) return;
-          setCreating(open);
-          if (!open) {
-            setSecret(null);
-            create.reset();
+      </PageHeader>
+      <PageBody>
+        <p className="-mt-2 text-sm text-muted-foreground">{t.lead}</p>
+        {!canManage && <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t.memberHint}</p>}
+        {notice && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {notice}
+          </p>
+        )}
+        {toggle.error && (
+          <p role="alert" className="text-destructive">
+            {toggle.error.message}
+          </p>
+        )}
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            setTab(String(value));
             setNotice("");
-          }
-        }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>{t.newToken}</DialogTitle>
-            <DialogDescription>{t.once}</DialogDescription>
-          </DialogHeader>
-          {secret ? (
-            <>
-              <Input
-                aria-label="Token"
-                className="font-mono text-xs"
-                readOnly
-                value={secret}
-                onFocus={(event) => event.currentTarget.select()}
-              />
-              <Button onClick={() => void copy(secret)}>
-                <Copy aria-hidden="true" />
-                {t.copy}
-              </Button>
-              {notice && <p role="status">{notice}</p>}
-              <DialogActions>
-                <Button
-                  onClick={() => {
-                    setSecret(null);
-                    setCreating(false);
-                    setNotice("");
-                  }}
-                >
-                  {t.close}
+          }}
+        >
+          <TabsList variant="line" className="h-auto w-full flex-wrap justify-start gap-4 border-b border-border p-0">
+            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="tools">
+              {t.tools}
+              <Pill small>{tools.data?.tools.length ?? "—"}</Pill>
+            </TabsTrigger>
+            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="servers">
+              {t.servers}
+              {canManageServers && <Pill small>{servers.data?.rules.length ?? "—"}</Pill>}
+            </TabsTrigger>
+            <TabsTrigger className="min-h-10 flex-none px-1 whitespace-normal after:!bottom-[-1px]" value="tokens">
+              {t.tokens}
+              <Pill small>{tokens.data?.tokens.length ?? "—"}</Pill>
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="tools">
+            {tools.isPending ? (
+              <p role="status">{t.loading}</p>
+            ) : tools.error ? (
+              <div role="alert">
+                <p>{t.failed}</p>
+                <Button variant="outline" onClick={() => void tools.refetch()}>
+                  {t.retry}
                 </Button>
-              </DialogActions>
-            </>
-          ) : (
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                create.mutate();
-              }}
-            >
-              <label htmlFor="mcp-client" className="grid gap-1.5">
-                Client
-                <NativeSelect
-                  id="mcp-client"
-                  aria-label="Client"
-                  value={clientId}
-                  onChange={(event) => setClientId(event.currentTarget.value)}
-                >
-                  {["claude-code", "cursor", "vscode", "codex", "hermes"].map((client) => (
-                    <option key={client} value={client}>
-                      {client}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label htmlFor="mcp-lifetime" className="grid gap-1.5">
+              </div>
+            ) : (
+              <DataTable
+                columns={toolColumns}
+                rows={tools.data.tools}
+                selectable={false}
+                caption={t.tools}
+                placeholder={t.searchTools}
+                emptyContent={t.noTools}
+                facets={[
+                  { key: "group", label: t.group, value: (r) => t.groups[r.group] },
+                  { key: "state", label: t.state, value: (r) => (r.enabled ? t.on : t.off) },
+                  { key: "caller", label: t.caller, value: (r) => t.callers[r.caller] },
+                ]}
+              />
+            )}
+          </TabsContent>
+          <TabsContent value="servers">
+            <McpServersTab canManage={canManageServers} editing={editingServer} onEdit={setEditingServer} />
+          </TabsContent>
+          <TabsContent value="tokens">
+            {tokens.isPending ? (
+              <p role="status">{t.loading}</p>
+            ) : tokens.error ? (
+              <div role="alert">
+                <p>{t.failed}</p>
+                <Button variant="outline" onClick={() => void tokens.refetch()}>
+                  {t.retry}
+                </Button>
+              </div>
+            ) : (
+              <DataTable
+                columns={tokenColumns}
+                rows={tokens.data.tokens}
+                selectable={false}
+                caption={t.tokens}
+                placeholder={t.searchTokens}
+                emptyContent={t.noTokens}
+                facets={[
+                  { key: "expiry", label: t.expires, value: status },
+                  { key: "client", label: "Client", value: (r) => r.clientId },
+                ]}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
+        <Dialog
+          open={creating}
+          onOpenChange={(open) => {
+            if (create.isPending) return;
+            setCreating(open);
+            if (!open) {
+              setSecret(null);
+              create.reset();
+              setNotice("");
+            }
+          }}
+        >
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{t.newToken}</DialogTitle>
+              <DialogDescription>{t.once}</DialogDescription>
+            </DialogHeader>
+            {secret ? (
+              <>
+                <Input
+                  aria-label="Token"
+                  className="font-mono text-xs"
+                  readOnly
+                  value={secret}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <Button onClick={() => void copy(secret)}>
+                  <Copy aria-hidden="true" />
+                  {t.copy}
+                </Button>
+                {notice && <p role="status">{notice}</p>}
+                <DialogActions>
+                  <Button
+                    onClick={() => {
+                      setSecret(null);
+                      setCreating(false);
+                      setNotice("");
+                    }}
+                  >
+                    {t.close}
+                  </Button>
+                </DialogActions>
+              </>
+            ) : (
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  create.mutate();
+                }}
+              >
+                <label htmlFor="mcp-client" className="grid gap-1.5">
+                  Client
+                  <NativeSelect
+                    id="mcp-client"
+                    aria-label="Client"
+                    value={clientId}
+                    onChange={(event) => setClientId(event.currentTarget.value)}
+                  >
+                    {["claude-code", "cursor", "vscode", "codex", "hermes"].map((client) => (
+                      <option key={client} value={client}>
+                        {client}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+                <label htmlFor="mcp-lifetime" className="grid gap-1.5">
+                  {t.lifetime}
+                  <NativeSelect
+                    id="mcp-lifetime"
+                    aria-label={t.lifetime}
+                    value={days}
+                    onChange={(event) => setDays(Number(event.currentTarget.value))}
+                  >
+                    {[7, 30, 90].map((n) => (
+                      <option key={n} value={n}>
+                        {n} {t.days}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </label>
+                {create.error && (
+                  <p role="alert" className="text-destructive">
+                    {create.error.message}
+                  </p>
+                )}
+                <DialogActions>
+                  <Button variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>
+                    {t.cancel}
+                  </Button>
+                  <Button type="submit" disabled={create.isPending}>
+                    {create.isPending ? t.loading : t.newToken}
+                  </Button>
+                </DialogActions>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={!!selected}
+          onOpenChange={(open) => {
+            if (!open && !manage.isPending) setSelected(null);
+          }}
+        >
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{selected?.action === "extend" ? t.extendTitle : t.revokeTitle}</DialogTitle>
+              <DialogDescription>{selected?.action === "extend" ? t.extendHint : t.revokeHint}</DialogDescription>
+            </DialogHeader>
+            <p className="break-all font-mono text-xs">
+              {selected?.token.clientId} · {selected?.token.prefix}…
+            </p>
+            {selected?.action === "extend" && (
+              <label htmlFor="mcp-extension-lifetime" className="grid gap-1.5">
                 {t.lifetime}
                 <NativeSelect
-                  id="mcp-lifetime"
+                  id="mcp-extension-lifetime"
                   aria-label={t.lifetime}
-                  value={days}
-                  onChange={(event) => setDays(Number(event.currentTarget.value))}
+                  value={extensionDays}
+                  onChange={(event) => setExtensionDays(Number(event.currentTarget.value))}
                 >
-                  {[7, 30, 90].map((n) => (
+                  {[30, 90].map((n) => (
                     <option key={n} value={n}>
                       {n} {t.days}
                     </option>
                   ))}
                 </NativeSelect>
               </label>
-              {create.error && (
-                <p role="alert" className="text-destructive">
-                  {create.error.message}
-                </p>
-              )}
-              <DialogActions>
-                <Button variant="outline" disabled={create.isPending} onClick={() => setCreating(false)}>
-                  {t.cancel}
-                </Button>
-                <Button type="submit" disabled={create.isPending}>
-                  {create.isPending ? t.loading : t.newToken}
-                </Button>
-              </DialogActions>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-      <Dialog
-        open={!!selected}
-        onOpenChange={(open) => {
-          if (!open && !manage.isPending) setSelected(null);
-        }}
-      >
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>{selected?.action === "extend" ? t.extendTitle : t.revokeTitle}</DialogTitle>
-            <DialogDescription>{selected?.action === "extend" ? t.extendHint : t.revokeHint}</DialogDescription>
-          </DialogHeader>
-          <p className="break-all font-mono text-xs">
-            {selected?.token.clientId} · {selected?.token.prefix}…
-          </p>
-          {selected?.action === "extend" && (
-            <label htmlFor="mcp-extension-lifetime" className="grid gap-1.5">
-              {t.lifetime}
-              <NativeSelect
-                id="mcp-extension-lifetime"
-                aria-label={t.lifetime}
-                value={extensionDays}
-                onChange={(event) => setExtensionDays(Number(event.currentTarget.value))}
+            )}
+            {manage.error && (
+              <p role="alert" className="text-destructive">
+                {manage.error.message}
+              </p>
+            )}
+            <DialogActions>
+              <Button variant="outline" disabled={manage.isPending} onClick={() => setSelected(null)}>
+                {t.cancel}
+              </Button>
+              <Button
+                variant={selected?.action === "revoke" ? "destructive" : "default"}
+                disabled={manage.isPending}
+                onClick={() => {
+                  if (selected) manage.mutate({ id: selected.token.id, action: selected.action });
+                }}
               >
-                {[30, 90].map((n) => (
-                  <option key={n} value={n}>
-                    {n} {t.days}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-          )}
-          {manage.error && (
-            <p role="alert" className="text-destructive">
-              {manage.error.message}
-            </p>
-          )}
-          <DialogActions>
-            <Button variant="outline" disabled={manage.isPending} onClick={() => setSelected(null)}>
-              {t.cancel}
-            </Button>
-            <Button
-              variant={selected?.action === "revoke" ? "destructive" : "default"}
-              disabled={manage.isPending}
-              onClick={() => {
-                if (selected) manage.mutate({ id: selected.token.id, action: selected.action });
-              }}
-            >
-              {manage.isPending ? t.loading : selected?.action === "extend" ? t.extend : t.revoke}
-            </Button>
-          </DialogActions>
-        </DialogContent>
-      </Dialog>
-    </div>
+                {manage.isPending ? t.loading : selected?.action === "extend" ? t.extend : t.revoke}
+              </Button>
+            </DialogActions>
+          </DialogContent>
+        </Dialog>
+      </PageBody>
+    </>
   );
 }

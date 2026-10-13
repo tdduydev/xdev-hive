@@ -159,16 +159,28 @@ export interface PromptMap {
 
 const MAP_MAX = 120;
 
+/** Bối cảnh thêm: quyền người dùng bật cho lượt chạy và file đang mở ở khung giữa. */
+export interface PromptContext {
+  access?: Access;
+  openFile?: string | null;
+}
+
+const ACCESS_RULE: Record<Access, string> = {
+  read: "- You run read-only in this project folder. Inspect the code with your read and search tools; do not edit files or run commands that change anything.",
+  edit: "- The user allowed you to edit and create files inside this project folder (no shell commands). Change files only when the request asks for it.",
+  bypass:
+    "- The user allowed you to edit files and run commands in this project folder without asking. Stay inside this folder and change only what the request asks for.",
+};
+
 export function buildPrompt(
   request: string,
   doc: PromptDoc | null,
   lang: "vi" | "en",
   map: PromptMap | null = null,
+  ctx: PromptContext = {},
 ): string {
-  const rules = [
-    "Context from the xDev Hive desktop app:",
-    "- You run read-only in this project folder. Inspect the code with your read and search tools; do not edit files or run commands that change anything.",
-  ];
+  const rules = ["Context from the xDev Hive desktop app:", ACCESS_RULE[ctx.access ?? "read"]];
+  if (ctx.openFile) rules.push(`- The user has \`${ctx.openFile}\` open in the editor.`);
   if (map) {
     // Repo lớn làm Glob/Grep cả thư mục quá giờ (20 giây): đưa sẵn bản đồ và danh sách tài liệu để agent tìm đúng chỗ.
     rules.push(
@@ -339,7 +351,26 @@ export function setSuggestion(suggestion: Suggestion | null) {
   setChat({ ...chat, suggestion });
 }
 
-export async function startRun(input: { request: string; prompt: string; docKey: string | null }): Promise<void> {
+/**
+ * Quyền của agent trong thư mục (`Mode` trong cli.rs): chỉ đọc là mặc định; "edit" sửa file trong thư mục, "bypass" bỏ
+ * hỏi quyền và sandbox (giao diện hỏi xác nhận trước).
+ */
+export type Access = "read" | "edit" | "bypass";
+
+/** Tool sửa file của Claude Code và Codex: xong thì màn tải lại cây và file đang mở. */
+export const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch"]);
+
+/** Tên model gửi cho CLI (`--model`, `-m`); Rust kiểm lại cùng mẫu. */
+export const MODEL_PATTERN = /^[a-zA-Z0-9._:-]{1,64}$/;
+export const validModel = (m: string) => MODEL_PATTERN.test(m) && !m.startsWith("-");
+
+export async function startRun(input: {
+  request: string;
+  prompt: string;
+  docKey: string | null;
+  model?: string | null;
+  access?: Access;
+}): Promise<void> {
   const { folder, engine, session } = chat;
   setChat({
     ...chat,
@@ -350,7 +381,14 @@ export async function startRun(input: { request: string; prompt: string; docKey:
   starting = true;
   early = [];
   try {
-    const runId = await invoke<string>("run_cli_stream", { engine, folder, prompt: input.prompt, session });
+    const runId = await invoke<string>("run_cli_stream", {
+      engine,
+      folder,
+      prompt: input.prompt,
+      session,
+      model: input.model || null,
+      mode: input.access ?? "read",
+    });
     let next: ChatState = { ...chat, runId };
     for (const e of early) if (e.runId === runId) next = applyEvent(next, e.event);
     setChat(next);
@@ -391,6 +429,20 @@ export interface TreeEntry {
 }
 export const folderTree = (folder: string) => invoke<TreeEntry[]>("folder_tree", { folder });
 export const folderDocs = (folder: string) => invoke<string[]>("folder_docs", { folder });
+/** Một tầng của thư mục con trong cây (bấm mở thư mục). */
+export const folderList = (folder: string, path: string) => invoke<TreeEntry[]>("folder_list", { folder, path });
+
+/** File trong thư mục dự án (files.rs): Rust từ chối đường dẫn ra ngoài thư mục, file nhị phân, file quá 2 MB. */
+export interface LocalFile {
+  content: string;
+  size: number;
+  modifiedMs: number;
+  /** File tài liệu (.md, .mdx, .markdown, .txt) lưu được từ màn. */
+  writable: boolean;
+}
+export const readLocalFile = (folder: string, path: string) => invoke<LocalFile>("read_local_file", { folder, path });
+export const writeLocalFile = (folder: string, path: string, content: string) =>
+  invoke<number>("write_local_file", { folder, path, content });
 
 export const proposeDoc = (input: { key: string; baseVersion: number; content: string; note: string }) =>
   invoke<{ proposalId: string; status: string; key: string; baseVersion: number }>("propose_doc", input);

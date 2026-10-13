@@ -287,9 +287,9 @@ pub async fn cli_profile_discover_add(
 /// Lệnh đã kiểm để mở trong Terminal (đăng nhập hay mở CLI): CLI, tham số, biến thư mục đăng nhập và thư mục làm việc
 /// (nếu có).
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Launch {
-    argv: Vec<String>,
-    env: Option<(&'static str, String)>,
+pub(crate) struct Launch {
+    pub(crate) argv: Vec<String>,
+    pub(crate) env: Option<(&'static str, String)>,
     /// PATH của shell đăng nhập (doctor::user_path): Terminal chạy script bằng /bin/sh nên không thấy CLI cài qua nvm,
     /// Homebrew hay ~/.local/bin nếu thiếu dòng này.
     path: Option<String>,
@@ -562,7 +562,7 @@ pub async fn open_login_terminal(
         .map_err(|e| e.to_string())?
 }
 
-fn home_dir() -> Option<PathBuf> {
+pub(crate) fn home_dir() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -571,19 +571,19 @@ fn home_dir() -> Option<PathBuf> {
 /// Phần của một gói mà "Mở CLI" cần, đọc từ `accounts --json`.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Account {
-    id: String,
-    cli: String,
-    config_dir: Option<String>,
+pub(crate) struct Account {
+    pub(crate) id: String,
+    pub(crate) cli: String,
+    pub(crate) config_dir: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct Accounts {
-    accounts: Vec<Account>,
+pub(crate) struct Accounts {
+    pub(crate) accounts: Vec<Account>,
 }
 
 /// Binary của từng CLI mở được từ app (antigravity chạy bằng `agy`).
-fn cli_binary(cli: &str) -> Option<&'static str> {
+pub(crate) fn cli_binary(cli: &str) -> Option<&'static str> {
     match cli {
         "claude" => Some("claude"),
         "codex" => Some("codex"),
@@ -608,7 +608,7 @@ fn work_dir(folder: &str, home: Option<&Path>) -> Result<String, String> {
 }
 
 /// Cờ bỏ hỏi quyền của từng CLI khi người dùng chọn "Mở CLI (bỏ hỏi quyền)". Cố định ở đây, không nhận từ giao diện.
-fn bypass_flag(cli: &str) -> Option<&'static str> {
+pub(crate) fn bypass_flag(cli: &str) -> Option<&'static str> {
     match cli {
         "claude" | "antigravity" => Some("--dangerously-skip-permissions"),
         "codex" => Some("--dangerously-bypass-approvals-and-sandbox"),
@@ -616,7 +616,7 @@ fn bypass_flag(cli: &str) -> Option<&'static str> {
     }
 }
 
-fn cli_launch(
+pub(crate) fn cli_launch(
     list: &[Account],
     id: &str,
     folder: Option<&str>,
